@@ -353,6 +353,9 @@ type inferOpts struct {
 	streaming   bool
 	schema      map[string]any
 	prepareMs   *float64
+	// interrupted reports whether the runtime was stopped for a memory
+	// emergency mid-request.
+	interrupted func() bool
 }
 
 // inferLLM admits the request on the LLM runtime, finishes the body, and
@@ -385,5 +388,6 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 			tel.schemaValidation = "not_performed_streaming"
 		}
 	}
+	o.interrupted = lease.Interrupted
 	s.relay(w, r, lease.BaseURL+o.path, body, lease.ModelID, o, tel)
 }

@@ -180,7 +180,65 @@ reproduces them byte for byte and the table tests are ported from TS:
   `CheckAdmission(releasing)` with min(projection, footprint) credit,
   `Release`, the pressure hysteresis (3 normal samples to recover) and the GPU
   working-set cap on the sum of resident runtimes.
-- `HostProvider`: darwin uses `host_statistics64` free+inactive,
+- Switch preflight for media models follows the TS supervisor factory: a
+  catalog image or stt model whose files are missing is still sized from the
+  catalog (primary artifact, `expectedSizeBytes`) and fit-checked before the
+  install check, so too little memory answers 503 `insufficient_memory` and
+  leaves the model inactive; tts has no switch preflight in TS. Go once
+  skipped the check for image models without an `imageRuntime` profile, which
+  a full contract run exposed (realvis-xl-v5.0 needs 15.5 GB above the 9.6 GiB
+  reserve on a 64 GB host). `TestMediaAdmissionGolden`
+  (`tools/golden/media-admission.ts`) pins the demand and the verdict around
+  each model's threshold.
+- Idle-eviction recovery (`runtime.IdleRecovery`, TS
+  `admitModelWithIdleRecovery`): a model refused for memory, short of a
+  permanent shortfall, claims the idle runtimes of the other modalities
+  (running, no lease, nothing queued). If admission passes with them
+  credited, they are stopped, the host is sampled until the model is
+  admitted on uncredited memory (10 s, every 100 ms), and the switch runs
+  again. A retry refused for memory again answers the first refusal. Without
+  it, a full run had TS stop whisper and the embedding model and answer 409
+  while Go answered 503.
+- Pressure-driven stops (`runtime.PressureMonitor`, TS
+  `MemoryPressureMonitor` with serve's `applyElevatedMemoryPressure`). The
+  host is sampled every 2 s without overlapping samples. The thresholds are
+  the TS ones: critical below the reserve (9.6 GiB on a 64 GB host),
+  constrained below 1.25 × the reserve, and 3 normal samples to recover;
+  constrained after critical stays critical, and an unknown sample keeps the
+  state and resets the count. Every constrained sample stops the idle
+  runtimes (running, no lease, nothing queued), so requests in flight keep
+  theirs. On entering critical, queued work gets 503 `service_unavailable`
+  for "Inference" (TS `InferenceQueueUnavailableError`) and every runtime
+  stops, active ones included, as TS `evictAllRuntimes` does. Each state
+  change logs `runtime.memory-pressure-changed` (warn, error, or info on
+  recovery). Failing video jobs (a constrained sample that found nothing
+  idle outside the 10 s reclaim grace, or critical) is wired as
+  `PressureMonitor.FailVideo` for M6. `TestMemoryPressureGolden`
+  (`tools/golden/memory-pressure.ts`) runs six sample sequences through the
+  real TS controller and monitor and checks the Go state, recovery count,
+  action, stops and events at each sample. `TestPressureStopsRuntimes` drives
+  a fake sampler into constrained and critical with a real LLM and STT
+  runtime on the fake backend. Before this, Go only stopped the LLM on
+  critical, every 5 s, and stopped nothing on constrained.
+- `runtime.memory-admission-rejected` (TS supervisor and reconciler). Every
+  memory refusal carries TS's diagnostics (`AdmissionError.Attributes`):
+  reason, pool, measured, reserve, pending, requested and effective
+  available bytes ("unavailable" for the unsampled GPU working set), the
+  sample time and age, the provider's pressure reading, the safety state,
+  the recovery count and the demand confidence.
+  `TestAdmissionDiagnosticsGolden` (`tools/golden/admission-diagnostics.ts`)
+  replays nine scenarios against the real TS controller. The event is logged
+  when a start is refused (no stage; the component is the launched server),
+  when a switch preflight is refused (stage `switch-preflight`, `from_model`,
+  `to_model`), and after the previous model stopped (stage `post-stop`). The
+  post-stop case is the TS settle and rollback, also ported here: after the
+  previous model stops, admission is sampled for up to 10 s (every 100 ms);
+  if memory never settles, the previous model becomes active again,
+  `model.switch-rolled-back` is logged with `reload`, and it reloads once
+  memory admits it (LLM: at once). Go previously started the new model
+  immediately, so a slow page return left nothing loaded.
+- `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
+  free + speculative + inactive, since vm_stat prints speculative pages apart),
   `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working
   set. Linux uses `/proc/meminfo` MemAvailable plus PSI, and NVML through
   `nvidia-smi --query` for discrete GPUs.
@@ -1056,6 +1114,35 @@ Deliberate status changes to verify against the live clients at cutover:
    stays referenced and `uninstall` answers 409 `conflict` until
    reconciliation settles; Go switches on the next request and uninstalls a
    model no runtime holds.
+5. **Admin lockout protection** (M3 UI, operator decision). TS keeps it in
+   its browser UI only. Go enforces it in `/_localbase/access-management`
+   and `/_localbase/api-keys` for every caller, answering 409
+   `would_lock_out_admins` with a message:
+   - for a change that disables or forgets the caller's own user record;
+   - for a change that removes `access:manage` from the caller, including
+     an API key revoking itself or dropping `access:manage` from its own
+     scopes;
+   - for a change that leaves no active principal with `access:manage`
+     (people through roles, bindings or the default role, provider-wide
+     permissions without a policy, and active API keys).
+
+   Where TS refuses for its own reason, such as clearing a policy that has
+   managed users, TS's status stays. `local-base access …` and `local-base
+   keys revoke` are the break-glass path: they apply the change and print
+   a warning when it leaves nobody able to manage access
+   (`TestCLIAccessRecovery`). Each admin change also logs
+   `audit.access-changed` or `audit.api-key-changed` with the actor and
+   target ids only (`TestAdminAuditRedaction`).
+
+6. **A request cut off by a memory emergency** (operator decision). As in
+   TS, critical memory stops every runtime, including ones serving active
+   requests. TS answers such a request 502 `upstream_error`, or ends its
+   stream with an `upstream_error` event. Go answers 503
+   `service_unavailable` ("Inference service…") with `Retry-After: 5`. A
+   stream that already started ends with a `service_unavailable` error
+   event and closes. Chat, embeddings, images, transcription and speech
+   all do this (`Lease.Interrupted`; `TestEmergencyStopAnswers503`,
+   `TestEmergencyStopEndsStream`).
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
@@ -1071,6 +1158,15 @@ covers because they need a real service manager:
 - **Real OpenTelemetry Collector.** Run `go/tools/otelcol-check.sh`, which
   uses the pinned `otelcol` 0.163.1 and verifies its checksum, against the
   release candidate; see §14.3.
+- **Chat turns only a real model can show.** An image turn with a real
+  vision model, and a real chat model choosing a generation tool by itself,
+  are covered only by the TS comparison (`go/tools/jstest`). No vision
+  model or tool-calling chat model of 2 GB or less is installed for the
+  automated checks. Run both on the release candidate with the user's real
+  models.
+- **Real iPhone over Cloudflare Access** (§15.4): no zoom when the
+  composer is focused, the composer stays above the keyboard, Return adds a
+  line on touch, VoiceOver, and dictation with the real microphone.
 
 The Lab and My voices pages (step 6) call the API in-process as the signed-in
 person (`gateway.Server.Call`), so they get exactly the API's validation,
@@ -1195,3 +1291,157 @@ C2PA is not passed through until they decide.
    (`testdata/hub/PINS`, `TestFixturesPinned`), and the golden script
    refuses to fetch unless `LOCALBASE_HUB_RECORD=1`. The removed-entry
    template fallback gets its golden with #368 (item 2).
+
+## 15. M3 UI pages: Chat, settings, admin, discovery
+
+The operator's order: Chat first (the user relies on it from a phone), then
+settings, admin and discovery, then a phone review, before M6. Design
+research: `.design/research/chat/BRIEF.md` (decisions D01–D10).
+
+### 15.1 Plan
+
+| Step | Scope | Evidence |
+| --- | --- | --- |
+| 1 | Chat core: `/app` opens Chat, with a compact header and drawer on phones and a sidebar from 1024 px. Model picker (ready chat models first), composer, streaming through `/app/api/v1/chat/completions` as the signed-in person, Stop, reasoning, markdown, copy, jump to latest, a status region, and every empty, error and permission state. History stays on the device, in TS's key and schema | JS cores checked against the TS functions in bun (history, chat context, the think splitter); markdown fixtures, including unsafe input; handler tests; browser checks at 320–1600 px in both themes |
+| 2 | Chat extras: attachments for vision models, dictation, send-now steering, compaction, generation settings, and generation tools | TS goldens for compaction and steering; browser checks |
+| 3 | Settings: the account, chat history (keep or clear), generation defaults, the Hugging Face token | Handler tests; browser checks |
+| 4 | Admin: API keys, browser users and roles, access | Permission tests against the API; browser checks |
+| 5 | Discovery page over `/_localbase/model-discovery` (§14 step 3), following the Shelf brief | Hub fixtures; browser checks |
+| 6 | Phone review: the iOS simulator and a real phone over a test port, with VoiceOver | Captures in both themes; the review notes |
+
+The client code is plain ES modules under `static/js`, served from 'self'
+under the existing CSP. There is no framework and no build step. Pure logic
+(history, chat context, reasoning split, markdown parsing) is kept apart
+from the DOM, so bun can test it against the TS functions
+(`go/tools/jstest`).
+
+### 15.2 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `go/tools/jstest`, run by `TestChatJSAgainstTS`: the chat core against the TS functions on the same inputs. This covers the think splitter under every chunking, `chatContext` with and without compaction, device history in both directions (TS-written history loads, and the Go page writes what TS writes, rejects what TS rejects, and strips what zod strips), and `streamText`, including truncation, error events and tool-call deltas. Markdown matches react-markdown with GFM on 21 fixtures; unsafe links lose their link, raw HTML stays text, and an unterminated fence still renders. `internal/web` tests cover the `/app` redirect, every page state, the permission state, Settings, and inert model JSON. Browser checks on the UI fixture with a real model, at 320, 390 and 1280 px in light and dark: a full turn with markdown and code, Stop ("Stopped", "Interrupted", focus back in the composer), the drawer (focus moves in, Escape returns it), history saved and restored, the unready model (draft kept, picker opens), a 503 with Retry, and no page overflow with long words, URLs, code and tables (code scrolls inside its block) |
+| 2a | Done | Send-now steering and compaction. `go/tools/jstest/compaction.test.ts` compares the token estimates, `overflowContext`, the learned context (same storage key and format), `promptBudget`, `planCompaction` (fits, over budget, tool overhead, one-turn and forced plans, an existing summary), the summarizer transcript, and `compact` (summary, earlier summary, empty summary → dropped, cancelled) against TS: the same request bodies and the same results. `phaseLabel` and `interruptReply` are compared too. The fake backend's overflow now uses llama.cpp's wording, and `fake:overflow` fails only while the request has more than four messages. Browser checks on the UI fixture with a real model (32,768-token slot): a seeded ~40k-token conversation with a larger learned context overflowed for real; the page learned 32,768, compacted two messages, retried and answered, and the summary was saved. "Compact now" folded the next turn (count 2 → 4) and showed its timer. Typing during a reply turns Send into "Send now (interrupts reply)"; sending kept the partial reply as "Interrupted" and streamed the new turn |
+| 2b | Done | Attachments and dictation. `attachments.test.ts` compares `readAttachments` on 14 cases (text and code files, PNG/JPEG/WebP, an image on a text-only model, a fake image, PDF, empty, oversize, the 256 KiB text total, invalid UTF-8, NUL bytes, the four-file limit, the 16 MiB retained limit), the accept list, and the conversation and request checks against TS. `dictation.test.ts` compares `appendDictation` and the PCM16 WAV encoder byte for byte. The page gets each model's effective input modalities and, for people with `inference:transcription`, the dictation model (the active transcription model when installed, else the first installed and selected; TS takes the first). Browser checks on the UI fixture with real models: an image on the text-only model and a PDF are refused with TS's messages; a Markdown file was sent inline as TS sends it, the reply used it, and saved history kept only `attachmentsMissing`. Dictation ran the real pipeline (MediaRecorder, browser WAV conversion, whisper tiny.en) on a speech clip fed as the microphone; the text was added to the draft without sending and focus returned to the composer. Discard drops a recording. No vision model ≤ 2 GB is installed, so an image turn against a real vision model is unverified |
+| 2c | Done | Generation tools, generation controls and imported models. `tools.test.ts` runs the Go and TS `runChat` against the same scripted gateway, with deterministic ids and blob URLs, in 23 cases: plain replies, tools off or without permission, image (with size, seed, steps, guidance, negative prompt and LoRA; the studio-only fields are not sent), speech (chosen voice, unknown voice), text-to-video job polling and cleanup, speech-to-video not offered, uninstalled models, malformed JSON, extra or blank arguments, too-long speech, unknown and unpermitted tools, a tool call without tools, the round limit, an empty image response (reported as malformed, as TS's schema does), fresh ids next to earlier calls, gateway errors and an ended session. Both must send identical requests and produce identical protocol messages, artifacts and errors. `generationTools`, catalog order and every parameter check are compared too. The page reads the gateway's model metadata from `/app/api/_localbase/models`, as TS does, and refreshes it after each reply; the server passes only the generation permissions the person holds. Imported chat models (M3.5) join the picker, ready when a variant has all its files (`TestChatOffersImportedModels`). Browser checks on the UI fixture: temperature and maximum tokens from the controls reach the request (a stale-closure bug that dropped one field was fixed). With the chat model marked as tool-calling and its replies scripted in the page, a `synthesize_speech` call ran on the real TTS model; the 1.44 s clip played inline with a download link, and the follow-up request carried the tool call and its result. The controls list the chat model and every tool model, with no overflow at 390 px. The installed small chat model can't call tools, so a model choosing a tool by itself is unverified here |
+| 3 | Done | Settings: chat history (step 1); a note pointing to Chat's generation controls; the Hugging Face token, for people with `models:manage`; and the account (name, a plain list of what the person may do, sign out). **Decision:** there are no saved generation defaults. TS keeps generation settings in memory for the page ("They are not saved and reset when the page reloads"), so Settings points to Chat's controls instead of adding persistence TS doesn't have. The token card is server-rendered with htmx and goes through `/_localbase/hf-token` in-process as the person, so the API's permission and validation apply; it ports TS's messages (accepted for a name and role, rejected, unreachable, cleared, falling back to HF_TOKEN), and the page never shows a saved token. `TestSettingsHFToken` covers save (trimmed, the API gets exactly `action` and `token`, the response never echoes it), check, clear, a blank token, an API rejection, an unknown action, and no card or route without `models:manage`. Browser check on the UI fixture at 390 px: save (badge "Saved"; Hugging Face is unreachable through the fixture's dead proxy, so the check says so), Replace and Clear appear, clear returns to "Not set", no overflow |
+| 4 | Done | Admin at `/app/admin` (§15.3, reviewed): People & roles, Browser access and API keys, ported from TS `auth-management.tsx`. It's server-rendered with htmx, and every read and change goes through the admin APIs in-process as the person. The page and its link need `access:read` or `keys:read`; each section is read-only without the matching `:manage`; the POST routes need `:manage` and the existing same-origin htmx guard. The API refuses self-lockout and last-manager changes (operator decision, commit 71bc72b8), and the page shows its message. A new or rotated key secret and an invitation link appear once, only in the response to the change that made them (`no-store`). Destructive actions (forget user, remove role or registration, clear policy, rotate, revoke) use a disclosure that names the consequence in TS's words. It opens and closes by keyboard; Escape closes it and returns focus to its button (a `<details>` instead of the planned server-rendered step: the same named confirmation, with no request). Provider fields follow the chosen provider, and hidden fields are disabled, so they're neither required nor sent. Secrets are never pre-filled. `TestAdminSections`, `TestAdminReadOnlyAccess`, `TestAdminPeopleActions`, `TestAdminAccessActions` and `TestAdminKeySecretOnce` cover gating, read-only views, the bodies sent, the self row, the API's lockout message, role and default-role changes against the current revision, and the one-time secret. Browser checks on the UI fixture at 390 and 1280 px, light and dark: Cloudflare provider saved (audit event recorded, no email), provider fields switched for OpenID Connect and public clients, policy applied through Advanced JSON, an invitation with its link shown once, a key created and rotated through its confirmation with the secret once and not after reload, the keyboard path through a confirmation, no overflow |
+| 5 | Done | Get models is now discovery over `/_localbase/model-discovery`, as the person (TS `model-discovery.tsx`, Shelf D01–D04). Search is a GET with the query in the URL (D01: shareable, back button works); htmx swaps the results in place. Each card shows name, org, badges (gated, feed status, fit), facts, and a qualified catalog match first ("View catalog model →", D04); with a match, community files fold under "Use a community file instead". The recommended file comes first (D03): the Go port of `recommendedChoice`, `orderedChoices`, `lowQualityQuant` and `qualifiedCatalogMatch` matches the TS golden (`tools/golden/choice.ts`: 18 choice sets from the recorded Hub previews and edge cases, 15 quant labels, 40 repositories against the built-in catalog plus community look-alikes). Every file's details are rendered by the server and switched by a small script with no request; Save to catalog, Add and install, Show files and Install LocalBase recipe are htmx POSTs that redraw only their part. Errors a token can fix link to Settings. People without `models:manage`, which the API requires even for search, see TS's read-only notice instead of a search that would fail. `TestDiscoverSearch`, `TestDiscoverReadOnly` and `TestDiscoverActions` cover the bodies sent, the selection, low-bit and existing files, token hints, the catalog match, failed installs and unsafe card ids. The UI fixture now reads the recorded Hub (`HF_ENDPOINT`). Browser checks: "qwen coder" gives 20 cards, with five repositories matched to qualified catalog models; switching files updates the details and fit badge; Save to catalog added an entry with a link to it; an unrecorded repository's Show files reports the Hub error and offers Try again; no overflow at 320, 390 or 1280 px; light and dark. Disclosure markers were added to flex summaries (here, and Chat's reasoning, compaction and tool settings) |
+| 6 | Done here; real iPhone checks with the operator | §15.4: screenshots at 390 px in both themes through a scratch edge proxy, edge sign-in expiry on Chat and htmx pages through a real cross-origin 302, the tab-resumed retry, and a real iOS Safari render on the Simulator. The keyboard, VoiceOver and the microphone need a real iPhone |
+
+The phone keyboard (`interactive-widget`, the 16 px composer), VoiceOver,
+and Enter on touch screens are left for the phone review (step 6).
+
+### 15.3 Admin plan (for review before building)
+
+Admin ports TS `auth-management.tsx` (brief D09) to `/app/admin`. It is
+server-rendered with htmx. Every read and write goes through the existing
+admin APIs in-process as the signed-in person: `/_localbase/access-management`
+and `/_localbase/api-keys`, which the 95-step differential script already
+holds to TS. The page adds no new permission logic of its own, apart from
+item 5.
+
+1. **Who sees what** (TS `administrationSections`). The Admin link and route
+   need `access:read` or `keys:read`; without both, the route answers 403 and
+   no link shows. Sections: "People & roles" and "Browser access" with
+   `access:read`, "API keys" with `keys:read`. With only the `:read`
+   permission a section is read-only (TS `ReadOnlyPeopleAndRoles` and
+   `ReadOnlyAccess`, and key scopes as text). The forms render only with
+   `access:manage` or `keys:manage`, and the POST routes need that same
+   permission (`mutating`), so the API's check is never the only one.
+2. **Requests.** Every POST uses the existing `mutating` guard: htmx only,
+   `X-Localbase-UI`, same origin, `Sec-Fetch-Site` same-origin, and a 64 KiB
+   form limit. Every state-changing htmx route (the `mutating` and
+   `uploading` guards, so the Lab, voices, imports and Settings too) also
+   needs a per-session CSRF token. It is an HMAC, under a per-root key
+   (`runtime/ui-csrf.key`), of a random `lb_csrf` cookie (`HttpOnly`,
+   `SameSite=Strict`, path `/app`). The layout puts it in htmx's
+   `X-CSRF-Token` header. A cross-site form post, a post without the token,
+   and another session's token are refused (`TestCSRF`). Each action maps one-to-one to a TS API call with the same
+   JSON body. Policy edits carry the `expectedPolicyRevision` read with the
+   page. A `policy_revision_conflict` shows "The policy changed elsewhere.
+   Reload and try again." and re-reads the policy.
+3. **Secrets.** A new or rotated API key secret, and an invitation sign-in
+   link, appear exactly once: in the htmx response to the action that made
+   them, in a "Copy this secret now. It will not be shown again" panel with
+   Copy and Done. They are never stored server-side, never put in a URL or
+   page state, never logged (the response is `Cache-Control: no-store`), and
+   never re-rendered by a later fragment. OIDC and GitHub client secrets and
+   the SMTP password are `type=password autocomplete=new-password` fields that
+   are never pre-filled ("Re-enter to save"), as in TS.
+   They also stay out of browser history: the fragments that show them carry
+   `hx-history="false"` (and htmx keeps no history snapshots at all,
+   `historyCacheSize: 0`). The Admin page is `Cache-Control: no-store`, which
+   keeps it out of the back/forward cache, and `admin.js` blanks a shown
+   secret on `pagehide`.
+4. **Destructive actions** need a named confirmation in the same row: a
+   disclosure that opens on the first click with the consequence in TS's
+   words and a Confirm button. Escape or a second click closes it and keeps
+   focus on its button (built as a `<details>`, with no request, instead of
+   the server-rendered step first planned). This covers revoke key ("This key will stop working
+   immediately."), rotate key, remove a sign-in registration ("Removing the
+   last one disables browser access."), clear policy, remove role, and forget
+   user (TS's "this is not revocation" text). Disable user and set default
+   role act at once, as in TS.
+5. **Self-protection.** TS enforces this only in the browser. Go enforces it
+   in the UI handler too, which is stronger but the same rule. The signed-in
+   person, matched by verified email as TS `isCurrentManagedUser` does, cannot
+   disable or forget their own record, or save roles that leave them without
+   `access:manage` (TS `assignedRolesGrantAccessManagement`). The API keeps
+   its own rule: at least one reachable role must grant `access:manage`.
+   **Decided in review (operator):** the rules live in the API, a deliberate
+   divergence from TS. Whoever calls it, `/_localbase/access-management`
+   refuses (409 `would_lock_out_admins`) a change that disables or forgets
+   the caller's own record, or leaves the caller without `access:manage`.
+   It also refuses a change that leaves nobody able to manage access. That
+   covers a policy clear while the provider-wide permissions lack
+   `access:manage`. API keys with `access:manage` count as managers, and
+   `/_localbase/api-keys` applies the same rules (see §13.6, item 5). Where TS has its own refusal (for
+   example, clearing a policy that has managed users), TS's error stays.
+   `local-base access` is the recovery path: it applies the change and warns
+   when nobody can manage access. Each successful admin change is logged as
+   `audit.access-changed` or `audit.api-key-changed`, with the action, the
+   actor kind and id (a hash for browser sessions) and the key id; never
+   emails, names or secrets. `auth.Guard` models the resolution
+   `ResolvePolicy` uses (`TestAccessLockout`); the differential script gives
+   the provider-wide permissions `access:manage` before its policy clear, so
+   both gateways still run the same steps.
+6. **First setup.** "Set up roles" creates TS `starterAccessPolicy`: an admin
+   role for the person's verified email, and a member role with chat and
+   `models:read`. It needs a verified email; `--no-auth` and API-key
+   principals have none, so the page says to use Advanced JSON or the CLI, as
+   TS does. Advanced JSON is a policy textarea, validated by the API.
+7. **Restart notices.** Provider and registration changes say "Saved. Restart
+   LocalBase to apply browser access changes." Policy, user and key changes
+   apply now, as the API reports (`restartRequired`).
+8. **Layout.** Shelf list rows, one card per section. Below 1024 px the
+   section switcher is a segmented control (`aria-pressed` buttons, as in
+   TS); from 1024 px the sections can sit in columns. Permission pickers are
+   fieldsets grouped as TS groups them (Inference, Models, Configuration, API
+   keys, Browser access, Sessions), and show the permission ids. Status
+   badges are text: Active, Expired, Revoked, disabled.
+
+Evidence will come from handler tests against a fake API: each action's JSON
+body, permission gating of routes and controls, a secret shown once and absent
+from the next fragment, confirmations, and the self-protection rules. There
+will also be a contract test against the real gateway: create, rotate and
+revoke a key and invite a user through the page's routes, with the API state
+compared after each step. Browser checks at 320 to 1280 px in both themes
+round it out.
+
+### 15.4 Phone review (step 6)
+
+Scratch setup: the UI fixture (real small models, recorded Hub) on
+127.0.0.1:24790, behind a scratch edge proxy on **127.0.0.1:24791** that
+forwards like Cloudflare Access. The proxy can be switched to answer every
+request with a cross-origin 302 to an Access login (`/__edge/expire`,
+`/__edge/restore`), or to break the next N connections (`/__edge/drop?n=N`).
+Screenshots are in `/tmp/lbgo-phone-review` and are not committed.
+
+| Check | Result |
+| --- | --- |
+| Chat, history drawer, picker, Stop, Retry at 390 px, light and dark | Done (01–05). Stop leaves "Interrupted" and announces "Stopped". A broken connection shows "Could not reach the gateway…" with Retry, and Retry completed the turn |
+| Edge sign-in expiry (#363/#364) in Chat | Done (06). With the proxy expired, a send gets the real cross-origin 302 and shows "Your sign-in expired. Reload to sign in again." with Reload. This is TS `gatewayFetch`, ported in 738d30fa; before that commit Chat showed a network error |
+| Edge sign-in expiry on htmx pages | Done (07). A Get models search while expired shows the same notice with Reload (session.js probe) |
+| Tab resumed retry | Done. With no recent resume, one broken read surfaces the error. Right after the tab becomes visible again, the broken read is retried after 400 ms and succeeds (433 ms; the proxy log shows the drop, then the success). Replies (POST) are not retried, as in TS |
+| Real iOS Safari render | Done on the iOS Simulator (iPhone 17, iOS 27) through the scratch URL (08). The safe-area header sits below the status bar, and the composer stays above Safari's toolbar. `simctl` can't type, so focus, zoom and the keyboard were not exercised |
+| Keyboard (no zoom on focus, composer above the keyboard, Return adds a line on touch), VoiceOver, microphone | Operator, on a real iPhone over Cloudflare Access |

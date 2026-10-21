@@ -18,11 +18,20 @@ import (
 // hubFixtures serves the Hub responses tools/golden/hub.ts recorded.
 func hubFixtures(t *testing.T) string {
 	t.Helper()
+	return hubFixtureServer(t, true)
+}
+
+// hubFixtureServer serves the recorded Hub; with strict, a request without a
+// recording fails the test, otherwise it is a 404.
+func hubFixtureServer(t *testing.T, strict bool) string {
+	t.Helper()
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sum := sha256.Sum256([]byte("https://huggingface.co" + r.URL.RequestURI()))
 		b, err := os.ReadFile(filepath.Join("..", "internal", "hub", "testdata", "hub", hex.EncodeToString(sum[:])[:24]+".json"))
 		if err != nil {
-			t.Errorf("no Hub fixture for %s", r.URL.RequestURI())
+			if strict {
+				t.Errorf("no Hub fixture for %s", r.URL.RequestURI())
+			}
 			http.NotFound(w, r)
 			return
 		}

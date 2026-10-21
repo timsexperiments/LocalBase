@@ -8,9 +8,11 @@ import (
 	"net"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -35,6 +37,7 @@ type Service struct {
 	closed    bool
 	failed    bool
 	switching bool // a model is being stopped or started
+	claimed   bool // idle recovery is stopping the backend; hold requests
 	switchW   sync.WaitGroup
 }
 
@@ -68,6 +71,9 @@ type ServiceDeps struct {
 	Activate func(kind, modelID string)
 	// Otel traces backend starts (nil: disabled).
 	Otel *otlp.Runtime
+	// Recovery stops idle runtimes of other modalities when a model is
+	// refused for memory (nil: no recovery).
+	Recovery *IdleRecovery
 }
 
 type svcBackend struct {
@@ -77,6 +83,8 @@ type svcBackend struct {
 	proc    *Process
 	res     *memory.Reservation
 	baseURL string
+	// emergency: stopped because memory turned critical.
+	emergency atomic.Bool
 }
 
 type svcWaiter struct {
@@ -230,7 +238,7 @@ func (s *Service) abandon(w *svcWaiter) {
 
 // pump dispatches the head of the queue. Called with mu held.
 func (s *Service) pump() {
-	for len(s.queue) > 0 && !s.busy && !s.closed {
+	for len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed {
 		head := s.queue[0]
 		if s.cur != nil && s.cur.modelID == head.model && s.cur.key == head.key {
 			s.queue = s.queue[1:]
@@ -249,7 +257,9 @@ func (s *Service) pump() {
 		s.switchW.Add(1)
 		go func(model, key string, parent *otlp.Span) {
 			defer s.switchW.Done()
-			err := s.doSwitch(model, key, parent)
+			err := s.d.Recovery.retryAfterRecovery(s.d.Modality, func() (memory.Demand, error) {
+				return s.doSwitch(model, key, parent)
+			})
 			s.mu.Lock()
 			s.busy, s.switching = false, false
 			s.failed = err != nil && s.cur == nil
@@ -268,39 +278,46 @@ func (s *Service) pump() {
 	}
 }
 
-func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) error {
+func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
 	if s.d.Gate == nil {
-		return fmt.Errorf("%w: no backend selection", ErrStartupFailed)
+		return demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
 	t, err := s.d.Gate(modelID)
 	if err != nil {
-		return err
+		return demand, err
 	}
-	demand := s.demand(t)
+	demand = s.demand(t)
 	// As TS activateModel: the switch must fit (crediting the running backend),
 	// then the model becomes active, then it is installed and started. A start
 	// that fails leaves it active. The legacy catalog variant keeps the TS
-	// install check; when its files are missing the fit check is skipped, as
-	// the TS preflight cannot resolve a plan. Other variants were installed (or
-	// refused) by the gate.
+	// install check. Other variants were installed (or refused) by the gate.
+	spec := s.d.Catalog.ByID(modelID)
 	var installErr error
-	if s.d.Catalog.ByID(modelID) != nil && !t.Imported && t.Variant.ID == "default" {
+	if spec != nil && !t.Imported && t.Variant.ID == "default" {
 		installErr = s.ensureInstalled(modelID)
 	}
-	// TS sizes image models with an imageRuntime profile from the catalog, so
-	// its preflight resolves (and can reject for memory) without the files.
-	spec := s.d.Catalog.ByID(modelID)
-	catalogSized := spec != nil && !t.Imported && spec.ImageRuntime != nil
-	if installErr == nil || catalogSized {
+	previous := ""
+	if s.d.Config != nil {
+		previous = s.d.Config().Active[s.d.Kind]
+	}
+	switching := previous != modelID
+	preflight := installErr == nil || preflightsFromCatalog(s.d.Modality, spec, t)
+	if preflight {
 		if err := s.d.Memory.CheckAdmission(context.Background(), demand, []string{s.d.Modality}); err != nil {
-			return err
+			if switching {
+				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err,
+					"stage", "switch-preflight", "from_model", previous, "to_model", modelID)
+			} else {
+				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err)
+			}
+			return demand, err
 		}
 	}
 	if s.d.Activate != nil && !t.Imported {
 		s.d.Activate(s.d.Kind, modelID)
 	}
 	if installErr != nil {
-		return installErr
+		return demand, installErr
 	}
 	s.mu.Lock()
 	prev := s.cur
@@ -308,22 +325,86 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) error {
 	s.mu.Unlock()
 	if prev != nil {
 		s.stop(prev)
+		if preflight && switching && previous != "" {
+			if err := settleAfterStop(s.d.Memory, demand); err != nil && s.rollBack(previous, modelID, err) {
+				return demand, err
+			}
+		}
 	}
 	b, err := s.start(t, demand, parent)
 	if err != nil {
-		return err
+		return demand, err
 	}
 	b.key = key
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
 		s.stop(b)
-		return ErrUnavailable
+		return demand, ErrUnavailable
 	}
 	s.cur = b
 	s.mu.Unlock()
 	go s.watch(b)
-	return nil
+	return demand, nil
+}
+
+// rollBack reinstates the previous active model after a switch whose memory
+// never settled (TS rollBackRejectedSwitch). It reports false when the
+// configuration moved on meanwhile (another model was activated or the
+// previous one deselected); the switch then goes ahead. The previous model
+// was running, so it is reloaded once memory admits it.
+func (s *Service) rollBack(previous, requested string, err error) bool {
+	cfg := s.d.Config()
+	if s.d.Activate == nil || cfg.Active[s.d.Kind] != requested || !slices.Contains(cfg.Selected[s.d.Kind], previous) {
+		return false
+	}
+	s.d.Activate(s.d.Kind, previous)
+	logRolledBack(s.d.Log, s.d.Modality, previous, requested, true, err)
+	go s.reloadRestored(previous)
+	return true
+}
+
+// reloadRestored starts a rolled-back model once memory admits it, unless
+// something else started meanwhile (TS reloadRestoredModel).
+func (s *Service) reloadRestored(modelID string) {
+	failed := func(err error) {
+		s.d.Log.Warn("Restored model could not be reloaded; it will start on demand.", "event", "model.switch-restore-failed",
+			"category", "runtime", "component", modalityComponents[s.d.Modality], "runtime", s.d.Modality,
+			"error", err.Error(), slog.Group("attributes", "model", modelID))
+	}
+	t, err := s.d.Gate(modelID)
+	if err != nil {
+		failed(err)
+		return
+	}
+	if err := settleAfterStop(s.d.Memory, s.demand(t)); err != nil {
+		failed(err)
+		return
+	}
+	s.mu.Lock()
+	idle := s.cur == nil && !s.switching && !s.closed && len(s.queue) == 0 && s.d.Config().Active[s.d.Kind] == modelID
+	s.mu.Unlock()
+	if !idle {
+		return
+	}
+	l, err := s.Acquire(context.Background(), modelID)
+	if err != nil {
+		failed(err)
+		return
+	}
+	l.Release()
+}
+
+// preflightsFromCatalog reports whether the TS switch preflight sizes a
+// catalog model whose files are missing, so the fit check (and a 503
+// insufficient_memory) comes before the install. The TS image and stt
+// preflights fall back to the catalog's primary artifact filename and
+// expectedSizeBytes (supervisor-factory preflightDemand: "a missing catalog
+// artifact is admitted on its catalog demand"), with or without an
+// imageRuntime profile; the TS tts runtime has no switch preflight.
+// tools/golden/media-admission.ts pins the demand and verdicts.
+func preflightsFromCatalog(modality string, spec *catalog.Spec, t *Target) bool {
+	return spec != nil && !t.Imported && (modality == "image" || modality == "stt")
 }
 
 func (s *Service) ensureInstalled(modelID string) error {
@@ -373,6 +454,7 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 	}
 	res, err := s.d.Memory.Reserve(context.Background(), s.d.Modality, demand)
 	if err != nil {
+		logAdmissionRejected(s.d.Log, s.d.Modality, cmd.name, err)
 		return nil, err
 	}
 	s.d.Log.InfoContext(ctx, "Starting "+cmd.name+" for "+t.ModelID+".", "event", "runtime.starting", "runtime", s.d.Modality,
@@ -475,6 +557,24 @@ func (s *Service) Running() string {
 		return ""
 	}
 	return s.cur.modelID
+}
+
+// EmergencyStop rejects queued work with reason and stops the backend, busy
+// or not (memory critical); the next request starts it again.
+func (s *Service) EmergencyStop(reason error) {
+	s.mu.Lock()
+	for _, w := range s.queue {
+		w.done = true
+		w.ready <- reason
+	}
+	s.queue = nil
+	b := s.cur
+	s.cur = nil
+	s.mu.Unlock()
+	if b != nil {
+		b.emergency.Store(true)
+		s.stop(b)
+	}
 }
 
 // Close stops the backend after in-flight switches finish.
@@ -605,3 +705,7 @@ func catalogServiceDemand(cat *catalog.Catalog, spec *catalog.Spec, localBytes i
 	}
 	return d
 }
+
+// Interrupted reports whether the lease's runtime was stopped because memory
+// turned critical; the request then answers 503 with Retry-After.
+func (l *ServiceLease) Interrupted() bool { return l.b != nil && l.b.emergency.Load() }

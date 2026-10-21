@@ -119,26 +119,26 @@ func TestUnavailableMeasurementRejects(t *testing.T) {
 
 func TestHysteresis(t *testing.T) {
 	c, h := newTestController(5) // below the 9.6 reserve: critical
-	if a := c.Poll(context.Background()); a != "emergency-stop" {
+	if a := c.Poll(context.Background()).Action; a != "emergency-stop" {
 		t.Fatalf("got %s", a)
 	}
 	h.avail = 40 * GiB
 	for i := 0; i < recoverySamples-1; i++ {
-		if a := c.Poll(context.Background()); a != "emergency-stop" {
+		if a := c.Poll(context.Background()).Action; a != "emergency-stop" {
 			t.Fatalf("sample %d: recovered early (%s)", i, a)
 		}
 		if r := reason(func() error { _, err := c.Reserve(context.Background(), "x", demand(1)); return err }()); r != "memory-pressure" {
 			t.Fatalf("admission during recovery: %q", r)
 		}
 	}
-	if a := c.Poll(context.Background()); a != "allow" {
+	if a := c.Poll(context.Background()).Action; a != "allow" {
 		t.Fatalf("got %s", a)
 	}
 }
 
 func TestParseVMStatAndFootprint(t *testing.T) {
-	vm := []byte("Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   100.\nPages active:      5.\nPages inactive:                              50.\n")
-	if b, err := parseVMStat(vm); err != nil || b != 150*16384 {
+	vm := []byte("Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages free:                                   100.\nPages active:      5.\nPages inactive:                              50.\nPages speculative:                           25.\n")
+	if b, err := parseVMStat(vm); err != nil || b != 175*16384 {
 		t.Fatalf("vm_stat = %d %v", b, err)
 	}
 	fp := []byte("  Dirty      Clean  Reclaimable    Regions    Category\n2160 KB     544 KB          0 B        409    TOTAL\n")

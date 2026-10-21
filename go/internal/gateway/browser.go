@@ -73,7 +73,7 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 		return nil, nil
 	}
 	d := s.Browser.Authorize(r.Context(), id)
-	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions}, id
+	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }
 
 type browserPrincipalKey struct{}

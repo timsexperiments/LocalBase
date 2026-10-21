@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -26,6 +27,9 @@ var (
 	ErrUnavailable   = errors.New("runtime unavailable")
 	ErrModelNotFound = errors.New("model not found")
 	ErrStartupFailed = errors.New("runtime failed to start")
+	// ErrMemoryEmergency rejects queued work when memory turns critical (TS:
+	// "Inference rejected by memory emergency.", a 503 for "Inference").
+	ErrMemoryEmergency = fmt.Errorf("%w: inference rejected by memory emergency", ErrUnavailable)
 )
 
 const (
@@ -68,6 +72,9 @@ type LLMDeps struct {
 	SelectionKey func(modelID string) string
 	// Otel traces backend starts (nil: disabled).
 	Otel *otlp.Runtime
+	// Recovery stops idle runtimes of other modalities when a model is
+	// refused for memory (nil: no recovery).
+	Recovery *IdleRecovery
 }
 
 type backend struct {
@@ -81,6 +88,8 @@ type backend struct {
 	res     *memory.Reservation
 	baseURL string
 	stop    chan struct{}
+	// emergency: stopped because memory turned critical.
+	emergency atomic.Bool
 }
 
 type waiter struct {
@@ -113,6 +122,7 @@ type LLM struct {
 	probes   sync.WaitGroup
 	switches sync.WaitGroup // in-flight model switches; Close waits for them
 	failed   bool           // the last start failed and nothing runs
+	claimed  bool           // idle recovery is stopping the backend; hold requests
 }
 
 type geometryEntry struct {
@@ -362,7 +372,7 @@ func (m *LLM) fail(w *waiter, err error) {
 // pump dispatches from the head of the queue. Called with mu held. Later
 // requests never bypass a switch the head is waiting for.
 func (m *LLM) pump() {
-	for len(m.queue) > 0 && !m.starting && !m.closed {
+	for len(m.queue) > 0 && !m.starting && !m.claimed && !m.closed {
 		head := m.queue[0]
 		if m.cur != nil && m.cur.modelID == head.model && m.cur.key == head.key {
 			if m.active >= m.cur.plan.Parallel.Slots {
@@ -391,7 +401,9 @@ func (m *LLM) pump() {
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
 func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
-	err := m.doSwitch(modelID, key, parent)
+	err := m.d.Recovery.retryAfterRecovery("llm", func() (memory.Demand, error) {
+		return m.doSwitch(modelID, key, parent)
+	})
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
@@ -404,33 +416,33 @@ func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
 	m.pump()
 }
 
-func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) error {
+func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
 	// Catalog models keep the install check (and its consent error) first;
 	// then the selection: an unselected or unavailable backend fails before
 	// the current model is stopped.
 	if m.d.Catalog.ByID(modelID) != nil {
 		if err := m.ensureInstalled(modelID); err != nil {
-			return err
+			return demand, err
 		}
 	}
 	t, err := m.target(modelID)
 	if err != nil {
-		return err
+		return demand, err
 	}
 	if t == nil && m.d.Catalog.ByID(modelID) == nil {
 		if err := m.ensureInstalled(modelID); err != nil {
-			return err
+			return demand, err
 		}
 	}
 	plan, err := m.planFor(modelID, t)
 	if err != nil {
-		return err
+		return demand, err
 	}
 	spec := m.d.Catalog.ByID(modelID)
 	if t != nil && t.Imported {
 		spec = nil
 	}
-	demand := m.admissionDemand(spec, plan)
+	demand = m.admissionDemand(spec, plan)
 	if t != nil && t.Backend.Adapter == "process-openai/v1" {
 		demand = customDemand(t, plan)
 	}
@@ -439,11 +451,24 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) error {
 	m.mu.Unlock()
 	if prev != nil {
 		if err := m.d.Memory.CheckAdmission(context.Background(), demand, []string{"llm"}); err != nil {
-			m.d.Log.Warn("Switch preflight rejected; keeping the current model.", "event", "runtime.switch-rejected",
-				"runtime", "llm", "model_id", modelID, "current_model_id", prev.modelID, "error", err.Error())
-			return err
+			if prev.modelID != modelID {
+				logAdmissionRejected(m.d.Log, "llm", modalityComponents["llm"], err,
+					"stage", "switch-preflight", "from_model", prev.modelID, "to_model", modelID)
+			} else {
+				logAdmissionRejected(m.d.Log, "llm", modalityComponents["llm"], err)
+			}
+			return demand, err
 		}
 		m.stopBackend(prev)
+		// Memory must settle before the new model starts; if it never does,
+		// the previous model is restored (TS rollBackRejectedSwitch).
+		if prev.modelID != modelID {
+			if err := settleAfterStop(m.d.Memory, demand); err != nil {
+				logRolledBack(m.d.Log, "llm", prev.modelID, modelID, true, err)
+				m.restore(prev, parent)
+				return demand, err
+			}
+		}
 	}
 	b, err := m.startBackend(modelID, spec, plan, demand, t, parent)
 	if err != nil {
@@ -452,19 +477,16 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) error {
 		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
-			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); rerr == nil {
-				rb.key = prev.key
-				m.install(rb)
-			}
+			m.restore(prev, parent)
 		}
-		return err
+		return demand, err
 	}
 	b.key = key
 	m.install(b)
 	if m.d.Activate != nil && (t == nil || !t.Imported) {
 		m.d.Activate("llm", modelID)
 	}
-	return nil
+	return demand, nil
 }
 
 // SetConfig replaces the configuration snapshot (after the active model
@@ -557,6 +579,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	}
 	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
 	if err != nil {
+		logAdmissionRejected(m.d.Log, "llm", name, err)
 		return nil, err
 	}
 	m.d.Log.InfoContext(ctx, "Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
@@ -651,6 +674,9 @@ func (m *LLM) watch(b *backend) {
 func (m *LLM) EmergencyStop(reason error) {
 	m.mu.Lock()
 	b := m.cur
+	if b != nil {
+		b.emergency.Store(true)
+	}
 	for len(m.queue) > 0 {
 		m.fail(m.queue[0], reason)
 	}
@@ -756,3 +782,15 @@ func (m *LLM) Snapshot() Snapshot {
 	}
 	return s
 }
+
+// restore starts the previous model again after a switch failed.
+func (m *LLM) restore(prev *backend, parent *otlp.Span) {
+	if rb, err := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); err == nil {
+		rb.key = prev.key
+		m.install(rb)
+	}
+}
+
+// Interrupted reports whether the lease's runtime was stopped because memory
+// turned critical; the request then answers 503 with Retry-After.
+func (l *Lease) Interrupted() bool { return l.b != nil && l.b.emergency.Load() }

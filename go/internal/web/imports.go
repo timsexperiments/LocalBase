@@ -110,7 +110,7 @@ func sameOriginUI(r *http.Request) bool {
 
 func (u *UI) mutating(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return u.need(permission, func(w http.ResponseWriter, r *http.Request) {
-		if !sameOriginUI(r) {
+		if !sameOriginUI(r) || !u.csrfValid(r) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}

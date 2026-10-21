@@ -28,6 +28,9 @@ type Principal struct {
 	ID          string // api key id or browser owner id
 	Name        string
 	Permissions []string
+	// Identity is the signed-in browser identity (nil for API keys and the
+	// host); the access-management lockout rules use it.
+	Identity *Identity
 }
 
 func (p *Principal) Authenticated() bool { return p != nil && p.Kind != "anonymous" }

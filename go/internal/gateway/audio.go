@@ -201,13 +201,21 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 			tel.finish("cancelled", 499, "request_aborted")
 			return
 		}
+		if lease.Interrupted() {
+			memoryInterrupted(w, r, tel)
+			return
+		}
 		upstreamFailure(w, r, "The upstream service could not be reached.")
 		tel.finish("error", 502, "")
 		return
 	}
 	tel.upstreamStatus = resp.StatusCode
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if (readErr != nil || resp.StatusCode < 200 || resp.StatusCode > 299) && lease.Interrupted() {
+		memoryInterrupted(w, r, tel)
+		return
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		upstreamFailure(w, r, fmt.Sprintf("The upstream service failed with HTTP %d.", resp.StatusCode))
 		tel.finish("error", 502, "")

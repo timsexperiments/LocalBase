@@ -103,6 +103,9 @@ var manageScript = []manageStep{
 	{"GET", accessPath, "admin", ""},
 	{"POST", accessPath, "admin", `{"action":"clear-policy","expectedPolicyRevision":"{{rev}}"}`},
 	{"POST", accessPath, "admin", `{"action":"remove-user","email":"friend@example.com"}`},
+	// Go refuses a clear that leaves nobody with access:manage (TestAccessLockout),
+	// so give the provider-wide permissions access:manage first.
+	{"POST", accessPath, "admin", `{"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.com","permissions":["inference:chat","models:read","access:manage"]}`},
 	{"POST", accessPath, "admin", `{"action":"clear-policy","expectedPolicyRevision":"{{rev}}"}`},
 	{"POST", accessPath, "admin", `{"action":"remove-registration","registrationId":"missing"}`},
 	{"POST", accessPath, "admin", `{"action":"remove-registration","registrationId":"email"}`},

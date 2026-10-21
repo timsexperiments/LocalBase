@@ -1,18 +1,178 @@
-{{define "title"}}Get models · LocalBase{{end}}
+{{define "title"}}{{if .Query}}{{.Query}} · {{end}}Get models · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="get-title">
   <p class="eyebrow">Add to your library</p>
-  <h1 id="get-title" class="mt-1 text-3xl font-bold tracking-tight">What do you want to do?</h1>
-  <p class="mt-1 text-muted">Choose a job and LocalBase suggests a model that fits this machine, with the tested file first.</p>
-  <ul class="mt-6 grid grid-cols-1 gap-3 min-[600px]:grid-cols-2">
-    {{range list "Chat and write" "Search my documents" "Answer structured questions" "Transcribe audio" "Speak text aloud" "Make images" "Make short videos"}}
-    <li class="card flex min-h-16 items-center justify-between gap-3 p-4">
-      <span class="font-semibold">{{.}}</span>
-      <span class="badge">Coming soon</span>
+  <h1 id="get-title" class="mt-1 text-3xl font-bold tracking-tight">Get models</h1>
+  <p class="mt-1 max-w-2xl text-muted">Explore Hugging Face. Start with the <a class="text-accent underline" href="/app/models">Library</a> for qualified models. Community downloads are pinned to an exact file and revision.</p>
+
+  {{if not .CanManage}}
+  <p class="card mt-4 p-4 text-sm" role="status">Read-only access. Sign in with an account authorized to manage models to search and add them.</p>
+  {{else}}
+  <form role="search" class="mt-5 grid grid-cols-1 gap-2 min-[600px]:grid-cols-[1fr_auto_auto]" action="/app/models/get" method="get"
+    hx-get="/app/models/get" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#search-busy" hx-disabled-elt="find button">
+    <label for="discover-q" class="sr-only">Search Hugging Face</label>
+    <input id="discover-q" class="input min-h-11" type="search" name="q" value="{{.Query}}" maxlength="200" placeholder="Search Hugging Face, e.g. qwen 1.5b" autocomplete="off">
+    <label for="discover-kind" class="sr-only">Model kind</label>
+    <select id="discover-kind" class="input min-h-11 w-auto" name="kind">
+      {{range .Kinds}}<option value="{{.Value}}" {{if eq .Value $.Kind}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select>
+    <button type="submit" class="btn btn-primary min-h-11">Search<span id="search-busy" class="htmx-indicator" aria-hidden="true">…</span></button>
+  </form>
+  {{end}}
+
+  <div id="results" class="mt-5">
+    {{with .Failure}}{{template "discover-failure" .}}{{end}}
+    {{if .Searched}}
+    <p class="text-sm text-muted" aria-live="polite">{{len .Cards}} result{{if ne (len .Cards) 1}}s{{end}} by downloads{{if .Cached}} (from the local cache){{end}}</p>
+    {{if .Cards}}
+    <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {{range .Cards}}{{template "discover-card" .}}{{end}}
+    </div>
+    {{else}}
+    <div class="card mt-3 p-5">
+      <p>No {{.KindLabel}} models match that search.</p>
+      <p class="mt-1 text-sm text-muted">Try a shorter name, or another kind.</p>
+    </div>
+    {{end}}
+    {{end}}
+  </div>
+
+  <div class="mt-8 flex flex-wrap gap-2 border-t border-line pt-4">
+    <a class="btn btn-quiet" href="/app/models/import">Import a model</a>
+    <a class="btn btn-quiet" href="/app/backends">Backends</a>
+  </div>
+</section>
+<script type="module" src="{{asset "js/discover.js"}}"></script>
+{{end}}
+
+{{define "discover-failure"}}
+<p class="mt-2 text-sm font-semibold text-danger" role="alert">{{.Message}}{{if .Token}} <a class="text-accent underline" href="/app/settings#hf-token">Add a Hugging Face token</a>{{end}}</p>
+{{end}}
+
+{{define "discover-card"}}
+<article id="{{.ID}}" class="card grid min-w-0 content-start gap-2 p-4" aria-labelledby="{{.ID}}-name">
+  <div class="flex flex-wrap items-start gap-2">
+    <h2 id="{{.ID}}-name" class="min-w-0 flex-1 text-lg font-bold leading-snug wrap-anywhere">
+      <a class="hover:underline" href="{{.Hit.URL}}" target="_blank" rel="noopener noreferrer">{{.Name}}<span class="sr-only"> (opens Hugging Face)</span></a>
+    </h2>
+    <span class="flex flex-wrap gap-1">
+      {{if .Hit.Gated}}<span class="badge badge-warn">Gated</span>{{end}}
+      {{with .Status}}<span class="badge badge-ok">{{.}}</span>{{end}}
+      <span class="badge" data-fit-badge {{if not .Fit}}hidden{{end}} title="{{.FitHint}}">{{.Fit}}</span>
+    </span>
+  </div>
+  <p class="-mt-1 text-sm text-muted wrap-anywhere">{{.Org}}</p>
+  <p class="text-sm text-muted">{{.Downloads}} downloads · {{with .Hit.License}}{{.}}{{else}}license not stated{{end}} · {{with .Hit.PipelineTag}}{{.}}{{else}}no pipeline{{end}} · {{.Hit.Likely.Label}}</p>
+  {{if .Hit.Gated}}
+  <p class="text-sm text-muted">This repository asks you to accept its terms before downloading. <a class="text-accent underline" href="{{.Hit.URL}}" target="_blank" rel="noopener noreferrer">Accept terms on Hugging Face</a>, then <a class="text-accent underline" href="/app/settings#hf-token">save a Hugging Face token</a>.</p>
+  {{end}}
+  {{with .Match}}
+  <div class="rounded-xl border border-accent bg-accent-soft p-3">
+    <p class="font-semibold">Available in the Local catalog</p>
+    <p class="text-sm">Use {{.DisplayName}}, the qualified entry with its files already chosen.</p>
+    <a class="btn btn-primary mt-2 min-h-11" href="/app/models/m/{{.ID}}">View catalog model →</a>
+  </div>
+  {{end}}
+  {{if .Files}}{{template "discover-files" .Files}}{{else}}
+  <div id="{{.ID}}-files">
+    {{if .Reason}}<p class="text-sm text-muted">{{.Reason}}{{if .TokenHint}} <a class="text-accent underline" href="/app/settings#hf-token">Add a Hugging Face token</a>{{end}}</p>{{end}}
+    {{if .CanShow}}
+    <form hx-post="/app/models/get/preview" hx-target="#{{.ID}}-files" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="repo" value="{{.Hit.Repo}}"><input type="hidden" name="card" value="{{.ID}}">
+      <button type="submit" class="btn btn-quiet min-h-11">Show files</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+  {{if .Recipes}}
+  <ul class="grid gap-2" aria-label="LocalBase recipes">
+    {{range .Recipes}}
+    <li class="grid gap-2 rounded-xl border border-line p-3">
+      <div class="min-w-0"><span class="font-semibold">{{.Label}}</span> <span class="text-sm text-muted">· {{.Facts}}</span>{{with .File}}<code class="mt-1 block text-xs wrap-anywhere">{{.}}</code>{{end}}</div>
+      <form hx-post="/app/models/get/recipe" hx-target="next .recipe-result" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="modelId" value="{{.ModelID}}">
+        <button type="submit" class="btn btn-primary min-h-11" {{if not .Installable}}disabled{{end}} title="{{if .Installable}}Installs the catalog entry with every file pinned by sha256.{{else}}This LocalBase version's catalog does not have this entry yet.{{end}}">Install LocalBase recipe</button>
+      </form>
+      <div class="recipe-result"></div>
     </li>
     {{end}}
   </ul>
-  <div class="mt-6 flex flex-wrap gap-2"><a class="btn btn-primary" href="/app/models/import">Import a model</a><a class="btn btn-quiet" href="/app/backends">Backends</a></div>
-  <p class="mt-6 text-sm text-muted">Installing from this page arrives in a later milestone. Until then, install with <code class="rounded bg-surface-muted px-1.5 py-0.5">local-base models install</code>.</p>
-</section>
+  {{end}}
+  <div id="{{.ID}}-result"></div>
+</article>
+{{end}}
+
+{{define "discover-preview-failed"}}
+<div id="{{.Card}}-files">
+  {{template "discover-failure" .Failure}}
+  <form hx-post="/app/models/get/preview" hx-target="#{{.Card}}-files" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="repo" value="{{.Repo}}"><input type="hidden" name="card" value="{{.Card}}">
+    <button type="submit" class="btn btn-quiet mt-2 min-h-11">Try again</button>
+  </form>
+</div>
+{{end}}
+
+{{define "discover-files"}}
+<details id="{{.Card}}-files" class="discover-files" {{if .Open}}open{{end}}>
+  <summary class="flex min-h-11 cursor-pointer items-center font-semibold">{{if .Open}}Download options{{else}}Use a community file instead{{end}}</summary>
+  <form class="grid gap-3" data-discover-form hx-post="/app/models/get/add" hx-target="#{{.Card}}-result" hx-disabled-elt="find button">
+    <input type="hidden" name="repo" value="{{.Repo}}">
+    <p class="text-sm text-muted" data-no-choice {{if .Selected}}hidden{{end}}>No balanced download fits the available estimate. Choose a file below, or try a smaller model.</p>
+    {{range .Choices}}
+    <div class="grid gap-2 rounded-xl border border-line bg-surface p-3" data-choice-panel="{{.Key}}" role="group" aria-label="Chosen download" {{if not .Selected}}hidden{{end}}>
+      <p class="font-semibold">{{if and .Recommended .Quant}}Suggested download{{else}}Selected download{{end}} · {{.QuantLabel}}</p>
+      <p class="text-sm">{{.Advice}}</p>
+      {{if not .Fit}}<p class="text-sm">Memory fit is unknown. Check your available memory before installing.</p>{{end}}
+      <code class="text-xs wrap-anywhere">{{.Path}}</code>
+      {{if gt .PartCount 1}}<p class="text-sm text-muted">{{.PartCount}} parts · all downloaded together · total size below</p>{{end}}
+      <dl class="grid grid-cols-3 gap-2 text-sm">
+        <div><dt class="text-muted">Download</dt><dd class="font-semibold">{{.Size}}</dd></div>
+        <div><dt class="text-muted">Memory</dt><dd class="font-semibold">{{with .Memory}}{{.}}{{else}}—{{end}}</dd></div>
+        <div><dt class="text-muted">Quant</dt><dd class="font-semibold">{{with .Quant}}{{.}}{{else}}—{{end}}</dd></div>
+        {{if .Peak}}<div class="col-span-3"><dt class="text-muted">Measured peak</dt><dd>{{.Peak}} <span class="text-muted">· {{.PeakWhere}}</span></dd></div>{{end}}
+        {{with .Fit}}<div class="col-span-3"><dt class="text-muted">Fit</dt><dd>{{.Message}}</dd></div>{{end}}
+      </dl>
+      {{with .Annotation}}{{template "feed-notes" .}}{{end}}
+      <div class="flex flex-wrap gap-2">
+        {{if .Addable}}
+        <button type="submit" name="install" value="0" class="btn btn-quiet min-h-11" {{if not $.CanManage}}disabled{{end}}>Save to catalog</button>
+        <button type="submit" name="install" value="1" class="btn btn-primary min-h-11" {{if not $.CanManage}}disabled{{end}}>Add and install</button>
+        {{else}}
+        <a class="btn btn-quiet min-h-11" href="/app/models/m/{{.ModelID}}">Open existing catalog entry →</a>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+    <details class="discover-alternatives">
+      <summary class="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Choose another file · {{len .Choices}} option{{if ne (len .Choices) 1}}s{{end}}</summary>
+      <fieldset class="grid gap-2">
+        <legend class="sr-only">Download file</legend>
+        {{range .Choices}}
+        <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+          <input type="radio" class="mt-1 accent-[var(--lb-accent)]" name="selector" value="{{.Path}}" data-choice="{{.Key}}" data-fit="{{.Badge}}" data-fit-hint="{{with .Fit}}{{.Message}}{{end}}" {{if .Selected}}checked{{end}} {{if not $.CanManage}}disabled{{end}}>
+          <span class="grid min-w-0 gap-0.5">
+            <span class="font-semibold">{{.QuantLabel}} · {{.Size}}{{if gt .PartCount 1}} · {{.PartCount}} parts, total{{end}}{{if .Recommended}} · Suggested{{end}}</span>
+            <code class="text-xs wrap-anywhere">{{.Path}}</code>
+            <span class="text-xs text-muted">{{.FitLabel}}{{if .Existing}} · Already in catalog{{end}}</span>
+          </span>
+        </label>
+        {{end}}
+      </fieldset>
+    </details>
+  </form>
+</details>
+{{end}}
+
+{{define "feed-notes"}}
+{{if not .RevisionMatch}}<p class="text-sm text-muted">The catalog feed describes revision <code title="{{.Revision}}">{{printf "%.12s" .Revision}}</code>, not the one pinned here, so its marks are shown but not applied.</p>{{end}}
+{{if .UnsupportedCapabilities}}
+<ul class="grid gap-1 text-sm" aria-label="Verified unsupported (catalog feed)">
+  {{range .UnsupportedCapabilities}}<li><span>{{.Label}}{{if not .Applied}}<span class="text-muted"> · not applied{{if $.RevisionMatch}}: your entry declares it{{end}}</span>{{end}}</span> <span class="text-muted">Verified unsupported: {{.Reason}}</span></li>{{end}}
+</ul>
+{{end}}
+{{end}}
+
+{{define "discover-result"}}
+{{with .Notice}}<p class="mt-1 text-sm font-semibold" role="status">{{.}}{{with $.ModelID}} <a class="text-accent underline" href="/app/models/m/{{.}}">Open in Library →</a>{{end}}</p>{{end}}
+{{with .Failure}}{{template "discover-failure" .}}{{end}}
 {{end}}

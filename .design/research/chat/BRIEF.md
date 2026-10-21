@@ -121,7 +121,7 @@ Both text only, accessed 2026-10-20.
 **D10: Discovery** applies R06 D01–D04 unchanged to the Go endpoint.
 
 ## Experience
-1. Open Chat: the last conversation is restored.
+1. Open Chat: as in TS, a new conversation starts, or an empty one is reused, and saved conversations are in the drawer. A conversation URL reopens that conversation. (Corrected during implementation: TS does not restore the last conversation.)
 2. Optionally pick a model, type, and send.
 3. The reply streams: Stop, or send-now steering, is available.
 4. The reply finishes; copy it or continue.

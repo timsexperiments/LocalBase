@@ -1,0 +1,5565 @@
+{
+ "capacityBytes": 68719476736,
+ "gpuWorkingSetBytes": 51539607552,
+ "reserveBytes": 10307921510,
+ "residents": {
+  "stt": {
+   "unifiedBytes": 629145600,
+   "hostBytes": 629145600,
+   "acceleratorBytes": 629145600,
+   "confidence": "measured"
+  },
+  "llm": {
+   "unifiedBytes": 2147483648,
+   "hostBytes": 2147483648,
+   "acceleratorBytes": 2147483648,
+   "confidence": "measured"
+  }
+ },
+ "models": [
+  {
+   "modelId": "whisper-tiny-q8_0",
+   "kind": "stt",
+   "demand": {
+    "unifiedBytes": 680426905,
+    "hostBytes": 580408345,
+    "acceleratorBytes": 277773721,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 10988348414,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 10988348415,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-base-en-q8_0",
+   "kind": "stt",
+   "demand": {
+    "unifiedBytes": 767329843,
+    "hostBytes": 618652723,
+    "acceleratorBytes": 364676659,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 11075251352,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11075251353,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-small-q8_0",
+   "kind": "stt",
+   "demand": {
+    "unifiedBytes": 1093286879,
+    "hostBytes": 801335519,
+    "acceleratorBytes": 690633695,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 11401208388,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11401208389,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-medium-q8_0",
+   "kind": "stt",
+   "demand": {
+    "unifiedBytes": 1933337651,
+    "hostBytes": 1360240691,
+    "acceleratorBytes": 1530684467,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12241259160,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12241259161,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "realvis-xl-v5.0",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 15536079503,
+    "hostBytes": 7805108224,
+    "unifiedBytes": 15536079503,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25844001012,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25844001013,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-large-v3-turbo",
+   "kind": "stt",
+   "demand": {
+    "acceleratorBytes": 2076017728,
+    "hostBytes": 1900625920,
+    "unifiedBytes": 2076017728,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12383939237,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12383939238,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-tiny-en-q8_0",
+   "kind": "stt",
+   "demand": {
+    "acceleratorBytes": 343117728,
+    "hostBytes": 169902080,
+    "unifiedBytes": 343117728,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 10651039237,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 10651039238,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "whisper-base-q8_0",
+   "kind": "stt",
+   "demand": {
+    "unifiedBytes": 767316617,
+    "hostBytes": 618639497,
+    "acceleratorBytes": 364663433,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 11075238126,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11075238127,
+     "verdict": "memory-pressure"
+    }
+   ]
+  },
+  {
+   "modelId": "flux1-schnell-q4_0",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 14569565061,
+    "hostBytes": 18007343104,
+    "unifiedBytes": 25991561216,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36299482725,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 36299482726,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "flux2-klein-4b-q4_0",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 12638224384,
+    "hostBytes": 5983240192,
+    "unifiedBytes": 12638224384,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22946145893,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22946145894,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "flux2-klein-4b-q8_0",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 14478475264,
+    "hostBytes": 8412053504,
+    "unifiedBytes": 14478475264,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24786396773,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24786396774,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "flux2-klein-9b-q4_0",
+   "kind": "image",
+   "demand": {
+    "unifiedBytes": 18496396604,
+    "hostBytes": 11517074748,
+    "acceleratorBytes": 18496396604,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28804318113,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 28804318114,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "z-image-turbo-q4_0",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 13859679109,
+    "hostBytes": 7087439872,
+    "unifiedBytes": 13859679109,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24167600618,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24167600619,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "stable-diffusion-v1-5",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 5201471734,
+    "hostBytes": 4996431872,
+    "unifiedBytes": 5201471734,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15509393243,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15509393244,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "dreamshaper-8-lcm",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 4415616451,
+    "hostBytes": 3006021632,
+    "unifiedBytes": 4415616451,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14723537960,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14723537961,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "dreamshaper-v8",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 4415616451,
+    "hostBytes": 2988212224,
+    "unifiedBytes": 4415616451,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 14723537960,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14723537961,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "sdxl-turbo",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 15536079503,
+    "hostBytes": 8064352256,
+    "unifiedBytes": 15536079503,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25844001012,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25844001013,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "sdxl-base-1.0",
+   "kind": "image",
+   "demand": {
+    "unifiedBytes": 15528012926,
+    "hostBytes": 7474949246,
+    "acceleratorBytes": 15528012926,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25835934435,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25835934436,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "juggernaut-xl-v9",
+   "kind": "image",
+   "demand": {
+    "acceleratorBytes": 15536079503,
+    "hostBytes": 7788806144,
+    "unifiedBytes": 15536079503,
+    "confidence": "measured"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25844001012,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25844001013,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "animagine-xl-3.1",
+   "kind": "image",
+   "demand": {
+    "unifiedBytes": 15528260368,
+    "hostBytes": 7475196688,
+    "acceleratorBytes": 15528260368,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25836181877,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25836181878,
+     "verdict": "admitted"
+    }
+   ]
+  },
+  {
+   "modelId": "realvis-xl-v4.0",
+   "kind": "image",
+   "demand": {
+    "unifiedBytes": 15527975298,
+    "hostBytes": 7474911618,
+    "acceleratorBytes": 15527975298,
+    "confidence": "derived"
+   },
+   "verdicts": [
+    {
+     "availableBytes": 10737418240,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11274289152,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 11811160064,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12348030976,
+     "verdict": "memory-pressure"
+    },
+    {
+     "availableBytes": 12884901888,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13421772800,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 13958643712,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 14495514624,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15032385536,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 15569256448,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16106127360,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 16642998272,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17179869184,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 17716740096,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18253611008,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 18790481920,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19327352832,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 19864223744,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20401094656,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 20937965568,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 21474836480,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22011707392,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 22548578304,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23085449216,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 23622320128,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24159191040,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 24696061952,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25232932864,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25769803776,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 26306674688,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 26843545600,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27380416512,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 27917287424,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28454158336,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 28991029248,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 29527900160,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30064771072,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 30601641984,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31138512896,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 31675383808,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32212254720,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 32749125632,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33285996544,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 33822867456,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34359738368,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 34896609280,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35433480192,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 35970351104,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 36507222016,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37044092928,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 37580963840,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38117834752,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 38654705664,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39191576576,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 39728447488,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40265318400,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 40802189312,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41339060224,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 41875931136,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42412802048,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 42949672960,
+     "verdict": "admitted"
+    },
+    {
+     "availableBytes": 25835896807,
+     "verdict": "system-memory"
+    },
+    {
+     "availableBytes": 25835896808,
+     "verdict": "admitted"
+    }
+   ]
+  }
+ ]
+}

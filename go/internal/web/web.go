@@ -113,16 +113,25 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "voices"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "voices", "chat", "settings", "admin"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
 	m := http.NewServeMux()
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/models", http.StatusFound) })
-	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/models", http.StatusFound) })
+	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
+	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
+	m.HandleFunc("GET /app/chat", u.need("models:read", u.chat))
+	m.HandleFunc("GET /app/settings", u.need("models:read", u.settings))
+	m.HandleFunc("POST /app/settings/hf-token", u.mutating("models:manage", u.hfToken))
+	m.HandleFunc("GET /app/admin", u.admin)
+	m.HandleFunc("POST /app/admin/access", u.mutating("access:manage", u.adminAccess))
+	m.HandleFunc("POST /app/admin/keys", u.mutating("keys:manage", u.adminKeys))
 	m.HandleFunc("GET /app/assets/{name...}", u.asset)
 	m.HandleFunc("GET /app/models", u.need("models:read", u.library))
 	m.HandleFunc("GET /app/models/get", u.need("models:read", u.getModels))
+	m.HandleFunc("POST /app/models/get/preview", u.mutating("models:manage", u.discoverPreview))
+	m.HandleFunc("POST /app/models/get/add", u.mutating("models:manage", u.discoverAdd))
+	m.HandleFunc("POST /app/models/get/recipe", u.mutating("models:manage", u.discoverRecipe))
 	m.HandleFunc("GET /app/models/running", u.need("models:read", u.running))
 	m.HandleFunc("GET /app/models/m/{id...}", u.need("models:read", u.details))
 	m.HandleFunc("GET /app/models/import", u.need("models:manage", u.importPage))
@@ -240,6 +249,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
+	data["CSRF"] = u.csrfToken(w, r)
 	data["LogoutURL"] = u.d.LogoutURL
 	data["NoAuth"] = u.d.NoAuth
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

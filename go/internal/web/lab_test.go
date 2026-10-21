@@ -30,6 +30,7 @@ func htmxPost(path string, form url.Values) *http.Request {
 	r.Header.Set("HX-Request", "true")
 	r.Header.Set("X-Localbase-UI", "1")
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	withCSRF(&UI{}, r) // rootless UIs share one key
 	return r
 }
 
@@ -112,6 +113,7 @@ func TestVoicesPage(t *testing.T) {
 	r.Header.Set("Content-Type", "multipart/form-data; boundary=b")
 	r.Header.Set("HX-Request", "true")
 	r.Header.Set("X-Localbase-UI", "1")
+	withCSRF(u, r)
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, r)
 	if len(api.calls) != 2 || api.calls[0] != "POST /_localbase/voices multipart/form-data; boundary=b" ||

@@ -1,0 +1,370 @@
+{{define "title"}}Admin · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="admin-title">
+  <p class="eyebrow">Administration</p>
+  <h1 id="admin-title" class="mt-1 text-3xl font-bold tracking-tight">Admin</h1>
+  <nav aria-label="Administration" class="mt-4">
+    <ul class="flex flex-wrap gap-1">
+      {{range .Sections}}
+      <li><a class="btn min-h-11 {{if eq . $.Section}}bg-accent-soft text-accent{{else}}btn-quiet{{end}}" href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People &amp; roles{{else if eq . "access"}}Browser access{{else}}API keys{{end}}</a></li>
+      {{end}}
+    </ul>
+  </nav>
+  {{template "admin-section" .}}
+</section>
+<script type="module" src="{{asset "js/admin.js"}}"></script>
+{{end}}
+
+{{define "admin-section"}}
+<div id="admin-section" class="mt-4 grid gap-4" data-section="{{.Section}}">
+  {{with .Notice}}<p class="card flex items-center justify-between gap-2 px-4 py-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="card border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+  {{if and .Secret $.CanManageKeys}}
+  <section class="card grid gap-2 border-accent p-4" aria-label="New API key secret" hx-history="false">
+    <p class="font-bold">Copy this secret now</p>
+    <p class="text-sm text-muted">It will not be shown again.</p>
+    <code class="block rounded-lg bg-surface-muted p-3 text-sm wrap-anywhere" data-secret>{{.Secret}}</code>
+    <div class="flex flex-wrap gap-2"><button type="button" class="btn btn-primary min-h-11" data-copy-secret>Copy secret</button>
+      <a class="btn btn-quiet min-h-11" href="/app/admin?section=keys">Done</a></div>
+  </section>
+  {{end}}
+  {{with .LoadError}}
+  <section class="card p-5">
+    <h2 class="text-lg font-bold">{{if eq $.Section "keys"}}API keys unavailable{{else}}Access policy unavailable{{end}}</h2>
+    <p class="mt-1 text-sm text-danger" role="alert">{{.}}</p>
+    <p class="mt-1 text-sm text-muted">No changes are available until it can be read.</p>
+    <a class="btn btn-quiet mt-3 min-h-11" href="/app/admin?section={{$.Section}}">Try again</a>
+  </section>
+  {{else}}
+  {{if eq .Section "people"}}{{template "admin-people" .}}{{else if eq .Section "access"}}{{template "admin-access" .}}{{else}}{{template "admin-keys" .}}{{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{/* A permission picker: dict "Groups" "Name" "Disabled" "Prefix" (unique ids). */}}
+{{define "perm-picker"}}
+<div class="grid gap-3 min-[600px]:grid-cols-2">
+  {{range .Groups}}
+  <fieldset class="grid content-start gap-1 rounded-xl border border-line p-3">
+    <legend class="px-1 text-sm font-semibold">{{.Label}}</legend>
+    {{range .Perms}}
+    <label class="flex min-h-9 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="{{$.Name}}" value="{{.ID}}" {{if .Checked}}checked{{end}} {{if $.Disabled}}disabled{{end}}><code>{{.ID}}</code></label>
+    {{end}}
+  </fieldset>
+  {{end}}
+</div>
+{{end}}
+
+{{/* A named confirmation: dict "Label" "Text" "Confirm" and the hidden fields as "Fields". */}}
+{{define "confirm"}}
+<details class="confirm">
+  <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">{{.Label}}</summary>
+  <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm {{.Label}}">
+    <p class="text-sm">{{.Text}}</p>
+    <button type="submit" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger" name="action" value="{{.Action}}">{{.Confirm}}</button>
+  </div>
+</details>
+{{end}}
+
+{{define "admin-people"}}
+{{$s := .State}}
+{{if not .CanManageAccess}}
+<section class="card p-5" aria-labelledby="people-title">
+  <h2 id="people-title" class="text-lg font-bold">People</h2>
+  <ul class="mt-2 grid gap-2">
+    {{range $s.Users}}<li class="rounded-xl border border-line p-3"><span class="font-semibold wrap-anywhere">{{.Email}}</span><span class="block text-sm text-muted">{{.Status}} · {{with .Roles}}{{range $i, $r := .}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}No roles{{end}}</span></li>
+    {{else}}<li class="text-sm text-muted">No managed users.</li>{{end}}
+  </ul>
+</section>
+<section class="card p-5" aria-labelledby="roles-title">
+  <h2 id="roles-title" class="text-lg font-bold">Roles</h2>
+  <p class="mt-1 text-sm text-muted">Default: {{with $s.Policy}}{{with .DefaultRole}}{{.}}{{else}}No default role{{end}}{{else}}No default role{{end}}</p>
+  <ul class="mt-2 grid gap-2">
+    {{range $s.Roles}}<li class="rounded-xl border border-line p-3"><span class="font-semibold">{{.Name}}</span>{{with .Description}}<span class="block text-sm">{{.}}</span>{{end}}<span class="block text-xs text-muted wrap-anywhere">{{with .Permissions}}{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{else}}No permissions{{end}}</span></li>
+    {{else}}<li class="text-sm text-muted">No roles configured.</li>{{end}}
+  </ul>
+</section>
+{{else if not $s.Policy}}
+<section class="card p-5" aria-labelledby="setup-title">
+  <h2 id="setup-title" class="text-lg font-bold">Set up roles</h2>
+  <p class="mt-1 text-sm text-muted">This creates an admin role for your verified email and a default member role with chat access. Model management is not granted by default.</p>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="people">
+    <div class="grid gap-1"><label class="text-sm font-semibold" for="starter-email">Your verified sign-in email</label>
+      <input id="starter-email" class="input" type="email" readonly {{if not .VerifiedEmail}}disabled{{end}} value="{{.VerifiedEmail}}" placeholder="Verified email unavailable"></div>
+    {{if not .VerifiedEmail}}<p class="text-sm text-muted">This sign-in did not supply a verified email. Use Advanced JSON or the CLI to bind the first administrator.</p>{{end}}
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="action" value="starter-policy" class="btn btn-primary min-h-11" {{if not .VerifiedEmail}}disabled{{end}}>Create roles</button>
+      <a class="btn btn-quiet min-h-11" href="/app/admin?section=access#policy">Advanced JSON</a>
+    </div>
+  </form>
+</section>
+{{else}}
+<section class="card p-5" aria-labelledby="invite-title">
+  <h2 id="invite-title" class="text-lg font-bold">Invite a person</h2>
+  <p class="mt-1 text-sm text-muted">Their verified sign-in email claims this invitation on first login.</p>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="invite-user">
+    <div class="grid gap-1"><label class="text-sm font-semibold" for="invite-email">Email</label><input id="invite-email" class="input" type="email" name="email" required autocomplete="email"></div>
+    <fieldset class="grid gap-1"><legend class="text-sm font-semibold">Roles</legend>
+      {{range .InviteRoles}}<label class="flex min-h-11 items-center gap-2"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="roles" value="{{.Name}}" {{if .Checked}}checked{{end}}><span><span class="font-semibold">{{.Name}}</span>{{with .Description}} <span class="text-sm text-muted">{{.}}</span>{{end}}</span></label>{{end}}
+    </fieldset>
+    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="sendEmail" value="1" {{if not $s.EmailDelivery}}disabled{{end}}> Send invitation email</label>
+    {{if not $s.EmailDelivery}}<p class="-mt-2 text-sm text-muted">Configure SMTP under Browser access to send invitations.</p>{{end}}
+    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create invitation</button>
+  </form>
+  {{with .InviteURL}}
+  <div class="mt-3 grid gap-2 rounded-xl border border-accent p-3" role="group" aria-label="Invitation link" hx-history="false">
+    <p class="font-semibold">Invitation link</p>
+    <code class="text-sm wrap-anywhere" data-secret>{{.}}</code>
+    <button type="button" class="btn btn-quiet min-h-11 justify-self-start" data-copy-secret>Copy link</button>
+  </div>
+  {{end}}
+</section>
+
+<section class="card p-5" aria-labelledby="people-title">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 id="people-title" class="text-lg font-bold">People <span class="text-sm font-normal text-muted">· {{len $s.Users}} managed</span></h2>
+    <a class="btn btn-quiet min-h-11 text-sm" href="/app/admin?section=people">Refresh</a>
+  </div>
+  <ul class="mt-3 grid gap-3">
+    {{range .Users}}
+    <li class="rounded-xl border border-line p-3">
+      <form class="grid gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="section" value="people"><input type="hidden" name="email" value="{{.Email}}">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0"><p class="font-semibold wrap-anywhere">{{.Email}}{{if .Self}} <span class="text-sm font-normal text-muted">(you)</span>{{end}}</p>{{with .Added}}<p class="text-sm text-muted">Added {{.}}</p>{{end}}</div>
+          <span class="badge {{if eq .Status "active"}}badge-ok{{end}}">{{.Status}}</span>
+        </div>
+        <fieldset class="flex flex-wrap gap-x-4" {{if eq .Status "disabled"}}disabled{{end}}><legend class="sr-only">Roles for {{.Email}}</legend>
+          {{range .Roles}}<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="roles" value="{{.Name}}" {{if .Checked}}checked{{end}}>{{.Name}}</label>{{end}}
+        </fieldset>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" name="action" value="replace-user-roles" class="btn btn-quiet min-h-11" {{if eq .Status "disabled"}}disabled{{end}}>Save roles</button>
+          {{if eq .Status "disabled"}}<button type="submit" name="action" value="enable-user" class="btn btn-quiet min-h-11">Enable access</button>
+          {{else}}<button type="submit" name="action" value="disable-user" class="btn btn-quiet min-h-11" {{if .Self}}disabled{{end}}>Disable access</button>{{end}}
+          {{if not .Self}}{{template "confirm" (dict "Label" "Forget record" "Action" "remove-user" "Confirm" "Confirm forget" "Text" "Forget this user and linked identity? This is not revocation: they may regain access through a default role or another policy binding. Use Disable to block access.")}}{{end}}
+        </div>
+        {{if .Self}}<p class="text-sm text-muted">You can’t disable or forget your own account, and must keep a role with access:manage.</p>{{end}}
+      </form>
+    </li>
+    {{else}}<li class="text-sm text-muted">No managed users.</li>{{end}}
+  </ul>
+</section>
+
+<section class="card p-5" aria-labelledby="roles-title">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <h2 id="roles-title" class="text-lg font-bold">Roles <span class="text-sm font-normal text-muted">· {{len $s.Roles}}</span></h2>
+    <form class="flex flex-wrap items-end gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="default-role">
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="default-role">Default for eligible sign-ins</label>
+        <select id="default-role" class="input min-h-11 w-auto" name="name">
+          <option value="">No default role</option>
+          {{range $s.Roles}}<option value="{{.Name}}" {{if eq .Name $.DefaultRole}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select></div>
+      <button type="submit" class="btn btn-quiet min-h-11">Set default</button>
+    </form>
+  </div>
+  <ul class="mt-3 grid gap-3 lg:grid-cols-2">
+    {{range $i, $role := .RoleViews}}
+    <li class="rounded-xl border border-line p-3">
+      <form class="grid gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="section" value="people"><input type="hidden" name="name" value="{{$role.Name}}">
+        <p class="font-semibold">{{$role.Name}}</p>
+        <div class="grid gap-1"><label class="text-sm font-semibold" for="role-desc-{{$i}}">Description</label><input id="role-desc-{{$i}}" class="input" name="description" maxlength="256" value="{{$role.Description}}"></div>
+        <details class="reasoning"><summary>{{len $role.Permissions}} permissions</summary>{{template "perm-picker" (dict "Groups" $role.Picker "Name" "permissions")}}</details>
+        <div class="flex flex-wrap gap-2">
+          <button type="submit" name="action" value="save-role" class="btn btn-quiet min-h-11">Save role</button>
+          {{template "confirm" (dict "Label" "Remove" "Action" "remove-role" "Confirm" "Confirm remove" "Text" "Remove this role? Assigned or policy-bound roles cannot be removed.")}}
+        </div>
+      </form>
+    </li>
+    {{end}}
+  </ul>
+</section>
+
+<section class="card p-5" aria-labelledby="new-role-title">
+  <h2 id="new-role-title" class="text-lg font-bold">Create a role</h2>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="create-role">
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="new-role-name">Name</label><input id="new-role-name" class="input" name="name" required pattern="[a-z][a-z0-9-]*" maxlength="64" placeholder="video-creator"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="new-role-desc">Description</label><input id="new-role-desc" class="input" name="description" maxlength="256" placeholder="Can create and inspect videos"></div>
+    </div>
+    <details class="reasoning"><summary>Permissions · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewRolePerms "Name" "permissions")}}</details>
+    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create role</button>
+  </form>
+</section>
+{{end}}
+{{end}}
+
+{{define "admin-access"}}
+{{$s := .State}}
+{{$cfg := $s.Config}}
+{{if not .CanManageAccess}}
+<section class="card p-5"><h2 class="text-lg font-bold">Human sign-in</h2><p class="mt-1">{{template "provider-label" $cfg}}</p>{{with $cfg}}<p class="text-sm text-muted">{{.Origin}}</p>{{end}}</section>
+<section class="card p-5"><h2 class="text-lg font-bold">Email delivery</h2><p class="mt-1">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></section>
+<section class="card p-5"><h2 class="text-lg font-bold">Access policy</h2><p class="mt-1">{{with $s.Policy}}{{len .Roles}} roles configured{{else}}Not configured{{end}}</p></section>
+{{else}}
+{{$e := .Edit}}
+<section class="card p-5" aria-labelledby="signin-title">
+  <div class="flex flex-wrap items-start justify-between gap-2">
+    <div><h2 id="signin-title" class="text-lg font-bold">Human sign-in</h2><p class="text-sm text-muted">{{template "provider-label" $cfg}}</p></div>
+    {{if $cfg}}<span class="badge badge-ok">Configured</span>{{end}}
+  </div>
+  {{if and $cfg (eq $cfg.Provider.Kind "direct")}}
+  <ul class="mt-3 grid gap-2" aria-label="Sign-in registrations">
+    {{range $cfg.Provider.Registrations}}
+    <li class="rounded-xl border border-line p-3">
+      <form class="flex flex-wrap items-start justify-between gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="section" value="access"><input type="hidden" name="registrationId" value="{{.ID}}">
+        <div class="min-w-0"><p class="font-semibold">{{.Name}}</p><p class="text-sm text-muted wrap-anywhere">{{.ID}} · {{if eq .Kind "oidc"}}{{.Issuer}}{{else if eq .Kind "github-oauth"}}GitHub OAuth{{else}}Email magic link{{end}}</p></div>
+        <div class="flex flex-wrap gap-2">
+          <a class="btn btn-quiet min-h-11" href="/app/admin?section=access&amp;edit={{.ID}}#provider">Edit</a>
+          {{template "confirm" (dict "Label" "Remove" "Action" "remove-registration" "Confirm" "Confirm" "Text" "Remove this registration? Removing the last one disables browser access.")}}
+        </div>
+      </form>
+    </li>
+    {{end}}
+  </ul>
+  <a class="btn btn-quiet mt-2 min-h-11" href="/app/admin?section=access&amp;edit=new#provider">Add registration</a>
+  {{end}}
+  <form id="provider" class="mt-4 grid gap-3" data-provider-form hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="access"><input type="hidden" name="action" value="save-provider">
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="provider-kind">Provider</label>
+        <select id="provider-kind" class="input min-h-11" name="provider" data-provider-select>
+          {{range list "cloudflare-access" "oidc" "github-oauth" "magic-link"}}<option value="{{.}}" {{if eq . $e.Provider}}selected{{end}}>{{if eq . "cloudflare-access"}}Cloudflare Access{{else if eq . "oidc"}}OpenID Connect{{else if eq . "github-oauth"}}GitHub{{else}}Email magic link{{end}}</option>{{end}}
+        </select></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="provider-origin">Public HTTPS origin</label><input id="provider-origin" class="input" type="url" name="origin" required value="{{$e.Origin}}" placeholder="https://localbase.example.com"></div>
+    </div>
+    <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="cloudflare-access" {{if ne $e.Provider "cloudflare-access"}}disabled hidden{{end}}>
+      <legend class="sr-only">Cloudflare Access</legend>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="cf-team">Team domain</label><input id="cf-team" class="input" name="teamDomain" required value="{{$e.TeamDomain}}" placeholder="team.cloudflareaccess.com"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="cf-aud">Application audience</label><input id="cf-aud" class="input" name="audience" required value="{{$e.Audience}}"></div>
+    </fieldset>
+    <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="oidc github-oauth magic-link" {{if eq $e.Provider "cloudflare-access"}}disabled hidden{{end}}>
+      <legend class="sr-only">Registration</legend>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="reg-id">Registration ID</label><input id="reg-id" class="input" name="registrationId" required pattern="[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?" maxlength="64" value="{{$e.ID}}" placeholder="google" {{if $e.Existing}}readonly{{end}}></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="reg-name">Sign-in name</label><input id="reg-name" class="input" name="registrationName" required maxlength="64" value="{{$e.Name}}" placeholder="Google"></div>
+    </fieldset>
+    <fieldset class="grid gap-3" data-provider-fields="oidc" {{if ne $e.Provider "oidc"}}disabled hidden{{end}}>
+      <legend class="sr-only">OpenID Connect</legend>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="oidc-issuer">Issuer</label><input id="oidc-issuer" class="input" type="url" name="issuer" required value="{{$e.Issuer}}" placeholder="https://identity.example.com"></div>
+      <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="publicClient" value="1" data-public-client {{if $e.PublicClient}}checked{{end}}> Public client with PKCE</label>
+    </fieldset>
+    <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-provider-fields="oidc github-oauth" {{if not (or (eq $e.Provider "oidc") (eq $e.Provider "github-oauth"))}}disabled hidden{{end}}>
+      <legend class="sr-only">Client</legend>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="client-id">Client ID</label><input id="client-id" class="input" name="clientId" required value="{{$e.ClientID}}"></div>
+      <div class="grid gap-1" data-client-secret><label class="text-sm font-semibold" for="client-secret">Client secret</label><input id="client-secret" class="input" type="password" name="clientSecret" required autocomplete="new-password" placeholder="Re-enter to save"></div>
+    </fieldset>
+    <details class="reasoning"><summary>Provider-wide permissions</summary>
+      <p class="mb-2 text-sm text-muted">A configured policy replaces these permissions. Keep CLI access available as the recovery path.</p>
+      {{template "perm-picker" (dict "Groups" .ProviderPerms "Name" "permissions")}}
+    </details>
+    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">{{if eq $e.Provider "cloudflare-access"}}Save provider{{else}}Save registration{{end}}</button>
+  </form>
+</section>
+
+<section class="card p-5" aria-labelledby="smtp-title">
+  <div class="flex flex-wrap items-start justify-between gap-2">
+    <div><h2 id="smtp-title" class="text-lg font-bold">Email delivery</h2><p class="text-sm text-muted">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></div>
+    {{if $s.EmailDelivery}}<span class="badge badge-ok">Configured</span>{{end}}
+  </div>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="access">
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-host">SMTP host</label><input id="smtp-host" class="input" name="host" required value="{{with $s.EmailDelivery}}{{.Host}}{{end}}" placeholder="smtp.example.com"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-port">Port</label><input id="smtp-port" class="input" type="number" inputmode="numeric" name="port" min="1" max="65535" required value="{{with $s.EmailDelivery}}{{.Port}}{{else}}587{{end}}"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-security">Transport security</label>
+        <select id="smtp-security" class="input min-h-11" name="security">{{$sec := "starttls"}}{{with $s.EmailDelivery}}{{$sec = .Security}}{{end}}<option value="starttls" {{if eq $sec "starttls"}}selected{{end}}>STARTTLS</option><option value="tls" {{if eq $sec "tls"}}selected{{end}}>TLS</option></select></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-from">From address</label><input id="smtp-from" class="input" type="email" name="from" required value="{{with $s.EmailDelivery}}{{.From}}{{end}}"></div>
+    </div>
+    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="passwordAuth" value="1" data-password-auth {{with $s.EmailDelivery}}{{if eq .Authentication "password"}}checked{{end}}{{end}}> SMTP username and password</label>
+    <fieldset class="grid gap-3 min-[600px]:grid-cols-2" data-password-fields {{with $s.EmailDelivery}}{{if ne .Authentication "password"}}disabled{{end}}{{else}}disabled{{end}}>
+      <legend class="sr-only">SMTP credentials</legend>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-user">Username</label><input id="smtp-user" class="input" name="username" required autocomplete="username"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-pass">Password</label><input id="smtp-pass" class="input" type="password" name="password" required autocomplete="new-password" placeholder="{{with $s.EmailDelivery}}{{if eq .Authentication "password"}}Re-enter to replace credentials{{end}}{{end}}"></div>
+    </fieldset>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="action" value="configure-email-delivery" class="btn btn-primary min-h-11">Save SMTP</button>
+      {{if $s.EmailDelivery}}<button type="submit" name="action" value="disable-email-delivery" formnovalidate class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">Disable</button>{{end}}
+    </div>
+  </form>
+  {{if $s.EmailDelivery}}
+  <form class="mt-3 flex flex-wrap items-end gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="access"><input type="hidden" name="action" value="test-email-delivery">
+    <div class="grid gap-1"><label class="text-sm font-semibold" for="smtp-test">Test recipient</label><input id="smtp-test" class="input" type="email" name="to" required></div>
+    <button type="submit" class="btn btn-quiet min-h-11">Send test</button>
+  </form>
+  {{end}}
+</section>
+
+<section class="card p-5" aria-labelledby="policy-title" id="policy">
+  <h2 id="policy-title" class="text-lg font-bold">Access policy</h2>
+  <p class="mt-1 text-sm text-muted">JSON roles and identity bindings. At least one binding must retain <code>access:manage</code>.</p>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="section" value="access"><input type="hidden" name="revision" value="{{with $s.PolicyRevision}}{{.}}{{else}}null{{end}}">
+    <label class="text-sm font-semibold" for="policy-json">Policy JSON</label>
+    <textarea id="policy-json" class="input min-h-48 font-mono text-sm" name="policy" spellcheck="false" {{if not $cfg}}disabled{{end}} placeholder='{"roles":[{"name":"admin","permissions":["access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"}],"defaultRole":null}'>{{.PolicyJSON}}</textarea>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="action" value="apply-policy" class="btn btn-primary min-h-11" {{if not $cfg}}disabled{{end}}>Save policy</button>
+      {{if $s.Policy}}{{template "confirm" (dict "Label" "Clear policy" "Action" "clear-policy" "Confirm" "Confirm clear" "Text" "Use provider-wide permissions instead?")}}{{end}}
+    </div>
+  </form>
+</section>
+{{end}}
+{{end}}
+
+{{define "provider-label"}}{{if not .}}Not configured{{else if eq .Provider.Kind "cloudflare-access"}}Cloudflare Access · {{.Provider.TeamDomain}}{{else}}Direct sign-in · {{len .Provider.Registrations}} registration{{if ne (len .Provider.Registrations) 1}}s{{end}}{{end}}{{end}}
+
+{{define "admin-keys"}}
+{{if .CanManageKeys}}
+<section class="card p-5" aria-labelledby="new-key-title">
+  <h2 id="new-key-title" class="text-lg font-bold">Create API key</h2>
+  <form class="mt-3 grid gap-3" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="action" value="create">
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="key-name">Name</label><input id="key-name" class="input" name="name" required maxlength="128"></div>
+      <div class="grid gap-1"><label class="text-sm font-semibold" for="key-expiry">Expires after days <span class="font-normal text-muted">(optional)</span></label><input id="key-expiry" class="input" type="number" inputmode="numeric" name="expiresDays" min="1" max="3650"></div>
+    </div>
+    <details class="reasoning"><summary>Scopes · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewKeyPerms "Name" "scopes")}}</details>
+    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create key</button>
+  </form>
+</section>
+{{end}}
+<section class="card p-5" aria-labelledby="keys-title">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 id="keys-title" class="text-lg font-bold">Keys <span class="text-sm font-normal text-muted">· {{len .Keys}} total</span></h2>
+    <a class="btn btn-quiet min-h-11 text-sm" href="/app/admin?section=keys">Refresh</a>
+  </div>
+  <ul class="mt-3 grid gap-3">
+    {{range .Keys}}{{$k := .Key}}{{$active := eq .Status "Active"}}
+    <li class="rounded-xl border border-line p-3">
+      <form class="grid gap-2" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="keyId" value="{{$k.ID}}">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="min-w-0"><p class="font-semibold wrap-anywhere">{{$k.Name}}</p><p class="text-sm text-muted">{{$k.Prefix}}… · {{.Status}}</p></div>
+          <span class="badge {{if $active}}badge-ok{{end}}">{{.Status}}</span>
+        </div>
+        <p class="text-xs text-muted wrap-anywhere">{{$k.ID}}</p>
+        {{if $.CanManageKeys}}
+        <details class="reasoning"><summary>{{len $k.Scopes}} scopes</summary>
+          {{template "perm-picker" (dict "Groups" .Picker "Name" "scopes" "Disabled" (not $active))}}
+          <button type="submit" name="action" value="set-scopes" class="btn btn-quiet mt-2 min-h-11" {{if not $active}}disabled{{end}}>Save scopes</button>
+        </details>
+        {{if $active}}
+        <div class="flex flex-wrap gap-2">
+          {{template "confirm" (dict "Label" "Rotate" "Action" "rotate" "Confirm" "Confirm" "Text" "The current secret will stop working immediately.")}}
+          {{template "confirm" (dict "Label" "Revoke" "Action" "revoke" "Confirm" "Confirm" "Text" "This key will stop working immediately.")}}
+        </div>
+        {{end}}
+        {{else}}
+        <p class="text-xs wrap-anywhere">{{range $i, $s := $k.Scopes}}{{if $i}}, {{end}}{{$s}}{{end}}</p>
+        {{end}}
+      </form>
+    </li>
+    {{else}}<li class="text-sm text-muted">No API keys.</li>{{end}}
+  </ul>
+</section>
+{{end}}

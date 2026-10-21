@@ -19,6 +19,14 @@ import (
 
 func newTestService(t *testing.T) (*Service, *[]string) {
 	t.Helper()
+	mem := memory.NewController(&bigHost{avail: 50 * memory.GiB}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem.SetSampler(nil)
+	return newTestServiceWith(t, mem)
+}
+
+// newTestServiceWith is newTestService on a given memory controller.
+func newTestServiceWith(t *testing.T, mem *memory.Controller) (*Service, *[]string) {
+	t.Helper()
 	dir := t.TempDir()
 	cat, _ := catalog.Load("")
 	reg, _ := backends.Load("")
@@ -44,8 +52,6 @@ func newTestService(t *testing.T) (*Service, *[]string) {
 	}
 	var mu sync.Mutex
 	activated := []string{}
-	mem := memory.NewController(&bigHost{avail: 50 * memory.GiB}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
 	cfg := &store.Config{Active: map[string]string{"stt": "a"}, Selected: map[string][]string{"stt": {"a", "b"}}}
 	s := NewService(ServiceDeps{Modality: "stt", Kind: "stt", Catalog: cat, Store: st, Memory: mem,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Config: func() *store.Config { return cfg }, Gate: gate,

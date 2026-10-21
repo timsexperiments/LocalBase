@@ -32,6 +32,7 @@ func TestRuntimeErrorRetrySemantics(t *testing.T) {
 		{"no backend selected", &runtime.LaunchError{Code: "backend_not_selected", Message: "Choose a backend."}, 409, "backend_not_selected", ""},
 		{"assets missing", &runtime.LaunchError{Code: "model_assets_missing", Message: "Files are missing."}, 409, "model_assets_missing", ""},
 		{"unknown model", runtime.ErrModelNotFound, 404, "model_not_found", ""},
+		{"memory emergency", runtime.ErrMemoryEmergency, 503, "service_unavailable", "5"},
 	}
 	for _, c := range cases {
 		w := httptest.NewRecorder()
@@ -44,5 +45,16 @@ func TestRuntimeErrorRetrySemantics(t *testing.T) {
 	runtimeError(w, httptest.NewRequest("POST", "/v1/audio/speech", nil), runtime.ErrStartupFailed, "m", "TTS")
 	if !strings.Contains(w.Body.String(), "TTS service is currently restarting") {
 		t.Errorf("service name: %s", w.Body.String())
+	}
+}
+
+// TestMemoryEmergencyResponse is TS's answer to work queued when memory turns
+// critical (InferenceQueueUnavailableError): the Inference service is
+// unavailable, whichever modality was asked.
+func TestMemoryEmergencyResponse(t *testing.T) {
+	w := httptest.NewRecorder()
+	runtimeError(w, httptest.NewRequest("POST", "/v1/audio/transcriptions", nil), runtime.ErrMemoryEmergency, "m", "STT")
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "Inference service is currently restarting or unavailable. Please try again shortly.") {
+		t.Errorf("%d %s", w.Code, w.Body.String())
 	}
 }

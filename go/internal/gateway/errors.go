@@ -84,6 +84,8 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 		writeError(w, r, 429, "rate_limit_error", "inference_queue_timeout", "The inference request exceeded its queue wait deadline.", nil)
 	case errors.Is(err, runtime.ErrModelNotFound):
 		modelNotFound(w, r, model)
+	case errors.Is(err, runtime.ErrMemoryEmergency):
+		serviceUnavailable(w, r, "Inference")
 	case errors.As(err, &notInstalled):
 		writeError(w, r, 409, "invalid_request_error", "model_install_consent_required", notInstalled.Error(), strp("model"))
 	case errors.As(err, &launch):

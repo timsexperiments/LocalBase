@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 )
 
 // Reserve is a pool reserve: max(percent of capacity, minimum GiB).
@@ -32,6 +33,52 @@ type AdmissionError struct {
 	Confidence     string
 	// Permanent: the demand can never fit on this host, even idle.
 	Permanent bool
+	// Diagnostics are the figures behind the refusal (nil when the error was
+	// not made by admission).
+	Diagnostics *AdmissionDiagnostics
+}
+
+// AdmissionDiagnostics are TS's RuntimeMemoryAdmissionError diagnostics.
+// Byte figures of -1 are "unavailable" (the GPU working set is not sampled).
+type AdmissionDiagnostics struct {
+	MeasuredAvailable  int64 // the sample, crediting releasing runtimes
+	Reserve            int64
+	Pending            int64 // starting runtimes not yet in the sample
+	Requested          int64
+	EffectiveAvailable int64 // measured less pending
+	CapturedAt         time.Time
+	MeasuredPressure   string // the provider's own reading
+	SafetyState        string // the hysteresis state
+	RecoverySamples    int
+	Confidence         string
+}
+
+// Attributes are the runtime.memory-admission-rejected attributes, in TS
+// order (memoryAdmissionRejectedAttributes).
+func (e *AdmissionError) Attributes() []any {
+	attrs := []any{"reason", e.Reason, "pool", e.PoolID}
+	g := e.Diagnostics
+	if g == nil {
+		return attrs
+	}
+	bytes := func(v int64) any {
+		if v < 0 {
+			return "unavailable"
+		}
+		return v
+	}
+	return append(attrs,
+		"measured_available_bytes", bytes(g.MeasuredAvailable),
+		"reserve_bytes", bytes(g.Reserve),
+		"pending_bytes", bytes(g.Pending),
+		"requested_bytes", bytes(g.Requested),
+		"effective_available_bytes", bytes(g.EffectiveAvailable),
+		"sample_captured_at_ms", g.CapturedAt.UnixMilli(),
+		"sample_age_ms", max(0, time.Since(g.CapturedAt).Milliseconds()),
+		"measured_pressure", g.MeasuredPressure,
+		"safety_state", g.SafetyState,
+		"recovery_samples", g.RecoverySamples,
+		"demand_confidence", g.Confidence)
 }
 
 func (e *AdmissionError) Error() string {
@@ -164,18 +211,6 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 	reserve := c.system.Bytes(topo.SystemCapacity)
 	base := &AdmissionError{PoolID: "system", RequestedBytes: req, ReserveBytes: reserve, Confidence: d.Confidence}
 
-	// Can never fit, even on an idle host.
-	if topo.Unified && topo.GPUWorkingSetBytes > 0 && d.AcceleratorBytes > topo.GPUWorkingSetBytes {
-		e := *base
-		e.Reason, e.PoolID, e.RequestedBytes, e.AvailableBytes, e.Permanent = "accelerator-memory", "gpu-working-set", d.AcceleratorBytes, topo.GPUWorkingSetBytes, true
-		return &e
-	}
-	if topo.SystemCapacity > 0 && req > max(0, topo.SystemCapacity-reserve) {
-		e := *base
-		e.Reason, e.AvailableBytes, e.Permanent = "system-memory", max(0, topo.SystemCapacity-reserve), true
-		return &e
-	}
-
 	var pending, freed, resident int64
 	for id, r := range c.reservations {
 		if releasing[id] {
@@ -193,42 +228,89 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 			pending += r.projected
 		}
 	}
+	// reject attaches the figures behind the refusal (TS reject).
+	reject := func(e AdmissionError) *AdmissionError {
+		e.Diagnostics = c.diagnose(e.PoolID, d, snap, freed, pending, reserve)
+		return &e
+	}
+
+	// Can never fit, even on an idle host.
+	if topo.Unified && topo.GPUWorkingSetBytes > 0 && d.AcceleratorBytes > topo.GPUWorkingSetBytes {
+		e := *base
+		e.Reason, e.PoolID, e.RequestedBytes, e.AvailableBytes, e.Permanent = "accelerator-memory", "gpu-working-set", d.AcceleratorBytes, topo.GPUWorkingSetBytes, true
+		return reject(e)
+	}
+	if topo.SystemCapacity > 0 && req > max(0, topo.SystemCapacity-reserve) {
+		e := *base
+		e.Reason, e.AvailableBytes, e.Permanent = "system-memory", max(0, topo.SystemCapacity-reserve), true
+		return reject(e)
+	}
 	// The GPU working-set cap applies to the sum of loaded runtimes (#283).
 	if topo.Unified && topo.GPUWorkingSetBytes > 0 && d.AcceleratorBytes > 0 && resident+d.AcceleratorBytes > topo.GPUWorkingSetBytes {
 		e := *base
 		e.Reason, e.PoolID, e.RequestedBytes, e.AvailableBytes = "accelerator-memory", "gpu-working-set", resident+d.AcceleratorBytes, topo.GPUWorkingSetBytes
-		return &e
+		return reject(e)
 	}
 	if c.state != "healthy" {
 		e := *base
 		e.Reason = "memory-pressure"
-		return &e
+		return reject(e)
 	}
 	if snap.Available < 0 || snap.Pressure == "unknown" {
 		e := *base
 		e.Reason = "measurement-unavailable"
-		return &e
+		return reject(e)
 	}
 	avail := snap.Available + freed
 	base.AvailableBytes, base.PendingBytes = avail, pending
 	if snap.Pressure != "normal" || float64(avail) < float64(reserve)*warningReserveMultiplier {
 		e := *base
 		e.Reason = "memory-pressure"
-		return &e
+		return reject(e)
 	}
 	if max(0, avail-pending)-req < reserve {
 		e := *base
 		e.Reason = "system-memory"
-		return &e
+		return reject(e)
 	}
 	return nil
 }
 
-// Poll advances the pressure hysteresis and returns the action:
-// allow, constrain, or emergency-stop.
-func (c *Controller) Poll(ctx context.Context) string {
+// diagnose computes TS's rejection diagnostics for a refusal on pool: the
+// sample (crediting releasing runtimes), the pool's reserve, the pending
+// demand and the request. The GPU working set is not a sampled pool.
+func (c *Controller) diagnose(pool string, d Demand, snap Snapshot, freed, pending, reserve int64) *AdmissionDiagnostics {
+	g := &AdmissionDiagnostics{MeasuredAvailable: -1, Reserve: -1, Pending: -1, Requested: c.projected(d),
+		EffectiveAvailable: -1, CapturedAt: time.Now(), MeasuredPressure: "unknown",
+		SafetyState: c.state, RecoverySamples: c.normalRun, Confidence: d.Confidence}
+	if pool != "system" {
+		g.Requested = d.AcceleratorBytes
+		return g
+	}
+	g.Reserve, g.Pending, g.MeasuredPressure = reserve, pending, snap.Pressure
+	if snap.Available >= 0 {
+		g.MeasuredAvailable = snap.Available + freed
+		g.EffectiveAvailable = max(0, g.MeasuredAvailable-pending)
+	}
+	return g
+}
+
+// Transition is the pressure state after a sample (TS MemorySafetyTransition):
+// the hysteresis state (healthy, constrained or critical), the consecutive
+// normal samples toward recovery, and the action (allow, constrain or
+// emergency-stop).
+type Transition struct {
+	State         string
+	NormalSamples int
+	Action        string
+}
+
+// Poll samples the host and advances the pressure hysteresis.
+func (c *Controller) Poll(ctx context.Context) Transition {
 	if c.bypass {
-		return "allow"
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.transition()
 	}
 	snap := c.host.Snapshot(ctx)
 	reserve := c.system.Bytes(c.host.Topology().SystemCapacity)
@@ -261,13 +343,18 @@ func (c *Controller) Poll(ctx context.Context) string {
 			}
 		}
 	}
+	return c.transition()
+}
+
+func (c *Controller) transition() Transition {
+	t := Transition{State: c.state, NormalSamples: c.normalRun, Action: "allow"}
 	switch c.state {
 	case "critical":
-		return "emergency-stop"
+		t.Action = "emergency-stop"
 	case "constrained":
-		return "constrain"
+		t.Action = "constrain"
 	}
-	return "allow"
+	return t
 }
 
 // Snapshot reads current host memory (for display; admission reads its own).

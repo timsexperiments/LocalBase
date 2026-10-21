@@ -305,6 +305,10 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			t.finish("cancelled", 499, "request_aborted")
 			return
 		}
+		if o.interrupted != nil && o.interrupted() {
+			memoryInterrupted(w, r, t)
+			return
+		}
 		upstreamFailure(w, r, "The upstream service could not be reached.")
 		t.finish("error", 502, "")
 		return
@@ -319,7 +323,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			w.Header().Set("Cache-Control", v)
 		}
 		w.WriteHeader(resp.StatusCode)
-		outcome, source := relaySSE(r.Context(), w, resp.Body, modelID, t)
+		outcome, source := relaySSE(r.Context(), w, resp.Body, modelID, t, o.interrupted)
 		t.finish(outcome, resp.StatusCode, source)
 		return
 	}
@@ -330,8 +334,16 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			t.finish("cancelled", 499, "request_aborted")
 			return
 		}
+		if o.interrupted != nil && o.interrupted() {
+			memoryInterrupted(w, r, t)
+			return
+		}
 		upstreamFailure(w, r, "The upstream service returned malformed JSON.")
 		t.finish("error", 502, "response_validation")
+		return
+	}
+	if !ok && o.interrupted != nil && o.interrupted() {
+		memoryInterrupted(w, r, t)
 		return
 	}
 	if !ok {
@@ -607,7 +619,7 @@ func upstreamErrorEvent(message string) string {
 // events get the public model id and `reasoning` normalization; an error
 // event ends the stream; unparseable data ends it with upstream_error.
 // Returns the inference outcome and terminal source.
-func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelID string, t *inference) (string, string) {
+func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelID string, t *inference, interrupted func() bool) (string, string) {
 	flusher, _ := w.(http.Flusher)
 	rd := bufio.NewReaderSize(body, 64<<10)
 	var event []string
@@ -691,6 +703,10 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 			if ctx.Err() != nil {
 				return "cancelled", "request_aborted"
 			}
+			if interrupted != nil && interrupted() {
+				write(memoryEmergencyEvent)
+				return "error", "memory_emergency"
+			}
 			if err != io.EOF {
 				write(upstreamErrorEvent("The upstream stream failed."))
 				return "error", "response_stream_error"
@@ -706,4 +722,16 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 			return "completed", ""
 		}
 	}
+}
+
+// memoryEmergencyEvent ends a stream whose runtime was stopped because memory
+// turned critical: the service is unavailable, and the client may retry.
+const memoryEmergencyEvent = `data: {"error":{"message":"Inference service is currently restarting or unavailable. Please try again shortly.","type":"api_error","param":null,"code":"service_unavailable"}}` + "\n\n"
+
+// memoryInterrupted answers a request whose runtime was stopped because
+// memory turned critical: 503 with Retry-After, not a truncated response
+// (a Go difference: TS answers 502 upstream_error, DESIGN §13.6).
+func memoryInterrupted(w http.ResponseWriter, r *http.Request, t *inference) {
+	runtimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
+	t.finish("error", 503, "memory_emergency")
 }
