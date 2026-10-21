@@ -1903,3 +1903,40 @@ The contract suite in external mode with a chat and models:read key keeps
 route, model retrieve and chat rejections. The rest assume the harness
 fixture (its model list, all-scope keys), so the shadow run uses that
 subset plus smoke.
+
+### 17.7 Shadow and rollback drill on the live copy (2026-10-21)
+
+Run with the operator's approval, under their conditions.
+
+- **Preflight before the copy:** 25.8 GiB available, the live gateway
+  idle (no inference in the last 60 s), no other backends.
+- **The copy:** `/private/tmp/lbgo-shadow`, mode 0700, the database
+  through the read-only `.backup`, and APFS clones, verified detached. It
+  held 9 selected LLMs (with the operator's 02:20 change), qwen3.5-9b
+  active, and the operator's temporary key `go-shadow-temp` (active).
+  Free disk was unchanged (123 GB).
+- **The key:** read only into the scratch client's environment
+  (`LOCALBASE_CONTRACT_KEY`), never printed, written or passed on a
+  command line.
+
+| Check | Result |
+| --- | --- |
+| Journal baseline | 15 rows, as live |
+| Session row (TS `c4a823d1` vs Go, by stored hash, no cookie) | `valid-touch` in both; identity fingerprints equal |
+| Go gateway on the copy | healthy on loopback, scratch ports |
+| `smoke` (Go) | passed: chat on qwen3.5-9b, 11 s with the model load |
+| Decision question with the key | answered (clef-flash) |
+| Contract subset with the key (6 tests) | all pass on Go, and again on TS |
+| Go errors in the copy's log | none |
+| Schema after Go | journal unchanged; added only `go_schema`, `imported_models`, `model_backend_selections`, `go_settings` |
+| Rollback: TS `c4a823d1` on the same database | smoke passed (decision); **7 s** from stopping Go to a passing smoke |
+| Schema after TS | journal and schema unchanged (TS ignores the Go tables) |
+| Forward: Go again | smoke passed; 4 s from start to a passing smoke |
+| Memory | lowest available 21.1 GiB (the guard aborts below 12) |
+| Live `/health` during the run | 200 on every probe |
+| Cleanup | copy, clones and TS export deleted; no processes left |
+| Live root | nothing under `models/` or `catalog.d/` modified; binary unchanged |
+
+The decision question made clef-flash the copy's active LLM, and both
+implementations save a switched model as active. That happened in the copy
+only.

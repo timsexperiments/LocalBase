@@ -72,6 +72,10 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	code := func() int {
 		if *urlFlag != "" {
+			// The key may come from the environment, so it never appears on a command line.
+			if *keyFlag == "" {
+				*keyFlag = os.Getenv("LOCALBASE_CONTRACT_KEY")
+			}
 			targets = []*Target{{Name: "external", BaseURL: strings.TrimRight(*urlFlag, "/"), Key: *keyFlag, ChatOnly: *narrowFlag}}
 			return m.Run()
 		}
