@@ -193,16 +193,22 @@ func voiceLabel(name string) string {
 
 func (u *UI) lab(w http.ResponseWriter, r *http.Request) {
 	tab := r.URL.Query().Get("tab")
-	if !slices.Contains([]string{"image", "speech", "transcribe"}, tab) {
+	if !slices.Contains([]string{"image", "video", "speech", "transcribe"}, tab) {
 		tab = "image"
 	}
 	p := u.caller(r)
 	data := map[string]any{"Tab": tab, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
-		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage")}
+		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video")}
 	switch tab {
 	case "image":
 		data["Models"] = u.labModels("image")
+	case "video":
+		models := u.videoModels()
+		data["Models"] = models
+		if len(models) > 0 {
+			data["VideoModel"] = &models[0]
+		}
 	case "speech":
 		models := u.labModels("tts")
 		data["Models"] = models

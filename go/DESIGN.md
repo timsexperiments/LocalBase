@@ -1470,7 +1470,7 @@ video API, and the TS comparison covers everything up to the job's start.
 | Step | State | Notes |
 | --- | --- | --- |
 | 1 | Built | `internal/video` (job manager, sd-server client, converter), `gateway/video_*.go`, `runtime/video.go`. Details below |
-| 2 | Next | |
+| 2 | Done | Lab video section (`web/labvideo.go`, `static/js/video.js`) and the chat tool. Details below |
 | 3 | | |
 
 Step 1:
@@ -1546,3 +1546,28 @@ The two MP4 files are byte-identical: the catalog pins the seed, and both
 implementations run the same sd-server and ffmpeg pins. During the window
 the live gateway answered `/health` on every probe, logged no memory
 refusal or pressure change, and served no inference.
+
+Step 2:
+
+- **Lab video section.** The Lab lists text- and image-to-video models.
+  Speech to video is left out: it needs portrait and audio inputs that
+  neither TS's studio nor its chat tool collects. Each model's fixed
+  profile is shown. For image-to-video models, an optional starting
+  picture (PNG, JPEG or WebP) is scaled and center-cropped in the browser
+  to the model's frame and sent as a PNG `input_reference` (TS studio
+  `cover`). The job runs on `/v1/videos` as the signed-in person. The page
+  polls it every 2 s with Cancel, then plays the MP4 through a Lab route
+  that serves byte ranges, which iOS Safari needs. Failures show the
+  API's message. `TestLabVideo` covers the model list, the options, the
+  request at the profile, polling, playback with ranges and failures; the
+  cross-site test covers the new POST routes.
+- **Browser check** on the UI fixture, at 390 px light and 1280 px dark.
+  A 900×600 JPEG becomes a 480×832 PNG with a preview. A model without
+  files shows the API's install message. A wan2.1 job (sparse weights)
+  shows "Starting the video runtime…" with Cancel, then "Video generation
+  failed.", and polling stops. The fixture can't produce a video; the
+  playing state is covered by the unit test, and the real output by the
+  FastWan run.
+- **Chat `generate_video`.** Ported in M3 step 2c (`tools.js`) and checked
+  against TS's `runChat` on a scripted gateway. The routes it calls are now
+  checked against TS by the contract suite.
