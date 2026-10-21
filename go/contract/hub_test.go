@@ -239,7 +239,9 @@ func TestModelDiscoveryEndToEnd(t *testing.T) {
 	if hits[0].(map[string]any)["preview"] == nil {
 		t.Errorf("the top hit was not previewed: %v", hits[0])
 	}
-	// Preview: identical to TS for a repository the feed does not annotate.
+	// Preview: identical to TS for a repository the feed does not annotate,
+	// apart from the fit, which depends on this host's memory (the 64 GB fit
+	// is compared in hub.TestDiscoverGolden).
 	res = post(`{"action":"preview","repo":"nerijs/pixel-art-xl"}`)
 	got, _ := json.Marshal(res["preview"])
 	for _, p := range g.Previews {
@@ -247,6 +249,8 @@ func TestModelDiscoveryEndToEnd(t *testing.T) {
 			var x, y any
 			json.Unmarshal(got, &x)
 			json.Unmarshal(p.Preview.OK, &y)
+			dropFits(x)
+			dropFits(y)
 			if !reflect.DeepEqual(x, y) {
 				t.Errorf("preview:\n got  %s\n want %s", got, p.Preview.OK)
 			}
@@ -263,5 +267,16 @@ func TestModelDiscoveryEndToEnd(t *testing.T) {
 	}
 	if res := post(`{"action":"add","repo":"bartowski/Qwen_Qwen3.5-0.8B-GGUF"}`); res["replaced"] != true {
 		t.Errorf("second add: %v", res)
+	}
+}
+
+// dropFits removes each preview choice's host-dependent fit.
+func dropFits(preview any) {
+	m, _ := preview.(map[string]any)
+	choices, _ := m["choices"].([]any)
+	for _, c := range choices {
+		if cm, ok := c.(map[string]any); ok {
+			delete(cm, "fit")
+		}
 	}
 }
