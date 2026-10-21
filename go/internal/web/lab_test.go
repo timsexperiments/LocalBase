@@ -137,7 +137,7 @@ func TestVoicesPage(t *testing.T) {
 // profile with the picture as input_reference, the page polls and can
 // cancel, and the finished video is served with byte ranges.
 func TestLabVideo(t *testing.T) {
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}

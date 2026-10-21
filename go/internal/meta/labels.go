@@ -242,8 +242,9 @@ func DetailLines(m Model, installed, enabled, isDefault bool, catalogPath string
 		lines = append(lines, "  Note: "+DescribeMismatch(mm))
 	}
 	mem := c.Memory
-	lines = append(lines, "", "Memory", fmt.Sprintf("  Needs at least: %d GB (%s)", mem.MinimumVramEstimateGb, strings.ToLower(MemoryFigureLabels[mem.Source])))
-	lines = append(lines, fmt.Sprintf("  %s: %s with %s", MemoryFigureLabels[mem.Reference.Source], FormatGB(mem.Reference.Bytes), DescribeLaunchShape(mem.Reference.LaunchShape)))
+	lines = append(lines, "", "Memory", fmt.Sprintf("  Planning min:   %d GB (%s)", mem.MinimumVramEstimateGb, strings.ToLower(MemoryFigureLabels[mem.Source])))
+	lines = append(lines, fmt.Sprintf("  %s: %s with %s (%s)", MemoryFigureLabels[mem.Reference.Source], FormatGB(mem.Reference.Bytes), DescribeLaunchShape(mem.Reference.LaunchShape),
+		DescribeMemoryBasis(mem.Reference.Source, mem.Reference.Hardware)))
 	for _, p := range mem.ObservedPeaks {
 		day := p.ObservedAt
 		if len(day) > 10 {
@@ -252,6 +253,7 @@ func DetailLines(m Model, installed, enabled, isDefault bool, catalogPath string
 		lines = append(lines, fmt.Sprintf("  Seen on this machine: %s with %s, %s", FormatGB(p.PeakBytes), DescribeLaunchShape(p.LaunchShape), day))
 	}
 	lines = append(lines, "  This machine:   "+DescribeFit(mem.Fit.Verdict, mem.Fit.SystemMemoryGb, mem.Fit.HeadroomGb))
+	lines = append(lines, "  Note:           "+PlanningMinimumNote)
 	if a, ok := c.FeedAnnotation.(*catalog.AnnotationSummary); ok && a != nil {
 		lines = append(append(lines, ""), FeedAnnotationLines(a)...)
 	}
@@ -300,4 +302,30 @@ func FeedAnnotationLines(a *catalog.AnnotationSummary) []string {
 		lines = append(lines, "  "+m.Label+" · Verified unsupported: "+m.Reason+note)
 	}
 	return lines
+}
+
+// MeasurementHardware is the machine every checked-in memory record was
+// measured on (TS MEASUREMENT_HARDWARE).
+const MeasurementHardware = "Apple M-series 64 GiB, macOS 26"
+
+// PlanningMinimumLabel names the computed minimum (minVramGb in JSON): a
+// planning figure at one launch shape, never "VRAM needed" (#368).
+const PlanningMinimumLabel = "Planning minimum"
+
+// PlanningMinimumNote explains the planning minimum (TS planningMinimumNote).
+const PlanningMinimumNote = "LocalBase's planning minimum is the estimated or measured accelerator demand at the stated launch settings plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement, and other settings or machines need different amounts."
+
+// DescribeMemoryBasis says how a reference figure was obtained, such as
+// "measured on Apple M-series 64 GiB, macOS 26" (TS describeMemoryBasis).
+func DescribeMemoryBasis(source, hardware string) string {
+	switch source {
+	case "estimate":
+		return "formula estimate, not measured"
+	case "observed":
+		return "peak recorded on this machine"
+	}
+	if hardware != "" {
+		return "measured on " + hardware
+	}
+	return "measured"
 }

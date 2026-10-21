@@ -28,7 +28,7 @@ func TestCatalogMemoryMatchesTypeScript(t *testing.T) {
 	if err := json.Unmarshal(b, &cases); err != nil {
 		t.Fatal(err)
 	}
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	for _, c := range cases {
 		s := cat.ByID(c.ModelID)
 		e := memory.EstimateCatalog(s, nil)

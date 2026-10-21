@@ -123,6 +123,7 @@ type LLM struct {
 	switches sync.WaitGroup // in-flight model switches; Close waits for them
 	failed   bool           // the last start failed and nothing runs
 	claimed  bool           // idle recovery is stopping the backend; hold requests
+	chooser  defaultChooser // the fit-aware default chat model
 }
 
 type geometryEntry struct {
@@ -162,7 +163,7 @@ func ConfiguredIDs(cfg *store.Config, kind string) []string {
 func (m *LLM) Resolve(model string) (string, *catalog.Spec, error) {
 	cfg := m.Config()
 	if model == "" {
-		model = cfg.Active["llm"]
+		model = m.DefaultModel(true).ModelID
 	}
 	if !slices.Contains(ConfiguredIDs(cfg, "llm"), model) {
 		// Imported models run without being configured.

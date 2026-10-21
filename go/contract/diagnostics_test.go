@@ -64,9 +64,9 @@ func TestCLIDiagnostics(t *testing.T) {
 		mustWriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
 		mustWriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
 		mustMkdirAll(filepath.Join(r, "catalog.d"), 0o700)
-		mustWriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-en-q8_0", "notes": "Patched.",
+		mustWriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-q8_0", "notes": "Patched.",
 			"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
-		mustWriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen2.5-coder-7b-instruct-q4_k_m", "storageGb": "big"}`), 0o600)
+		mustWriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
 		plantPrivateState(t, r)
 	}
 	env := []string{"LOCALBASE_CATALOG_FEED_URL=https://user:feedUserPassword@feed.example.com/feed.json?sig=feedSignature99#frag",

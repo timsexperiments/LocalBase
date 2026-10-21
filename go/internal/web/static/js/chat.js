@@ -36,7 +36,25 @@ const draftList = $("[data-attachments]");
 const canChat = !input.disabled;
 
 const uuid = () => crypto.randomUUID();
-const fresh = () => ({ id: uuid(), title: "New conversation", workspace: "chat", mode: "llm", model: (ready.find((m) => m.default) ?? ready[0])?.id ?? "", messages: [] });
+// The effective default chat model ({modelId, reason}); each new
+// conversation asks the server again (a decision point, DESIGN §18).
+let defaultChoice = JSON.parse($("#chat-default")?.textContent || "null");
+const defaultModelId = () => {
+  const d = defaultChoice?.modelId;
+  if (d && ready.some((m) => m.id === d)) return d;
+  return (ready.find((m) => m.default) ?? ready[0])?.id ?? "";
+};
+async function refreshDefault() {
+  try {
+    const r = await fetch("/app/chat/default", { headers: { "X-Localbase-Ui": "1" }, cache: "no-store" });
+    if (r.ok) defaultChoice = await r.json();
+  } catch {
+    // Keep the last known default.
+  }
+}
+// Conversations whose model the person chose in the picker (not saved).
+const picked = new Set();
+const fresh = () => ({ id: uuid(), title: "New conversation", workspace: "chat", mode: "llm", model: defaultModelId(), messages: [] });
 
 // --- state ----------------------------------------------------------------------
 
@@ -483,6 +501,12 @@ jump.addEventListener("click", () => {
 // --- model --------------------------------------------------------------------------
 
 function renderModel() {
+  const reason = $("[data-default-reason]");
+  if (reason) {
+    const show = !active.messages.length && !picked.has(active.id) && !!defaultChoice?.reason && active.model === defaultChoice.modelId;
+    reason.hidden = !show;
+    reason.textContent = show ? defaultChoice.reason : "";
+  }
   const m = models.find((x) => x.id === active.model);
   const name = m ? m.name : active.model ? "Model not available" : "Choose a model";
   $("[data-model-name]").textContent = m && !m.ready ? `${name} (not installed)` : name;
@@ -503,6 +527,7 @@ function renderPicker() {
     radio.disabled = !m.ready;
     radio.addEventListener("change", () => {
       active.model = m.id;
+      picked.add(active.id);
       dropRead();
       save();
       renderModel();
@@ -1005,9 +1030,12 @@ picker.addEventListener("click", (e) => {
   if (e.target === picker) picker.close();
 });
 for (const b of $$("[data-new-chat]"))
-  b.addEventListener("click", () => {
+  b.addEventListener("click", async () => {
     if (abort) return;
+    await refreshDefault();
     select("");
+    // A reused empty conversation follows the default unless the person chose.
+    if (!active.messages.length && !picked.has(active.id)) active.model = defaultModelId();
     errorBox.replaceChildren();
     render();
     if (drawer.open) drawer.close();

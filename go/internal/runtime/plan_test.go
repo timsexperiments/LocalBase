@@ -89,7 +89,7 @@ func loadGolden(t *testing.T) (string, []goldenCase) {
 // context budget with the TS implementation's output.
 func TestPlanMatchesTypeScript(t *testing.T) {
 	platform, cases := loadGolden(t)
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestGeometryMatchesTypeScript(t *testing.T) {
 		t.Skip("set LOCALBASE_TEST_MODELS_DIR to the models/llm directory the golden file was built from")
 	}
 	_, cases := loadGolden(t)
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	seen := map[string]bool{}
 	for _, c := range cases {
 		if seen[c.ModelID] || c.Geometry == nil {

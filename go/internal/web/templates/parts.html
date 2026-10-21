@@ -4,7 +4,7 @@
   <div class="min-w-0 flex-1">
     <h3 class="text-lg font-semibold leading-snug break-words"><a href="/app/models/m/{{.ID}}" class="outline-none after:absolute after:inset-0 after:content-['']">{{.Name}}</a></h3>
     <p class="mt-0.5 text-sm text-muted">
-      {{.Task}} · {{size .DiskBytes}} on disk{{if .MemoryGB}} · needs {{.MemoryGB}} GB memory{{end}}
+      {{.Task}} · {{size .DiskBytes}} on disk{{if .MemoryGB}} · planned {{.MemoryGB}} GB memory{{end}}
     </p>
     <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Status">
       {{if .Enabled}}<li class="badge badge-ok">Enabled</li>{{else}}<li class="badge">Not enabled</li>{{end}}

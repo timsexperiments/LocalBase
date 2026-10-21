@@ -11,8 +11,9 @@
     <section class="card p-5" aria-labelledby="mem-h">
       <h2 id="mem-h" class="font-bold">Memory on this machine</h2>
       {{with .Fit}}
-      <p class="mt-2 text-2xl font-bold">{{.MinVramGB}} GB</p>
-      <p class="text-sm text-muted">{{.Source}} figure for this machine's launch settings ({{.LaunchShape}}). Other settings or devices need different amounts. This machine has {{.SystemMemoryGB}} GB.</p>
+      <p class="mt-2 text-sm font-semibold text-muted">Planning minimum</p>
+      <p class="text-2xl font-bold">{{.MinVramGB}} GB</p>
+      <p class="text-sm text-muted">{{.Source}} figure at these launch settings ({{.LaunchShape}}), plus a margin of 512 MiB or 10%, whichever is larger. It is not a hardware requirement; other settings or machines need different amounts. This machine has {{.SystemMemoryGB}} GB.</p>
       <p class="mt-2">{{if eq .Fit "fits"}}<span class="badge badge-ok">Fits</span>{{else if eq .Fit "tight"}}<span class="badge badge-warn">Tight fit</span>{{else}}<span class="badge">Won't fit</span>{{end}}</p>
       {{else}}
       <p class="mt-2 text-muted">A memory figure for this kind of model arrives in a later milestone.</p>

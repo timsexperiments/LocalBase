@@ -56,7 +56,7 @@ func (c capCase) detected() *Detected {
 // TestResolveCapabilitiesMatchesTypeScript feeds TS's detected opinions and
 // synthetic runtime reports through the Go resolver.
 func TestResolveCapabilitiesMatchesTypeScript(t *testing.T) {
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	for _, c := range loadCapCases(t) {
 		spec := cat.ByID(c.ModelID)
 		if spec == nil {
@@ -87,7 +87,7 @@ func TestDetectCapabilitiesMatchesTypeScript(t *testing.T) {
 	if root == "" {
 		t.Skip("set LOCALBASE_TEST_MODELS_ROOT to the models directory the golden file was built from")
 	}
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	for _, c := range loadCapCases(t) {
 		if c.Runtime != nil {
 			continue

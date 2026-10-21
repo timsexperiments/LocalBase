@@ -286,7 +286,7 @@ func (s *smoker) switchModel(from, to string, v *llmView, isDecision func(string
 
 func smokeCommand() *cli.Command {
 	return &cli.Command{Name: "smoke", Summary: "Check that a running gateway serves real inference",
-		Examples: []string{"local-base smoke", "local-base smoke --json --switch-to qwen2.5-coder-1.5b-instruct-q4_k_m"},
+		Examples: []string{"local-base smoke", "local-base smoke --json --switch-to qwen3.5-4b-q4_k_m"},
 		Options: []cli.Option{
 			{Name: "switch-to", Value: "<model>", Help: "Also switch to this LLM and back; interrupts other clients"},
 			{Name: "timeout", Value: "<seconds>", Help: "Per-request timeout, including model loads (default 300)"},

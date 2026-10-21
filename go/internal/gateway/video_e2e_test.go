@@ -54,7 +54,7 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	reg, _ := backends.Load("")
 	spec := cat.ByID(videoModel)
 	modelsDir := r.ModelsDir("video")

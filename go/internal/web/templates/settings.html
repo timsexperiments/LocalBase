@@ -20,6 +20,8 @@
     <a href="/app/chat" class="btn btn-quiet mt-4" hx-boost="false">Open Chat</a>
   </section>
 
+  {{with .Defaults}}{{template "default-models" .}}{{end}}
+
   {{with .Token}}{{template "hf-token" .}}{{end}}
 
   {{if and .Principal (not .NoAuth)}}
@@ -53,6 +55,31 @@
     </div>
   </form>
   {{if and (eq .Source "saved") .Status.EnvAvailable}}<p class="mt-3 text-sm text-muted">Clearing it falls back to HF_TOKEN.</p>{{end}}
+  {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+</section>
+{{end}}
+
+{{define "default-models"}}
+<section id="default-models" aria-labelledby="default-models-title" class="card mt-4 p-5">
+  <h2 id="default-models-title" class="text-lg font-bold">Default chat model</h2>
+  <p class="mt-1 text-sm text-muted">New conversations use the first model in this list that fits in the memory available now. A model someone picks, or an app names, is always used as asked.</p>
+  {{with .Effective}}<p class="mt-3"><span class="font-semibold">Now:</span> {{.}}</p>{{end}}
+  {{with .Reason}}<p class="mt-1 text-sm text-muted">{{.}}</p>{{end}}
+  {{if .CanManage}}
+  <form class="mt-4 grid gap-3" hx-post="/app/settings/default-models" hx-target="#default-models" hx-swap="outerHTML" hx-disabled-elt="find button">
+    {{range $i, $cur := .Slots}}
+    <div class="grid gap-1">
+      <label for="default{{$i}}" class="text-base font-semibold">{{if eq $i 0}}First choice{{else if eq $i 1}}If it doesn’t fit{{else}}Then{{end}}</label>
+      <select id="default{{$i}}" name="default{{$i}}" class="input min-h-11" {{if eq $i 0}}required{{end}}>
+        {{if ne $i 0}}<option value="">None</option>{{end}}
+        {{range $.Options}}<option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </div>
+    {{end}}
+    <div><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
+  {{end}}
   {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
   {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
 </section>

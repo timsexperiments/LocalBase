@@ -12,6 +12,10 @@ import {
   detectModelCapabilities,
   resolveModelCapabilities,
 } from "../../../src/domains/models/capability-detection";
+import { keepFormerCatalogEntries } from "../../../src/test/former-catalog";
+
+// Installs keep former built-in entries (#368); plan them as well.
+keepFormerCatalogEntries();
 
 const modelsRoot = process.argv[2] ?? "/nonexistent";
 const runtimes = [

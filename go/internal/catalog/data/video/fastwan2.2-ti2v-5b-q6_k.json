@@ -91,5 +91,5 @@
   "experimentalRuntime": true,
   "commercialStatus": "open",
   "catch": "Apache-2.0 diffusion model and text encoder; MIT tiny VAE.",
-  "notes": "Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
+  "notes": "Q6_K GGUF of FastWan2.2-TI2V-5B-FullAttn (Green-Sky), with a UMT5-XXL Q8_0 encoder (city96) and the taew2_2 tiny VAE (madebyollin/taehv). Experimental and unqualified text-to-video and image-to-video profile for macOS ARM64 unified memory or Linux x64 with one NVIDIA GPU: exactly 480x832, 81 frames, and 16 fps."
 }

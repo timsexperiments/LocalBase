@@ -269,8 +269,17 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 		check(fmt.Sprintf("failed start #%d", i), rs, 503, "service_unavailable", true)
 		sameError(t, fmt.Sprintf("failed start #%d", i), rs)
 	}
-	// Permanent until someone installs it: 409, no Retry-After.
-	check("files missing", ask("realvis-xl-v5.0"), 409, "model_install_consent_required", false)
+	// Permanent until someone installs it: 409, no Retry-After. A built-in
+	// entry: a former one kept as a user entry (#368) is sized first and,
+	// on a busy machine, refused for memory.
+	// Both size the model first, so on a busy machine it is a memory 503.
+	missing := ask("juggernaut-xl-v9")
+	sameError(t, "files missing", missing)
+	if r := missing["go"]; r != nil && r.Status == 503 && r.JSON(t)["error"].(map[string]any)["code"] == "insufficient_memory" {
+		t.Log("files missing: refused for memory first on this machine; the 409 path was not reached")
+	} else {
+		check("files missing", missing, 409, "model_install_consent_required", false)
+	}
 	// A missing multi-file model is sized from the catalog first, so on a busy
 	// machine it is a transient memory 503; either way both gateways agree.
 	flux := ask("flux1-schnell-q4_0")

@@ -208,7 +208,7 @@ catch (e) { console.log((e as Error).message); }`
 	if err != nil {
 		t.Fatalf("bun: %v", err)
 	}
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}

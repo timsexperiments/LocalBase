@@ -33,7 +33,7 @@ func testFeed(t *testing.T) []byte {
 	}
 	builtIn := map[string]any{"modelId": "whisper-tiny-en-q8_0", "notes": "ignored"}
 	invalid := map[string]any{"modelId": "broken-entry", "kind": "stt"}
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	coder := cat.ByID("qwen2.5-coder-3b-instruct-q4_k_m")
 	peak := func(shape string, bytes int64) map[string]any {
 		return map[string]any{"variant": "Q8_0", "launchShape": shape, "peakBytes": bytes, "backendAcceleratorBytes": bytes,

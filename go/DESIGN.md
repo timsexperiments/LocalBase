@@ -1986,6 +1986,43 @@ regular file, even when the name ends in a model extension
 directory as an LLM, so on a root that contains one, Go's output is
 shorter. The live directory is the operator's to clean up.
 
+**#368 ported (cdb45205, merged and deployed).** `main` is merged up the
+stack. `go generate` syncs 18 built-in entries and the 61 former entries
+(`internal/catalog/data/former`, in `FORMER_CATALOG_DATA` order).
+
+- **Kept as user entries.** On every catalog load, an installed former
+  entry (its primary file is on disk) is written to
+  `catalog.d/<id>.json`, as is one the settings name (selected or active,
+  `conf.KeepFormerSelections`). The file is the shipped data, with
+  "No longer in the LocalBase catalog; kept from an earlier release." in
+  front of its notes. A user patch at that path is applied on top.
+  `catalog.d/.former-built-ins` records each id, so removing the entry
+  sticks.
+- **Measurements and backends kept.** A kept entry whose launch-shaped
+  fields match the shipped ones keeps its checked-in memory records
+  (`Spec.UsesReferenceMeasurements`). It also keeps the backends it was
+  qualified on, so llama-server is selected without a header read.
+- **Set aside.** A complete user file that pins exactly a built-in's
+  repository, revision and files (qwen3.6 on the live root) is set aside,
+  and the built-in applies as shipped. A file that pins other files stays
+  a patch, with trust "modified".
+- **Feed.** The feed never provides a former id. Hub pipeline templates
+  fall back to former entries.
+- **Defaults and copy.** Fresh installs default to qwen3.5-4b and
+  dreamshaper-8-lcm. The CLI and the model details page say "planning
+  minimum", with its note and the measuring machine. Coding scores are
+  neither shown nor used for ranking.
+- **`configure --*-models`.** It accepts built-in ids only, as TS's
+  `assertCatalogModels` does: TS checks before the root's catalog loads.
+- **Tests.** Goldens are regenerated. The memory and plan generators call
+  `keepFormerCatalogEntries()`, and their Go tests use
+  `catalog.LoadWithFormer()`. `former_test.go` ports
+  `former-adoption.test.ts`.
+- **Contract fixture.** It keeps its former image and STT ids, as the live
+  root does. The retry case asks for the built-in juggernaut-xl-v9: on a
+  busy machine, both gateways refuse a missing model for memory before
+  its files.
+
 ### 17.9 Local iOS and accessibility checks (2026-10-21)
 
 These checks replace the real-iPhone gate (§17.1 item 2). They ran
@@ -2043,3 +2080,95 @@ The UI sizes text in rem from a fixed root size, so iOS text-size settings
 do not scale it; Safari's page zoom and reflow at 320px still work. This
 is outside the gate's categories. Supporting it would mean setting the
 root to `-apple-system-body`, a type-scale change for its own review.
+
+## 18. Fit-aware default chat model (Go only; operator, 2026-10-21)
+
+A new capability; TS has no equivalent. The user's words: "Yes 3.6 should
+be my default chat model now when it will fit in VRAM."
+
+**Configuration.** `defaultLlmModels` is an ordered list of chat models.
+- **Where it lives.** `[models] defaultLlmModels` in `config show` and
+  `config apply` (rendered only when set, so a TS-shaped document is
+  unchanged), `configure --default-llm-models a,b`, and the "Default chat
+  model" card in Settings (models:manage; read with models:read), backed
+  by `GET/POST /_localbase/default-chat-models`.
+- **Storage.** It is stored in `go_settings`
+  (`models.default-llm-models`). The TS config row and journal are
+  untouched, and TS ignores the table, so rollback is a binary swap as
+  before.
+- **Rules.** Entries must be selected chat models (not decision or
+  embedding models), without duplicates. Disabling a model removes it
+  from the list.
+- **One entry.** It is the active LLM itself and stores no list; that is
+  today's behaviour exactly, sticky active model included.
+- **Two or more.** `activeLlmModel` keeps its TS meaning (the model last
+  activated, persisted after a switch). It is what TS would use after a
+  rollback.
+- **When changes apply.** As with every model setting, a CLI `config
+  apply` reaches a running gateway at its next start, as in TS; the
+  Settings card and the API apply at once.
+- **At cutover.** The live install is set to
+  `["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`. Fresh installs keep
+  #368's one-entry qwen3.5-4b default.
+
+**Where it applies.** Only where the caller chose no model.
+- TS requires `model` on chat and decision requests, so the surface is
+  the browser's new conversation: the page load and each "New
+  conversation", via `GET /app/chat/default`.
+- `LLM.Resolve("")` also uses it for internal callers.
+- A request that names a model is never substituted: it gets that model,
+  or its real admission error (a retryable 503). Naya and OpenCode name
+  their models and are unaffected.
+
+**Choice.**
+- **The rule.** Take the first default that would pass memory admission
+  now. The check is `fitsNow`: the switch preflight's
+  `Memory.CheckAdmission` on the model's admission demand, crediting the
+  LLM slot (switch credit) and every runtime idle recovery could stop. It
+  stops nothing and makes no separate estimate.
+- **Not installed.** A default that is not installed does not fit.
+- **None fits.** The last default is used, and it gets the normal
+  admission error.
+- **The running model.** It fits where it runs.
+
+**Stability.**
+- **Decision points only.** The choice is re-evaluated only at a page
+  load or a new conversation, and only when the LLM is idle (no active,
+  queued or starting request). It never changes mid-stream, and a
+  conversation keeps the model it started with (the browser stores it per
+  conversation).
+- **Dwell.** After a change the choice holds for at least 30 s.
+- **Upgrade hysteresis.** Moving back up the list needs the earlier model
+  to fit with a margin (the larger of 1 GiB and 10% of its demand) at 3
+  decision points in a row, like the pressure monitor's recovery count.
+  Moving down when the current choice no longer fits is immediate.
+
+**Visible.**
+- **Chat.** The empty conversation shows the reason under its heading,
+  for example "Using Qwen3.5 9B: Qwen3.6-35B-A3B needs more free memory
+  than is available." Names come from the catalog. Other reasons: "is not
+  installed", "cannot start: <the backend's error>", and, while an
+  upgrade settles, "fits again; LocalBase switches back once it has room
+  to spare".
+- **Settings.** The card shows the model used now and the reason.
+- **Log.** Each change logs `model.default-selected` (info), with the
+  preferred id, the chosen id, the previous id and the admission cause
+  (`insufficient_memory`, `not_installed`, `settling` or the error).
+- **`status`.** It prints "Default chat model: <id> (<reason>)" and adds
+  `defaultChatModel` to its JSON. It reads them from
+  `/_localbase/default-model`, which needs the instance token, like
+  `/_localbase/instance`. The unauthenticated `/health` names no models.
+
+**Tests.**
+- `internal/runtime/default_llm_test.go`: preferred fits; fallback with
+  its reason and event; back to the preferred only after the dwell and 3
+  margin samples; none fits → the last one, with its admission error; an
+  explicit request is never substituted; no change while a request
+  streams; a single entry is the active model.
+- `internal/conf/defaults_test.go`: the document, plan and validation,
+  and the store round trip.
+- `internal/gateway/default_models_test.go`: the API and the token gate.
+
+**Live context.** Qwen3.6's planning demand is about 21 GiB against a
+reserve of about 10.3 GiB. Available memory is usually around 23 GiB
+with the user's apps open, so the fallback will often be what runs.

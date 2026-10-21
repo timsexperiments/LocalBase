@@ -39,5 +39,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "open",
   "catch": "CreativeML Open RAIL-M license.",
-  "notes": "Cloudflare Workers AI photorealism model distilled for fast four-step generation. Native inference qualification is pending."
+  "notes": "Lykon's DreamShaper 8 LCM: a Stable Diffusion 1.5 fine-tune distilled with latent consistency (LCM), shipped as one F16 safetensors checkpoint. LocalBase profile: LCM sampler and scheduler, 4 steps, CFG 1. Native inference qualification is pending."
 }

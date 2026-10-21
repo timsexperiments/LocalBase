@@ -261,7 +261,10 @@ func TestCLIConfigure(t *testing.T) {
 		{args: []string{"--json", "configure"}, skip: msg},
 		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},
 		{args: []string{"--json", "configure", "--parallel", "3", "--ctx-mode", "explicit"}},
+		// A kept former entry is not a built-in id: both refuse it before
+		// the root's catalog loads (TS assertCatalogModels, #368).
 		{args: []string{"--json", "configure", "--llm-models", "qwen2.5-coder-1.5b-instruct-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
+		{args: []string{"--json", "configure", "--llm-models", "qwen3.5-4b-q4_k_m,clef-flash-q4_k_m", "--active-llm", "clef-flash-q4_k_m"}},
 		{args: []string{"--json", "configure", "--stt-models", "", "--tts-models", "qwen3-tts-1.7b-base-q4_k_m"}},
 		{args: []string{"--json", "configure", "--config", tomlPath}},
 		{args: []string{"--json", "config", "show"}}, // the memory change marked a pending restart

@@ -51,6 +51,7 @@
             <div>
               <h2 class="text-2xl font-bold tracking-tight">What’s on your mind?</h2>
               <p class="mt-1 text-muted">Replies come from the model running on this LocalBase.</p>
+              <p class="mt-3 text-muted" data-default-reason hidden></p>
             </div>
           </div>
           {{end}}
@@ -109,6 +110,7 @@
 </dialog>
 
 <script type="application/json" id="chat-models">{{.ModelsJSON}}</script>
+<script type="application/json" id="chat-default">{{.DefaultJSON}}</script>
 <script type="application/json" id="chat-permissions">{{.PermissionsJSON}}</script>
 <script type="module" src="{{asset "js/chat.js"}}"></script>
 {{end}}

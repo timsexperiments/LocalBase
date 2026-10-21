@@ -141,7 +141,7 @@ func TestModelsList(t *testing.T) {
 		}
 		// Image models: the fixture selection, with the active one first (any
 		// image request makes its model active).
-		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo"}
+		images := []string{"dreamshaper-8-lcm", "flux1-schnell-q4_0", "realvis-xl-v5.0", "sdxl-turbo", "juggernaut-xl-v9"}
 		if slices.Contains(ids, "dreamshaper-v8") {
 			images = append(images, "dreamshaper-v8")
 		}

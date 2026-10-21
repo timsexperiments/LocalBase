@@ -82,7 +82,7 @@ func newTestLLMWith(t *testing.T, mem *memory.Controller) *LLM {
 	dir := t.TempDir()
 	models := filepath.Join(dir, "models", "llm")
 	os.MkdirAll(models, 0o700)
-	cat, err := catalog.Load("")
+	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		t.Fatal(err)
 	}

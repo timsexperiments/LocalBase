@@ -13,8 +13,9 @@ import (
 // model with one variant. Facts the entry pins are SourcePinned. The file
 // format, and an LLM's architecture, stay unknown until the file's header
 // is inspected: a file name is never evidence.
-// Built-in entries record the backends they were qualified on; user entries
-// record none.
+// Built-in entries record the backends they were qualified on, and so does a
+// former built-in kept as a user entry with its shipped files (#368); other
+// user entries record none.
 func FromSpec(s *catalog.Spec) Model {
 	m := Model{ID: s.ModelID, Name: s.Name(), Origin: "catalog", SourceURL: s.Source}
 	if s.Trust != "qualified" {
@@ -40,7 +41,7 @@ func FromSpec(s *catalog.Spec) Model {
 		}
 		v.Artifacts = append(v.Artifacts, art)
 	}
-	if s.Trust == "qualified" {
+	if s.UsesReferenceMeasurements() {
 		v.QualifiedOn = qualifiedOn(s)
 	}
 	m.Variants = []Variant{v}

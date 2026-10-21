@@ -107,6 +107,7 @@ func readConfigIfPresent(dir string, cat *catalog.Catalog) (*store.Config, bool,
 	if err != nil {
 		return nil, false, err
 	}
+	conf.KeepFormerSelections(dir, cfg, cat)
 	if issues := conf.ValidateModels(cfg, cat, false); len(issues) > 0 {
 		return nil, false, invalidConfiguration(dir, conf.Summary(issues))
 	}

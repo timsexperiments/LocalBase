@@ -51,6 +51,9 @@ type Memory struct {
 		Source      string `json:"source"`
 		Bytes       int64  `json:"bytes"`
 		LaunchShape string `json:"launchShape"`
+		// Hardware is the machine a measured figure was recorded on; absent
+		// for estimates.
+		Hardware string `json:"hardware,omitempty"`
 	} `json:"reference"`
 	ObservedPeaks []Peak `json:"observedPeaks"`
 	Observed      *Peak  `json:"observed"`
@@ -303,8 +306,14 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 	if o := fit.Observed; o != nil {
 		mem.Observed = &Peak{o.PeakBytes, o.LaunchShape, o.Method, o.ObservedAt}
 	}
+	if fit.ReferenceSource == "measured" {
+		mem.Reference.Hardware = MeasurementHardware // every checked-in record shares one machine
+	}
 	if p := fit.FeedPeak; p != nil {
 		mem.Reference.LaunchShape = p.LaunchShape
+		if fit.ReferenceSource != "measured" {
+			mem.Reference.Hardware = p.Hardware
+		}
 		mem.FeedPeak = map[string]any{"peakBytes": p.PeakBytes, "launchShape": p.LaunchShape, "variant": p.Variant,
 			"hardware": p.Hardware, "measuredAt": p.MeasuredAt}
 	}

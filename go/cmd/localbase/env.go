@@ -70,6 +70,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 		return nil, &conf.InvalidError{Root: r.Dir, Issues: []conf.Issue{{Path: "root",
 			Message: "root is \"" + cfg.Root + "\" but this database was opened for \"" + r.Dir + "\""}}}
 	}
+	conf.KeepFormerSelections(r.Dir, cfg, e.Catalog)
 	if issues := conf.ValidateModels(cfg, e.Catalog, false); len(issues) > 0 {
 		e.Close()
 		return nil, &conf.InvalidError{Root: r.Dir, Issues: issues}

@@ -156,13 +156,13 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		}
 	}
 	// A real image model (an APFS clone), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
-	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo"]`
+	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","juggernaut-xl-v9"]`
 	if d := os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
 		mustMkdirAll(r.ModelsDir("image"), 0o700)
 		if err := cloneModel(filepath.Join(d, imageFile), filepath.Join(r.ModelsDir("image"), imageFile)); err != nil {
 			return "", "", "", false, err
 		}
-		imageSel = `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","dreamshaper-v8"]`
+		imageSel = `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","juggernaut-xl-v9","dreamshaper-v8"]`
 	}
 	_, err = st.DB.Exec(`INSERT INTO config (id, root, gateway_host, gateway_port, host, port, ctx_size, ctx_mode,
 		stt_host, stt_port, selected_llm_models, selected_stt_models, selected_tts_models, selected_image_models,
@@ -197,7 +197,7 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	}
 	// Active non-LLM models: sparse files at the expected sizes, which pass the
 	// install check of both implementations without real weights.
-	cat, _ := catalog.Load("")
+	cat, _ := catalog.LoadWithFormer()
 	for _, id := range []string{"whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m", "dreamshaper-8-lcm", "wan2.1-t2v-1.3b-q8_0"} {
 		spec := cat.ByID(id)
 		dir := r.ModelsDir(spec.Kind)

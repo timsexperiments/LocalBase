@@ -9,6 +9,10 @@ import {
   measuredCatalogModelMemory,
 } from "../../../src/domains/runtime/memory-estimate";
 import { modelMemoryFigure } from "../../../src/domains/models/memory-fit";
+import { keepFormerCatalogEntries } from "../../../src/test/former-catalog";
+
+// Installs keep former built-in entries (#368); plan them as well.
+keepFormerCatalogEntries();
 
 console.log(
   JSON.stringify(

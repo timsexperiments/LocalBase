@@ -183,12 +183,8 @@ func modelsCatalog() *cli.Command {
 			for _, m := range rows {
 				s := e.Catalog.ByID(m.ID)
 				f := cliFit(e, s, memGB)
-				coding := ""
-				if s.CodingScore != nil {
-					coding = fmt.Sprintf(" | coding=%g/10", *s.CodingScore)
-				}
-				c.Info("%-5s | %-38s | size=%-10s | min_vram=%3d GB %-8s | fit=%-8s | storage=%.2f GB | status=%s%s",
-					s.Kind, s.ModelID, s.Size, f.MinVramGB, f.Source, f.Fit, s.StorageGB, s.CommercialStatus, coding)
+				c.Info("%-5s | %-38s | size=%-10s | plan_min=%3d GB %-8s | fit=%-8s | storage=%.2f GB | status=%s",
+					s.Kind, s.ModelID, s.Size, f.MinVramGB, f.Source, f.Fit, s.StorageGB, s.CommercialStatus)
 				line := fmt.Sprintf("      in=%s out=%s features=%s", strings.Join(s.InputModalities, ","),
 					strings.Join(s.OutputModalities, ","), strings.Join(meta.Features(s), ","))
 				if s.QualificationState == "experimental" {
@@ -215,6 +211,10 @@ func modelsCatalog() *cli.Command {
 			}
 			if len(out) == 0 && len(listed) > 0 {
 				c.Info("No models match these filters.")
+			}
+			if len(out) > 0 {
+				c.Info("plan_min: %s Each figure is at the model's reference launch (LLMs: up to an 8,192-token context, 1 request at a time); \"measured\" figures were recorded on %s. Run \"local-base models show <id>\" for the exact settings.",
+					meta.PlanningMinimumNote, meta.MeasurementHardware)
 			}
 			return map[string]any{"models": out}, nil
 		}}
@@ -261,16 +261,6 @@ func modelsRecommend() *cli.Command {
 			sort.SliceStable(picks, func(i, j int) bool {
 				a, b := picks[i], picks[j]
 				if kind == "llm" {
-					sa, sb := 0.0, 0.0
-					if a.CodingScore != nil {
-						sa = *a.CodingScore
-					}
-					if b.CodingScore != nil {
-						sb = *b.CodingScore
-					}
-					if sa != sb {
-						return sa > sb
-					}
 					return minGB(a) > minGB(b)
 				}
 				return a.StorageGB < b.StorageGB
@@ -282,7 +272,7 @@ func modelsRecommend() *cli.Command {
 			out := []map[string]any{}
 			for _, s := range picks {
 				f := cliFit(e, s, vram)
-				c.Info("- %s (%.2f GB, min %d GB %s, features=%s)", s.ModelID, s.StorageGB, f.MinVramGB, f.Source,
+				c.Info("- %s (%.2f GB, planning min %d GB %s, features=%s)", s.ModelID, s.StorageGB, f.MinVramGB, f.Source,
 					strings.Join(meta.Features(s), "/"))
 				out = append(out, specJSON(s, memoryJSON(f)))
 			}
@@ -399,7 +389,7 @@ func isTerminal(f *os.File) bool {
 
 func modelsInstall() *cli.Command {
 	return &cli.Command{Name: "install", Summary: "Download and install a model", Usage: "[modelId]", MaxArgs: 1,
-		Examples: []string{"local-base models install qwen2.5-coder-7b-instruct-q4_k_m",
+		Examples: []string{"local-base models install qwen3.5-4b-q4_k_m",
 			"local-base --non-interactive models install --all"},
 		Options: []cli.Option{{Name: "all", Bool: true, Help: "Install all selected models"}},
 		Run: func(c *cli.Ctx) (any, error) {
@@ -474,7 +464,7 @@ func installer(e *env, allowed bool, log *slog.Logger) func(context.Context, str
 
 func modelsShow() *cli.Command {
 	return &cli.Command{Name: "show", Summary: "Show everything known about one model", Usage: "<modelId>", MinArgs: 1, MaxArgs: 1,
-		Examples: []string{"local-base models show qwen2.5-coder-7b-instruct-q4_k_m", "local-base --json models show whisper-large-v3-turbo"},
+		Examples: []string{"local-base models show qwen3.5-4b-q4_k_m", "local-base --json models show whisper-large-v3-turbo"},
 		Run: func(c *cli.Ctx) (any, error) {
 			e, err := readEnv(c, true)
 			if err != nil {

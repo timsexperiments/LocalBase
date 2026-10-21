@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // MemoryReserve is a pool reserve: the larger of a percentage of capacity and a floor.
@@ -36,12 +37,29 @@ type Config struct {
 	OtelSampleRatio      int
 	SystemReserve        MemoryReserve
 	AcceleratorReserve   MemoryReserve
+	// DefaultLLMs is the ordered default chat model list (Go only, stored in
+	// go_settings, DESIGN §18): two or more ids; nil means the active LLM
+	// alone, as in TS.
+	DefaultLLMs []string
+}
+
+// DefaultLLMsKey is the go_settings key of Config.DefaultLLMs.
+const DefaultLLMsKey = "models.default-llm-models"
+
+// DefaultLLMList is the ordered default chat model list: DefaultLLMs, or
+// the active LLM alone.
+func (c *Config) DefaultLLMList() []string {
+	if len(c.DefaultLLMs) >= 2 {
+		return c.DefaultLLMs
+	}
+	return []string{c.Active["llm"]}
 }
 
 // Clone copies the config, including its maps.
 func (c *Config) Clone() *Config {
 	n := *c
 	n.Selected, n.Active = map[string][]string{}, map[string]string{}
+	n.DefaultLLMs = slices.Clone(c.DefaultLLMs)
 	for k, v := range c.Selected {
 		n.Selected[k] = append([]string{}, v...)
 	}
@@ -94,6 +112,13 @@ func (s *Store) LoadConfig(ctx context.Context) (*Config, error) {
 	}
 	if c.Active["llm"] == "" {
 		return nil, errors.New("config active_llm_model is empty")
+	}
+	// A database TS created and Go has only read has no go_settings table.
+	if v, ok, err := s.Setting(ctx, DefaultLLMsKey); err == nil && ok {
+		var ids []string
+		if json.Unmarshal([]byte(v), &ids) == nil && len(ids) >= 2 {
+			c.DefaultLLMs = ids
+		}
 	}
 	return c, nil
 }
@@ -151,5 +176,23 @@ func saveConfig(ctx context.Context, db execer, c *Config) error {
 		c.Active["llm"], c.Active["stt"], c.Active["tts"], c.Active["image"], c.Active["video"],
 		c.HFToken, b2i(c.InstallMissingModels), c.Parallel, c.OtelEndpoint, c.OtelHeaders, c.OtelSampleRatio,
 		c.SystemReserve.Percent, c.SystemReserve.MinimumGB, c.AcceleratorReserve.Percent, c.AcceleratorReserve.MinimumGB)
+	if err != nil {
+		return err
+	}
+	// A default that is no longer selected leaves the list; one left is
+	// the active LLM alone.
+	var defaults []string
+	for _, id := range c.DefaultLLMs {
+		if slices.Contains(c.Selected["llm"], id) {
+			defaults = append(defaults, id)
+		}
+	}
+	if len(defaults) >= 2 {
+		b, _ := json.Marshal(defaults)
+		_, err = db.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
+			ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, DefaultLLMsKey, string(b), nowISO())
+	} else {
+		_, err = db.ExecContext(ctx, `DELETE FROM go_settings WHERE key = ?`, DefaultLLMsKey)
+	}
 	return err
 }

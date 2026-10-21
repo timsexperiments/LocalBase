@@ -778,7 +778,7 @@ func capabilityIDs(t *catalog.Spec) []any {
 
 func loraEntry(cat *catalog.Catalog, e *Entry, base string, info *ModelInfo, first File, modelID, repoName string, taken map[string]string) error {
 	profile := ImageLoraBases[base]
-	t := cat.ByID(profile.Template)
+	t := pipelineTemplate(cat, profile.Template)
 	if t == nil {
 		return &Error{Message: fmt.Sprintf("The %s base model (%s) is missing from this LocalBase build.", profile.Label, profile.Template)}
 	}
@@ -834,7 +834,7 @@ func loraEntry(cat *catalog.Catalog, e *Entry, base string, info *ModelInfo, fir
 
 func pipelineEntry(cat *catalog.Catalog, e *Entry, pipeline string, primary *jsjson.Object, first File, repoName, stem string) error {
 	profile := ImagePipelines[pipeline]
-	t := cat.ByID(profile.Template)
+	t := pipelineTemplate(cat, profile.Template)
 	if t == nil || t.ImageRuntime == nil || t.ImageRuntime.Kind == "checkpoint" {
 		return &Error{Message: fmt.Sprintf("The %s pipeline profile (%s) is missing from this LocalBase build.", profile.Label, profile.Template)}
 	}
@@ -872,4 +872,15 @@ func pipelineEntry(cat *catalog.Catalog, e *Entry, pipeline string, primary *jsj
 	spec.Set("capabilities", capabilityIDs(t))
 	spec.Set("notes", fmt.Sprintf("%s %s pipeline: the VAE and text encoders are the ones pinned by the %s profile.", notes, profile.Label, t.ModelID))
 	return nil
+}
+
+// pipelineTemplate is the pinned entry a pipeline or LoRA profile borrows
+// its encoders, VAE and runtime profile from. A template that left the
+// built-in catalog is the pinned former entry, so discovering those
+// repositories keeps working (TS pipelineTemplate, #368).
+func pipelineTemplate(cat *catalog.Catalog, modelID string) *catalog.Spec {
+	if s := cat.ByID(modelID); s != nil {
+		return s
+	}
+	return catalog.FormerEntry(modelID)
 }

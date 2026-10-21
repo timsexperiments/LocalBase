@@ -1628,7 +1628,7 @@
         "source": "https://huggingface.co/nerijs/pixel-art-xl",
         "repositoryRevision": "8bf4a4d9ea283e00a51fafda8e0539f8248ea037",
         "commercialStatus": "open",
-        "catch": "License: creativeml-openrail-m. Added from Hugging Face; not qualified by LocalBase. Base model sdxl-base-1.0: Stability AI Community License.",
+        "catch": "License: creativeml-openrail-m. Added from Hugging Face; not qualified by LocalBase. Base model sdxl-base-1.0: CreativeML Open RAIL++-M license.",
         "notes": "Added with local-base models add hf:nerijs/pixel-art-xl:pixel-art-xl.safetensors at revision 8bf4a4d9ea283e00a51fafda8e0539f8248ea037 (pipeline text-to-image). LoRA for SDXL 1.0: sd-server applies pixel-art-xl.safetensors to the weights, VAE and encoders pinned by the sdxl-base-1.0 entry. The model card's trigger phrase is \"pixel art\".",
         "displayName": "pixel-art-xl (SDXL 1.0 LoRA)",
         "kind": "image",
@@ -2626,7 +2626,7 @@
         "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
         "file": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
         "modelId": "qwen3.5-0.8b-q4_k_m",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [
@@ -2745,7 +2745,7 @@
         "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
         "file": "Qwen_Qwen3.5-0.8B-Q8_0.gguf",
         "modelId": "qwen3.5-0.8b-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -2776,7 +2776,7 @@
      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
      "file": "Qwen_Qwen3.5-0.8B-Q4_K_M.gguf",
      "modelId": "qwen3.5-0.8b-q4_k_m",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [],
      "memoryPeaks": [
@@ -2792,7 +2792,7 @@
       }
      ],
      "recipe": null,
-     "displayName": "Qwen3.5 0.8B",
+     "displayName": null,
      "installable": false
     },
     {
@@ -2800,12 +2800,12 @@
      "revision": "f36b1ea49a332ede8fe5f389bbf5b3575ef71f48",
      "file": "Qwen_Qwen3.5-0.8B-Q8_0.gguf",
      "modelId": "qwen3.5-0.8b-q8_0",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [],
      "memoryPeaks": [],
      "recipe": null,
-     "displayName": "Qwen3.5 0.8B",
+     "displayName": null,
      "installable": false
     }
    ]
@@ -2864,7 +2864,7 @@
        "partCount": 1,
        "quant": "Q4_K_M",
        "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-       "existing": "built-in",
+       "existing": null,
        "fit": {
         "verdict": "fits",
         "minVramGb": 3,
@@ -2875,7 +2875,7 @@
         "revision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
         "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
         "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [
          {
@@ -2946,7 +2946,7 @@
        "annotation": null
       }
      ],
-     "defaultPath": "qwen2.5-coder-1.5b-instruct-q2_k.gguf"
+     "defaultPath": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
     }
    },
    "notes": [
@@ -2955,7 +2955,7 @@
      "revision": "f86cb2c1fa58255f8052cc32aeede1b7482d4361",
      "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
      "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [
       {
@@ -2967,7 +2967,7 @@
      ],
      "memoryPeaks": [],
      "recipe": null,
-     "displayName": "Qwen2.5 Coder 1.5B Instruct",
+     "displayName": null,
      "installable": false
     }
    ]
@@ -2998,7 +2998,7 @@
        "partCount": 4,
        "quant": "Q4_K_M",
        "modelId": "qwen3-coder-next-q4_k_m",
-       "existing": "built-in",
+       "existing": null,
        "fit": {
         "verdict": "tight",
         "minVramGb": 53,
@@ -3009,7 +3009,7 @@
         "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
         "file": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
         "modelId": "qwen3-coder-next-q4_k_m",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3095,7 +3095,7 @@
        "annotation": null
       }
      ],
-     "defaultPath": "Qwen3-Coder-Next-F16/Qwen3-Coder-Next-00001-of-00004.gguf"
+     "defaultPath": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf"
     }
    },
    "notes": [
@@ -3104,7 +3104,7 @@
      "revision": "b82fb7382639d97b38fa7672e526c760c2fb358e",
      "file": "Qwen3-Coder-Next-Q4_K_M/Qwen3-Coder-Next-Q4_K_M-00001-of-00004.gguf",
      "modelId": "qwen3-coder-next-q4_k_m",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [],
      "memoryPeaks": [],
@@ -3131,8 +3131,8 @@
        }
       ]
      },
-     "displayName": "Qwen3 Coder Next",
-     "installable": true
+     "displayName": null,
+     "installable": false
     }
    ]
   },
@@ -3353,7 +3353,7 @@
         "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
         "file": "ggml-base.en-q8_0.bin",
         "modelId": "whisper-base-en-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3541,7 +3541,7 @@
        "partCount": 1,
        "quant": "Q8_0",
        "modelId": "whisper-medium-q8_0",
-       "existing": "built-in",
+       "existing": null,
        "fit": {
         "verdict": "fits",
         "minVramGb": 2,
@@ -3552,7 +3552,7 @@
         "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
         "file": "ggml-medium-q8_0.bin",
         "modelId": "whisper-medium-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3635,7 +3635,7 @@
        "partCount": 1,
        "quant": "Q8_0",
        "modelId": "whisper-small-q8_0",
-       "existing": "built-in",
+       "existing": null,
        "fit": {
         "verdict": "fits",
         "minVramGb": 2,
@@ -3646,7 +3646,7 @@
         "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
         "file": "ggml-small-q8_0.bin",
         "modelId": "whisper-small-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3729,7 +3729,7 @@
        "partCount": 1,
        "quant": "Q8_0",
        "modelId": "whisper-tiny-q8_0",
-       "existing": "built-in",
+       "existing": null,
        "fit": {
         "verdict": "fits",
         "minVramGb": 1,
@@ -3740,7 +3740,7 @@
         "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
         "file": "ggml-tiny-q8_0.bin",
         "modelId": "whisper-tiny-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3792,7 +3792,7 @@
         "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
         "file": "ggml-tiny.en-q8_0.bin",
         "modelId": "whisper-tiny-en-q8_0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [
@@ -3832,40 +3832,51 @@
     {
      "repo": "ggerganov/whisper.cpp",
      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+     "file": "ggml-base-q8_0.bin",
+     "modelId": "whisper-base-q8_0",
+     "status": "qualified",
+     "revisionMatch": true,
+     "unsupportedCapabilities": [],
+     "memoryPeaks": [],
+     "recipe": null,
+     "displayName": "Whisper Base",
+     "installable": false
+    },
+    {
+     "repo": "ggerganov/whisper.cpp",
+     "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+     "file": "ggml-large-v3-turbo.bin",
+     "modelId": "whisper-large-v3-turbo",
+     "status": "qualified",
+     "revisionMatch": true,
+     "unsupportedCapabilities": [],
+     "memoryPeaks": [
+      {
+       "variant": "F16",
+       "launchShape": "default",
+       "peakBytes": 1941800000,
+       "backendAcceleratorBytes": 1941800000,
+       "hostBufferBytes": 0,
+       "peakRssBytes": 1900625920,
+       "measuredAt": "2026-10-13",
+       "hardware": "Apple M-series 64 GiB, macOS 26"
+      }
+     ],
+     "recipe": null,
+     "displayName": "Whisper Large V3 Turbo",
+     "installable": false
+    },
+    {
+     "repo": "ggerganov/whisper.cpp",
+     "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
      "file": "ggml-tiny-q8_0.bin",
      "modelId": "whisper-tiny-q8_0",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [],
      "memoryPeaks": [],
      "recipe": null,
-     "displayName": "Whisper Tiny",
-     "installable": false
-    },
-    {
-     "repo": "ggerganov/whisper.cpp",
-     "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-     "file": "ggml-base.en-q8_0.bin",
-     "modelId": "whisper-base-en-q8_0",
-     "status": "qualified",
-     "revisionMatch": true,
-     "unsupportedCapabilities": [],
-     "memoryPeaks": [],
-     "recipe": null,
-     "displayName": "Whisper Base (English)",
-     "installable": false
-    },
-    {
-     "repo": "ggerganov/whisper.cpp",
-     "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
-     "file": "ggml-small-q8_0.bin",
-     "modelId": "whisper-small-q8_0",
-     "status": "qualified",
-     "revisionMatch": true,
-     "unsupportedCapabilities": [],
-     "memoryPeaks": [],
-     "recipe": null,
-     "displayName": "Whisper Small",
+     "displayName": null,
      "installable": false
     }
    ]
@@ -3964,7 +3975,7 @@
         "revision": "462165984030d82259a11f4367a4eed129e94a7b",
         "file": "sd_xl_base_1.0.safetensors",
         "modelId": "sdxl-base-1.0",
-        "status": "qualified",
+        "status": "verified",
         "revisionMatch": true,
         "unsupportedCapabilities": [],
         "memoryPeaks": [],
@@ -3981,12 +3992,12 @@
      "revision": "462165984030d82259a11f4367a4eed129e94a7b",
      "file": "sd_xl_base_1.0.safetensors",
      "modelId": "sdxl-base-1.0",
-     "status": "qualified",
+     "status": "verified",
      "revisionMatch": true,
      "unsupportedCapabilities": [],
      "memoryPeaks": [],
      "recipe": null,
-     "displayName": "SDXL Base 1.0",
+     "displayName": null,
      "installable": false
     }
    ]
@@ -5067,7 +5078,7 @@
         "partCount": 2,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 7,
@@ -5081,7 +5092,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 7,
@@ -5258,7 +5269,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-1.5b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 3,
@@ -5323,7 +5334,7 @@
         "annotation": null
        }
       ],
-      "defaultPath": "qwen2.5-coder-1.5b-instruct-q2_k.gguf"
+      "defaultPath": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
      },
      "reason": null,
      "catalog": []
@@ -5612,7 +5623,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen3-coder-next-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "tight",
          "minVramGb": 53,
@@ -6041,7 +6052,7 @@
         "partCount": 2,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 11,
@@ -6055,7 +6066,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-14b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 11,
@@ -6260,7 +6271,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-3b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 4,
@@ -6325,7 +6336,7 @@
         "annotation": null
        }
       ],
-      "defaultPath": "qwen2.5-coder-3b-instruct-fp16.gguf"
+      "defaultPath": "qwen2.5-coder-3b-instruct-q4_k_m.gguf"
      },
      "reason": null,
      "catalog": []
@@ -6642,7 +6653,7 @@
         "partCount": 1,
         "quant": "Q4_K_M",
         "modelId": "qwen2.5-coder-7b-instruct-q4_k_m",
-        "existing": "built-in",
+        "existing": null,
         "fit": {
          "verdict": "fits",
          "minVramGb": 7,
@@ -6763,7 +6774,7 @@
         "annotation": null
        }
       ],
-      "defaultPath": "Qwen2.5-Coder-7B-Instruct-IQ2_M.gguf"
+      "defaultPath": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
      },
      "reason": null,
      "catalog": []
@@ -7295,7 +7306,7 @@
     "replaced": false,
     "installedPath": null
    },
-   "file": "{\n  \"modelId\": \"pixel-art-xl\",\n  \"provider\": \"nerijs\",\n  \"version\": \"8bf4a4d\",\n  \"source\": \"https://huggingface.co/nerijs/pixel-art-xl\",\n  \"repositoryRevision\": \"8bf4a4d9ea283e00a51fafda8e0539f8248ea037\",\n  \"commercialStatus\": \"open\",\n  \"catch\": \"License: creativeml-openrail-m. Added from Hugging Face; not qualified by LocalBase. Base model sdxl-base-1.0: Stability AI Community License.\",\n  \"notes\": \"Added with local-base models add hf:nerijs/pixel-art-xl:pixel-art-xl.safetensors at revision 8bf4a4d9ea283e00a51fafda8e0539f8248ea037 (pipeline text-to-image). LoRA for SDXL 1.0: sd-server applies pixel-art-xl.safetensors to the weights, VAE and encoders pinned by the sdxl-base-1.0 entry. The model card's trigger phrase is \\\"pixel art\\\".\",\n  \"displayName\": \"pixel-art-xl (SDXL 1.0 LoRA)\",\n  \"kind\": \"image\",\n  \"family\": \"Stable-Diffusion-XL\",\n  \"size\": \"6.5GB\",\n  \"quant\": \"F16\",\n  \"storageGb\": 7.11,\n  \"artifacts\": [\n    {\n      \"sourcePath\": \"sd_xl_base_1.0.safetensors\",\n      \"filename\": \"sd_xl_base_1.0.safetensors\",\n      \"expectedSizeBytes\": 6938078334,\n      \"sha256\": \"31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b\",\n      \"role\": \"primary\",\n      \"source\": {\n        \"repositoryUrl\": \"https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0\",\n        \"revision\": \"462165984030d82259a11f4367a4eed129e94a7b\"\n      }\n    },\n    {\n      \"sourcePath\": \"pixel-art-xl.safetensors\",\n      \"filename\": \"pixel-art-xl.safetensors\",\n      \"expectedSizeBytes\": 170543052,\n      \"sha256\": \"4234637cb80c998f41e348e6a6cb6bc20d8d038b2b0f256b6129b3b5e353eef7\",\n      \"role\": \"supplementary\"\n    }\n  ],\n  \"inputModalities\": [\n    \"text\"\n  ],\n  \"outputModalities\": [\n    \"image\"\n  ],\n  \"imageLaunchOptions\": {\n    \"diffusionFlashAttention\": true,\n    \"lora\": {\n      \"artifactFilename\": \"pixel-art-xl.safetensors\",\n      \"defaultStrength\": 1,\n      \"trigger\": \"pixel art\"\n    }\n  },\n  \"capabilities\": [\n    \"text-to-image\",\n    \"image-to-image\"\n  ]\n}\n"
+   "file": "{\n  \"modelId\": \"pixel-art-xl\",\n  \"provider\": \"nerijs\",\n  \"version\": \"8bf4a4d\",\n  \"source\": \"https://huggingface.co/nerijs/pixel-art-xl\",\n  \"repositoryRevision\": \"8bf4a4d9ea283e00a51fafda8e0539f8248ea037\",\n  \"commercialStatus\": \"open\",\n  \"catch\": \"License: creativeml-openrail-m. Added from Hugging Face; not qualified by LocalBase. Base model sdxl-base-1.0: CreativeML Open RAIL++-M license.\",\n  \"notes\": \"Added with local-base models add hf:nerijs/pixel-art-xl:pixel-art-xl.safetensors at revision 8bf4a4d9ea283e00a51fafda8e0539f8248ea037 (pipeline text-to-image). LoRA for SDXL 1.0: sd-server applies pixel-art-xl.safetensors to the weights, VAE and encoders pinned by the sdxl-base-1.0 entry. The model card's trigger phrase is \\\"pixel art\\\".\",\n  \"displayName\": \"pixel-art-xl (SDXL 1.0 LoRA)\",\n  \"kind\": \"image\",\n  \"family\": \"Stable-Diffusion-XL\",\n  \"size\": \"6.5GB\",\n  \"quant\": \"F16\",\n  \"storageGb\": 7.11,\n  \"artifacts\": [\n    {\n      \"sourcePath\": \"sd_xl_base_1.0.safetensors\",\n      \"filename\": \"sd_xl_base_1.0.safetensors\",\n      \"expectedSizeBytes\": 6938078334,\n      \"sha256\": \"31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b\",\n      \"role\": \"primary\",\n      \"source\": {\n        \"repositoryUrl\": \"https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0\",\n        \"revision\": \"462165984030d82259a11f4367a4eed129e94a7b\"\n      }\n    },\n    {\n      \"sourcePath\": \"pixel-art-xl.safetensors\",\n      \"filename\": \"pixel-art-xl.safetensors\",\n      \"expectedSizeBytes\": 170543052,\n      \"sha256\": \"4234637cb80c998f41e348e6a6cb6bc20d8d038b2b0f256b6129b3b5e353eef7\",\n      \"role\": \"supplementary\"\n    }\n  ],\n  \"inputModalities\": [\n    \"text\"\n  ],\n  \"outputModalities\": [\n    \"image\"\n  ],\n  \"imageLaunchOptions\": {\n    \"diffusionFlashAttention\": true,\n    \"lora\": {\n      \"artifactFilename\": \"pixel-art-xl.safetensors\",\n      \"defaultStrength\": 1,\n      \"trigger\": \"pixel art\"\n    }\n  },\n  \"capabilities\": [\n    \"text-to-image\",\n    \"image-to-image\"\n  ]\n}\n"
   },
   {
    "label": "add hf:black-forest-labs/FLUX.1-schnell",
