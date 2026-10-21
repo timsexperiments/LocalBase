@@ -1860,3 +1860,46 @@ Findings for the plan:
 3. **`bin/` has 54 symlinks.** The 36 inside `bin/runtimes` are relative
    library links within their packages. The others are an old flat layout
    that neither implementation uses and the copy skips.
+
+### 17.6 Shadow tooling and the dry run (2026-10-21)
+
+`tools/shadow.sh` runs §17.2 and §17.3 on a copy:
+
+- **`copy`** runs the idle preflight when the source is the live root. It
+  takes the database through `sqlite3 "file:…?mode=ro" ".backup …"`, clones
+  the rest (`catalog.d`, `models`, `ui-access.json`, voices, credentials,
+  cache, logs, `bin/runtimes`), writes the copy's own root marker and sets
+  the copy's config row `root` (both implementations refuse a moved root),
+  then verifies that the copy is detached. The live `service/`, `runtime/`,
+  backups and `tmp/` are not copied, so nothing in the copy names the live
+  label or lock.
+- **`serve go|ts`** runs a gateway on loopback, with every backend host on
+  127.0.0.1 and every port in the scratch range.
+- **`schema <label>`** snapshots the journal and the schema.
+- **`sessions`** runs the TS-vs-Go session verdicts on a second copy of the
+  database, with TS taken from `LBGO_TS_SRC`.
+- **`cleanup`** stops everything and deletes the copy.
+
+`local-base smoke` on the copy finds the copy's gateway from the copy's own
+owner record (`runtime/gateway.lock`), never port 2273.
+
+Dry run against a synthetic scratch source root (Go `init`, a read-only
+clone of the 1.5B model, a synthetic OIDC registration, and 4 synthetic
+sessions: valid, due for a touch, expired, wrong issuer). Everything
+passed:
+
+- the copy was 0700 and detached; the journal held 15 rows;
+- the Go gateway passed smoke;
+- the session verdicts were identical in TS (`c4a823d1`) and Go for all 4,
+  and a mutated touch interval made the check fail;
+- TS opened the database after Go, and smoke passed; rollback took 5 s
+  from stopping Go;
+- Go passed smoke again after TS;
+- the journal was unchanged by either;
+- cleanup left no files or processes.
+
+The contract suite in external mode with a chat and models:read key keeps
+6 tests valid on any root: health, readiness, authentication, unmatched
+route, model retrieve and chat rejections. The rest assume the harness
+fixture (its model list, all-scope keys), so the shadow run uses that
+subset plus smoke.
