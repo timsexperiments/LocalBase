@@ -1231,3 +1231,73 @@ from the DOM, so bun can test it against the TS functions
 
 The phone keyboard (`interactive-widget`, the 16 px composer), VoiceOver,
 and Enter on touch screens are left for the phone review (step 6).
+
+### 15.3 Admin plan (for review before building)
+
+Admin ports TS `auth-management.tsx` (brief D09) to `/app/admin`. It is
+server-rendered with htmx. Every read and write goes through the existing
+admin APIs in-process as the signed-in person: `/_localbase/access-management`
+and `/_localbase/api-keys`, which the 95-step differential script already
+holds to TS. The page adds no new permission logic of its own, apart from
+item 5.
+
+1. **Who sees what** (TS `administrationSections`). The Admin link and route
+   need `access:read` or `keys:read`; without both, the route answers 403 and
+   no link shows. Sections: "People & roles" and "Browser access" with
+   `access:read`, "API keys" with `keys:read`. With only the `:read`
+   permission a section is read-only (TS `ReadOnlyPeopleAndRoles` and
+   `ReadOnlyAccess`, and key scopes as text). The forms render only with
+   `access:manage` or `keys:manage`, and the POST routes need that same
+   permission (`mutating`), so the API's check is never the only one.
+2. **Requests.** Every POST uses the existing `mutating` guard: htmx only,
+   `X-Localbase-UI`, same origin, `Sec-Fetch-Site` same-origin, and a 64 KiB
+   form limit. Each action maps one-to-one to a TS API call with the same
+   JSON body. Policy edits carry the `expectedPolicyRevision` read with the
+   page. A `policy_revision_conflict` shows "The policy changed elsewhere.
+   Reload and try again." and re-reads the policy.
+3. **Secrets.** A new or rotated API key secret, and an invitation sign-in
+   link, appear exactly once: in the htmx response to the action that made
+   them, in a "Copy this secret now. It will not be shown again" panel with
+   Copy and Done. They are never stored server-side, never put in a URL or
+   page state, never logged (the response is `Cache-Control: no-store`), and
+   never re-rendered by a later fragment. OIDC and GitHub client secrets and
+   the SMTP password are `type=password autocomplete=new-password` fields that
+   are never pre-filled ("Re-enter to save"), as in TS.
+4. **Destructive actions** need a named confirmation, rendered by the server
+   as a second step in the same row. The first click returns the row with the
+   consequence in TS's words and Confirm/Cancel; Cancel returns focus to the
+   original button. This covers revoke key ("This key will stop working
+   immediately."), rotate key, remove a sign-in registration ("Removing the
+   last one disables browser access."), clear policy, remove role, and forget
+   user (TS's "this is not revocation" text). Disable user and set default
+   role act at once, as in TS.
+5. **Self-protection.** TS enforces this only in the browser. Go enforces it
+   in the UI handler too, which is stronger but the same rule. The signed-in
+   person, matched by verified email as TS `isCurrentManagedUser` does, cannot
+   disable or forget their own record, or save roles that leave them without
+   `access:manage` (TS `assignedRolesGrantAccessManagement`). The API keeps
+   its own rule: at least one reachable role must grant `access:manage`.
+   **Question for review:** should these self checks move into the API, for
+   CLI and API callers? That would diverge from TS. Default: no, the UI only.
+6. **First setup.** "Set up roles" creates TS `starterAccessPolicy`: an admin
+   role for the person's verified email, and a member role with chat and
+   `models:read`. It needs a verified email; `--no-auth` and API-key
+   principals have none, so the page says to use Advanced JSON or the CLI, as
+   TS does. Advanced JSON is a policy textarea, validated by the API.
+7. **Restart notices.** Provider and registration changes say "Saved. Restart
+   LocalBase to apply browser access changes." Policy, user and key changes
+   apply now, as the API reports (`restartRequired`).
+8. **Layout.** Shelf list rows, one card per section. Below 1024 px the
+   section switcher is a segmented control (`aria-pressed` buttons, as in
+   TS); from 1024 px the sections can sit in columns. Permission pickers are
+   fieldsets grouped as TS groups them (Inference, Models, Configuration, API
+   keys, Browser access, Sessions), and show the permission ids. Status
+   badges are text: Active, Expired, Revoked, disabled.
+
+Evidence will come from handler tests against a fake API: each action's JSON
+body, permission gating of routes and controls, a secret shown once and absent
+from the next fragment, confirmations, and the self-protection rules. There
+will also be a contract test against the real gateway: create, rotate and
+revoke a key and invite a user through the page's routes, with the API state
+compared after each step. Browser checks at 320 to 1280 px in both themes
+round it out.
