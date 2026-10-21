@@ -65,3 +65,38 @@ func TestModelsShowStatusFromSavedConfig(t *testing.T) {
 		}
 	}
 }
+
+// configure --default-llm-models with two or more models leaves
+// activeLlmModel as it is; one model sets it (operator, after cutover).
+func TestConfigureDefaultsLeaveActive(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	const big, small = "qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-4b-q4_k_m"
+	if code, out := runApp(t, "--root", root, "configure", "--llm-models", small+","+big, "--active-llm", small); code != 0 {
+		t.Fatalf("configure models: %s", out)
+	}
+	active := func() string {
+		_, out := runApp(t, "--root", root, "config", "show")
+		for _, l := range strings.Split(out, "\n") {
+			if v, ok := strings.CutPrefix(l, "activeLlmModel = "); ok {
+				return strings.Trim(v, `"`)
+			}
+		}
+		return ""
+	}
+	if code, out := runApp(t, "--root", root, "configure", "--default-llm-models", big+","+small); code != 0 {
+		t.Fatalf("defaults: %s", out)
+	}
+	if got := active(); got != small {
+		t.Errorf("a two-model list moved activeLlmModel to %s", got)
+	}
+	if code, out := runApp(t, "--root", root, "configure", "--default-llm-models", big); code != 0 {
+		t.Fatalf("one default: %s", out)
+	}
+	if got := active(); got != big {
+		t.Errorf("a one-model list left activeLlmModel at %s", got)
+	}
+}

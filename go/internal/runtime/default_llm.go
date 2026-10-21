@@ -65,7 +65,8 @@ func (m *LLM) DefaultModel(decision bool) DefaultChoice {
 	cfg := m.Config()
 	list := cfg.DefaultLLMList()
 	if len(list) < 2 {
-		return DefaultChoice{ModelID: list[0], Preferred: list[0]}
+		id := m.chatDefault(cfg.Active["llm"], cfg.Selected["llm"])
+		return DefaultChoice{ModelID: id, Preferred: id}
 	}
 	c := &m.chooser
 	c.mu.Lock()
@@ -216,4 +217,26 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 		demand.AcceleratorBytes += pad
 	}
 	return m.d.Memory.CheckAdmission(context.Background(), demand, append([]string{"llm"}, m.d.Recovery.idleIDs("llm")...))
+}
+
+// isChat: a chat-capable LLM (not a decision or embedding model). Models
+// outside the catalog (imported) are taken as chat.
+func (m *LLM) isChat(id string) bool {
+	s := m.d.Catalog.ByID(id)
+	return s == nil || (s.Kind == "llm" && !s.IsDecision() && !s.IsEmbedding())
+}
+
+// chatDefault is the single-entry default: the active LLM when it is a chat
+// model, else the first selected chat model. It is never a decision or
+// embedding model, whatever ran last (operator, after cutover).
+func (m *LLM) chatDefault(active string, selected []string) string {
+	if active != "" && m.isChat(active) {
+		return active
+	}
+	for _, id := range selected {
+		if m.isChat(id) {
+			return id
+		}
+	}
+	return active
 }

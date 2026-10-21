@@ -178,10 +178,9 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		case len(ids) == 1:
 			cfg.Active["llm"] = ids[0]
 		case len(ids) >= 2:
+			// activeLlmModel stays as it is: TS launches it at start after
+			// a rollback, without the fit fallback.
 			cfg.DefaultLLMs = ids
-			if !c.Has("active-llm") {
-				cfg.Active["llm"] = ids[0]
-			}
 		}
 	}
 	str := func(flag string, toml *string, dst *string) {

@@ -2197,9 +2197,20 @@ be my default chat model now when it will fit in VRAM."
   from the list.
 - **One entry.** It is the active LLM itself and stores no list; that is
   today's behaviour exactly, sticky active model included.
-- **Two or more.** `activeLlmModel` keeps its TS meaning (the model last
-  activated, persisted after a switch). It is what TS would use after a
-  rollback.
+- **Two or more.** Setting the list leaves `activeLlmModel` alone, so it
+  keeps its TS meaning: the chat model last activated, persisted after a
+  switch. TS launches it at start after a rollback, without the fit
+  fallback, so a list must never set it to a model that may not fit.
+- **Chat models only** (fixed after cutover, 2026-10-21). After a decision
+  request, live `status` reported clef-flash as the default chat model.
+  - **The cause:** a switch to a decision or embedding model made it the
+    active LLM, and a one-entry default follows the active LLM.
+  - **Now:** only a chat model becomes active. The one-entry default is
+    the active LLM when it is a chat model, otherwise the first selected
+    chat model (`TestDecisionRequestDoesNotBecomeDefault`).
+  - **Also fixed:** `configure --default-llm-models` and the Settings card
+    set a list without moving `activeLlmModel`
+    (`TestConfigureDefaultsLeaveActive`).
 - **When changes apply.** As with every model setting, a CLI `config
   apply` reaches a running gateway at its next start, as in TS; the
   Settings card and the API apply at once.

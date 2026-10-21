@@ -189,3 +189,47 @@ func TestSingleDefaultIsTheActiveModel(t *testing.T) {
 		t.Error("a single default logged a selection")
 	}
 }
+
+// A decision or embedding request never becomes the default chat model
+// (operator, after cutover: one decision request made clef-flash the
+// active LLM, and status reported it as the default chat model).
+func TestDecisionRequestDoesNotBecomeDefault(t *testing.T) {
+	const decision = "clef-flash-q4_k_m"
+	host := newStepHost(50 * memory.GiB)
+	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem.SetSampler(nil)
+	m := newTestLLMWith(t, mem)
+	installSparse(t, m.d.ModelsDir, m.d.Catalog.ByID(decision))
+	cfg := m.Config().Clone()
+	cfg.Selected["llm"] = append(cfg.Selected["llm"], decision)
+	m.SetConfig(cfg)
+	var activated []string
+	m.d.Activate = func(kind, id string) {
+		activated = append(activated, id)
+		next := m.Config().Clone()
+		next.Active[kind] = id
+		m.SetConfig(next)
+	}
+	for _, id := range []string{modelB, decision} {
+		l, err := m.Acquire(context.Background(), id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		l.Release()
+	}
+	if len(activated) != 1 || activated[0] != modelB {
+		t.Errorf("activated %v, want only %s", activated, modelB)
+	}
+	if c := m.DefaultModel(true); c.ModelID != modelB {
+		t.Errorf("default %+v after a decision request, want %s", c, modelB)
+	}
+	// A decision model already saved as the active LLM (as on the live
+	// root before this fix) is never the default: the first selected chat
+	// model is.
+	cfg = m.Config().Clone()
+	cfg.Active["llm"] = decision
+	m.SetConfig(cfg)
+	if c := m.DefaultModel(true); c.ModelID != modelA {
+		t.Errorf("default %+v with a decision model active, want %s", c, modelA)
+	}
+}
