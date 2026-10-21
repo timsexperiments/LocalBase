@@ -2164,6 +2164,19 @@ five isolated runs each, before cutover):
   the sample moved by 0.1 GiB. The test now masks only that figure. After
   the fix: 5 of 5.
 
+**TS bug, not in Go: `models show` status** (operator, live, 2026-10-21).
+- **Symptom:** TS printed "Installed · Disabled" for qwen3.5-9b and
+  qwen3.6, although both are selected (and the 9B is active).
+- **Cause:** TS's show command declares `requiresDatabase: false` without
+  `readOnlyConfiguration: true`, so its context uses `defaultConfig(root)`.
+  Enabled and Default then come from fresh-install defaults, not the
+  saved row.
+- **Go:** `models show` opens the saved configuration.
+  `TestModelsShowStatusFromSavedConfig` checks the text and JSON status
+  for selected, unselected and active models.
+- **`models list`:** it prints installed files only, in both
+  implementations, so it has no enabled state to get wrong.
+
 ## 18. Fit-aware default chat model (Go only; operator, 2026-10-21)
 
 A new capability; TS has no equivalent. The user's words: "Yes 3.6 should

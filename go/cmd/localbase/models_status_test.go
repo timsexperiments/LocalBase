@@ -1,0 +1,67 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func runApp(t *testing.T, args ...string) (int, string) {
+	t.Helper()
+	var out, errb bytes.Buffer
+	a := app()
+	a.Stdout, a.Stderr = &out, &errb
+	code := a.Run(args)
+	return code, out.String() + errb.String()
+}
+
+// `models show` reports Enabled and Default from the saved configuration,
+// not from fresh defaults. TS 0.1.0 has that bug: its show command runs with
+// requiresDatabase: false and no readOnlyConfiguration, so it reads
+// defaultConfig and prints "Disabled" for selected models (live, 2026-10-21).
+func TestModelsShowStatusFromSavedConfig(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	const pref, other, unselected = "qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.8-27b-q4_k_m", "clef-q4_k_m"
+	if code, out := runApp(t, "--root", root, "configure", "--llm-models", "qwen3.5-4b-q4_k_m,"+other+","+pref, "--active-llm", pref); code != 0 {
+		t.Fatalf("configure models: %s", out)
+	}
+	for id, want := range map[string]string{
+		pref:                "Not installed · Enabled · Default",
+		other:               "Not installed · Enabled",
+		unselected:          "Not installed · Disabled",
+		"qwen3.5-4b-q4_k_m": "Not installed · Enabled",
+	} {
+		code, out := runApp(t, "--root", root, "models", "show", id)
+		if code != 0 {
+			t.Fatalf("show %s: %s", id, out)
+		}
+		var status string
+		for _, l := range strings.Split(out, "\n") {
+			if s, ok := strings.CutPrefix(strings.TrimSpace(l), "Status:"); ok {
+				status = strings.TrimSpace(s)
+			}
+		}
+		if status != want {
+			t.Errorf("%s: status %q, want %q", id, status, want)
+		}
+		_, js := runApp(t, "--root", root, "--json", "models", "show", id)
+		js, _, _ = strings.Cut(js, "\n") // the envelope; stderr follows
+		var env struct {
+			Data struct {
+				Status struct{ Enabled, Default bool } `json:"status"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(js), &env); err != nil {
+			t.Fatalf("show --json %s: %v %s", id, err, js)
+		}
+		if env.Data.Status.Enabled != strings.Contains(want, "Enabled") || env.Data.Status.Default != strings.Contains(want, "Default") {
+			t.Errorf("%s: json status %+v, want %q", id, env.Data.Status, want)
+		}
+	}
+}
