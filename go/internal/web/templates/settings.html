@@ -43,7 +43,7 @@
   <p class="mt-1 text-sm text-muted">A token lets LocalBase download gated repositories you have accepted and raises the Hub rate limit. A <a class="text-accent underline" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">read token</a> is enough. A saved token takes precedence over HF_TOKEN and is never shown again.</p>
   <form class="mt-4 grid gap-3" hx-post="/app/settings/hf-token" hx-target="#hf-token" hx-swap="outerHTML" hx-disabled-elt="find button">
     <div class="grid gap-1">
-      <label for="hf-token-input" class="text-sm font-semibold">{{if eq .Source "saved"}}Replace token{{else}}Token{{end}}</label>
+      <label for="hf-token-input" class="text-base font-semibold">{{if eq .Source "saved"}}Replace token{{else}}Token{{end}}</label>
       <input id="hf-token-input" class="input" type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…" maxlength="256" required>
     </div>
     <div class="flex flex-wrap gap-2">

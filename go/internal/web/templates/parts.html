@@ -55,7 +55,7 @@
   {{if and (eq .Mode "manual") .Recommended}}<p class="mt-1 text-sm text-muted">Automatic selection would use {{.Recommended}}.</p>{{end}}
   {{with .Message}}<p class="mt-2 text-sm" role="status">{{.}}</p>{{end}}
   <form class="mt-3 grid gap-2" hx-post="/app/models/backend/{{.ModelID}}" hx-target="#backend-panel" hx-swap="outerHTML">
-    <label class="text-sm font-semibold" for="backend-select">Run with</label>
+    <label class="text-base font-semibold" for="backend-select">Run with</label>
     <select id="backend-select" name="backend" class="input min-h-11">
       {{if or (not .BackendID) .Unavailable}}<option value="" selected disabled>Choose a backend…</option>{{end}}
       {{range .Options}}
@@ -69,7 +69,7 @@
     </div>
   </form>
   <details class="mt-3">
-    <summary class="min-h-11 cursor-pointer text-sm font-semibold">Why each backend is rated this way</summary>
+    <summary class="min-h-11 cursor-pointer text-base font-semibold">Why each backend is rated this way</summary>
     <ul class="mt-2 space-y-1 text-sm">
       {{range .Options}}<li><span class="font-semibold">{{.Name}}</span>: {{.RatingLabel}}{{with .Reason}} — {{.}}{{end}}{{range .Warnings}}; {{.}}{{end}}</li>{{end}}
     </ul>

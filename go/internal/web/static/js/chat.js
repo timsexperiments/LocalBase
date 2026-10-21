@@ -126,8 +126,8 @@ function showError(message, retry, label = "Retry") {
   text.className = "min-w-0 flex-1 text-sm font-semibold text-danger";
   text.textContent = message;
   card.append(text);
-  if (retry) card.append(button(label, "btn btn-quiet text-sm", retry));
-  card.append(button("Dismiss", "btn btn-quiet text-sm", () => errorBox.replaceChildren()));
+  if (retry) card.append(button(label, "btn btn-quiet", retry));
+  card.append(button("Dismiss", "btn btn-quiet", () => errorBox.replaceChildren()));
   errorBox.append(card);
   announce(message);
 }
@@ -140,7 +140,7 @@ function warn(message) {
   const text = document.createElement("p");
   text.className = "min-w-0 flex-1 text-sm";
   text.textContent = message;
-  card.append(text, button("Dismiss", "btn btn-quiet text-sm", () => card.remove()));
+  card.append(text, button("Dismiss", "btn btn-quiet", () => card.remove()));
   errorBox.append(card);
   announce(message);
 }
@@ -167,7 +167,7 @@ function renderConversations() {
       const li = document.createElement("li");
       const a = document.createElement("a");
       a.href = `?conversation=${encodeURIComponent(c.id)}`;
-      a.className = "flex min-h-11 items-center rounded-xl px-3 text-sm wrap-anywhere hover:bg-hover";
+      a.className = "flex min-h-11 items-center rounded-xl px-3 wrap-anywhere hover:bg-hover";
       a.textContent = c.title || "New conversation";
       if (c === active) {
         a.setAttribute("aria-current", "page");
@@ -515,7 +515,7 @@ function renderPicker() {
     name.className = "font-semibold break-words";
     name.textContent = m.name;
     const facts = document.createElement("span");
-    facts.className = "text-sm text-muted";
+    facts.className = "text-muted";
     facts.textContent = [m.ready ? "Ready" : "Not installed", m.default ? "Default" : "", m.context ? `${m.context.toLocaleString()} tokens of context` : ""]
       .filter(Boolean).join(" · ");
     text.append(name, facts);

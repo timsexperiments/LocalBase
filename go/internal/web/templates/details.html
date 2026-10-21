@@ -2,7 +2,7 @@
 {{define "main"}}
 {{if .Imported}}{{template "imported-details" .}}{{else}}
 <article aria-labelledby="model-title">
-  <a href="/app/models" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Library</a>
+  <a href="/app/models" class="inline-flex min-h-11 items-center text-base font-semibold text-accent">← Library</a>
   <p class="eyebrow mt-2">{{.Task}} · {{.Spec.Provider}}</p>
   <h1 id="model-title" class="mt-1 text-3xl font-bold tracking-tight break-words">{{.Spec.Name}}</h1>
   <p class="mt-1 text-muted break-all">{{.Spec.ModelID}}</p>
@@ -33,7 +33,7 @@
       {{if .Spec.Capabilities}}<ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Capabilities">{{range .Spec.Capabilities}}<li class="badge">{{.ID}}</li>{{end}}</ul>{{end}}
       <p class="mt-2">{{.Spec.Notes}}</p>
       {{if .Spec.Catch}}<p class="mt-2 text-sm text-muted">{{.Spec.Catch}}</p>{{end}}
-      <a class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent underline-offset-4 hover:underline" href="{{.Spec.Source}}" rel="noopener noreferrer" hx-boost="false">Source repository</a>
+      <a class="mt-3 inline-flex min-h-11 items-center text-base font-semibold text-accent underline-offset-4 hover:underline" href="{{.Spec.Source}}" rel="noopener noreferrer" hx-boost="false">Source repository</a>
     </section>
   </div>
 </article>
@@ -43,7 +43,7 @@
 {{define "imported-details"}}
 {{$m := .Imported.Model}}
 <article aria-labelledby="model-title">
-  <a href="/app/models" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Library</a>
+  <a href="/app/models" class="inline-flex min-h-11 items-center text-base font-semibold text-accent">← Library</a>
   <p class="eyebrow mt-2">{{range $i, $t := $m.Tasks}}{{if $i}}, {{end}}{{$t}}{{end}} · imported</p>
   <h1 id="model-title" class="mt-1 text-3xl font-bold tracking-tight break-words">{{$m.Name}}</h1>
   <p class="mt-1 text-muted break-all">{{$m.ID}}</p>

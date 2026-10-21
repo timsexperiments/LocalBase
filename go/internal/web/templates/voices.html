@@ -9,15 +9,15 @@
     <h2 class="text-lg font-semibold">Add a voice</h2>
     <label class="grid gap-1"><span class="text-sm font-semibold">Name</span>
       <input class="input min-h-11" name="name" required maxlength="48" autocomplete="off"></label>
-    <div class="grid gap-1"><span class="text-sm font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
+    <div class="grid gap-1"><span id="voice-recording-label" class="text-sm font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
       <div class="flex flex-wrap items-center gap-2">
-        <input class="input min-h-11 max-w-full" type="file" name="audio" accept="audio/*" data-audio-input required>
+        <input class="input min-h-11 max-w-full" type="file" name="audio" aria-labelledby="voice-recording-label" accept="audio/*" data-audio-input required>
         <button type="button" class="btn btn-quiet" data-record>Record</button>
       </div>
       <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
       <audio controls class="hidden w-full" data-audio-preview></audio>
     </div>
-    <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="consent" value="true" required class="mt-0.5 size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
+    <label class="flex items-start gap-2 text-base"><input type="checkbox" name="consent" value="true" required class="mt-0.5 size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
     <button type="submit" class="btn btn-primary justify-self-start">Add voice</button>
   </form>
   {{end}}

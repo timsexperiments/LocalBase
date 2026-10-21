@@ -86,7 +86,7 @@
       <label class="grid gap-1"><span class="text-sm font-semibold">Language <span class="font-normal text-muted">(optional)</span></span>
         <input class="input min-h-11" name="language" maxlength="16" placeholder="en"></label>
     </div>
-    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="translate" class="size-5"> Translate to English</label>
+    <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" name="translate" class="size-5"> Translate to English</label>
     <button type="submit" class="btn btn-primary justify-self-start">Transcribe<span class="htmx-indicator">…</span></button>
   </form>
   {{end}}
@@ -115,13 +115,13 @@
   {{with .Notice}}<p class="card p-4 text-muted">{{.}}</p>{{end}}
   {{with .Error}}<p class="card p-4 text-danger" role="alert">{{.}}</p>{{end}}
   {{with .Image}}<figure class="card overflow-hidden p-2"><img src="{{.}}" alt="Generated image" class="mx-auto h-auto max-w-full rounded-xl"><figcaption class="p-2 text-sm"><a class="font-semibold text-accent" href="{{.}}" download="image.png">Download</a></figcaption></figure>{{end}}
-  {{with .Audio}}<div class="card grid gap-2 p-4"><audio controls src="{{.}}" class="w-full"></audio><a class="text-sm font-semibold text-accent" href="{{.}}" download="speech.wav">Download</a></div>{{end}}
+  {{with .Audio}}<div class="card grid gap-2 p-4"><audio controls src="{{.}}" class="w-full"></audio><a class="text-base font-semibold text-accent" href="{{.}}" download="speech.wav">Download</a></div>{{end}}
   {{if .Transcript}}<div class="card p-4"><p class="eyebrow">Transcript</p><p class="mt-1 whitespace-pre-wrap">{{.Transcript}}</p></div>{{end}}
 </div>
 {{end}}
 
 {{define "lab-denied"}}<p class="card mt-4 p-4 text-muted">Your access does not include {{.}}.</p>{{end}}
-{{define "lab-none"}}<p class="card mt-4 p-4 text-muted">No {{.}} model is selected yet. Choose one in <a class="font-semibold text-accent" href="/app/models/get">Get models</a>.</p>{{end}}
+{{define "lab-none"}}<p class="card mt-4 p-4 text-muted">No {{.}} model is selected yet. <a class="font-semibold text-accent" href="/app/models/get">Choose one in Get models</a></p>{{end}}
 
 {{define "lab-video-options"}}
 <div id="lab-video-options" class="grid gap-3">

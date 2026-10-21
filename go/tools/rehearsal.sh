@@ -38,13 +38,67 @@ smoke() { local t0=$(date +%s); out=$(lb smoke 2>&1); rc=$?; echo "$out" | tail 
 health_port() { lb config show | sed -n '/^\[gateway\]/,/^\[/s/^port = \([0-9]*\)$/\1/p' | head -1; }
 wait_health() { for i in $(seq 1 60); do curl -s -m 2 "http://127.0.0.1:$1/health" >/dev/null && return 0; sleep 1; done; return 1; }
 cleanup() {
+  [ -n "${watch_pid:-}" ] && kill "$watch_pid" 2>/dev/null
   [ -x "$bin" ] && [ -e "$root/.localbase-root.json" ] && lb stop >/dev/null 2>&1
   launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1
   rm -f "$plist"
 }
 trap cleanup EXIT
+trap 'echo "rehearsal: aborted ($(cat "$work/abort" 2>/dev/null))"; exit 2' TERM INT
+
+# Memory and the live gateway (operator conditions): at least 25 GiB
+# available and the live gateway idle before starting; abort below 12 GiB
+# or when live /health stops answering 200.
+gib=1073741824
+avail() { vm_stat | awk '/page size of/ {ps=$8} /Pages (free|inactive|speculative)/ {gsub("\\.","",$NF); s+=$NF} END {printf "%d\n", s*ps}'; }
+live_health() { curl -s -o /dev/null -m 3 -w '%{http_code}' http://127.0.0.1:2273/health; }
+live_idle() { # no inference.started without an end in the live event log's last 60 s (read-only)
+  local since; since=$(date -u -v-60S +%Y-%m-%dT%H:%M:%S)
+  tail -n 2000 "$HOME/.local/share/local-base/logs/events.jsonl" | awk -v s="$since" '
+    match($0, /"timestamp":"[^"]*"/) { t=substr($0, RSTART+13, 19); if (t < s) next }
+    /"eventName":"inference\.started"/ {st++} /"eventName":"inference\.(completed|failed|cancelled|aborted)"/ {en++}
+    END {printf "started=%d finished=%d\n", st, en; exit !(st <= en)}'
+}
+preflight() {
+  local a; a=$(avail)
+  printf 'available %.1f GiB; ' "$(echo "$a / $gib" | bc -l)"
+  [ "$a" -ge $((25 * gib)) ] || { echo; die "under 25 GiB available; wait"; }
+  live_idle || die "the live gateway is not idle; wait"
+  [ "$(live_health)" = 200 ] || die "live /health is not 200"
+}
+watch() { # background guard; records the lowest available memory and live /health
+  local low=999999999999 a h probes=0 bad=0
+  while :; do
+    a=$(avail); [ "$a" -lt "$low" ] && low=$a
+    h=$(live_health); probes=$((probes + 1)); [ "$h" = 200 ] || bad=$((bad + 1))
+    printf 'lowest %.1f GiB, live health probes %d, non-200 %d\n' "$(echo "$low / $gib" | bc -l)" $probes $bad > "$work/watch.txt"
+    if [ "$a" -lt $((12 * gib)) ]; then echo "available under 12 GiB" > "$work/abort"; kill -TERM $$; return; fi
+    if [ "$h" != 200 ]; then echo "live /health answered $h" > "$work/abort"; kill -TERM $$; return; fi
+    sleep 2
+  done
+}
+snap() { # launchd snapshot: loaded labels and the LaunchAgents directory
+  launchctl list | awk 'NR > 1 {print $3}' | sort > "$work/launchd-$1-labels.txt"
+  ls -1 "$HOME/Library/LaunchAgents" | sort > "$work/launchd-$1-agents.txt"
+}
+in_scratch() { [ "$1" -ge 24000 ] && [ "$1" -le 29999 ] && [ "$1" != 24173 ] && { [ "$1" -lt 25611 ] || [ "$1" -gt 25613 ]; }; }
+check_ports() { # every port the copy's processes listen on is in the scratch range, on loopback
+  local pids p bad=0
+  pids=$(pgrep -f "$root" | tr '\n' ',' | sed 's/,$//')
+  [ -n "$pids" ] || { bad "no process of the copy found"; return 1; }
+  while read -r addr; do
+    p=${addr##*:}
+    case "$addr" in 127.0.0.1:*|\[::1\]:*) ;; *) echo "not loopback: $addr"; bad=1 ;; esac
+    in_scratch "$p" || { echo "outside the scratch range: $addr"; bad=1; }
+  done < <(lsof -nP -a -p "$pids" -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR > 1 {print $9}')
+  [ $bad = 0 ]
+}
 
 echo "throwaway label: $label"
+echo "== preflight"
+preflight
+snap before
+watch & watch_pid=$!
 mkdir -m 700 -p "$work/bin"
 go build -o "$work/local-base-go" ./cmd/localbase || die "build"
 swap_in "$work/local-base-go"
@@ -60,13 +114,18 @@ awk -v g="$gport" -v l="$lport" -v s="$sport" '
   sec=="r" && /^port = / {print "port = " l; next}
   sec=="r" && /^sttHost = / {print "sttHost = \"127.0.0.1\""; next}
   sec=="r" && /^sttPort = / {print "sttPort = " s; next}
+  sec=="m" && /^selected(Tts|Image|Video)Models = / {sub(/ = .*/, " = []"); print; next}
+  sec=="m" && /^active(Tts|Image|Video)Model = / {sub(/ = .*/, " = \"\""); print; next}
   {print}' "$work/doc.toml" > "$work/doc-scratch.toml"
 lb config apply --file "$work/doc-scratch.toml" --restart never >/dev/null && ok "gateway $gport, llm $lport, stt $sport on 127.0.0.1" || die "config apply"
+lb config show | grep -E '^(selected|active)(Tts|Image|Video)' | grep -vE '= (\[\]|"")$' && die "a media model is still selected" || ok "no media model selected (TTS, image and video runtimes cannot start)"
 
 echo "== Go as a service under the throwaway label"
 lb start >/dev/null; rc=$?
 [ $rc = 0 ] && ok "start" || bad "start exited $rc"
 wait_health "$gport" && ok "healthy on $gport" || bad "not healthy"
+check_ports && ok "the copy listens only on loopback scratch ports" || die "the copy listens outside the scratch range"
+snap during
 [ -e "$plist" ] && ok "plist installed for the throwaway label" || bad "no plist at $plist"
 plutil -extract ProgramArguments json -o - "$plist" | grep -q "\"$bin\"" && ok "plist runs $bin" || bad "plist program"
 smoke && ok "Go smoke" || bad "Go smoke"
@@ -126,6 +185,16 @@ lb uninstall --yes >/dev/null; echo "uninstall exit $?"
 launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 && bad "label still loaded" || ok "label not loaded"
 [ -e "$root" ] && bad "copy root left behind" || ok "copy root removed by uninstall"
 launchctl print "gui/$(id -u)/$live_label" >/dev/null 2>&1 && ok "the live label is still loaded" || bad "the live label is not loaded"
+snap after
+echo "launchd during the drill (before -> during):"; diff "$work/launchd-before-labels.txt" "$work/launchd-during-labels.txt"; diff "$work/launchd-before-agents.txt" "$work/launchd-during-agents.txt"
+during=$( (diff "$work/launchd-before-labels.txt" "$work/launchd-during-labels.txt"; diff "$work/launchd-before-agents.txt" "$work/launchd-during-agents.txt") | grep '^[<>]' | grep -vE "^> ${label}(\.plist)?$")
+[ -z "$during" ] && ok "during: only the throwaway label and plist were added" || bad "unexpected launchd change: $during"
+if diff -q "$work/launchd-before-labels.txt" "$work/launchd-after-labels.txt" >/dev/null && diff -q "$work/launchd-before-agents.txt" "$work/launchd-after-agents.txt" >/dev/null; then
+  ok "after: labels and LaunchAgents identical to before"
+else
+  bad "launchd differs after the drill"; diff "$work/launchd-before-labels.txt" "$work/launchd-after-labels.txt"; diff "$work/launchd-before-agents.txt" "$work/launchd-after-agents.txt"
+fi
+kill "$watch_pid" 2>/dev/null; echo "guard: $(cat "$work/watch.txt" 2>/dev/null)"
 
 if [ $fails = 0 ]; then echo "rehearsal passed"; else echo "rehearsal: $fails failure(s)"; fi
 exit $((fails > 0))

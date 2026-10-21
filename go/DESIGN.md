@@ -1661,10 +1661,17 @@ Each item is done, or waived on record by the operator.
      dual contract, and cut a new release candidate.
    - **Not merged:** cut over without it. Record the decision, and port it
      after cutover like any TS change during the two weeks (§17.3 step 7).
-2. **The user's real-iPhone checks on the Go UI**, over Cloudflare Access to
-   a release candidate (§15.4): no zoom when the composer is focused, the
-   composer stays above the keyboard, Return adds a line on touch,
-   VoiceOver, and dictation with the real microphone.
+2. **Local iOS and accessibility checks on the Go UI** (operator,
+   2026-10-21; these replace the real-iPhone gate). The tests run real iOS
+   Safari on the Simulator, Apple's accessibility audit and axe-core in
+   desktop Chrome. They check:
+   - no zoom on focus;
+   - the composer above the keyboard;
+   - Return adding a line while Send submits;
+   - microphone dictation end to end;
+   - contrast, labels, hit areas and order.
+
+   Results are in §17.9. Dictation waits for the GPU hold to clear.
 3. **§13.6 reviewed against each live client:**
 
    | Client | Routes to check | Differences that can reach it |
@@ -1978,3 +1985,61 @@ regular file, even when the name ends in a model extension
 (`looseModelFile`, `TestLooseModelFiles`). TS `models list` lists such a
 directory as an LLM, so on a root that contains one, Go's output is
 shorter. The live directory is the operator's to clean up.
+
+### 17.9 Local iOS and accessibility checks (2026-10-21)
+
+These checks replace the real-iPhone gate (§17.1 item 2). They ran
+against a fake-backend `--no-auth` fixture on a scratch port: a stub
+llama-server and sparse weights, so no model was loaded.
+
+**How the checks run:**
+
+- **Simulator Safari:** `tools/ios-check.sh <url>` runs an XCUITest
+  project, `tools/ios-check/LBCheck.xcodeproj`, that drives real iOS
+  Safari. The environment is Xcode 27, an iPhone 17 Simulator (402 pt
+  wide) and iOS 27. Xcode 27 has no Simulator.app, so a test
+  host app opens the URL in Safari. The accessibility audit is
+  `performAccessibilityAudit`, the engine behind Accessibility Inspector.
+- **Desktop Chrome:** `tools/axe-check.sh <url>` runs axe-core 4.14.0 in
+  headless Chrome. The copy is pinned in `tools/axe.pins`, its sha256
+  matches the npm integrity hash, it is cached in `go/.cache` and it is
+  injected over the DevTools protocol only. It runs WCAG 2.0 to 2.2 A/AA
+  plus best practice on 16 UI states, at 1280 and 390 px, in light and dark.
+
+| Check | Result |
+| --- | --- |
+| No zoom on focus | Every input, textarea and select is 16px or more (`TestControlsAtLeast16px`). Two Admin and backend textareas were `text-sm` and are now `text-base`. Tapping the composer leaves its width unchanged (376 pt before and after), so the page did not zoom |
+| Composer above the keyboard | After the tap, Safari scrolls the composer from y 671 to y 341, and its bottom edge (385) sits above the keyboard's top. The screenshot shows the composer, the form-assistant bar and the keyboard |
+| Return and Send | On touch, Return adds a line: the textarea holds `first line\nsecond line` and nothing is sent. Tapping Send submits, and the fake reply appears. ⌘/Ctrl-Enter sends only under `(pointer: fine)`, as in TS |
+| Apple accessibility audit: chat, picker, history drawer, Admin, Lab | No contrast, label or element-order issues. All hit-area issues on our elements are fixed (see below). Three findings remain, none from our markup: Safari's own toolbar reload button; one nil element with a zero frame, which also appears on a bare HTML probe page with no LocalBase code; and Dynamic Type (see below) |
+| axe-core, Chrome, 64 runs | Two violations found and fixed. The Voices recording input had no label (critical); it is now `aria-labelledby`. The chat composer sat outside any landmark (best practice); it is now a form landmark, "Message composer". The final run passed with no violations, including best practice |
+| Microphone dictation, end to end | Waits for the GPU hold to clear (it needs a real whisper) |
+
+**Hit areas on iOS.** iOS reports a link's or a label's frame as the frame
+of its text, not its box. Apple's audit therefore flags any text under
+16px, which gives a frame under 20 pt, as "Hit area is too small", even
+when the box is 44px tall.
+
+A probe page settled the cause:
+- a 44px `inline-flex` link with 14px text is flagged, with or without an
+  `aria-label` or an inner block;
+- `<button>` and `role="button"` are reported at their full 44 pt box;
+- 16px text is not flagged.
+
+The fixes put text in controls at 16px:
+- `.btn` and `.chip` are `text-base`;
+- `text-sm` is gone from links, buttons, summaries and labels: the header
+  Admin and Settings links, the Lab tabs, the drawer section links, Manage
+  models, and the picker's detail line;
+- the eyebrow is now 16px semibold in sentence case, instead of 12px
+  uppercase;
+- the model picker button is 44px tall (it was 32px).
+
+The Lab's "Choose one in Get models" is now a single link, with no stray
+"." text. `TestInteractiveTextAtLeast16px` keeps these fixes in place.
+
+**Dynamic Type** ("partially unsupported") is reported on every page.
+The UI sizes text in rem from a fixed root size, so iOS text-size settings
+do not scale it; Safari's page zoom and reflow at 320px still work. This
+is outside the gate's categories. Supporting it would mean setting the
+root to `-apple-system-body`, a type-scale change for its own review.

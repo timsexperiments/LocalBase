@@ -23,7 +23,7 @@
       <button type="button" class="btn btn-quiet size-11 shrink-0 p-0 lg:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open menu and history">{{template "icon-menu"}}</button>
       <div class="min-w-0 flex-1">
         <h1 id="chat-title" class="truncate text-base font-bold leading-tight">New conversation</h1>
-        <button type="button" class="-ml-1 flex min-h-8 max-w-full items-center gap-1 rounded-lg px-1 text-sm text-muted hover:bg-hover hover:text-ink" data-open-picker aria-haspopup="dialog" {{if not .CanChat}}disabled{{end}}>
+        <button type="button" class="-ml-1 flex min-h-11 max-w-full items-center gap-1 rounded-lg px-1 text-base text-muted hover:bg-hover hover:text-ink" data-open-picker aria-haspopup="dialog" {{if not .CanChat}}disabled{{end}}>
           <span class="truncate" data-model-name>Choose a model</span><span aria-hidden="true">▾</span>
         </button>
       </div>
@@ -59,7 +59,7 @@
       <button type="button" class="chip absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 shadow-md" data-jump hidden aria-label="Jump to latest message">{{template "icon-down"}}<span aria-hidden="true">Latest</span></button>
     </main>
 
-    <form id="composer" class="border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3" novalidate>
+    <form id="composer" aria-label="Message composer" class="border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3" novalidate>
       <div class="mx-auto max-w-3xl">
         <div data-error-box></div>
         <div class="composer-box">
@@ -76,7 +76,7 @@
             {{end}}
             <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-open-generation aria-haspopup="dialog" aria-label="Generation controls" title="Generation controls" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-sliders"}}</button>
             <span class="min-w-0 flex-1 truncate px-1 text-sm text-muted" data-composer-note role="status"></span>
-            <button type="button" class="btn btn-quiet shrink-0 text-sm" data-dictate-discard hidden>Discard</button>
+            <button type="button" class="btn btn-quiet shrink-0 text-base" data-dictate-discard hidden>Discard</button>
             <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
             <button type="submit" class="btn btn-primary size-11 shrink-0 p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
           </div>
@@ -92,7 +92,7 @@
   <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
     <h2 id="picker-title" class="text-lg font-bold">Chat model</h2>
     <div class="flex items-center gap-1">
-      <a href="/app/models" class="btn text-sm text-accent hover:bg-hover">Manage models</a>
+      <a href="/app/models" class="btn text-base text-accent hover:bg-hover">Manage models</a>
       <button type="button" class="btn btn-quiet size-11 p-0" data-close-picker aria-label="Close">{{template "icon-close"}}</button>
     </div>
   </div>
@@ -124,7 +124,7 @@
     <p class="px-2 py-3 text-sm text-muted" data-no-conversations hidden></p>
   </nav>
   <nav aria-label="Sections" class="border-t border-line pt-2">
-    <ul class="grid grid-cols-2 gap-1 text-sm">
+    <ul class="grid grid-cols-2 gap-1">
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models">Library</a></li>
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models/get">Get models</a></li>
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models/running">Running now</a></li>
@@ -133,7 +133,7 @@
       <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/settings">Settings</a></li>
       {{if and .Principal (or (.Principal.Can "access:read") (.Principal.Can "keys:read"))}}<li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/admin">Admin</a></li>{{end}}
     </ul>
-    {{if not .NoAuth}}<button type="button" class="btn btn-quiet mt-2 w-full text-sm" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
+    {{if not .NoAuth}}<button type="button" class="btn btn-quiet mt-2 w-full text-base" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
   </nav>
 </div>
 {{end}}
