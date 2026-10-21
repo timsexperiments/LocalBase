@@ -206,6 +206,9 @@
   .reasoning[open] {
     @apply pb-3;
   }
+  .composer-box {
+    @apply rounded-2xl border border-line bg-canvas focus-within:outline-2 focus-within:outline-accent;
+  }
   .compaction {
     @apply rounded-xl border border-dashed border-line px-3;
   }

@@ -62,11 +62,23 @@
     <form id="composer" class="border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3" novalidate>
       <div class="mx-auto max-w-3xl">
         <div data-error-box></div>
-        <div class="flex items-end gap-2">
+        <div class="composer-box">
+          <ul class="flex flex-wrap gap-2 px-2 pt-2" data-attachments aria-label="Attachments" hidden></ul>
           <label for="chat-input" class="sr-only">Message</label>
-          <textarea id="chat-input" rows="1" class="input max-h-[40dvh] min-h-11 resize-none leading-6" placeholder="Message" autocomplete="off" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}></textarea>
-          <button type="submit" class="btn btn-primary size-11 shrink-0 p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
-          <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
+          <textarea id="chat-input" rows="1" class="block max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none" placeholder="Message" autocomplete="off" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}></textarea>
+          <div class="flex items-center gap-1 px-1 pb-1">
+            <input type="file" multiple hidden data-attach-input aria-label="Choose attachments">
+            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-attach aria-label="Attach files" title="Attach files" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-clip"}}</button>
+            {{if .CanDictate}}
+            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-dictate data-model="{{.DictationModel}}" aria-label="Dictate message" title="Dictate with LocalBase. Tap again to stop. Text is added without sending." {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>
+              <span data-dictate-icon>{{template "icon-mic"}}</span><span data-dictate-stop hidden>{{template "icon-stop"}}</span><span data-dictate-cancel hidden>{{template "icon-close"}}</span>
+            </button>
+            {{end}}
+            <span class="min-w-0 flex-1 truncate px-1 text-sm text-muted" data-composer-note role="status"></span>
+            <button type="button" class="btn btn-quiet shrink-0 text-sm" data-dictate-discard hidden>Discard</button>
+            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
+            <button type="submit" class="btn btn-primary size-11 shrink-0 p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
+          </div>
         </div>
       </div>
     </form>
@@ -120,3 +132,5 @@
 {{define "icon-send"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>{{end}}
 {{define "icon-stop"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>{{end}}
 {{define "icon-down"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>{{end}}
+{{define "icon-clip"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 13 7-7a3 3 0 0 1 4 4l-9 9a5 5 0 0 1-7-7l9-9a1 1 0 0 1 4 4l-9 9a1 1 0 0 1-2-2l8-8"/></svg>{{end}}
+{{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg>{{end}}

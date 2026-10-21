@@ -18,13 +18,14 @@ import (
 
 // chatModel is one chat model the picker offers.
 type chatModel struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Ready   bool   `json:"ready"`   // installed on this machine
-	Default bool   `json:"default"` // the active chat model
-	Vision  bool   `json:"vision"`  // accepts images
-	Tools   bool   `json:"tools"`   // calls tools
-	Context int    `json:"context,omitempty"`
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Ready   bool     `json:"ready"`   // installed on this machine
+	Default bool     `json:"default"` // the active chat model
+	Vision  bool     `json:"vision"`  // accepts images
+	Inputs  []string `json:"inputs"`  // effective input modalities (attachments)
+	Tools   bool     `json:"tools"`   // calls tools
+	Context int      `json:"context,omitempty"`
 }
 
 // chatModels are the selected chat models (not embedding or decision
@@ -49,7 +50,8 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 			m.Context = *s.ContextWindowTokens
 		}
 		caps := runtime.CapabilitiesFor(r.Context(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind))
-		m.Vision = slices.Contains(caps.InputModalities, "image")
+		m.Inputs = append([]string{}, caps.InputModalities...)
+		m.Vision = slices.Contains(m.Inputs, "image")
 		m.Tools = caps.Has("tool-calling")
 		out = append(out, m)
 	}
@@ -66,6 +68,26 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		return rank(a) - rank(b)
 	})
 	return out
+}
+
+// dictationModel is the installed, selected transcription model dictation
+// uses: the active one when installed, otherwise the first (TS uses the
+// first available).
+func (u *UI) dictationModel() string {
+	if u.d.LLM == nil {
+		return ""
+	}
+	cfg := u.d.LLM.Config()
+	ids := slices.Clone(cfg.Selected["stt"])
+	if a := cfg.Active["stt"]; a != "" {
+		ids = append([]string{a}, ids...)
+	}
+	for _, id := range ids {
+		if s := u.d.Catalog.ByID(id); s != nil && s.Kind == "stt" && u.installedBytes(s) > 0 {
+			return id
+		}
+	}
+	return ""
 }
 
 func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +110,10 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 		"Ready":      ready,
 		"CanChat":    p.Can("inference:chat"),
 		"CanManage":  p.Can("models:manage"),
+		// Dictation: the mic shows for people who may transcribe; without a
+		// model it explains what to install.
+		"CanDictate":     p.Can("inference:transcription"),
+		"DictationModel": u.dictationModel(),
 	})
 }
 

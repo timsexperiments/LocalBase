@@ -81,3 +81,19 @@ func TestSettingsPage(t *testing.T) {
 		}
 	}
 }
+
+// The mic shows only for people who may transcribe; attaching is always
+// offered next to the composer.
+func TestChatDictationNeedsTranscription(t *testing.T) {
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "inference:chat"}}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }})
+	body := get(u, "/app/chat").Body.String()
+	if strings.Contains(body, "data-dictate ") || !strings.Contains(body, `aria-label="Attach files"`) {
+		t.Error("without inference:transcription: the mic shows, or Attach is missing")
+	}
+	p.Permissions = append(p.Permissions, "inference:transcription")
+	body = get(u, "/app/chat").Body.String()
+	if !strings.Contains(body, `data-dictate data-model=""`) || !strings.Contains(body, `aria-label="Dictate message"`) {
+		t.Error("with inference:transcription the mic is missing")
+	}
+}

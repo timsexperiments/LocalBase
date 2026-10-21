@@ -8,7 +8,9 @@ import {
   chatContext, compact, contextWindow, interruptReply, learnContext, overflowContext, phaseLabel, planCompaction,
   promptBudget, readHistory, steerAbortReason, streamText, titleFrom, visibleMessages, writeHistory,
 } from "./chat-core.js";
+import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
+import { appendDictation, dictationUnavailable, startRecording, transcribe } from "./dictation.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -26,6 +28,9 @@ const status = $("#chat-status");
 const errorBox = $("[data-error-box]");
 const drawer = $("#chat-drawer");
 const picker = $("#model-picker");
+const attachButton = $("[data-attach]");
+const attachInput = $("[data-attach-input]");
+const draftList = $("[data-attachments]");
 const canChat = !input.disabled;
 
 const uuid = () => crypto.randomUUID();
@@ -47,6 +52,11 @@ let active;
 let abort = null; // the running reply or compaction
 let running = null; // {conversation, answer} while a reply streams
 let compactingSince = 0; // "Compact now" in progress
+// Files attached to the draft; a read in progress is dropped (epoch) when
+// the conversation or model changes under it.
+let draft = [];
+let reading = false;
+let attachEpoch = 0;
 let follow = true;
 // Learned runtime context sizes (TS key); memory only when storage is blocked.
 const storage = (() => {
@@ -64,6 +74,11 @@ const overhead = 0;
 const chatsOnly = () => conversations.filter((c) => c.workspace === "chat" && c.mode === "llm");
 
 function select(id) {
+  if (active && id !== active.id) {
+    dropRead();
+    cancelDictation();
+    draft = [];
+  }
   active = conversations.find((c) => c.id === id);
   if (!active) {
     // Reuse an empty conversation rather than adding one per visit (TS).
@@ -208,19 +223,62 @@ function heading(text) {
   return h;
 }
 
+// chips lists attachments: an image thumbnail or file name and size, with a
+// Remove button on the draft's.
+function chips(attachments, remove) {
+  const ul = document.createElement("ul");
+  ul.className = "mt-1.5 flex max-w-full flex-wrap justify-end gap-2";
+  ul.setAttribute("aria-label", "Attachments");
+  for (const a of attachments) {
+    const li = document.createElement("li");
+    li.className = `flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface py-1 pl-1 ${remove ? "pr-1" : "pr-3"} text-sm`;
+    if (a.kind === "image") {
+      const img = document.createElement("img");
+      img.src = a.url;
+      img.alt = a.name;
+      img.className = "size-10 shrink-0 rounded-lg object-cover";
+      li.append(img);
+    } else {
+      const icon = document.createElement("span");
+      icon.className = "grid size-10 shrink-0 place-items-center rounded-lg bg-hover text-xs font-semibold uppercase text-muted";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = a.name.split(".").at(-1)?.slice(0, 4) ?? "";
+      li.append(icon);
+    }
+    const info = document.createElement("span");
+    info.className = "grid min-w-0";
+    const name = document.createElement("span");
+    name.className = "truncate font-semibold";
+    name.textContent = a.name;
+    name.title = a.name;
+    const size = document.createElement("span");
+    size.className = "text-xs text-muted";
+    size.textContent = `${Math.max(1, Math.ceil(a.size / 1024))} KB`;
+    info.append(name, size);
+    li.append(info);
+    if (remove) li.append(button("✕", "btn btn-quiet size-10 shrink-0 border-0 p-0", () => remove(a), { "aria-label": `Remove ${a.name}` }));
+    ul.append(li);
+  }
+  return ul;
+}
+
 function messageNode(m) {
   const article = document.createElement("article");
   article.dataset.id = m.id;
   if (m.role === "user") {
     article.className = "flex flex-col items-end";
-    const bubble = document.createElement("div");
-    bubble.className = "max-w-[85%] whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5";
-    bubble.textContent = m.text;
-    article.append(heading("You"), bubble);
+    article.append(heading("You"));
+    if (m.text) {
+      const bubble = document.createElement("div");
+      bubble.className = "max-w-[85%] whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5";
+      bubble.textContent = m.text;
+      article.append(bubble);
+    }
+    if (m.attachments?.length) article.append(chips(m.attachments));
     if (m.attachmentsMissing) {
       const note = document.createElement("p");
-      note.className = "mt-1 text-xs text-muted";
-      note.textContent = "Attachments aren’t kept in saved history.";
+      note.className = "mt-1 text-sm text-muted";
+      note.textContent = "Attachments from the earlier session are no longer available.";
       article.append(note);
     }
     return article;
@@ -313,6 +371,7 @@ function render() {
   $("#chat-title").textContent = active.title;
   document.title = `${active.messages.length ? active.title : "Chat"} · LocalBase`;
   renderModel();
+  renderDraft();
   const nodes = [];
   for (const m of active.messages) {
     nodes.push(messageNode(m));
@@ -376,9 +435,11 @@ function renderPicker() {
     radio.disabled = !m.ready;
     radio.addEventListener("change", () => {
       active.model = m.id;
+      dropRead();
       save();
       renderModel();
       picker.close();
+      renderDraft();
     });
     const text = document.createElement("span");
     text.className = "grid min-w-0";
@@ -426,7 +487,9 @@ function updateSend() {
 }
 
 function setBusy() {
+  if (abort) cancelDictation();
   updateSend();
+  renderDraft();
   for (const b of $$("[data-new-chat]")) b.disabled = !!abort;
 }
 
@@ -479,6 +542,17 @@ function send(text) {
   const model = readyModel(active);
   if (!model) return false;
   const conversation = active;
+  const user = { id: uuid(), role: "user", text, ...(draft.length ? { attachments: draft } : {}) };
+  let problem;
+  try {
+    problem = chatRequestError([...conversation.messages, user], model);
+  } catch (e) {
+    problem = e.message;
+  }
+  if (problem) {
+    showError(problem);
+    return false;
+  }
   if (steering) {
     const old = running.answer;
     Object.assign(old, interruptReply(old, "Interrupted"));
@@ -487,12 +561,156 @@ function send(text) {
     delete old.pendingText;
     abort.abort(steerAbortReason);
   }
-  const user = { id: uuid(), role: "user", text };
-  if (!conversation.messages.length) conversation.title = titleFrom(text);
+  if (!conversation.messages.length) conversation.title = text ? titleFrom(text) : "Attachments";
   conversation.messages.push(user);
+  draft = [];
+  renderDraft();
   reply(conversation, model);
   return true;
 }
+
+// --- attachments ----------------------------------------------------------------
+
+const currentModel = () => ready.find((m) => m.id === active.model);
+
+function renderDraft() {
+  draftList.replaceChildren(...(draft.length ? chips(draft, (a) => {
+    draft = draft.filter((x) => x !== a);
+    renderDraft();
+    announce(`Removed ${a.name}`);
+    input.focus();
+  }).children : []));
+  draftList.hidden = !draft.length;
+  const accept = attachmentAccept(currentModel());
+  attachInput.accept = accept;
+  attachButton.disabled = !canChat || !accept || !!abort || reading;
+  paintNote();
+}
+
+// --- dictation ------------------------------------------------------------------
+
+const dictateButton = $("[data-dictate]");
+const discardButton = $("[data-dictate-discard]");
+const dictationModel = dictateButton?.dataset.model ?? "";
+let dictation = null; // {abort, stop?, phase: "requesting" | "recording" | "transcribing"}
+
+function paintNote() {
+  const phase = dictation?.phase;
+  $("[data-composer-note]").textContent = reading ? "Reading files…" : phase === "requesting" ? "Waiting for microphone…" :
+    phase === "recording" ? "Recording…" : phase === "transcribing" ? "Transcribing…" : "";
+  if (!dictateButton) return;
+  dictateButton.disabled = !canChat || !!abort;
+  dictateButton.setAttribute("aria-label", phase === "recording" ? "Stop recording for message" : phase ? "Cancel dictation for message" : "Dictate message");
+  $("[data-dictate-icon]", dictateButton).hidden = !!phase;
+  $("[data-dictate-stop]", dictateButton).hidden = phase !== "recording";
+  $("[data-dictate-cancel]", dictateButton).hidden = !phase || phase === "recording";
+  dictateButton.classList.toggle("text-danger", phase === "recording");
+  discardButton.hidden = phase !== "recording";
+}
+
+function cancelDictation() {
+  if (!dictation) return;
+  dictation.abort.abort();
+  dictation = null;
+  paintNote();
+}
+
+async function startDictation() {
+  cancelDictation();
+  const operation = { abort: new AbortController(), phase: "requesting" };
+  const { signal } = operation.abort;
+  dictation = operation;
+  paintNote();
+  const phase = (p) => {
+    operation.phase = p;
+    if (dictation === operation) paintNote();
+  };
+  try {
+    const recording = await startRecording({ signal });
+    if (signal.aborted) {
+      recording.cancel();
+      return;
+    }
+    operation.stop = () => recording.stop();
+    phase("recording");
+    const audio = await recording.finished;
+    if (signal.aborted) return;
+    phase("transcribing");
+    const text = await transcribe(audio, dictationModel, signal, apiError);
+    if (signal.aborted) return;
+    if (!text.trim()) showError("No speech was recognized. Try again.");
+    else {
+      input.value = appendDictation(input.value, text);
+      grow();
+      updateSend();
+      announce("Dictation added to your message");
+    }
+  } catch (e) {
+    if (!signal.aborted) showError(e instanceof Error && e.name !== "NotAllowedError" ? e.message : "Microphone access was not allowed.");
+  } finally {
+    operation.abort.abort();
+    if (dictation === operation) {
+      dictation = null;
+      paintNote();
+      input.focus();
+    }
+  }
+}
+
+dictateButton?.addEventListener("click", () => {
+  const unavailable = dictationUnavailable(dictationModel);
+  if (unavailable) {
+    showError(unavailable);
+    return;
+  }
+  if (dictation?.phase === "recording") dictation.stop?.();
+  else if (dictation) cancelDictation();
+  else startDictation();
+});
+discardButton?.addEventListener("click", () => {
+  cancelDictation();
+  announce("Recording discarded");
+  dictateButton.focus();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) cancelDictation();
+});
+
+// dropRead abandons a file read in progress (the model or conversation changed).
+function dropRead() {
+  attachEpoch++;
+  if (reading) {
+    reading = false;
+    showError("File reading was canceled because the model or conversation changed. Choose the files again.");
+  }
+}
+
+attachButton.addEventListener("click", () => attachInput.click());
+attachInput.addEventListener("change", async () => {
+  const files = [...attachInput.files];
+  attachInput.value = "";
+  const model = currentModel();
+  if (!files.length || !model || abort || reading) return;
+  const epoch = attachEpoch;
+  reading = true;
+  renderDraft();
+  try {
+    // Every attachment open in this browser counts toward the memory limit.
+    const retained = conversations.flatMap((c) => c.messages.flatMap((m) => m.attachments ?? []));
+    const added = await readAttachments(files, model, draft, retained);
+    if (epoch !== attachEpoch) return;
+    draft = [...draft, ...added];
+    errorBox.replaceChildren();
+    announce(`Attached ${added.map((a) => a.name).join(", ")}`);
+  } catch (e) {
+    if (epoch === attachEpoch) showError(e instanceof Error ? e.message : "Could not read the files. Choose them again.");
+  } finally {
+    if (epoch === attachEpoch) {
+      reading = false;
+      renderDraft();
+    }
+  }
+});
 
 async function reply(conversation, model) {
   const history = [...conversation.messages];
@@ -658,7 +876,8 @@ async function compactNow() {
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text || !canChat) return;
+  // Attachments alone can start a turn, but only text steers a running reply.
+  if (!canChat || reading || (!text && (!draft.length || abort))) return;
   if (send(text)) {
     input.value = "";
     grow();
