@@ -1527,3 +1527,22 @@ Step 1:
   - Job manager unit tests cover owners, the deadline, shutdown, the
     artifact limits and eviction, the TTL, pressure, and the stop retry.
     They pass under `-race`.
+
+Real FastWan run (2026-10-21, operator-approved memory window,
+`TestVideoReal` with `LOCALBASE_CONTRACT_VIDEO_MODELS`): one
+fastwan2.2-ti2v-5b-q6_k text job at the qualification bounds (480×832, 81
+frames, 16 fps) per implementation, TS then Go. The weights were read
+through read-only APFS clones of the live files, and each scratch gateway
+was halted with its sd-server as soon as its job ended.
+
+| | TS | Go |
+| --- | --- | --- |
+| Wall time (create to completed) | 156.8 s | 158.3 s |
+| Peak sd-server footprint | 14.0 GiB | 14.0 GiB |
+| Lowest available memory | 19.8 GiB | 20.4 GiB |
+| Output | MP4, H.264, 480×832, 16 fps, 81 frames, 5.06 s, 839,465 bytes | the same |
+
+The two MP4 files are byte-identical: the catalog pins the seed, and both
+implementations run the same sd-server and ffmpeg pins. During the window
+the live gateway answered `/health` on every probe, logged no memory
+refusal or pressure change, and served no inference.
