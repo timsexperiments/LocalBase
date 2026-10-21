@@ -14,11 +14,74 @@ export class SessionRequiredError extends Error {
   }
 }
 
+/** The sign-in in front of LocalBase (such as Cloudflare Access) expired. */
+export class EdgeSignInExpiredError extends SessionRequiredError {
+  constructor() {
+    super();
+    this.message = "Your sign-in expired. Reload to sign in again.";
+    this.name = "EdgeSignInExpiredError";
+  }
+}
+
+// iOS Safari often fails the first requests after a backgrounded tab
+// resumes (TS visibility.ts): reads are retried within this window.
+const resumeWindowMs = 10_000;
+const resumeRetryDelaysMs = [400, 1200];
+let shownAt = Number.NEGATIVE_INFINITY;
+if (typeof document !== "undefined")
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) shownAt = Date.now();
+  });
+const resumedRecently = () => Date.now() - shownAt < resumeWindowMs;
+
+function pauseFor(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+/**
+ * fetch for the gateway (TS gatewayFetch): redirects are not followed, so an
+ * expired edge sign-in reads as such rather than as a network error, and a
+ * read that fails right after the tab resumes is retried.
+ */
+export async function gatewayFetch(path, init = {}) {
+  const method = (init.method ?? "GET").toUpperCase();
+  const retryable = method === "GET" || method === "HEAD";
+  let response;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await fetch(path, { ...init, redirect: "manual" });
+      break;
+    } catch (error) {
+      if (init.signal?.aborted) throw error;
+      const delay = resumeRetryDelaysMs[attempt];
+      if (!retryable || delay === undefined || !resumedRecently())
+        throw new Error("Could not reach the gateway. Check the connection and try again.");
+      await pauseFor(delay, init.signal);
+    }
+  }
+  if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+    await response.body?.cancel();
+    throw new EdgeSignInExpiredError();
+  }
+  return response;
+}
+
 /** A gateway request as the signed-in person (TS api): errors carry the gateway's message. */
 export async function api(path, init = {}) {
   const headers = new Headers(init.headers);
   headers.set("x-localbase-ui", "1");
-  const response = await fetch(`/app/api${path}`, { ...init, headers, cache: "no-store", credentials: "same-origin" });
+  const response = await gatewayFetch(`/app/api${path}`, { ...init, headers, cache: "no-store", credentials: "same-origin" });
   if (!response.ok) {
     const value = await response.json().catch(() => null);
     if (response.status === 401) throw new SessionRequiredError();

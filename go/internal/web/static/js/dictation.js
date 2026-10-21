@@ -2,6 +2,7 @@
 // microphone, convert to 16 kHz mono PCM16 WAV in the browser, transcribe
 // it as the signed-in person, and add the text to the draft without
 // sending.
+import { gatewayFetch } from "./tools.js";
 
 const SAMPLE_RATE = 16_000;
 const MAX_SECONDS = 60;
@@ -240,7 +241,7 @@ export async function transcribe(audio, modelId, signal, apiError) {
   form.set("model", modelId);
   form.set("response_format", "json");
   form.set("file", audio, "dictation.wav");
-  const response = await fetch("/app/api/v1/audio/transcriptions", {
+  const response = await gatewayFetch("/app/api/v1/audio/transcriptions", {
     method: "POST",
     body: form,
     signal,

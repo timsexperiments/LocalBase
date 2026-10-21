@@ -8,6 +8,7 @@ import * as go from "../../internal/web/static/js/tools.js";
 import * as ts from "../../../src/ui/tools";
 import * as settings from "../../../src/ui/generation-settings";
 import { catalogModels, modelsSchema, type Model } from "../../../src/ui/client";
+import * as tsClient from "../../../src/ui/client";
 
 function fixture(id: string, kind: string, capabilities: any = null, features = ["tool-calling"]): Model {
   return modelsSchema.parse({
@@ -151,4 +152,28 @@ describe("settings", () => {
     for (const [m, s] of [[speech, {}], [speech, { voice: "harbor" }], [speech, { voice: "x" }], [image, {}]] as const)
       expect(outcome(() => go.speechParameters(m, s))).toEqual(outcome(() => settings.speechParameters(m, s as any)));
   });
+});
+
+describe("gatewayFetch", () => {
+  const outcome = async (f: () => Promise<Response>) => {
+    try {
+      const r = await f();
+      return { status: r.status };
+    } catch (e) {
+      return { error: (e as Error).message, name: (e as Error).name };
+    }
+  };
+  const cases: [string, () => Promise<Response>][] = [
+    ["ok", async () => new Response("{}", { status: 200 })],
+    ["edge redirect", async () => new Response(null, { status: 302, headers: { location: "https://team.cloudflareaccess.com/login" } })],
+    ["unreachable", async () => { throw new TypeError("Load failed"); }],
+  ];
+  for (const [name, reply] of cases)
+    for (const method of ["GET", "POST"])
+      test(`${name} ${method}`, async () => {
+        globalThis.fetch = reply as any;
+        const want = await outcome(() => tsClient.gatewayFetch("/x", { method }));
+        const got = await outcome(() => go.gatewayFetch("/x", { method }));
+        expect(got).toEqual(want);
+      });
 });

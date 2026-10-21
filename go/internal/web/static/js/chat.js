@@ -11,7 +11,7 @@ import {
 import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
 import { appendDictation, dictationUnavailable, startRecording, transcribe } from "./dictation.js";
-import { api, generationTools, jsonRequest, modelGenerationSettings, modelName, runChat, toolModels } from "./tools.js";
+import { SessionRequiredError, api, generationTools, jsonRequest, modelGenerationSettings, modelName, runChat, toolModels } from "./tools.js";
 import { settingsFields } from "./generation.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -118,7 +118,7 @@ function announce(text) {
   announceTimer = setTimeout(() => (status.textContent = text), 100);
 }
 
-function showError(message, retry) {
+function showError(message, retry, label = "Retry") {
   errorBox.replaceChildren();
   const card = document.createElement("div");
   card.className = "card mb-2 flex flex-wrap items-center justify-between gap-2 border-danger-line bg-danger-soft px-4 py-2";
@@ -126,7 +126,7 @@ function showError(message, retry) {
   text.className = "min-w-0 flex-1 text-sm font-semibold text-danger";
   text.textContent = message;
   card.append(text);
-  if (retry) card.append(button("Retry", "btn btn-quiet text-sm", retry));
+  if (retry) card.append(button(label, "btn btn-quiet text-sm", retry));
   card.append(button("Dismiss", "btn btn-quiet text-sm", () => errorBox.replaceChildren()));
   errorBox.append(card);
   announce(message);
@@ -874,7 +874,10 @@ async function reply(conversation, model) {
       const message = e instanceof TypeError ? "LocalBase couldn’t be reached. Check the connection and retry." : e.message;
       if (!answer.text && !answer.reasoning && !answer.artifacts?.length) conversation.messages.splice(conversation.messages.indexOf(answer), 1);
       else answer.interrupted = true;
-      queueMicrotask(() => showError(message, () => retry(conversation)));
+      // A session that ended (here or at the edge) needs a reload, not a retry.
+      queueMicrotask(() => e instanceof SessionRequiredError
+        ? showError(message, () => location.reload(), "Reload")
+        : showError(message, () => retry(conversation)));
     }
   } finally {
     clearInterval(tick);
