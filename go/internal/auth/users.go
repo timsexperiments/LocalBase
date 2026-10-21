@@ -326,28 +326,47 @@ func CreateSession(ctx context.Context, st *store.Store, ownerID string, id Iden
 // expiry at most hourly; expired sessions are deleted.
 func FindSession(ctx context.Context, st *store.Store, token string, issuers map[string]bool) (*Session, error) {
 	h := hashToken(token)
+	t := ms(time.Now())
+	s, verdict, err := checkSession(ctx, st, h, issuers, t)
+	switch {
+	case err != nil:
+		return nil, err
+	case verdict == "expired" || verdict == "issuer":
+		st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h)
+		return nil, nil
+	case verdict == "valid-touch":
+		st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
+			t, t+SessionIdleTTL.Milliseconds(), h)
+	}
+	return s, nil
+}
+
+// checkSession validates a stored session by its token hash at time t,
+// without changing it (TS authenticate). The verdict is missing, issuer
+// (not an accepted issuer), expired, valid, or valid-touch (valid and due
+// for a last-seen update).
+func checkSession(ctx context.Context, st *store.Store, h string, issuers map[string]bool, t int64) (*Session, string, error) {
 	var s Session
 	var email sql.NullString
 	err := st.DB.QueryRowContext(ctx, `SELECT owner_id, issuer, subject, verified_email, created_at, last_seen_at, idle_expires_at,
 		absolute_expires_at FROM auth_browser_sessions WHERE token_hash = ?`, h).
 		Scan(&s.OwnerID, &s.Identity.Issuer, &s.Identity.Subject, &email, &s.CreatedAt, &s.LastSeen, &s.IdleExp, &s.AbsExp)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return nil, "missing", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	s.Identity.VerifiedEmail = email.String
-	t := ms(time.Now())
-	if !issuers[s.Identity.Issuer] || s.IdleExp <= t || s.AbsExp <= t {
-		st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h)
-		return nil, nil
+	switch {
+	case !issuers[s.Identity.Issuer]:
+		return nil, "issuer", nil
+	case s.IdleExp <= t || s.AbsExp <= t:
+		return nil, "expired", nil
+	case t-s.LastSeen >= sessionTouchEvery.Milliseconds():
+		return &s, "valid-touch", nil
 	}
-	if t-s.LastSeen >= sessionTouchEvery.Milliseconds() {
-		st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
-			t, t+SessionIdleTTL.Milliseconds(), h)
-	}
-	return &s, nil
+	return &s, "valid", nil
 }
 
 // DeleteSession signs a cookie token out.

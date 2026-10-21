@@ -1818,3 +1818,45 @@ cloudflared and the Cloudflare Access configuration; every launchd service
 other than the LocalBase gateway's own label; model files (no download,
 move or rewrite; the Go binary reads the same files); the user's
 OpenTelemetry collector and Grafana; System One and Pixelator.
+
+### 17.5 Feature audit of the live root (2026-10-21, read-only)
+
+Read only through `sqlite3 -readonly` on `file:…?mode=ro`, `jq` on the JSON
+files, and listings. Secrets were reported as set or unset; no values are
+recorded here.
+
+| Live feature | Live state | Go | Notes |
+| --- | --- | --- | --- |
+| Drizzle journal | 15 rows | **Matches exactly** | The row hashes equal the sha256 of Go's 15 embedded migrations |
+| Gateway listener | 127.0.0.1:2273 | Supported | `gateway-listener.json` ({0.0.0.0:2273}) is a leftover neither implementation reads; the live socket is 127.0.0.1:2273 |
+| Runtime backends | llm 0.0.0.0:18000, stt 0.0.0.0:18080, ctx 65536 auto, parallel 1 | Supported | Bind hosts as TS (`BackendHost`) |
+| Selected models | 8 LLM, 1 STT, 1 TTS (Qwen3-TTS), 1 image, 1 video (FastWan) | Supported | All in Go's built-in catalog |
+| `catalog.d` overrides | 8 files | Supported | Go loads all 8 with no diagnostics (checked on a plain copy of the files) |
+| Managed runtimes | llama, whisper, sd, tts-server and ffmpeg pins present | Supported | Go finds the same pinned package directories, so nothing is downloaded at cutover. The kokoro-tts and CrispASR pins are absent but unused (no Kokoro model selected) |
+| Browser access | direct provider, one Google OIDC registration (`client-secret-basic`) | Supported | No GitHub, magic-link, Cloudflare or email-delivery setup |
+| Access policy | 2 roles, 1 email binding, a default role | Supported | |
+| API keys | 57 rows, 9 active | Supported | Same table and hashing (contract suite) |
+| Browser sessions | 1 row | To verify in the shadow check | TS-vs-Go comparison of the stored row on the copy (§17.2) |
+| OTLP | endpoint 127.0.0.1:4318, sample 100, no headers | Supported | |
+| Hugging Face token | set | Supported | |
+| Custom voices, observed memory, capabilities | 0, 3, 2 rows | Supported | |
+| Service | plist with `LOCALBASE_SERVICE_ID` and `LOCALBASE_SERVICE_TOKEN` only | Supported | Rendering is byte-identical (§16) |
+| Installs in progress | none (`runtime/` holds only `gateway.lock`) | n/a | |
+| Memory reserves | system 15% / 8 GB, accelerator 10% / 2 GB | Supported | |
+
+**Blocking gaps: none.**
+
+Findings for the plan:
+
+1. **The live binary is not the `v0.1.0` tag.** It reports `0.1.0`, but it
+   is byte-identical to `/tmp/lb-review/dist/local-base`, built from main
+   at `c4a823d1` (#365, 2026-10-18 18:44). The tag has 10 migrations and
+   the live database has 15. The rollback drill must use TS at
+   `c4a823d1`: the tag's TS would reject the live journal. Rollback in the
+   runbook (§17.3) uses the installed binary itself, which is unaffected.
+2. **Two models share a projector by hard link:**
+   `qwen3.6-35b-a3b-*-mmproj-F16.gguf`, both unselected. Clones give each
+   copy its own inode; the live files are untouched.
+3. **`bin/` has 54 symlinks.** The 36 inside `bin/runtimes` are relative
+   library links within their packages. The others are an old flat layout
+   that neither implementation uses and the copy skips.
