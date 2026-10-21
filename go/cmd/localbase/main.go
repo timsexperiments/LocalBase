@@ -16,9 +16,9 @@ func main() {
 
 func app() *cli.App {
 	// The TS command order.
-	commands := []*cli.Command{initCommand(), configureCommand(), doctorCommand(), modelsCommand(), serveCommand()}
+	commands := []*cli.Command{configCommand(), initCommand(), configureCommand(), doctorCommand(), modelsCommand(), serveCommand()}
 	commands = append(commands, serviceCommands()...)
-	commands = append(commands, logsCommand(), smokeCommand(), keysCommand(), accessCommand(), backendsCommand(), authProfilesCommand(), voicesCommand(), speechCommand())
+	commands = append(commands, logsCommand(), diagnosticsCommand(), smokeCommand(), keysCommand(), accessCommand(), backendsCommand(), authProfilesCommand(), voicesCommand(), speechCommand())
 	commands = append(commands, maintenanceCommands()...)
 	return &cli.App{
 		Name:    "local-base",

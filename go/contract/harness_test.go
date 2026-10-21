@@ -24,6 +24,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,6 +62,8 @@ type Target struct {
 	RealModel bool
 	Root      string // scratch root of a launched gateway
 	stop      func()
+	// halt stops the process and keeps its files; stop also removes them.
+	halt func()
 }
 
 var targets []*Target
@@ -171,6 +174,9 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		return "", "", "", false, err
 	}
 	os.WriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
+	if err := addTinyCatalogModel(r.Dir, r.ModelsDir("stt")); err != nil {
+		return "", "", "", false, err
+	}
 	// Active non-LLM models: sparse files at the expected sizes, which pass the
 	// install check of both implementations without real weights.
 	cat, _ := catalog.Load("")
@@ -224,7 +230,10 @@ func repoRoot() string {
 	return filepath.Dir(filepath.Dir(wd)) // go/contract -> repo
 }
 
-func launch(impl string) (*Target, error) {
+func launch(impl string) (*Target, error) { return launchEnv(impl, nil) }
+
+// launchEnv launches a gateway with extra environment entries.
+func launchEnv(impl string, extra []string) (*Target, error) {
 	dir, err := os.MkdirTemp("", "lbgo-contract-"+impl+"-")
 	if err != nil {
 		return nil, err
@@ -260,13 +269,20 @@ func launch(impl string) (*Target, error) {
 	// Offline: a missing fixture must fail, not be downloaded (loopback stays reachable).
 	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
 		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
+	cmd.Env = append(cmd.Env, extra...)
 	logf, _ := os.Create(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	stop := func() {
+	watchGateway(cmd.Process.Pid)
+	halted := false
+	halt := func() {
+		if halted {
+			return
+		}
+		halted = true
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		done := make(chan struct{})
 		go func() { cmd.Wait(); close(done) }()
@@ -277,6 +293,9 @@ func launch(impl string) (*Target, error) {
 			<-done
 		}
 		logf.Close()
+	}
+	stop := func() {
+		halt()
 		if os.Getenv("LOCALBASE_CONTRACT_KEEP") == "" {
 			os.RemoveAll(dir)
 		}
@@ -296,7 +315,7 @@ func launch(impl string) (*Target, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop}, nil
+	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop, halt: halt}, nil
 }
 
 // --- request helpers ---------------------------------------------------------
@@ -363,3 +382,37 @@ func each(t *testing.T, f func(t *testing.T, tg *Target)) {
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// rangeServer is httptest.NewServer (or NewTLSServer) listening on a port in
+// the test range (24000-29999) instead of an ephemeral one.
+func rangeServer(t testing.TB, h http.Handler, tls bool) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewUnstartedServer(h)
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", freePort()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts.Listener.Close()
+	ts.Listener = ln
+	if tls {
+		ts.StartTLS()
+	} else {
+		ts.Start()
+	}
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// watchGateway stops a gateway's process group if this test process dies
+// first (a panic skips every cleanup), so no scratch gateway or backend
+// outlives the suite. The watchdog exits once the gateway is gone.
+func watchGateway(pid int) {
+	script := fmt.Sprintf(`while kill -0 %d 2>/dev/null && kill -0 %d 2>/dev/null; do sleep 1; done; `+
+		`if kill -0 %d 2>/dev/null; then kill -TERM -%d 2>/dev/null; sleep 10; kill -KILL -%d 2>/dev/null; fi`,
+		os.Getpid(), pid, pid, pid, pid)
+	w := exec.Command("sh", "-c", script)
+	w.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if w.Start() == nil {
+		go w.Wait()
+	}
+}

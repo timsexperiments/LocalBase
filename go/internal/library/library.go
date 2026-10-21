@@ -108,7 +108,7 @@ var ErrNotFound = errors.New("model not found")
 func (l *Library) Entries(ctx context.Context) ([]Entry, error) {
 	l.refresh()
 	var out []Entry
-	for _, s := range l.Catalog.Models {
+	for _, s := range l.Catalog.All() {
 		out = append(out, Entry{Model: models.FromSpec(s), Dir: l.Root.ModelsDir(s.Kind), Spec: s})
 	}
 	imported, err := l.imported(ctx)

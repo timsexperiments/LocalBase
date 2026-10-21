@@ -30,8 +30,8 @@ const (
 func Default(root string, memoryGB int, cat *catalog.Catalog) *store.Config {
 	stt := "whisper-base-q8_0"
 	var fitting []*catalog.Spec
-	for _, s := range cat.Models {
-		if s.Kind == "stt" && runtime.FitFor(s, 0, nil, nil).MinVramGB <= memoryGB {
+	for _, s := range cat.All() {
+		if s.Kind == "stt" && runtime.FitFor(s, 0, nil, nil, cat.PlannableFeedPeaks(s)).MinVramGB <= memoryGB {
 			fitting = append(fitting, s)
 		}
 	}
@@ -219,7 +219,8 @@ func Check(c *store.Config, cat *catalog.Catalog) error {
 }
 
 // Public is the configuration as commands print it (secrets omitted).
-func Public(c *store.Config) map[string]any {
+// eff, when given, is the effective exporter setting (OTEL_* applied).
+func Public(c *store.Config, eff *obs.OtelConfig) map[string]any {
 	dirs := map[string]string{}
 	for _, k := range store.Kinds {
 		dirs[k] = filepath.Join(c.Root, "models", k)
@@ -228,10 +229,14 @@ func Public(c *store.Config) map[string]any {
 	if c.Parallel != "auto" {
 		parallel = int(c.Parallel[0] - '0')
 	}
-	endpoint := obs.SanitizedEndpoint(c.OtelEndpoint)
-	source := "disabled"
-	if c.OtelEndpoint != "" {
-		source = "persistent"
+	persisted := obs.SanitizedEndpoint(c.OtelEndpoint)
+	enabled, source, endpoint := c.OtelEndpoint != "", "persistent", persisted
+	sampler, ratio := "parentbased_traceidratio", float64(c.OtelSampleRatio)/100
+	if eff != nil {
+		enabled, source, endpoint, sampler, ratio = eff.Enabled, eff.Source, eff.DisplayEndpoint, eff.Sampler, eff.SampleRatio
+	}
+	if !enabled {
+		source = "disabled"
 	}
 	return map[string]any{
 		"root": c.Root, "llmModelsDir": dirs["llm"], "sttModelsDir": dirs["stt"], "ttsModelsDir": dirs["tts"],
@@ -244,7 +249,7 @@ func Public(c *store.Config) map[string]any {
 		"parallel":          parallel,
 		"memory":            map[string]any{"systemReserve": c.SystemReserve, "acceleratorReserve": c.AcceleratorReserve},
 		"hfTokenConfigured": c.HFToken != "",
-		"observability": map[string]any{"enabled": c.OtelEndpoint != "", "source": source, "endpoint": endpoint,
-			"persistedEndpoint": endpoint, "sampler": "parentbased_traceidratio", "sampleRatio": float64(c.OtelSampleRatio) / 100},
+		"observability": map[string]any{"enabled": enabled, "source": source, "endpoint": endpoint,
+			"persistedEndpoint": persisted, "sampler": sampler, "sampleRatio": ratio},
 	}
 }

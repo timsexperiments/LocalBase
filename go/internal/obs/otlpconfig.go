@@ -35,7 +35,7 @@ func SanitizedEndpoint(v string) string {
 	if path == "" {
 		path = "/" // WHATWG URL serialization, as TS reports it
 	}
-	return u.Scheme + "://" + u.Host + path
+	return u.Scheme + "://" + whatwgHost(u) + path
 }
 
 var (
@@ -82,4 +82,14 @@ func ParseHeaders(v string) (map[string]string, error) {
 		out[name] = decoded
 	}
 	return out, nil
+}
+
+// whatwgHost is the host as a WHATWG URL serializes it: lowercase, without
+// the scheme's default port.
+func whatwgHost(u *url.URL) string {
+	host := strings.ToLower(u.Host)
+	if p := u.Port(); (u.Scheme == "http" && p == "80") || (u.Scheme == "https" && p == "443") {
+		host = strings.TrimSuffix(host, ":"+p)
+	}
+	return host
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -65,6 +66,8 @@ type ServiceDeps struct {
 	Startup       time.Duration
 	// Activate persists the active model after a switch (TS activateModel).
 	Activate func(kind, modelID string)
+	// Otel traces backend starts (nil: disabled).
+	Otel *otlp.Runtime
 }
 
 type svcBackend struct {
@@ -78,9 +81,11 @@ type svcBackend struct {
 
 type svcWaiter struct {
 	model, key string
+	parent     *otlp.Span // the request's span, for a start it triggers
 	ready      chan error
 	lease      *ServiceLease
 	done       bool
+	dispatched time.Time // left the queue (TS queueWaitMs)
 }
 
 // ServiceLease is exclusive use of the resident backend for one request.
@@ -168,7 +173,7 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 		s.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &svcWaiter{model: modelID, key: key, ready: make(chan error, 1)}
+	w := &svcWaiter{model: modelID, key: key, ready: make(chan error, 1), parent: otlp.FromContext(ctx)}
 	s.queue = append(s.queue, w)
 	s.pump()
 	s.mu.Unlock()
@@ -179,7 +184,7 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 		if err != nil {
 			return nil, err
 		}
-		w.lease.Waited = time.Since(start)
+		w.lease.Waited = w.dispatched.Sub(start)
 		return w.lease, nil
 	case <-ctx.Done():
 		s.abandon(w)
@@ -231,16 +236,20 @@ func (s *Service) pump() {
 			s.queue = s.queue[1:]
 			s.busy = true
 			head.done = true
+			if head.dispatched.IsZero() {
+				head.dispatched = time.Now()
+			}
 			head.lease = &ServiceLease{s: s, b: s.cur, BaseURL: s.cur.baseURL, ModelID: s.cur.modelID, Target: s.cur.target}
 			head.ready <- nil
 			return
 		}
 		s.busy = true // the switch holds the backend
+		head.dispatched = time.Now()
 		s.switching = true
 		s.switchW.Add(1)
-		go func(model, key string) {
+		go func(model, key string, parent *otlp.Span) {
 			defer s.switchW.Done()
-			err := s.doSwitch(model, key)
+			err := s.doSwitch(model, key, parent)
 			s.mu.Lock()
 			s.busy, s.switching = false, false
 			s.failed = err != nil && s.cur == nil
@@ -254,12 +263,12 @@ func (s *Service) pump() {
 			}
 			s.pump()
 			s.mu.Unlock()
-		}(head.model, head.key)
+		}(head.model, head.key, head.parent)
 		return
 	}
 }
 
-func (s *Service) doSwitch(modelID, key string) error {
+func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) error {
 	if s.d.Gate == nil {
 		return fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
@@ -300,7 +309,7 @@ func (s *Service) doSwitch(modelID, key string) error {
 	if prev != nil {
 		s.stop(prev)
 	}
-	b, err := s.start(t, demand)
+	b, err := s.start(t, demand, parent)
 	if err != nil {
 		return err
 	}
@@ -338,7 +347,7 @@ func (s *Service) demand(t *Target) memory.Demand {
 		return memory.Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "declared"}
 	}
 	if spec := s.d.Catalog.ByID(t.ModelID); spec != nil && !t.Imported {
-		if d := memory.EstimateCatalog(spec, nil); d.UnifiedBytes > 0 {
+		if d := catalogServiceDemand(s.d.Catalog, spec, t.weightsBytes()); d.UnifiedBytes > 0 {
 			return d
 		}
 	}
@@ -346,7 +355,8 @@ func (s *Service) demand(t *Target) memory.Demand {
 	return memory.Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "estimated"}
 }
 
-func (s *Service) start(t *Target, demand memory.Demand) (*svcBackend, error) {
+func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*svcBackend, error) {
+	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
 		if t.Manual || t.Imported {
 			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
@@ -365,9 +375,13 @@ func (s *Service) start(t *Target, demand memory.Demand) (*svcBackend, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.d.Log.Info("Starting "+cmd.name+" for "+t.ModelID+".", "event", "runtime.starting", "runtime", s.d.Modality,
+	s.d.Log.InfoContext(ctx, "Starting "+cmd.name+" for "+t.ModelID+".", "event", "runtime.starting", "runtime", s.d.Modality,
 		"model_id", t.ModelID, "backend_id", t.Backend.ID, "demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)
-	proc, err := StartProcessIn(cmd.name, cmd.bin, cmd.dir, cmd.args, cmd.env, s.d.Log)
+	var proc *Process
+	err = spanned(s.d.Otel, ctx, "localbase.backend.start", cmd.name, func() (err error) {
+		proc, err = StartProcessIn(cmd.name, cmd.bin, cmd.dir, cmd.args, cmd.env, s.d.Log)
+		return err
+	})
 	if err != nil {
 		res.Release()
 		return nil, fail(err)
@@ -378,12 +392,14 @@ func (s *Service) start(t *Target, demand memory.Demand) (*svcBackend, error) {
 	if cmd.startup > 0 {
 		budget = cmd.startup
 	}
-	if err := proc.WaitHealthy(context.Background(), base+cmd.health, budget); err != nil {
+	if err := spanned(s.d.Otel, ctx, "localbase.backend.model_load", cmd.name, func() error {
+		return proc.WaitHealthy(context.Background(), base+cmd.health, budget)
+	}); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
 		return nil, fail(err)
 	}
-	s.d.Log.Info(cmd.name+" is ready for "+t.ModelID+".", "event", "runtime.ready", "runtime", s.d.Modality, "model_id", t.ModelID, "pid", proc.PID())
+	s.d.Log.InfoContext(ctx, cmd.name+" is ready for "+t.ModelID+".", "event", "runtime.ready", "runtime", s.d.Modality, "model_id", t.ModelID, "pid", proc.PID())
 	return &svcBackend{modelID: t.ModelID, target: t, proc: proc, res: res, baseURL: base}, nil
 }
 
@@ -566,4 +582,26 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		return &serviceCommand{name: d.ID, bin: l.Command, args: args, health: health}, nil
 	}
 	return nil, fmt.Errorf("%s (adapter %s) does not run %s models", d.Name, d.Adapter, taskOf(s.d.Modality))
+}
+
+// catalogServiceDemand is a catalog media model's admission demand (TS
+// catalogDemand then admissionDemand): the checked-in measurement, else a
+// feed peak for exactly this file and launch, else the estimate; a local
+// file larger than the catalog's adds its extra bytes.
+func catalogServiceDemand(cat *catalog.Catalog, spec *catalog.Spec, localBytes int64) memory.Demand {
+	catalogBytes := spec.TotalArtifactBytes()
+	d, measured := memory.MeasuredCatalog(spec, nil)
+	if measured {
+		d.Confidence = "measured"
+	} else if p := memory.SelectFeedPeak(spec, cat.PlannableFeedPeaks(spec), nil); p != nil {
+		d = memory.FeedDemand(spec, *p, catalogBytes, 0)
+	} else {
+		d = memory.EstimateCatalog(spec, nil)
+	}
+	if extra := localBytes - catalogBytes; extra > 0 && d.UnifiedBytes > 0 {
+		d.UnifiedBytes += extra
+		d.HostBytes += extra
+		d.AcceleratorBytes += extra
+	}
+	return d
 }

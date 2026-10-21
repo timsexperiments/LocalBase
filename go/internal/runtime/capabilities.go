@@ -357,8 +357,15 @@ func DetectCapabilities(s *catalog.Spec, dir string) *Detected {
 	return &out
 }
 
-// ResolveCapabilities applies the precedence rules. rt may be nil.
+// ResolveCapabilities applies the precedence rules with the spec's own
+// unsupported marks. rt may be nil.
 func ResolveCapabilities(s *catalog.Spec, det *Detected, rt *store.RuntimeCapabilities) Resolved {
+	return ResolveCapabilitiesWith(s, det, rt, s.UnsupportedCapabilities)
+}
+
+// ResolveCapabilitiesWith resolves with the effective unsupported marks (the
+// spec's, then the feed marks that apply).
+func ResolveCapabilitiesWith(s *catalog.Spec, det *Detected, rt *store.RuntimeCapabilities, marks []catalog.Unsupported) Resolved {
 	detected, runtimeOp := Opinions{}, Opinions{}
 	if det != nil {
 		detected = det.Capabilities
@@ -368,8 +375,10 @@ func ResolveCapabilities(s *catalog.Spec, det *Detected, rt *store.RuntimeCapabi
 	}
 	verified := Opinions{} // runtime round-trip verification is not recorded yet
 	unsupported := map[string]string{}
-	for _, u := range s.UnsupportedCapabilities {
-		unsupported[u.ID] = u.Reason
+	for _, u := range marks {
+		if _, seen := unsupported[u.ID]; !seen {
+			unsupported[u.ID] = u.Reason
+		}
 	}
 	var ids []string
 	seen := map[string]bool{}
@@ -382,7 +391,7 @@ func ResolveCapabilities(s *catalog.Spec, det *Detected, rt *store.RuntimeCapabi
 	for _, c := range s.Capabilities {
 		add(c.ID)
 	}
-	for _, u := range s.UnsupportedCapabilities {
+	for _, u := range marks {
 		add(u.ID)
 	}
 	if det != nil {
@@ -473,12 +482,16 @@ func ResolveCapabilities(s *catalog.Spec, det *Detected, rt *store.RuntimeCapabi
 
 // CapabilitiesFor resolves one model from its files and the stored runtime
 // report. It never downloads, hashes or launches anything.
-func CapabilitiesFor(ctx context.Context, st *store.Store, s *catalog.Spec, dir string) Resolved {
+func CapabilitiesFor(ctx context.Context, st *store.Store, cat *catalog.Catalog, s *catalog.Spec, dir string) Resolved {
 	var rt *store.RuntimeCapabilities
 	if sha := s.Primary().SHA256; sha != "" && st != nil {
 		rt, _ = st.RuntimeCapabilitiesFor(ctx, s.ModelID, sha)
 	}
-	return ResolveCapabilities(s, DetectCapabilities(s, dir), rt)
+	marks := s.UnsupportedCapabilities
+	if cat != nil {
+		marks = cat.EffectiveUnsupported(s)
+	}
+	return ResolveCapabilitiesWith(s, DetectCapabilities(s, dir), rt, marks)
 }
 
 // --- runtime probe ------------------------------------------------------------

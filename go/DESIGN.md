@@ -70,15 +70,20 @@ Line counts are production code, without tests.
    files all exist to tell a foreground `serve` apart from a managed one across
    processes. Replace them with one `flock` on `<root>/runtime/gateway.lock`
    held for the process lifetime, plus the service manager's own status.
-6. **The pending-restart fingerprint for declarative config.** The
-   `config_activation` table and the "acknowledge static settings" handshake
-   go away. Listener and memory-policy changes take effect on restart, and
-   `config apply` reports `restart-required`. The table is kept but unused, so
-   rollback still works.
+6. **The pending-restart fingerprint for declarative config: kept (M5).**
+   The plan was to drop the `config_activation` table and the "acknowledge
+   static settings" handshake. M5 kept them: they are about 150 lines, the
+   fingerprint is the TS one, and keeping them means `pendingRestart`, `config
+   plan --detailed-exit-code` and `config apply --wait` behave the same on
+   either binary, and each reads the other's record during cutover and
+   rollback. `configure` and `config apply` record a pending restart when the
+   listener or memory policy changes; a managed gateway clears it when it is
+   ready with exactly those settings.
 7. **The OpenTelemetry SDK.** It brings 11 packages, a diag-echo filter, and
    batch processors whose failures needed their own reporter. In Go, a small
-   OTLP/HTTP JSON exporter (logs and traces only) uses a bounded channel, one
-   goroutine, a 5 s deadline, and the #358 outage-reporting rules built in.
+   OTLP/HTTP exporter (logs and traces only, hand-encoded protobuf, the one
+   protocol TS supports) uses a bounded queue per signal, one goroutine each,
+   a 5 s deadline, and the #358 outage-reporting rules built in (M5).
 8. **Interactive prompts** (`@inquirer`). Every command already accepts
    `--non-interactive` with flags. Go keeps the flags and drops the prompts.
    `configure` without flags prints what to pass.
@@ -293,7 +298,7 @@ Cross-cutting behavior that stays:
 | `start`, `stop`, `restart`, `status` | Simplify | launchd/systemd through `internal/service`. The plist keeps stderr → `logs/service-stderr.log`, bounded (#357). There's no lease handshake. |
 | `init` | Keep | Creates the root marker and default config. |
 | `configure` | Simplify | Flags only, no prompts. |
-| `config validate/plan/apply/show` | Simplify | Same TOML v1 document. No activation fingerprint: `apply` reports `restart-required`, and `--restart auto` restarts the managed service. |
+| `config validate/plan/apply/show` | Keep | Same TOML v1 document, validation messages, plans and pending-restart record (§2.6). `--restart auto` restarts the managed service. |
 | `models catalog/list/show/install/recommend` | Keep | |
 | `models search/add hf:/remove-entry` | Keep | |
 | `models feed status/refresh/use` | Keep | |
@@ -314,7 +319,7 @@ Cross-cutting behavior that stays:
 | --- | --- |
 | `.localbase-root.json` | Keep: read and validated. Initialization locks are dropped. |
 | `local-base.db` + journal | Keep, byte-compatible (§4). |
-| `config_activation` table | Keep schema, stop writing. |
+| `config_activation` table | Keep: written and acknowledged as TS does (§2.6). |
 | `catalog.d/`, `cache/catalog-feed`, `cache/hf`, `catalog-feed.json` (feed URL setting) | Keep. |
 | `bin/runtimes/<family>/<sha>/` + receipts | Keep the layout and pins. The receipt is rewritten in the same JSON shape. |
 | Legacy flat `bin/llama-server` etc. | Drop, since nothing reads them now. Left on disk. |
@@ -532,7 +537,7 @@ What this branch contains, and what each part was checked against.
 | Memory controller | Done | Table tests for admission, permanent shortfall, GPU working-set sum (#283), switch preflight credit capped at footprint (#355), hysteresis, and `vm_stat`/`footprint` parsing. |
 | LLM supervisor + FIFO queue | Done | A fake llama-server runs as a real process. Covered: cold start, drain before switch, FIFO across a switch, queue full and timeout, failed switch restores the previous model (#296), preflight rejection keeps the current model, crash then restart on the next request. Passes `-race` repeatedly. |
 | `/health`, `/health/ready`, `/v1/models`, `/v1/models/{id}`, `/v1/chat/completions` | Done | The contract suite passes against TS and Go. The differential test finds `/v1/models` identical on matching fixtures, apart from the measured peak's value. Real inference through both with qwen2.5-coder-1.5b (1.1 GB). |
-| JSONL events | Done | Schema 2, the same field names, rotation at 10 MiB with 5 archives. Not yet: OTLP or the full TS redaction rules. |
+| JSONL events | Done | Schema 2, the same field names, rotation at 10 MiB with 5 archives. OTLP export and the full TS event schema on read came with M5 (§14.2). |
 | UI: Library, Running now, details | Done | Rendered and exercised in a browser at 320, 390 and 1280 px, light and dark: no horizontal scroll, 44 px targets, htmx filter and search with URL history, live polling under CSP, edge-expiry probe. |
 | CLI | Partial | `serve`, `keys create/list`, `version`. Everything else is M2. |
 
@@ -1046,8 +1051,26 @@ Deliberate status changes to verify against the live clients at cutover:
    TS 500 `gateway_error`; Go 400 `validation_failed`.
 3. **The wrong method on a JSON inference route** (for example `GET
    /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
-4. **An overflowing prompt** (M1): 400 `context_length_exceeded` instead of
-   the relayed `exceed_context_size_error`.
+4. **Model management while a runtime is up** (M5): TS reconciles a running
+   runtime eagerly when the active model changes, so the model it switched to
+   stays referenced and `uninstall` answers 409 `conflict` until
+   reconciliation settles; Go switches on the next request and uninstalls a
+   model no runtime holds.
+
+Operator-run steps for the cutover rehearsal, which no automated test
+covers because they need a real service manager:
+
+- **`config apply` restarting a launchd service.** Install the Go binary as
+  a service under a throwaway launchd label pointed at a scratch root and
+  port, never the live label or root. Then check that `config apply --file
+  <doc with a new gateway.port>` (default `--restart auto`) restarts it
+  (`activation: restarted`). Check that `--wait` returns once the restarted
+  gateway acknowledges the new settings (`pendingRestart: false`), and that
+  `config apply --restart never` followed by `local-base service restart`
+  clears the pending restart. Remove the label afterwards.
+- **Real OpenTelemetry Collector.** Run `go/tools/otelcol-check.sh`, which
+  uses the pinned `otelcol` 0.163.1 and verifies its checksum, against the
+  release candidate; see §14.3.
 
 The Lab and My voices pages (step 6) call the API in-process as the signed-in
 person (`gateway.Server.Call`), so they get exactly the API's validation,
@@ -1057,3 +1080,118 @@ origin. Recording, file conversion and resampling to WAV happen in the
 browser (`static/js/audio.js`), since the server decodes only WAV.
 `TestServeForUI` serves the contract fixture with `--no-auth` on a test
 port for checking the pages by hand.
+
+## 14. M5: catalog feed, discovery, declarative config, diagnostics, OTLP
+
+Stacked on M4 (`rewrite/go-m5` on `rewrite/go-m4`). M5 makes the Go gateway
+feature-complete except video. Every route and command keeps the TS contract,
+checked side by side; where TS talks to the network (Hugging Face, the feed,
+an OTLP collector), goldens come from running the TS code against recorded
+or local responses.
+
+### 14.1 Plan
+
+| Step | Contents | Evidence |
+| --- | --- | --- |
+| 1 | `/_localbase/model-management` (GET state; POST install, uninstall, enable, disable, activate; install answers 202 with an operation to poll) | Differential cases on twin scratch roots, a local download source for installs |
+| 2 | Remote catalog feed: download, format/version/sha256 checks, per-entry validation, annotations, the `cache/catalog-feed` last-good copy, the 24 h schedule in `serve`, `models feed` CLI, `LOCALBASE_CATALOG_FEED_URL` | Feed goldens from `remote-feed.ts`; both gateways loading the same local feed |
+| 3 | Hugging Face discovery: `models search`, `models add hf:…`, `models remove-entry`, `/_localbase/model-discovery` | Goldens from `huggingface.ts`/`discovery.ts` with a mocked fetch; Go against a local fake hub |
+| 4 | `config validate/plan/apply/show` (declarative TOML) | CLI contract on twin roots |
+| 5 | `diagnostics` (redacted ZIP bundle) | Bundle listing and redaction compared with TS; planted secrets never appear |
+| 6 | OTLP export of traces and logs over `http/protobuf` (the only protocol TS supports), the OTEL_* settings, export-failure reporting, and the TS log redaction rules | A local collector decodes both gateways' exports for the same requests; protobuf encoding hand-written, no SDK |
+| 7 | Contract sweep and real runs; DESIGN status | Full suite on both implementations |
+
+OTLP stays dependency-free: the exporter encodes the few OTLP protobuf
+messages it needs (resource, scope, spans, log records, attributes) directly.
+
+### 14.2 Status
+
+| Step | State | Evidence |
+| --- | --- | --- |
+| 1 | Done | `TestDifferentialModelManagement`: full state and every response on both gateways, an offline install polled to completion |
+| 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
+| 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
+| 4 | Done | `TestCLIConfigDeclarative` (twin roots: 40 invalid documents with the JSON envelope and the raw message before redaction compared, plans, `--detailed-exit-code`, apply with `--restart never`, `--wait` refused without a gateway, apply creating a fresh root, stdin, human output, and each CLI reading the other's pending restart), `TestCLIConfigForegroundGateway` (automatic restart refused next to a foreground gateway; unchanged apply with `--wait`), `TestDeclarativeGolden` (`tools/golden/config.ts`: 54 documents, their messages before redaction, normalized configurations, plans against saved, pending and absent configurations, and renderings; runs in CI), `TestStaticFingerprintMatchesTypeScript`, `TestPendingRestartLifecycle`, `TestDocumentKeyOrder` |
+| 5 | Done | `TestCLIDiagnostics` (twin roots with planted secrets in log messages, errors, attributes and identifiers, a launch-shaped catalog patch, an invalid catalog file, a credentialed feed URL, OTLP environment headers and captured service stderr: the manifests match field for field, `logs/events.jsonl` byte for byte, the human output line for line, no secret reaches either archive; an uninitialized root; the output rules, with an existing file never replaced), `TestEventsGolden` (`tools/golden/logs.ts`: 50 lines, which ones the reader keeps and their redacted diagnostics form; runs in CI) |
+| 6 | Done | `TestDifferentialOTLP` (each gateway exports to a local collector; for the same requests, an authenticated list, an unmatched route, missing and invalid credentials, and a real chat under a remote traceparent, the span trees match: names, kinds, flags, status, parentage and attributes, including the inference, backend client and backend start and load spans; every exported log record is a local event with the TS attribute mapping and its span correlation; request and inference records match; exporter headers are sent and never logged), `TestDifferentialOTLPFailures` (a failing collector is reported in the local log with the same events on both, never exported), `TestCLIOtelEnvironment` (doctor and configure report the effective OTEL_* settings; invalid variables fail both before anything is saved), `otlp` goldens from `tools/golden/otel.ts` (ratio sampler decisions, Retry-After handling, the outage reporter over a scripted outage) and collector tests in CI |
+| 7 | Done | Full suite on both implementations with real models (qwen2.5-coder-1.5b chat through both exporters, whisper, Kokoro, Qwen3-TTS, DreamShaper) and Go-only in CI. The sweep added `TestResolveOtelGolden` (`tools/golden/otelconfig.ts`: 69 saved-setting and OTEL_* combinations, resolved or rejected with the TS CLI message; it found that WHATWG URLs drop default ports), `TestApplyDecision` (the TS apply cases as restart decisions; CI now runs the `cmd` tests), and a bounded shutdown against a hung collector. It also made the M3.5 AC5 acceptance step retry a transient `insufficient_memory` 503, as clients honouring Retry-After do: the 7 GB macOS runner's free memory moves with everything else on it, and admission stays on. Not covered by any test: `config apply` restarting a real launchd service (it would install one); the restart path is the service package's, already covered on a scratch label in M2. |
+
+The feed brings three Go structures with it. `internal/jsjson` reproduces
+JavaScript's JSON round trip (property order, number formatting), which the
+feed checksum and the Misaki dictionary depend on. The catalog is now three
+tiers (built-in, remote, user) with provenance (`Trust`, `Origin`, `Tier`,
+`LayerPath`), and a gateway replaces its catalog in place when the hourly
+check downloads a new feed. Feed peaks rank between checked-in measurements
+and estimates in every memory figure and in admission (LLM and media), and
+feed capability marks join the spec's own in capability resolution; both
+apply only to an exact repository, revision and file match.
+
+Diagnostics brought two reader changes. The log reader now applies the full
+TS event schema (strict keys, identifiers, routes, attribute names and
+values), so `logs` and diagnostics keep exactly the lines TS keeps. User
+catalog files are reported with the TS wording, in the TS order (unreadable
+files first, then entries), and record which fields a patch changed; a
+wrong-typed field is worded as zod words it, while other validation failures
+keep the Go wording.
+
+OTLP brought three gateway changes that also show in the local log. Request
+events carry the TS auth outcome (`disabled` on public routes, `missing` or
+`invalid` instead of `unauthenticated`). Speech and transcription now record
+`inference.completed` with an inference span, as TS does. The queue wait in
+`Server-Timing` and inference telemetry ends when a request leaves the queue,
+not when its model has finished loading (TS `queueWaitMs`).
+
+M5 is complete: the catalog feed, Hugging Face discovery, declarative
+configuration, diagnostics and OTLP export match TS. Still open before M6,
+carried over from M3: the Chat, admin and settings pages, and a discovery
+page over `/_localbase/model-discovery` (the API is done). The user's
+decision on CrispASR's marking is also still open; marking stays on and
+C2PA is not passed through until they decide.
+
+### 14.3 Operator review follow-ups
+
+1. **OTLP against a real collector.** `TestRealCollector` runs a pinned
+   OpenTelemetry Collector, core distribution `otelcol` 0.163.1 for
+   darwin/arm64 (`otelcol_0.163.1_darwin_arm64.tar.gz`, sha256
+   `664047e6ffd98ffaaf90d282bb481ffad46b1e8456f0b2f65e42d627d665d8d3`),
+   from `LOCALBASE_CONTRACT_OTELCOL` (or `go/tools/otelcol-check.sh`, which
+   downloads and verifies it). It listens on a test port, never the
+   live collector on 127.0.0.1:4318, and writes what it parsed with its
+   file exporter. Both gateways' span trees and log records, as the
+   collector parsed them, match, and the Go export is accepted with no
+   reported failure. Partial success (rejected spans or log records, in a
+   protobuf or JSON body) now feeds the #358 reporter, with the collector's
+   message redacted: a deliberate difference, since TS ignores the body. 4xx
+   and 5xx responses were already reported. #367: shutdown flushes while the
+   file sink is open, the failure events land in `events.jsonl` after
+   `gateway.stopped`, and nothing about OTLP reaches stderr
+   (`TestOtelShutdownDiagnosticsStayInTheLog`).
+2. **Catalog feed and #368.** Built against current main: a feed entry with
+   a built-in id is ignored. #368 is not merged yet. Follow-up for when it
+   lands:
+   - port `src/catalog/former/` and adoption (installed or configured former
+     entries written to `catalog.d/<id>.json` with the notes hint, recorded
+     in `catalog.d/.former-built-ins`, adopted while the config row loads);
+   - skip former ids from the feed, as built-in ones, so they never come
+     back as community entries;
+   - add the `pipelineTemplate` fallback in discovery (FLUX.1, FLUX.2 Klein
+     9B, SDXL and SD1.5 encoders from the pinned former entries);
+   - regenerate `tools/golden/feed.ts` and `tools/golden/hub.ts` against it
+     (the FLUX.1-schnell, SDXL base, SDXL LoRA and LCM cases already
+     exercise the fallback);
+   - port `former-adoption.test.ts` as a contract test.
+3. **Install operations across a restart.** Operations are recorded in
+   `runtime/model-operations.json`. At shutdown an accepted install gets
+   three seconds and is then interrupted. After a restart, an install that
+   was running (interrupted or killed) reports `failed`, with "Interrupted
+   when the gateway stopped. Install again to resume.", and installing
+   again resumes the partial file (`TestInstallInterruptedByGatewayStop`,
+   SIGTERM and SIGKILL). TS keeps operations in memory and waits for the
+   install, so under launchd's stop deadline it loses them.
+4. **Diagnostics.** The planted-secret scan now also covers download auth
+   profiles, an imported model's signed URL, a custom voice's display name
+   (the log carries its id) and `go_settings`.
+5. **Hugging Face goldens.** The 37 recorded responses are pinned by sha256
+   (`testdata/hub/PINS`, `TestFixturesPinned`), and the golden script
+   refuses to fetch unless `LOCALBASE_HUB_RECORD=1`. The removed-entry
+   template fallback gets its golden with #368 (item 2).

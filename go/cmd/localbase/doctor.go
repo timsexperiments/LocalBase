@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strconv"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
@@ -31,8 +32,12 @@ func doctorCommand() *cli.Command {
 				c.Info("GPU VRAM: %d GB (Discrete Memory)", s.GPUVramGB)
 			}
 			c.Info("Parallel Slots: %s", e.Config.Parallel)
-			if ep := obs.SanitizedEndpoint(e.Config.OtelEndpoint); ep != "" {
-				c.Info("OpenTelemetry: enabled via persistent (%s)", ep)
+			eff, err := obs.ResolveOtel(e.Config.OtelEndpoint, e.Config.OtelHeaders, e.Config.OtelSampleRatio, os.Getenv)
+			if err != nil {
+				return nil, err
+			}
+			if eff.Enabled {
+				c.Info("OpenTelemetry: enabled via %s (%s)", eff.Source, eff.DisplayEndpoint)
 			} else {
 				c.Info("OpenTelemetry: disabled")
 			}
@@ -54,7 +59,7 @@ func doctorCommand() *cli.Command {
 			default:
 				c.Info("Status: ❌ Low VRAM. Focus on 1.5B/3B models or CPU offloading.")
 			}
-			data := map[string]any{"hardware": s, "configuration": conf.Public(e.Config)}
+			data := map[string]any{"hardware": s, "configuration": conf.Public(e.Config, eff)}
 			if st := obs.InspectServiceStderr(e.Root.Dir); st != nil {
 				archive := ""
 				if st.ArchiveBytes > 0 {

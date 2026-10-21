@@ -3,6 +3,7 @@ package memory
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -343,4 +344,81 @@ func MeasuredCatalog(s *catalog.Spec, geometry *Geometry) (Demand, bool) {
 		return Demand{}, false
 	}
 	return measuredDemand(*r, weights, 0, overhead, rounding), true
+}
+
+// demandOptions are the per-kind overhead and rounding a measured peak is
+// planned with (TS measurementDemandOptions).
+func demandOptions(s *catalog.Spec) (overhead, rounding int64) {
+	switch s.Kind {
+	case "stt":
+		return whisperAcceleratorOH, 0
+	case "tts":
+		if s.TTSRuntime != nil && s.TTSRuntime.Kind == "kokoro-onnx" {
+			return 0, 0
+		}
+	case "video":
+		return AcceleratorOverhead, videoAcceleratorRounding
+	}
+	return AcceleratorOverhead, 0
+}
+
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
+}
+
+var ttsShapeRe = regexp.MustCompile(`^ctx=\d+$`)
+
+// FeedPeakMatchesLaunch reports whether a feed peak describes the launch
+// LocalBase plans for s (TS feedPeakMatchesLaunch): LLMs at the exact
+// reference shape, image at the same --diffusion-fa, video at its
+// qualification bounds, speech at its fixed shape.
+func FeedPeakMatchesLaunch(s *catalog.Spec, shape string, geometry *Geometry) bool {
+	switch s.Kind {
+	case "llm":
+		_, _, l := LLMReference(s, geometry)
+		return shape == l.LaunchShape()
+	case "stt":
+		return shape == "default"
+	case "tts":
+		return ttsShapeRe.MatchString(shape)
+	case "image":
+		flash := s.ImageLaunchOptions != nil && s.ImageLaunchOptions.DiffusionFlashAttention
+		return strings.HasSuffix(shape, ";diffusion-fa="+onOff(flash))
+	case "video":
+		if s.VideoRuntime == nil {
+			return false
+		}
+		q := s.VideoRuntime.Qualification
+		return shape == fmt.Sprintf("%dx%d;frames=%d;cpu-offload=%s;diffusion-fa=%s", q.MaxWidth, q.MaxHeight, q.MaxFrames,
+			onOff(q.LaunchOptions.CPUOffload), onOff(q.LaunchOptions.DiffusionFlashAttention))
+	}
+	return false
+}
+
+// SelectFeedPeak is the largest plannable feed peak at the planned shape.
+func SelectFeedPeak(s *catalog.Spec, peaks []catalog.MemoryPeak, geometry *Geometry) *catalog.MemoryPeak {
+	var best *catalog.MemoryPeak
+	for i := range peaks {
+		p := &peaks[i]
+		if FeedPeakMatchesLaunch(s, p.LaunchShape, geometry) && (best == nil || p.PeakBytes > best.PeakBytes) {
+			best = p
+		}
+	}
+	return best
+}
+
+// FeedDemand plans a feed peak like a checked-in measurement of the
+// catalog files (artifactBytes defaults to the catalog total).
+func FeedDemand(s *catalog.Spec, p catalog.MemoryPeak, artifactBytes, promptCache int64) Demand {
+	overhead, rounding := demandOptions(s)
+	r := Measurement{BackendAcceleratorBytes: p.BackendAcceleratorBytes, HostBufferBytes: p.HostBufferBytes, PeakRSSBytes: p.PeakRSSBytes}
+	if p.SystemDeltaBytes != nil {
+		r.SystemDeltaBytes = *p.SystemDeltaBytes
+	}
+	d := measuredDemand(r, artifactBytes, promptCache, overhead, rounding)
+	d.Confidence = "feed"
+	return d
 }

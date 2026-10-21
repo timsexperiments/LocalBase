@@ -843,6 +843,13 @@ func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
 	return start(r, lease, restart, installMissing)
 }
 
+// RestartWithin restarts the service for a caller holding the operation
+// lease (TS restartServiceWithinOperation); the lease is handed to the new
+// gateway.
+func RestartWithin(r *root.Root, lease *root.Lease) (Inspection, error) {
+	return start(r, lease, true, false)
+}
+
 func start(r *root.Root, lease *root.Lease, restart, installMissing bool) (Inspection, error) {
 	st, prev := readManifest(r.Dir)
 	current := ""
@@ -958,7 +965,8 @@ func Remove(r *root.Root) (Inspection, error) {
 	return Inspect(r, false)
 }
 
-// WaitReady waits until the gateway answers /health/ready with ready.
+// WaitReady waits until the gateway answers /health/ready with ready and
+// no restart is pending.
 func WaitReady(r *root.Root, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	client := &http.Client{Timeout: 750 * time.Millisecond}
@@ -969,7 +977,7 @@ func WaitReady(r *root.Root, timeout time.Duration) error {
 				var body struct{ Status string }
 				json.NewDecoder(resp.Body).Decode(&body)
 				resp.Body.Close()
-				if resp.StatusCode == 200 && body.Status == "ready" {
+				if resp.StatusCode == 200 && body.Status == "ready" && !restartPending(r) {
 					return nil
 				}
 			}
@@ -979,4 +987,15 @@ func WaitReady(r *root.Root, timeout time.Duration) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// restartPending reports a recorded pending restart (read-only).
+func restartPending(r *root.Root) bool {
+	st, err := store.OpenReadOnly(r.DB())
+	if err != nil {
+		return false
+	}
+	defer st.Close()
+	pending, _ := st.RestartPending(context.Background())
+	return pending
 }

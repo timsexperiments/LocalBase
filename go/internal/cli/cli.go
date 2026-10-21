@@ -52,6 +52,7 @@ type Global struct {
 type Ctx struct {
 	Global      Global
 	Args        []string // positionals
+	path        []string
 	values      map[string][]string
 	bools       map[string]bool
 	Stdout      io.Writer
@@ -110,6 +111,12 @@ func (c *Ctx) Info(format string, a ...any) {
 	fmt.Fprintf(w, format+"\n", a...)
 }
 
+// Error prints a human message on stderr, with or without --json (TS
+// output.error).
+func (c *Ctx) Error(format string, a ...any) {
+	fmt.Fprintf(c.Stderr, format+"\n", a...)
+}
+
 // Streaming marks a command that writes its own JSON lines (logs --follow,
 // serve lifecycle events), so no envelope is printed on success.
 func (c *Ctx) Streaming() { c.streamingOK = true }
@@ -132,6 +139,15 @@ type Command struct {
 	Run         func(c *Ctx) (any, error)
 	Sub         []*Command
 	ExitCodeFor func(data any) int // optional: non-zero exit with a success envelope (doctor, smoke)
+	// InputExitCode replaces exit code 2 for bad input (TS inputErrorExitCode).
+	InputExitCode int
+}
+
+func (c *Command) inputExit() int {
+	if c.InputExitCode != 0 {
+		return c.InputExitCode
+	}
+	return 2
 }
 
 func (c *Command) find(name string) *Command {
@@ -226,15 +242,15 @@ func (a *App) Run(args []string) int {
 			return a.fail(g.JSON, "invalid_input", "Unknown command: "+rest[0], 2, cmd, path)
 		}
 	}
-	ctx := &Ctx{Global: g, Stdout: a.Stdout, Stderr: a.Stderr}
+	ctx := &Ctx{Global: g, Stdout: a.Stdout, Stderr: a.Stderr, path: path}
 	if err := parseOptions(ctx, cmd, rest); err != nil {
-		return a.fail(g.JSON, "invalid_input", err.Error(), 2, cmd, path)
+		return a.fail(g.JSON, "invalid_input", err.Error(), cmd.inputExit(), cmd, path)
 	}
 	data, err := cmd.Run(ctx)
 	if err != nil {
 		var ie *InputError
 		if errors.As(err, &ie) {
-			return a.fail(g.JSON, "invalid_input", ie.Message, 2, cmd, path)
+			return a.fail(g.JSON, "invalid_input", ie.Message, cmd.inputExit(), cmd, path)
 		}
 		if ctx.streamingOK && g.JSON {
 			ctx.Line(map[string]any{"event": "error", "error": map[string]string{"code": "operational_error", "message": err.Error()}})
@@ -376,7 +392,7 @@ func parseOptions(c *Ctx, cmd *Command, args []string) error {
 		}
 	}
 	if len(c.Args) < cmd.MinArgs || len(c.Args) > cmd.MaxArgs {
-		return Inputf("Invalid positional arguments for %s", cmd.Name)
+		return Inputf("Invalid positional arguments for %s", strings.Join(c.path, " "))
 	}
 	return nil
 }

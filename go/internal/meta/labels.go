@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -251,5 +252,52 @@ func DetailLines(m Model, installed, enabled, isDefault bool, catalogPath string
 		lines = append(lines, fmt.Sprintf("  Seen on this machine: %s with %s, %s", FormatGB(p.PeakBytes), DescribeLaunchShape(p.LaunchShape), day))
 	}
 	lines = append(lines, "  This machine:   "+DescribeFit(mem.Fit.Verdict, mem.Fit.SystemMemoryGb, mem.Fit.HeadroomGb))
+	if a, ok := c.FeedAnnotation.(*catalog.AnnotationSummary); ok && a != nil {
+		lines = append(append(lines, ""), FeedAnnotationLines(a)...)
+	}
+	return lines
+}
+
+var feedStatusLabels = map[string]string{"qualified": "Qualified by LocalBase", "verified": "Verified by LocalBase"}
+
+func describeFeedShape(shape string) string {
+	if d := DescribeLaunchShape(shape); d != shape {
+		return d
+	}
+	return strings.Join(strings.Split(shape, ";"), ", ")
+}
+
+// FeedAnnotationLines is the "From the catalog feed" section of models show.
+func FeedAnnotationLines(a *catalog.AnnotationSummary) []string {
+	status := "Not qualified or verified"
+	if a.Status != nil {
+		status = feedStatusLabels[*a.Status]
+	}
+	file := ""
+	if a.File != nil {
+		file = " · " + *a.File
+	}
+	lines := []string{"From the catalog feed", "  Status:         " + status, "  Published for:  " + a.Repo + file + " at " + a.Revision}
+	if !a.RevisionMatch {
+		lines = append(lines, "  Note:           The feed describes another revision than the one pinned here, so its marks are not applied.")
+	}
+	for _, p := range a.MemoryPeaks {
+		lines = append(lines, fmt.Sprintf("  Measured peak:  %s with %s (%s on %s, %s)", FormatGB(p.PeakBytes), describeFeedShape(p.LaunchShape), p.Variant, p.Hardware, p.MeasuredAt))
+	}
+	if r := a.Recipe; r != nil {
+		total := r.TotalBytes
+		lines = append(lines, fmt.Sprintf("  Recipe:         %d files, %s, pinned by sha256", r.FileCount, FormatFileSize(&total)))
+	}
+	for _, m := range a.UnsupportedCapabilities {
+		note := ""
+		switch {
+		case m.Applied:
+		case a.RevisionMatch:
+			note = " (not applied: your entry declares it)"
+		default:
+			note = " (not applied)"
+		}
+		lines = append(lines, "  "+m.Label+" · Verified unsupported: "+m.Reason+note)
+	}
 	return lines
 }

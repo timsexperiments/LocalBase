@@ -17,6 +17,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -46,6 +47,13 @@ type Server struct {
 	Image *runtime.Service
 	// Voices stores custom voice profiles (nil: the routes are disabled).
 	Voices *voices.Store
+	// OnReady runs whenever readiness reports ready (a managed gateway
+	// acknowledges its startup settings, TS acknowledgeStaticConfiguration).
+	OnReady func()
+	// Otel exports traces (nil: disabled).
+	Otel *otlp.Runtime
+
+	mgmt *management
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -56,6 +64,11 @@ type Server struct {
 
 func New(s *Server) *Server {
 	s.started = time.Now()
+	rootDir := ""
+	if s.Root != nil {
+		rootDir = s.Root.Dir
+	}
+	s.mgmt = newManagement(rootDir)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
@@ -81,6 +94,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
+	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
+	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
@@ -215,18 +230,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
 	rec := &recorder{ResponseWriter: w}
-	r = r.WithContext(context.WithValue(r.Context(), recKey{}, rec))
+	// The server span (TS serve): named by the canonical route, parented by
+	// an incoming traceparent, active for everything the request does.
+	probe := r.Clone(r.Context())
+	_, probe.Pattern = s.mux.Handler(probe)
+	label, family, segments := routeLabel(probe)
+	ctx, span := s.Otel.Start(otlp.Extract(r.Context(), r.Header), r.Method+" "+label, otlp.KindServer,
+		"http.request.method", r.Method, "http.route", label)
+	span.SetAttr("localbase.request_id", id)
+	if family != "" {
+		span.SetAttr("localbase.route.family", family)
+		span.SetAttr("localbase.route.segments", segments)
+	}
+	r = r.WithContext(context.WithValue(ctx, recKey{}, rec))
 	defer func() {
 		if v := recover(); v != nil {
-			s.Log.Error("Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
+			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
 			if rec.status == 0 {
 				serviceUnavailable(rec, r, "Gateway")
 			}
 		}
+		defer span.End()
 		label, family, segments := routeLabel(r)
 		status := rec.status
 		if status == 0 {
 			status = 200
+		}
+		duration := time.Since(start)
+		auth := s.authTelemetry(r, rec)
+		span.SetAttr("http.response.status_code", status)
+		span.SetAttr("localbase.http.response.duration_ms", float64(duration.Nanoseconds())/1e6)
+		if status >= 500 || r.Context().Err() != nil {
+			span.SetError("")
+		}
+		for i := 0; i < len(auth); i += 2 {
+			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
 		}
 		if (label == "/health" || label == "/health/ready") && status < 400 {
 			return // successful probes are not logged
@@ -234,21 +272,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
 		attrs := []any{"event", "http.request", "category", "http", "request_id", id,
 			slog.Group("http", "method", r.Method, "path", label, "status", status,
-				"durationMs", float64(time.Since(start).Microseconds())/1000)}
+				"durationMs", float64(duration.Microseconds())/1000)}
 		if family != "" {
 			msg += " (near " + family + ", " + strconv.Itoa(segments) + " segments)"
 			attrs = append(attrs, "route_family", family, "route_segments", segments)
 		}
-		switch {
-		case s.NoAuth:
-			attrs = append(attrs, "auth_outcome", "disabled")
-		case rec.auth != nil && rec.auth.Authenticated():
-			src := map[string]string{"api-key": "stored_key", "environment": "environment"}[rec.auth.Kind]
-			attrs = append(attrs, "auth_outcome", "authenticated", "auth_principal_id", rec.auth.OwnerID(),
-				"auth_principal_name", rec.auth.Name, "auth_source", src)
-		case rec.auth != nil:
-			attrs = append(attrs, "auth_outcome", "unauthenticated")
-		}
+		attrs = append(attrs, auth...)
 		level := slog.LevelInfo
 		switch {
 		case status >= 500:
@@ -260,6 +289,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.Log.Log(r.Context(), level, msg, attrs...)
 	}()
 	s.mux.ServeHTTP(rec, r)
+}
+
+// authTelemetry describes who a request acted as, without credentials (TS
+// GatewayRequestAuth.telemetry): disabled for public routes and no-auth
+// gateways, invalid when a credential was presented but not accepted.
+func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
+	p := rec.auth
+	switch {
+	case s.NoAuth || p == nil:
+		return []any{"auth_outcome", "disabled"}
+	case p.Kind == "api-key":
+		return []any{"auth_outcome", "authenticated", "auth_principal_id", p.ID, "auth_principal_name", p.Name, "auth_source", "stored_key"}
+	case p.Kind == "environment":
+		return []any{"auth_outcome", "authenticated", "auth_principal_id", "environment", "auth_source", "environment"}
+	case p.Kind == "browser-session":
+		return []any{"auth_outcome", "authenticated", "auth_principal_id", p.OwnerID(), "auth_source", "browser_session"}
+	}
+	presented := (s.Auth != nil && s.Auth.Token(r) != "") || r.Header.Get("Cookie") != "" || r.Header.Get("Cf-Access-Jwt-Assertion") != ""
+	if presented {
+		return []any{"auth_outcome", "invalid"}
+	}
+	return []any{"auth_outcome", "missing"}
 }
 
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
@@ -344,11 +395,28 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	case len(admitting) == 0:
 		body, status = map[string]any{"status": "unready", "reason": "no_request_admission", "modalities": []string{}}, 503
 	}
+	if status == 200 && s.OnReady != nil {
+		s.OnReady()
+	}
 	if r.Method == http.MethodHead {
 		w.WriteHeader(status)
 		return
 	}
 	writeJSON(w, status, body)
+}
+
+// Ready reports whether some modality admits requests and the gateway is
+// not stopping.
+func (s *Server) Ready() bool {
+	if s.stopping.Load() {
+		return false
+	}
+	for _, kind := range store.Kinds {
+		if _, _, admits := s.modality(kind); admits {
+			return true
+		}
+	}
+	return false
 }
 
 // instance proves this gateway's identity to a CLI that knows the instance

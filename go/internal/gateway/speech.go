@@ -122,6 +122,7 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 }
 
 func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
+	started := time.Now()
 	if r.Method != http.MethodPost {
 		methodNotAllowed(w, r, "POST")
 		return
@@ -167,20 +168,27 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer lease.Release()
-	pcm, err := s.generateSpeech(r, lease, req)
+	tel := &inference{s: s, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
+	tel.begin(r.Context(), r.Method)
+	pcm, err := s.generateSpeech(r, lease, req, tel)
 	if err != nil {
 		var voice *voiceUnavailable
 		switch {
 		case r.Context().Err() != nil:
 			w.WriteHeader(499)
+			tel.finish("cancelled", 499, "request_aborted")
 		case errors.As(err, &voice):
 			writeError(w, r, 400, "invalid_request_error", "voice_not_supported", voice.Error(), strp("voice"))
+			tel.finish("error", 400, "")
 		default:
 			upstreamFailure(w, r, err.Error())
+			tel.finish("error", 502, "")
 		}
 		return
 	}
 	writeSpeech(w, req, pcm)
+	tel.finish("completed", 200, "")
 }
 
 type voiceUnavailable struct{ voice, backend string }
@@ -190,10 +198,17 @@ func (e *voiceUnavailable) Error() string {
 }
 
 // generateSpeech returns PCM16 mono 24 kHz samples.
-func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, req *speechRequest) ([]byte, error) {
+func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, req *speechRequest, tel *inference) ([]byte, error) {
 	ctx := r.Context()
-	t := lease.Target
 	client := &http.Client{Timeout: speechTimeout}
+	do := func(hr *http.Request) (*http.Response, error) {
+		resp, err := s.backendCall(tel.ctx, r, hr, client)
+		if err == nil {
+			tel.upstreamStatus = resp.StatusCode
+		}
+		return resp, err
+	}
+	t := lease.Target
 	switch t.Backend.Adapter {
 	case "crispasr/v1":
 		// WAV, not PCM: CrispASR always watermarks raw PCM (it cannot carry
@@ -210,7 +225,7 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 		b, _ := json.Marshal(payload)
 		hr, _ := http.NewRequestWithContext(ctx, http.MethodPost, lease.BaseURL+"/v1/audio/speech", bytes.NewReader(b))
 		hr.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(hr)
+		resp, err := do(hr)
 		if err != nil {
 			return nil, errors.New("Speech runtime request failed.")
 		}
@@ -229,7 +244,7 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 		for {
 			hr, _ := http.NewRequestWithContext(ctx, http.MethodPost, lease.BaseURL+"/v1/generate", bytes.NewReader(b))
 			hr.Header.Set("Content-Type", "application/json")
-			resp, err := client.Do(hr)
+			resp, err := do(hr)
 			if err != nil {
 				return nil, errors.New("Speech runtime request failed.")
 			}

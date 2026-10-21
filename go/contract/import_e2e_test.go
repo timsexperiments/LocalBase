@@ -96,7 +96,11 @@ type e2e struct {
 	key    string
 	noAuth bool
 	stop   func()
+	// kill ends the gateway with SIGKILL (no shutdown at all).
+	kill   func()
 	outDir string
+	// impl is "go" (default) or "ts".
+	impl string
 }
 
 // scan fails when output contains a planted secret.
@@ -109,9 +113,18 @@ func (e *e2e) scan(label, text string) {
 	}
 }
 
+func (e *e2e) command(args ...string) *exec.Cmd {
+	if e.impl == "ts" {
+		cmd := exec.Command("bun", append([]string{"run", "src/cli.ts"}, args...)...)
+		cmd.Dir = repoRoot()
+		return cmd
+	}
+	return exec.Command(goCLI(e.t), args...)
+}
+
 func (e *e2e) cli(extraEnv []string, args ...string) cliResult {
 	e.t.Helper()
-	cmd := exec.Command(goCLI(e.t), append([]string{"--root", e.root}, args...)...)
+	cmd := e.command(append([]string{"--root", e.root}, args...)...)
 	cmd.Env = append(append(cleanEnv(), e.env...), extraEnv...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -157,7 +170,7 @@ func (e *e2e) serve(extra ...string) {
 	port, llmPort := freePort(), freePort()
 	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
 		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
-	cmd := exec.Command(goCLI(e.t), args...)
+	cmd := e.command(args...)
 	cmd.Env = append(cleanEnv(), e.env...)
 	logf, _ := os.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
 	cmd.Stdout, cmd.Stderr = logf, logf
@@ -165,8 +178,18 @@ func (e *e2e) serve(extra ...string) {
 	if err := cmd.Start(); err != nil {
 		e.t.Fatal(err)
 	}
+	watchGateway(cmd.Process.Pid)
 	e.base = fmt.Sprintf("http://127.0.0.1:%d", port)
 	stopped := false
+	e.kill = func() {
+		if stopped {
+			return
+		}
+		stopped = true
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		cmd.Wait()
+		logf.Close()
+	}
 	e.stop = func() {
 		if stopped {
 			return
@@ -202,6 +225,19 @@ func (e *e2e) serve(extra ...string) {
 
 func (e *e2e) chat(model string) *Resp {
 	return e.do("POST", "/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"fake:reply hello there"}]}`)
+}
+
+// chatRetrying retries a transient insufficient_memory 503 as a client
+// honouring Retry-After would: a small CI runner's free memory moves with
+// everything else on it, while admission itself stays on.
+func (e *e2e) chatRetrying(model string) *Resp {
+	for i := 0; ; i++ {
+		r := e.chat(model)
+		if r.Status != 503 || !strings.Contains(string(r.Body), "insufficient_memory") || i == 5 {
+			return r
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func (e *e2e) setBackend(model, backend string) map[string]any {
@@ -273,7 +309,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	mystery := ggufFile(t, "mystery-arch", nil, 32*1024)
 	const commit = "aaaabbbbccccddddeeeeffff0000111122223333"
 	cdnSeen, hfSeen, vendorSeen, otherSeen := &seen{}, &seen{}, &seen{}, &seen{}
-	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	cdn := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cdnSeen.add(r)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/model-Q4_K_M.gguf"):
@@ -283,9 +319,9 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			w.WriteHeader(404)
 		}
-	}))
+	}), false)
 	defer cdn.Close()
-	hf := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	hf := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hfSeen.add(r)
 		if strings.Contains(r.URL.Path, "gated") && r.Header.Get("Authorization") != "Bearer "+hfToken {
 			w.WriteHeader(401)
@@ -307,14 +343,14 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			w.WriteHeader(404)
 		}
-	}))
+	}), false)
 	defer hf.Close()
-	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	other := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		otherSeen.add(r)
 		serveBytes(w, r, mystery)
-	}))
+	}), false)
 	defer other.Close()
-	vendor := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	vendor := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vendorSeen.add(r)
 		if r.Header.Get("X-Api-Key") != vendorSecret {
 			http.Error(w, "no key", 403)
@@ -326,15 +362,15 @@ func TestModelImportAcceptance(t *testing.T) {
 		case "/moved/mystery.gguf":
 			http.Redirect(w, r, other.URL+"/mystery.gguf?token="+signedValue, 302)
 		}
-	}))
+	}), false)
 	defer vendor.Close()
 	// HTTPS sources that redirect to plain HTTP: a direct URL and a Hugging
 	// Face endpoint whose download hop points at an http:// CDN.
-	tlsSource := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tlsSource := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, vendor.URL+"/files/mystery.gguf", 302)
-	}))
+	}), true)
 	defer tlsSource.Close()
-	tlsHF := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	tlsHF := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/revision/"):
 			json.NewEncoder(w).Encode(map[string]any{"sha": commit, "pipeline_tag": "text-generation",
@@ -342,7 +378,7 @@ func TestModelImportAcceptance(t *testing.T) {
 		default:
 			http.Redirect(w, r, cdn.URL+"/downgrade/model-Q4_K_M.gguf", 302)
 		}
-	}))
+	}), true)
 	defer tlsHF.Close()
 	caFile := filepath.Join(tmp, "test-ca.pem")
 	var caPEM []byte
@@ -635,14 +671,14 @@ func TestModelImportAcceptance(t *testing.T) {
 
 	step("AC5 overrides report real startup errors without bypassing integrity or resource checks", func(t *testing.T) {
 		e.serve()
-		if r := e.chat("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
+		if r := e.chatRetrying("vision-model"); r.Status != 200 || !strings.Contains(string(r.Body), "hello there") {
 			t.Fatalf("automatic backend chat: %d %s", r.Status, r.Body)
 		}
 		wantCode(t, e.chat("mystery"), 409, "backend_not_selected")
 		if s := e.setBackend("mystery", "llama.cpp-cpu"); s["mode"] != "manual" || s["finding"].(map[string]any)["rating"] == "supported" {
 			t.Fatalf("manual unknown choice: %v", s)
 		}
-		if r := e.chat("mystery"); r.Status != 200 {
+		if r := e.chatRetrying("mystery"); r.Status != 200 {
 			t.Fatalf("manual CPU backend chat: %d %s", r.Status, r.Body)
 		}
 		if s := e.setBackend("mystery", wrongTask); s["finding"].(map[string]any)["rating"] != "incompatible" {

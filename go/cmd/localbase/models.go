@@ -26,6 +26,9 @@ import (
 // readEnv is the environment of listing commands: it never creates the root
 // or the database. Without a database the defaults stand in, as TS does.
 func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
+	if err := checkOtelEnvironment(); err != nil {
+		return nil, err
+	}
 	dir := root.Resolve(c.Global.Root)
 	e := &env{Root: &root.Root{Dir: dir}, Host: memory.NewHostProvider()}
 	if r, err := root.Open(dir); err == nil {
@@ -34,7 +37,7 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		e.Root = &root.Root{Dir: canon}
 	}
 	var err error
-	if e.Catalog, err = catalog.Load(e.Root.CatalogDir()); err != nil {
+	if e.Catalog, err = catalog.LoadRoot(e.Root.Dir, nil); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(e.Root.DB()); err == nil {
@@ -95,10 +98,13 @@ func cliFit(e *env, s *catalog.Spec, memoryGB int) *runtime.Fit {
 	if sha := s.Primary().SHA256; sha != "" && e.Store != nil {
 		peaks, _ = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha)
 	}
-	return runtime.FitFor(s, memoryGB, nil, peaks)
+	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s))
 }
 
 func tier(s *catalog.Spec) string {
+	if s.Tier != "" {
+		return s.Tier
+	}
 	if s.Trust == "qualified" {
 		return "built-in"
 	}
@@ -107,8 +113,8 @@ func tier(s *catalog.Spec) string {
 
 func modelsCommand() *cli.Command {
 	return &cli.Command{Name: "models", Summary: "Browse and install models", Sub: []*cli.Command{
-		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(),
-		modelsImportCommand(), modelsBackendCommand(), modelsInspectCommand(), modelsExportCommand(), modelsAddDefinitionCommand(), modelsDeleteCommand(),
+		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(), modelsAdd(), modelsSearch(), modelsRemoveEntry(),
+		modelsImportCommand(), modelsBackendCommand(), modelsInspectCommand(), modelsExportCommand(), modelsAddDefinitionCommand(), modelsDeleteCommand(), feedCommand(),
 	}}
 }
 
@@ -159,10 +165,10 @@ func modelsCatalog() *cli.Command {
 			if kind != "" {
 				q.Set("kind", kind)
 			}
-			in := meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, MemoryGB: memGB, CLI: true}
+			in := meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, MemoryGB: memGB, CLI: true, Catalog: e.Catalog}
 			var rows []meta.Model
 			var listed []*catalog.Spec
-			for _, s := range e.Catalog.Models {
+			for _, s := range e.Catalog.All() {
 				if (kind != "" && s.Kind != kind) || (s.QualificationState == "experimental" && !e.Config.AllowExperimental) {
 					continue
 				}
@@ -240,8 +246,8 @@ func modelsRecommend() *cli.Command {
 				vram = v
 			}
 			var picks []*catalog.Spec
-			for _, s := range e.Catalog.Models {
-				if s.Kind != kind || kind == "video" || runtime.FitFor(s, 0, nil, nil).MinVramGB > vram {
+			for _, s := range e.Catalog.All() {
+				if s.Kind != kind || kind == "video" || runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB > vram {
 					continue
 				}
 				if kind == "llm" && s.LLMRuntime != nil {
@@ -249,7 +255,9 @@ func modelsRecommend() *cli.Command {
 				}
 				picks = append(picks, s)
 			}
-			minGB := func(s *catalog.Spec) int { return runtime.FitFor(s, 0, nil, nil).MinVramGB }
+			minGB := func(s *catalog.Spec) int {
+				return runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB
+			}
 			sort.SliceStable(picks, func(i, j int) bool {
 				a, b := picks[i], picks[j]
 				if kind == "llm" {
@@ -297,7 +305,7 @@ func installedModels(e *env, kind string) []string {
 		}
 		known := map[string]bool{}
 		var names []string
-		for _, s := range e.Catalog.Models {
+		for _, s := range e.Catalog.All() {
 			if s.Kind != k {
 				continue
 			}
@@ -482,16 +490,13 @@ func modelsShow() *cli.Command {
 			if s.Kind == "tts" && e.Store != nil {
 				voices, _ = e.Store.Voices(context.Background())
 			}
-			m := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config,
+			m := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
 				MemoryGB: e.memoryGB(), Voices: voices, CLI: true}, s)
 			isDefault := false
 			for _, k := range kinds {
 				isDefault = isDefault || e.Config.Active[k] == s.ModelID
 			}
-			path := ""
-			if s.Trust != "qualified" {
-				path = filepath.Join(e.Root.CatalogDir(), s.ModelID+".json")
-			}
+			path := s.LayerPath // the contributing file or feed position (TS provenance.path)
 			for _, l := range meta.DetailLines(m, m.Device.Installed, m.Device.Selected, isDefault, path) {
 				c.Info("%s", l)
 			}

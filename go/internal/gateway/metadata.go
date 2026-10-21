@@ -19,7 +19,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	snap := s.LLM.Snapshot()
 	voices, _ := s.Store.Voices(r.Context())
-	in := meta.Input{Store: s.Store, RootDir: s.Root.Dir, Config: s.LLM.Config(), MemoryGB: s.MemoryGB, Voices: voices, Snapshot: &snap}
+	in := meta.Input{Store: s.Store, RootDir: s.Root.Dir, Config: s.LLM.Config(), MemoryGB: s.MemoryGB, Voices: voices, Snapshot: &snap, Catalog: s.Catalog}
 	if r.URL.Path != "/_localbase/models" {
 		raw := strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/")
 		id, err := url.PathUnescape(raw)
@@ -36,7 +36,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var data []meta.Model
-	for _, spec := range s.Catalog.Models {
+	for _, spec := range s.Catalog.All() {
 		data = append(data, meta.Project(r.Context(), in, spec))
 	}
 	data = meta.Query(data, r.URL.Query())

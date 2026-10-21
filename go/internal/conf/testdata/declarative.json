@@ -1,0 +1,1985 @@
+{
+ "base": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+ "cases": [
+  {
+   "name": "base",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 131072,
+     "ctxMode": "auto",
+     "parallel": "auto",
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": false,
+     "pendingRestart": false,
+     "restartRequired": false,
+     "changes": []
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": false,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": []
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 131072,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "change",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2274\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 65536\nctxMode = \"auto\"\nparallel = 2\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 12.5\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2274
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 65536,
+     "ctxMode": "auto",
+     "parallel": 2,
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 12.5,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.port",
+       "before": 2273,
+       "after": 2274,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": 15,
+       "after": 12.5,
+       "activation": "restart-required"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": 131072,
+       "after": 65536,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": "auto",
+       "after": 2,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.port",
+       "before": 2273,
+       "after": 2274,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": 15,
+       "after": 12.5,
+       "activation": "restart-required"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": 131072,
+       "after": 65536,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": "auto",
+       "after": 2,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2274,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 12.5,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 65536,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": 2,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2274\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 65536\nctxMode = \"auto\"\nparallel = 2\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 12.5\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "hot",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 32768\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"qwen3-tts-1.7b-base-q4_k_m\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 32768,
+     "ctxMode": "auto",
+     "parallel": "auto",
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [
+      "qwen3-tts-1.7b-base-q4_k_m"
+     ],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": false,
+     "changes": [
+      {
+       "path": "models.selectedTtsModels",
+       "before": [],
+       "after": [
+        "qwen3-tts-1.7b-base-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": 131072,
+       "after": 32768,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "models.selectedTtsModels",
+       "before": [],
+       "after": [
+        "qwen3-tts-1.7b-base-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": 131072,
+       "after": 32768,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [
+        "qwen3-tts-1.7b-base-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 32768,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 32768\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"qwen3-tts-1.7b-base-q4_k_m\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "unsorted",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\", \"clef-flash-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 131072,
+     "ctxMode": "auto",
+     "parallel": "auto",
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "clef-flash-q4_k_m",
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": false,
+     "changes": [
+      {
+       "path": "models.selectedLlmModels",
+       "before": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "after": [
+        "clef-flash-q4_k_m",
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "models.selectedLlmModels",
+       "before": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "after": [
+        "clef-flash-q4_k_m",
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "clef-flash-q4_k_m",
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 131072,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"clef-flash-q4_k_m\",\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "floats",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273.0\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = 3.0\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 0.25\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 131072,
+     "ctxMode": "auto",
+     "parallel": 3,
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 0.25
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": 8,
+       "after": 0.25,
+       "activation": "restart-required"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": "auto",
+       "after": 3,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": 8,
+       "after": 0.25,
+       "activation": "restart-required"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": "auto",
+       "after": 3,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 0.25,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 131072,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": 3,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = 3\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 0.25\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "noAllow",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 131072,
+     "ctxMode": "auto",
+     "parallel": "auto",
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": false,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": false,
+     "pendingRestart": false,
+     "restartRequired": false,
+     "changes": []
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": false,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": []
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": false,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 131072,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "allowed",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = true\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"kokoro-82m-v1.0-q8\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "configuration": {
+    "version": 1,
+    "gateway": {
+     "host": "127.0.0.1",
+     "port": 2273
+    },
+    "runtime": {
+     "host": "127.0.0.1",
+     "port": 18000,
+     "ctxSize": 131072,
+     "ctxMode": "auto",
+     "parallel": "auto",
+     "sttHost": "127.0.0.1",
+     "sttPort": 18080
+    },
+    "models": {
+     "allowExperimental": true,
+     "selectedLlmModels": [
+      "qwen2.5-coder-7b-instruct-q4_k_m"
+     ],
+     "selectedSttModels": [
+      "whisper-base-q8_0"
+     ],
+     "selectedTtsModels": [
+      "kokoro-82m-v1.0-q8"
+     ],
+     "selectedImageModels": [
+      "stable-diffusion-v1-5"
+     ],
+     "selectedVideoModels": [],
+     "activeLlmModel": "qwen2.5-coder-7b-instruct-q4_k_m",
+     "activeSttModel": "whisper-base-q8_0",
+     "activeTtsModel": "",
+     "activeImageModel": "stable-diffusion-v1-5",
+     "activeVideoModel": ""
+    },
+    "memory": {
+     "systemReserve": {
+      "percent": 15,
+      "minimumGb": 8
+     },
+     "acceleratorReserve": {
+      "percent": 10,
+      "minimumGb": 2
+     }
+    }
+   },
+   "plan": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": false,
+     "changes": [
+      {
+       "path": "models.allowExperimental",
+       "before": false,
+       "after": true,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": [],
+       "after": [
+        "kokoro-82m-v1.0-q8"
+       ],
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planPending": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": true,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "models.allowExperimental",
+       "before": false,
+       "after": true,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": [],
+       "after": [
+        "kokoro-82m-v1.0-q8"
+       ],
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "planFresh": {
+    "ok": {
+     "changed": true,
+     "pendingRestart": false,
+     "restartRequired": true,
+     "changes": [
+      {
+       "path": "gateway.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "restart-required"
+      },
+      {
+       "path": "gateway.port",
+       "before": null,
+       "after": 2273,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.minimumGb",
+       "before": null,
+       "after": 2,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.acceleratorReserve.percent",
+       "before": null,
+       "after": 10,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.minimumGb",
+       "before": null,
+       "after": 8,
+       "activation": "restart-required"
+      },
+      {
+       "path": "memory.systemReserve.percent",
+       "before": null,
+       "after": 15,
+       "activation": "restart-required"
+      },
+      {
+       "path": "models.activeImageModel",
+       "before": null,
+       "after": "stable-diffusion-v1-5",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeLlmModel",
+       "before": null,
+       "after": "qwen2.5-coder-7b-instruct-q4_k_m",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeSttModel",
+       "before": null,
+       "after": "whisper-base-q8_0",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeTtsModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.activeVideoModel",
+       "before": null,
+       "after": "",
+       "activation": "hot"
+      },
+      {
+       "path": "models.allowExperimental",
+       "before": null,
+       "after": true,
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedImageModels",
+       "before": null,
+       "after": [
+        "stable-diffusion-v1-5"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedLlmModels",
+       "before": null,
+       "after": [
+        "qwen2.5-coder-7b-instruct-q4_k_m"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedSttModels",
+       "before": null,
+       "after": [
+        "whisper-base-q8_0"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedTtsModels",
+       "before": null,
+       "after": [
+        "kokoro-82m-v1.0-q8"
+       ],
+       "activation": "hot"
+      },
+      {
+       "path": "models.selectedVideoModels",
+       "before": null,
+       "after": [],
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxMode",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.ctxSize",
+       "before": null,
+       "after": 131072,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.host",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.parallel",
+       "before": null,
+       "after": "auto",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.port",
+       "before": null,
+       "after": 18000,
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttHost",
+       "before": null,
+       "after": "127.0.0.1",
+       "activation": "hot"
+      },
+      {
+       "path": "runtime.sttPort",
+       "before": null,
+       "after": 18080,
+       "activation": "hot"
+      }
+     ]
+    }
+   },
+   "rendered": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = true\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"kokoro-82m-v1.0-q8\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n"
+  },
+  {
+   "name": "syntax",
+   "doc": "version = 1\nthis is not toml = \n",
+   "error": "Invalid TOML configuration."
+  },
+  {
+   "name": "v2",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 2\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "version: Invalid input: expected 1"
+  },
+  {
+   "name": "vstring",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = \"1\"\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "version: Invalid input: expected 1"
+  },
+  {
+   "name": "only",
+   "doc": "version = 1\n",
+   "error": "gateway: Invalid input: expected object, received undefined; runtime: Invalid input: expected object, received undefined; models: Invalid input: expected object, received undefined; memory: Invalid input: expected object, received undefined"
+  },
+  {
+   "name": "bad1",
+   "doc": "version = 1\n[gateway]\nhost = \"a b\"\nport = 0\nextra = 1\n",
+   "error": "gateway.host: must not contain whitespace; gateway.port: Too small: expected number to be >=1; gateway: Unrecognized key: \"extra\"; runtime: Invalid input: expected object, received undefined; models: Invalid input: expected object, received undefined; memory: Invalid input: expected object, received undefined"
+  },
+  {
+   "name": "ws",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \" x\"\nport = 2273\n\n[runtime]\nhost = \" x\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.host: must not contain whitespace; runtime.host: must not contain whitespace"
+  },
+  {
+   "name": "tab",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"a\\tb\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.sttHost: must not contain whitespace"
+  },
+  {
+   "name": "empty",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"\"\nport = 2273\n\n[runtime]\nhost = \"\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.host: Too small: expected string to have >=1 characters; runtime.host: Too small: expected string to have >=1 characters"
+  },
+  {
+   "name": "long",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nport = 2273\n\n[runtime]\nhost = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.host: Too big: expected string to have <=253 characters; runtime.host: Too big: expected string to have <=253 characters"
+  },
+  {
+   "name": "hostnum",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = 5\nport = 2273\n\n[runtime]\nhost = 5\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.host: Invalid input: expected string, received number; runtime.host: Invalid input: expected string, received number"
+  },
+  {
+   "name": "port0",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 0\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.port: Too small: expected number to be >=1"
+  },
+  {
+   "name": "portbig",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 70000\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway.port: Too big: expected number to be <=65535"
+  },
+  {
+   "name": "portfloat",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000.5\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.port: Invalid input: expected int, received number"
+  },
+  {
+   "name": "portstr",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = \"18000\"\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.port: Invalid input: expected number, received string"
+  },
+  {
+   "name": "portbool",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = true\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.sttPort: Invalid input: expected number, received boolean"
+  },
+  {
+   "name": "extra",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\nzzz = 1\naaa = 2\n\"1\" = 3\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway: Unrecognized keys: \"1\", \"zzz\", \"aaa\""
+  },
+  {
+   "name": "rootextra",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\nextra = true\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "input: Unrecognized key: \"extra\""
+  },
+  {
+   "name": "subtable",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway.sub]\nx = 1\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "gateway: Unrecognized key: \"sub\""
+  },
+  {
+   "name": "ctxmode",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"fast\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.ctxMode: Invalid option: expected one of \"auto\"|\"explicit\""
+  },
+  {
+   "name": "noctxmode",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.ctxMode: Invalid option: expected one of \"auto\"|\"explicit\""
+  },
+  {
+   "name": "par5",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = 5\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.parallel: Invalid input"
+  },
+  {
+   "name": "parstr",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"2\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.parallel: Invalid input"
+  },
+  {
+   "name": "ctxsmall",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 1024\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.ctxSize: Too small: expected number to be >=2048"
+  },
+  {
+   "name": "ctxbig",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 3000000000\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "runtime.ctxSize: Too big: expected number to be <=2147483647"
+  },
+  {
+   "name": "pct",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 101\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory.systemReserve.percent: Too big: expected number to be <=100"
+  },
+  {
+   "name": "pctinf",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = inf\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory.systemReserve.percent: Invalid input: expected number, received number"
+  },
+  {
+   "name": "pctnan",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = nan\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory.systemReserve.percent: Invalid input: expected number, received NaN"
+  },
+  {
+   "name": "minneg",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = -1\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory.systemReserve.minimumGb: Too small: expected number to be >=0"
+  },
+  {
+   "name": "memextra",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\nfoo = 1\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory: Unrecognized key: \"foo\""
+  },
+  {
+   "name": "memarray",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\nsystemReserve = [1]\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "memory.systemReserve: Invalid input: expected object, received array"
+  },
+  {
+   "name": "missing",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n",
+   "error": "memory.acceleratorReserve: Invalid input: expected object, received undefined"
+  },
+  {
+   "name": "allowexp",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = \"yes\"\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.allowExperimental: Invalid input: expected boolean, received string"
+  },
+  {
+   "name": "allownum",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = 1\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"nope\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.allowExperimental: Invalid input: expected boolean, received number"
+  },
+  {
+   "name": "modelsextra",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nzzz = 1\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"nope\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models: Unrecognized key: \"zzz\""
+  },
+  {
+   "name": "emptyid",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels.0: Too small: expected string to have >=1 characters; models.selectedTtsModels.0: Too small: expected string to have >=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities"
+  },
+  {
+   "name": "listtype",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = \"x\"\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels: Invalid input: expected array, received string"
+  },
+  {
+   "name": "itemtype",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [1]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels.0: Invalid input: expected string, received number"
+  },
+  {
+   "name": "dup",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"qwen3-tts-1.7b-base-q4_k_m\", \"qwen3-tts-1.7b-base-q4_k_m\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels: must not contain duplicates"
+  },
+  {
+   "name": "experimental",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"kokoro-82m-v1.0-q8\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true."
+  },
+  {
+   "name": "activeExperimental",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"kokoro-82m-v1.0-q8\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"kokoro-82m-v1.0-q8\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels.0: model is experimental or unsupported on this platform; models.selectedTtsModels.0: Experimental models require models.allowExperimental = true.; models.activeTtsModel: model is experimental or unsupported on this platform"
+  },
+  {
+   "name": "wrongKind",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"whisper-base-en-q8_0\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedTtsModels.0: must name a catalog tts model with compatible modalities"
+  },
+  {
+   "name": "badmodels",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"nope\", \"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedLlmModels.0: must name a catalog llm model with compatible modalities; models.activeSttModel: must name a catalog stt model with compatible modalities; models.activeSttModel: must also be present in its selected model list"
+  },
+  {
+   "name": "noactive",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = [\"nope\"]\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.activeLlmModel: Too small: expected string to have >=1 characters; models.selectedTtsModels.0: must name a catalog tts model with compatible modalities"
+  },
+  {
+   "name": "activenum",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = 3\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.activeSttModel: Invalid input: expected string, received number"
+  },
+  {
+   "name": "nollm",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = []\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedLlmModels: Too small: expected array to have >=1 items; models.activeLlmModel: must also be present in its selected model list"
+  },
+  {
+   "name": "activetts",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = []\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"nope\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.activeTtsModel: must name a catalog tts model with compatible modalities; models.activeTtsModel: must also be present in its selected model list"
+  },
+  {
+   "name": "video",
+   "doc": "# Secrets and process overrides are omitted and preserved on apply.\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[runtime]\nhost = \"127.0.0.1\"\nport = 18000\nctxSize = 131072\nctxMode = \"auto\"\nparallel = \"auto\"\nsttHost = \"127.0.0.1\"\nsttPort = 18080\n\n[models]\nallowExperimental = false\nselectedLlmModels = [\"qwen2.5-coder-7b-instruct-q4_k_m\"]\nselectedSttModels = [\"whisper-base-q8_0\"]\nselectedTtsModels = []\nselectedImageModels = [\"stable-diffusion-v1-5\"]\nselectedVideoModels = [\"nope\", \"nope\"]\nactiveLlmModel = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nactiveSttModel = \"whisper-base-q8_0\"\nactiveTtsModel = \"\"\nactiveImageModel = \"stable-diffusion-v1-5\"\nactiveVideoModel = \"nope\"\n\n[memory]\n\n[memory.systemReserve]\npercent = 15\nminimumGb = 8\n\n[memory.acceleratorReserve]\npercent = 10\nminimumGb = 2\n",
+   "error": "models.selectedVideoModels.0: must name a catalog video model with compatible modalities; models.selectedVideoModels.1: must name a catalog video model with compatible modalities; models.selectedVideoModels: must not contain duplicates; models.activeVideoModel: must name a catalog video model with compatible modalities"
+  }
+ ]
+}

@@ -27,6 +27,7 @@ type Fit struct {
 	ReferenceShape  string               `json:"-"`
 	Observed        *store.ObservedPeak  `json:"-"`
 	Peaks           []store.ObservedPeak `json:"-"`
+	FeedPeak        *catalog.MemoryPeak  `json:"-"`
 }
 
 // ReferenceShape is the launch-shape key of a model's catalog reference
@@ -40,19 +41,24 @@ func ReferenceShape(spec *catalog.Spec, g *memory.Geometry) string {
 }
 
 // FitFor ports evaluateModelFit: observed (reference shape first, else
-// newest) > measured > estimate. Feed peaks arrive with the feed (M5). g is
-// the installed GGUF geometry (LLM or TTS talker), or nil.
-func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []store.ObservedPeak) *Fit {
+// newest) > measured > feed > estimate. g is the installed GGUF geometry
+// (LLM or TTS talker), or nil; feed are the plannable feed peaks.
+func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []store.ObservedPeak, feed []catalog.MemoryPeak) *Fit {
 	if spec == nil {
 		return nil
 	}
 	ref, source := memory.EstimateCatalog(spec, g).AcceleratorBytes, "estimate"
+	shape := ReferenceShape(spec, g)
+	figureShape := shape
+	var feedPeak *catalog.MemoryPeak
 	if d, ok := memory.MeasuredCatalog(spec, g); ok {
 		ref, source = d.AcceleratorBytes, "measured"
+	} else if feedPeak = memory.SelectFeedPeak(spec, feed, g); feedPeak != nil {
+		ref, source = memory.FeedDemand(spec, *feedPeak, spec.TotalArtifactBytes(), 0).AcceleratorBytes, "feed"
+		figureShape = feedPeak.LaunchShape
 	}
-	shape := ReferenceShape(spec, g)
-	f := &Fit{Source: source, LaunchShape: shape, SystemMemoryGB: systemGB, ReferenceBytes: ref, ReferenceSource: source,
-		ReferenceShape: shape, Peaks: observed}
+	f := &Fit{Source: source, LaunchShape: figureShape, SystemMemoryGB: systemGB, ReferenceBytes: ref, ReferenceSource: source,
+		ReferenceShape: shape, Peaks: observed, FeedPeak: feedPeak}
 	demand := ref
 	var pick *store.ObservedPeak
 	for i := range observed { // newest first
@@ -89,9 +95,13 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 // ModelFit is a model's memory figure on this machine. Like TS, local facts
 // (GGUF geometry, observed peaks) count only once every artifact in dir is
 // installed.
-func ModelFit(ctx context.Context, st *store.Store, spec *catalog.Spec, dir string, systemGB int) *Fit {
+func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *catalog.Spec, dir string, systemGB int) *Fit {
+	var feed []catalog.MemoryPeak
+	if cat != nil {
+		feed = cat.PlannableFeedPeaks(spec)
+	}
 	if complete, _ := spec.Installation(dir); !complete {
-		return FitFor(spec, systemGB, nil, nil)
+		return FitFor(spec, systemGB, nil, nil, feed)
 	}
 	var geo *memory.Geometry
 	primary := spec.Primary()
@@ -102,5 +112,5 @@ func ModelFit(ctx context.Context, st *store.Store, spec *catalog.Spec, dir stri
 	if primary.SHA256 != "" && st != nil {
 		peaks, _ = st.ObservedPeaks(ctx, spec.ModelID, primary.SHA256)
 	}
-	return FitFor(spec, systemGB, geo, peaks)
+	return FitFor(spec, systemGB, geo, peaks, feed)
 }

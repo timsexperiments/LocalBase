@@ -106,7 +106,13 @@ func (s *Store) HasConfig(ctx context.Context) (bool, error) {
 }
 
 // SaveConfig writes the config row (insert or replace every column).
-func (s *Store) SaveConfig(ctx context.Context, c *Config) error {
+func (s *Store) SaveConfig(ctx context.Context, c *Config) error { return saveConfig(ctx, s.DB, c) }
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func saveConfig(ctx context.Context, db execer, c *Config) error {
 	var sel [5]string
 	for i, kind := range Kinds {
 		ids := c.Selected[kind]
@@ -122,7 +128,7 @@ func (s *Store) SaveConfig(ctx context.Context, c *Config) error {
 		}
 		return 0
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO config (id, `+configColumns+`) VALUES ('default',
+	_, err := db.ExecContext(ctx, `INSERT INTO config (id, `+configColumns+`) VALUES ('default',
 		?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET root = excluded.root, gateway_host = excluded.gateway_host,
 		gateway_port = excluded.gateway_port, host = excluded.host, port = excluded.port, ctx_size = excluded.ctx_size,

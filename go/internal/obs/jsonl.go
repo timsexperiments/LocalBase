@@ -90,14 +90,33 @@ type Handler struct {
 	sink  *Sink
 	level slog.Level
 	attrs []slog.Attr
+	hooks *Hooks
 }
 
-func NewHandler(sink *Sink, level slog.Level) *Handler { return &Handler{sink: sink, level: level} }
+// Hooks connect the handler to a trace exporter: Correlate names the
+// recorded span active in a context, Export receives every written event
+// except local diagnostics (TS logger.localDiagnostic).
+type Hooks struct {
+	Correlate func(ctx context.Context) (traceID, spanID string, ok bool)
+	Export    func(line []byte)
+}
+
+// LocalOnly is an attribute key: an event carrying it is written to the
+// local log but never exported (exporter diagnostics).
+const LocalOnly = "localbase.local_only"
+
+func NewHandler(sink *Sink, level slog.Level) *Handler {
+	return &Handler{sink: sink, level: level, hooks: &Hooks{}}
+}
+
+// Hooks returns the hooks shared by this handler and those derived from it;
+// set them before logging concurrently.
+func (h *Handler) Hooks() *Hooks { return h.hooks }
 
 func (h *Handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &Handler{sink: h.sink, level: h.level, attrs: append(append([]slog.Attr{}, h.attrs...), attrs...)}
+	return &Handler{sink: h.sink, level: h.level, attrs: append(append([]slog.Attr{}, h.attrs...), attrs...), hooks: h.hooks}
 }
 
 func (h *Handler) WithGroup(string) slog.Handler { return h }
@@ -131,7 +150,8 @@ func uuid() string {
 	return x[0:8] + "-" + x[8:12] + "-" + x[12:16] + "-" + x[16:20] + "-" + x[20:]
 }
 
-func (h *Handler) Handle(_ context.Context, r slog.Record) error {
+func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
+	localOnly := false
 	ev := map[string]any{
 		"schemaVersion": 2, "id": uuid(), "timestamp": r.Time.UTC().Format("2006-01-02T15:04:05.000Z"),
 		"severity": severity(r.Level), "eventName": "localbase.event", "category": "", "component": "gateway",
@@ -150,6 +170,8 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	visit = func(a slog.Attr) {
 		v := a.Value.Resolve()
 		switch a.Key {
+		case LocalOnly:
+			localOnly = true
 		case "event":
 			ev["eventName"] = eventName(v.String())
 		case "category":
@@ -209,10 +231,20 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	if len(attributes) > 0 {
 		ev["attributes"] = attributes
 	}
+	if h.hooks != nil && h.hooks.Correlate != nil && ctx != nil {
+		if _, has := ev["trace"]; !has {
+			if traceID, spanID, ok := h.hooks.Correlate(ctx); ok {
+				ev["trace"] = map[string]any{"traceId": traceID, "spanId": spanID}
+			}
+		}
+	}
 	line, err := json.Marshal(ev)
 	if err != nil {
 		return err
 	}
 	h.sink.Write(append(line, '\n'))
+	if !localOnly && h.hooks != nil && h.hooks.Export != nil {
+		h.hooks.Export(line)
+	}
 	return nil
 }

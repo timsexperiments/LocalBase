@@ -214,7 +214,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && e.memoryGB() < 16 {
 		fmt.Fprintf(c.Stderr, "Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.\n", p, e.memoryGB())
 	}
-	if err := root.WithOperation(e.Root.Dir, "configure", func() error { return e.save(cfg) }); err != nil {
+	if err := root.WithOperation(e.Root.Dir, "configure", func() error { return e.saveAs(cfg, true) }); err != nil {
 		var inv *conf.InvalidError
 		if errors.As(err, &inv) {
 			return nil, cli.Inputf("%s", conf.Summary(inv.Issues))
@@ -227,7 +227,11 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			c.Info("Selected %s models: %s", kindLabel[k], strings.Join(cfg.Selected[k], ", "))
 		}
 	}
-	data := map[string]any{"configuration": conf.Public(cfg)}
+	eff, err := obs.ResolveOtel(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	data := map[string]any{"configuration": conf.Public(cfg, eff)}
 	keys, err := e.Store.ListAPIKeys(context.Background())
 	if err != nil {
 		return nil, err
