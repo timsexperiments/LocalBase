@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { byId, primaryArtifact } from "../../catalog";
 import { resolveLlmLaunchPlan } from "./launch-plan";
 import {
@@ -13,6 +13,14 @@ import {
   type HostMemorySnapshot,
   type MemoryTopology,
 } from "./memory-safety";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const topology: MemoryTopology = {
   kind: "unified",

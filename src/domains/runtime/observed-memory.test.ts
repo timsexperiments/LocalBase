@@ -103,7 +103,7 @@ describe("observed memory store", () => {
 });
 
 describe("observation targets", () => {
-  const llm = byId("qwen2.5-coder-1.5b-instruct-q4_k_m")!;
+  const llm = byId("qwen3.5-4b-q4_k_m")!;
   const plan = {
     modality: "llm",
     modelFile: primaryArtifact(llm).filename,

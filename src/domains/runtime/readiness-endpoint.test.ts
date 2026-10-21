@@ -7,10 +7,18 @@ import {
 } from "../../test/gateway-fixture";
 import { modelMetadataListSchema } from "../models/model-metadata";
 import { gatewayReadinessSchema } from "./readiness";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 registerGatewayFixtureCleanup();
 
-const activeModelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const activeModelId = "qwen3.5-4b-q4_k_m";
 const replacementModelId = "qwen2.5-coder-3b-instruct-q4_k_m";
 
 describe("gateway readiness endpoint", () => {
@@ -49,7 +57,7 @@ describe("gateway readiness endpoint", () => {
 
     const serialized = JSON.stringify(body);
     expect(serialized).not.toContain(gateway.root);
-    expect(serialized).not.toContain("qwen2.5-coder-1.5b-instruct-q4_k_m");
+    expect(serialized).not.toContain("qwen3.5-4b-q4_k_m");
     expect(serialized).not.toContain("lb_");
     await expect(
       Promise.all([

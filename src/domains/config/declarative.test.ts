@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSession } from "../../db/client";
@@ -11,6 +11,14 @@ import {
   persistConfiguration,
   renderConfiguration,
 } from "./declarative";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 test("unverified S2V config is rejected before persistence creates its root", () => {
   const parent = mkdtempSync("/tmp/localbase-declarative-s2v-");

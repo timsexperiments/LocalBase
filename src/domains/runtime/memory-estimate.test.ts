@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 
 import { byId, type ModelSpec } from "../../catalog";
 import type { LlmKvGeometry } from "./gguf-metadata";
@@ -31,6 +31,14 @@ import {
   findLlmMeasurement,
 } from "./memory-measurements";
 import { SPEECH_CONTEXT_TOKENS } from "./speech-supervisor";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const mebibyte = 1024 * 1024;
 

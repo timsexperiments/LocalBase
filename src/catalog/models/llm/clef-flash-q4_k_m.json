@@ -35,5 +35,5 @@
   "capabilities": ["decision", "long-context"],
   "commercialStatus": "open",
   "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
-  "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). Answers choice, score, and noul questions through POST /v1/systemone. Clef 27B is the larger qualified alternative."
+  "notes": "Default decision model. Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef-flash (Apache-2.0, built from Qwen3.5-9B; base revision 8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3). GGUF header: architecture clef, 32 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef (clef-q4_k_m) is the 27B decision model."
 }

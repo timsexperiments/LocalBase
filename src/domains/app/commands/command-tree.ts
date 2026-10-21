@@ -555,7 +555,7 @@ const installCommand = command<InstallInput>({
   path: ["models", "install"],
   description: "Download and install a model",
   examples: [
-    "local-base models install qwen2.5-coder-7b-instruct-q4_k_m",
+    "local-base models install qwen3.5-4b-q4_k_m",
     "local-base --non-interactive models install --all",
   ],
   args: {
@@ -738,7 +738,7 @@ const showCommand = command<ShowInput>({
   path: ["models", "show"],
   description: "Show everything known about one model",
   examples: [
-    "local-base models show qwen2.5-coder-7b-instruct-q4_k_m",
+    "local-base models show qwen3.5-4b-q4_k_m",
     "local-base --json models show whisper-large-v3-turbo",
   ],
   requiresDatabase: false,
@@ -1037,7 +1037,7 @@ const smokeCommand = command<SmokeInput>({
   description: "Check that a running gateway serves real inference",
   examples: [
     "local-base smoke",
-    "local-base smoke --json --switch-to qwen2.5-coder-1.5b-instruct-q4_k_m",
+    "local-base smoke --json --switch-to qwen3.5-4b-q4_k_m",
   ],
   args: {
     "switch-to": {

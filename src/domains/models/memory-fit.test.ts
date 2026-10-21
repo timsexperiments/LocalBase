@@ -25,8 +25,9 @@ import {
   selectObservedPeak,
 } from "./memory-fit";
 
-const llm = byId("qwen2.5-coder-1.5b-instruct-q4_k_m")!;
-const measured = byId("whisper-tiny-en-q8_0")!;
+// Unmeasured, so its reference figure is the estimate.
+const llm = byId("qwen3.8-27b-q4_k_m")!;
+const measured = byId("whisper-large-v3-turbo")!;
 const gib = 1024 ** 3;
 
 function peak(
