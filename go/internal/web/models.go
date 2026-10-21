@@ -168,10 +168,6 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
-	u.render(w, r, "get", map[string]any{})
-}
-
 func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	s := u.d.Catalog.ByID(r.PathValue("id"))
 	var backend any

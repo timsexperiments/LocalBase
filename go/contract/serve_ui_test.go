@@ -34,7 +34,8 @@ func TestServeForUI(t *testing.T) {
 	cmd := exec.Command(goCLI(t), "--root", rootDir, "serve", "--no-auth", "--host", "127.0.0.1", "--port", strconv.Itoa(port),
 		"--llm-port", strconv.Itoa(freePort()), "--stt-port", strconv.Itoa(freePort()), "--tts-port", strconv.Itoa(freePort()),
 		"--image-port", strconv.Itoa(freePort()), "--video-port", strconv.Itoa(freePort()))
-	cmd.Env = append(cleanEnv(), "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost")
+	// Discovery reads the recorded Hub (search "qwen coder"), never the network.
+	cmd.Env = append(cleanEnv(), "HF_ENDPOINT="+hubFixtureServer(t, false), "HF_TOKEN=", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost")
 	logf, _ := os.Create(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

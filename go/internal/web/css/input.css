@@ -228,3 +228,20 @@
     @apply cursor-not-allowed opacity-50;
   }
 }
+
+/* Disclosures whose summary is a flex row lose the native marker; draw one. */
+@layer components {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary {
+    @apply list-none gap-2;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::-webkit-details-marker {
+    display: none;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::before {
+    content: "▸" / "";
+    @apply inline-block w-3 text-muted transition-transform motion-reduce:transition-none;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives)[open] > summary::before {
+    @apply rotate-90;
+  }
+}
