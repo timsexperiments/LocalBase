@@ -5,7 +5,7 @@ import { join } from "node:path";
 import {
   CATALOG,
   artifactDownloadUrl,
-  byId,
+  byId as catalogById,
   calculateMaxSafeContextSize,
   catalogSchema,
   hasCapability,
@@ -29,6 +29,13 @@ import { qualifiedVideoInput } from "./domains/runtime/video/gateway-contract";
 
 import { resolveImageLaunchPlan } from "./domains/runtime/launch-plan";
 import { buildSdImageServerArgs } from "./domains/runtime/launcher";
+import { formerCatalogEntry } from "./catalog/former";
+
+// Entries that left the built-in catalog keep their pinned data: installs
+// that had them keep them as user entries (see catalog/former).
+function byId(modelId: string): ModelSpec | undefined {
+  return catalogById(modelId) ?? formerCatalogEntry(modelId);
+}
 
 const checksum = "a".repeat(64);
 
@@ -58,6 +65,7 @@ const verifiedContextWindows = new Map<string, number>([
   ["qwen3.5-2b-q8_0", 262_144],
   ["qwen3.5-4b-q4_k_m", 262_144],
   ["qwen3.5-9b-q4_k_m", 262_144],
+  ["qwen3.8-27b-q4_k_m", 262_144],
   ["qwen3-embedding-4b-q4_k_m", 32_768],
   ["qwen3-embedding-4b-q8_0", 32_768],
   ["qwen3-embedding-8b-q4_k_m", 32_768],
@@ -275,6 +283,67 @@ describe("catalog artifact validation", () => {
     expect(hasCapability(clef!, "decision")).toBe(true);
     // A decision model never stands in for a chat recommendation.
     expect(recommendedForVram(128)).not.toContainEqual(clef);
+  });
+
+  test("pins the larger decision model and its projector", () => {
+    const clef = catalogById("clef-q4_k_m");
+    expect(clef).toMatchObject({
+      kind: "llm",
+      provider: "Cloudflare",
+      source: "https://huggingface.co/ggml-org/Clef-GGUF",
+      repositoryRevision: "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+      llmRuntime: { capability: "decision-only" },
+      inputModalities: ["text", "image"],
+      contextWindowTokens: 262_144,
+      commercialStatus: "open",
+      artifacts: [
+        {
+          filename: "Clef-Q4_K_M.gguf",
+          expectedSizeBytes: 19232219200,
+          sha256:
+            "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          role: "primary",
+        },
+        {
+          filename: "mmproj-Clef-Q8_0.gguf",
+          expectedSizeBytes: 629247456,
+          sha256:
+            "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
+          role: "supplementary",
+        },
+      ],
+    });
+    expect(hasCapability(clef!, "decision")).toBe(true);
+    expect(recommendedForVram(128)).not.toContainEqual(clef);
+  });
+
+  test("ships a compact chat model, two larger ones and exactly two decision models", () => {
+    const chat = CATALOG.filter(
+      (model) => model.kind === "llm" && !model.llmRuntime,
+    );
+    expect(chat.map(({ modelId }) => modelId)).toEqual([
+      "qwen3.5-4b-q4_k_m",
+      "qwen3.6-35b-a3b-iq4_nl_xl",
+      "qwen3.8-27b-q4_k_m",
+    ]);
+    const [compact, ...larger] = chat.map(computedMinVramGb);
+    expect(compact).toBeLessThanOrEqual(6);
+    for (const minimum of larger) expect(minimum).toBeGreaterThanOrEqual(18);
+    // The larger pair: one mixture-of-experts entry with a vision projector,
+    // one dense text-only entry.
+    const moe = byId("qwen3.6-35b-a3b-iq4_nl_xl")!;
+    expect(capabilityIds(moe)).toContain("mixture-of-experts");
+    expect(moe.inputModalities).toEqual(["text", "image"]);
+    // From the pinned GGUF header (qwen35moe.context_length).
+    expect(moe.contextWindowTokens).toBe(262_144);
+    expect(capabilityIds(byId("qwen3.8-27b-q4_k_m"))).not.toContain(
+      "mixture-of-experts",
+    );
+    expect(
+      CATALOG.filter(
+        (model) => model.llmRuntime?.capability === "decision-only",
+      ).map(({ modelId }) => modelId),
+    ).toEqual(["clef-flash-q4_k_m", "clef-q4_k_m"]);
   });
 
   test("pins the embedding-only Qwen runtime contract", () => {
@@ -923,7 +992,8 @@ describe("catalog artifact validation", () => {
     }
 
     const gemma = byId("gemma-3-12b-it-q4_k_m");
-    expect(gemma?.contextWindowTokens).toBeNull();
+    // From the pinned GGUF header (gemma3.context_length).
+    expect(gemma?.contextWindowTokens).toBe(131_072);
     expect(gemma).toMatchObject({
       inputModalities: ["text"],
       outputModalities: ["text"],

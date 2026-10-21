@@ -92,7 +92,7 @@ test("runtime configuration updates persist without allowing root changes", asyn
 
 test("runtime updates preserve configuration saved by a concurrent root operation", async () => {
   await withController(async (controller, database, root) => {
-    const runtimeSelectedModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const runtimeSelectedModel = "qwen3.8-27b-q4_k_m";
     let runtimeUpdate: ReturnType<typeof controller.update> | undefined;
     await withRootOperation(root, "test", async () => {
       runtimeUpdate = controller.update((config) => {

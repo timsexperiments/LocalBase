@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { CATALOG } from "../../catalog";
 import { DatabaseSession } from "../../db/client";
@@ -20,6 +20,14 @@ import {
   SupervisorRegistry,
   type RuntimeSupervisor,
 } from "./supervisor-registry";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 useSupportedVideoHost();
 

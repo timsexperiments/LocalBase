@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BUILT_IN_CATALOG, byId } from "../../catalog";
+import { formerCatalogEntry } from "../../catalog/former";
 import {
   setFeedAnnotations,
   type FeedAnnotation,
@@ -573,7 +574,8 @@ test("pipeline previews count the shared encoders in the download size", async (
   const q4 = preview.choices.find(
     (choice) => choice.path === "flux1-dev-Q4_0.gguf",
   )!;
-  const template = byId("flux1-schnell-q4_0")!;
+  // The FLUX.1 profile borrows from the pinned former schnell entry.
+  const template = formerCatalogEntry("flux1-schnell-q4_0")!;
   const encoders = template.artifacts
     .filter((artifact) => artifact.role === "supplementary")
     .reduce((sum, artifact) => sum + (artifact.expectedSizeBytes ?? 0), 0);

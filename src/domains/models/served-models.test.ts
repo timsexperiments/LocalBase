@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { byId as catalogModelById } from "../../catalog";
 import { resolveModelCapabilities } from "./capability-detection";
 import { listServedModels } from "./served-models";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// The fixtures are former built-in entries an upgraded install kept.
+beforeAll(keepFormerCatalogEntries);
+afterAll(restoreBuiltInCatalog);
 
 const config = {
   activeLlmModel: "qwen2.5-coder-1.5b-instruct-q4_k_m",

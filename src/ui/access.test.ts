@@ -674,7 +674,7 @@ test("disabled browser authentication denies UI sessions and Access JWTs never a
         "cf-access-authenticated-user-email": "private@example.com",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "fixture only" }],
       }),
     });

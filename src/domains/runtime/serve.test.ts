@@ -9,9 +9,11 @@ import {
   registerGatewayFixtureCleanup,
   startGatewayFixture,
   type GatewayFixture,
+  type GatewayFixtureOptions,
   waitForLogEvent,
   writeCompleteCatalogArtifact,
 } from "../../test/gateway-fixture";
+import { FORMER_CATALOG_DATA } from "../../catalog/former";
 import { decodeOtlpLogs, decodeOtlpTraceSpans } from "../../test/otlp-fixture";
 import {
   LocalBaseLogger,
@@ -1227,7 +1229,7 @@ test("gateway returns service unavailable without proxying a failed backend", as
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
@@ -1396,7 +1398,7 @@ test("compiled gateway rejects direct browser API-key requests", async () => {
 });
 
 test("compiled gateway continues W3C context and exports correlated telemetry", async () => {
-  const telemetryModel = byId("qwen2.5-coder-1.5b-instruct-q4_k_m");
+  const telemetryModel = byId("qwen3.5-4b-q4_k_m");
   if (!telemetryModel) throw new Error("Telemetry fixture model is missing.");
   const telemetryArtifact = primaryArtifact(telemetryModel);
   const telemetryRevision =
@@ -1441,7 +1443,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
           "x-test-upstream": "telemetry-metadata",
         },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "never-export-this-prompt" }],
         }),
       },
@@ -1465,7 +1467,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         "x-test-upstream": "telemetry-partial-metadata",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "private partial probe" }],
       }),
     });
@@ -1482,7 +1484,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         "x-test-upstream": "llama-wire-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "private stream prompt" }],
       }),
@@ -1525,7 +1527,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             { role: "user", content: "never-export-rejected-content" },
           ],
@@ -1553,7 +1555,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         "x-test-upstream": "server-error",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "failure probe" }],
         response_format: {
           type: "json_schema",
@@ -1587,7 +1589,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
         "x-test-stream-id": streamId,
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "cancel this stream" }],
       }),
@@ -1610,7 +1612,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            model: "qwen3.5-4b-q4_k_m",
             messages: [{ role: "user", content: "fail startup" }],
           }),
         },
@@ -1788,7 +1790,7 @@ test("compiled gateway continues W3C context and exports correlated telemetry", 
     expect.arrayContaining([
       expect.objectContaining({
         attributes: expect.objectContaining({
-          "localbase.inference.model_id": "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          "localbase.inference.model_id": "qwen3.5-4b-q4_k_m",
           "localbase.request_id": requestId!,
           "localbase.inference.queue.duration_ms": expect.any(Number),
           "localbase.inference.runtime.name": "llama-server",
@@ -1888,7 +1890,8 @@ describe("API gateway integration", () => {
 
   beforeAll(
     async () => {
-      gateway = await startGatewayFixture();
+      // A fixed context keeps default generation caps independent of host memory.
+      gateway = await startGatewayFixture({ ctxMode: "explicit" });
     },
     { timeout: 30_000 },
   );
@@ -2112,7 +2115,7 @@ describe("API gateway integration", () => {
     expect(body.object).toBe("list");
     expect(body.data).toContainEqual(
       expect.objectContaining({
-        id: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        id: "qwen3.5-4b-q4_k_m",
         object: "model",
         created: 1670000000,
         owned_by: "local-base",
@@ -2134,7 +2137,7 @@ describe("API gateway integration", () => {
         "x-test-header": "retained",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [
           { role: "developer", content: "hello" },
           {
@@ -2176,7 +2179,7 @@ describe("API gateway integration", () => {
     expect(upstream?.headers.get("x-api-key")).toBeNull();
     expect(upstream?.headers.get("x-test-header")).toBe("retained");
     expect(JSON.parse(upstream?.body ?? "{}")).toMatchObject({
-      model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      model: "qwen3.5-4b-q4_k_m",
       max_tokens: 4096,
       provider_option: "preserved",
       messages: [
@@ -2214,74 +2217,87 @@ describe("API gateway integration", () => {
   });
 
   test("rejects tool requests and tool history for models without catalog tool support", async () => {
-    const requestOffset = gateway.upstreamRequests.length;
-    for (const toolCase of [
-      {
-        tools: [
-          {
-            type: "function",
-            function: { name: "weather", parameters: { type: "object" } },
-          },
-        ],
-        tool_choice: "required",
-      },
-      { tool_choice: "auto", param: "tool_choice" },
-      {
-        functions: [{ name: "weather", parameters: { type: "object" } }],
-        param: "functions",
-      },
-      { function_call: "auto", param: "function_call" },
-      {
-        messages: [
-          { role: "user", content: "hello" },
-          {
-            role: "assistant",
-            content: null,
-            tool_calls: [
-              {
-                id: "call_1",
-                type: "function",
-                function: { name: "weather", arguments: "{}" },
-              },
-            ],
-          },
-        ],
-        param: "messages[1].tool_calls",
-      },
-      {
-        messages: [
-          { role: "user", content: "hello" },
-          { role: "tool", tool_call_id: "call_1", content: "sunny" },
-        ],
-        param: "messages[1]",
-      },
-    ]) {
-      const { param, ...toolFields } = toolCase as Record<string, unknown>;
-      for (const stream of [false, true]) {
-        const response = await request("/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
-            messages: [{ role: "user", content: "hello" }],
-            stream,
-            ...toolFields,
-          }),
-        });
-        expect(response.status).toBe(400);
-        expect(await response.json()).toMatchObject({
-          error: {
-            type: "invalid_request_error",
-            param: param ?? "tools",
-            code: "unsupported_model_capability",
-            message: expect.stringContaining(
-              "qwen2.5-coder-1.5b-instruct-q4_k_m",
-            ),
-          },
-        });
+    // Every current chat entry calls tools; an install that kept a former
+    // entry without tool support (verified unsupported) still gets the check.
+    const noToolsModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const noTools = await startGatewayFixture({
+      llmCatalogEntry: FORMER_CATALOG_DATA.find(
+        (entry) => (entry as { modelId: string }).modelId === noToolsModel,
+      ) as NonNullable<GatewayFixtureOptions["llmCatalogEntry"]>,
+    });
+    try {
+      const requestOffset = noTools.upstreamRequests.length;
+      for (const toolCase of [
+        {
+          tools: [
+            {
+              type: "function",
+              function: { name: "weather", parameters: { type: "object" } },
+            },
+          ],
+          tool_choice: "required",
+        },
+        { tool_choice: "auto", param: "tool_choice" },
+        {
+          functions: [{ name: "weather", parameters: { type: "object" } }],
+          param: "functions",
+        },
+        { function_call: "auto", param: "function_call" },
+        {
+          messages: [
+            { role: "user", content: "hello" },
+            {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "weather", arguments: "{}" },
+                },
+              ],
+            },
+          ],
+          param: "messages[1].tool_calls",
+        },
+        {
+          messages: [
+            { role: "user", content: "hello" },
+            { role: "tool", tool_call_id: "call_1", content: "sunny" },
+          ],
+          param: "messages[1]",
+        },
+      ]) {
+        const { param, ...toolFields } = toolCase as Record<string, unknown>;
+        for (const stream of [false, true]) {
+          const response = await fetch(
+            `${noTools.baseUrl}/v1/chat/completions`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: noToolsModel,
+                messages: [{ role: "user", content: "hello" }],
+                stream,
+                ...toolFields,
+              }),
+            },
+          );
+          expect(response.status).toBe(400);
+          expect(await response.json()).toMatchObject({
+            error: {
+              type: "invalid_request_error",
+              param: param ?? "tools",
+              code: "unsupported_model_capability",
+              message: expect.stringContaining(noToolsModel),
+            },
+          });
+        }
       }
+      expect(noTools.upstreamRequests.slice(requestOffset)).toHaveLength(0);
+    } finally {
+      await noTools.stop();
     }
-    expect(gateway.upstreamRequests.slice(requestOffset)).toHaveLength(0);
   });
 
   test("strips no-op tool fields for models without catalog tool support", async () => {
@@ -2304,7 +2320,7 @@ describe("API gateway integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            model: "qwen3.5-4b-q4_k_m",
             messages: [{ role: "user", content: "hello" }],
             stream,
             ...noOpFields,
@@ -2332,7 +2348,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           ...limit,
         }),
@@ -2364,7 +2380,7 @@ describe("API gateway integration", () => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+              model: "qwen3.5-4b-q4_k_m",
               messages: [{ role: "user", content: "hello" }],
             }),
           },
@@ -2394,7 +2410,7 @@ describe("API gateway integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+            model: "qwen3.5-4b-q4_k_m",
             messages: [{ role: "user", content: "hello" }],
           }),
         },
@@ -2413,7 +2429,7 @@ describe("API gateway integration", () => {
   test.each([false, true])(
     "caps cold-start default generation by the runtime training context (stream=%p)",
     async (stream) => {
-      const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+      const modelId = "qwen3.5-4b-q4_k_m";
       const boundedGateway = await startGatewayFixture({
         ctxSize: 8192,
         parallel: 1,
@@ -2484,7 +2500,7 @@ describe("API gateway integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "hello" }],
         stream: true,
       }),
@@ -2497,7 +2513,7 @@ describe("API gateway integration", () => {
   });
 
   test("forwards user-only chat requests without injected instructions", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const modelId = "qwen3.5-4b-q4_k_m";
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2723,7 +2739,7 @@ describe("API gateway integration", () => {
   });
 
   test("returns the admitted model instead of a backend model path", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const modelId = "qwen3.5-4b-q4_k_m";
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -2798,7 +2814,7 @@ describe("API gateway integration", () => {
           "x-test-upstream": mode,
         },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
         }),
       });
@@ -2817,7 +2833,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "openai-error",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
@@ -2842,7 +2858,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "llama-context-error",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "hello" }],
       }),
     });
@@ -2869,7 +2885,7 @@ describe("API gateway integration", () => {
           "x-test-upstream": mode,
         },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
         }),
       });
@@ -2895,7 +2911,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -2909,7 +2925,7 @@ describe("API gateway integration", () => {
   });
 
   test("returns the admitted model in every streamed chat event", async () => {
-    const modelId = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+    const modelId = "qwen3.5-4b-q4_k_m";
     const response = await request("/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -2942,7 +2958,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "llama-wire-response",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [{ role: "user", content: "Return JSONL." }],
       }),
     });
@@ -2950,7 +2966,7 @@ describe("API gateway integration", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({
-      model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+      model: "qwen3.5-4b-q4_k_m",
       choices: [
         {
           message: {
@@ -2973,7 +2989,7 @@ describe("API gateway integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         messages: [
           {
             role: "assistant",
@@ -2996,7 +3012,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "llama-wire-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "Use a tool." }],
       }),
@@ -3029,7 +3045,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "invalid-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -3047,7 +3063,7 @@ describe("API gateway integration", () => {
           "x-test-upstream": mode,
         },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           stream: true,
           messages: [{ role: "user", content: "hello" }],
         }),
@@ -3068,7 +3084,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "unterminated-done-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -3088,7 +3104,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "unframed-stream-eof",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -3108,7 +3124,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "multi-choice-unfinished-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         n: 2,
         messages: [{ role: "user", content: "hello" }],
@@ -3131,7 +3147,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "multi-choice-complete-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         n: 2,
         messages: [{ role: "user", content: "hello" }],
@@ -3154,7 +3170,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "post-finish-choice-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -3178,7 +3194,7 @@ describe("API gateway integration", () => {
           "x-test-upstream": mode,
         },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           stream: true,
           messages: [{ role: "user", content: "hello" }],
         }),
@@ -3205,7 +3221,7 @@ describe("API gateway integration", () => {
         "x-test-upstream": "invalid-media-type-stream",
       },
       body: JSON.stringify({
-        model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+        model: "qwen3.5-4b-q4_k_m",
         stream: true,
         messages: [{ role: "user", content: "hello" }],
       }),
@@ -3219,7 +3235,7 @@ describe("API gateway integration", () => {
   test("keeps concurrent LLM requests paired with their selected models", async () => {
     const initialConfig = loadGatewayConfig();
     const firstModel = initialConfig.activeLlmModel;
-    const secondModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const secondModel = "qwen3.8-27b-q4_k_m";
     initialConfig.selectedLlmModels = [firstModel, secondModel];
     saveGatewayConfig(initialConfig);
     await writeCompleteCatalogArtifact(initialConfig.llmModelsDir, secondModel);
@@ -3230,9 +3246,7 @@ describe("API gateway integration", () => {
       body: JSON.stringify({ model: secondModel }),
     });
     expect(invalid.status).toBe(400);
-    expect(loadGatewayConfig().activeLlmModel).toBe(
-      "qwen2.5-coder-1.5b-instruct-q4_k_m",
-    );
+    expect(loadGatewayConfig().activeLlmModel).toBe("qwen3.5-4b-q4_k_m");
 
     const requestOffset = gateway.upstreamRequests.length;
     const launchOffset = (await gateway.readLlmRuntimeLaunches()).length;
@@ -3325,8 +3339,8 @@ describe("API gateway integration", () => {
 
   test("holds model switches until streamed LLM responses end", async () => {
     const config = loadGatewayConfig();
-    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const firstCatalogModel = "qwen3.5-4b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3462,8 +3476,8 @@ describe("API gateway integration", () => {
 
   test("forwards aborts while waiting for rewritten LLM response headers", async () => {
     const config = loadGatewayConfig();
-    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const firstCatalogModel = "qwen3.5-4b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3517,8 +3531,8 @@ describe("API gateway integration", () => {
 
   test("releases a disconnected stream before replacing its model", async () => {
     const config = loadGatewayConfig();
-    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const firstCatalogModel = "qwen3.5-4b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3583,8 +3597,8 @@ describe("API gateway integration", () => {
 
   test("abandons queued LLM model switches before dispatch", async () => {
     const config = loadGatewayConfig();
-    const firstCatalogModel = "qwen2.5-coder-1.5b-instruct-q4_k_m";
-    const secondCatalogModel = "qwen2.5-coder-7b-instruct-q4_k_m";
+    const firstCatalogModel = "qwen3.5-4b-q4_k_m";
+    const secondCatalogModel = "qwen3.8-27b-q4_k_m";
     const modelA = config.activeLlmModel;
     const modelB =
       modelA === firstCatalogModel ? secondCatalogModel : firstCatalogModel;
@@ -3785,7 +3799,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
         }),
       },
       expectedPath: "messages",
@@ -3797,7 +3811,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "invalid-role", content: "hello" }],
         }),
       },
@@ -3810,7 +3824,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "tool", content: "73°F" }],
         }),
       },
@@ -3823,7 +3837,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             {
               role: "user",
@@ -3841,7 +3855,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tools: [{ type: "custom", custom: { name: "code_execution" } }],
         }),
@@ -3855,7 +3869,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tools: [
             {
@@ -3874,7 +3888,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           response_format: {
             type: "json_schema",
@@ -3891,7 +3905,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           response_format: {
             type: "json_schema",
@@ -3911,7 +3925,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tool_choice: {
             type: "allowed_tools",
@@ -3928,7 +3942,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tools: [
             {
@@ -3951,7 +3965,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tool_choice: {
             type: "function",
@@ -3968,7 +3982,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tools: [
             { type: "function", function: { name: "weather" } },
@@ -3989,7 +4003,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "user", content: "hello" }],
           tool_choice: "force",
         }),
@@ -4003,7 +4017,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             {
               role: "assistant",
@@ -4028,7 +4042,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             {
               role: "user",
@@ -4046,7 +4060,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             {
               role: "user",
@@ -4073,7 +4087,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [
             {
               role: "assistant",
@@ -4092,7 +4106,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "assistant", content: null, refusal: null }],
         }),
       },
@@ -4105,7 +4119,7 @@ describe("API gateway integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "qwen2.5-coder-1.5b-instruct-q4_k_m",
+          model: "qwen3.5-4b-q4_k_m",
           messages: [{ role: "assistant", content: null, tool_calls: [] }],
         }),
       },
@@ -4291,7 +4305,7 @@ test("GPU working-set oversubscription by loaded models is retryable and explain
 });
 
 test("records runtime capabilities from llama-server and lets them gate tools", async () => {
-  const modelId = "qwen2.5-coder-7b-instruct-q4_k_m";
+  const modelId = "qwen3.8-27b-q4_k_m";
   const spec = byId(modelId)!;
   expect(hasCapability(spec, "tool-calling")).toBe(true);
   const gateway = await startGatewayFixture({

@@ -245,7 +245,7 @@ test("rejects a model without the image-to-image catalog feature", async () => {
   const gateway = await startGatewayFixture();
   try {
     const form = new FormData();
-    form.set("model", "flux1-schnell-q4_0");
+    form.set("model", "z-image-turbo-q4_0");
     form.set("prompt", "A watercolor landscape");
     form.append(
       "image",

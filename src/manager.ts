@@ -18,6 +18,11 @@ import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { catalogDiagnostics } from "./catalog/sources";
 import {
+  adoptFormerCatalogEntries,
+  loadCatalogSources,
+  missingFormerModelIds,
+} from "./catalog/user-catalog";
+import {
   databasePath as dbPath,
   openReadOnlyDatabase,
   type DatabaseSession,
@@ -314,6 +319,26 @@ export function detectHostVideoTarget() {
   return target;
 }
 
+/**
+ * Settings saved by an earlier release can name a model that has since left
+ * the built-in catalog without its files being installed yet. Keep those as
+ * user entries before validation so the settings stay valid (see
+ * `adoptFormerCatalogEntries`).
+ */
+function keepFormerCatalogSelections(
+  root: string,
+  modelIds: readonly unknown[],
+): void {
+  const missing = missingFormerModelIds(
+    modelIds.filter((id): id is string => typeof id === "string" && id !== ""),
+    (id) => byId(id) !== undefined,
+  );
+  if (missing.length === 0) return;
+  if (adoptFormerCatalogEntries(root, missing).length > 0) {
+    loadCatalogSources(root);
+  }
+}
+
 function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
   const parsed = configRowSchema.safeParse(row);
   if (!parsed.success) {
@@ -351,6 +376,20 @@ function fromConfigRow(row: unknown, openedRoot: string): LocalBaseConfig {
     "selectedTtsModels",
     openedRoot,
   );
+  keepFormerCatalogSelections(openedRoot, [
+    ...[
+      selectedLlmModels,
+      selectedSttModels,
+      selectedTtsModels,
+      selectedImageModels,
+      selectedVideoModels,
+    ].flatMap((ids) => (Array.isArray(ids) ? ids : [])),
+    data.activeLlmModel,
+    data.activeSttModel,
+    data.activeTtsModel,
+    data.activeImageModel,
+    data.activeVideoModel,
+  ]);
   const models = createModelConfigurationSchema(null, false).safeParse({
     allowExperimental: data.allowExperimental,
     selectedLlmModels,
@@ -431,7 +470,9 @@ export function defaultRoot(): string {
 
 export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
   root = canonicalLocalBaseRoot(root);
-  const llm = "qwen2.5-coder-7b-instruct-q4_k_m";
+  // The compact chat model on every machine; larger chat models are offered
+  // by `models recommend` and configure, not selected by default.
+  const llm = "qwen3.5-4b-q4_k_m";
   const stt =
     recommendedSttForVram(vramGb)[2]?.modelId ??
     recommendedSttForVram(vramGb)[0]?.modelId ??
@@ -451,13 +492,13 @@ export function defaultConfig(root: string, vramGb = 0): LocalBaseConfig {
     selectedLlmModels: [llm],
     selectedSttModels: [stt],
     selectedTtsModels: [],
-    selectedImageModels: ["stable-diffusion-v1-5"],
+    selectedImageModels: ["dreamshaper-8-lcm"],
     selectedVideoModels: [],
     allowExperimental: false,
     activeLlmModel: llm,
     activeSttModel: stt,
     activeTtsModel: "",
-    activeImageModel: "stable-diffusion-v1-5",
+    activeImageModel: "dreamshaper-8-lcm",
     activeVideoModel: "",
     hfToken: "",
     installMissingModels: false,
