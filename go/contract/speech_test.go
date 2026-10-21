@@ -3,7 +3,6 @@ package contract
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"mime/multipart"
 	"os"
 	"os/exec"
@@ -71,27 +70,27 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 // linkCrispASR prepares Kokoro through CrispASR in a scratch root from
 // LOCALBASE_CONTRACT_CRISPASR: rt/crispasr-macos-arm64/ (the pinned release,
 // unpacked), misaki-merged.json and models/kokoro-*.gguf. The runtime is
-// copied into the managed layout; the weights are linked read-only.
+// copied into the managed layout; the weights are cloned (APFS) read-only.
 func linkCrispASR(r *root.Root) error {
 	src := os.Getenv("LOCALBASE_CONTRACT_CRISPASR")
 	if src == "" || goruntime.GOOS != "darwin" || goruntime.GOARCH != "arm64" {
 		return nil
 	}
 	pkg := filepath.Join(r.RuntimesDir(), "crispasr", crispasrPin)
-	if err := os.MkdirAll(pkg, 0o700); err != nil {
+	if err := mustMkdirAll(pkg, 0o700); err != nil {
 		return err
 	}
-	if out, err := exec.Command("cp", "-R", filepath.Join(src, "rt", "crispasr-macos-arm64")+"/", pkg).CombinedOutput(); err != nil {
-		return fmt.Errorf("copy crispasr: %v %s", err, out)
+	if err := guardedCopyDir(filepath.Join(src, "rt", "crispasr-macos-arm64"), pkg); err != nil {
+		return err
 	}
-	if out, err := exec.Command("cp", filepath.Join(src, "misaki-merged.json"), pkg).CombinedOutput(); err != nil {
-		return fmt.Errorf("copy dictionary: %v %s", err, out)
+	if err := cloneModel(filepath.Join(src, "misaki-merged.json"), filepath.Join(pkg, "misaki-merged.json")); err != nil {
+		return err
 	}
-	if err := os.MkdirAll(r.ModelsDir("tts"), 0o700); err != nil {
+	if err := mustMkdirAll(r.ModelsDir("tts"), 0o700); err != nil {
 		return err
 	}
 	for _, f := range []string{"kokoro-82m-f16.gguf", "kokoro-voice-af_heart.gguf"} {
-		if err := os.Symlink(filepath.Join(src, "models", f), filepath.Join(r.ModelsDir("tts"), f)); err != nil {
+		if err := cloneModel(filepath.Join(src, "models", f), filepath.Join(r.ModelsDir("tts"), f)); err != nil {
 			return err
 		}
 	}
@@ -152,9 +151,9 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	}
 
 	// Round trip: whisper hears the input.
-	in := filepath.Join(t.TempDir(), "speech.wav")
-	out := filepath.Join(t.TempDir(), "speech-16k.wav")
-	os.WriteFile(in, wav, 0o600)
+	in := filepath.Join(scratchDir(t), "speech.wav")
+	out := filepath.Join(scratchDir(t), "speech-16k.wav")
+	mustWriteFile(in, wav, 0o600)
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", in, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}
@@ -179,8 +178,8 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	// off` restarts the server without it on the next request.
 	detector := filepath.Join(os.Getenv("LOCALBASE_CONTRACT_CRISPASR"), "rt", "crispasr-macos-arm64", "crispasr")
 	marked := func(wav []byte) bool {
-		p := filepath.Join(t.TempDir(), "check.wav")
-		os.WriteFile(p, wav, 0o600)
+		p := filepath.Join(scratchDir(t), "check.wav")
+		mustWriteFile(p, wav, 0o600)
 		out, _ := exec.Command(detector, "--detect-watermark", p).CombinedOutput()
 		return strings.Contains(string(out), "WATERMARK DETECTED")
 	}
@@ -260,9 +259,9 @@ func TestSpeechQwenReal(t *testing.T) {
 // transcribe runs whisper tiny.en on a 24 kHz WAV through tg (afconvert to 16 kHz).
 func transcribe(t *testing.T, tg *Target, wav []byte) string {
 	t.Helper()
-	in := filepath.Join(t.TempDir(), "in.wav")
-	out := filepath.Join(t.TempDir(), "out.wav")
-	os.WriteFile(in, wav, 0o600)
+	in := filepath.Join(scratchDir(t), "in.wav")
+	out := filepath.Join(scratchDir(t), "out.wav")
+	mustWriteFile(in, wav, 0o600)
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", in, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}

@@ -34,9 +34,9 @@ func TestVideoReal(t *testing.T) {
 	}
 	out := os.Getenv("LOCALBASE_CONTRACT_VIDEO_OUT")
 	if out == "" {
-		out = t.TempDir()
+		out = scratchDir(t)
 	}
-	os.MkdirAll(out, 0o700)
+	mustMkdirAll(out, 0o700)
 	byName := map[string]*Target{}
 	for _, tg := range targets {
 		byName[tg.Name] = tg
@@ -51,7 +51,7 @@ func TestVideoReal(t *testing.T) {
 		r := runRealVideo(t, tg, host, out)
 		report[name] = r
 		b, _ := json.MarshalIndent(report, "", "  ")
-		os.WriteFile(filepath.Join(out, "report.json"), b, 0o600)
+		mustWriteFile(filepath.Join(out, "report.json"), b, 0o600)
 		if t.Failed() {
 			return
 		}
@@ -63,7 +63,7 @@ func TestVideoReal(t *testing.T) {
 		report[name].(map[string]any)["probe"] = probe[name]
 	}
 	b, _ := json.MarshalIndent(report, "", "  ")
-	os.WriteFile(filepath.Join(out, "report.json"), b, 0o600)
+	mustWriteFile(filepath.Join(out, "report.json"), b, 0o600)
 	t.Logf("report:\n%s", b)
 	if len(probe) == 2 {
 		for _, k := range []string{"container", "codec", "frames", "width", "height", "fps"} {
@@ -188,7 +188,7 @@ func runRealVideo(t *testing.T, tg *Target, host memory.HostProvider, out string
 		t.Errorf("%s: %v (content %d)", tg.Name, final, content.Status)
 		return r
 	}
-	os.WriteFile(filepath.Join(out, tg.Name+".mp4"), content.Body, 0o600)
+	mustWriteFile(filepath.Join(out, tg.Name+".mp4"), content.Body, 0o600)
 	t.Logf("%s: %.0f s, min available %.1f GiB, peak sd-server %.1f GiB, live health failures %d",
 		tg.Name, wall.Seconds(), gib(minAvail), gib(peakFootprint), healthFailures)
 	return r

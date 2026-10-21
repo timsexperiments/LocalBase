@@ -70,7 +70,7 @@ func TestCLIHubGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := hubFixtures(t)
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	dir, _ = filepath.EvalSymlinks(dir)
 	rootDir := filepath.Join(dir, "root")
 	env := []string{"HF_ENDPOINT=" + endpoint, "HF_TOKEN="}
@@ -215,7 +215,7 @@ func TestModelDiscoveryEndToEnd(t *testing.T) {
 		} `json:"previews"`
 	}
 	json.Unmarshal(b, &g)
-	tmp := t.TempDir()
+	tmp := scratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"HF_ENDPOINT=" + hubFixtures(t), "HF_TOKEN="}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)

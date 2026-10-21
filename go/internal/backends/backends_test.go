@@ -333,3 +333,41 @@ func TestCrispASRWithoutPin(t *testing.T) {
 		t.Errorf("Linux CrispASR chosen automatically: %q", rec.BackendID)
 	}
 }
+
+// TestUnpinnedManagedBackendIsManualOnly: CrispASR is automatic only where
+// LocalBase pins a package. On Linux, even an installed copy is never
+// picked automatically, and its option says why.
+func TestUnpinnedManagedBackendIsManualOnly(t *testing.T) {
+	reg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tts := &models.Model{ID: "k", Tasks: []string{"speech"}, Capabilities: []string{}, Variants: []models.Variant{{ID: "v",
+		Format: models.Of("gguf", models.SourceInspect), Architecture: models.Of("kokoro", models.SourceInspect),
+		Artifacts: []models.Artifact{{Filename: "k.gguf", Role: models.RoleWeights, Required: true},
+			{Filename: "af_heart.bin", Role: "voice", Required: true}}}}}
+	h := host("linux", "x64", []string{"cpu"}, reg, map[string]string{"crispasr-cpu": Installed})
+	h.Unpinned = map[string]bool{"crispasr-cpu": true}
+	rec := reg.Recommend(tts, h, nil)
+	if strings.HasPrefix(rec.BackendID, "crispasr") {
+		t.Fatalf("an unpinned CrispASR was chosen automatically: %q", rec.BackendID)
+	}
+	found := false
+	for _, o := range rec.Options {
+		if o.BackendID != "crispasr-cpu" {
+			continue
+		}
+		found = true
+		if o.Rating != Supported || !slices.ContainsFunc(o.Warnings, func(w Reason) bool { return w.Code == CodeManualOnly }) {
+			t.Errorf("option %+v", o)
+		}
+	}
+	if !found {
+		t.Fatal("CrispASR is not listed")
+	}
+	// Where it is pinned, the installed copy is chosen.
+	h.Unpinned = nil
+	if rec := reg.Recommend(tts, h, nil); rec.BackendID != "crispasr-cpu" {
+		t.Fatalf("pinned and installed CrispASR not chosen: %q", rec.BackendID)
+	}
+}

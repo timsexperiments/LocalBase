@@ -157,7 +157,7 @@ func TestFeedSchedulerReloadsCatalog(t *testing.T) {
 	}
 	feed := testFeed(t)
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(feed) }), false)
-	tmp := t.TempDir()
+	tmp := scratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
 		env: []string{"LOCALBASE_CATALOG_FEED_URL=" + srv.URL + "/feed.json"}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {

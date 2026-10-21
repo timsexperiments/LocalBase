@@ -107,7 +107,7 @@ func speechClip(t *testing.T) []byte {
 	if _, err := exec.LookPath("afconvert"); err != nil {
 		t.Skip("afconvert is not available")
 	}
-	out := filepath.Join(t.TempDir(), "speech-16k.wav")
+	out := filepath.Join(scratchDir(t), "speech-16k.wav")
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", src, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}

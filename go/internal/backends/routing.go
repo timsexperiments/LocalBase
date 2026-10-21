@@ -77,7 +77,7 @@ func (r *Registry) Recommend(m *models.Model, h Host, inspections map[string]*mo
 	rec := Recommendation{}
 	for _, id := range r.Preference(h) {
 		d := r.Get(id)
-		if h.Install[id] == Missing || !d.automaticFor(m) {
+		if h.Install[id] == Missing || h.Unpinned[id] || !d.automaticFor(m) {
 			continue // automatic selection only picks something that can run here and may be picked
 		}
 		for i := range m.Variants {

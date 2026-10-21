@@ -16,7 +16,7 @@ func TestAdminAuditRedaction(t *testing.T) {
 	if *implFlag != "go" && *implFlag != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := t.TempDir()
+	tmp := scratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)

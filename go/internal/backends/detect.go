@@ -196,6 +196,8 @@ func Assess(m *models.Model, v *models.Variant, d *Definition, h Host, missing [
 	switch {
 	case !d.automatic():
 		warn(CodeManualOnly, "LocalBase never picks this backend automatically; you can still choose it.")
+	case h.Unpinned[d.ID]:
+		warn(CodeManualOnly, "LocalBase picks this backend automatically only where it installs a pinned package, and it has none for this device; you can still choose it.")
 	case !d.automaticFor(m):
 		warn(CodeManualOnly, "LocalBase picks this backend automatically only for %s, which it has qualified; you can still choose it.", strings.Join(d.AutomaticTasks, ", "))
 	}

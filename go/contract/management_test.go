@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -41,14 +40,14 @@ func addTinyCatalogModel(rootDir, sttDir string) error {
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 	}
 	b, _ := json.MarshalIndent(entry, "", "  ")
-	if err := os.MkdirAll(filepath.Join(rootDir, "catalog.d"), 0o700); err != nil {
+	if err := mustMkdirAll(filepath.Join(rootDir, "catalog.d"), 0o700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(rootDir, "catalog.d", tinyModel+".json"), b, 0o600); err != nil {
+	if err := mustWriteFile(filepath.Join(rootDir, "catalog.d", tinyModel+".json"), b, 0o600); err != nil {
 		return err
 	}
-	os.MkdirAll(sttDir, 0o700)
-	return os.WriteFile(filepath.Join(sttDir, "ggml-contract-tiny.bin"), data, 0o600)
+	mustMkdirAll(sttDir, 0o700)
+	return mustWriteFile(filepath.Join(sttDir, "ggml-contract-tiny.bin"), data, 0o600)
 }
 
 // TestDifferentialModelManagement compares /_localbase/model-management on
@@ -247,7 +246,7 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 			sum := sha256.Sum256(data)
 			art := &slowArtifact{data: data, release: make(chan struct{})}
 			srv := rangeServer(t, art, false)
-			tmp := t.TempDir()
+			tmp := scratchDir(t)
 			e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 			if r := e.cli(nil, "--json", "init"); r.code != 0 {
 				t.Fatalf("init: %s", r.stderr)
@@ -262,8 +261,8 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 				"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 			}
 			b, _ := json.Marshal(entry)
-			os.MkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
-			os.WriteFile(filepath.Join(e.root, "catalog.d", "slow-stt.json"), b, 0o600)
+			mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
+			mustWriteFile(filepath.Join(e.root, "catalog.d", "slow-stt.json"), b, 0o600)
 			state := func() map[string]any {
 				r := e.do("GET", "/_localbase/model-management", "")
 				for _, m := range r.JSON(t)["models"].([]any) {

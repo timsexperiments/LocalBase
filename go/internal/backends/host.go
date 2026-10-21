@@ -30,6 +30,11 @@ type Host struct {
 	// Unpackaged marks built-in backends with no managed package for this
 	// platform (nothing LocalBase could install).
 	Unpackaged map[string]bool `json:"unpackaged,omitempty"`
+	// Unpinned marks built-in backends whose runtime LocalBase manages but
+	// has no pinned package for on this device, installed or not: they are
+	// never picked automatically here (CrispASR is automatic only where
+	// pinned).
+	Unpinned map[string]bool `json:"unpinned,omitempty"`
 }
 
 // Has reports an accelerator.
@@ -93,9 +98,13 @@ func GoArch() string {
 // NewHost describes this device. install reports each backend's install
 // state (the caller knows where runtimes live).
 func NewHost(accelerators []string, reg *Registry, install func(*Definition) string, packaged func(*Definition) bool) Host {
-	h := Host{OS: goruntime.GOOS, Arch: GoArch(), Accelerators: accelerators, Install: map[string]string{}, Unpackaged: map[string]bool{}}
+	h := Host{OS: goruntime.GOOS, Arch: GoArch(), Accelerators: accelerators, Install: map[string]string{}, Unpackaged: map[string]bool{},
+		Unpinned: map[string]bool{}}
 	for _, d := range reg.All() {
 		h.Install[d.ID] = install(d)
+		if d.BuiltIn && d.Launch == nil && d.Runtime != nil && d.Runtime.Managed && packaged != nil && !packaged(d) {
+			h.Unpinned[d.ID] = true
+		}
 		if d.BuiltIn && d.Launch == nil && h.Install[d.ID] == Missing && packaged != nil && !packaged(d) {
 			h.Unpackaged[d.ID] = true
 		}

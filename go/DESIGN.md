@@ -1572,3 +1572,41 @@ Step 2:
 - **Chat `generate_video`.** Ported in M3 step 2c (`tools.js`) and checked
   against TS's `runChat` on a scripted gateway. The routes it calls are now
   checked against TS by the contract suite.
+
+### 16.3 Harness file-system guard (operator request)
+
+The near miss in step 1 was the harness writing a placeholder through a
+link onto a shared model filename, stopped only by a read-only clone. The
+contract package now routes every write through `contract/fsguard_test.go`:
+
+- **Scratch roots only.** Before each create, write, truncate, directory
+  creation or removal, the real path is resolved (the entry itself, or its
+  nearest existing ancestor). The write is refused unless it lands inside a
+  registered scratch root: a harness gateway root (`scratchTemp`) or a
+  test's `t.TempDir()` (`scratchDir`). The live root is never accepted as a
+  scratch root.
+- **No shared inodes.** Writing through a symlink, or to an existing file
+  with more than one link, is refused.
+- **Clones only.** Real model files enter a fixture only through
+  `cloneModel`: an APFS clone (`cp -c`), or a read-only copy for files up
+  to 64 MiB. The result is made read-only and checked to be a single-link
+  regular file with its own inode. Every symlink the harness used to create
+  is now a clone. After the fixture is built, `assertNoLinks` walks the
+  whole root: a model file that is a link, a link that leaves the root, or
+  any hard link fails the fixture.
+- **Refusals are loud.** Call sites that used to ignore write errors use
+  `must*` forms that panic on a refusal, so a refusal fails the test or the
+  run.
+- **Tests.** `TestFSGuard` tries each forbidden case: writes and removal
+  outside a root, a `..` escape, writes through a directory symlink and a
+  file symlink, a hard link under either name, the live root, a clone over
+  an existing entry, a link passed off as a clone. It then shows the files
+  outside are unchanged and that allowed writes still work.
+  `TestNoUnguardedWrites` fails if any other file in the package calls the
+  `os` write functions, `t.TempDir()` or `cp` directly.
+
+Also found by the new Linux CI job: the M3.5 rule that CrispASR is
+automatic only where LocalBase pins it was enforced only while it was
+missing. A managed backend without a pinned package for the device
+(CrispASR on Linux) is now manual-only even when installed, and its option
+carries `not-chosen-automatically` (`TestUnpinnedManagedBackendIsManualOnly`).

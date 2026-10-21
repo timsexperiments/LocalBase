@@ -25,7 +25,7 @@ var (
 
 func goCLI(t *testing.T) string {
 	goCLIOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "lbgo-cli-bin-")
+		dir, err := scratchTemp("lbgo-cli-bin-")
 		if err != nil {
 			goCLIErr = err
 			return
@@ -124,7 +124,7 @@ type cliCase struct {
 }
 
 func twinRoots(t *testing.T) (string, string) {
-	base := t.TempDir()
+	base := scratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
 	return filepath.Join(base, "ts"), filepath.Join(base, "go")
 }
@@ -254,9 +254,9 @@ func TestCLIConfigure(t *testing.T) {
 	roots := [2]string{ts, gr}
 	msg := func(p string) bool { return p == ".error.message" }
 	tomlPath := filepath.Join(filepath.Dir(ts), "overrides.toml")
-	os.WriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
+	mustWriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
 	badToml := filepath.Join(filepath.Dir(ts), "bad.toml")
-	os.WriteFile(badToml, []byte("bogus = 1\n"), 0o600)
+	mustWriteFile(badToml, []byte("bogus = 1\n"), 0o600)
 	for _, c := range []cliCase{
 		{args: []string{"--json", "configure"}, skip: msg},
 		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},

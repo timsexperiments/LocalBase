@@ -127,34 +127,38 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	}
 	defer st.Close()
 	sel, _ := json.Marshal([]string{chatModel, decisionModel, embeddingModel})
-	// A real whisper model (read-only link), when LOCALBASE_CONTRACT_STT_MODELS has it.
+	// A real whisper model (an APFS clone), when LOCALBASE_CONTRACT_STT_MODELS has it.
 	sttSel := `["whisper-base-en-q8_0"]`
 	if d := os.Getenv("LOCALBASE_CONTRACT_STT_MODELS"); d != "" && fileExists(filepath.Join(d, "ggml-tiny.en-q8_0.bin")) {
-		os.MkdirAll(r.ModelsDir("stt"), 0o700)
-		if os.Symlink(filepath.Join(d, "ggml-tiny.en-q8_0.bin"), filepath.Join(r.ModelsDir("stt"), "ggml-tiny.en-q8_0.bin")) == nil {
-			sttSel = `["whisper-base-en-q8_0","whisper-tiny-en-q8_0"]`
+		mustMkdirAll(r.ModelsDir("stt"), 0o700)
+		if err := cloneModel(filepath.Join(d, "ggml-tiny.en-q8_0.bin"), filepath.Join(r.ModelsDir("stt"), "ggml-tiny.en-q8_0.bin")); err != nil {
+			return "", "", "", false, err
 		}
+		sttSel = `["whisper-base-en-q8_0","whisper-tiny-en-q8_0"]`
 	}
 	if err := linkCrispASR(r); err != nil {
 		return "", "", "", false, err
 	}
-	// The real FastWan video files (read-only links), when
+	// The real FastWan video files (APFS clones), when
 	// LOCALBASE_CONTRACT_VIDEO_MODELS has them (an operator-approved memory window).
 	if d := os.Getenv("LOCALBASE_CONTRACT_VIDEO_MODELS"); d != "" {
-		os.MkdirAll(r.ModelsDir("video"), 0o700)
+		mustMkdirAll(r.ModelsDir("video"), 0o700)
 		for _, f := range []string{"FastWan2.2-TI2V-5B-q6_k.gguf", "umt5-xxl-encoder-Q8_0.gguf", "taew2_2.safetensors"} {
 			if fileExists(filepath.Join(d, f)) {
-				os.Symlink(filepath.Join(d, f), filepath.Join(r.ModelsDir("video"), f))
+				if err := cloneModel(filepath.Join(d, f), filepath.Join(r.ModelsDir("video"), f)); err != nil {
+					return "", "", "", false, err
+				}
 			}
 		}
 	}
-	// A real image model (read-only link), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
+	// A real image model (an APFS clone), when LOCALBASE_CONTRACT_IMAGE_MODELS has it.
 	imageSel := `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo"]`
 	if d := os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS"); d != "" && fileExists(filepath.Join(d, imageFile)) {
-		os.MkdirAll(r.ModelsDir("image"), 0o700)
-		if os.Symlink(filepath.Join(d, imageFile), filepath.Join(r.ModelsDir("image"), imageFile)) == nil {
-			imageSel = `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","dreamshaper-v8"]`
+		mustMkdirAll(r.ModelsDir("image"), 0o700)
+		if err := cloneModel(filepath.Join(d, imageFile), filepath.Join(r.ModelsDir("image"), imageFile)); err != nil {
+			return "", "", "", false, err
 		}
+		imageSel = `["dreamshaper-8-lcm","flux1-schnell-q4_0","realvis-xl-v5.0","sdxl-turbo","dreamshaper-v8"]`
 	}
 	_, err = st.DB.Exec(`INSERT INTO config (id, root, gateway_host, gateway_port, host, port, ctx_size, ctx_mode,
 		stt_host, stt_port, selected_llm_models, selected_stt_models, selected_tts_models, selected_image_models,
@@ -183,7 +187,7 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	if err != nil {
 		return "", "", "", false, err
 	}
-	os.WriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
+	mustWriteFile(filepath.Join(r.Dir, "catalog-feed.json"), []byte(`{"url":null}`), 0o600)
 	if err := addTinyCatalogModel(r.Dir, r.ModelsDir("stt")); err != nil {
 		return "", "", "", false, err
 	}
@@ -193,48 +197,52 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 	for _, id := range []string{"whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m", "dreamshaper-8-lcm", "wan2.1-t2v-1.3b-q8_0"} {
 		spec := cat.ByID(id)
 		dir := r.ModelsDir(spec.Kind)
-		os.MkdirAll(dir, 0o700)
-		// The real Qwen3-TTS files (read-only links), when LOCALBASE_CONTRACT_TTS_MODELS has them.
+		mustMkdirAll(dir, 0o700)
+		// The real Qwen3-TTS files (APFS clones), when LOCALBASE_CONTRACT_TTS_MODELS has them.
 		if d := os.Getenv("LOCALBASE_CONTRACT_TTS_MODELS"); d != "" && id == "qwen3-tts-1.7b-base-q4_k_m" && fileExists(filepath.Join(d, spec.Artifacts[0].Filename)) {
 			for _, a := range spec.Artifacts {
-				os.Symlink(filepath.Join(d, a.Filename), filepath.Join(dir, a.Filename))
+				if err := cloneModel(filepath.Join(d, a.Filename), filepath.Join(dir, a.Filename)); err != nil {
+					return "", "", "", false, err
+				}
 			}
 			continue
 		}
 		for _, a := range spec.Artifacts {
-			// Never through a link: a real file linked in above stays untouched.
-			if _, err := os.Lstat(filepath.Join(dir, a.Filename)); err == nil {
-				continue
-			}
-			if f, err := os.Create(filepath.Join(dir, a.Filename)); err == nil {
-				f.Truncate(a.ExpectedSizeBytes)
-				f.Close()
+			// A real file cloned in above (the shared umt5 encoder) is left alone.
+			if err := guardedSparse(filepath.Join(dir, a.Filename), a.ExpectedSizeBytes); err != nil {
+				return "", "", "", false, err
 			}
 		}
 	}
-	os.MkdirAll(r.ModelsDir("llm"), 0o700)
+	mustMkdirAll(r.ModelsDir("llm"), 0o700)
 	modelLinked := false
 	if models := os.Getenv("LOCALBASE_CONTRACT_MODELS"); models != "" {
 		src := filepath.Join(models, "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf")
 		if _, err := os.Stat(src); err == nil {
-			modelLinked = os.Symlink(src, filepath.Join(r.ModelsDir("llm"), filepath.Base(src))) == nil
+			if err := cloneModel(src, filepath.Join(r.ModelsDir("llm"), filepath.Base(src))); err != nil {
+				return "", "", "", false, err
+			}
+			modelLinked = true
 		}
 		// The 0.6 GB embedding model, when present, for the embeddings cases.
 		if emb := filepath.Join(models, "Qwen3-Embedding-0.6B-Q8_0.gguf"); fileExists(emb) {
-			os.Symlink(emb, filepath.Join(r.ModelsDir("llm"), filepath.Base(emb)))
+			if err := cloneModel(emb, filepath.Join(r.ModelsDir("llm"), filepath.Base(emb))); err != nil {
+				return "", "", "", false, err
+			}
 		}
 	}
 	if runtimes := os.Getenv("LOCALBASE_CONTRACT_RUNTIMES"); runtimes != "" && modelLinked {
 		{
 			// Copy, never link, the runtime package: backends must not run from the live root.
 			// Merge into bin/runtimes, which other fixtures may already have created.
-			os.MkdirAll(r.RuntimesDir(), 0o700)
-			out, cerr := exec.Command("cp", "-R", runtimes+"/.", r.RuntimesDir()).CombinedOutput()
-			if cerr != nil {
-				return "", "", "", false, fmt.Errorf("copy runtimes: %v %s", cerr, out)
+			if err := guardedCopyDir(runtimes, r.RuntimesDir()); err != nil {
+				return "", "", "", false, err
 			}
 			real = true
 		}
+	}
+	if err := assertNoLinks(r.Dir); err != nil {
+		return "", "", "", false, err
 	}
 	return key, chatOnly, admin, real, nil
 }
@@ -248,7 +256,7 @@ func launch(impl string) (*Target, error) { return launchEnv(impl, nil) }
 
 // launchEnv launches a gateway with extra environment entries.
 func launchEnv(impl string, extra []string) (*Target, error) {
-	dir, err := os.MkdirTemp("", "lbgo-contract-"+impl+"-")
+	dir, err := scratchTemp("lbgo-contract-" + impl + "-")
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +292,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
 		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
 	cmd.Env = append(cmd.Env, extra...)
-	logf, _ := os.Create(filepath.Join(dir, "serve.log"))
+	logf, _ := mustCreate(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -311,7 +319,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 	stop := func() {
 		halt()
 		if os.Getenv("LOCALBASE_CONTRACT_KEEP") == "" {
-			os.RemoveAll(dir)
+			mustRemoveAll(dir)
 		}
 	}
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)

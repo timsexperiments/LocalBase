@@ -1,7 +1,6 @@
 package contract
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -13,15 +12,15 @@ func TestCLIAccess(t *testing.T) {
 	roots := [2]string{ts, gr}
 	t.Setenv("CONTRACT_OIDC_SECRET", "shh")
 	t.Setenv("CONTRACT_SMTP_PASSWORD", "pw")
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	policy := filepath.Join(dir, "policy.json")
-	os.WriteFile(policy, []byte(`{"roles":[{"name":"chat","description":"Chat","permissions":["inference:chat"]},`+
+	mustWriteFile(policy, []byte(`{"roles":[{"name":"chat","description":"Chat","permissions":["inference:chat"]},`+
 		`{"name":"admin","description":"Admin","permissions":["access:manage","access:read"]}],`+
 		`"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"},{"kind":"email-domain","role":"chat","domain":"example.com"}],"defaultRole":null}`), 0o600)
 	badPolicy := filepath.Join(dir, "bad.json")
-	os.WriteFile(badPolicy, []byte(`{"roles":[],"bindings":[],"defaultRole":null,"extra":1}`), 0o600)
+	mustWriteFile(badPolicy, []byte(`{"roles":[],"bindings":[],"defaultRole":null,"extra":1}`), 0o600)
 	notJSON := filepath.Join(dir, "not.json")
-	os.WriteFile(notJSON, []byte(`{`), 0o600)
+	mustWriteFile(notJSON, []byte(`{`), 0o600)
 	msg := func(p string) bool { return p == ".error.message" }
 	origin := []string{"--origin", "https://lb.example.com"}
 	with := func(args ...string) []string { return append(append([]string{"--json", "access"}, args...), origin...) }

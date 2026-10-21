@@ -24,7 +24,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	requireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
-	docs := t.TempDir()
+	docs := scratchDir(t)
 	for _, r := range roots {
 		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
 			t.Fatalf("init: %s", res.stderr)
@@ -50,12 +50,12 @@ func TestCLIConfigDeclarative(t *testing.T) {
 			doc = re.ReplaceAllString(doc, pairs[i+1])
 		}
 		p := filepath.Join(docs, name+".toml")
-		os.WriteFile(p, []byte(doc), 0o600)
+		mustWriteFile(p, []byte(doc), 0o600)
 		return p
 	}
 	write := func(name, doc string) string {
 		p := filepath.Join(docs, name+".toml")
-		os.WriteFile(p, []byte(doc), 0o600)
+		mustWriteFile(p, []byte(doc), 0o600)
 		return p
 	}
 	basePath := edit("base")
@@ -237,11 +237,11 @@ func TestCLIConfigForegroundGateway(t *testing.T) {
 			if env.Data.Document == "" {
 				t.Fatalf("show: %s %s", shown.stdout, shown.stderr)
 			}
-			dir := t.TempDir()
+			dir := scratchDir(t)
 			same := filepath.Join(dir, "same.toml")
-			os.WriteFile(same, []byte(env.Data.Document), 0o600)
+			mustWriteFile(same, []byte(env.Data.Document), 0o600)
 			moved := filepath.Join(dir, "moved.toml")
-			os.WriteFile(moved, []byte(regexp.MustCompile(`(?m)^port = (\d+)$`).ReplaceAllString(env.Data.Document, "port = 1")), 0o600)
+			mustWriteFile(moved, []byte(regexp.MustCompile(`(?m)^port = (\d+)$`).ReplaceAllString(env.Data.Document, "port = 1")), 0o600)
 			res := runCLI(t, tg.Name, tg.Root, "--json", "config", "apply", "--file", moved)
 			if res.code != 1 || !strings.Contains(res.stdout, "Cannot automatically restart this gateway") {
 				t.Errorf("restart-required apply: %d %s", res.code, res.stdout)
