@@ -8,6 +8,11 @@
 #
 #   LBGO_TS_BIN=<TS binary> [LBGO_KEY_FILE=<key>] tools/rehearsal.sh
 #
+# LBGO_LIGHT=1 is the reduced drill for low headroom (operator, 2026-10-21):
+# the copy's active LLM becomes LBGO_LIGHT_LLM (default the 1.5B coder) for
+# the smokes, the replay sends no decision request, and the preflight needs
+# 14 GiB instead of 25. The 12 GiB abort floor is unchanged.
+#
 # The key is read only into the clients' environment. Media is never
 # requested: the TTS, image and video ports are flag-only and would be the
 # live defaults.
@@ -16,8 +21,15 @@ cd "$(dirname "$0")/.."
 work=${LBGO_SHADOW:-/private/tmp/lbgo-shadow}
 root="$work/root"
 bin="$work/bin/local-base"
+light=${LBGO_LIGHT:-}
+light_llm=${LBGO_LIGHT_LLM:-qwen2.5-coder-1.5b-instruct-q4_k_m}
 chat=${LBGO_CHAT:-}
 decision=${LBGO_DECISION:-}
+need_gib=25
+if [ -n "$light" ]; then chat=$light_llm; decision=""; need_gib=14; fi
+# The fit-aware default (DESIGN §18) set during the config apply step, when
+# both models are selected on the copy.
+defaults=${LBGO_DEFAULTS:-'"qwen3.6-35b-a3b-iq4_nl_xl","qwen3.5-9b-q4_k_m"'}
 die() { echo "rehearsal: $*" >&2; exit 1; }
 [ -d "$root" ] || die "no copy at $root (tools/shadow.sh copy first)"
 [ -x "${LBGO_TS_BIN:-}" ] || die "set LBGO_TS_BIN to the TS build"
@@ -62,7 +74,7 @@ live_idle() { # no inference.started without an end in the live event log's last
 preflight() {
   local a; a=$(avail)
   printf 'available %.1f GiB; ' "$(echo "$a / $gib" | bc -l)"
-  [ "$a" -ge $((25 * gib)) ] || { echo; die "under 25 GiB available; wait"; }
+  [ "$a" -ge $((need_gib * gib)) ] || { echo; die "under $need_gib GiB available; wait"; }
   live_idle || die "the live gateway is not idle; wait"
   [ "$(live_health)" = 200 ] || die "live /health is not 200"
 }
@@ -117,6 +129,10 @@ awk -v g="$gport" -v l="$lport" -v s="$sport" '
   sec=="m" && /^selected(Tts|Image|Video)Models = / {sub(/ = .*/, " = []"); print; next}
   sec=="m" && /^active(Tts|Image|Video)Model = / {sub(/ = .*/, " = \"\""); print; next}
   {print}' "$work/doc.toml" > "$work/doc-scratch.toml"
+if [ -n "$light" ]; then # the 1.5B is the active LLM for the smokes
+  grep -q "^selectedLlmModels = .*\"$light_llm\"" "$work/doc-scratch.toml" || die "$light_llm is not selected on the copy"
+  sed -i '' "s/^activeLlmModel = .*/activeLlmModel = \"$light_llm\"/" "$work/doc-scratch.toml"
+fi
 lb config apply --file "$work/doc-scratch.toml" --restart never >/dev/null && ok "gateway $gport, llm $lport, stt $sport on 127.0.0.1" || die "config apply"
 lb config show | grep -E '^(selected|active)(Tts|Image|Video)' | grep -vE '= (\[\]|"")$' && die "a media model is still selected" || ok "no media model selected (TTS, image and video runtimes cannot start)"
 
@@ -138,14 +154,33 @@ if [ -n "${LBGO_KEY_FILE:-}" ]; then
   grep -q "^ok" "$work/clients.txt" && ok "replay and contract subset" || bad "replay or contract subset"
 fi
 
-echo "== config apply with a launchd restart"
+echo "== config apply with a launchd restart (and the default chat model list)"
 gport2=$(pick)
 sed "/^\[gateway\]/,/^\[/s/^port = $gport$/port = $gport2/" "$work/doc-scratch.toml" > "$work/doc-auto.toml"
+with_defaults=""
+all_selected() { # all_selected <doc>: every default is a selected LLM in it
+  local id
+  for id in $(echo "$defaults" | tr -d '"' | tr ',' ' '); do
+    grep -q "^selectedLlmModels = .*\"$id\"" "$1" || return 1
+  done
+}
+if [ -n "$defaults" ] && ! grep -q '^defaultLlmModels' "$work/doc-auto.toml" && all_selected "$work/doc-auto.toml"; then
+  awk -v d="defaultLlmModels = [$defaults]" '{print} /^activeVideoModel = / {print d}' "$work/doc-auto.toml" > "$work/doc-auto.tmp" &&
+    mv "$work/doc-auto.tmp" "$work/doc-auto.toml"
+  with_defaults=1
+else
+  echo "skipping defaultLlmModels: [$defaults] are not all selected on the copy"
+fi
 out=$(lb --json config apply --file "$work/doc-auto.toml" --wait 2>&1)
 echo "$out" | jq -c '.data | {activation: (.activation // .result.activation), pendingRestart}' 2>/dev/null
 echo "$out" | grep -q '"restarted"' && ok "--restart auto restarted the service" || bad "no restart: $(echo "$out" | head -c 300)"
 wait_health "$gport2" && ok "healthy on the new port $gport2" || bad "not on $gport2"
 [ "$(lb --json config show | jq -c .data.pendingRestart)" = false ] && ok "--wait returned with the change acknowledged" || bad "pending after --wait"
+if [ -n "$with_defaults" ]; then
+  lb config show | grep -q "^defaultLlmModels = \[$defaults\]" && ok "defaultLlmModels applied" || bad "defaultLlmModels not applied"
+  line=$(lb status 2>&1 | grep "^Default chat model:")
+  [ -n "$line" ] && ok "status: $line" || bad "status shows no default chat model"
+fi
 gport3=$(pick)
 sed "/^\[gateway\]/,/^\[/s/^port = $gport$/port = $gport3/" "$work/doc-scratch.toml" > "$work/doc-never.toml"
 lb config apply --file "$work/doc-never.toml" --restart never >/dev/null

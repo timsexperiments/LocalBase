@@ -24,14 +24,14 @@ die() { echo "shadow: $*" >&2; exit 1; }
 
 case "$work" in /private/tmp/*|/tmp/*) ;; *) die "the work directory must be under /tmp" ;; esac
 
-idle_preflight() {
-  local since started finished
-  since=$(date -u -v-60S +%Y-%m-%dT%H:%M:%S.000Z)
-  logs=$("$HOME/.local/bin/local-base" logs --json --level info --since "$since" --limit 500 2>/dev/null)
-  started=$(printf '%s' "$logs" | grep -o '"eventName":"inference.started"' | wc -l | tr -d ' ')
-  finished=$(printf '%s' "$logs" | grep -oE '"eventName":"inference\.(completed|failed|cancelled|aborted)"' | wc -l | tr -d ' ')
-  echo "live inference in the last 60 s: started=$started finished=$finished"
-  [ "$started" -le "$finished" ] || die "the live gateway is not idle; retry later"
+idle_preflight() { # no inference.started without an end in the live event log's last 60 s (read-only)
+  local since out
+  since=$(date -u -v-60S +%Y-%m-%dT%H:%M:%S)
+  out=$(tail -n 2000 "$live/logs/events.jsonl" 2>/dev/null | awk -v s="$since" '
+    match($0, /"timestamp":"[^"]*"/) { t=substr($0, RSTART+13, 19); if (t < s) next }
+    /"eventName":"inference\.started"/ {st++} /"eventName":"inference\.(completed|failed|cancelled|aborted)"/ {en++}
+    END {printf "started=%d finished=%d", st, en; exit !(st <= en)}') || { echo "live inference in the last 60 s: $out"; die "the live gateway is not idle; retry later"; }
+  echo "live inference in the last 60 s: $out"
 }
 
 clone() { # clone <src> <dst>: an APFS clone, never a link
