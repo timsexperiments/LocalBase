@@ -65,5 +65,5 @@
   "outputFormat": "wav",
   "commercialStatus": "open",
   "catch": "Apache-2.0 weights. Requires the kokoro-v0.0.2 LocalBase runtime package.",
-  "notes": "CPU ONNX runtime with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
+  "notes": "Quantized ONNX export of hexgrad/Kokoro-82M (82M parameters) run on the CPU ONNX runtime, with bundled af_heart and af_bella voices. English only. Human voice quality has not been assessed."
 }

@@ -7,7 +7,7 @@
   "version": "2",
   "size": "4B",
   "quant": "Q4_0",
-  "storageGb": 5.3,
+  "storageGb": 5.29,
   "source": "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF",
   "repositoryRevision": "3b1f5a9dc3abb32238b053aeb3d823c30afdacbd",
   "artifacts": [
@@ -62,5 +62,5 @@
   "capabilities": ["text-to-image"],
   "commercialStatus": "open",
   "catch": "Apache-2.0 weights. Qwen tokenizer is embedded in the pinned runtime.",
-  "notes": "Distilled four-step profile with separate FLUX2 VAE and Qwen3 encoder. Peak memory was measured on Apple Silicon (2026-10-13); broader native inference qualification is pending."
+  "notes": "stable-diffusion.cpp Q4_0 GGUF of black-forest-labs/FLUX.2-klein-4B, with the FLUX.2 VAE (Comfy-Org) and a Qwen3-4B Q4_K_M text encoder (unsloth). LocalBase profile: euler sampler, 4 steps, CFG 1. Peak memory was measured on Apple M-series 64 GiB, macOS 26 (2026-10-13); broader native inference qualification is pending."
 }

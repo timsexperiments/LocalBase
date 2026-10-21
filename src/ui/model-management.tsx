@@ -34,6 +34,10 @@ import {
   type Connection,
   type Model,
 } from "./client";
+import {
+  planningMinimumLabel,
+  planningMinimumNote,
+} from "../catalog/model-details";
 
 const responseSchema = modelManagementSchema.extend({ canManage: z.boolean() });
 type ManagementState = z.infer<typeof responseSchema>;
@@ -61,7 +65,7 @@ const licenseOptions = [
 const sortOptions: [CatalogSort, string][] = [
   ["name", "Name"],
   ["size", "Download size"],
-  ["memory", "Memory needed"],
+  ["memory", "Planning memory"],
   ["fit", "Fit on this machine"],
   ["context", "Context length"],
 ];
@@ -879,7 +883,9 @@ export function ModelManagement({
                               " GB"}{" "}
                           download
                         </span>
-                        <span title={modelMemoryRequirement(model)}>
+                        <span
+                          title={`${planningMinimumLabel}: ${modelMemoryRequirement(model)}. ${planningMinimumNote}`}
+                        >
                           ~{model.catalog.memory.minimumVramEstimateGb} GB
                           memory
                         </span>

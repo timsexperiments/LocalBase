@@ -39,7 +39,10 @@ released before schema version 2 keep reading the models-only
 
 - **Only new models.** The feed adds model ids this binary does not ship.
   Entries for built-in ids are ignored, so the feed cannot change a
-  qualified entry, and your `catalog.d` files always win over it.
+  qualified entry, and your `catalog.d` files always win over it. The feed
+  also keeps entries that left the built-in catalog, so older binaries keep
+  finding them; this binary ignores those ids too (see below), and their
+  annotations carry `verified` instead of `qualified`.
 - **Pinned and checked.** Every entry pins a repository revision and artifact
   checksums, like any catalog entry. The feed document carries a
   `schemaVersion` and a sha256 of its contents (its `models` and
@@ -129,6 +132,18 @@ with `bun run catalog:feed`; a test fails while either is out of date.
 - If two files in `catalog.d` name the same `modelId`, the first file in name
   order wins and the other one is reported.
 
+### Models that joined the built-in catalog
+
+A release can add a model you already added yourself, under the same id.
+When your `catalog.d/<id>.json` is a complete spec that pins the same
+repository, revision and files (path, filename, size and sha256) as the new
+built-in entry, LocalBase sets the file aside and uses the built-in entry as
+shipped: its description, capabilities and `qualified` trust. The installed
+files, settings and API id keep working, and nothing is downloaded again.
+The file itself is left in place, so if a later release drops the entry
+again, your file applies once more. A partial file, or a complete file that
+pins different files, is still a patch as described above.
+
 ### Trust after a patch
 
 Cosmetic patches, such as `displayName`, `notes` or `catch`, keep the entry's
@@ -155,6 +170,28 @@ diagnostics` lists every skipped file and the reason.
 
 If a selected model came from a skipped file, the configuration error names
 that file so you can fix or restore it.
+
+## Models that left the built-in catalog
+
+The built-in catalog is a small, tested set, and a release can drop an
+entry. A dropped entry is never offered for browsing or new installs, but an
+install that uses it keeps working: when LocalBase loads the catalog and
+finds the entry's primary file under `<root>/models/`, or reads settings
+that select it, it writes the spec the earlier release shipped (same id,
+pinned revision, files and checksums) to `catalog.d/<id>.json`. From then on
+it is a user entry like one added from Hugging Face:
+
+- API clients, defaults and selections keep using the same id.
+- Checked-in memory measurements still apply while the entry's files and
+  launch shape are unchanged; observed peaks on this machine keep applying
+  as before.
+- It shows as user trust instead of qualified, and its notes start with
+  "No longer in the LocalBase catalog".
+- Disable, uninstall or remove it like any user entry. LocalBase records the
+  ids it wrote in `catalog.d/.former-built-ins` and never writes one again,
+  so `local-base models remove-entry <id>` sticks.
+
+The specs ship in the binary under `src/catalog/former/`.
 
 ## Adding a model from Hugging Face
 

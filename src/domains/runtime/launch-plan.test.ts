@@ -14,7 +14,7 @@ import {
   resolveLlmShape,
   type MemoryEstimate,
 } from "./memory-estimate";
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import {
   backendBindHost,
   configuredLlmContextSize,
@@ -30,6 +30,14 @@ import { buildLlamaServerArgs } from "./launcher";
 import { resolveLlmProjectorPath, runtimeEndpoint } from "./supervisor-factory";
 import { SupervisorRegistry } from "./supervisor-registry";
 import type { ParallelSlots } from "../config/parallel";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 function catalogModel(modelId: string): ModelSpec {
   const model = byId(modelId);

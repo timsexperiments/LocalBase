@@ -110,7 +110,7 @@ test("keeps native failure details out of job errors and emitted logs", async ()
       logVideoJobTerminal({
         logger,
         job: { ...job, failure },
-        modelId: "wan2.1-t2v-1.3b-q8_0",
+        modelId: "fastwan2.2-ti2v-5b-q6_k",
         requestId: "video-log-test",
       });
     }

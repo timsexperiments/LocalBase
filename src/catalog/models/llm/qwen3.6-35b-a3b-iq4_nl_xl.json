@@ -1,0 +1,41 @@
+{
+  "modelId": "qwen3.6-35b-a3b-iq4_nl_xl",
+  "displayName": "Qwen3.6 35B-A3B",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen3.6",
+  "version": "3.6",
+  "size": "35B-A3B",
+  "quant": "IQ4_NL_XL",
+  "storageGb": 20.4,
+  "source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF",
+  "repositoryRevision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      "filename": "Qwen3.6-35B-A3B-UD-IQ4_NL_XL.gguf",
+      "expectedSizeBytes": 19500506080,
+      "sha256": "071ee2a008ec51372f990d8efbea92ec9dd0137974110ef68fbfde429c8c6dd4",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "mmproj-F16.gguf",
+      "filename": "qwen3.6-35b-a3b-iq4_nl_xl-mmproj-F16.gguf",
+      "expectedSizeBytes": 899283680,
+      "sha256": "8971ee4f331ff0a4c609374f32984b3d4e6dc086c0aa35f1d637fad1829e887f",
+      "role": "supplementary"
+    }
+  ],
+  "inputModalities": ["text", "image"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
+  "capabilities": [
+    "reasoning",
+    "tool-calling",
+    "long-context",
+    "mixture-of-experts"
+  ],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0. Mixture-of-experts: 35B parameters, 3B active per token. Text and image input through the pinned F16 vision projector.",
+  "notes": "Unsloth Dynamic IQ4_NL_XL imatrix GGUF of Qwen/Qwen3.6-35B-A3B, with the F16 vision projector from the same repository. GGUF header: architecture qwen35moe (linear-attention layers with full attention every 4th layer), 40 layers, 256 experts with 8 routed experts per token plus a shared expert, 262,144-token training context. Projector header: clip vision encoder (27 blocks, 16-pixel patches, 768-pixel input, qwen3vl_merger projector). Embedded tokenizer and chat template with tool-call and thinking markup. The upstream card also lists video input, which this entry does not declare."
+}

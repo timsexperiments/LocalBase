@@ -76,8 +76,8 @@ type RunningGateway = {
 
 const SMOKE_TIMEOUT_MS = 60_000;
 const STARTUP_TIMEOUT_MS = 20_000;
-const STT_MODEL_ID = "whisper-tiny-en-q8_0";
-const STT_MODEL_FILE = "ggml-tiny.en-q8_0.bin";
+const STT_MODEL_ID = "whisper-base-q8_0";
+const STT_MODEL_FILE = "ggml-base-q8_0.bin";
 const CLI_ONLY_LLM_MODEL_FILE = "runtime-smoke-llm.gguf";
 const transcriptionResponseSchema = z
   .object({ text: z.string() })

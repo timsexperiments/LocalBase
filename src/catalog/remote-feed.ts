@@ -37,6 +37,7 @@ import {
   parseFeedAnnotations,
   type FeedAnnotation,
 } from "./annotations";
+import { FORMER_CATALOG } from "./former";
 import {
   catalogDiagnostics,
   catalogProvenance,
@@ -323,7 +324,16 @@ function writePrivateJson(path: string, value: unknown): void {
   renameSync(temporary, path);
 }
 
-const BUILT_IN_IDS = new Set(BUILT_IN_CATALOG.map(({ modelId }) => modelId));
+/**
+ * Ids this binary ships, or an earlier release shipped (`./former`). The
+ * published feed keeps former entries so binaries built before they left
+ * the catalog keep finding them; this binary never takes them from the
+ * feed, so they stay out of browsing unless an install keeps one as a user
+ * entry.
+ */
+const BUILT_IN_IDS = new Set(
+  [...BUILT_IN_CATALOG, ...FORMER_CATALOG].map(({ modelId }) => modelId),
+);
 
 function entryModelId(data: unknown): string | undefined {
   if (typeof data !== "object" || data === null) return undefined;
@@ -331,7 +341,7 @@ function entryModelId(data: unknown): string | undefined {
   return typeof modelId === "string" ? modelId : undefined;
 }
 
-/** Turns a feed into a catalog layer, leaving out ids this binary ships. */
+/** Turns a feed into a catalog layer, leaving out ids this binary ships or shipped. */
 function feedLayer(url: string, feed: CatalogFeed): CatalogLayer {
   return {
     tier: "remote",
@@ -576,7 +586,7 @@ export type CatalogFeedStatus = Readonly<{
   lastError: string | null;
   /** Entries in the cached feed. */
   entries: number;
-  /** Entries left out because this binary ships the same model id. */
+  /** Entries left out because this binary ships (or once shipped) the same model id. */
   builtIn: number;
   /** Models the feed adds to the effective catalog. */
   added: readonly string[];

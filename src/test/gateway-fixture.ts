@@ -32,10 +32,10 @@ import {
 import { tinyPngBase64 } from "./media-fixtures";
 import { reservePort } from "./ports";
 
-const LLM_MODEL = "qwen2.5-coder-1.5b-instruct-q4_k_m";
+const LLM_MODEL = "qwen3.5-4b-q4_k_m";
 const STT_MODEL = "whisper-large-v3-turbo";
-const IMAGE_MODEL = "stable-diffusion-v1-5";
-export const VIDEO_MODEL = "wan2.1-t2v-1.3b-q8_0";
+const IMAGE_MODEL = "juggernaut-xl-v9";
+export const VIDEO_MODEL = "fastwan2.2-ti2v-5b-q6_k";
 export const TTS_MODEL = "qwen3-tts-1.7b-base-q4_k_m";
 const PROJECT_ROOT = join(import.meta.dirname, "../..");
 const MAX_START_ATTEMPTS = 5;
@@ -276,6 +276,11 @@ export type GatewayFixtureOptions = {
   videoEnabled?: boolean;
   parallel?: LocalBaseConfig["parallel"];
   ctxSize?: number;
+  /**
+   * `explicit` launches at `ctxSize` instead of the memory-safe recommendation,
+   * which follows the host's real memory and differs between machines.
+   */
+  ctxMode?: LocalBaseConfig["ctxMode"];
   ctxSizeOverride?: number;
   llmModel?: string;
   /**
@@ -1942,6 +1947,7 @@ export async function startGatewayFixture(
     config.otelSampleRatio = 100;
     config.parallel = options.parallel ?? config.parallel;
     config.ctxSize = options.ctxSize ?? config.ctxSize;
+    config.ctxMode = options.ctxMode ?? config.ctxMode;
     if (options.llmCatalogEntry) {
       ensureLocalBaseRootMarker(config.root);
       writeUserCatalogEntry(config.root, options.llmCatalogEntry);
@@ -2002,7 +2008,10 @@ export async function startGatewayFixture(
         "test model placeholder",
       ),
       Bun.write(
-        join(config.imageModelsDir, "v1-5-pruned-emaonly.safetensors"),
+        join(
+          config.imageModelsDir,
+          "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        ),
         "test model placeholder",
       ),
       ...(options.videoEnabled

@@ -16,6 +16,14 @@ import {
   resolveModelCapabilities,
   whisperCapabilities,
 } from "./capability-detection";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const root = mkdtempSync(join(tmpdir(), "local-base-capabilities-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));

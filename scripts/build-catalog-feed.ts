@@ -6,6 +6,10 @@
  *   unsupported capabilities, measured memory peaks, multi-file recipes);
  * - `catalog/feed.json`: the models-only v1 document older binaries read.
  *
+ * Former built-in entries (`src/catalog/former/`) stay in both feeds so
+ * binaries built before they left the catalog keep finding them; their
+ * annotations carry `verified` rather than `qualified`.
+ *
  * `--check` exits non-zero when either checked-in feed is out of date.
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -13,6 +17,7 @@ import { join } from "node:path";
 import { BUILT_IN_CATALOG } from "../src/catalog";
 import { buildFeedAnnotations } from "../src/catalog/annotations";
 import { CATALOG_DATA } from "../src/catalog/models";
+import { FORMER_CATALOG, FORMER_CATALOG_DATA } from "../src/catalog/former";
 import {
   buildCatalogFeed,
   buildLegacyCatalogFeed,
@@ -31,14 +36,21 @@ function render(value: unknown): string {
 }
 
 export function renderCatalogFeed(): string {
-  return render(buildLegacyCatalogFeed(CATALOG_DATA));
+  return render(
+    buildLegacyCatalogFeed([...CATALOG_DATA, ...FORMER_CATALOG_DATA]),
+  );
 }
 
 export function renderCatalogFeedV2(): string {
   return render(
     buildCatalogFeed(
-      CATALOG_DATA,
-      buildFeedAnnotations(BUILT_IN_CATALOG, MEMORY_MEASUREMENTS),
+      [...CATALOG_DATA, ...FORMER_CATALOG_DATA],
+      [
+        ...buildFeedAnnotations(BUILT_IN_CATALOG, MEMORY_MEASUREMENTS),
+        ...buildFeedAnnotations(FORMER_CATALOG, MEMORY_MEASUREMENTS, {
+          status: "verified",
+        }),
+      ],
     ),
   );
 }

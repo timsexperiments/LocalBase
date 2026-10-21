@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { byId, primaryArtifact, type ModelSpec } from "../../catalog";
 import {
   huggingFaceRepoOf,
@@ -22,6 +22,14 @@ import {
   totalArtifactBytes,
 } from "./memory-estimate";
 import { planLaunchShape, type ObservedMemoryRecord } from "./observed-memory";
+import {
+  keepFormerCatalogEntries,
+  restoreBuiltInCatalog,
+} from "../../test/former-catalog";
+
+// Some fixtures are former built-in entries an upgraded install kept.
+keepFormerCatalogEntries();
+afterAll(restoreBuiltInCatalog);
 
 const gib = 1024 ** 3;
 const mib = 1024 ** 2;

@@ -459,6 +459,7 @@ export function memoryPeakOf(record: MemoryMeasurement): MemoryPeak {
 export function buildFeedAnnotations(
   models: readonly ModelSpec[],
   measurements: readonly MemoryMeasurement[],
+  options: Readonly<{ status?: AnnotationStatus }> = {},
 ): FeedAnnotation[] {
   return models.flatMap((model): FeedAnnotation[] => {
     const key = primaryKey(model);
@@ -467,9 +468,10 @@ export function buildFeedAnnotations(
       .filter((record) => record.modelId === model.modelId)
       .map(memoryPeakOf);
     const status: AnnotationStatus =
-      model.qualificationState === "qualified" && !model.videoCatalogOnly
+      options.status ??
+      (model.qualificationState === "qualified" && !model.videoCatalogOnly
         ? "qualified"
-        : "verified";
+        : "verified");
     const pinned = model.artifacts.flatMap((artifact) =>
       artifact.sha256 && artifact.expectedSizeBytes
         ? [
