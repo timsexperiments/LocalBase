@@ -72,6 +72,7 @@ func adminPost(u *UI, path string, form url.Values) *httptest.ResponseRecorder {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("X-Localbase-Ui", "1")
+	withCSRF(u, req)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, req)
@@ -198,6 +199,12 @@ func TestAdminKeySecretOnce(t *testing.T) {
 	out := w.Body.String()
 	if got := f.sent[0]; got["name"] != "ci" || got["expiresDays"] != float64(30) || got["scopes"].([]any)[0] != "models:read" {
 		t.Errorf("create sent %v", got)
+	}
+	if !strings.Contains(out, `aria-label="New API key secret" hx-history="false"`) {
+		t.Error("the secret fragment can enter htmx history")
+	}
+	if page := get(u, "/app/admin?section=keys"); page.Header().Get("Cache-Control") != "no-store" {
+		t.Error("the Admin page can be cached")
 	}
 	if !strings.Contains(out, "lb_sekret_value") || !strings.Contains(out, "Copy this secret now") || w.Header().Get("Cache-Control") != "no-store" {
 		t.Errorf("create: %s", out)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -19,6 +20,9 @@ type Guard struct {
 	Policy        *Policy // nil: no policy (provider-wide permissions apply)
 	Users         []GuardUser
 	ProviderPerms []string // the provider-wide permissions without a policy
+	// KeyManagers are the active API keys with access:manage: principals
+	// too, so they count when deciding whether anyone can still manage.
+	KeyManagers []string
 }
 
 // GuardUser is a managed user with the identities linked to it.
@@ -35,6 +39,15 @@ func LoadGuard(ctx context.Context, st *store.Store, providerPerms []string) (*G
 		return nil, err
 	}
 	g := &Guard{Policy: policy, ProviderPerms: providerPerms}
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		if ActiveKey(k) && slices.Contains(k.Scopes, "access:manage") {
+			g.KeyManagers = append(g.KeyManagers, k.ID)
+		}
+	}
 	users, err := ListUsers(ctx, st)
 	if err != nil {
 		return nil, err
@@ -58,7 +71,7 @@ func LoadGuard(ctx context.Context, st *store.Store, providerPerms []string) (*G
 
 // Clone copies the snapshot so a change can be tried on it.
 func (g *Guard) Clone() *Guard {
-	c := &Guard{ProviderPerms: g.ProviderPerms}
+	c := &Guard{ProviderPerms: g.ProviderPerms, KeyManagers: slices.Clone(g.KeyManagers)}
 	if g.Policy != nil {
 		p := *g.Policy
 		p.Roles = slices.Clone(p.Roles)
@@ -157,6 +170,9 @@ func (g *Guard) CanManage(id Identity) bool {
 
 // HasManager reports whether some identity could still manage access.
 func (g *Guard) HasManager() bool {
+	if len(g.KeyManagers) > 0 {
+		return true
+	}
 	if g.Policy == nil {
 		return slices.Contains(g.ProviderPerms, "access:manage")
 	}
@@ -195,11 +211,12 @@ func (g *Guard) HasManager() bool {
 	return false
 }
 
-// Lockout errors.
+// Lockout errors: one stable code (409 would_lock_out_admins), a message each.
 var (
-	ErrSelfLockout = &AccessError{Code: "self-lockout", Message: "You can't remove your own access management: you would lose access:manage. Ask another administrator, or use `local-base access` on the host."}
-	ErrSelfRecord  = &AccessError{Code: "self-lockout", Message: "You can't disable or forget your own account. Ask another administrator, or use `local-base access` on the host."}
-	ErrLastManager = &AccessError{Code: "last-manager", Message: "This change would leave nobody able to manage access. Keep at least one active person or binding with access:manage."}
+	ErrSelfLockout = &AccessError{Code: "would-lock-out-admins", Message: "You can't remove your own access management: you would lose access:manage. Ask another administrator, or use `local-base access` on the host."}
+	ErrSelfRecord  = &AccessError{Code: "would-lock-out-admins", Message: "You can't disable or forget your own account. Ask another administrator, or use `local-base access` on the host."}
+	ErrSelfKey     = &AccessError{Code: "would-lock-out-admins", Message: "You can't revoke the API key you are using, or remove access:manage from it. Use another key, or `local-base keys` on the host."}
+	ErrLastManager = &AccessError{Code: "would-lock-out-admins", Message: "This change would leave nobody able to manage access. Keep at least one active person, binding or API key with access:manage."}
 )
 
 // CheckChange applies change to a copy of g and refuses a lockout. caller is
@@ -229,4 +246,31 @@ func (g *Guard) IsCaller(caller *Identity, email string) bool {
 		return true
 	}
 	return caller.VerifiedEmail != "" && strings.EqualFold(caller.VerifiedEmail, email)
+}
+
+// ActiveKey reports a key that is neither revoked nor expired.
+func ActiveKey(k store.APIKey) bool {
+	if k.RevokedAt != nil {
+		return false
+	}
+	if k.ExpiresAt == nil {
+		return true
+	}
+	t, err := time.Parse(time.RFC3339Nano, *k.ExpiresAt)
+	return err == nil && t.After(time.Now())
+}
+
+// CheckKeyChange refuses revoking the caller's own key or removing
+// access:manage from it (callerKey is the calling key's id, or ""), and a
+// change that leaves nobody able to manage access.
+func (g *Guard) CheckKeyChange(callerKey, keyID string, removesManage, revoke bool) error {
+	if callerKey != "" && callerKey == keyID && (revoke || removesManage) {
+		return ErrSelfKey
+	}
+	if !removesManage {
+		return nil
+	}
+	return g.CheckChange(nil, func(next *Guard) {
+		next.KeyManagers = slices.DeleteFunc(next.KeyManagers, func(id string) bool { return id == keyID })
+	})
 }

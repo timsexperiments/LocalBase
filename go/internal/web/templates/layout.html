@@ -13,7 +13,7 @@
 <script src="{{asset "js/session.js"}}" type="module"></script>
 {{block "head" .}}{{end}}
 </head>
-<body class="{{block "bodyclass" .}}min-h-dvh{{end}}" hx-boost="{{block "boost" .}}true{{end}}" hx-headers='{"X-Localbase-UI": "1"}'>
+<body class="{{block "bodyclass" .}}min-h-dvh{{end}}" hx-boost="{{block "boost" .}}true{{end}}" hx-headers='{"X-Localbase-UI": "1", "X-CSRF-Token": "{{.CSRF}}"}'>
 <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 btn btn-primary">Skip to content</a>
 {{block "page" .}}
 <header class="sticky top-0 z-20 border-b border-line bg-canvas/95 backdrop-blur pt-[env(safe-area-inset-top)]">

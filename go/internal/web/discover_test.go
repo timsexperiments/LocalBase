@@ -61,6 +61,7 @@ func discoverPost(u *UI, path string, form url.Values) string {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
 	req.Header.Set("X-Localbase-Ui", "1")
+	withCSRF(u, req)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, req)

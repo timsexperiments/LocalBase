@@ -249,6 +249,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
+	data["CSRF"] = u.csrfToken(w, r)
 	data["LogoutURL"] = u.d.LogoutURL
 	data["NoAuth"] = u.d.NoAuth
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

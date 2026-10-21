@@ -205,6 +205,7 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 			return nil, err
 		}
 		var user *auth.User
+		warn := noManagerWarning(c, e)
 		err = withOperation(e, operation, func() (err error) {
 			if status == "" {
 				user, err = auth.RemoveUser(context.Background(), e.Store, email)
@@ -217,7 +218,7 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 			return nil, accessError(err)
 		}
 		c.Info("%s %s.", verb, user.Email)
-		warnNoManager(c, e)
+		warn()
 		return map[string]any{"user": user}, nil
 	})}
 }
@@ -570,6 +571,7 @@ func accessCommand() *cli.Command {
 				if err := check.Normalize(); err != nil {
 					return nil, cli.Inputf("Invalid access policy: %s", err.Error())
 				}
+				warn := noManagerWarning(c, e)
 				err = withOperation(e, "configure browser access", func() error {
 					if cfg, err := auth.LoadAccess(e.Root.Dir); err != nil {
 						return err
@@ -582,7 +584,7 @@ func accessCommand() *cli.Command {
 					return nil, accessError(err)
 				}
 				c.Info("Saved browser access policy. Changes apply immediately.")
-				warnNoManager(c, e)
+				warn()
 				return map[string]any{"policy": &policy, "restartRequired": false}, nil
 			})},
 			{Name: "test", Summary: "Evaluate a browser identity against the local policy", Options: []cli.Option{
@@ -630,6 +632,7 @@ func accessCommand() *cli.Command {
 			})},
 			{Name: "clear", Summary: "Clear the local policy and use provider-wide permissions", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				var cleared bool
+				warn := noManagerWarning(c, e)
 				err := withOperation(e, "configure browser access", func() (err error) {
 					if cfg, err := auth.LoadAccess(e.Root.Dir); err != nil {
 						return err
@@ -644,7 +647,7 @@ func accessCommand() *cli.Command {
 				}
 				if cleared {
 					c.Info("Cleared browser access policy. Provider-wide permissions now apply.")
-					warnNoManager(c, e)
+					warn()
 				} else {
 					c.Info("Browser access policy was already clear.")
 				}
@@ -720,6 +723,7 @@ func accessCommand() *cli.Command {
 					return nil, err
 				}
 				var user *auth.User
+				warn := noManagerWarning(c, e)
 				err = withOperation(e, "replace browser user roles", func() (err error) {
 					user, err = auth.ReplaceUserRoles(ctx, e.Store, email, roles)
 					return err
@@ -728,7 +732,7 @@ func accessCommand() *cli.Command {
 					return nil, accessError(err)
 				}
 				c.Info("Replaced roles for %s.", user.Email)
-				warnNoManager(c, e)
+				warn()
 				return map[string]any{"user": user}, nil
 			})},
 			userCommand("enable", "Enable a browser user", "enable a browser user", "Enabled", "active"),
@@ -764,16 +768,24 @@ func strictJSON(b []byte, v any) error {
 	return nil
 }
 
-// warnNoManager tells the operator when a change left nobody able to manage
-// browser access. The API refuses such changes; this command is the
-// recovery path, so it only warns.
-func warnNoManager(c *cli.Ctx, e *env) {
-	cfg, err := auth.LoadAccess(e.Root.Dir)
-	if err != nil || cfg == nil {
-		return
+// noManagerWarning reads whether anyone can manage access now, and returns a
+// function that, after a change, warns when the change left nobody able to.
+// The API refuses such changes; these commands are the recovery path, so
+// they only warn.
+func noManagerWarning(c *cli.Ctx, e *env) func() {
+	before := hasManager(e)
+	return func() {
+		if before && !hasManager(e) {
+			c.Error("Warning: nobody can manage access now: no active person, binding or API key has access:manage. This command is the recovery path; restore it with `local-base access users roles`, `local-base access policy apply` or `local-base keys create --scopes access:manage`.")
+		}
 	}
-	g, err := auth.LoadGuard(context.Background(), e.Store, cfg.Permissions)
-	if err == nil && !g.HasManager() {
-		c.Error("Warning: nobody can manage browser access now. Grant access:manage again with `local-base access users roles` or `local-base access policy apply`.")
+}
+
+func hasManager(e *env) bool {
+	var perms []string
+	if cfg, err := auth.LoadAccess(e.Root.Dir); err == nil && cfg != nil {
+		perms = cfg.Permissions
 	}
+	g, err := auth.LoadGuard(context.Background(), e.Store, perms)
+	return err == nil && g.HasManager()
 }

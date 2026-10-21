@@ -20,7 +20,7 @@
   {{with .Notice}}<p class="card flex items-center justify-between gap-2 px-4 py-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
   {{with .Error}}<p class="card border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
   {{if and .Secret $.CanManageKeys}}
-  <section class="card grid gap-2 border-accent p-4" aria-label="New API key secret">
+  <section class="card grid gap-2 border-accent p-4" aria-label="New API key secret" hx-history="false">
     <p class="font-bold">Copy this secret now</p>
     <p class="text-sm text-muted">It will not be shown again.</p>
     <code class="block rounded-lg bg-surface-muted p-3 text-sm wrap-anywhere" data-secret>{{.Secret}}</code>
@@ -114,7 +114,7 @@
     <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create invitation</button>
   </form>
   {{with .InviteURL}}
-  <div class="mt-3 grid gap-2 rounded-xl border border-accent p-3" role="group" aria-label="Invitation link">
+  <div class="mt-3 grid gap-2 rounded-xl border border-accent p-3" role="group" aria-label="Invitation link" hx-history="false">
     <p class="font-semibold">Invitation link</p>
     <code class="text-sm wrap-anywhere" data-secret>{{.}}</code>
     <button type="button" class="btn btn-quiet min-h-11 justify-self-start" data-copy-secret>Copy link</button>

@@ -145,11 +145,13 @@ func keysCommand() *cli.Command {
 		})},
 		{Name: "revoke", Summary: "Revoke an API key", Usage: "<keyId>", MinArgs: 1, MaxArgs: 1,
 			Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
+				warn := noManagerWarning(c, e)
 				k, err := e.Store.RevokeAPIKey(ctx, c.Args[0])
 				if err != nil {
 					return nil, keyNotFound(err)
 				}
 				c.Info("Revoked key %s (%s)", k.ID, k.Name)
+				warn()
 				return map[string]any{"key": publicKey(k)}, nil
 			})},
 		{Name: "rotate", Summary: "Rotate an API key", Usage: "<keyId>", MinArgs: 1, MaxArgs: 1,

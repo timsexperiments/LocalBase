@@ -112,10 +112,9 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 		"role-not-found":           {"role_not_found", 400},
 		"policy-conflict":          {"policy_conflict", 409},
 		"policy-revision-conflict": {"policy_revision_conflict", 409},
-		"self-lockout":             {"self_lockout", 409},
-		"last-manager":             {"last_manager", 409},
+		"would-lock-out-admins":    {"would_lock_out_admins", 409},
 	}[ae.Code]
-	if ae.Code == "self-lockout" || ae.Code == "last-manager" {
+	if ae.Code == "would-lock-out-admins" {
 		// Go-only lockout rules: the error carries its own explanation.
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, 409, map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
@@ -229,6 +228,28 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	if in.Action != "create" {
 		if _, err := s.Store.APIKeyByID(ctx, keyID); err != nil {
 			managementError(w, 404, "key_not_found")
+			return
+		}
+	}
+	// Lockout rules (a Go addition, DESIGN §13.6): not your own key, and
+	// never the last principal with access:manage.
+	if in.Action == "revoke" || in.Action == "set-scopes" {
+		var perms []string
+		if cfg, err := auth.LoadAccess(s.Root.Dir); err == nil && cfg != nil {
+			perms = cfg.Permissions
+		}
+		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		if err != nil {
+			serviceUnavailable(w, r, "Key management")
+			return
+		}
+		callerKey := ""
+		if p.Kind == "api-key" {
+			callerKey = p.ID
+		}
+		removes := in.Action == "revoke" || !slices.Contains(scopes, "access:manage")
+		if err := g.CheckKeyChange(callerKey, keyID, removes, in.Action == "revoke"); err != nil {
+			s.domainError(w, err)
 			return
 		}
 	}

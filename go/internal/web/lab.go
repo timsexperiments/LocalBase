@@ -110,7 +110,7 @@ func (u *UI) call(r *http.Request, method, path, ctype string, body []byte) APIR
 // larger body limit, and no form parsing (the API parses the body).
 func (u *UI) uploading(permission string, limit int64, next http.HandlerFunc) http.HandlerFunc {
 	return u.need(permission, func(w http.ResponseWriter, r *http.Request) {
-		if !sameOriginUI(r) {
+		if !sameOriginUI(r) || !u.csrfValid(r) {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}

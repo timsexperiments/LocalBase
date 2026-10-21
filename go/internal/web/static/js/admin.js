@@ -53,3 +53,9 @@ document.addEventListener("keydown", (e) => {
   open.open = false;
   open.querySelector("summary").focus();
 });
+
+// A one-time secret or invitation link never survives leaving the page: blank
+// it on pagehide so a back/forward cache restore can't show it again.
+window.addEventListener("pagehide", () => {
+  for (const el of document.querySelectorAll("[data-secret]")) el.textContent = "";
+});

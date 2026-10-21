@@ -168,6 +168,9 @@ func (u *UI) admin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, p))
+	// Keep the page out of caches and the back/forward cache: it can show a
+	// one-time secret.
+	w.Header().Set("Cache-Control", "no-store")
 	section := r.URL.Query().Get("section")
 	if !slices.Contains(sections, section) {
 		section = sections[0]

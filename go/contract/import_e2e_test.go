@@ -826,11 +826,31 @@ func TestModelImportAcceptance(t *testing.T) {
 		if r := e.do("GET", "/app/models/m/kokoro-def", ""); r.Status != 200 || !strings.Contains(string(r.Body), "not installed (no managed package yet)") {
 			t.Fatalf("CrispASR in the selector: %d", r.Status)
 		}
+		// A page gives the browser its CSRF cookie and token, as htmx sends them.
+		pageReq, _ := http.NewRequest("GET", e.base+"/app/models/import", nil)
+		pageResp, err := http.DefaultClient.Do(pageReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pageBody, _ := io.ReadAll(pageResp.Body)
+		pageResp.Body.Close()
+		var csrfCookie *http.Cookie
+		for _, c := range pageResp.Cookies() {
+			if c.Name == "lb_csrf" {
+				csrfCookie = c
+			}
+		}
+		csrf := regexp.MustCompile(`"X-CSRF-Token": "([0-9a-f]{64})"`).FindStringSubmatch(string(pageBody))
+		if csrfCookie == nil || csrf == nil {
+			t.Fatalf("no CSRF cookie or token on the page")
+		}
 		form := "source=" + vendor.URL + "/files/mystery.gguf%3Fsig%3D" + signedValue + "&task=chat&auth_profile=vendor&allow_http=1&id=ui-mystery"
 		req, _ := http.NewRequest("POST", e.base+"/app/models/import/resolve", strings.NewReader(form))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("HX-Request", "true")
 		req.Header.Set("X-Localbase-UI", "1")
+		req.AddCookie(csrfCookie)
+		req.Header.Set("X-CSRF-Token", csrf[1])
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -851,6 +871,8 @@ func TestModelImportAcceptance(t *testing.T) {
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			req.Header.Set("HX-Request", "true")
 			req.Header.Set("X-Localbase-UI", "1")
+			req.AddCookie(csrfCookie)
+			req.Header.Set("X-CSRF-Token", csrf[1])
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Fatal(err)

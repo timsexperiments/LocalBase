@@ -180,7 +180,18 @@ reproduces them byte for byte and the table tests are ported from TS:
   `CheckAdmission(releasing)` with min(projection, footprint) credit,
   `Release`, the pressure hysteresis (3 normal samples to recover) and the GPU
   working-set cap on the sum of resident runtimes.
-- `HostProvider`: darwin uses `host_statistics64` free+inactive,
+- Switch preflight for media models follows the TS supervisor factory: a
+  catalog image or stt model whose files are missing is still sized from the
+  catalog (primary artifact, `expectedSizeBytes`) and fit-checked before the
+  install check, so too little memory answers 503 `insufficient_memory` and
+  leaves the model inactive; tts has no switch preflight in TS. Go once
+  skipped the check for image models without an `imageRuntime` profile, which
+  a full contract run exposed (realvis-xl-v5.0 needs 15.5 GB above the 9.6 GiB
+  reserve on a 64 GB host). `TestMediaAdmissionGolden`
+  (`tools/golden/media-admission.ts`) pins the demand and the verdict around
+  each model's threshold.
+- `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
+  free + speculative + inactive, since vm_stat prints speculative pages apart),
   `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working
   set. Linux uses `/proc/meminfo` MemAvailable plus PSI, and NVML through
   `nvidia-smi --query` for discrete GPUs.
@@ -1056,6 +1067,25 @@ Deliberate status changes to verify against the live clients at cutover:
    stays referenced and `uninstall` answers 409 `conflict` until
    reconciliation settles; Go switches on the next request and uninstalls a
    model no runtime holds.
+5. **Admin lockout protection** (M3 UI, operator decision). TS keeps it in
+   its browser UI only. Go enforces it in `/_localbase/access-management`
+   and `/_localbase/api-keys` for every caller, answering 409
+   `would_lock_out_admins` with a message:
+   - for a change that disables or forgets the caller's own user record;
+   - for a change that removes `access:manage` from the caller, including
+     an API key revoking itself or dropping `access:manage` from its own
+     scopes;
+   - for a change that leaves no active principal with `access:manage`
+     (people through roles, bindings or the default role, provider-wide
+     permissions without a policy, and active API keys).
+
+   Where TS refuses for its own reason, such as clearing a policy that has
+   managed users, TS's status stays. `local-base access …` and `local-base
+   keys revoke` are the break-glass path: they apply the change and print
+   a warning when it leaves nobody able to manage access
+   (`TestCLIAccessRecovery`). Each admin change also logs
+   `audit.access-changed` or `audit.api-key-changed` with the actor and
+   target ids only (`TestAdminAuditRedaction`).
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
@@ -1071,6 +1101,15 @@ covers because they need a real service manager:
 - **Real OpenTelemetry Collector.** Run `go/tools/otelcol-check.sh`, which
   uses the pinned `otelcol` 0.163.1 and verifies its checksum, against the
   release candidate; see §14.3.
+- **Chat turns only a real model can show.** An image turn with a real
+  vision model, and a real chat model choosing a generation tool by itself,
+  are covered only by the TS comparison (`go/tools/jstest`). No vision
+  model or tool-calling chat model of 2 GB or less is installed for the
+  automated checks. Run both on the release candidate with the user's real
+  models.
+- **Real iPhone over Cloudflare Access** (§15.4): no zoom when the
+  composer is focused, the composer stays above the keyboard, Return adds a
+  line on touch, VoiceOver, and dictation with the real microphone.
 
 The Lab and My voices pages (step 6) call the API in-process as the signed-in
 person (`gateway.Server.Call`), so they get exactly the API's validation,
@@ -1254,7 +1293,13 @@ item 5.
    permission (`mutating`), so the API's check is never the only one.
 2. **Requests.** Every POST uses the existing `mutating` guard: htmx only,
    `X-Localbase-UI`, same origin, `Sec-Fetch-Site` same-origin, and a 64 KiB
-   form limit. Each action maps one-to-one to a TS API call with the same
+   form limit. Every state-changing htmx route (the `mutating` and
+   `uploading` guards, so the Lab, voices, imports and Settings too) also
+   needs a per-session CSRF token. It is an HMAC, under a per-root key
+   (`runtime/ui-csrf.key`), of a random `lb_csrf` cookie (`HttpOnly`,
+   `SameSite=Strict`, path `/app`). The layout puts it in htmx's
+   `X-CSRF-Token` header. A cross-site form post, a post without the token,
+   and another session's token are refused (`TestCSRF`). Each action maps one-to-one to a TS API call with the same
    JSON body. Policy edits carry the `expectedPolicyRevision` read with the
    page. A `policy_revision_conflict` shows "The policy changed elsewhere.
    Reload and try again." and re-reads the policy.
@@ -1266,10 +1311,16 @@ item 5.
    never re-rendered by a later fragment. OIDC and GitHub client secrets and
    the SMTP password are `type=password autocomplete=new-password` fields that
    are never pre-filled ("Re-enter to save"), as in TS.
-4. **Destructive actions** need a named confirmation, rendered by the server
-   as a second step in the same row. The first click returns the row with the
-   consequence in TS's words and Confirm/Cancel; Cancel returns focus to the
-   original button. This covers revoke key ("This key will stop working
+   They also stay out of browser history: the fragments that show them carry
+   `hx-history="false"` (and htmx keeps no history snapshots at all,
+   `historyCacheSize: 0`). The Admin page is `Cache-Control: no-store`, which
+   keeps it out of the back/forward cache, and `admin.js` blanks a shown
+   secret on `pagehide`.
+4. **Destructive actions** need a named confirmation in the same row: a
+   disclosure that opens on the first click with the consequence in TS's
+   words and a Confirm button. Escape or a second click closes it and keeps
+   focus on its button (built as a `<details>`, with no request, instead of
+   the server-rendered step first planned). This covers revoke key ("This key will stop working
    immediately."), rotate key, remove a sign-in registration ("Removing the
    last one disables browser access."), clear policy, remove role, and forget
    user (TS's "this is not revocation" text). Disable user and set default
@@ -1282,11 +1333,12 @@ item 5.
    its own rule: at least one reachable role must grant `access:manage`.
    **Decided in review (operator):** the rules live in the API, a deliberate
    divergence from TS. Whoever calls it, `/_localbase/access-management`
-   refuses (409 `self_lockout`) a change that disables or forgets the
-   caller's own record, or leaves the caller without `access:manage`. It
-   also refuses (409 `last_manager`) a change that leaves nobody able to
-   manage access, including a policy clear while the provider-wide
-   permissions lack `access:manage`. Where TS has its own refusal (for
+   refuses (409 `would_lock_out_admins`) a change that disables or forgets
+   the caller's own record, or leaves the caller without `access:manage`.
+   It also refuses a change that leaves nobody able to manage access. That
+   covers a policy clear while the provider-wide permissions lack
+   `access:manage`. API keys with `access:manage` count as managers, and
+   `/_localbase/api-keys` applies the same rules (see §13.6, item 5). Where TS has its own refusal (for
    example, clearing a policy that has managed users), TS's error stays.
    `local-base access` is the recovery path: it applies the change and warns
    when nobody can manage access. Each successful admin change is logged as
