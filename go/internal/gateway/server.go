@@ -46,6 +46,9 @@ type Server struct {
 	Image *runtime.Service
 	// Voices stores custom voice profiles (nil: the routes are disabled).
 	Voices *voices.Store
+	// OnReady runs whenever readiness reports ready (a managed gateway
+	// acknowledges its startup settings, TS acknowledgeStaticConfiguration).
+	OnReady func()
 
 	mgmt *management
 	// UI handles /app and / when set.
@@ -349,11 +352,28 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	case len(admitting) == 0:
 		body, status = map[string]any{"status": "unready", "reason": "no_request_admission", "modalities": []string{}}, 503
 	}
+	if status == 200 && s.OnReady != nil {
+		s.OnReady()
+	}
 	if r.Method == http.MethodHead {
 		w.WriteHeader(status)
 		return
 	}
 	writeJSON(w, status, body)
+}
+
+// Ready reports whether some modality admits requests and the gateway is
+// not stopping.
+func (s *Server) Ready() bool {
+	if s.stopping.Load() {
+		return false
+	}
+	for _, kind := range store.Kinds {
+		if _, _, admits := s.modality(kind); admits {
+			return true
+		}
+	}
+	return false
 }
 
 // instance proves this gateway's identity to a CLI that knows the instance

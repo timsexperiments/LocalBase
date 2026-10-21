@@ -49,6 +49,9 @@ func (o *Object) Get(k string) (any, bool) {
 // Len is the number of properties.
 func (o *Object) Len() int { return len(o.order) }
 
+// MarshalJSON lets encoding/json embed an Object in JavaScript key order.
+func (o *Object) MarshalJSON() ([]byte, error) { return Stringify(o), nil }
+
 func arrayIndex(k string) (uint64, bool) {
 	if k == "" || (len(k) > 1 && k[0] == '0') {
 		return 0, false

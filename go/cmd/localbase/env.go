@@ -75,7 +75,11 @@ func openEnv(c *cli.Ctx) (*env, error) {
 }
 
 // save validates and writes the config, creating the model directories.
-func (e *env) save(cfg *store.Config) error {
+func (e *env) save(cfg *store.Config) error { return e.saveAs(cfg, false) }
+
+// saveAs is save; marking also records a pending restart when the listener
+// or memory policy changed (TS persistConfiguration, used by configure).
+func (e *env) saveAs(cfg *store.Config, marking bool) error {
 	if err := conf.Check(cfg, e.Catalog); err != nil {
 		return err
 	}
@@ -84,7 +88,11 @@ func (e *env) save(cfg *store.Config) error {
 			return err
 		}
 	}
-	if err := e.Store.SaveConfig(context.Background(), cfg); err != nil {
+	save := e.Store.SaveConfig
+	if marking {
+		save = e.Store.SaveConfigMarking
+	}
+	if err := save(context.Background(), cfg); err != nil {
 		return err
 	}
 	e.Config = cfg

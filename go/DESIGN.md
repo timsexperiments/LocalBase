@@ -70,11 +70,15 @@ Line counts are production code, without tests.
    files all exist to tell a foreground `serve` apart from a managed one across
    processes. Replace them with one `flock` on `<root>/runtime/gateway.lock`
    held for the process lifetime, plus the service manager's own status.
-6. **The pending-restart fingerprint for declarative config.** The
-   `config_activation` table and the "acknowledge static settings" handshake
-   go away. Listener and memory-policy changes take effect on restart, and
-   `config apply` reports `restart-required`. The table is kept but unused, so
-   rollback still works.
+6. **The pending-restart fingerprint for declarative config: kept (M5).**
+   The plan was to drop the `config_activation` table and the "acknowledge
+   static settings" handshake. M5 kept them: they are about 150 lines, the
+   fingerprint is the TS one, and keeping them means `pendingRestart`, `config
+   plan --detailed-exit-code` and `config apply --wait` behave the same on
+   either binary, and each reads the other's record during cutover and
+   rollback. `configure` and `config apply` record a pending restart when the
+   listener or memory policy changes; a managed gateway clears it when it is
+   ready with exactly those settings.
 7. **The OpenTelemetry SDK.** It brings 11 packages, a diag-echo filter, and
    batch processors whose failures needed their own reporter. In Go, a small
    OTLP/HTTP JSON exporter (logs and traces only) uses a bounded channel, one
@@ -293,7 +297,7 @@ Cross-cutting behavior that stays:
 | `start`, `stop`, `restart`, `status` | Simplify | launchd/systemd through `internal/service`. The plist keeps stderr → `logs/service-stderr.log`, bounded (#357). There's no lease handshake. |
 | `init` | Keep | Creates the root marker and default config. |
 | `configure` | Simplify | Flags only, no prompts. |
-| `config validate/plan/apply/show` | Simplify | Same TOML v1 document. No activation fingerprint: `apply` reports `restart-required`, and `--restart auto` restarts the managed service. |
+| `config validate/plan/apply/show` | Keep | Same TOML v1 document, validation messages, plans and pending-restart record (§2.6). `--restart auto` restarts the managed service. |
 | `models catalog/list/show/install/recommend` | Keep | |
 | `models search/add hf:/remove-entry` | Keep | |
 | `models feed status/refresh/use` | Keep | |
@@ -314,7 +318,7 @@ Cross-cutting behavior that stays:
 | --- | --- |
 | `.localbase-root.json` | Keep: read and validated. Initialization locks are dropped. |
 | `local-base.db` + journal | Keep, byte-compatible (§4). |
-| `config_activation` table | Keep schema, stop writing. |
+| `config_activation` table | Keep: written and acknowledged as TS does (§2.6). |
 | `catalog.d/`, `cache/catalog-feed`, `cache/hf`, `catalog-feed.json` (feed URL setting) | Keep. |
 | `bin/runtimes/<family>/<sha>/` + receipts | Keep the layout and pins. The receipt is rewritten in the same JSON shape. |
 | Legacy flat `bin/llama-server` etc. | Drop, since nothing reads them now. Left on disk. |
@@ -1091,6 +1095,7 @@ messages it needs (resource, scope, spans, log records, attributes) directly.
 | 1 | Done | `TestDifferentialModelManagement`: full state and every response on both gateways, an offline install polled to completion |
 | 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
 | 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
+| 4 | Done | `TestCLIConfigDeclarative` (twin roots: 40 invalid documents with the JSON envelope and the raw message before redaction compared, plans, `--detailed-exit-code`, apply with `--restart never`, `--wait` refused without a gateway, apply creating a fresh root, stdin, human output, and each CLI reading the other's pending restart), `TestCLIConfigForegroundGateway` (automatic restart refused next to a foreground gateway; unchanged apply with `--wait`), `TestDeclarativeGolden` (`tools/golden/config.ts`: 54 documents, their messages before redaction, normalized configurations, plans against saved, pending and absent configurations, and renderings; runs in CI), `TestStaticFingerprintMatchesTypeScript`, `TestPendingRestartLifecycle`, `TestDocumentKeyOrder` |
 
 The feed brings three Go structures with it. `internal/jsjson` reproduces
 JavaScript's JSON round trip (property order, number formatting), which the

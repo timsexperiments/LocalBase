@@ -7,6 +7,7 @@ package toml
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,29 @@ func Parse(src string) (map[string]any, error) {
 	return root, nil
 }
 
+// Document is a parsed document that remembers key order.
+type Document struct {
+	Root  map[string]any
+	order map[uintptr][]string
+}
+
+// Keys returns a table's keys in the order they first appear in the
+// source (JavaScript object order, as Bun's TOML parser builds it).
+func (d *Document) Keys(m map[string]any) []string {
+	return d.order[reflect.ValueOf(m).Pointer()]
+}
+
+// ParseDocument is Parse that keeps key order.
+func ParseDocument(src string) (*Document, error) {
+	p := &parser{src: src, line: 1, order: map[uintptr][]string{}}
+	root := map[string]any{}
+	p.root, p.cur = root, root
+	if err := p.document(); err != nil {
+		return nil, err
+	}
+	return &Document{root, p.order}, nil
+}
+
 type parser struct {
 	src     string
 	pos     int
@@ -32,6 +56,20 @@ type parser struct {
 	root    map[string]any
 	cur     map[string]any
 	defined map[string]bool // explicitly defined tables
+	order   map[uintptr][]string
+}
+
+// set adds a key to a table, recording the order keys first appear in.
+func (p *parser) set(m map[string]any, k string, v any) {
+	p.note(m, k)
+	m[k] = v
+}
+
+func (p *parser) note(m map[string]any, k string) {
+	if p.order != nil {
+		id := reflect.ValueOf(m).Pointer()
+		p.order[id] = append(p.order[id], k)
+	}
 }
 
 func (p *parser) errf(format string, a ...any) error {
@@ -135,7 +173,7 @@ func (p *parser) tableHeader() error {
 	}
 	parent := p.root
 	for _, k := range keys[:len(keys)-1] {
-		next, err := descend(parent, k)
+		next, err := p.descend(parent, k)
 		if err != nil {
 			return p.errf("%v", err)
 		}
@@ -152,6 +190,9 @@ func (p *parser) tableHeader() error {
 			return p.errf("%s is not an array of tables", last)
 		}
 		t := map[string]any{}
+		if _, ok := parent[last]; !ok {
+			p.note(parent, last)
+		}
 		parent[last] = append(list, t)
 		p.cur = t
 		return nil
@@ -164,7 +205,7 @@ func (p *parser) tableHeader() error {
 	switch v := parent[last].(type) {
 	case nil:
 		t := map[string]any{}
-		parent[last] = t
+		p.set(parent, last, t)
 		p.cur = t
 	case map[string]any:
 		p.cur = v
@@ -176,11 +217,11 @@ func (p *parser) tableHeader() error {
 
 // descend returns the table at key k, creating it, or the last table of an
 // array of tables.
-func descend(m map[string]any, k string) (map[string]any, error) {
+func (p *parser) descend(m map[string]any, k string) (map[string]any, error) {
 	switch v := m[k].(type) {
 	case nil:
 		t := map[string]any{}
-		m[k] = t
+		p.set(m, k, t)
 		return t, nil
 	case map[string]any:
 		return v, nil
@@ -251,7 +292,7 @@ func (p *parser) keyValue(into map[string]any) error {
 	}
 	t := into
 	for _, k := range keys[:len(keys)-1] {
-		if t, err = descend(t, k); err != nil {
+		if t, err = p.descend(t, k); err != nil {
 			return p.errf("%v", err)
 		}
 	}
@@ -259,7 +300,7 @@ func (p *parser) keyValue(into map[string]any) error {
 	if _, dup := t[last]; dup {
 		return p.errf("duplicate key %s", strings.Join(keys, "."))
 	}
-	t[last] = v
+	p.set(t, last, v)
 	return nil
 }
 

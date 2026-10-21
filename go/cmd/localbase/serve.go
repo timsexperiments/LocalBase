@@ -276,6 +276,17 @@ func serve(c *cli.Ctx) (any, error) {
 		},
 		Voices: voices.New(st, r.Dir).List})
 	gateway.New(srv)
+	// A managed gateway that is ready acknowledges the static settings it
+	// started with, clearing a matching pending restart (TS serve).
+	if os.Getenv("LOCALBASE_SERVICE_ID") != "" && os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
+		started := &store.Config{GatewayHost: listenHost, GatewayPort: listenPort,
+			SystemReserve: cfg.SystemReserve, AcceleratorReserve: cfg.AcceleratorReserve}
+		srv.OnReady = func() {
+			if err := st.AcknowledgeStatic(context.Background(), started); err != nil {
+				log.Warn("Could not acknowledge the startup configuration.", "event", "config.acknowledge-failed", "error", err.Error())
+			}
+		}
+	}
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))
 	if err != nil {
@@ -302,6 +313,9 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}()
 
+	if srv.OnReady != nil && srv.Ready() {
+		srv.OnReady()
+	}
 	baseURL := "http://" + ln.Addr().String()
 	log.Info("LocalBase listening on "+baseURL, "event", "gateway.started", "root", r.Dir, "memory_gb", memoryGB, "auth", !noAuth)
 	if c.Global.JSON {

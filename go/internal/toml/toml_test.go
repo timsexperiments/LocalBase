@@ -48,3 +48,28 @@ func TestErrors(t *testing.T) {
 		}
 	}
 }
+
+// ParseDocument keeps the order keys first appear in, through dotted keys,
+// table headers, arrays of tables and inline tables.
+func TestDocumentKeyOrder(t *testing.T) {
+	d, err := ParseDocument("z = 1\na.y = 2\na.b = 3\n[c]\nq = 1\np = { m = 1, l = 2 }\n[a]\nx = 4\n[[t]]\nk = 1\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := d.Root["a"].(map[string]any)
+	c := d.Root["c"].(map[string]any)
+	for _, tc := range []struct {
+		m    map[string]any
+		want []string
+	}{
+		{d.Root, []string{"z", "a", "c", "t"}},
+		{a, []string{"y", "b", "x"}},
+		{c, []string{"q", "p"}},
+		{c["p"].(map[string]any), []string{"m", "l"}},
+		{d.Root["t"].([]any)[0].(map[string]any), []string{"k"}},
+	} {
+		if got := d.Keys(tc.m); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("keys %v, want %v", got, tc.want)
+		}
+	}
+}
