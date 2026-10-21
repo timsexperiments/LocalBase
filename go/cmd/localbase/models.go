@@ -110,7 +110,7 @@ func tier(s *catalog.Spec) string {
 
 func modelsCommand() *cli.Command {
 	return &cli.Command{Name: "models", Summary: "Browse and install models", Sub: []*cli.Command{
-		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(),
+		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(), modelsAdd(), modelsSearch(), modelsRemoveEntry(),
 		modelsImportCommand(), modelsBackendCommand(), modelsInspectCommand(), modelsExportCommand(), modelsAddDefinitionCommand(), modelsDeleteCommand(), feedCommand(),
 	}}
 }

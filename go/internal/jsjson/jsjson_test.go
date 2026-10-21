@@ -27,3 +27,11 @@ func TestGolden(t *testing.T) {
 		}
 	}
 }
+
+func TestIndent(t *testing.T) {
+	v, _ := Parse([]byte(`{"a":[],"b":{},"c":[1,{"d":"x","e":[]}],"2":null,"f":1e21}`))
+	want := "{\n  \"2\": null,\n  \"a\": [],\n  \"b\": {},\n  \"c\": [\n    1,\n    {\n      \"d\": \"x\",\n      \"e\": []\n    }\n  ],\n  \"f\": 1e+21\n}"
+	if got := string(Indent(v)); got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+}

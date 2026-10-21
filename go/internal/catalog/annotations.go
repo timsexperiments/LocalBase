@@ -478,6 +478,11 @@ func (c *Catalog) AnnotationSummaryFor(s *Spec) *AnnotationSummary {
 	for _, m := range c.AppliedFeedMarks(s) {
 		applied[m.ID] = true
 	}
+	return SummarizeAnnotation(a, exact, applied)
+}
+
+// SummarizeAnnotation is what the API and UI show about one annotation.
+func SummarizeAnnotation(a *Annotation, exact bool, applied map[string]bool) *AnnotationSummary {
 	out := &AnnotationSummary{Repo: a.Repo, Revision: a.Revision, File: optional(a.File), ModelID: optional(a.ModelID),
 		Status: optional(a.Status), RevisionMatch: exact, UnsupportedCapabilities: []SummaryMark{}, MemoryPeaks: a.MemoryPeaks}
 	if out.MemoryPeaks == nil {

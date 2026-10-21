@@ -1,0 +1,5 @@
+{
+ "url": "https://huggingface.co/api/models/nobody/does-not-exist-404?blobs=true",
+ "status": 401,
+ "body": "{\"error\":\"Invalid username or password.\"}"
+}

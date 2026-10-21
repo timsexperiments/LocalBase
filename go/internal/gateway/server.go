@@ -85,6 +85,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
 	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
 	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
+	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)

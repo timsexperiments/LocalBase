@@ -1090,6 +1090,7 @@ messages it needs (resource, scope, spans, log records, attributes) directly.
 | --- | --- | --- |
 | 1 | Done | `TestDifferentialModelManagement`: full state and every response on both gateways, an offline install polled to completion |
 | 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
+| 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
 
 The feed brings three Go structures with it. `internal/jsjson` reproduces
 JavaScript's JSON round trip (property order, number formatting), which the

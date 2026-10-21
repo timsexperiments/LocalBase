@@ -228,3 +228,74 @@ func quote(b *bytes.Buffer, s string) {
 	}
 	b.WriteByte('"')
 }
+
+// Indent writes JSON.stringify(v, null, 2).
+func Indent(v any) []byte {
+	var b bytes.Buffer
+	writeIndent(&b, v, "")
+	return b.Bytes()
+}
+
+func writeIndent(b *bytes.Buffer, v any, pad string) {
+	inner := pad + "  "
+	switch x := v.(type) {
+	case *Object:
+		keys := x.Keys()
+		if len(keys) == 0 {
+			b.WriteString("{}")
+			return
+		}
+		b.WriteString("{\n")
+		for i, k := range keys {
+			b.WriteString(inner)
+			quote(b, k)
+			b.WriteString(": ")
+			writeIndent(b, x.vals[x.index[k]], inner)
+			if i < len(keys)-1 {
+				b.WriteByte(',')
+			}
+			b.WriteByte('\n')
+		}
+		b.WriteString(pad + "}")
+	case []any:
+		if len(x) == 0 {
+			b.WriteString("[]")
+			return
+		}
+		b.WriteString("[\n")
+		for i, e := range x {
+			b.WriteString(inner)
+			writeIndent(b, e, inner)
+			if i < len(x)-1 {
+				b.WriteByte(',')
+			}
+			b.WriteByte('\n')
+		}
+		b.WriteString(pad + "]")
+	default:
+		write(b, v)
+	}
+}
+
+// FromGo converts an encoding/json-encodable value (structs keep their
+// field order, maps their sorted keys) into jsjson values.
+func FromGo(v any) any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	out, _ := Parse(b)
+	return out
+}
+
+// ToFixed1 is Number.prototype.toFixed(1) for non-negative finite values:
+// the exact decimal value, ties toward the larger number.
+func ToFixed1(x float64) string {
+	digits := strconv.FormatFloat(x, 'f', 80, 64) // exact above 2^-28
+	dot := strings.IndexByte(digits, '.')
+	n, _ := strconv.Atoi(digits[:dot] + digits[dot+1:dot+2])
+	if digits[dot+2] >= '5' {
+		n++
+	}
+	return fmt.Sprintf("%d.%d", n/10, n%10)
+}

@@ -1,0 +1,5 @@
+{
+ "url": "https://huggingface.co/Lykon/dreamshaper-8-lcm/resolve/4645d8bc6a8e6b106d21606d63e8460cdad4f1a6/scheduler/scheduler_config.json",
+ "status": 200,
+ "body": "{\n  \"_class_name\": \"PNDMScheduler\",\n  \"_diffusers_version\": \"0.24.0\",\n  \"beta_end\": 0.012,\n  \"beta_schedule\": \"scaled_linear\",\n  \"beta_start\": 0.00085,\n  \"clip_sample\": false,\n  \"num_train_timesteps\": 1000,\n  \"prediction_type\": \"epsilon\",\n  \"set_alpha_to_one\": false,\n  \"skip_prk_steps\": true,\n  \"steps_offset\": 1,\n  \"timestep_spacing\": \"leading\",\n  \"trained_betas\": null\n}\n"
+}
