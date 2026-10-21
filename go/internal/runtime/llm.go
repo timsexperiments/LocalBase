@@ -56,11 +56,20 @@ type LLMDeps struct {
 	// Install downloads a missing model (serve --install-missing); nil means
 	// requests for missing models fail with NotInstalledError.
 	Install func(ctx context.Context, modelID string) error
+	// Gate resolves the backend selection (nil: every model runs on the
+	// managed llama-server, as before backend selection).
+	Gate Gate
+	// SelectionKey identifies a model's current backend selection cheaply;
+	// a running model whose key changed is restarted on its next request.
+	SelectionKey func(modelID string) string
 }
 
 type backend struct {
 	modelID string
+	key     string
 	spec    *catalog.Spec
+	target  *Target
+	demand  memory.Demand
 	plan    *LLMPlan
 	proc    *Process
 	res     *memory.Reservation
@@ -70,6 +79,7 @@ type backend struct {
 
 type waiter struct {
 	model       string
+	key         string
 	ready       chan error
 	lease       *Lease
 	dispatching bool
@@ -135,7 +145,10 @@ func (m *LLM) Resolve(model string) (string, *catalog.Spec, error) {
 		model = cfg.Active["llm"]
 	}
 	if !slices.Contains(ConfiguredIDs(cfg, "llm"), model) {
-		return "", nil, ErrModelNotFound
+		// Imported models run without being configured.
+		if t, _ := m.target(model); t == nil || !t.Imported || t.task() == "" {
+			return "", nil, ErrModelNotFound
+		}
 	}
 	return model, m.d.Catalog.ByID(model), nil
 }
@@ -166,8 +179,45 @@ func (m *LLM) geometryFor(path string) *memory.Geometry {
 	return g
 }
 
+// target resolves the model through the gate; nil without one. A target may
+// come back together with a *LaunchError.
+func (m *LLM) target(modelID string) (*Target, error) {
+	if m.d.Gate == nil {
+		return nil, nil
+	}
+	return m.d.Gate(modelID)
+}
+
 // Plan computes the launch plan for a model without starting anything.
 func (m *LLM) Plan(modelID string) (*LLMPlan, error) {
+	t, _ := m.target(modelID)
+	return m.planFor(modelID, t)
+}
+
+func (m *LLM) planFor(modelID string, t *Target) (*LLMPlan, error) {
+	if t != nil && t.Imported {
+		if t.Variant == nil {
+			if t.Model == nil || len(t.Model.Variants) == 0 {
+				return nil, errors.New("the model has no variant")
+			}
+			t.Variant = &t.Model.Variants[0] // listing a model without a selection
+		}
+		w, err := t.weights()
+		if err != nil {
+			return nil, err
+		}
+		in := PlanInput{Config: m.Config(), ModelID: modelID, ModelsDir: t.Dir, ModelFile: w, MemoryGB: m.d.MemoryGB,
+			CtxOverride: m.d.CtxOverride, Port: m.port(), Task: t.task(), Geometry: m.geometryFor(filepath.Join(t.Dir, w))}
+		if p := t.projector(); p != "" {
+			in.Projector = filepath.Join(t.Dir, p)
+		}
+		for _, a := range t.Variant.Artifacts {
+			if a.Role == "weights" {
+				in.ArtifactBytes += fileSize(filepath.Join(t.Dir, a.Filename))
+			}
+		}
+		return PlanLLM(in)
+	}
 	spec := m.d.Catalog.ByID(modelID)
 	file := modelID + ".gguf"
 	if spec != nil {
@@ -221,6 +271,7 @@ func (l *Lease) Release() {
 // backend start this request itself triggers.
 func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 	start := time.Now()
+	key := m.selectionKey(modelID)
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -230,7 +281,7 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &waiter{model: modelID, ready: make(chan error, 1)}
+	w := &waiter{model: modelID, key: key, ready: make(chan error, 1)}
 	m.queue = append(m.queue, w)
 	m.pump()
 	m.mu.Unlock()
@@ -300,7 +351,7 @@ func (m *LLM) fail(w *waiter, err error) {
 func (m *LLM) pump() {
 	for len(m.queue) > 0 && !m.starting && !m.closed {
 		head := m.queue[0]
-		if m.cur != nil && m.cur.modelID == head.model {
+		if m.cur != nil && m.cur.modelID == head.model && m.cur.key == head.key {
 			if m.active >= m.cur.plan.Parallel.Slots {
 				return
 			}
@@ -313,10 +364,10 @@ func (m *LLM) pump() {
 		m.starting = true
 		head.dispatching = true
 		m.switches.Add(1)
-		go func(model string) {
+		go func(model, key string) {
 			defer m.switches.Done()
-			m.switchTo(model)
-		}(head.model)
+			m.switchTo(model, key)
+		}(head.model, head.key)
 		return
 	}
 }
@@ -325,30 +376,50 @@ func (m *LLM) pump() {
 // current model were stopped, crediting it at most its measured footprint
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
-func (m *LLM) switchTo(modelID string) {
-	err := m.doSwitch(modelID)
+func (m *LLM) switchTo(modelID, key string) {
+	err := m.doSwitch(modelID, key)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
 	m.failed = err != nil && m.cur == nil
 	if err != nil {
-		for len(m.queue) > 0 && m.queue[0].model == modelID {
+		for len(m.queue) > 0 && m.queue[0].model == modelID && m.queue[0].key == key {
 			m.fail(m.queue[0], err)
 		}
 	}
 	m.pump()
 }
 
-func (m *LLM) doSwitch(modelID string) error {
-	if err := m.ensureInstalled(modelID); err != nil {
+func (m *LLM) doSwitch(modelID, key string) error {
+	// Catalog models keep the install check (and its consent error) first;
+	// then the selection: an unselected or unavailable backend fails before
+	// the current model is stopped.
+	if m.d.Catalog.ByID(modelID) != nil {
+		if err := m.ensureInstalled(modelID); err != nil {
+			return err
+		}
+	}
+	t, err := m.target(modelID)
+	if err != nil {
 		return err
 	}
-	plan, err := m.Plan(modelID)
+	if t == nil && m.d.Catalog.ByID(modelID) == nil {
+		if err := m.ensureInstalled(modelID); err != nil {
+			return err
+		}
+	}
+	plan, err := m.planFor(modelID, t)
 	if err != nil {
 		return err
 	}
 	spec := m.d.Catalog.ByID(modelID)
+	if t != nil && t.Imported {
+		spec = nil
+	}
 	demand := m.admissionDemand(spec, plan)
+	if t != nil && t.Backend.Adapter == "process-openai/v1" {
+		demand = customDemand(t, plan)
+	}
 	m.mu.Lock()
 	prev := m.cur
 	m.mu.Unlock()
@@ -360,17 +431,21 @@ func (m *LLM) doSwitch(modelID string) error {
 		}
 		m.stopBackend(prev)
 	}
-	b, err := m.startBackend(modelID, spec, plan, demand)
+	b, err := m.startBackend(modelID, spec, plan, demand, t)
 	if err != nil {
-		if prev != nil {
+		// A changed backend for the same model is not rolled back: the
+		// person chose it, and the old one must not answer in its place.
+		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
-			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, m.admissionDemand(prev.spec, prev.plan)); rerr == nil {
+			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target); rerr == nil {
+				rb.key = prev.key
 				m.install(rb)
 			}
 		}
 		return err
 	}
+	b.key = key
 	m.install(b)
 	return nil
 }
@@ -385,7 +460,7 @@ func (m *LLM) install(b *backend) {
 	m.cur = b
 	m.mu.Unlock()
 	go m.watch(b)
-	if b.spec != nil && m.d.Store != nil {
+	if b.spec != nil && m.d.Store != nil && (b.target == nil || b.target.Backend.Adapter == "llama-server/v1") {
 		m.probes.Add(1)
 		go func() {
 			defer m.probes.Done()
@@ -411,28 +486,31 @@ func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
 	return ApplyObserved(plan.Demand, peaks, plan.Launch.LaunchShape())
 }
 
-func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand) (*backend, error) {
-	if !fileExists(plan.ModelPath) {
-		return nil, fmt.Errorf("%w: model file %s is not installed", ErrStartupFailed, filepath.Base(plan.ModelPath))
-	}
-	bin := m.d.Binary
-	if bin == "" {
-		var err error
-		if bin, err = ResolveBinary(m.d.RuntimesDir, "llama-server"); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target) (*backend, error) {
+	fail := func(err error) error {
+		if t != nil && (t.Manual || t.Imported) {
+			return &BackendStartError{BackendID: t.Backend.ID, Cause: err}
 		}
+		return fmt.Errorf("%w: %v", ErrStartupFailed, err)
+	}
+	if !fileExists(plan.ModelPath) {
+		return nil, fail(fmt.Errorf("model file %s is not installed", filepath.Base(plan.ModelPath)))
+	}
+	name, bin, args, health, err := m.launchCommand(plan, t)
+	if err != nil {
+		return nil, fail(err)
 	}
 	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
 	if err != nil {
 		return nil, err
 	}
-	m.d.Log.Info("Starting llama-server for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
+	m.d.Log.Info("Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
 		"model_id", modelID, "ctx_size", plan.CtxSize, "slots", plan.Parallel.Slots,
 		"demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)
-	proc, err := StartProcess("llama-server", bin, plan.Args(goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"), nil, m.d.Log)
+	proc, err := StartProcess(name, bin, args, nil, m.d.Log)
 	if err != nil {
 		res.Release()
-		return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+		return nil, fail(err)
 	}
 	res.Materialize(proc.PID())
 	budget := defaultStartupBudget
@@ -440,13 +518,13 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		budget = largeStartupBudget
 	}
 	base := "http://" + net.JoinHostPort(plan.Host, strconv.Itoa(plan.Port))
-	if err := proc.WaitHealthy(context.Background(), base+"/health", budget); err != nil {
+	if err := proc.WaitHealthy(context.Background(), base+health, budget); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
-		return nil, fmt.Errorf("%w: %v", ErrStartupFailed, err)
+		return nil, fail(err)
 	}
-	m.d.Log.Info("llama-server is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
-	return &backend{modelID: modelID, spec: spec, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
+	m.d.Log.Info(name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
+	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
 }
 
 func (m *LLM) stopBackend(b *backend) {

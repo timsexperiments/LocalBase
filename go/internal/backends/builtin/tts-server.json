@@ -1,0 +1,15 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "tts-server",
+  "name": "tts-server (llama.cpp TTS)",
+  "engine": "llama.cpp-tts",
+  "adapter": "tts-server/v1",
+  "tasks": ["speech"],
+  "capabilities": [],
+  "formats": ["gguf"],
+  "architectures": {"supported": ["qwen3-tts"]},
+  "companions": {"speech": ["projector"]},
+  "platforms": [{"os":"darwin","arch":"arm64","accelerator":"metal"},{"os":"linux","arch":"x64","accelerator":"vulkan"}],
+  "runtime": {"family": "tts-server", "executable": "tts-server", "managed": true},
+  "notes": "Transition backend for Qwen TTS until CrispASR is pinned."
+}

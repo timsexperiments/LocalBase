@@ -150,5 +150,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := applyGoSchema(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }

@@ -263,7 +263,17 @@ func ReadGGUFKeys(path string) (map[string]any, error) {
 
 // readKeys reads the header keys keep selects; maxStr bounds each kept string.
 func readKeys(path string, keep func(string) bool, maxStr func(string) int) (map[string]any, error) {
-	f, err := os.Open(MetadataPath(path))
+	return readKeysAt(MetadataPath(path), keep, maxStr)
+}
+
+// ReadGGUFHeader reads the keys keep selects from this exact file (no shard
+// remapping); strings are bounded to 256 bytes. It never reads tensor data.
+func ReadGGUFHeader(path string, keep func(string) bool) (map[string]any, error) {
+	return readKeysAt(path, keep, func(string) int { return maxKeptStringBytes })
+}
+
+func readKeysAt(path string, keep func(string) bool, maxStr func(string) int) (map[string]any, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}

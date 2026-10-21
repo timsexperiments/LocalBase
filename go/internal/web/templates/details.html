@@ -1,5 +1,6 @@
-{{define "title"}}{{.Spec.Name}} · LocalBase{{end}}
+{{define "title"}}{{if .Imported}}{{.Imported.Model.Name}}{{else}}{{.Spec.Name}}{{end}} · LocalBase{{end}}
 {{define "main"}}
+{{if .Imported}}{{template "imported-details" .}}{{else}}
 <article aria-labelledby="model-title">
   <a href="/app/models" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Library</a>
   <p class="eyebrow mt-2">{{.Task}} · {{.Spec.Provider}}</p>
@@ -11,7 +12,7 @@
       <h2 id="mem-h" class="font-bold">Memory on this machine</h2>
       {{with .Fit}}
       <p class="mt-2 text-2xl font-bold">{{.MinVramGB}} GB</p>
-      <p class="text-sm text-muted">Minimum from the {{.Source}} figure at {{.LaunchShape}}. This machine has {{.SystemMemoryGB}} GB.</p>
+      <p class="text-sm text-muted">{{.Source}} figure for this machine's launch settings ({{.LaunchShape}}). Other settings or devices need different amounts. This machine has {{.SystemMemoryGB}} GB.</p>
       <p class="mt-2">{{if eq .Fit "fits"}}<span class="badge badge-ok">Fits</span>{{else if eq .Fit "tight"}}<span class="badge badge-warn">Tight fit</span>{{else}}<span class="badge">Won't fit</span>{{end}}</p>
       {{else}}
       <p class="mt-2 text-muted">A memory figure for this kind of model arrives in a later milestone.</p>
@@ -26,6 +27,7 @@
         {{end}}
       </ul>
     </section>
+    {{with .Backend}}<div class="min-[700px]:col-span-2">{{template "backend-panel" .}}</div>{{end}}
     <section class="card p-5 min-[700px]:col-span-2" aria-labelledby="about-h">
       <h2 id="about-h" class="font-bold">About</h2>
       {{if .Spec.Capabilities}}<ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Capabilities">{{range .Spec.Capabilities}}<li class="badge">{{.ID}}</li>{{end}}</ul>{{end}}
@@ -36,3 +38,42 @@
   </div>
 </article>
 {{end}}
+{{end}}
+
+{{define "imported-details"}}
+{{$m := .Imported.Model}}
+<article aria-labelledby="model-title">
+  <a href="/app/models" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Library</a>
+  <p class="eyebrow mt-2">{{range $i, $t := $m.Tasks}}{{if $i}}, {{end}}{{$t}}{{end}} · imported</p>
+  <h1 id="model-title" class="mt-1 text-3xl font-bold tracking-tight break-words">{{$m.Name}}</h1>
+  <p class="mt-1 text-muted break-all">{{$m.ID}}</p>
+  <div class="mt-6 grid grid-cols-1 gap-3 min-[700px]:grid-cols-2">
+    {{with .Backend}}<div class="min-[700px]:col-span-2">{{template "backend-panel" .}}</div>{{end}}
+    {{range $m.Variants}}
+    {{$in := index $.Inspection .ID}}
+    <section class="card p-5" aria-label="Variant {{.ID}}">
+      <h2 class="font-bold">Variant {{.ID}}</h2>
+      <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+        <dt class="text-muted">Format</dt><dd>{{if $in.Variant.Format.Known}}{{$in.Variant.Format.Value}} <span class="text-muted">({{$in.Variant.Format.Source}})</span>{{else}}unknown{{end}}</dd>
+        <dt class="text-muted">Architecture</dt><dd>{{if $in.Variant.Architecture.Known}}{{$in.Variant.Architecture.Value}} <span class="text-muted">({{$in.Variant.Architecture.Source}})</span>{{else}}unknown{{end}}</dd>
+        <dt class="text-muted">Precision</dt><dd>{{if $in.Variant.Precision.Known}}{{$in.Variant.Precision.Value}} <span class="text-muted">({{$in.Variant.Precision.Source}})</span>{{else}}unknown{{end}}</dd>
+        <dt class="text-muted">Context</dt><dd>{{if $in.Variant.ContextLength.Known}}{{num $in.Variant.ContextLength.Value}} tokens <span class="text-muted">({{$in.Variant.ContextLength.Source}})</span>{{else}}unknown{{end}}</dd>
+      </dl>
+      {{if $in.Missing}}<p class="mt-2 text-sm" role="alert">⚠ Missing files: {{range $i, $f := $in.Missing}}{{if $i}}, {{end}}{{$f}}{{end}}</p>{{end}}
+    </section>
+    <section class="card p-5" aria-label="Files of {{.ID}}">
+      <h2 class="font-bold">Files</h2>
+      <ul class="mt-2 space-y-2 text-sm">
+        {{range .Artifacts}}
+        <li class="break-all"><span class="font-semibold">{{.Filename}}</span> · {{.Role}} · {{size .SizeBytes}}<br>
+          <span class="text-muted">sha256 {{.SHA256}} — {{if eq .HashTrust "authoritative"}}matches the publisher's checksum{{else if eq .HashTrust "user"}}matches the checksum you supplied{{else}}computed after download; this records which file you have, not who published it{{end}}</span><br>
+          <span class="text-muted">{{if eq .Source.Kind "huggingface"}}Hugging Face {{.Source.Repo}} at {{.Source.Revision}}{{else if eq .Source.Kind "url"}}Custom source{{if .Source.AuthProfile}} (auth profile {{.Source.AuthProfile}}){{end}}{{else}}Local file{{end}}</span></li>
+        {{end}}
+      </ul>
+    </section>
+    {{end}}
+  </div>
+</article>
+{{end}}
+
+{{define "backend-panel-frag"}}{{template "backend-panel" .Backend}}{{end}}

@@ -15,9 +15,11 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -45,6 +47,8 @@ type Deps struct {
 	SignInEnabled bool
 	// LogoutURL is where a Cloudflare Access session signs out ("" otherwise).
 	LogoutURL string
+	// Library: models, imports and backend selection.
+	Library *library.Library
 }
 
 type UI struct {
@@ -52,6 +56,9 @@ type UI struct {
 	pages    map[string]*template.Template
 	assetVer map[string]string
 	mux      *http.ServeMux
+
+	pendingMu sync.Mutex
+	pending   map[string]pendingImport
 }
 
 func New(d Deps) *UI {
@@ -98,7 +105,7 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -110,6 +117,14 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app/models/get", u.need("models:read", u.getModels))
 	m.HandleFunc("GET /app/models/running", u.need("models:read", u.running))
 	m.HandleFunc("GET /app/models/m/{id...}", u.need("models:read", u.details))
+	m.HandleFunc("GET /app/models/import", u.need("models:manage", u.importPage))
+	m.HandleFunc("POST /app/models/import/resolve", u.mutating("models:manage", u.importResolve))
+	m.HandleFunc("POST /app/models/import/start", u.mutating("models:manage", u.importStart))
+	m.HandleFunc("GET /app/models/import/jobs/{job}", u.need("models:manage", u.importJob))
+	m.HandleFunc("GET /app/models/backend/{id}", u.need("models:read", u.backendPanel))
+	m.HandleFunc("POST /app/models/backend/{id}", u.mutating("models:manage", u.backendPanel))
+	m.HandleFunc("GET /app/backends", u.need("models:read", u.backendsPage))
+	m.HandleFunc("POST /app/backends", u.mutating("models:manage", u.backendsPage))
 	m.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	u.mux = m
 	return u

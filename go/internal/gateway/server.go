@@ -15,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -35,6 +36,9 @@ type Server struct {
 	Root     *root.Root
 	Memory   *memory.Controller
 	Browser  *auth.Browser
+	// Library joins the catalog, imports and backend selections (nil in
+	// unit tests that need neither).
+	Library *library.Library
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -63,6 +67,10 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/access-management", s.accessManagement)
 	mux.HandleFunc("/_localbase/api-keys", s.apiKeys)
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
+	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
+	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
+	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
+	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)

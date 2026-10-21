@@ -166,6 +166,11 @@ type PlanInput struct {
 	Geometry *memory.Geometry
 	// ModelFile overrides the catalog's primary file (serve --llm-model-file).
 	ModelFile string
+	// For a model without a catalog entry (imports): its task, projector
+	// path and weight bytes.
+	Task          string
+	Projector     string
+	ArtifactBytes int64
 }
 
 func fmtInt(n int) string {
@@ -200,6 +205,13 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 	}
 	if in.ModelFile != "" {
 		modelFile = in.ModelFile
+	}
+	if spec == nil {
+		p.Embedding, p.Decision = in.Task == "embeddings", in.Task == "decision"
+		p.ArtifactBytes = in.ArtifactBytes
+		if in.Projector != "" && fileExists(in.Projector) {
+			p.ProjectorPath = in.Projector
+		}
 	}
 	p.ModelPath = filepath.Join(in.ModelsDir, modelFile)
 	if p.ArtifactBytes == 0 {
@@ -323,7 +335,10 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 		per := strconv.Itoa(memory.ContextPerSequence(p.CtxSize, p.Parallel.Slots))
 		a = append(a, "-b", per, "-ub", per, "--flash-attn", "on")
 	case p.Embedding:
-		a = append(a, "--embedding", "--pooling", p.Pooling)
+		a = append(a, "--embedding")
+		if p.Pooling != "" { // imported models: the GGUF header decides
+			a = append(a, "--pooling", p.Pooling)
+		}
 		if darwinArm64 {
 			a = append(a, "--flash-attn", "auto")
 		}

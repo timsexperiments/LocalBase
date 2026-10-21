@@ -1,0 +1,19 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "crispasr-vulkan",
+  "name": "CrispASR (Vulkan)",
+  "engine": "crispasr",
+  "adapter": "crispasr/v1",
+  "tasks": ["speech", "transcription"],
+  "capabilities": [],
+  "formats": ["gguf"],
+  "architectures": {
+    "supported": [],
+    "likely": ["kokoro", "qwen3-tts", "whisper", "parakeet", "qwen3-asr"]
+  },
+  "companions": {"speech": ["voice"]},
+  "platforms": [{"os":"linux","arch":"x64","accelerator":"vulkan"}],
+  "runtime": {"family": "crispasr", "executable": "crispasr", "managed": false},
+  "automatic": false,
+  "notes": "Speech synthesis for Kokoro and Qwen TTS was tested on Mac and Linux (backend audit, 2026-10-20). Recognition models and the Vulkan build are documented upstream and not qualified here. No managed package is pinned yet."
+}

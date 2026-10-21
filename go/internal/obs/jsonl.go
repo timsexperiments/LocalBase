@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -175,7 +176,10 @@ func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 			if p, ok := m["path"].(string); ok {
 				route, page := canonicalRoute(p)
 				m["path"] = route
-				if page != "" {
+				switch {
+				case strings.HasPrefix(page, "/_localbase/"):
+					addAttr("api_route", page)
+				case page != "":
 					addAttr("ui_route", page)
 				}
 			}

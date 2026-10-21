@@ -27,6 +27,10 @@ func allowedUIRoute(method, p string) bool {
 	switch p {
 	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token":
 		return method == "GET" || method == "POST"
+	case "/_localbase/model-backend", "/_localbase/model-imports":
+		return method == "GET" || method == "POST"
+	case "/_localbase/backends", "/_localbase/auth-profiles":
+		return method == "GET"
 	case "/_localbase/model-discovery":
 		return method == "POST"
 	case "/_localbase/models":

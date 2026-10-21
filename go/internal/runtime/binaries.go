@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
@@ -76,4 +77,21 @@ func ResolveBinary(runtimesDir, name string) (string, error) {
 		return "", fmt.Errorf("refusing unmanaged %s inside the LocalBase bin directory", name)
 	}
 	return path, nil
+}
+
+// HasPinnedRuntime reports a managed package for an executable on this
+// platform.
+func HasPinnedRuntime(name string) bool {
+	family, ok := executableFamily[name]
+	if !ok {
+		return false
+	}
+	_, ok = pinnedRuntime(family)
+	return ok
+}
+
+// Executable reports an existing executable regular file.
+func Executable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }

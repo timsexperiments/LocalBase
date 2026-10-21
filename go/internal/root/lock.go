@@ -152,3 +152,6 @@ func (o *Owner) HealthURL() string {
 	}
 	return fmt.Sprintf("http://%s:%d/health", h, o.Port)
 }
+
+// NewID returns a random UUID (v4).
+func NewID() string { return uuid() }

@@ -33,3 +33,47 @@
   </dl>
 </div>
 {{end}}
+
+{{define "backend-panel"}}
+{{/* Model settings: the backend that runs this model on this device. Every
+     registered backend stays selectable; findings are labels, not locks. */}}
+<section id="backend-panel" class="card p-5" aria-labelledby="backend-h">
+  <h2 id="backend-h" class="font-bold">Backend on this device</h2>
+  {{if .Error}}<p class="mt-2 text-danger" role="alert">{{.Error}}</p>{{else}}
+  {{if .Unavailable}}
+  <p class="mt-2" role="alert"><span class="badge badge-warn">Unavailable</span> You chose <span class="font-semibold">{{.BackendID}}</span>, which is no longer registered. Nothing else was picked in its place; choose a replacement.</p>
+  {{else if not .BackendID}}
+  <p class="mt-2"><span class="badge badge-warn">No backend</span> No backend was detected as compatible. Select a backend to run this model.</p>
+  {{else}}
+  <p class="mt-2"><span class="font-semibold">{{.BackendName}}</span>
+    <span class="badge">{{if eq .Mode "manual"}}Your choice{{else}}Automatic{{end}}</span>
+    <span class="badge {{if eq .Rating "supported"}}badge-ok{{else if eq .Rating "likely"}}{{else}}badge-warn{{end}}">{{.RatingLabel}}</span></p>
+  {{range .Reasons}}<p class="mt-1 text-sm text-muted">{{.}}</p>{{end}}
+  {{range .Warnings}}<p class="mt-1 text-sm">⚠ {{.}}</p>{{end}}
+  {{if .DownloadBytes}}<p class="mt-1 text-sm">This variant needs {{size .DownloadBytes}} more to download before it can run.</p>{{end}}
+  {{end}}
+  {{if and (eq .Mode "manual") .Recommended}}<p class="mt-1 text-sm text-muted">Automatic selection would use {{.Recommended}}.</p>{{end}}
+  {{with .Message}}<p class="mt-2 text-sm" role="status">{{.}}</p>{{end}}
+  <form class="mt-3 grid gap-2" hx-post="/app/models/backend/{{.ModelID}}" hx-target="#backend-panel" hx-swap="outerHTML">
+    <label class="text-sm font-semibold" for="backend-select">Run with</label>
+    <select id="backend-select" name="backend" class="input min-h-11">
+      {{if or (not .BackendID) .Unavailable}}<option value="" selected disabled>Choose a backend…</option>{{end}}
+      {{range .Options}}
+      <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}} — {{.RatingLabel}}{{if .Recommended}} (recommended){{end}} · {{.Install}}</option>
+      {{end}}
+    </select>
+    <p class="text-sm text-muted">Starting the model still checks its files, memory and hardware, and reports the backend's own errors.</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="btn btn-primary">Use this backend</button>
+      {{if eq .Mode "manual"}}<button type="submit" name="reset" value="1" class="btn btn-quiet">Reset to automatic</button>{{end}}
+    </div>
+  </form>
+  <details class="mt-3">
+    <summary class="min-h-11 cursor-pointer text-sm font-semibold">Why each backend is rated this way</summary>
+    <ul class="mt-2 space-y-1 text-sm">
+      {{range .Options}}<li><span class="font-semibold">{{.Name}}</span>: {{.RatingLabel}}{{with .Reason}} — {{.}}{{end}}{{range .Warnings}}; {{.}}{{end}}</li>{{end}}
+    </ul>
+  </details>
+  {{end}}
+</section>
+{{end}}

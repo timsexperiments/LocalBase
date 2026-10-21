@@ -1,0 +1,82 @@
+{{define "title"}}Import a model · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="import-title">
+  <a href="/app/models/get" class="inline-flex min-h-11 items-center text-sm font-semibold text-accent">← Get models</a>
+  <h1 id="import-title" class="mt-1 text-3xl font-bold tracking-tight">Import a model</h1>
+  <p class="mt-1 text-muted">From a Hugging Face repository or file, a direct link, or a file on the LocalBase machine. Downloading a model and being able to run it are separate: the backend is checked again after the download.</p>
+  <form class="card mt-6 grid gap-3 p-5" hx-post="/app/models/import/resolve" hx-target="#import-plan" hx-swap="outerHTML">
+    <label class="grid gap-1"><span class="text-sm font-semibold">Source</span>
+      <input class="input min-h-11" name="source" required autocomplete="off" spellcheck="false" placeholder="org/repo, https://… or /path/on/the/server/model.gguf" value="{{.Form.Source}}"></label>
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <label class="grid gap-1"><span class="text-sm font-semibold">File in the repository <span class="font-normal text-muted">(optional)</span></span>
+        <input class="input min-h-11" name="file" autocomplete="off" spellcheck="false" value="{{.Form.File}}"></label>
+      <label class="grid gap-1"><span class="text-sm font-semibold">What it does</span>
+        <select class="input min-h-11" name="task"><option value="">From the source</option>{{range .Tasks}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+      <label class="grid gap-1"><span class="text-sm font-semibold">Auth profile <span class="font-normal text-muted">(private headers)</span></span>
+        <select class="input min-h-11" name="auth_profile"><option value="">None</option>{{range .Profiles}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+      <label class="grid gap-1"><span class="text-sm font-semibold">Model id <span class="font-normal text-muted">(optional)</span></span>
+        <input class="input min-h-11" name="id" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9._-]{0,127}"></label>
+      <label class="grid gap-1"><span class="text-sm font-semibold">SHA-256 you trust <span class="font-normal text-muted">(optional)</span></span>
+        <input class="input min-h-11" name="sha256" autocomplete="off" spellcheck="false" pattern="[0-9a-fA-F]{64}"></label>
+    </div>
+    <label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="allow_http" value="1" class="size-5"> Allow a plain HTTP address (not encrypted)</label>
+    <button type="submit" class="btn btn-primary justify-self-start">Check source</button>
+  </form>
+  {{template "import-plan" .}}
+</section>
+{{end}}
+
+{{define "import-plan"}}
+<div id="import-plan" class="mt-4" aria-live="polite">
+  {{with .Error}}<p class="card p-4 text-danger" role="alert">{{.}}</p>{{end}}
+  {{with .Plan}}
+  <form class="card grid gap-3 p-5" hx-post="/app/models/import/start" hx-target="#import-plan" hx-swap="outerHTML">
+    {{range $.Plan.Warnings}}
+    <p class="rounded-xl border border-line bg-surface-muted p-3 text-sm" role="alert"><span class="font-semibold">⚠ {{if eq .Code "custom-source"}}Custom source{{else if eq .Code "insecure-http"}}Not encrypted{{else}}Note{{end}}.</span> {{.Text}}</p>
+    {{end}}
+    <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+      <dt class="text-muted">Source</dt><dd class="break-all">{{.Display}}</dd>
+      {{with .Revision}}<dt class="text-muted">Revision</dt><dd class="break-all">{{.}} (fixed commit)</dd>{{end}}
+      <dt class="text-muted">Model id</dt><dd class="break-all">{{.ID}}</dd>
+      <dt class="text-muted">Task</dt><dd>{{if .Task}}{{.Task}}{{else}}not stated by the source — choose one above{{end}}</dd>
+      {{with .License}}<dt class="text-muted">License</dt><dd>{{.}}</dd>{{end}}
+      <dt class="text-muted">Download</dt><dd>{{if .SizeKnown}}{{size .TotalBytes}}{{else}}size not reported{{end}}</dd>
+    </dl>
+    {{if .Choices}}
+    <fieldset><legend class="text-sm font-semibold">This repository has several weight files. Choose one:</legend>
+      {{range .Choices}}<label class="flex min-h-11 items-center gap-2 text-sm break-all"><input type="radio" name="file" value="{{.}}" required class="size-5"> {{.}}</label>{{end}}
+    </fieldset>
+    {{else}}
+    <ul class="space-y-1 text-sm">{{range .Files}}<li class="break-all"><span class="font-semibold">{{.Filename}}</span> · {{.Role}}{{if .SizeBytes}} · {{size .SizeBytes}}{{end}} · {{if eq .HashTrust "authoritative"}}publisher checksum{{else if eq .HashTrust "user"}}your checksum{{else}}checksum recorded after download (identity only){{end}}</li>{{end}}</ul>
+    {{end}}
+    <label class="grid gap-1"><span class="text-sm font-semibold">Backend</span>
+      <select class="input min-h-11" name="backend">
+        <option value="auto">Automatic{{if $.Recommended}} — {{$.Recommended}}{{else}} — none detected yet{{end}}</option>
+        {{range $.Options}}<option value="{{.ID}}">{{.Name}} — {{.RatingLabel}} · {{.Install}}</option>{{end}}
+      </select></label>
+    <p class="text-sm text-muted">{{if $.Recommended}}Detected from the source's metadata and checked again after download.{{else}}Nothing was detected as compatible. You can still download it and choose any backend now or later.{{end}}</p>
+    <input type="hidden" name="token" value="{{$.Token}}">
+    {{if .Custom}}<label class="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="confirm" value="1" required class="size-5"> I trust this source{{if $.Insecure}} and accept the unencrypted transfer{{end}}</label>{{end}}
+    <button type="submit" class="btn btn-primary justify-self-start">Download</button>
+  </form>
+  {{end}}
+  {{template "import-job" .}}
+</div>
+{{end}}
+
+{{define "import-job"}}
+{{with .Job}}
+<div id="import-job" class="card mt-4 p-5" aria-live="polite" {{if eq .State "running"}}hx-get="/app/models/import/jobs/{{.ID}}" hx-trigger="every 1s" hx-target="this" hx-swap="outerHTML"{{end}}>
+  {{if eq .State "running"}}
+  <p class="font-semibold">Importing… {{.Progress.Phase}} {{.Progress.File}}</p>
+  {{if .Progress.Total}}<progress class="mt-2 w-full" max="{{.Progress.Total}}" value="{{.Progress.Done}}">{{pct .Progress.Done .Progress.Total}}%</progress>{{end}}
+  {{else if eq .State "failed"}}
+  <p class="text-danger" role="alert">The import failed: {{.Error}}</p>
+  {{else}}
+  <p class="font-semibold">Imported <a class="text-accent underline-offset-4 hover:underline" href="/app/models/m/{{.Model.ID}}">{{.Model.Name}}</a>.</p>
+  <p class="mt-1 text-sm text-muted">The download finished. Whether it runs is decided by the backend below when the model is first used.</p>
+  {{with $.Backend}}<div class="mt-3">{{template "backend-panel" .}}</div>{{end}}
+  {{end}}
+</div>
+{{end}}
+{{end}}
