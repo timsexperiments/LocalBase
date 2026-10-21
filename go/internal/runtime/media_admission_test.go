@@ -411,3 +411,12 @@ func TestLLMClaimHoldsRequests(t *testing.T) {
 		t.Errorf("running %q", id)
 	}
 }
+func (p *fakePeer) EmergencyStop(error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.stopped {
+		p.stopped = true
+		p.res.Release()
+		p.host.avail.Add(p.freed)
+	}
+}

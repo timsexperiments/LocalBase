@@ -199,6 +199,44 @@ reproduces them byte for byte and the table tests are ported from TS:
   again. A retry refused for memory again answers the first refusal. Without
   it, a full run had TS stop whisper and the embedding model and answer 409
   while Go answered 503.
+- Pressure-driven stops (`runtime.PressureMonitor`, TS
+  `MemoryPressureMonitor` with serve's `applyElevatedMemoryPressure`). The
+  host is sampled every 2 s without overlapping samples. The thresholds are
+  the TS ones: critical below the reserve (9.6 GiB on a 64 GB host),
+  constrained below 1.25 × the reserve, and 3 normal samples to recover;
+  constrained after critical stays critical, and an unknown sample keeps the
+  state and resets the count. Every constrained sample stops the idle
+  runtimes (running, no lease, nothing queued), so requests in flight keep
+  theirs. On entering critical, queued work gets 503 `service_unavailable`
+  for "Inference" (TS `InferenceQueueUnavailableError`) and every runtime
+  stops, active ones included, as TS `evictAllRuntimes` does. Each state
+  change logs `runtime.memory-pressure-changed` (warn, error, or info on
+  recovery). Failing video jobs (a constrained sample that found nothing
+  idle outside the 10 s reclaim grace, or critical) is wired as
+  `PressureMonitor.FailVideo` for M6. `TestMemoryPressureGolden`
+  (`tools/golden/memory-pressure.ts`) runs six sample sequences through the
+  real TS controller and monitor and checks the Go state, recovery count,
+  action, stops and events at each sample. `TestPressureStopsRuntimes` drives
+  a fake sampler into constrained and critical with a real LLM and STT
+  runtime on the fake backend. Before this, Go only stopped the LLM on
+  critical, every 5 s, and stopped nothing on constrained.
+- `runtime.memory-admission-rejected` (TS supervisor and reconciler). Every
+  memory refusal carries TS's diagnostics (`AdmissionError.Attributes`):
+  reason, pool, measured, reserve, pending, requested and effective
+  available bytes ("unavailable" for the unsampled GPU working set), the
+  sample time and age, the provider's pressure reading, the safety state,
+  the recovery count and the demand confidence.
+  `TestAdmissionDiagnosticsGolden` (`tools/golden/admission-diagnostics.ts`)
+  replays nine scenarios against the real TS controller. The event is logged
+  when a start is refused (no stage; the component is the launched server),
+  when a switch preflight is refused (stage `switch-preflight`, `from_model`,
+  `to_model`), and after the previous model stopped (stage `post-stop`). The
+  post-stop case is the TS settle and rollback, also ported here: after the
+  previous model stops, admission is sampled for up to 10 s (every 100 ms);
+  if memory never settles, the previous model becomes active again,
+  `model.switch-rolled-back` is logged with `reload`, and it reloads once
+  memory admits it (LLM: at once). Go previously started the new model
+  immediately, so a slow page return left nothing loaded.
 - `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
   free + speculative + inactive, since vm_stat prints speculative pages apart),
   `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working

@@ -71,6 +71,14 @@ const (
 
 func newTestLLM(t *testing.T, host *bigHost) *LLM {
 	t.Helper()
+	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem.SetSampler(nil)
+	return newTestLLMWith(t, mem)
+}
+
+// newTestLLMWith is newTestLLM on a given memory controller.
+func newTestLLMWith(t *testing.T, mem *memory.Controller) *LLM {
+	t.Helper()
 	dir := t.TempDir()
 	models := filepath.Join(dir, "models", "llm")
 	os.MkdirAll(models, 0o700)
@@ -88,8 +96,6 @@ func newTestLLM(t *testing.T, host *bigHost) *LLM {
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Host: "127.0.0.1", Port: FreePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
 		Active: map[string]string{"llm": modelA}, Selected: map[string][]string{"llm": {modelA, modelB}}}
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
 	m := NewLLM(LLMDeps{Root: dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), MemoryGB: 64, Binary: fakeBinary,
 		QueueCapacity: 4, QueueTimeout: 3 * time.Second}, cfg)

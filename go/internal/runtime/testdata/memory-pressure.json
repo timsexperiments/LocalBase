@@ -1,0 +1,717 @@
+{
+  "sequences": {
+    "drain-to-critical-and-recover": [
+      {
+        "step": {
+          "availableGiB": 30
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 20
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 13
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 11.5,
+          "idle": 1
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": [
+          {
+            "severity": "warn",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "constrained"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 10.5,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 9
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [
+          "fail-video",
+          "evict-all"
+        ],
+        "events": [
+          {
+            "severity": "error",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "constrained",
+              "current_state": "critical"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 8
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 11
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 2,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": [
+          {
+            "severity": "info",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "critical",
+              "current_state": "healthy"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      }
+    ],
+    "constrained-recovery-resets": [
+      {
+        "step": {
+          "availableGiB": 11,
+          "idle": 1
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": [
+          {
+            "severity": "warn",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "constrained"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 13,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 1,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 13,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 2,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 11,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 13,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 1,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 13,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 2,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 13
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": [
+          {
+            "severity": "info",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "constrained",
+              "current_state": "healthy"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 13
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      }
+    ],
+    "constrained-nothing-idle": [
+      {
+        "step": {
+          "availableGiB": 11.9,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": [
+          {
+            "severity": "warn",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "constrained"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 11.9,
+          "idle": 0,
+          "grace": true
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 11.9,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 12.5,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 1,
+        "action": "constrain",
+        "actions": [
+          "evict-idle"
+        ],
+        "events": []
+      }
+    ],
+    "unknown-samples-hold-state": [
+      {
+        "step": {
+          "availableGiB": 9
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [
+          "fail-video",
+          "evict-all"
+        ],
+        "events": [
+          {
+            "severity": "error",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "critical"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": null,
+          "pressure": "unknown"
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 2,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14,
+          "pressure": "unknown"
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "critical",
+        "normalSamples": 2,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 14
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": [
+          {
+            "severity": "info",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "critical",
+              "current_state": "healthy"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 9
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [
+          "fail-video",
+          "evict-all"
+        ],
+        "events": [
+          {
+            "severity": "error",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "critical"
+            }
+          }
+        ]
+      }
+    ],
+    "critical-flaps": [
+      {
+        "step": {
+          "availableGiB": 9
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [
+          "fail-video",
+          "evict-all"
+        ],
+        "events": [
+          {
+            "severity": "error",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "critical"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 9.7
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 9.5
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 12.2
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 9.59
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 9.61
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 20
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 20
+        },
+        "state": "critical",
+        "normalSamples": 2,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 20
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": [
+          {
+            "severity": "info",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "critical",
+              "current_state": "healthy"
+            }
+          }
+        ]
+      }
+    ],
+    "thresholds": [
+      {
+        "step": {
+          "availableGiB": 12
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 11.9990234375,
+          "idle": 0
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": [
+          {
+            "severity": "warn",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "healthy",
+              "current_state": "constrained"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 9.6
+        },
+        "state": "constrained",
+        "normalSamples": 0,
+        "action": "constrain",
+        "actions": [
+          "evict-idle",
+          "fail-video"
+        ],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 9.5990234375
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [
+          "fail-video",
+          "evict-all"
+        ],
+        "events": [
+          {
+            "severity": "error",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "constrained",
+              "current_state": "critical"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 9.6
+        },
+        "state": "critical",
+        "normalSamples": 0,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 12
+        },
+        "state": "critical",
+        "normalSamples": 1,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 12
+        },
+        "state": "critical",
+        "normalSamples": 2,
+        "action": "emergency-stop",
+        "actions": [],
+        "events": []
+      },
+      {
+        "step": {
+          "availableGiB": 12
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": [
+          {
+            "severity": "info",
+            "event": "runtime.memory-pressure-changed",
+            "attributes": {
+              "previous_state": "critical",
+              "current_state": "healthy"
+            }
+          }
+        ]
+      },
+      {
+        "step": {
+          "availableGiB": 12
+        },
+        "state": "healthy",
+        "normalSamples": 0,
+        "action": "allow",
+        "actions": [],
+        "events": []
+      }
+    ]
+  }
+}

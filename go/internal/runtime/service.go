@@ -8,6 +8,7 @@ import (
 	"net"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -292,8 +293,20 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	if spec != nil && !t.Imported && t.Variant.ID == "default" {
 		installErr = s.ensureInstalled(modelID)
 	}
-	if installErr == nil || preflightsFromCatalog(s.d.Modality, spec, t) {
+	previous := ""
+	if s.d.Config != nil {
+		previous = s.d.Config().Active[s.d.Kind]
+	}
+	switching := previous != modelID
+	preflight := installErr == nil || preflightsFromCatalog(s.d.Modality, spec, t)
+	if preflight {
 		if err := s.d.Memory.CheckAdmission(context.Background(), demand, []string{s.d.Modality}); err != nil {
+			if switching {
+				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err,
+					"stage", "switch-preflight", "from_model", previous, "to_model", modelID)
+			} else {
+				logAdmissionRejected(s.d.Log, s.d.Modality, modalityComponents[s.d.Modality], err)
+			}
 			return demand, err
 		}
 	}
@@ -309,6 +322,11 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	s.mu.Unlock()
 	if prev != nil {
 		s.stop(prev)
+		if preflight && switching && previous != "" {
+			if err := settleAfterStop(s.d.Memory, demand); err != nil && s.rollBack(previous, modelID, err) {
+				return demand, err
+			}
+		}
 	}
 	b, err := s.start(t, demand, parent)
 	if err != nil {
@@ -325,6 +343,53 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	s.mu.Unlock()
 	go s.watch(b)
 	return demand, nil
+}
+
+// rollBack reinstates the previous active model after a switch whose memory
+// never settled (TS rollBackRejectedSwitch). It reports false when the
+// configuration moved on meanwhile (another model was activated or the
+// previous one deselected); the switch then goes ahead. The previous model
+// was running, so it is reloaded once memory admits it.
+func (s *Service) rollBack(previous, requested string, err error) bool {
+	cfg := s.d.Config()
+	if s.d.Activate == nil || cfg.Active[s.d.Kind] != requested || !slices.Contains(cfg.Selected[s.d.Kind], previous) {
+		return false
+	}
+	s.d.Activate(s.d.Kind, previous)
+	logRolledBack(s.d.Log, s.d.Modality, previous, requested, true, err)
+	go s.reloadRestored(previous)
+	return true
+}
+
+// reloadRestored starts a rolled-back model once memory admits it, unless
+// something else started meanwhile (TS reloadRestoredModel).
+func (s *Service) reloadRestored(modelID string) {
+	failed := func(err error) {
+		s.d.Log.Warn("Restored model could not be reloaded; it will start on demand.", "event", "model.switch-restore-failed",
+			"category", "runtime", "component", modalityComponents[s.d.Modality], "runtime", s.d.Modality,
+			"error", err.Error(), slog.Group("attributes", "model", modelID))
+	}
+	t, err := s.d.Gate(modelID)
+	if err != nil {
+		failed(err)
+		return
+	}
+	if err := settleAfterStop(s.d.Memory, s.demand(t)); err != nil {
+		failed(err)
+		return
+	}
+	s.mu.Lock()
+	idle := s.cur == nil && !s.switching && !s.closed && len(s.queue) == 0 && s.d.Config().Active[s.d.Kind] == modelID
+	s.mu.Unlock()
+	if !idle {
+		return
+	}
+	l, err := s.Acquire(context.Background(), modelID)
+	if err != nil {
+		failed(err)
+		return
+	}
+	l.Release()
 }
 
 // preflightsFromCatalog reports whether the TS switch preflight sizes a
@@ -386,6 +451,7 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 	}
 	res, err := s.d.Memory.Reserve(context.Background(), s.d.Modality, demand)
 	if err != nil {
+		logAdmissionRejected(s.d.Log, s.d.Modality, cmd.name, err)
 		return nil, err
 	}
 	s.d.Log.InfoContext(ctx, "Starting "+cmd.name+" for "+t.ModelID+".", "event", "runtime.starting", "runtime", s.d.Modality,
@@ -488,6 +554,23 @@ func (s *Service) Running() string {
 		return ""
 	}
 	return s.cur.modelID
+}
+
+// EmergencyStop rejects queued work with reason and stops the backend, busy
+// or not (memory critical); the next request starts it again.
+func (s *Service) EmergencyStop(reason error) {
+	s.mu.Lock()
+	for _, w := range s.queue {
+		w.done = true
+		w.ready <- reason
+	}
+	s.queue = nil
+	b := s.cur
+	s.cur = nil
+	s.mu.Unlock()
+	if b != nil {
+		s.stop(b)
+	}
 }
 
 // Close stops the backend after in-flight switches finish.

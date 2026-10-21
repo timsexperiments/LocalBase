@@ -119,19 +119,19 @@ func TestUnavailableMeasurementRejects(t *testing.T) {
 
 func TestHysteresis(t *testing.T) {
 	c, h := newTestController(5) // below the 9.6 reserve: critical
-	if a := c.Poll(context.Background()); a != "emergency-stop" {
+	if a := c.Poll(context.Background()).Action; a != "emergency-stop" {
 		t.Fatalf("got %s", a)
 	}
 	h.avail = 40 * GiB
 	for i := 0; i < recoverySamples-1; i++ {
-		if a := c.Poll(context.Background()); a != "emergency-stop" {
+		if a := c.Poll(context.Background()).Action; a != "emergency-stop" {
 			t.Fatalf("sample %d: recovered early (%s)", i, a)
 		}
 		if r := reason(func() error { _, err := c.Reserve(context.Background(), "x", demand(1)); return err }()); r != "memory-pressure" {
 			t.Fatalf("admission during recovery: %q", r)
 		}
 	}
-	if a := c.Poll(context.Background()); a != "allow" {
+	if a := c.Poll(context.Background()).Action; a != "allow" {
 		t.Fatalf("got %s", a)
 	}
 }

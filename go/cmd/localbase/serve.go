@@ -307,24 +307,10 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	httpServer := &http.Server{Handler: srv, ReadHeaderTimeout: 30 * time.Second}
 
-	// Memory pressure: a critical sample stops the runtime and rejects queued work.
+	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
 	feedDone := startFeedScheduler(r.Dir, cat, log, stopPoll)
-	go func() {
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-stopPoll:
-				return
-			case <-t.C:
-				if mem.Poll(context.Background()) == "emergency-stop" {
-					log.Error("Memory is critical; stopping runtimes.", "event", "memory.emergency-stop")
-					llm.EmergencyStop(&memory.AdmissionError{Reason: "memory-pressure", PoolID: "system"})
-				}
-			}
-		}
-	}()
+	go runtime.NewPressureMonitor(mem, recovery, log).Run(stopPoll, runtime.PressurePollInterval)
 
 	if srv.OnReady != nil && srv.Ready() {
 		srv.OnReady()

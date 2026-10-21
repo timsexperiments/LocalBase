@@ -26,6 +26,9 @@ var (
 	ErrUnavailable   = errors.New("runtime unavailable")
 	ErrModelNotFound = errors.New("model not found")
 	ErrStartupFailed = errors.New("runtime failed to start")
+	// ErrMemoryEmergency rejects queued work when memory turns critical (TS:
+	// "Inference rejected by memory emergency.", a 503 for "Inference").
+	ErrMemoryEmergency = fmt.Errorf("%w: inference rejected by memory emergency", ErrUnavailable)
 )
 
 const (
@@ -445,11 +448,24 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	m.mu.Unlock()
 	if prev != nil {
 		if err := m.d.Memory.CheckAdmission(context.Background(), demand, []string{"llm"}); err != nil {
-			m.d.Log.Warn("Switch preflight rejected; keeping the current model.", "event", "runtime.switch-rejected",
-				"runtime", "llm", "model_id", modelID, "current_model_id", prev.modelID, "error", err.Error())
+			if prev.modelID != modelID {
+				logAdmissionRejected(m.d.Log, "llm", modalityComponents["llm"], err,
+					"stage", "switch-preflight", "from_model", prev.modelID, "to_model", modelID)
+			} else {
+				logAdmissionRejected(m.d.Log, "llm", modalityComponents["llm"], err)
+			}
 			return demand, err
 		}
 		m.stopBackend(prev)
+		// Memory must settle before the new model starts; if it never does,
+		// the previous model is restored (TS rollBackRejectedSwitch).
+		if prev.modelID != modelID {
+			if err := settleAfterStop(m.d.Memory, demand); err != nil {
+				logRolledBack(m.d.Log, "llm", prev.modelID, modelID, true, err)
+				m.restore(prev, parent)
+				return demand, err
+			}
+		}
 	}
 	b, err := m.startBackend(modelID, spec, plan, demand, t, parent)
 	if err != nil {
@@ -458,10 +474,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
-			if rb, rerr := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); rerr == nil {
-				rb.key = prev.key
-				m.install(rb)
-			}
+			m.restore(prev, parent)
 		}
 		return demand, err
 	}
@@ -563,6 +576,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	}
 	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
 	if err != nil {
+		logAdmissionRejected(m.d.Log, "llm", name, err)
 		return nil, err
 	}
 	m.d.Log.InfoContext(ctx, "Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
@@ -761,4 +775,12 @@ func (m *LLM) Snapshot() Snapshot {
 		s.State = "disabled"
 	}
 	return s
+}
+
+// restore starts the previous model again after a switch failed.
+func (m *LLM) restore(prev *backend, parent *otlp.Span) {
+	if rb, err := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); err == nil {
+		rb.key = prev.key
+		m.install(rb)
+	}
 }

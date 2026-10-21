@@ -35,6 +35,9 @@ type idlePeer interface {
 	stopClaimed()
 	// unclaim lets the runtime take work again.
 	unclaim()
+	// EmergencyStop rejects queued work with reason and stops the runtime,
+	// active or not; its next request starts it again.
+	EmergencyStop(reason error)
 }
 
 // IdleRecovery holds the runtimes recovery may stop. The zero value has no
@@ -45,6 +48,8 @@ type IdleRecovery struct {
 
 	mu    sync.Mutex
 	peers []idlePeer
+	// lastEviction is when idle runtimes were last stopped for memory.
+	lastEviction time.Time
 	// settle overrides the settle timeout and interval (tests).
 	settleTimeout, settleInterval time.Duration
 }
@@ -99,6 +104,9 @@ func (r *IdleRecovery) recover(modality string, demand memory.Demand) bool {
 				"runtime", p.runtimeID(), "for_runtime", modality)
 		}
 		p.stopClaimed()
+	}
+	if len(claims) > 0 {
+		r.markEvicted()
 	}
 	timeout, interval := memorySettleTimeout, memorySettleInterval
 	if r.settleTimeout > 0 {
