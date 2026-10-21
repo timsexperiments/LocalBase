@@ -1458,7 +1458,8 @@ Branch `rewrite/go-m6`, draft PR #374, stacked on #373.
    recovery and pressure for video.
 2. The Lab video page and the chat `generate_video` tool against the Go
    routes.
-3. Linux/systemd qualification, including the Linux NVIDIA video target.
+3. Linux/systemd qualification. The Linux NVIDIA video target uses NVIDIA PCI
+   pinning, which stays deferred with the other NVIDIA-only features (§11.3).
 
 Every installed video model needs the 6 GB umt5 text encoder (about 10 GB in
 total), above the 2 GB limit for test models. A real-model run waits for the
