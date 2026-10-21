@@ -1134,6 +1134,16 @@ Deliberate status changes to verify against the live clients at cutover:
    `audit.access-changed` or `audit.api-key-changed` with the actor and
    target ids only (`TestAdminAuditRedaction`).
 
+6. **A request cut off by a memory emergency** (operator decision). As in
+   TS, critical memory stops every runtime, including ones serving active
+   requests. TS answers such a request 502 `upstream_error`, or ends its
+   stream with an `upstream_error` event. Go answers 503
+   `service_unavailable` ("Inference service…") with `Retry-After: 5`. A
+   stream that already started ends with a `service_unavailable` error
+   event and closes. Chat, embeddings, images, transcription and speech
+   all do this (`Lease.Interrupted`; `TestEmergencyStopAnswers503`,
+   `TestEmergencyStopEndsStream`).
+
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
 

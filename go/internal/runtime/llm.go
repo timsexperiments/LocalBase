@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -87,6 +88,8 @@ type backend struct {
 	res     *memory.Reservation
 	baseURL string
 	stop    chan struct{}
+	// emergency: stopped because memory turned critical.
+	emergency atomic.Bool
 }
 
 type waiter struct {
@@ -671,6 +674,9 @@ func (m *LLM) watch(b *backend) {
 func (m *LLM) EmergencyStop(reason error) {
 	m.mu.Lock()
 	b := m.cur
+	if b != nil {
+		b.emergency.Store(true)
+	}
 	for len(m.queue) > 0 {
 		m.fail(m.queue[0], reason)
 	}
@@ -784,3 +790,7 @@ func (m *LLM) restore(prev *backend, parent *otlp.Span) {
 		m.install(rb)
 	}
 }
+
+// Interrupted reports whether the lease's runtime was stopped because memory
+// turned critical; the request then answers 503 with Retry-After.
+func (l *Lease) Interrupted() bool { return l.b != nil && l.b.emergency.Load() }

@@ -72,6 +72,14 @@ const (
 // newTestServer runs a gateway with --no-auth over the fake backend.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	ts, _, _ := newTestGateway(t, host{})
+	return ts
+}
+
+// newTestGateway is newTestServer on a given host, with its LLM runtime and
+// memory controller.
+func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *runtime.LLM, *memory.Controller) {
+	t.Helper()
 	dir := t.TempDir()
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
@@ -94,7 +102,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
 		Active:   map[string]string{"llm": chatModel},
 		Selected: map[string][]string{"llm": {chatModel, embeddingModel, decisionModel}}}
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
@@ -104,7 +112,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, llm, mem
 }
 
 type result struct {

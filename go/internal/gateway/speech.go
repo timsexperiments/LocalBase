@@ -178,6 +178,8 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		case r.Context().Err() != nil:
 			w.WriteHeader(499)
 			tel.finish("cancelled", 499, "request_aborted")
+		case lease.Interrupted():
+			memoryInterrupted(w, r, tel)
 		case errors.As(err, &voice):
 			writeError(w, r, 400, "invalid_request_error", "voice_not_supported", voice.Error(), strp("voice"))
 			tel.finish("error", 400, "")

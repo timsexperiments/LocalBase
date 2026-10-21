@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -82,6 +83,8 @@ type svcBackend struct {
 	proc    *Process
 	res     *memory.Reservation
 	baseURL string
+	// emergency: stopped because memory turned critical.
+	emergency atomic.Bool
 }
 
 type svcWaiter struct {
@@ -569,6 +572,7 @@ func (s *Service) EmergencyStop(reason error) {
 	s.cur = nil
 	s.mu.Unlock()
 	if b != nil {
+		b.emergency.Store(true)
 		s.stop(b)
 	}
 }
@@ -701,3 +705,7 @@ func catalogServiceDemand(cat *catalog.Catalog, spec *catalog.Spec, localBytes i
 	}
 	return d
 }
+
+// Interrupted reports whether the lease's runtime was stopped because memory
+// turned critical; the request then answers 503 with Retry-After.
+func (l *ServiceLease) Interrupted() bool { return l.b != nil && l.b.emergency.Load() }
