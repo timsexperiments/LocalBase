@@ -1643,108 +1643,178 @@ before enabling lingering, and then starts the user manager itself:
 lingering alone raced logind once. And it copies files into the home
 directory, because `docker cp` cannot write into a tmpfs mount.
 
-## 17. M7: cutover (draft for operator review)
+## 17. M7: cutover plan (for operator review)
 
-Nothing in this section touches the live install until the operator
-approves it. Steps 3 and 4 run with the operator, in a window they choose.
+The operator runs every live step. Nothing here has been run yet. Each step
+that reads the live root waits for the operator's review of this plan.
+Throughout, "live" means `~/.local/share/local-base`, `~/.local/bin/local-base`
+and the `com.localbase.gateway.<hash>` launchd agent.
 
-### 17.1 Gates before any live step
+### 17.1 Preconditions
 
-1. CI green on macOS and Linux, and a full dual contract run green within
-   the last day (including `TestFSGuard`).
-2. Every deliberate difference in §13.6 accepted (1–6 so far).
-3. The operator-run checks (§13.6 and §15.4) done or explicitly waived:
-   the real-iPhone keyboard, VoiceOver and microphone checks; a real-model
-   vision turn; a model choosing a tool by itself.
-4. Open product decisions settled or deferred on record: CrispASR marking
-   default (on), the Go version string (`0.2.0`), and the #368 port if it
-   merged.
-5. **Feature audit of the live root, read-only.** Every configured feature
-   must be one Go supports: the browser access provider and registrations
-   (a GitHub registration is ignored with a warning, §11.2), email
-   delivery, OTLP settings, custom voices, imports and backend choices, the
-   selected models of every modality, and installs in progress. Any gap
-   blocks cutover.
+Each item is done, or waived on record by the operator.
 
-### 17.2 Shadow on a copy of live data (step 1)
+1. **#368 (curated catalog, former entries).** Either merged and ported
+   (former adoption, the feed skip, the discovery template fallback;
+   goldens regenerated), or a recorded decision to cut over without it and
+   port it afterwards.
+2. **The user's real-iPhone checks on the Go UI**, over Cloudflare Access to
+   a release candidate (§15.4): no zoom when the composer is focused, the
+   composer stays above the keyboard, Return adds a line on touch,
+   VoiceOver, and dictation with the real microphone.
+3. **§13.6 reviewed against each live client:**
 
-- **The copy.** `/tmp/lbgo-shadow/root`: the database through the SQLite
-  backup API (a consistent copy while the live gateway runs), plus
-  `ui-access.json`, credentials, voices, the catalog overrides and the
-  checksum caches. Model files come in only as read-only APFS clones
-  (`cloneModel` rules, §16.3). The copy is checked with `assertNoLinks`.
-- **The run.** Go runs in the foreground on a scratch port (24000–29999),
-  loopback only, never as a service. The copy holds real API key hashes and
-  browser access settings, so it must not be reachable from anything but
-  this machine.
-- **Checks.**
-  - Go starts on the copy with no drizzle migration applied; the
-    `__drizzle_migrations` rows are unchanged.
-  - `status`, `diagnostics` and `/health` are clean.
-  - The read-only CLI commands (`models list`, `keys list`, `access list`,
-    `config show`) match the TS CLI's output on the same copy.
-  - Smoke, including a decision question.
-  - A live API key and a live browser session cookie, copied with the
-    data, authenticate against the copy.
-- **Optional.** One test client (for example a t3-opencode profile)
-  pointed at the scratch port for a while, if the operator wants real
-  traffic.
+   | Client | Routes to check | Differences that can reach it |
+   | --- | --- | --- |
+   | naya-device-worker | the routes it calls (operator to list) | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
+   | t3-opencode | `/v1/chat/completions` (streaming), `/v1/models` | 3, 6 |
+   | decision clients | `/v1/systemone` | 3, 6 |
+   | browser (Chat, Admin, Lab) | `/app/**`, `/_localbase/**` | 2 (unparseable multipart), 4 (model management while a runtime is up), 5 (Admin lockout, 409) |
 
-### 17.3 Rollback drill on the copy (step 2)
+   Each row is signed off as "no client relies on the TS behaviour". The
+   transient-failure contract (503 or 429 with `Retry-After`) is unchanged,
+   and 6 replaces a 502 with that contract.
+4. **The open cutover checklist items (§13.6), on the release candidate:**
+   - an image turn with a real vision model;
+   - a real chat model choosing a generation tool by itself;
+   - the real-collector check (`go/tools/otelcol-check.sh`, pinned
+     otelcol 0.163.1);
+   - `config apply` restarting a launchd service, under a throwaway label
+     (folded into the rehearsal, §17.2 step 5).
+5. **A green build:** CI on macOS and Linux, a full dual contract run, and
+   `tools/systemd-check.sh`, all on the release-candidate commit.
+6. **Version string.** The release binary reports `0.2.0` (it reports
+   `0.2.0-go` now), unless the operator chooses otherwise.
 
-Done once, on the shadow copy, before the live cutover:
+### 17.2 Rehearsal on this Mac, against a copy of the live root
 
-1. Stop Go.
-2. Start TS from the source checkout at the live release's tag (never
-   `~/.local/bin/local-base`) on the same copy.
-3. Confirm TS opens the database Go ran on. Its journal check passes, and
-   it ignores `go_schema`, `imported_models`, `model_backend_selections`
-   and `go_settings`.
-4. Confirm TS serves, sessions and keys still work, and smoke passes.
-5. Then Go again on the same copy.
+**The copy** goes to `/tmp/lbgo-rehearsal/root` (operator's choice of one
+method):
 
-Record the timings and any issue. Rollback is only as good as this drill.
+- **(a) Quiesced clone.** Briefly stop the live gateway (`local-base stop`),
+  clone the whole root with `cp -c -R` (APFS, copy-on-write: the live files
+  are only read), then `local-base start`. Downtime is seconds.
+- **(b) Live, consistent.** No downtime. `sqlite3 ~/.local/share/local-base/local-base.db
+  ".backup /tmp/lbgo-rehearsal/root/local-base.db"`, then APFS clones of
+  everything else (the models directories, `ui-access.json`, credentials,
+  voices, `catalog.d`, the checksum caches). No links, as in §16.3.
+  `assertNoLinks` is run on the copy.
 
-### 17.4 Cutover (step 3, with the operator)
-
-Preconditions: the live gateway is idle (the window preflight, §16), no
-benchmark is running, and there is at least 90 GB of free disk.
-
-1. **Back up.** The database through the SQLite backup API to
-   `~/.local/share/local-base/backups/pre-go-<date>.db`, plus copies of
-   `ui-access.json`, `service/manifest.json` and the installed plist.
-2. **Build.** The release Go binary from the accepted commit, checked
-   with `local-base version`.
-3. **Stop.** `local-base stop` (TS).
-4. **Swap binaries by `mv`, never an in-place `cp`.** Move the TS binary
-   aside as `~/.local/bin/local-base.ts-0.1.0`, then move the Go binary
-   into place.
-5. **Restart.** `local-base restart` (Go) rewrites the plist under the
-   same label: byte-identical rendering is already proven, so its
-   fingerprint matches. Then `local-base status`, then `local-base smoke`
-   with a decision question.
-6. **The operator checks the public hostname.** Sign-in through Google and
-   Cloudflare Access, Chat from the phone, and the Admin page.
-7. **Watch for 30 minutes.** `local-base logs --level warn`: memory
-   refusals, pressure changes, start failures, error rates.
-
-### 17.5 Rollback (if needed)
-
-**Triggers:** a smoke failure, a sign-in or key failure, inference errors
-above normal, a memory incident, or anything the operator calls.
+Either way the copy holds real API key hashes, sessions and access
+settings. It is served on loopback only and deleted after the rehearsal.
 
 **Steps:**
-1. `local-base stop`.
-2. Move the Go binary aside as `local-base.go-<commit>`, and the TS binary
-   back into place.
-3. `local-base restart` (TS) rewrites its plist, then `local-base smoke`.
 
-The database needs nothing: the journal never changed, and the Go-only
-tables are ignored. The pre-cutover backup is only for corruption.
+1. **Schema baseline.** For the copy, record `SELECT hash, created_at
+   FROM __drizzle_migrations` and `sqlite3 .schema`.
+2. **Install Go as a service on the copy.** Under a throwaway launchd
+   label, which follows from the copy's path: `com.localbase.gateway.<hash
+   of /tmp/lbgo-rehearsal/root>`. Use a test port in 24000–29999, set with
+   `local-base --root /tmp/lbgo-rehearsal/root config apply` on the copy;
+   the backend ports move with it, away from the live ones. Then
+   `local-base start`.
+3. **Checks against the copy:**
+   - `local-base smoke`, including a decision question;
+   - the contract suite in Go-only mode (`-url http://127.0.0.1:<port>
+     -key <a copy key>`);
+   - `status`, `diagnostics`, `/health`, `/health/ready`.
+4. **Real clients, only where the operator judges it safe:** naya and
+   opencode pointed at the rehearsal port through a config override (one
+   profile each, no shared state). A client with side effects outside
+   LocalBase is left out.
+5. **`config apply` with a launchd restart** (§13.6): a new port with
+   `--restart auto` gives `activation: restarted`; `--wait` returns on
+   `pendingRestart: false`; `--restart never` followed by `restart` clears
+   it.
+6. **The UI through a temporary path.** The copy's Google sign-in only
+   accepts the public callback, so the UI is checked through one of:
+   - the copy's session cookie set for the loopback origin in a scratch
+     browser profile;
+   - a scratch copy of the copy with a magic-link or `--no-auth` setup.
+   Chat, Admin and Lab load and work. cloudflared and Access are not
+   touched.
+7. **Schema both ways.** After Go ran, the `__drizzle_migrations` rows are
+   identical to the baseline. The only schema change is the Go extension
+   tables (`go_schema`, `imported_models`, `model_backend_selections`,
+   `go_settings`).
+8. **Rollback on the copy.**
+   - `local-base stop` (Go).
+   - Swap to the TS binary, the live release `0.1.0` copied to a scratch
+     path, never the live one.
+   - `restart` under the same throwaway label, then `smoke`.
+   - TS opens the database and its journal check passes. It ignores the Go
+     tables; keys and sessions work.
+   - Record the time from stop to a passing smoke.
+9. **Forward again.** Swap back to Go and `smoke`, to prove the database
+   still works for Go after TS ran.
+10. **Clean up.** `stop`, then `uninstall --yes` on the copy (removes the
+    throwaway label and the copy), then remove `/tmp/lbgo-rehearsal`.
 
-### 17.6 After cutover
+Results go into this section: timings, schema dumps, and any issue.
 
-- TS stays installable for two weeks (§7.4). No Go-only drizzle
-  migrations in that time, so rollback stays a binary swap.
-- After two weeks with no rollback, the TS sources retire (§7.5), and the
-  stacked PRs (#369–#374) merge with the operator.
+### 17.3 Live cutover runbook (the operator runs it)
+
+**Before:** the rehearsal passed within the last day, and the live
+gateway is idle. Use the window preflight (`/tmp/lbgo-video-window/preflight.sh`
+has the checks): no inference in flight, no benchmark backends, at least
+90 GB of free disk.
+
+1. **Back up** to `~/.local/share/local-base/backups/pre-go-<date>/`:
+   - `sqlite3 local-base.db ".backup …/local-base.db"`;
+   - `ui-access.json`, `credentials/`, `voices/`, `service/manifest.json`;
+   - the installed plist from `~/Library/LaunchAgents/`;
+   - a copy of the TS binary as `local-base.ts-0.1.0`.
+2. **Stage the binary:** `cp <release>/local-base ~/.local/bin/local-base.new`,
+   then `chmod 755`.
+3. **Swap**, following the deploy rules (an in-place `cp` over a running
+   binary kills it):
+   1. `mv ~/.local/bin/local-base ~/.local/bin/local-base.ts-0.1.0`
+      (if step 1 didn't already keep it);
+   2. `mv ~/.local/bin/local-base.new ~/.local/bin/local-base`;
+   3. `local-base --version` prints the release version;
+   4. `local-base restart`. The plist may change, and restart rewrites it
+      under the same label; Go's rendering is byte-identical to TS's for
+      the same inputs.
+4. **Post-cutover checks:**
+   - `local-base status`, `local-base smoke` (with a decision question),
+     `/health` and `/health/ready`;
+   - the public hostname through Cloudflare Access: Google sign-in, then
+     Chat from the phone, Admin and Lab;
+   - naya-device-worker and t3-opencode work normally;
+   - the Grafana telemetry flow: traces and logs from the new gateway
+     arrive;
+   - 30 minutes of `local-base logs --level warn`, watching
+     `runtime.memory-admission-rejected`, `runtime.memory-pressure-changed`,
+     `backend.start-failed` and error rates.
+5. **Rollback triggers.** Any one of these is enough:
+   - a failing smoke or `/health`;
+   - a sign-in or API key failure;
+   - a client failing in a way it didn't before;
+   - inference errors above the pre-cutover baseline;
+   - a memory incident;
+   - missing telemetry;
+   - the operator's call.
+6. **Rollback.** Target: under 5 minutes from the decision to a passing
+   smoke, as measured in the rehearsal.
+   1. `local-base stop`
+   2. `mv ~/.local/bin/local-base ~/.local/bin/local-base.go-<commit>`
+   3. `mv ~/.local/bin/local-base.ts-0.1.0 ~/.local/bin/local-base`
+   4. `local-base --version` prints `0.1.0`
+   5. `local-base restart`, then `local-base smoke`
+
+   The database needs nothing: the drizzle journal is unchanged, and TS
+   ignores the Go tables. The backup from step 1 is only for corruption.
+7. **Retiring TS.** The TS binary (`local-base.ts-0.1.0`) and the TS CI
+   jobs stay for two weeks after the cutover. During that time there are
+   no Go-only drizzle migrations, so rollback stays a binary swap. After
+   two weeks with no rollback, and the operator's sign-off:
+   - the TS sources and bun CI retire;
+   - the `drizzle/` SQL moves under `go/internal/store/migrations`;
+   - the stacked PRs (#369 to #374) merge with the operator.
+
+### 17.4 Not touched by the cutover
+
+cloudflared and the Cloudflare Access configuration; every launchd service
+other than the LocalBase gateway's own label; model files (no download,
+move or rewrite; the Go binary reads the same files); the user's
+OpenTelemetry collector and Grafana; System One and Pixelator.
