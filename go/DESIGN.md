@@ -1789,6 +1789,15 @@ has the checks): no inference in flight, no benchmark backends, at least
 4. **Post-cutover checks:**
    - `local-base status`, `local-base smoke` (with a decision question),
      `/health` and `/health/ready`;
+   - **deferred from the reduced drill (§17.10), now explicit:**
+     - the post-swap `local-base smoke` must pass on the live active model
+       (qwen3.5-9b), with its real load;
+     - one `POST /v1/systemone` decision question must answer 200 with
+       the requested type, using a scratch key from the operator;
+   - the default chat model list (§18):
+     `defaultLlmModels = ["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`,
+     applied with `config apply`. Then `local-base status` shows the
+     effective default and its reason;
    - the public hostname through Cloudflare Access: Google sign-in, then
      Chat from the phone, Admin and Lab;
    - naya-device-worker and t3-opencode work normally;
@@ -2144,6 +2153,16 @@ was `["qwen3.6-35b-a3b-iq4_nl_xl", "qwen3.5-9b-q4_k_m"]`.
 
 **Cleanup.** The copy and clones (`/private/tmp/lbgo-shadow`) and the TS
 builds were deleted. No throwaway label or plist remains.
+
+**The two contract tests that passed only on rerun** (operator request:
+five isolated runs each, before cutover):
+- `TestDifferentialModelManagement`: 5 of 5.
+- `TestDifferentialVideoJobFailure`: 3 of 5 at first. A test bug, not a
+  gateway one. Both gateways refused the job for memory with the same code,
+  demand (13.7 GiB) and wording. The message names the usable memory
+  sampled when each job starts, the two jobs run one after the other, and
+  the sample moved by 0.1 GiB. The test now masks only that figure. After
+  the fix: 5 of 5.
 
 ## 18. Fit-aware default chat model (Go only; operator, 2026-10-21)
 

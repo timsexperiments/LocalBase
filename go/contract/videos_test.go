@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -158,8 +159,16 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 			first = s
 			continue
 		}
-		if fmt.Sprint(s["error"]) != fmt.Sprint(first["error"]) {
+		// A memory refusal names the usable memory sampled when each job
+		// started; the two jobs run one after the other, so only that
+		// figure may differ.
+		if sampledUsable(fmt.Sprint(s["error"])) != sampledUsable(fmt.Sprint(first["error"])) {
 			t.Errorf("errors differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
 		}
 	}
 }
+
+var usableRe = regexp.MustCompile(`only [0-9.]+ GiB is usable`)
+
+// sampledUsable masks the host-sampled usable memory in an admission message.
+func sampledUsable(msg string) string { return usableRe.ReplaceAllString(msg, "only N GiB is usable") }
