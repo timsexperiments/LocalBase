@@ -9,9 +9,9 @@
 //   LOCALBASE_QUALIFY_KEY=<key> LOCALBASE_QUALIFY_NOSCOPE_KEY=<key> \
 //     bun run go/tools/decision-qualify.ts
 //
-// LOCALBASE_QUALIFY_KEY needs models:read, inference:decision and
-// inference:chat (the chat and embeddings refusal checks pass the
-// permission check first). LOCALBASE_QUALIFY_NOSCOPE_KEY is a key without
+// LOCALBASE_QUALIFY_KEY needs four scopes: inference:decision,
+// inference:chat, inference:embeddings and models:read (the chat and
+// embeddings refusal checks pass each route's permission check first). LOCALBASE_QUALIFY_NOSCOPE_KEY is a key without
 // inference:decision; without it that check is skipped. Keys are read from
 // the environment only and never printed. The first request loads the model
 // (a real GPU load): run it in an operator window. Exits 1 if a check fails.
@@ -215,10 +215,10 @@ for (const c of scoreCases) {
   const bad = await post("/v1/systemone", "{not json");
   rec("malformed JSON is rejected (400)", bad.status === 400, `${bad.status}`);
   const chat = await post("/v1/chat/completions", { model: MODEL, messages: [{ role: "user", content: "hi" }], max_tokens: 4 }, okKey);
-  const scopeHint = (s: number) => (s === 403 ? " (LOCALBASE_QUALIFY_KEY needs inference:chat for this check)" : "");
-  rec("chat completions on a decision model are refused with an explanation", chat.status === 400 && /decision/i.test(chat.text), `${chat.status} ${(chat.json?.error?.message ?? "").slice(0, 80)}${scopeHint(chat.status)}`);
+  const scopeHint = (scope: string) => (s: number) => (s === 403 ? ` (LOCALBASE_QUALIFY_KEY needs ${scope} for this check)` : "");
+  rec("chat completions on a decision model are refused with an explanation", chat.status === 400 && /decision/i.test(chat.text), `${chat.status} ${(chat.json?.error?.message ?? "").slice(0, 80)}${scopeHint("inference:chat")(chat.status)}`);
   const emb = await post("/v1/embeddings", { model: MODEL, input: "hi" }, okKey);
-  rec("embeddings on a decision model are refused (400)", emb.status === 400, `${emb.status} ${(emb.json?.error?.code ?? "").toString()}${scopeHint(emb.status)}`);
+  rec("embeddings on a decision model are refused (400)", emb.status === 400, `${emb.status} ${(emb.json?.error?.code ?? "").toString()}${scopeHint("inference:embeddings")(emb.status)}`);
   if (noScopeKey) {
     const noScope = await post("/v1/systemone", { model: MODEL, state: "x", questions: invoiceQ }, noScopeKey);
     rec("key without inference:decision is refused (403)", noScope.status === 403, `${noScope.status}`);
