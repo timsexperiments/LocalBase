@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -347,7 +348,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if !ok {
-		t.finish("error", s.relayUpstreamError(w, r, resp.StatusCode, raw), "")
+		t.finish("error", s.relayUpstreamError(w, r, resp.StatusCode, raw, o.kind), "")
 		return
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -572,8 +573,10 @@ func allNumbers(v []any) bool {
 }
 
 // relayUpstreamError normalizes an OpenAI-shaped backend error. llama-server's
-// context overflow becomes OpenAI's context_length_exceeded.
-func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, status int, raw []byte) int {
+// context overflow becomes OpenAI's context_length_exceeded, and so does an
+// input over its physical batch size, which it reports as a 500
+// server_error (Go only, DESIGN §13.6 item 7).
+func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, status int, raw []byte, kind string) int {
 	var body struct {
 		Error *struct {
 			Message any `json:"message"`
@@ -600,6 +603,10 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 	typ := e.Type.(string)
 	if typ == "exceed_context_size_error" {
 		writeError(w, r, 400, "invalid_request_error", "context_length_exceeded", e.Message.(string), strp("messages"))
+		return 400
+	}
+	if msg := e.Message.(string); typ == "server_error" && batchOverflowRe.MatchString(msg) {
+		writeError(w, r, 400, "invalid_request_error", "context_length_exceeded", batchOverflowMessage(msg, kind), strp(inputParam(kind)))
 		return 400
 	}
 	writeJSON(w, status, map[string]any{"error": apiError{Message: e.Message.(string), Type: typ, Param: param, Code: code}})
@@ -734,4 +741,45 @@ const memoryEmergencyEvent = `data: {"error":{"message":"Inference service is cu
 func memoryInterrupted(w http.ResponseWriter, r *http.Request, t *inference) {
 	runtimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
 	t.finish("error", 503, "memory_emergency")
+}
+
+// llama-server's error for an input over the physical batch size (-b/-ub):
+// "input (27634 tokens) is too large to process. increase the physical
+// batch size (current batch size: 8192)".
+var (
+	batchOverflowRe = regexp.MustCompile(`(?i)is too large to process\b.*\bbatch size`)
+	batchInputRe    = regexp.MustCompile(`input \((\d+) tokens\)`)
+	batchLimitRe    = regexp.MustCompile(`batch size: (\d+)`)
+)
+
+// batchOverflowMessage states the limit in product words.
+func batchOverflowMessage(msg, kind string) string {
+	model := map[string]string{"decision": "this decision model", "embeddings": "this embedding model"}[kind]
+	if model == "" {
+		model = "this model"
+	}
+	in, lim := batchInputRe.FindStringSubmatch(msg), batchLimitRe.FindStringSubmatch(msg)
+	if in == nil || lim == nil {
+		return "The input is larger than " + model + " accepts at once. Shorten it and try again."
+	}
+	return fmt.Sprintf("The input is about %s tokens, but %s accepts up to %s.", groupDigits(in[1]), model, groupDigits(lim[1]))
+}
+
+// inputParam is the request field that carries the input.
+func inputParam(kind string) string {
+	switch kind {
+	case "decision":
+		return "state"
+	case "embeddings":
+		return "input"
+	}
+	return "messages"
+}
+
+// groupDigits writes 27634 as 27,634.
+func groupDigits(n string) string {
+	for i := len(n) - 3; i > 0; i -= 3 {
+		n = n[:i] + "," + n[i:]
+	}
+	return n
 }

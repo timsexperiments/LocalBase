@@ -11,7 +11,9 @@
 // "fake:overflow" fails the same way only while the request has more than
 // four messages (so a compacted retry succeeds),
 // "fake:reasoning" adds reasoning_content, "fake:truncated" ends a stream
-// without [DONE].
+// without [DONE]. "fake:batch" (as the chat message, the embeddings input or
+// the decision state) fails like an input over the physical batch size, with
+// llama-server's exact 500; "fake:batch-plain" does so without the numbers.
 package main
 
 import (
@@ -67,6 +69,9 @@ func main() {
 		maxTokens, _ := req["max_tokens"].(float64)
 		content := fmt.Sprintf("hello from %s (max_tokens=%d)", name, int(maxTokens))
 		mode := lastUser(req)
+		if batchOverflow(w, mode) {
+			return
+		}
 		switch {
 		case mode == "fake:context", mode == "fake:overflow" && messageCount(req) > 4:
 			w.Header().Set("Content-Type", "application/json")
@@ -106,6 +111,11 @@ func main() {
 		})
 	})
 	mux.HandleFunc("POST /v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		if in, _ := req["input"].(string); batchOverflow(w, in) {
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"object": "list", "model": name,
 			"data":  []any{map[string]any{"object": "embedding", "index": 0, "embedding": []float64{0.1, 0.2}}},
@@ -113,9 +123,13 @@ func main() {
 	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
+			State     string                    `json:"state"`
 			Questions map[string]map[string]any `json:"questions"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		if batchOverflow(w, req.State) {
+			return
+		}
 		answers := map[string]any{}
 		for id := range req.Questions {
 			answers[id] = map[string]any{"type": "noul", "noul": 0.5}
@@ -154,4 +168,23 @@ func message(mode, content string) map[string]any {
 		m["reasoning_content"] = "hm"
 	}
 	return m
+}
+
+// batchOverflow answers llama-server's error for an input over the physical
+// batch size (-b/-ub), which it reports as a 500 server_error.
+func batchOverflow(w http.ResponseWriter, mode string) bool {
+	msg := ""
+	switch mode {
+	case "fake:batch":
+		msg = "input (27634 tokens) is too large to process. increase the physical batch size (current batch size: 8192)"
+	case "fake:batch-plain":
+		msg = "input is too large to process. increase the physical batch size"
+	default:
+		return false
+	}
+	b, _ := json.Marshal(map[string]any{"error": map[string]any{"code": 500, "message": msg, "type": "server_error"}})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	w.Write(b)
+	return true
 }

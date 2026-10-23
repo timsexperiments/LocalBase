@@ -1143,6 +1143,25 @@ Deliberate status changes to verify against the live clients at cutover:
    event and closes. Chat, embeddings, images, transcription and speech
    all do this (`Lease.Interrupted`; `TestEmergencyStopAnswers503`,
    `TestEmergencyStopEndsStream`).
+7. **An input over llama-server's physical batch size** (operator, after
+   cutover, from the Clef Flash qualification).
+   - **The trigger:** the decision runtime launches with
+     `-c 8192 -b 8192 -ub 8192`. A longer input makes llama-server answer
+     500 `server_error` "input (27634 tokens) is too large to process.
+     increase the physical batch size (current batch size: 8192)".
+   - **TS 0.1.0** passes that through as a 500 (read from the source).
+   - **Go** answers 400 `invalid_request_error`, code
+     `context_length_exceeded`. The message states the limit, for example
+     "The input is about 27,634 tokens, but this decision model accepts up
+     to 8,192." Without the numbers it says "The input is larger than this
+     decision model accepts at once. Shorten it and try again." `param` is
+     the input field: `state`, `input` or `messages`.
+   - **Where it applies:** one relay serves decision, embeddings and chat,
+     so all three map it. In practice, chat reaches the context limit first,
+     because llama-server splits a causal prompt across batches; that case
+     is the existing `exceed_context_size_error` → 400.
+   - **Test:** `TestBatchOverflowIs400`, with the fake backend's
+     `fake:batch` and `fake:batch-plain`.
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
