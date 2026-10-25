@@ -106,24 +106,29 @@ func TestConfigureDefaultsLeaveActive(t *testing.T) {
 	}
 }
 
-// Doctor on a Linux host with an NVIDIA GPU says the GPU is present and
-// that its VRAM is not used for admission (operator observability audit).
+// Doctor on a Linux host with an NVIDIA GPU reports its free memory and
+// that placement is planned against it; on unified memory it says
+// placement does not apply (DESIGN §20.2).
 func TestDoctorNVIDIALines(t *testing.T) {
 	s := memory.Specs{OSName: "Ubuntu", GPUName: "NVIDIA GeForce RTX 3060",
 		NVIDIA: []memory.NvidiaGPU{{Name: "NVIDIA GeForce RTX 3060", MemoryMiB: 12288}}}
-	got := strings.Join(gpuLines(s), "\n")
-	for _, want := range []string{"NVIDIA GPU: NVIDIA GeForce RTX 3060, 12288 MiB",
-		"NVIDIA GPU present, VRAM admission not qualified on this build"} {
+	got := strings.Join(gpuLines(s, []memory.GPUMemory{{Index: 0, Name: "NVIDIA GeForce RTX 3060", FreeBytes: 11899 << 20, TotalBytes: 12288 << 20}}), "\n")
+	for _, want := range []string{"NVIDIA GPU 0: NVIDIA GeForce RTX 3060, 11.6 GB free of 12.0 GB",
+		"planned against its free memory (0.5 GB kept free)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "Discrete Memory") {
-		t.Errorf("reports 0 GB of discrete VRAM:\n%s", got)
+	if strings.Contains(got, "Discrete Memory") || strings.Contains(got, "not qualified") {
+		t.Errorf("stale VRAM wording:\n%s", got)
 	}
-	plain := strings.Join(gpuLines(memory.Specs{GPUName: "CPU / Integrated Graphics"}), "\n")
-	if strings.Contains(plain, "NVIDIA") {
-		t.Errorf("no GPU mentions NVIDIA:\n%s", plain)
+	s.NVIDIA = append(s.NVIDIA, memory.NvidiaGPU{Name: "NVIDIA A10", MemoryMiB: 23028})
+	if two := strings.Join(gpuLines(s, nil), "\n"); !strings.Contains(two, "CUDA_VISIBLE_DEVICES") {
+		t.Errorf("multi-GPU wording:\n%s", two)
+	}
+	mac := strings.Join(gpuLines(memory.Specs{GPUName: "Apple M4 Max GPU", IsAppleSilicon: true, GPUVramGB: 64}, nil), "\n")
+	if !strings.Contains(mac, "Unified Memory") || !strings.Contains(mac, "does not apply") || strings.Contains(mac, "NVIDIA") {
+		t.Errorf("unified:\n%s", mac)
 	}
 }
 

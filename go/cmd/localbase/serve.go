@@ -26,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -201,7 +202,7 @@ func serve(c *cli.Ctx) (any, error) {
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
 		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery,
-		Placement: placementSource}, cfg)
+		Placement: placementSource, GPUPool: &memory.GPUPool{Reserve: placement.ReserveBytes}}, cfg)
 	recovery.Add(llm)
 	defer llm.Close()
 	// The media modalities: one supervised backend each, through the selection.

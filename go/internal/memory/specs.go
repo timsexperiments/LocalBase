@@ -23,9 +23,8 @@ type Specs struct {
 	GPUVramGB      int    `json:"gpuVramGb"`
 	IsMac          bool   `json:"isMac"`
 	IsAppleSilicon bool   `json:"isAppleSilicon"`
-	// NVIDIA lists the GPUs nvidia-smi reports (Linux). LocalBase does not
-	// admit models against their VRAM yet (DESIGN §11.3, §19): admission
-	// uses the system memory pool.
+	// NVIDIA lists the GPUs nvidia-smi reports (Linux). Discrete placements
+	// are admitted against GPU 0's free memory (DESIGN §20.4).
 	NVIDIA []NvidiaGPU `json:"nvidiaGpus,omitempty"`
 }
 
@@ -34,10 +33,6 @@ type NvidiaGPU struct {
 	Name      string `json:"name"`
 	MemoryMiB int    `json:"memoryMiB"`
 }
-
-// VRAMAdmissionNote is what doctor and the admission log say when an NVIDIA
-// GPU is present.
-const VRAMAdmissionNote = "NVIDIA GPU present, VRAM admission not qualified on this build"
 
 // nvidiaSMI runs nvidia-smi (tests replace it).
 var nvidiaSMI = func() ([]byte, error) {

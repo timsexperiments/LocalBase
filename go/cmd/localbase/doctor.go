@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"os"
 	"strconv"
 
@@ -26,7 +27,7 @@ func doctorCommand() *cli.Command {
 			c.Info("OS: %s", s.OSName)
 			c.Info("CPU: %s", s.CPUModel)
 			c.Info("RAM: %d GB", s.RAMGB)
-			for _, l := range gpuLines(s) {
+			for _, l := range gpuLines(s, memory.GPUMemoryNow()) {
 				c.Info("%s", l)
 			}
 			c.Info("Parallel Slots: %s", e.Config.Parallel)
@@ -49,7 +50,7 @@ func doctorCommand() *cli.Command {
 			case s.IsAppleSilicon:
 				c.Info("Status: ❌ Low memory. Limit to small models (1.5B) and small contexts.")
 			case len(s.NVIDIA) > 0:
-				c.Info("Status: ⚠️ %s. LocalBase sizes models against the %d GB of system memory.", memory.VRAMAdmissionNote, s.RAMGB)
+				c.Info("Status: ✅ Discrete NVIDIA GPU with %d GB of system memory: models are placed against the GPU's free memory, and what does not fit stays in system memory.", s.RAMGB)
 			case s.GPUVramGB >= 16:
 				c.Info("Status: ✅ Excellent fit for multi-model coding setup (7B/14B models + local STT).")
 			case s.GPUVramGB >= 12:
@@ -73,20 +74,31 @@ func doctorCommand() *cli.Command {
 		}}
 }
 
-// gpuLines are doctor's GPU lines. An NVIDIA GPU is reported, but its VRAM
-// is not used for admission yet (DESIGN §19).
-func gpuLines(s memory.Specs) []string {
+// gpuLines are doctor's GPU lines, with where CPU/GPU placement applies
+// (DESIGN §20): planned against an NVIDIA GPU's free memory, not applicable
+// on unified memory.
+func gpuLines(s memory.Specs, gpus []memory.GPUMemory) []string {
+	gb := func(b int64) string { return strconv.FormatFloat(float64(b)/(1<<30), 'f', 1, 64) + " GB" }
 	lines := []string{"GPU: " + s.GPUName}
 	switch {
 	case len(s.NVIDIA) > 0:
-		for _, g := range s.NVIDIA {
-			lines = append(lines, fmt.Sprintf("NVIDIA GPU: %s, %d MiB", g.Name, g.MemoryMiB))
+		for i, g := range s.NVIDIA {
+			line := fmt.Sprintf("NVIDIA GPU %d: %s, %s", i, g.Name, gb(int64(g.MemoryMiB)<<20))
+			if i < len(gpus) {
+				line = fmt.Sprintf("NVIDIA GPU %d: %s, %s free of %s", gpus[i].Index, gpus[i].Name, gb(gpus[i].FreeBytes), gb(gpus[i].TotalBytes))
+			}
+			lines = append(lines, line)
 		}
-		lines = append(lines, "GPU VRAM: "+memory.VRAMAdmissionNote+"; models are admitted against system memory.")
+		if len(s.NVIDIA) > 1 {
+			lines = append(lines, fmt.Sprintf("Placement: %d NVIDIA GPUs; LocalBase places a model on one. Set CUDA_VISIBLE_DEVICES to a single GPU (for example CUDA_VISIBLE_DEVICES=0).", len(s.NVIDIA)))
+		} else {
+			lines = append(lines, "Placement: discrete NVIDIA GPU; models are planned against its free memory ("+gb(placement.ReserveBytes)+" kept free), and what does not fit stays in system memory.")
+		}
 	case s.IsAppleSilicon:
-		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB))
+		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB),
+			"Placement: unified memory; the GPU and CPU share it, so placement planning does not apply.")
 	default:
-		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Discrete Memory)", s.GPUVramGB))
+		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Discrete Memory)", s.GPUVramGB), "Placement: no GPU found; models run on the CPU.")
 	}
 	return lines
 }

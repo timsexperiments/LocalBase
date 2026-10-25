@@ -2631,3 +2631,33 @@ this plan.
   - `TestPlacementAPI`, `TestPlacementAppliesOnNextLoad` and
     `TestModelMetadataPlacement` (gateway);
   - `TestModelsPlacementCLI` and `TestPlacementStore`.
+
+### 20.10 The gpu:0 pool and doctor (PR 4)
+
+**The pool.** `memory.GPUPool` admits a discrete placement's `gpuBytes`
+on GPU 0 against an `nvidia-smi` sample taken at start time.
+- **Formula:** free − 512 MiB reserve − loads not yet resident ≥ request.
+  A load counts as pending until it is resident, after which the sample
+  shows its usage. A request larger than the card is permanent.
+- **In the LLM:** the pool reserves next to the system pool before
+  starting. A refusal is the usual retryable 503 `insufficient_memory`,
+  naming GPU memory, and the log names `pool: gpu:0`.
+- **System pool:** unchanged, with its pressure monitor and eviction.
+- **Tests:** `TestGPUPool` and `TestPlacementGPUPool`.
+
+**Doctor.** This supersedes #377's "VRAM admission not qualified" wording
+(§19.3).
+- Per NVIDIA GPU: free and total memory.
+- **One GPU:** "Placement: discrete NVIDIA GPU; models are planned against
+  its free memory (0.5 GB kept free), and what does not fit stays in system
+  memory."
+- **Several GPUs:** the instruction to set `CUDA_VISIBLE_DEVICES` to one
+  GPU.
+- **Unified memory:** "placement planning does not apply".
+- **No GPU:** "models run on the CPU".
+- **Admission log:** rejections on an NVIDIA host carry
+  `vram_admission: gpu:0`.
+- **Test:** `TestDoctorNVIDIALines`.
+
+**Linux CUDA qualification** is the operator's, with the user, through the
+Pixelator's DFS-owned queue. Nothing here ran on it.

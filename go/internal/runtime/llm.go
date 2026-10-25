@@ -79,6 +79,9 @@ type LLMDeps struct {
 	// Placement supplies a model's stored CPU/GPU placement and the device
 	// it would run on (DESIGN §20; nil: no placement planning).
 	Placement PlacementSource
+	// GPUPool admits a discrete placement's GPU bytes on gpu:0 (DESIGN
+	// §20.4; nil: no GPU pool).
+	GPUPool *memory.GPUPool
 }
 
 // PlacementSource is where a load's placement inputs come from.
@@ -603,6 +606,16 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		logAdmissionRejected(m.d.Log, "llm", name, err)
 		return nil, err
 	}
+	// A discrete placement also reserves its GPU bytes on gpu:0.
+	var gpuRes *memory.GPUReservation
+	if p := plan.Placement; p != nil && p.Platform == placement.Discrete && p.GPULayers > 0 && m.d.GPUPool != nil {
+		if gpuRes, err = m.d.GPUPool.Admit("llm", p.GPUBytes); err != nil {
+			res.Release()
+			logAdmissionRejected(m.d.Log, "llm", name, err, "model_id", modelID, "placement_mode", p.Mode)
+			return nil, err
+		}
+	}
+	defer gpuRes.Release() // resident (or failed) by the time this returns
 	m.d.Log.InfoContext(ctx, "Starting "+name+" for "+modelID+".", "event", "runtime.starting", "runtime", "llm",
 		"model_id", modelID, "ctx_size", plan.CtxSize, "slots", plan.Parallel.Slots,
 		"demand_bytes", demand.UnifiedBytes, "demand_confidence", demand.Confidence)

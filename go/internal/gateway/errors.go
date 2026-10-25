@@ -115,6 +115,10 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 	case errors.As(err, &ae):
 		w.Header().Set("Retry-After", "5")
 		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."
+		if ae.PoolID == "gpu:0" {
+			msg = fmt.Sprintf("Not enough free GPU memory to load this model with its placement right now: it needs %.1f GiB on the GPU, %.1f GiB is free and %.1f GiB is kept free. Retry shortly, or choose a placement that keeps more in system memory.",
+				float64(ae.RequestedBytes)/float64(memory.GiB), float64(ae.AvailableBytes)/float64(memory.GiB), float64(ae.ReserveBytes)/float64(memory.GiB))
+		}
 		if ae.PoolID == "gpu-working-set" && !ae.Permanent {
 			msg = fmt.Sprintf("This model needs more GPU memory than the %.1f GiB working-set limit leaves beside the models already loaded. Retry once another model is idle or unloaded.", float64(ae.AvailableBytes)/float64(memory.GiB))
 		}
