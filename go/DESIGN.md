@@ -2385,3 +2385,202 @@ admission stays deferred (§11.3); the gap is now explicit:
 - **Qualification:** on the Pixelator, through its serialized queue (never
   without the operator), against the TS-free Linux CI plus a real 12 GB
   card.
+
+## 20. CPU/GPU placement: automatic, with advanced overrides (design addendum, 2026-10-25)
+
+User-approved (benchmark thread). This is capacity placement: where a model's
+tensors live so that it fits. It is not a claim that offload is fast. Product
+and catalog text name no measurements or rankings; the qualification
+evidence stays internal, as test fixtures. Out of scope: catalog or default
+changes, new runtimes, and anything on the live gateway.
+
+### 20.1 Modes and settings
+
+A placement is chosen per model and per device. It is device-local, like the
+backend choice (§12), and stored in a new Go-only table `model_placements`
+(model_id, device_id, mode, gpu_layers, cpu_moe_layers, ctx_size,
+updated_at). The Go schema version goes to 2, created idempotently; TS
+ignores the table, so rollback stays a binary swap. No row means `auto`.
+
+| `mode` | Meaning | llama-server arguments |
+| --- | --- | --- |
+| `auto` (default) | Everything on the GPU when it fits; otherwise the smallest conservative CPU offload that fits (§20.3) | none, or `--n-cpu-moe N` / `-ngl L` from the plan |
+| `gpu` | GPU-only. If it does not fit, the request is refused for memory as today. It never falls back to an offload | none |
+| `cpu` | CPU-only | `-ngl 0` |
+| `custom` | `cpuMoeLayers` (MoE only), `gpuLayers` and `contextSize`, each optional | `--n-cpu-moe N`, `-ngl L`, `-c` |
+
+- `cpuMoeLayers` is llama.cpp `--n-cpu-moe N`: the expert tensors (weights
+  and biases matching `blk.<i>.ffn_(up|down|gate|gate_up)_(ch|)exps`) of
+  layers 0…N-1 stay in host memory.
+- `gpuLayers` is ordinary partial offload (`-ngl`): this many repeating
+  layers, counted from the output end, on the GPU.
+- `contextSize` overrides the configured context ceiling for this model
+  only (clamped as today to the model's window, with the same auto or
+  explicit rule).
+
+### 20.2 Surfaces
+
+- **API:** `GET` (models:read), `PUT` and `DELETE` (models:manage) at
+  `/_localbase/models/{id}/placement`. The body is `{"mode":
+  "auto"|"gpu"|"cpu"|"custom", "cpuMoeLayers"?, "gpuLayers"?,
+  "contextSize"?}`. The response is `{"requested": {…}, "resolved":
+  Placement}`. `/_localbase/models/{id}` gains `device.placement`, the
+  resolved Placement.
+- **Placement** (resolved, JSON):
+  - `mode`;
+  - `platform`: `unified`, `discrete-nvidia` or `cpu`;
+  - `pool`: `system` or `gpu:<index>`;
+  - `gpuLayers` and `totalLayers`;
+  - `cpuMoeLayers` and `hostTensors` (count), `hostLayers` (indices);
+  - `gpuBytes`, `hostBytes`, `kvBytes`, `workspaceBytes`, `reserveBytes`,
+    `freeVramBytes`;
+  - `support`: `{nCpuMoe, gpuLayers, cpuOnly}`, each with a reason when
+    false;
+  - `note`, a short factual line, for example "Unified memory: GPU and CPU
+    share the same memory, so offloading frees nothing."
+- **CLI:** `local-base models placement <id>` shows the resolved split.
+  Setting it: `--mode auto|gpu|cpu|custom`, `--cpu-moe-layers N`,
+  `--gpu-layers N`, `--context-size N`, and `--reset` to go back to auto.
+  `models show` adds a "Placement" block with the same lines.
+- **Doctor:** per GPU, `nvidia-smi` free and total VRAM and the reserve. It
+  says whether placement planning is available on this machine: "discrete
+  NVIDIA: planned against free VRAM" or "unified memory: not applicable".
+  This replaces #377's "VRAM admission not qualified" line where §20.4
+  now applies.
+- **UI:** the model detail page gets a "Placement" card (models:manage):
+  the resolved split in words, for example "Experts of layers 0–3 stay in
+  system memory (1.6 GB); everything else on the GPU", plus the mode
+  selector and the Custom fields. Wording is generic and names no models.
+- **Errors.** Unsupported overrides are 400 `invalid_request_error`, code
+  `placement_unsupported`, with an actionable message:
+  - `cpuMoeLayers` on a model with no expert tensors;
+  - `cpuMoeLayers` on a backend without `--n-cpu-moe` (checked against the
+    pinned runtime's flag set; a custom build is probed once with
+    `--help`);
+  - `gpuLayers` > 0 on a CPU-only backend;
+  - `cpuMoeLayers` on unified memory;
+  - values out of range.
+  A placement that cannot fit at all is 409 `placement_does_not_fit`, with
+  the numbers: needed versus free VRAM and host RAM.
+
+### 20.3 The planner (`internal/placement`, pure, no model load)
+
+Inputs:
+- the GGUF tensor descriptors (name, dims, ggml type → bytes using
+  llama.cpp's block sizes, e.g. MXFP4 17 bytes per 32 values, Q4_K 144 per
+  256, F32 4 per value), read from the header only;
+- the architecture geometry (§3, `ReadGeometry`);
+- the launch (context, slots, KV cache types);
+- the device: free VRAM per GPU and available host RAM.
+
+Margins match admission:
+- workspace 256 MiB on the GPU;
+- GPU reserve 512 MiB (the VRAM floor);
+- host side: the existing system reserve (§3).
+
+GPU need = resident weights on the GPU + KV (`KVCacheBytes`) + workspace +
+reserve.
+
+Auto:
+1. All on the GPU if that fits.
+2. Otherwise, for an MoE model: the smallest N with the first N layers'
+   experts on the host that fits.
+3. Otherwise, for a dense model or when N runs out: the largest `-ngl` that
+   fits.
+4. The host side must still fit the system pool, or the plan is "does not
+   fit", answered as an admission error. Nothing is half-started.
+
+Golden test: on the GPT-OSS-20B header descriptors and the reference free
+VRAM, the planner reproduces from the header alone:
+- 144 expert tensors over 24 layers, 424,120,320 B per layer;
+- KV at 4K = 76,873,728 B;
+- minimum N per context 4/8/16/32/64/128K = 1/1/1/1/2/4;
+- the qualified N = 4 for the whole ladder (1,696,481,280 B on host).
+
+### 20.4 Discrete NVIDIA (Linux): the minimum of §19.3
+
+- **Pools:** a `gpu:<index>` pool per device, sampled from `nvidia-smi
+  --query-gpu=index,memory.free,memory.total` (2 s cadence when it is
+  used), with the 512 MiB reserve. A placement on a discrete GPU reserves
+  in both pools: `gpuBytes` in `gpu:<i>` and `hostBytes` in `system`. The
+  system admission, pressure monitor and eviction stay as they are, and the
+  GPU pool is admit-or-refuse only.
+- **Single GPU:** one device (index 0) only. Multi-GPU split is out of
+  scope and refused clearly.
+- **Qualification:** CUDA qualification runs later on the Pixelator through
+  the DFS-owned queue with the user. This repo ships the code and the tests
+  with synthetic fixtures only.
+
+### 20.5 Startup placement check (fail closed)
+
+The llama-server output is read as bytes; a strict UTF-8 decode once
+crashed a harness.
+- **Experts:** with `--n-cpu-moe N`, every expected expert tensor of layers
+  < N must appear in `tensor <name> (…) buffer type overridden to <buft>`
+  with `<buft>` `CPU*` or `CUDA_Host`. Any of them on `CUDA0` (or another
+  device buffer), any missing, or any extra host expert stops the backend
+  with `placement_mismatch` (503 for that request, `backend.start-failed`
+  with the diff).
+- **Layers:** with `-ngl L`, the "offloaded L/T layers to GPU" line must
+  match the plan.
+- Tests use synthetic logs: accept CPU/CUDA_Host, reject CUDA0, reject
+  missing, survive invalid UTF-8.
+
+### 20.6 Apple Silicon
+
+Memory is unified: offloading to the CPU frees no memory, so VRAM-based
+planning does not apply.
+- `auto` keeps today's full-GPU (Metal) launch, and admission is unchanged.
+- `gpu` is the same as `auto`.
+- `cpu` (`-ngl 0`) and `custom.gpuLayers` are honoured as plain launch
+  choices.
+- `custom.cpuMoeLayers` is refused with "On unified memory, keeping experts
+  in CPU memory frees no memory; this setting applies to discrete GPUs."
+- The resolved Placement says `platform: unified` with that note.
+
+### 20.7 Order of work (draft PRs stacked on #377)
+
+1. GGUF tensor descriptors and the planner, with the golden test on the
+   committed descriptor fixture (`testdata/gptoss20b-tensors.json`,
+   internal evidence, header-derived only).
+2. The placement validator with synthetic native logs (bytes).
+3. Storage, API, CLI, `models show`, doctor, and launch arguments wired
+   through the LLM runtime, fail closed.
+4. The NVIDIA `gpu:<index>` pool (free VRAM plus reserve) for auto
+   planning and dual-pool admission, with a fake `nvidia-smi` in tests.
+5. The UI card.
+
+### 20.8 Operator adjustments (approval, 2026-10-25)
+
+1. **Rollback safety.** The deployed Go binary refuses a database whose
+   `go_schema` version is newer than its own (`applyGoSchema`). So
+   `model_placements` is created idempotently and the version stays at 1.
+   A drill checks the previous Go binary and TS 0.1.0 against a scratch
+   database that has the table (§20.9).
+2. **Context: one source of truth.** Placement's `contextSize` reads and
+   writes the existing shared setting, `ctxSize` with `ctxMode` (#293, §2).
+   Setting it saves `ctxSize` with `ctxMode = "explicit"`. It applies to
+   every model, and the UI and CLI say so. Nothing is stored per model.
+   Precedence, highest first:
+   1. `serve --ctx-size` (the process override);
+   2. the saved `ctxSize`/`ctxMode` (the same value placement shows);
+   3. the model's context window, which clamps both as today.
+3. **Stable plans.** A plan is resolved when the model loads, and the
+   runtime record keeps it (with `plannedAt` and the free VRAM it saw)
+   until the model unloads. It is re-planned only on a load, a reload or
+   an explicit change, never per request. Surfaces show "planned at
+   <time> against <free VRAM>".
+4. **Workspace check.** At startup the logged compute buffer (CUDA0 and
+   CUDA_Host compute buffer sizes) must not exceed the planned workspace
+   by more than 10% or 64 MiB, whichever is larger. Otherwise the start
+   fails closed with `placement_mismatch`, and the error names both
+   numbers.
+5. **Copy.** Capacity and CPU use only: host memory used, which layers or
+   experts are on the host, and what auto did and why. No speed claims,
+   no model names, no rankings.
+6. **Changes and loads.** `PUT` and `DELETE` are refused with 409
+   `model_loading` while the model is starting. A change to a loaded model
+   is stored and shown as "applies on next load". The running backend
+   keeps its plan, and the runtime is never restarted implicitly.
+7. **Multi-GPU.** Refused, with the instruction to set
+   `CUDA_VISIBLE_DEVICES` to one GPU or choose CPU-only.
