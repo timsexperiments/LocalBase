@@ -256,6 +256,8 @@ func Resolve(m Model, kv int64, d Device, r Request) (Plan, error) {
 				return Plan{}, unsupported("CPU expert layers must be 0 or more.")
 			case nMoE > 0 && d.Platform == Unified:
 				return Plan{}, unsupported("On unified memory, keeping experts in CPU memory frees no memory; this setting applies to discrete GPUs.")
+			case nMoE > 0 && d.Platform == CPUOnly:
+				return Plan{}, unsupported("This model runs on the CPU here, so all of it is already in system memory; CPU expert layers apply to discrete GPUs.")
 			case nMoE > 0 && len(s.experts.ByLayer) == 0:
 				return Plan{}, unsupported("This model has no expert layers, so CPU expert layers do not apply. Use GPU layers for a partial offload instead.")
 			case nMoE > 0 && !d.CPUMoE:

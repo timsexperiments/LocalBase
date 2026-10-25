@@ -180,6 +180,8 @@ func serve(c *cli.Ctx) (any, error) {
 	// A model refused for memory may stop the idle runtimes of other modalities.
 	recovery := &runtime.IdleRecovery{Memory: mem, Log: log}
 	var llm *runtime.LLM
+	// CPU/GPU placement per model on this device (DESIGN §20).
+	placementSource := &runtime.HostPlacement{Store: st, DeviceID: lib.DeviceID, Memory: mem, Log: log}
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
 		cur := llm.Config()
@@ -198,7 +200,8 @@ func serve(c *cli.Ctx) (any, error) {
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery}, cfg)
+		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery,
+		Placement: placementSource}, cfg)
 	recovery.Add(llm)
 	defer llm.Close()
 	// The media modalities: one supervised backend each, through the selection.
@@ -283,7 +286,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
-	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth,
+	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
 	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },

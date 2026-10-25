@@ -14,11 +14,20 @@
 // without [DONE]. "fake:batch" (as the chat message, the embeddings input or
 // the decision state) fails like an input over the physical batch size, with
 // llama-server's exact 500; "fake:batch-plain" does so without the numbers.
+//
+// For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
+// override per expert tensor of the first --n-cpu-moe layers and the
+// offloaded layer count. FAKE_PLACEMENT_BUG=cuda0 puts the first expert on
+// CUDA0; FAKE_COMPUTE_MIB sets the CUDA0 compute buffer (default 100).
+// FAKE_STARTUP_MS delays listening, like a slow model load.
 package main
 
 import (
 	"encoding/json"
+	"regexp"
+
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"net"
 	"net/http"
 	"os"
@@ -29,6 +38,7 @@ import (
 
 func main() {
 	host, port, model := "127.0.0.1", "8080", ""
+	ngl, cpuMoE := -1, 0
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -44,7 +54,17 @@ func main() {
 		case "-m":
 			i++
 			model = args[i]
+		case "-ngl":
+			i++
+			ngl, _ = strconv.Atoi(args[i])
+		case "--n-cpu-moe":
+			i++
+			cpuMoE, _ = strconv.Atoi(args[i])
 		}
+	}
+	placementLines(model, ngl, cpuMoE)
+	if ms, _ := strconv.Atoi(os.Getenv("FAKE_STARTUP_MS")); ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond) // a slow model load
 	}
 	if f := os.Getenv("FAKE_FAIL_MODEL"); f != "" && strings.Contains(model, f) {
 		fmt.Fprintln(os.Stderr, "fake: refusing to load", model)
@@ -187,4 +207,45 @@ func batchOverflow(w http.ResponseWriter, mode string) bool {
 	w.WriteHeader(500)
 	w.Write(b)
 	return true
+}
+
+var fakeExpertRe = regexp.MustCompile(`^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_(ch|)exps`)
+
+func placementLines(model string, ngl, cpuMoE int) {
+	keys, err := memory.ReadGGUFHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
+	if err != nil {
+		return
+	}
+	blocks := 0
+	for _, v := range keys {
+		if f, ok := v.(float64); ok {
+			blocks = int(f)
+		}
+	}
+	tensors, _ := memory.ReadTensorTable(model)
+	bug := os.Getenv("FAKE_PLACEMENT_BUG") == "cuda0"
+	for _, t := range tensors {
+		m := fakeExpertRe.FindStringSubmatch(t.Name)
+		if m == nil {
+			continue
+		}
+		if l, _ := strconv.Atoi(m[1]); l < cpuMoE {
+			buft := "CPU"
+			if bug {
+				buft, bug = "CUDA0", false
+			}
+			fmt.Fprintf(os.Stderr, "tensor %s (%v f32) buffer type overridden to %s\n", t.Name, t.Dims, buft)
+		}
+	}
+	total := blocks + 1
+	if ngl < 0 || ngl > total {
+		ngl = total
+	}
+	fmt.Fprintf(os.Stderr, "load_tensors: offloaded %d/%d layers to GPU\n", ngl, total)
+	compute := os.Getenv("FAKE_COMPUTE_MIB")
+	if compute == "" {
+		compute = "100"
+	}
+	fmt.Fprintf(os.Stderr, "sched_reserve:      CUDA0 compute buffer size = %s MiB\n", compute)
+	os.Stderr.Write([]byte("\xff\xfe invalid bytes in the startup log\n"))
 }

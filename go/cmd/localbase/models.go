@@ -115,6 +115,7 @@ func modelsCommand() *cli.Command {
 	return &cli.Command{Name: "models", Summary: "Browse and install models", Sub: []*cli.Command{
 		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(), modelsAdd(), modelsSearch(), modelsRemoveEntry(),
 		modelsImportCommand(), modelsBackendCommand(), modelsInspectCommand(), modelsExportCommand(), modelsAddDefinitionCommand(), modelsDeleteCommand(), feedCommand(),
+		modelsPlacementCommand(),
 	}}
 }
 
@@ -488,6 +489,13 @@ func modelsShow() *cli.Command {
 			path := s.LayerPath // the contributing file or feed position (TS provenance.path)
 			for _, l := range meta.DetailLines(m, m.Device.Installed, m.Device.Selected, isDefault, path) {
 				c.Info("%s", l)
+			}
+			// The CPU/GPU placement (DESIGN §20), text only: the JSON stays
+			// TS's shape; `models placement --json` has the details.
+			if s.Kind == "llm" && !c.Global.JSON {
+				for _, l := range showPlacementLines(e, s.ModelID) {
+					c.Info("%s", l)
+				}
 			}
 			return map[string]any{"model": m, "status": map[string]bool{"installed": m.Device.Installed,
 				"enabled": m.Device.Selected, "default": isDefault}}, nil

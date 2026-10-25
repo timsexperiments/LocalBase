@@ -30,16 +30,18 @@ const Version = "0.2.0"
 
 // Server holds what handlers need. Construct with New.
 type Server struct {
-	Store    *store.Store
-	Catalog  *catalog.Catalog
-	Auth     *auth.Resolver
-	LLM      *runtime.LLM
-	Log      *slog.Logger
-	NoAuth   bool
-	MemoryGB int
-	Root     *root.Root
-	Memory   *memory.Controller
-	Browser  *auth.Browser
+	// Placement is the CPU/GPU placement source (DESIGN §20; nil: no API).
+	Placement *runtime.HostPlacement
+	Store     *store.Store
+	Catalog   *catalog.Catalog
+	Auth      *auth.Resolver
+	LLM       *runtime.LLM
+	Log       *slog.Logger
+	NoAuth    bool
+	MemoryGB  int
+	Root      *root.Root
+	Memory    *memory.Controller
+	Browser   *auth.Browser
 	// Library joins the catalog, imports and backend selections (nil in
 	// unit tests that need neither).
 	Library *library.Library
@@ -83,6 +85,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/health/ready", s.ready)
 	mux.HandleFunc("/_localbase/instance", s.instance)
 	mux.HandleFunc("/_localbase/default-model", s.defaultModel)
+	mux.HandleFunc("/_localbase/placement-state", s.placementRuntimeState)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
 	mux.HandleFunc("/v1/models/{model...}", s.guard("models:read", s.retrieveModel))
 	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))

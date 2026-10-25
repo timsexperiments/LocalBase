@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
-
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 )
 
 func runApp(t *testing.T, args ...string) (int, string) {
@@ -121,5 +124,62 @@ func TestDoctorNVIDIALines(t *testing.T) {
 	plain := strings.Join(gpuLines(memory.Specs{GPUName: "CPU / Integrated Graphics"}), "\n")
 	if strings.Contains(plain, "NVIDIA") {
 		t.Errorf("no GPU mentions NVIDIA:\n%s", plain)
+	}
+}
+
+// `models placement` shows and changes the stored choice; the context size
+// is the shared setting (DESIGN §20.2, §20.8).
+func TestModelsPlacementCLI(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	cat, _ := catalog.Load("")
+	spec := cat.ByID("qwen3.5-4b-q4_k_m")
+	os.MkdirAll(filepath.Join(root, "models", "llm"), 0o700)
+	placementtest.WriteMoEGGUF(t, filepath.Join(root, "models", "llm", spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)
+	run := func(args ...string) (int, map[string]any, string) {
+		code, out := runApp(t, append([]string{"--root", root, "--json", "models", "placement", "qwen3.5-4b-q4_k_m"}, args...)...)
+		line, _, _ := strings.Cut(out, "\n")
+		var env struct {
+			Data  map[string]any `json:"data"`
+			Error map[string]any `json:"error"`
+		}
+		json.Unmarshal([]byte(line), &env)
+		if env.Error != nil {
+			msg, _ := env.Error["message"].(string)
+			return code, nil, msg
+		}
+		return code, env.Data, ""
+	}
+	code, d, _ := run()
+	if code != 0 || d["requested"].(map[string]any)["mode"] != "auto" {
+		t.Fatalf("show: %d %v", code, d)
+	}
+	if code, d, _ = run("--mode", "cpu"); code != 0 || d["requested"].(map[string]any)["mode"] != "cpu" || d["next"].(map[string]any)["gpuLayers"] != 0.0 {
+		t.Errorf("cpu: %d %v", code, d)
+	}
+	if code, d, _ = run("--context-size", "16384"); code != 0 || d["requested"].(map[string]any)["contextSize"] != 16384.0 || d["requested"].(map[string]any)["contextMode"] != "explicit" {
+		t.Errorf("context: %d %v", code, d)
+	}
+	// Not applicable on this test machine (unified memory or no GPU).
+	if code, _, msg := run("--mode", "custom", "--cpu-moe-layers", "1"); code == 0 || msg == "" {
+		t.Errorf("cpu expert layers here: %d %q", code, msg)
+	}
+	if code, d, _ = run("--reset"); code != 0 || d["requested"].(map[string]any)["mode"] != "auto" {
+		t.Errorf("reset: %d %v", code, d)
+	}
+	if code, _, msg := run("--mode", "fastest"); code == 0 || !strings.Contains(msg, "auto, gpu, cpu or custom") {
+		t.Errorf("bad mode: %d %q", code, msg)
+	}
+	// models show prints the Placement block in text, not in its JSON.
+	_, text := runApp(t, "--root", root, "models", "show", "qwen3.5-4b-q4_k_m")
+	if !strings.Contains(text, "Placement") || !strings.Contains(text, "shared by all models") {
+		t.Errorf("show text:\n%s", text)
+	}
+	_, js := runApp(t, "--root", root, "--json", "models", "show", "qwen3.5-4b-q4_k_m")
+	if strings.Contains(js, "placement") {
+		t.Errorf("show JSON gained placement (TS shape changed)")
 	}
 }

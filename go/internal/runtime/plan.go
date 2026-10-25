@@ -1,7 +1,10 @@
 package runtime
 
 import (
+	"time"
+
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"math"
 	"path/filepath"
 	"strconv"
@@ -135,6 +138,12 @@ type LLMPlan struct {
 	Demand         memory.Demand
 	Budget         ContextBudget
 	Launch         memory.LLMLaunch
+	// Placement is the CPU/GPU split resolved for this load (DESIGN §20),
+	// nil without placement planning. PlacedAt is when it was resolved.
+	Placement *placement.Plan
+	PlacedAt  time.Time
+	// PlacementRequest is the stored choice the placement was resolved from.
+	PlacementRequest placement.Request
 }
 
 // ContextBudget is the `context_budget` object in /v1/models.
@@ -348,6 +357,9 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 	a = append(a, "--cache-type-k", p.KVType, "--cache-type-v", p.KVType, "--cache-ram", strconv.Itoa(p.PromptCacheMiB))
 	if !p.Embedding && !p.Decision {
 		a = append(a, "--cache-reuse", "256")
+	}
+	if p.Placement != nil {
+		a = append(a, p.Placement.Args...) // --n-cpu-moe / -ngl (DESIGN §20)
 	}
 	return a
 }

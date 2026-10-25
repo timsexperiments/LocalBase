@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -111,7 +112,7 @@ func (m *LLM) launchCommand(plan *LLMPlan, t *Target) (name, bin string, args []
 		for _, p := range d.Platforms {
 			accelerators[p.Accelerator] = true
 		}
-		if len(accelerators) == 1 && accelerators["cpu"] {
+		if len(accelerators) == 1 && accelerators["cpu"] && (plan.Placement == nil || !slices.Contains(plan.Placement.Args, "-ngl")) {
 			args = append(args, "-ngl", "0") // the chosen CPU build: no layers offloaded
 		}
 		switch {

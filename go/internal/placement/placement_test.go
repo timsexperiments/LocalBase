@@ -190,6 +190,7 @@ func TestUnsupportedOverrides(t *testing.T) {
 		{Device{Platform: Discrete, FreeVRAM: 12 << 30, HostAvailable: 64 << 30, CPUMoE: false, GPULayers: true}, Request{Mode: Custom, CPUMoELayers: &four}},
 		{Device{Platform: CPUOnly, HostAvailable: 64 << 30, CPUMoE: true}, Request{Mode: Custom, GPULayers: &four}},
 		{Device{Platform: CPUOnly, HostAvailable: 64 << 30, CPUMoE: true}, Request{Mode: GPU}},
+		{Device{Platform: CPUOnly, HostAvailable: 64 << 30, CPUMoE: true}, Request{Mode: Custom, CPUMoELayers: &four}},
 		{Device{Platform: Discrete, FreeVRAM: 12 << 30, HostAvailable: 64 << 30, CPUMoE: true, GPULayers: true}, Request{Mode: Custom, CPUMoELayers: &big}},
 		{Device{Platform: Discrete, FreeVRAM: 12 << 30, HostAvailable: 64 << 30, CPUMoE: true, GPULayers: true}, Request{Mode: Custom, GPULayers: &neg}},
 		{Device{Platform: Discrete, FreeVRAM: 12 << 30, HostAvailable: 64 << 30, CPUMoE: true, GPULayers: true, GPUCount: 2}, Request{Mode: Auto}},
