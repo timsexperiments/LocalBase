@@ -29,6 +29,7 @@
       </ul>
     </section>
     {{with .Backend}}<div class="min-[700px]:col-span-2">{{template "backend-panel" .}}</div>{{end}}
+    {{with .Placement}}<div class="min-[700px]:col-span-2">{{template "placement-card" .}}</div>{{end}}
     <section class="card p-5 min-[700px]:col-span-2" aria-labelledby="about-h">
       <h2 id="about-h" class="font-bold">About</h2>
       {{if .Spec.Capabilities}}<ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Capabilities">{{range .Spec.Capabilities}}<li class="badge">{{.ID}}</li>{{end}}</ul>{{end}}
@@ -78,3 +79,62 @@
 {{end}}
 
 {{define "backend-panel-frag"}}{{template "backend-panel" .Backend}}{{end}}
+{{define "placement-card-frag"}}{{with .Placement}}{{template "placement-card" .}}{{end}}{{end}}
+
+{{define "placement-card"}}
+<section id="placement-card" class="card p-5" aria-labelledby="placement-h">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 id="placement-h" class="font-bold">Placement</h2>
+    {{if .PendingNextLoad}}<span class="badge">Applies on next load</span>{{end}}
+  </div>
+  <p class="mt-1 text-sm text-muted">Where the model runs: on the GPU, on the CPU, or split between GPU memory and system memory.</p>
+  {{if and .Loaded .Resolved}}
+  <h3 class="mt-4 font-semibold">Loaded now</h3>
+  <p class="mt-1">{{.Resolved.Note}}</p>
+  <ul class="mt-1 grid gap-0.5 text-muted">{{range .Resolved.Lines}}<li>{{.}}</li>{{end}}</ul>
+  {{end}}
+  {{if .Next}}
+  <h3 class="mt-4 font-semibold">{{if .Loaded}}Next load{{else}}When it loads{{end}}</h3>
+  <p class="mt-1">{{.Next.Note}}</p>
+  <ul class="mt-1 grid gap-0.5 text-muted">{{range .Next.Lines}}<li>{{.}}</li>{{end}}</ul>
+  {{else if .NextError}}
+  <p class="mt-4 font-semibold text-danger" role="alert">{{.NextError}}</p>
+  {{end}}
+  {{if .CanManage}}
+  <form class="mt-4 grid gap-3" hx-post="/app/models/placement/{{.ID}}" hx-target="#placement-card" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <div class="grid gap-1">
+      <label for="placement-mode" class="text-base font-semibold">Mode</label>
+      <select id="placement-mode" name="mode" class="input min-h-11">
+        {{$m := index .Requested "mode"}}
+        <option value="auto" {{if eq $m "auto"}}selected{{end}}>Auto: on the GPU when it fits, otherwise the smallest split that fits</option>
+        <option value="gpu" {{if eq $m "gpu"}}selected{{end}}>GPU only: never split; refused when it does not fit</option>
+        <option value="cpu" {{if eq $m "cpu"}}selected{{end}}>CPU only</option>
+        <option value="custom" {{if eq $m "custom"}}selected{{end}}>Custom</option>
+      </select>
+    </div>
+    <div class="grid gap-3 min-[600px]:grid-cols-2">
+      <div class="grid gap-1">
+        <label for="placement-gpu" class="text-base font-semibold">GPU layers (custom)</label>
+        <input id="placement-gpu" name="gpu_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "gpuLayers"}}" placeholder="All">
+      </div>
+      <div class="grid gap-1">
+        <label for="placement-moe" class="text-base font-semibold">Expert layers in system memory (custom)</label>
+        <input id="placement-moe" name="cpu_moe_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "cpuMoeLayers"}}" placeholder="None">
+      </div>
+    </div>
+    <div class="grid gap-1">
+      <label for="placement-ctx" class="text-base font-semibold">Context size (tokens, shared by all models)</label>
+      <input id="placement-ctx" name="context_size" type="number" min="256" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "contextSize"}}">
+      <input type="hidden" name="context_size_was" value="{{.ReqInt "contextSize"}}">
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
+      <button type="submit" name="action" value="reset" class="btn btn-quiet">Back to auto</button>
+    </div>
+  </form>
+  <p class="mt-2 text-sm text-muted">Changes apply the next time the model loads; a loaded model keeps running as it is.</p>
+  {{end}}
+  {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+</section>
+{{end}}

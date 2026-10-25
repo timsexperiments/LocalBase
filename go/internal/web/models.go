@@ -196,6 +196,10 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	if sha := s.Primary().SHA256; sha != "" {
 		peaks, _ = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha)
 	}
+	var place *placementView
+	if s.Kind == "llm" {
+		place = u.placementData(r, s.ModelID, "", "")
+	}
 	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
-		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend})
+		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend, "Placement": place})
 }
