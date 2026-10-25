@@ -178,7 +178,7 @@ func (s *Service) stopClaimed() {
 	s.cur = nil
 	s.mu.Unlock()
 	if b != nil {
-		s.stop(b)
+		s.stop(b, StopMemory)
 	}
 }
 
@@ -220,7 +220,7 @@ func (m *LLM) stopClaimed() {
 	b := m.cur
 	m.mu.Unlock()
 	if b != nil {
-		m.stopBackend(b)
+		m.stopBackend(b, StopMemory)
 	}
 }
 

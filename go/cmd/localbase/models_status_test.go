@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"strings"
 	"testing"
 )
@@ -98,5 +100,26 @@ func TestConfigureDefaultsLeaveActive(t *testing.T) {
 	}
 	if got := active(); got != big {
 		t.Errorf("a one-model list left activeLlmModel at %s", got)
+	}
+}
+
+// Doctor on a Linux host with an NVIDIA GPU says the GPU is present and
+// that its VRAM is not used for admission (operator observability audit).
+func TestDoctorNVIDIALines(t *testing.T) {
+	s := memory.Specs{OSName: "Ubuntu", GPUName: "NVIDIA GeForce RTX 3060",
+		NVIDIA: []memory.NvidiaGPU{{Name: "NVIDIA GeForce RTX 3060", MemoryMiB: 12288}}}
+	got := strings.Join(gpuLines(s), "\n")
+	for _, want := range []string{"NVIDIA GPU: NVIDIA GeForce RTX 3060, 12288 MiB",
+		"NVIDIA GPU present, VRAM admission not qualified on this build"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Discrete Memory") {
+		t.Errorf("reports 0 GB of discrete VRAM:\n%s", got)
+	}
+	plain := strings.Join(gpuLines(memory.Specs{GPUName: "CPU / Integrated Graphics"}), "\n")
+	if strings.Contains(plain, "NVIDIA") {
+		t.Errorf("no GPU mentions NVIDIA:\n%s", plain)
 	}
 }

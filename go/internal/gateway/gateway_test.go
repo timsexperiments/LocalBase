@@ -70,6 +70,9 @@ const (
 )
 
 // newTestServer runs a gateway with --no-auth over the fake backend.
+// testLog, when set, receives the next test gateway's JSON log.
+var testLog io.Writer
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	ts, _, _ := newTestGateway(t, host{})
@@ -115,6 +118,9 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if testLog != nil {
+		log = slog.New(slog.NewJSONHandler(testLog, nil))
+	}
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
 	t.Cleanup(llm.Close)
@@ -159,7 +165,7 @@ func TestChatValidation(t *testing.T) {
 		{`{"model":"m","messages":[],"tool_choice":{"type":"function","function":{"name":"x"}}}`, "validation_failed"},
 		{`{"model":"m","messages":[],"response_format":{"type":"json_schema","json_schema":{"name":"bad name","schema":{}}}}`, "validation_failed"},
 		{`not json`, "validation_failed"},
-		{`{"model":"nope","messages":[]}`, "model_not_found"},
+		{`{"model":"nope","messages":[{"role":"user","content":"x"}]}`, "model_not_found"},
 	}
 	for _, c := range cases {
 		got := post(t, ts, "/v1/chat/completions", c.body)

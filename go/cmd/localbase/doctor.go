@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
@@ -25,11 +26,8 @@ func doctorCommand() *cli.Command {
 			c.Info("OS: %s", s.OSName)
 			c.Info("CPU: %s", s.CPUModel)
 			c.Info("RAM: %d GB", s.RAMGB)
-			c.Info("GPU: %s", s.GPUName)
-			if s.IsAppleSilicon {
-				c.Info("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB)
-			} else {
-				c.Info("GPU VRAM: %d GB (Discrete Memory)", s.GPUVramGB)
+			for _, l := range gpuLines(s) {
+				c.Info("%s", l)
 			}
 			c.Info("Parallel Slots: %s", e.Config.Parallel)
 			eff, err := obs.ResolveOtel(e.Config.OtelEndpoint, e.Config.OtelHeaders, e.Config.OtelSampleRatio, os.Getenv)
@@ -50,6 +48,8 @@ func doctorCommand() *cli.Command {
 				c.Info("Status: ⚠️ Good for entry coding models (1.5B/7B), but larger models may slow down.")
 			case s.IsAppleSilicon:
 				c.Info("Status: ❌ Low memory. Limit to small models (1.5B) and small contexts.")
+			case len(s.NVIDIA) > 0:
+				c.Info("Status: ⚠️ %s. LocalBase sizes models against the %d GB of system memory.", memory.VRAMAdmissionNote, s.RAMGB)
 			case s.GPUVramGB >= 16:
 				c.Info("Status: ✅ Excellent fit for multi-model coding setup (7B/14B models + local STT).")
 			case s.GPUVramGB >= 12:
@@ -71,4 +71,22 @@ func doctorCommand() *cli.Command {
 			}
 			return data, nil
 		}}
+}
+
+// gpuLines are doctor's GPU lines. An NVIDIA GPU is reported, but its VRAM
+// is not used for admission yet (DESIGN §19).
+func gpuLines(s memory.Specs) []string {
+	lines := []string{"GPU: " + s.GPUName}
+	switch {
+	case len(s.NVIDIA) > 0:
+		for _, g := range s.NVIDIA {
+			lines = append(lines, fmt.Sprintf("NVIDIA GPU: %s, %d MiB", g.Name, g.MemoryMiB))
+		}
+		lines = append(lines, "GPU VRAM: "+memory.VRAMAdmissionNote+"; models are admitted against system memory.")
+	case s.IsAppleSilicon:
+		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB))
+	default:
+		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Discrete Memory)", s.GPUVramGB))
+	}
+	return lines
 }

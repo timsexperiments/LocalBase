@@ -331,7 +331,7 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	s.cur = nil
 	s.mu.Unlock()
 	if prev != nil {
-		s.stop(prev)
+		s.stop(prev, StopSwitch)
 		if preflight && switching && previous != "" {
 			if err := settleAfterStop(s.d.Memory, demand); err != nil && s.rollBack(previous, modelID, err) {
 				return demand, err
@@ -346,7 +346,7 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		s.stop(b)
+		s.stop(b, StopShutdown)
 		return demand, ErrUnavailable
 	}
 	s.cur = b
@@ -497,8 +497,9 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 	return &svcBackend{modelID: t.ModelID, target: t, proc: proc, res: res, baseURL: base}, nil
 }
 
-func (s *Service) stop(b *svcBackend) {
+func (s *Service) stop(b *svcBackend, reason string) {
 	b.proc.Stop(stopGrace)
+	logStopped(s.d.Log, s.d.Modality, b.modelID, reason, b.res.Bytes(), b.proc.PID())
 	b.res.Release()
 }
 
@@ -538,9 +539,10 @@ wait:
 	s.mu.Lock()
 	if s.cur == b {
 		s.cur = nil
-		b.res.Release()
 		s.d.Log.Warn("The "+s.d.Modality+" backend exited; the next request starts it again.", "event", "runtime.exited",
 			"runtime", s.d.Modality, "model_id", b.modelID)
+		logStopped(s.d.Log, s.d.Modality, b.modelID, StopCrash, b.res.Bytes(), b.proc.PID())
+		b.res.Release()
 	}
 	s.mu.Unlock()
 }
@@ -585,7 +587,7 @@ func (s *Service) EmergencyStop(reason error) {
 	s.mu.Unlock()
 	if b != nil {
 		b.emergency.Store(true)
-		s.stop(b)
+		s.stop(b, StopMemory)
 	}
 }
 
@@ -605,7 +607,7 @@ func (s *Service) Close() {
 	s.cur = nil
 	s.mu.Unlock()
 	if b != nil {
-		s.stop(b)
+		s.stop(b, StopShutdown)
 	}
 }
 

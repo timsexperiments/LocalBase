@@ -240,8 +240,9 @@ reproduces them byte for byte and the table tests are ported from TS:
 - `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
   free + speculative + inactive, since vm_stat prints speculative pages apart),
   `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working
-  set. Linux uses `/proc/meminfo` MemAvailable plus PSI, and NVML through
-  `nvidia-smi --query` for discrete GPUs.
+  set. Linux uses `/proc/meminfo` MemAvailable plus PSI. NVIDIA VRAM is not
+  admitted yet: an NVIDIA GPU is detected (`nvidia-smi`) and reported, and
+  admission uses the system pool (§19.3).
 - The observed-peak sampler runs `footprint -p <pid>` every 5 s on darwin, or
   reads VmHWM on Linux, and writes `model_observed_memory`.
 
@@ -1162,6 +1163,19 @@ Deliberate status changes to verify against the live clients at cutover:
      is the existing `exceed_context_size_error` → 400.
    - **Test:** `TestBatchOverflowIs400`, with the fake backend's
      `fake:batch` and `fake:batch-plain`.
+8. **A chat request with an empty `messages` list** (operator observability
+   audit, 2026-10-24, Linux). TS's schema accepts an empty array and passes
+   it to llama-server, which answers 500 ("Jinja: No messages provided"),
+   and TS relays that 500 (read from the source). Go answers 400
+   `invalid_request_error`, code `validation_failed`, `param: messages`
+   (`TestEmptyMessagesIs400`). The differential validation cases now send
+   one message, so each still isolates its own field.
+9. **Only a chat model becomes the active LLM** (#375, after cutover). TS
+   persists any switched-to LLM as `activeLlmModel`, a decision or embedding
+   model included. Go persists only chat models (§18). After a decision
+   request, the model-management state therefore shows a different active
+   model on each gateway. `TestDifferentialModelManagement` first activates
+   the same chat model on both.
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
@@ -2298,3 +2312,76 @@ be my default chat model now when it will fit in VRAM."
 **Live context.** Qwen3.6's planning demand is about 21 GiB against a
 reserve of about 10.3 GiB. Available memory is usually around 23 GiB
 with the user's apps open, so the fallback will often be what runs.
+
+## 19. Observability additions and the NVIDIA VRAM gap (operator audit, 2026-10-24)
+
+The audit covered three days of live Mac Loki and Tempo data, plus a
+serialized Linux run of 6b908f76 on the Pixelator. It found no secrets in
+logs, Loki or Tempo, and the 429 queue-full and timeout responses and the
+SIGKILL → `runtime.exited` path were all captured. Four gaps, fixed here.
+
+### 19.1 Runtime stop events
+
+Before, a model swap showed only a start. Every backend stop now logs one
+event next to `runtime.starting`, `runtime.ready` and `runtime.exited`:
+- `runtime.evicted` when memory was the reason: idle recovery, the pressure
+  monitor, or critical memory (`EmergencyStop`);
+- `runtime.stopped` otherwise.
+
+| Field | Meaning |
+| --- | --- |
+| `runtime` | `llm`, `stt`, `tts`, `image` or `video` |
+| `model_id` | the model that was running |
+| `reason` | `memory`, `switch` (another model replaced it), `shutdown`, `crash` (after `runtime.exited`) or `cancel` (a video job's backend killed) |
+| `memory_freed_bytes` | the reservation released, i.e. the admission ledger's projection, not a footprint sample |
+| `pid` | the backend process |
+
+- `idle` is reserved: there is no idle-unload timer yet.
+- `TestStopEvents` checks switch, crash, eviction and shutdown.
+
+### 19.2 Error kind on request logs and spans
+
+A 4xx or 5xx response's error envelope is read, at most 8 KiB of it, for
+its `type` and `code` only, never its message. They become:
+- `error_type` and `error_code` on the `http.request` log;
+- `localbase.error.type`, `localbase.error.code` and `error.type` (the
+  code) on the server span.
+
+This works for every error writer, whether gateway-made or relayed from a
+backend. TS has no equivalent, so the OTLP differential test skips these
+keys and asserts them on Go. Tests: `TestHTTPRequestLogsErrorKind`, which
+also checks that no message text is logged, and `TestDifferentialOTLP`.
+
+### 19.3 NVIDIA GPUs on Linux: reported, not admitted
+
+On the Pixelator, doctor said "CPU / Integrated Graphics, 0 GB VRAM", while
+the backend host found CUDA and a custom CUDA backend worked. Admission
+rejections named `pool=system` with nothing about the GPU. Full NVML
+admission stays deferred (§11.3); the gap is now explicit:
+- `memory.DetectSpecs` lists the GPUs `nvidia-smi
+  --query-gpu=name,memory.total` reports (`nvidiaGpus` in `doctor --json`).
+- Doctor prints each one, then "GPU VRAM: NVIDIA GPU present, VRAM
+  admission not qualified on this build; models are admitted against system
+  memory." In place of a VRAM-based fit line, the status says the same.
+- An admission rejection on such a host keeps `pool: system` and adds
+  `nvidia_gpu_present: true` and `vram_admission: not_qualified`. Hosts
+  without an NVIDIA GPU log exactly as before.
+- Tests: `TestParseNvidiaSMI`, `TestDoctorNVIDIALines` and
+  `TestAdmissionRejectionNamesPoolWithNVIDIA`.
+
+**Design note: real VRAM admission (not started).**
+- **Pools:** a `gpu:<index>` pool per device, sampled through NVML (cgo-free
+  via `nvidia-smi --query-gpu=memory.used,memory.total` at the 2 s
+  pressure cadence, or `libnvidia-ml` via purego, which §11 rules out). It
+  sits next to the system pool. A model whose launch offloads layers
+  reserves in both: GPU bytes for the offloaded weights, KV cache and
+  compute buffers, and host bytes for the rest.
+- **Plans:** the launch plan needs `-ngl` and a per-device split.
+  Estimates exist for unified memory only; discrete needs measured peaks
+  per GPU (`nvidia-smi --query-compute-apps=pid,used_memory`) feeding the
+  same observed-peak table under a new method.
+- **Pressure:** VRAM is not pageable, so a GPU pool has no "constrained"
+  state, only admit or refuse. Eviction recovery still applies.
+- **Qualification:** on the Pixelator, through its serialized queue (never
+  without the operator), against the TS-free Linux CI plus a real 12 GB
+  card.

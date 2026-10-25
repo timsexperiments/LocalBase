@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -178,6 +179,35 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	auth   *auth.Principal
+	// errBody is the start of an error response, read only for the error
+	// envelope's type and code (never its message).
+	errBody []byte
+}
+
+const errSniffBytes = 8 << 10
+
+// errorKind is the error envelope's type and code ("" when the response is
+// not one).
+func (r *recorder) errorKind() (typ, code string) {
+	var env struct {
+		Error *struct {
+			Type any `json:"type"`
+			Code any `json:"code"`
+		} `json:"error"`
+	}
+	if len(r.errBody) == 0 || json.Unmarshal(r.errBody, &env) != nil || env.Error == nil {
+		return "", ""
+	}
+	if t, ok := env.Error.Type.(string); ok {
+		typ = t
+	}
+	switch c := env.Error.Code.(type) {
+	case string:
+		code = c
+	case float64:
+		code = strconv.FormatFloat(c, 'f', -1, 64)
+	}
+	return typ, code
 }
 
 func (r *recorder) WriteHeader(code int) {
@@ -190,6 +220,9 @@ func (r *recorder) WriteHeader(code int) {
 func (r *recorder) Write(b []byte) (int, error) {
 	if r.status == 0 {
 		r.status = 200
+	}
+	if r.status >= 400 && len(r.errBody) < errSniffBytes {
+		r.errBody = append(r.errBody, b[:min(len(b), errSniffBytes-len(r.errBody))]...)
 	}
 	return r.ResponseWriter.Write(b)
 }
@@ -273,6 +306,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if status >= 500 || r.Context().Err() != nil {
 			span.SetError("")
 		}
+		errType, errCode := rec.errorKind()
+		if errType != "" {
+			span.SetAttr("localbase.error.type", errType)
+		}
+		if errCode != "" {
+			span.SetAttr("localbase.error.code", errCode)
+			span.SetAttr("error.type", errCode)
+		}
 		for i := 0; i < len(auth); i += 2 {
 			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
 		}
@@ -286,6 +327,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if family != "" {
 			msg += " (near " + family + ", " + strconv.Itoa(segments) + " segments)"
 			attrs = append(attrs, "route_family", family, "route_segments", segments)
+		}
+		if errType != "" {
+			attrs = append(attrs, "error_type", errType)
+		}
+		if errCode != "" {
+			attrs = append(attrs, "error_code", errCode)
 		}
 		attrs = append(attrs, auth...)
 		level := slog.LevelInfo

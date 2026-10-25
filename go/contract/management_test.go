@@ -106,6 +106,12 @@ func TestDifferentialModelManagement(t *testing.T) {
 			}
 		}
 	}
+	// Start from the same active LLM on both. An earlier decision request
+	// makes the decision model active on TS but not on Go, which activates
+	// chat models only (DESIGN §13.6 item 9).
+	if len(targets) > 1 {
+		sameOK("activate the chat model", post(admin, `{"modelId":"`+chatModel+`","action":"activate"}`), 200)
+	}
 	same("initial")
 	// The active LLM, whichever earlier tests left as the default.
 	activeLLM := chatModel
