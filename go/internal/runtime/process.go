@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,6 +24,20 @@ type Process struct {
 	cmd  *exec.Cmd
 	done chan struct{}
 	err  error
+	// startup keeps the first bytes of output, raw, for the placement check
+	// (DESIGN §20.5): never decoded, bounded.
+	startupMu sync.Mutex
+	startup   []byte
+}
+
+const startupCapture = 4 << 20
+
+// StartupLog is the raw start of the backend's output (stdout and stderr,
+// as lines arrive).
+func (p *Process) StartupLog() []byte {
+	p.startupMu.Lock()
+	defer p.startupMu.Unlock()
+	return append([]byte(nil), p.startup...)
 }
 
 const maxLogLine = 4096
@@ -57,6 +72,12 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 64*1024), 1<<20)
 		for sc.Scan() {
+			p.startupMu.Lock()
+			if len(p.startup) < startupCapture {
+				p.startup = append(p.startup, sc.Bytes()...)
+				p.startup = append(p.startup, '\n')
+			}
+			p.startupMu.Unlock()
 			line := sc.Text()
 			if len(line) > maxLogLine {
 				line = line[:maxLogLine]

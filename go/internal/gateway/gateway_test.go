@@ -73,6 +73,9 @@ const (
 // testLog, when set, receives the next test gateway's JSON log.
 var testLog io.Writer
 
+// testPlacement, when set, is the next test gateway's placement source.
+var testPlacement *runtime.HostPlacement
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	ts, _, _ := newTestGateway(t, host{})
@@ -123,8 +126,14 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	}
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
+	var placementSrc *runtime.HostPlacement
+	if testPlacement != nil {
+		placementSrc = testPlacement
+		placementSrc.Store, placementSrc.Memory, placementSrc.Log = st, mem, log
+		llm.SetPlacementSource(placementSrc)
+	}
 	t.Cleanup(llm.Close)
-	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log,
+	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log, Placement: placementSrc,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)

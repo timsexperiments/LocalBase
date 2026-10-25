@@ -499,7 +499,8 @@ func TestDifferentialModelMetadata(t *testing.T) {
 		t.Skip("run with -impl=both")
 	}
 	volatile := func(p string) bool {
-		return p == ".host.memory.system.availableBytes" || strings.HasSuffix(p, ".device.runtime") ||
+		// device.placement is Go only (CPU/GPU placement, DESIGN §20).
+		return p == ".host.memory.system.availableBytes" || strings.HasSuffix(p, ".device.runtime") || strings.Contains(p, ".device.placement") ||
 			strings.Contains(p, ".observedPeaks") || strings.Contains(p, ".memory.observed") ||
 			strings.HasSuffix(p, ".memory.demandBytes") || strings.HasSuffix(p, ".memory.minimumVramEstimateGb") ||
 			strings.HasSuffix(p, ".memory.source") || strings.HasSuffix(p, ".memory.launchShape") ||

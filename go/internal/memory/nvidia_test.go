@@ -11,3 +11,10 @@ func TestParseNvidiaSMI(t *testing.T) {
 		t.Error("parsed GPUs from no output")
 	}
 }
+
+func TestParseGPUMemory(t *testing.T) {
+	got := parseGPUMemory([]byte("0, NVIDIA GeForce RTX 3060, 11899, 12288\n1, NVIDIA A10, 22000, 23028\nbad line\n"))
+	if len(got) != 2 || got[0].Index != 0 || got[0].FreeBytes != 11899<<20 || got[0].TotalBytes != 12288<<20 || got[1].Name != "NVIDIA A10" {
+		t.Errorf("parsed %+v", got)
+	}
+}

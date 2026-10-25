@@ -368,3 +368,31 @@ func (c *Controller) transition() Transition {
 
 // Snapshot reads current host memory (for display; admission reads its own).
 func (c *Controller) Snapshot(ctx context.Context) Snapshot { return c.host.Snapshot(ctx) }
+
+// Headroom is what the system pool could admit now, after the reserve and
+// pending reservations, crediting the releasing runtimes as CheckAdmission
+// does (placement plans the host side against it, DESIGN §20.3). It is -1
+// when memory cannot be measured.
+func (c *Controller) Headroom(ctx context.Context, releasing []string) int64 {
+	snap := c.host.Snapshot(ctx)
+	if snap.Available < 0 {
+		return -1
+	}
+	rel := map[string]bool{}
+	for _, id := range releasing {
+		rel[id] = true
+	}
+	reserve := c.system.Bytes(c.host.Topology().SystemCapacity)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var freed, pending int64
+	for id, r := range c.reservations {
+		switch {
+		case rel[id] && r.resident:
+			freed += r.projected
+		case !rel[id] && !r.resident:
+			pending += r.projected
+		}
+	}
+	return max(0, snap.Available+freed-pending-reserve)
+}

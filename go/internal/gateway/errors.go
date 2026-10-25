@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"io"
 	"net/http"
 
@@ -75,6 +76,7 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 	var notInstalled *runtime.NotInstalledError
 	var launch *runtime.LaunchError
 	var started *runtime.BackendStartError
+	var pe *placement.Error
 	switch {
 	case errors.Is(err, runtime.ErrQueueFull):
 		w.Header().Set("Retry-After", "1")
@@ -97,6 +99,19 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 		// retry on 503 get Retry-After, like every other transient failure.
 		w.Header().Set("Retry-After", "5")
 		writeError(w, r, 503, "api_error", "backend_startup_failed", obs.BoundedText(started.Error(), 1024), nil)
+	case errors.As(err, &pe):
+		// CPU/GPU placement (DESIGN §20): a stored choice this device cannot
+		// honour is a conflict; not fitting now may change; a backend that
+		// placed tensors differently from the plan was stopped.
+		switch pe.Code {
+		case "placement_does_not_fit":
+			w.Header().Set("Retry-After", "5")
+			writeError(w, r, 503, "api_error", pe.Code, pe.Message, nil)
+		case "placement_mismatch":
+			writeError(w, r, 503, "api_error", pe.Code, pe.Message, nil)
+		default:
+			writeError(w, r, 409, "invalid_request_error", pe.Code, pe.Message, strp("model"))
+		}
 	case errors.As(err, &ae):
 		w.Header().Set("Retry-After", "5")
 		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."

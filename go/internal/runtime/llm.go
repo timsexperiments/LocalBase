@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -75,6 +76,17 @@ type LLMDeps struct {
 	// Recovery stops idle runtimes of other modalities when a model is
 	// refused for memory (nil: no recovery).
 	Recovery *IdleRecovery
+	// Placement supplies a model's stored CPU/GPU placement and the device
+	// it would run on (DESIGN §20; nil: no placement planning).
+	Placement PlacementSource
+}
+
+// PlacementSource is where a load's placement inputs come from.
+type PlacementSource interface {
+	// Request is the stored choice for a model on this device.
+	Request(modelID string) placement.Request
+	// Device describes this machine and the target backend now.
+	Device(t *Target) placement.Device
 }
 
 type backend struct {
@@ -443,6 +455,11 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	if t != nil && t.Imported {
 		spec = nil
 	}
+	// The placement is resolved once per load and kept with it (DESIGN
+	// §20.8 item 3): it does not follow free VRAM between requests.
+	if err := m.place(modelID, plan, t); err != nil {
+		return demand, err
+	}
 	demand = m.admissionDemand(spec, plan)
 	if t != nil && t.Backend.Adapter == "process-openai/v1" {
 		demand = customDemand(t, plan)
@@ -610,6 +627,12 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		proc.Stop(stopGrace)
 		res.Release()
 		return nil, fail(err)
+	}
+	if err := m.checkPlacement(proc, plan); err != nil {
+		proc.Stop(stopGrace)
+		res.Release()
+		logStartFailed(m.d.Log, "llm", err)
+		return nil, err
 	}
 	m.d.Log.InfoContext(ctx, name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
 	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil

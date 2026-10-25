@@ -14,6 +14,9 @@ import (
 // binary-swap rollback. These tables are created idempotently and recorded
 // in go_schema; TS ignores tables it does not know.
 
+// goSchemaVersion stays 1 while tables are only added: a deployed binary
+// refuses a newer version, so raising it breaks rollback to it
+// (TestGoSchemaVersionForRollback, DESIGN §20.8).
 const goSchemaVersion = 1
 
 var goSchema = []string{
@@ -41,6 +44,18 @@ var goSchema = []string{
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL,
 		updated_at TEXT NOT NULL
+	)`,
+	// CPU/GPU placement per model and device (DESIGN §20). Added without
+	// raising goSchemaVersion: the deployed Go binary refuses a newer
+	// version, and an unknown table is harmless to it and to TS (§20.8).
+	`CREATE TABLE IF NOT EXISTS model_placements (
+		model_id TEXT NOT NULL,
+		device_id TEXT NOT NULL,
+		mode TEXT NOT NULL,
+		gpu_layers INTEGER,
+		cpu_moe_layers INTEGER,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY (model_id, device_id)
 	)`,
 }
 
@@ -171,4 +186,55 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, key, value, nowISO())
 	return err
+}
+
+// Placement is a stored placement choice (DESIGN §20.1). The context size is
+// not stored here: it is the shared ctxSize/ctxMode setting (§20.8).
+type Placement struct {
+	Mode         string
+	GPULayers    *int
+	CPUMoELayers *int
+	UpdatedAt    string
+}
+
+// Placement reads a model's placement on a device (nil: auto).
+func (s *Store) Placement(ctx context.Context, modelID, deviceID string) (*Placement, error) {
+	var p Placement
+	var gpu, moe sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT mode, gpu_layers, cpu_moe_layers, updated_at FROM model_placements WHERE model_id = ? AND device_id = ?`,
+		modelID, deviceID).Scan(&p.Mode, &gpu, &moe, &p.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if gpu.Valid {
+		v := int(gpu.Int64)
+		p.GPULayers = &v
+	}
+	if moe.Valid {
+		v := int(moe.Int64)
+		p.CPUMoELayers = &v
+	}
+	return &p, nil
+}
+
+// SetPlacement stores a placement choice.
+func (s *Store) SetPlacement(ctx context.Context, modelID, deviceID string, p Placement) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO model_placements (model_id, device_id, mode, gpu_layers, cpu_moe_layers, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (model_id, device_id) DO UPDATE SET mode = excluded.mode,
+		gpu_layers = excluded.gpu_layers, cpu_moe_layers = excluded.cpu_moe_layers, updated_at = excluded.updated_at`,
+		modelID, deviceID, p.Mode, p.GPULayers, p.CPUMoELayers, nowISO())
+	return err
+}
+
+// ResetPlacement returns a model to auto on a device.
+func (s *Store) ResetPlacement(ctx context.Context, modelID, deviceID string) (bool, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM model_placements WHERE model_id = ? AND device_id = ?`, modelID, deviceID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }

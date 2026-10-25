@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,12 @@ import (
 // downloads or hashes files.
 
 func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
+	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/placement"); ok && raw != "" {
+		if id, err := url.PathUnescape(raw); err == nil {
+			s.placementAPI(w, r, id)
+			return
+		}
+	}
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r, "GET")
 		return
@@ -32,7 +39,27 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			modelNotFound(w, r, id)
 			return
 		}
-		writeJSON(w, 200, meta.Project(r.Context(), in, spec))
+		m := meta.Project(r.Context(), in, spec)
+		if spec.Kind != "llm" || s.Placement == nil {
+			writeJSON(w, 200, m)
+			return
+		}
+		// Go only (DESIGN §20.2): device.placement is the split the loaded
+		// model runs with, or the next load's when it is not loaded.
+		b, _ := json.Marshal(m)
+		var out map[string]any
+		json.Unmarshal(b, &out)
+		if dev, ok := out["device"].(map[string]any); ok {
+			if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
+				dev["placement"] = placementJSON(plan)
+			} else if next, err := s.LLM.PreviewPlacement(id, s.Placement.Request(id)); err == nil && next.Placement != nil {
+				pj := placementJSON(next)
+				delete(pj, "plannedAt")
+				pj["preview"] = true
+				dev["placement"] = pj
+			}
+		}
+		writeJSON(w, 200, out)
 		return
 	}
 	var data []meta.Model

@@ -2584,3 +2584,50 @@ planning does not apply.
    keeps its plan, and the runtime is never restarted implicitly.
 7. **Multi-GPU.** Refused, with the instruction to set
    `CUDA_VISIBLE_DEVICES` to one GPU or choose CPU-only.
+
+### 20.9 Rollback drill for `model_placements` (2026-10-25)
+
+`tools/placement-rollback-check.sh` builds a scratch root shaped like a
+real one:
+- configured, with only the LLM selected;
+- holding an APFS clone of a real model file (read-only source);
+- with a placement row.
+
+It then starts copies (never `~/.local/bin` itself) of the previous Go
+binary and TS 0.1.0 on loopback scratch ports, and finally this build.
+
+**Result.** All three serve `/health` and `/v1/models`, and after each one
+`go_schema` is still 1 and the placement row is kept:
+
+| Binary | Result |
+| --- | --- |
+| previous Go, c183621 | passed |
+| TS 0.1.0 | passed (it loads the 1.5B at start) |
+| this build | passed |
+
+`TestGoSchemaVersionForRollback` fails if the version is raised without
+this plan.
+
+**Wiring (PR 3).**
+- **Resolution:** placement is resolved in the LLM switch (`place`) before
+  admission, kept on the load's plan (`Placement`, `PlacedAt`,
+  `PlacementRequest`), appended to the llama-server arguments and checked
+  after `/health` (`checkPlacement`). A mismatch stops the backend and
+  answers 503 `placement_mismatch`.
+- **Request errors:**
+  - an unsupported stored choice: 409 `placement_unsupported`;
+  - not fitting now: 503 `placement_does_not_fit` with `Retry-After`.
+- **API:** `/_localbase/models/{id}/placement` (GET, PUT, DELETE).
+  `/_localbase/models/{id}` gains `device.placement`, which is the preview
+  until the model loads.
+- **CLI:** `models placement`; `models show` adds a Placement block in text
+  only, so its JSON keeps TS's shape.
+- **Local CLI channel:** the token-gated `/_localbase/placement-state`
+  tells the CLI whether a model is loading or loaded.
+- **Tests:**
+  - `TestPlacementAutoOffloadsExperts`, `TestPlacementMismatchFailsClosed`
+    and `TestPlacementGPUOnlyNeverFallsBack` (runtime, with the fake
+    backend printing llama.cpp's placement lines);
+  - `TestPlacementAPI`, `TestPlacementAppliesOnNextLoad` and
+    `TestModelMetadataPlacement` (gateway);
+  - `TestModelsPlacementCLI` and `TestPlacementStore`.

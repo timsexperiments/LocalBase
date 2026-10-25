@@ -162,3 +162,62 @@ func DetectSpecs() Specs {
 	}
 	return s
 }
+
+// GPUMemory is one NVIDIA GPU's memory now.
+type GPUMemory struct {
+	Index      int    `json:"index"`
+	Name       string `json:"name"`
+	FreeBytes  int64  `json:"freeBytes"`
+	TotalBytes int64  `json:"totalBytes"`
+}
+
+// nvidiaMemorySMI queries free and total memory per GPU (tests replace it).
+var nvidiaMemorySMI = func() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=index,name,memory.free,memory.total", "--format=csv,noheader,nounits").Output()
+}
+
+// parseGPUMemory reads "index, name, free MiB, total MiB" lines.
+func parseGPUMemory(out []byte) []GPUMemory {
+	var gpus []GPUMemory
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Split(line, ",")
+		if len(f) != 4 {
+			continue
+		}
+		idx, e1 := strconv.Atoi(strings.TrimSpace(f[0]))
+		free, e2 := strconv.ParseInt(strings.TrimSpace(f[2]), 10, 64)
+		total, e3 := strconv.ParseInt(strings.TrimSpace(f[3]), 10, 64)
+		if e1 != nil || e2 != nil || e3 != nil {
+			continue
+		}
+		gpus = append(gpus, GPUMemory{Index: idx, Name: strings.TrimSpace(f[1]), FreeBytes: free << 20, TotalBytes: total << 20})
+	}
+	return gpus
+}
+
+// GPUMemoryNow samples every NVIDIA GPU's free memory (nil without one).
+func GPUMemoryNow() []GPUMemory {
+	if goruntime.GOOS != "linux" && nvidiaOverride == nil {
+		return nil
+	}
+	if nvidiaOverride != nil {
+		return nvidiaOverride()
+	}
+	out, err := nvidiaMemorySMI()
+	if err != nil {
+		return nil
+	}
+	return parseGPUMemory(out)
+}
+
+// nvidiaOverride replaces GPUMemoryNow (tests).
+var nvidiaOverride func() []GPUMemory
+
+// OverrideGPUMemory makes GPUMemoryNow report gpus until restore (tests).
+func OverrideGPUMemory(f func() []GPUMemory) (restore func()) {
+	prev := nvidiaOverride
+	nvidiaOverride = f
+	return func() { nvidiaOverride = prev }
+}
