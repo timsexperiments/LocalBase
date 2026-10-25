@@ -2549,3 +2549,38 @@ planning does not apply.
 4. The NVIDIA `gpu:<index>` pool (free VRAM plus reserve) for auto
    planning and dual-pool admission, with a fake `nvidia-smi` in tests.
 5. The UI card.
+
+### 20.8 Operator adjustments (approval, 2026-10-25)
+
+1. **Rollback safety.** The deployed Go binary refuses a database whose
+   `go_schema` version is newer than its own (`applyGoSchema`). So
+   `model_placements` is created idempotently and the version stays at 1.
+   A drill checks the previous Go binary and TS 0.1.0 against a scratch
+   database that has the table (§20.9).
+2. **Context: one source of truth.** Placement's `contextSize` reads and
+   writes the existing shared setting, `ctxSize` with `ctxMode` (#293, §2).
+   Setting it saves `ctxSize` with `ctxMode = "explicit"`. It applies to
+   every model, and the UI and CLI say so. Nothing is stored per model.
+   Precedence, highest first:
+   1. `serve --ctx-size` (the process override);
+   2. the saved `ctxSize`/`ctxMode` (the same value placement shows);
+   3. the model's context window, which clamps both as today.
+3. **Stable plans.** A plan is resolved when the model loads, and the
+   runtime record keeps it (with `plannedAt` and the free VRAM it saw)
+   until the model unloads. It is re-planned only on a load, a reload or
+   an explicit change, never per request. Surfaces show "planned at
+   <time> against <free VRAM>".
+4. **Workspace check.** At startup the logged compute buffer (CUDA0 and
+   CUDA_Host compute buffer sizes) must not exceed the planned workspace
+   by more than 10% or 64 MiB, whichever is larger. Otherwise the start
+   fails closed with `placement_mismatch`, and the error names both
+   numbers.
+5. **Copy.** Capacity and CPU use only: host memory used, which layers or
+   experts are on the host, and what auto did and why. No speed claims,
+   no model names, no rankings.
+6. **Changes and loads.** `PUT` and `DELETE` are refused with 409
+   `model_loading` while the model is starting. A change to a loaded model
+   is stored and shown as "applies on next load". The running backend
+   keeps its plan, and the runtime is never restarted implicitly.
+7. **Multi-GPU.** Refused, with the instruction to set
+   `CUDA_VISIBLE_DEVICES` to one GPU or choose CPU-only.
