@@ -103,3 +103,32 @@ func TestPlacementGPUOnlyNeverFallsBack(t *testing.T) {
 		t.Errorf("%s started", id)
 	}
 }
+
+// A discrete placement reserves its GPU bytes on gpu:0 before starting; too
+// little free VRAM now is an ordinary, retryable admission refusal.
+func TestPlacementGPUPool(t *testing.T) {
+	m, stub := newPlacedLLM(t)
+	free := stub.free
+	m.d.GPUPool = &memory.GPUPool{Reserve: placement.ReserveBytes, Sample: func() []memory.GPUMemory {
+		return []memory.GPUMemory{{Index: 0, FreeBytes: free, TotalBytes: 24 << 30}}
+	}}
+	l, err := m.Acquire(context.Background(), modelA)
+	if err != nil {
+		t.Fatalf("enough free VRAM: %v", err)
+	}
+	l.Release()
+	m.Close()
+
+	m, _ = newPlacedLLM(t)
+	m.d.GPUPool = &memory.GPUPool{Reserve: placement.ReserveBytes, Sample: func() []memory.GPUMemory {
+		return []memory.GPUMemory{{Index: 0, FreeBytes: 1 << 30, TotalBytes: 24 << 30}} // freed by something else since planning
+	}}
+	_, err = m.Acquire(context.Background(), modelA)
+	var ae *memory.AdmissionError
+	if !errors.As(err, &ae) || ae.PoolID != "gpu:0" || ae.Permanent {
+		t.Fatalf("gpu:0 refusal: %v", err)
+	}
+	if id, _, _ := m.Running(); id != "" {
+		t.Errorf("%s started", id)
+	}
+}

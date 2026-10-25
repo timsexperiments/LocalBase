@@ -31,8 +31,9 @@ func logAdmissionRejected(log *slog.Logger, modality, component string, err erro
 	}
 	attrs := append(ae.Attributes(), context...)
 	if memory.NVIDIAPresent() {
-		// The pool used is system memory: NVIDIA VRAM is not admitted yet.
-		attrs = append(attrs, "nvidia_gpu_present", true, "vram_admission", "not_qualified")
+		// On an NVIDIA host, GPU memory is admitted in the separate gpu:0
+		// pool for discrete placements (DESIGN §20.4).
+		attrs = append(attrs, "nvidia_gpu_present", true, "vram_admission", "gpu:0")
 	}
 	log.Warn(message, "event", "runtime.memory-admission-rejected", "category", "runtime",
 		"component", component, "runtime", modality,

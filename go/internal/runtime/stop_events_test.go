@@ -81,7 +81,7 @@ func TestStopEvents(t *testing.T) {
 }
 
 // On a host with an NVIDIA GPU, an admission rejection names the pool it
-// used (system memory) and says VRAM admission is not qualified.
+// used (system memory) and that GPU memory is admitted in gpu:0.
 func TestAdmissionRejectionNamesPoolWithNVIDIA(t *testing.T) {
 	defer memory.OverrideNVIDIA([]memory.NvidiaGPU{{Name: "NVIDIA GeForce RTX 3060", MemoryMiB: 12288}})()
 	host := newStepHost(memory.GiB)
@@ -104,7 +104,7 @@ func TestAdmissionRejectionNamesPoolWithNVIDIA(t *testing.T) {
 			continue
 		}
 		found = true
-		if e.Attrs["pool"] != "system" || e.Attrs["nvidia_gpu_present"] != true || e.Attrs["vram_admission"] != "not_qualified" {
+		if e.Attrs["pool"] != "system" || e.Attrs["nvidia_gpu_present"] != true || e.Attrs["vram_admission"] != "gpu:0" {
 			t.Errorf("attributes %v", e.Attrs)
 		}
 	}
