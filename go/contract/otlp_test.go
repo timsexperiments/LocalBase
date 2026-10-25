@@ -280,14 +280,36 @@ func TestDifferentialOTLP(t *testing.T) {
 		labels = append(labels, "chat")
 	}
 	t.Logf("comparing %v", labels)
+	// Go: a 4xx server span and request record carry the error's type and
+	// code, never its message.
+	for label, code := range map[string]string{"unmatched": "route_disabled", "missing": "invalid_api_key", "invalid": "invalid_api_key"} {
+		span := runs["go"].tree(runs["go"].requests[label])
+		attrs, _ := span["attributes"].(map[string]any)
+		if fmt.Sprint(otlpPlain(attrs["localbase.error.code"])) != code || fmt.Sprint(otlpPlain(attrs["localbase.error.type"])) != "invalid_request_error" {
+			t.Errorf("go %s span error attributes: %v", label, attrs)
+		}
+		if rec := records["go"]["http.request|"+runs["go"].requests[label]]; rec == nil || fmt.Sprint(otlpPlain(rec["attributes"].(map[string]any)["error_code"])) != code {
+			t.Errorf("go %s request record lacks error_code %s: %v", label, code, rec)
+		}
+	}
 	for _, label := range labels {
 		a, b := runs["ts"].tree(runs["ts"].requests[label]), runs["go"].tree(runs["go"].requests[label])
 		if a == nil || b == nil {
 			t.Errorf("%s: no server span (ts %v, go %v)", label, a != nil, b != nil)
 			continue
 		}
+		// Go names an error response's type and code on the server span
+		// and the request record (operator observability audit); TS does not.
+		goOnly := func(p string) bool {
+			for _, k := range []string{"localbase.error.type", "localbase.error.code", "error.type", "error_type", "error_code"} {
+				if strings.HasSuffix(p, "attributes."+k) {
+					return true
+				}
+			}
+			return false
+		}
 		skip := func(p string) bool {
-			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms")
+			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms") || goOnly(p)
 		}
 		if d := diffJSON("", a, b, skip); len(d) > 0 {
 			t.Errorf("%s span tree differs:\n  %s", label, strings.Join(d, "\n  "))
@@ -303,7 +325,7 @@ func TestDifferentialOTLP(t *testing.T) {
 			}
 			na := map[string]any{"attributes": normAttrs(ra["attributes"].(map[string]any)), "severity": ra["severityText"], "flags": ra["flags"]}
 			nb := map[string]any{"attributes": normAttrs(rb["attributes"].(map[string]any)), "severity": rb["severityText"], "flags": rb["flags"]}
-			skipMs := func(p string) bool { return strings.HasSuffix(p, "_ms") }
+			skipMs := func(p string) bool { return strings.HasSuffix(p, "_ms") || goOnly(p) }
 			if d := diffJSON("", na, nb, skipMs); len(d) > 0 {
 				t.Errorf("%s %s record differs:\n  %s", label, ev, strings.Join(d, "\n  "))
 			}

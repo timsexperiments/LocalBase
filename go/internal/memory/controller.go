@@ -145,6 +145,15 @@ func (r *Reservation) Materialize(pid int) {
 	}
 }
 
+// Bytes is the reserved pool projection (what releasing it frees from the
+// admission ledger).
+func (r *Reservation) Bytes() int64 {
+	if r == nil || r.r == nil {
+		return 0
+	}
+	return r.r.projected
+}
+
 func (r *Reservation) Release() {
 	r.c.mu.Lock()
 	defer r.c.mu.Unlock()

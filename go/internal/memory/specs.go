@@ -2,6 +2,7 @@ package memory
 
 import (
 	"bufio"
+	"context"
 	"math"
 	"os"
 	"os/exec"
@@ -9,6 +10,8 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Specs is the hardware summary TS detectSpecs reports (doctor, defaults).
@@ -20,6 +23,66 @@ type Specs struct {
 	GPUVramGB      int    `json:"gpuVramGb"`
 	IsMac          bool   `json:"isMac"`
 	IsAppleSilicon bool   `json:"isAppleSilicon"`
+	// NVIDIA lists the GPUs nvidia-smi reports (Linux). LocalBase does not
+	// admit models against their VRAM yet (DESIGN §11.3, §19): admission
+	// uses the system memory pool.
+	NVIDIA []NvidiaGPU `json:"nvidiaGpus,omitempty"`
+}
+
+// NvidiaGPU is one GPU as nvidia-smi reports it.
+type NvidiaGPU struct {
+	Name      string `json:"name"`
+	MemoryMiB int    `json:"memoryMiB"`
+}
+
+// VRAMAdmissionNote is what doctor and the admission log say when an NVIDIA
+// GPU is present.
+const VRAMAdmissionNote = "NVIDIA GPU present, VRAM admission not qualified on this build"
+
+// nvidiaSMI runs nvidia-smi (tests replace it).
+var nvidiaSMI = func() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits").Output()
+}
+
+// parseNvidiaSMI reads "name, MiB" lines.
+func parseNvidiaSMI(out []byte) []NvidiaGPU {
+	var gpus []NvidiaGPU
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		name, mem, ok := strings.Cut(line, ",")
+		if !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		mib, _ := strconv.Atoi(strings.TrimSpace(mem))
+		gpus = append(gpus, NvidiaGPU{Name: strings.TrimSpace(name), MemoryMiB: mib})
+	}
+	return gpus
+}
+
+// DetectNVIDIA lists NVIDIA GPUs on Linux (nil elsewhere or without
+// nvidia-smi).
+func DetectNVIDIA() []NvidiaGPU {
+	if goruntime.GOOS != "linux" {
+		return nil
+	}
+	out, err := nvidiaSMI()
+	if err != nil {
+		return nil
+	}
+	return parseNvidiaSMI(out)
+}
+
+var nvidiaOnce = sync.OnceValue(DetectNVIDIA)
+
+// NVIDIAPresent reports, once per process, whether an NVIDIA GPU is present.
+func NVIDIAPresent() bool { return len(nvidiaOnce()) > 0 }
+
+// OverrideNVIDIA makes NVIDIAPresent report gpus until restore (tests).
+func OverrideNVIDIA(gpus []NvidiaGPU) (restore func()) {
+	prev := nvidiaOnce
+	nvidiaOnce = func() []NvidiaGPU { return gpus }
+	return func() { nvidiaOnce = prev }
 }
 
 var appleChipRe = regexp.MustCompile(`(?i)\bApple\s+M\d+(?:\s+(?:Pro|Max|Ultra))?\b`)
@@ -32,8 +95,9 @@ func sysctlString(name string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// DetectSpecs reads the host summary. Discrete GPU detection on Linux is
-// deferred with the NVIDIA work (DESIGN §11), so Linux reports no GPU.
+// DetectSpecs reads the host summary. On Linux an NVIDIA GPU is listed
+// (nvidia-smi) but its VRAM is not used for admission yet (DESIGN §19), so
+// GPUVramGB stays 0.
 func DetectSpecs() Specs {
 	s := Specs{OSName: "Unknown", CPUModel: "Unknown", GPUName: "Unavailable"}
 	switch goruntime.GOOS {
@@ -89,6 +153,9 @@ func DetectSpecs() Specs {
 			s.CPUModel = "Unknown CPU"
 		}
 		s.GPUName = "CPU / Integrated Graphics"
+		if s.NVIDIA = DetectNVIDIA(); len(s.NVIDIA) > 0 {
+			s.GPUName = s.NVIDIA[0].Name
+		}
 	default:
 		s.OSName = goruntime.GOOS
 		s.CPUModel = "Unknown CPU"

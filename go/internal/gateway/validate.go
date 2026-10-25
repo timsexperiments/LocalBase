@@ -32,6 +32,9 @@ func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 		if is.path == "response_format" || strings.HasPrefix(is.path, "response_format.") {
 			param = strp("response_format")
 		}
+		if is.path == "messages" && is.msg == emptyMessages && param == nil {
+			param = strp("messages")
+		}
 	}
 	badRequest(w, r, "Validation failed: "+strings.Join(parts, ", "), param)
 }
@@ -176,6 +179,11 @@ func validateChat(req map[string]any) *checker {
 		v, present := req["messages"]
 		c.fail("messages", expected("array", v, present))
 	} else {
+		// TS accepts an empty list and llama-server then fails it with a 500
+		// ("No messages provided"); Go rejects it (DESIGN §13.6 item 8).
+		if len(msgs) == 0 {
+			c.fail("messages", emptyMessages)
+		}
 		for i, m := range msgs {
 			c.chatMessage(m, join("messages", i))
 		}
@@ -656,3 +664,7 @@ func validateDecision(req map[string]any) *checker {
 	}
 	return c
 }
+
+// emptyMessages: Go rejects a chat request with no messages (DESIGN §13.6
+// item 8; TS passes it on and llama-server answers 500).
+const emptyMessages = "Too small: expected array to have >=1 items"

@@ -44,3 +44,23 @@ func TestBatchOverflowIs400(t *testing.T) {
 		}
 	}
 }
+
+// An empty messages list is the client's mistake: 400 with param messages,
+// not llama-server's 500 "No messages provided" (operator observability
+// audit, Linux; DESIGN §13.6 item 8).
+func TestEmptyMessagesIs400(t *testing.T) {
+	h := &steppedHost{}
+	h.avail.Store(50 * memory.GiB)
+	ts, _, _ := newTestGateway(t, h)
+	r := post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[]}`)
+	var e struct {
+		Error struct {
+			Type, Code string
+			Param      *string
+		}
+	}
+	json.Unmarshal([]byte(r.body), &e)
+	if r.status != 400 || e.Error.Type != "invalid_request_error" || e.Error.Code != "validation_failed" || e.Error.Param == nil || *e.Error.Param != "messages" {
+		t.Errorf("%d %s", r.status, r.body)
+	}
+}

@@ -29,9 +29,14 @@ func logAdmissionRejected(log *slog.Logger, modality, component string, err erro
 	if ae.PoolID == "gpu-working-set" && !ae.Permanent {
 		message = "Insufficient GPU working set to start the requested runtime alongside the runtimes already loaded."
 	}
+	attrs := append(ae.Attributes(), context...)
+	if memory.NVIDIAPresent() {
+		// The pool used is system memory: NVIDIA VRAM is not admitted yet.
+		attrs = append(attrs, "nvidia_gpu_present", true, "vram_admission", "not_qualified")
+	}
 	log.Warn(message, "event", "runtime.memory-admission-rejected", "category", "runtime",
 		"component", component, "runtime", modality,
-		slog.Group("attributes", append(ae.Attributes(), context...)...))
+		slog.Group("attributes", attrs...))
 }
 
 // The post-stop settle (TS settleAdmissionAfterEviction); tests shorten it.
@@ -80,4 +85,29 @@ func logStartFailed(log *slog.Logger, modality string, err error) {
 	}
 	log.Error("Backend startup failed.", "event", "backend.start-failed", "category", "runtime",
 		"component", modalityComponents[modality], "runtime", modality, "error", err.Error())
+}
+
+// Why a runtime's backend stopped (runtime.stopped and runtime.evicted).
+const (
+	StopMemory   = "memory"   // evicted for memory: idle recovery, pressure, critical memory
+	StopSwitch   = "switch"   // replaced by another model
+	StopShutdown = "shutdown" // the gateway is stopping
+	StopCrash    = "crash"    // the backend exited on its own (runtime.exited too)
+	StopCancel   = "cancel"   // a job was cancelled (video)
+	StopIdle     = "idle"     // unloaded after idling (no such timer yet)
+)
+
+// logStopped records a backend stop: runtime.evicted for memory, else
+// runtime.stopped, with the reserved memory it freed (operator observability
+// audit, DESIGN §13.6 note on events).
+func logStopped(log *slog.Logger, runtime, modelID, reason string, freed int64, pid int) {
+	if log == nil {
+		return
+	}
+	event, msg := "runtime.stopped", "Stopped the "+runtime+" runtime ("+reason+")."
+	if reason == StopMemory {
+		event, msg = "runtime.evicted", "Evicted the "+runtime+" runtime for memory."
+	}
+	log.Info(msg, "event", event, "runtime", runtime, "model_id", modelID, "reason", reason,
+		"memory_freed_bytes", freed, "pid", pid)
 }

@@ -161,7 +161,14 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 		}
 		// A memory refusal names the usable memory sampled when each job
 		// started; the two jobs run one after the other, so only that
-		// figure may differ.
+		// figure may differ. Near the threshold one may be refused for
+		// memory while the other starts and fails: each is right for the
+		// memory it sampled.
+		code := func(m map[string]any) any { e, _ := m["error"].(map[string]any); return e["code"] }
+		if (code(s) == "insufficient_memory") != (code(first) == "insufficient_memory") {
+			t.Logf("one job was refused for memory, the other started: %v vs %v", final["go"]["error"], final["ts"]["error"])
+			continue
+		}
 		if sampledUsable(fmt.Sprint(s["error"])) != sampledUsable(fmt.Sprint(first["error"])) {
 			t.Errorf("errors differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
 		}

@@ -460,7 +460,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 			}
 			return demand, err
 		}
-		m.stopBackend(prev)
+		m.stopBackend(prev, StopSwitch)
 		// Memory must settle before the new model starts; if it never does,
 		// the previous model is restored (TS rollBackRejectedSwitch).
 		if prev.modelID != modelID {
@@ -504,7 +504,7 @@ func (m *LLM) install(b *backend) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
-		m.stopBackend(b)
+		m.stopBackend(b, StopShutdown)
 		return
 	}
 	m.cur = b
@@ -615,7 +615,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
 }
 
-func (m *LLM) stopBackend(b *backend) {
+func (m *LLM) stopBackend(b *backend, reason string) {
 	m.mu.Lock()
 	if m.cur == b {
 		m.cur = nil
@@ -623,6 +623,7 @@ func (m *LLM) stopBackend(b *backend) {
 	m.mu.Unlock()
 	close(b.stop)
 	b.proc.Stop(stopGrace)
+	logStopped(m.d.Log, "llm", b.modelID, reason, b.res.Bytes(), b.proc.PID())
 	b.res.Release()
 }
 
@@ -660,9 +661,10 @@ func (m *LLM) watch(b *backend) {
 			}
 			m.mu.Unlock()
 			if crashed {
-				b.res.Release()
 				m.d.Log.Error("llama-server exited unexpectedly.", "event", "runtime.exited", "runtime", "llm",
 					"model_id", b.modelID, "error", fmt.Sprint(b.proc.ExitErr()))
+				logStopped(m.d.Log, "llm", b.modelID, StopCrash, b.res.Bytes(), b.proc.PID())
+				b.res.Release()
 				m.mu.Lock()
 				m.pump()
 				m.mu.Unlock()
@@ -686,7 +688,7 @@ func (m *LLM) EmergencyStop(reason error) {
 	}
 	m.mu.Unlock()
 	if b != nil {
-		m.stopBackend(b)
+		m.stopBackend(b, StopMemory)
 	}
 	m.probes.Wait()
 }
@@ -706,7 +708,7 @@ func (m *LLM) Close() {
 	b := m.cur
 	m.mu.Unlock()
 	if b != nil {
-		m.stopBackend(b)
+		m.stopBackend(b, StopShutdown)
 	}
 	m.probes.Wait()
 }

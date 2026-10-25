@@ -147,7 +147,7 @@ func (l *ServiceLease) Kill() error {
 	}
 	s.mu.Unlock()
 	if b != nil {
-		s.stop(b)
+		s.stop(b, StopCancel)
 	}
 	return nil
 }
