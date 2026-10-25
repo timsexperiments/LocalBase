@@ -2661,3 +2661,28 @@ on GPU 0 against an `nvidia-smi` sample taken at start time.
 
 **Linux CUDA qualification** is the operator's, with the user, through the
 Pixelator's DFS-owned queue. Nothing here ran on it.
+
+### 20.11 The Placement card (PR 5)
+
+The model detail page (`/app/models/m/{id}`) shows a Placement card for
+chat models. Only accounts with models:manage can change it; others see
+it read-only.
+- **"When it loads"** (before a load) or **"Next load"**: the split in
+  words. It covers the platform note, GPU layers out of total layers, and
+  which expert layers stay in system memory and how many bytes they take.
+- **"Loaded now":** shown once the model is loaded. On discrete NVIDIA it
+  carries "Planned at <time> against <free> of free GPU memory". When the
+  stored choice differs from the running split, an "Applies on next load"
+  badge shows.
+- **The form:** the mode selector, the two Custom fields and the shared
+  context size, labelled "shared by all models". Save and "Back to auto"
+  post to `POST /app/models/placement/{id}` (models:manage). The handler
+  goes through the placement API, so it gets the same validation and the
+  same mid-load refusal, and it re-renders only the card. An error shows in
+  the card; the fields show the stored choice again.
+- **The next-load preview carries no `plannedAt`.** The API's `next` and
+  metadata's `device.placement` preview drop it, because only a load is
+  planned.
+- **Copy:** capacity and CPU use only, with no model names.
+- **Checked:** at 390 px, with no horizontal overflow and 44 px controls.
+- **Tests:** `TestPlacementCard` and `TestPlacementCardSaves`.

@@ -124,7 +124,9 @@ func (s *Server) placementState(w http.ResponseWriter, r *http.Request, id strin
 		out["pendingNextLoad"] = !sameRequest(plan.PlacementRequest, req) || plan.Budget.ConfiguredCeiling != cfg.CtxSize
 	}
 	if next, err := s.LLM.PreviewPlacement(id, req); err == nil && next.Placement != nil {
-		out["next"] = placementJSON(next)
+		pj := placementJSON(next)
+		delete(pj, "plannedAt") // a preview, not a load
+		out["next"] = pj
 	} else if err != nil {
 		var pe *placement.Error
 		if errors.As(err, &pe) {
