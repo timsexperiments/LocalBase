@@ -452,6 +452,22 @@ func TestRunRestartInterrupted(t *testing.T) {
 	if len(evs) != 2 || evs[0].name != "snapshot" || evs[1].name != "end" || !strings.Contains(evs[0].data, `"content":"w1 w2`) {
 		t.Errorf("events after restart: %v", evs)
 	}
+	// A page resuming from before the restart (its last id may be past the
+	// last checkpoint) still learns the outcome: the buffer is gone, so the
+	// snapshot and end come whatever id it sends, numbered after the
+	// checkpointed events (FE thread, 2026-10-27).
+	for _, resume := range []struct {
+		hdr   []string
+		query string
+	}{{[]string{"Last-Event-ID", "52"}, ""}, {nil, "?after=100000"}, {[]string{"Last-Event-ID", "1"}, ""}} {
+		got, _, _ := cb.events(id, resume.hdr, resume.query, nil)
+		if len(got) != 2 || got[0].name != "snapshot" || got[1].name != "end" || got[0].id != evs[0].id || got[1].id != evs[1].id || evs[0].id < 2 {
+			t.Errorf("resume %v%s after restart: %v", resume.hdr, resume.query, got)
+		}
+	}
+	if last := m["lastEventId"].(float64); last != float64(evs[1].id) {
+		t.Errorf("lastEventId %v, end id %d", last, evs[1].id)
+	}
 
 	// A graceful stop interrupts the live run.
 	a.StopRuns(5 * time.Second)

@@ -121,6 +121,9 @@ type runRecord struct {
 	EndedAt   *time.Time     `json:"endedAt"`
 	ExpiresAt *time.Time     `json:"expiresAt"`
 	Output    *runOutput     `json:"output,omitempty"`
+	// Events is the checkpoint's event count; a restored run numbers its
+	// snapshot and end after it.
+	Events int `json:"events,omitempty"`
 }
 
 type run struct {
@@ -185,6 +188,9 @@ func (m *runManager) checkpoint(r *run) {
 	rec := r.runRecord
 	out := r.output
 	rec.Output = &out
+	if !r.restored {
+		rec.Events = len(r.events)
+	}
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return
@@ -357,7 +363,7 @@ func (r *run) view(withOutput bool) map[string]any {
 
 func (r *run) lastEventID() int {
 	if r.restored {
-		return 2 // snapshot, end
+		return r.Events + 2 // snapshot, end
 	}
 	return len(r.events)
 }
@@ -930,15 +936,16 @@ func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
 		return err == nil
 	}
 	if r.restored {
-		// The event buffer did not survive the restart: one snapshot, then end.
+		// The event buffer did not survive the restart, and a resuming page's
+		// last id may be past the last checkpoint: whatever it sends, it gets
+		// the snapshot and end, numbered after the checkpointed events.
 		r.mu.Lock()
 		snap, _ := json.Marshal(r.view(true))
 		end, _ := json.Marshal(r.view(false))
+		base := r.Events
 		r.mu.Unlock()
-		for _, e := range []runEvent{{1, "snapshot", snap}, {2, "end", end}} {
-			if e.id > after {
-				write(e)
-			}
+		for _, e := range []runEvent{{base + 1, "snapshot", snap}, {base + 2, "end", end}} {
+			write(e)
 		}
 		flush()
 		return
