@@ -3376,3 +3376,17 @@ The one thing people come to do: add a voice, hear it, and use it.
   `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE` adds a voice through
   the sheet (it closes, the list says "Added …") and plays one;
   `tools/phone-check.sh` types in the Add sheet with the keyboard open.
+
+### 22.12 Settings (PR 7)
+
+The one thing people come to do: change a preference and leave.
+iOS-style grouped lists, one setting per row, no cards:
+- **Chat:** "Save text history on this device" as a switch (a checkbox
+  drawn as a switch, so its role and state stay real; the off track meets
+  3:1 non-text contrast), Clear all history, and a row to Chat's
+  generation controls.
+- **Default chat model:** "Now using …" with the factual reason, then the
+  ordered choices and Save (models:manage).
+- **Hugging Face:** the token row with its state, the form under it.
+- **Account:** who is signed in and what they can do, then Sign out.
+- **Checks:** `TestSettingsGrouped` and the existing settings tests.
