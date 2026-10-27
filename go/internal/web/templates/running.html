@@ -31,11 +31,21 @@
             {{else if .Active}}<span class="pill pill-warn">Busy · {{.Active}} {{if eq .Active 1}}request{{else}}requests{{end}}</span>
             {{else}}<span class="pill pill-ok"><span aria-hidden="true" class="size-1.5 rounded-full bg-current"></span>Idle</span>{{end}}
           </a>
-          {{if $.CanManage}}<button type="button" class="btn btn-quiet rounded-full" aria-label="Unload {{.Name}}"
-            hx-post="/app/models/unload/{{.ID}}" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML"
-            hx-sync="closest #running-live:replace" hx-disabled-elt="this" hx-indicator="#unload-busy">Unload</button>{{end}}
+          {{if $.CanManage}}<button type="button" class="btn btn-quiet rounded-full" aria-label="Unload {{.Name}}" data-open-sheet="unload-sheet" aria-haspopup="dialog">Unload</button>{{end}}
         </li>
       </ul>
+      {{if $.CanManage}}
+      {{/* Polls pause while this sheet is open (shell.js). */}}
+      <dialog id="unload-sheet" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="unload-title">
+        {{template "sheet-head" (dict "ID" "unload-title" "Title" (printf "Unload %s?" .Name))}}
+        <div class="grid gap-3 px-4 pb-2">
+          <p class="text-muted">This frees {{if .Bytes}}about {{gib .Bytes}}{{else}}its memory{{end}}. Anything running on it finishes first; new requests for it wait until it is gone, then load it again.</p>
+          <button type="button" class="btn btn-primary w-full" data-close-sheet
+            hx-post="/app/models/unload/{{.ID}}" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML"
+            hx-sync="closest #running-live:replace" hx-indicator="#unload-busy">Unload</button>
+        </div>
+      </dialog>
+      {{end}}
       <p id="unload-busy" class="htmx-indicator mt-2 px-1 font-semibold text-muted" role="status">Unloading…{{if .Active}} (waiting for {{.Active}} {{if eq .Active 1}}request{{else}}requests{{end}} to finish){{end}}</p>
       <p class="mt-2 px-1 text-sm text-muted">It stays loaded until another model needs the memory{{if $.CanManage}}, or you unload it{{end}}. Its files stay installed.</p>
       {{else}}

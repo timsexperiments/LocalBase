@@ -206,7 +206,7 @@ func TestUnload(t *testing.T) {
 		want   string
 	}{
 		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Unloaded. Freed 4.2 GB."},
-		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "Still busy with 2 requests, so it stayed loaded."},
+		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "It’s busy with 2 requests. Try again when they finish."},
 		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already unloaded."},
 		{404, `404 page not found`, "This LocalBase can’t unload models yet."},
 		{403, `{"error":{"code":"forbidden","message":"Missing models:manage."}}`, "Missing models:manage."},
@@ -226,6 +226,11 @@ func TestUnload(t *testing.T) {
 			!strings.Contains(body, `data-announce="`+c.want) {
 			t.Errorf("%d %s: %s\n%s", c.status, c.body, path, body)
 		}
+	}
+	// With models:manage, Unload asks first in a sheet that says what it frees.
+	if body := get(shellUI(t, nil, ""), "/app/models/running").Body.String(); strings.Contains(body, `data-open-sheet="unload-sheet"`) &&
+		!strings.Contains(body, "Anything running on it finishes first") {
+		t.Error("the Unload confirmation does not say what happens")
 	}
 	// Without models:manage there is no Unload button, and the route refuses.
 	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read"}}

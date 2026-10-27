@@ -285,7 +285,7 @@ func (u *UI) unload(w http.ResponseWriter, r *http.Request) {
 	case res.Status == http.StatusOK:
 		u.renderRunning(w, r, "Unloaded.", false)
 	case out.Error.Code == "model_busy" && out.Error.InFlight > 0:
-		u.renderRunning(w, r, fmt.Sprintf("Still busy with %d %s, so it stayed loaded. Try again when they finish.", out.Error.InFlight, map[bool]string{true: "request", false: "requests"}[out.Error.InFlight == 1]), true)
+		u.renderRunning(w, r, fmt.Sprintf("It’s busy with %d %s. Try again when they finish.", out.Error.InFlight, map[bool]string{true: "request", false: "requests"}[out.Error.InFlight == 1]), true)
 	case out.Error.Code == "model_busy":
 		u.renderRunning(w, r, "It is busy, so it stayed loaded. Try again in a moment.", true)
 	case out.Error.Code == "model_not_loaded":

@@ -3438,3 +3438,11 @@ Across the eight pages:
   Lab lines are 16 px or part of the heading. One finding with no element
   or frame remains on shell pages (not identified by the audit); the skip
   link is now full size and parked off screen until focused.
+- **Unload, after review:** the row's Unload opens a confirmation sheet
+  ("This frees about X GiB. Anything running on it finishes first; new
+  requests for it wait until it is gone, then load it again."); polls
+  pause while a sheet in the polled region is open. A busy model answers
+  "It's busy with N requests. Try again when they finish." A request or
+  run refused because its model was unloading (503 / failed
+  `model_unloading`) says "The model was being unloaded, so this didn't
+  run. Try again: it loads again when needed." in Chat and the Lab.

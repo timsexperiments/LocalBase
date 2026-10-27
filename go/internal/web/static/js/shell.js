@@ -106,6 +106,12 @@ document.addEventListener("htmx:afterSettle", (event) => {
   announceChanges();
 });
 document.addEventListener("htmx:historyRestore", () => announced.clear());
+// A polled region holding an open sheet (a confirmation) waits: a refresh
+// would replace the sheet under the person's finger.
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const elt = event.detail.elt;
+  if (elt?.hasAttribute?.("data-poll") && elt.querySelector("dialog[open]")) event.preventDefault();
+});
 announceChanges();
 
 // --- "Generating…" --------------------------------------------------------------
