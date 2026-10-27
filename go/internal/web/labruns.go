@@ -26,9 +26,13 @@ var labTargets = map[string]string{
 // labRun is the part of a run object the tray uses.
 type labRun struct {
 	ID, Target, Status, Reason string
-	Error                      *struct{ Message string } `json:"error"`
+	Error                      *struct{ Code, Message string } `json:"error"`
 	CreatedAt                  time.Time
 }
+
+// unloadingMessage: a request reached a model while someone unloaded it
+// (DESIGN §23); the gateway answers 503 model_unloading.
+const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed."
 
 // labNote is what the tray remembers about a run, in memory, bound to its
 // owner: the prompt as a caption, and the collected result.
@@ -132,7 +136,9 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 		}
 	case "failed":
 		v.Message = "This did not finish."
-		if run.Error != nil && run.Error.Message != "" {
+		if run.Error != nil && run.Error.Code == "model_unloading" {
+			v.Message = unloadingMessage
+		} else if run.Error != nil && run.Error.Message != "" {
 			v.Message = run.Error.Message
 		}
 	case "completed":

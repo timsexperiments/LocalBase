@@ -120,7 +120,7 @@ func TestSettingsHFToken(t *testing.T) {
 func TestSettingsGrouped(t *testing.T) {
 	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/settings").Body.String())
 	for _, want := range []string{`<h1 id="settings-title" class="page-title">Settings</h1>`, `<h2 id="history-title" class="list-label">Chat</h2>`,
-		`<input type="checkbox" class="switch" data-history-toggle>`, `data-history-clear>Clear all history</button>`, `href="/app/chat" hx-boost="false" class="setting-row"`} {
+		`<input type="checkbox" class="switch" data-history-toggle>`, `data-history-clear>Clear</button>`, `href="/app/chat" hx-boost="false" class="setting-row"`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}

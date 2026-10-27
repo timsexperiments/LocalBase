@@ -152,6 +152,12 @@ await nav("/app/models/running");
 await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
 for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) await sleep(250);
 await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
+await sleep(300);
+const asked = await ev(`({ open: document.getElementById("unload-sheet")?.open, text: document.getElementById("unload-sheet")?.textContent.replace(/\\s+/g, " ") })`);
+check(asked.open && /This frees about .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
+await sleep(3500); // a poll would have replaced the sheet; it waits while it is open
+check(await ev(`document.getElementById("unload-sheet")?.open === true`), "the sheet survives polling");
+await ev(`document.querySelector("#unload-sheet button.btn-primary").click()`);
 await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
 check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);

@@ -11,7 +11,13 @@
           <span class="block text-sm text-muted">Visible to others using this browser. Credentials, attachments and generated media are never saved. Turning it off removes saved history.</span></span>
         <input type="checkbox" class="switch" data-history-toggle>
       </label>
-      <button type="button" class="list-row text-danger" data-history-clear>Clear all history</button>
+      <details class="confirm px-4 py-2">
+        <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">Clear all history</summary>
+        <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm Clear all history">
+          <p class="text-sm">Saved conversations on this device, and this tab’s, are removed.</p>
+          <button type="button" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger" data-history-clear>Clear</button>
+        </div>
+      </details>
       <a href="/app/chat" hx-boost="false" class="setting-row">
         <span class="min-w-0 flex-1"><span class="block font-semibold">Generation controls</span>
           <span class="block text-sm text-muted">Temperature, length and media settings are in Chat, next to the message box, for this page only.</span></span>

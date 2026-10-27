@@ -3393,3 +3393,56 @@ iOS-style grouped lists, one setting per row, no cards:
 - **Hugging Face:** the token row with its state, the form under it.
 - **Account:** who is signed in and what they can do, then Sign out.
 - **Checks:** `TestSettingsGrouped` and the existing settings tests.
+
+### 22.13 Admin (PR 8)
+
+The one thing people come to do: give an app or a person access, or take
+it away.
+- One title and a segmented switch (People, Access, API keys; short labels
+  so three fit at 360 px), always shown so the section is marked.
+- **API keys** follow the dashboard pattern: "Create API key" opens a sheet
+  (name, expiry, scopes); keys are rows in one list with their status, and
+  Rotate and Revoke keep their confirmations; the new secret is shown once,
+  as before. The empty state says what keys are for.
+- People and Access keep their forms (roles, invitations, providers,
+  policy) inside the new shell; restyling them into grouped lists is the
+  next polish.
+- **Checks:** `TestAdminKeysSheet` and the existing admin tests.
+
+### 22.14 Consistency pass (operator review, 2026-10-27)
+
+Across the eight pages:
+- **Titles:** one `h1.page-title` per page (`TestPagesConsistent`).
+- **Groups:** grouped lists for rows (`.list-group`, `.list-row`,
+  `.setting-row`, `.model-row`); forms that need a box use one titled group
+  (`.group-card`, `.group-title`); Admin's People and Access use them, and
+  Admin keeps no Refresh (create, rotate and revoke redraw the list).
+- **Sheets:** every sheet has the same header (title left, Done/close
+  right, no rule); Chat's picker and generation sheets were aligned.
+- **Empty states:** `.empty-state` (dashed box, one sentence, at most one
+  action), including Chat's "no model" and "can't chat".
+- **Outcomes:** `.notice` / `.notice-error` (tinted, bold), the same on
+  Running, My voices and Admin.
+- **Destructive actions:** the shared `confirm` disclosure (a danger
+  button that reveals what will happen and a second button to do it):
+  Rotate, Revoke, Delete voice, Clear all history. Clear all history also
+  removes this tab's session copy of chats and the unsent message.
+- **Dark mode:** every page and sheet was captured at 390 px in dark
+  (`.design/screens/dark/`); the selected segment carries a ring.
+- **iOS Safari** (`tools/ios-check.sh` on a dedicated simulator, booted
+  for the run and deleted after): the composer moves above the keyboard
+  (y 614 → 341 in a 874-point web view), Return adds a line and Send
+  submits. Apple's audit flagged the tab labels (12 px text taken as the
+  hit area) and two 14 px lines in the Lab: the tab links now carry their
+  name (`aria-label`, the small visible label is `aria-hidden`), and the
+  Lab lines are 16 px or part of the heading. One finding with no element
+  or frame remains on shell pages (not identified by the audit); the skip
+  link is now full size and parked off screen until focused.
+- **Unload, after review:** the row's Unload opens a confirmation sheet
+  ("This frees about X GiB. Anything running on it finishes first; new
+  requests for it wait until it is gone, then load it again."); polls
+  pause while a sheet in the polled region is open. A busy model answers
+  "It's busy with N requests. Try again when they finish." A request or
+  run refused because its model was unloading (503 / failed
+  `model_unloading`) says "The model was being unloaded, so this didn't
+  run. Try again: it loads again when needed." in Chat and the Lab.

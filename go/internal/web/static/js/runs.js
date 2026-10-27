@@ -200,7 +200,10 @@ export async function response({ create: start, id, after, signal, onRun, onEnd 
         // What this stream has delivered, so a snapshot adds only the rest.
         const sent = { content: "", reasoning: "" };
         for await (const e of events(id, { signal, after })) {
-          if (e.event === "error") failed = true;
+          if (e.event === "error") {
+            failed = true;
+            if (e.data?.error?.code === "model_unloading") e.raw = JSON.stringify({ error: { ...e.data.error, message: unloadingMessage } });
+          }
           if (e.event === "chunk") {
             const delta = e.data?.choices?.[0]?.delta ?? {};
             sent.content += delta.content ?? "";
@@ -243,7 +246,11 @@ export function snapshotChunk(run, sent = { content: "", reasoning: "" }) {
   return { choices: [{ index: 0, delta: { ...(content ? { content } : {}), ...(reasoning ? { reasoning } : {}) } }] };
 }
 
+// A request that reached a model while someone unloaded it (DESIGN §23).
+export const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed.";
+
 export function endMessage(run) {
+  if (run?.error?.code === "model_unloading") return unloadingMessage;
   if (run?.status === "cancelled") return "Stopped.";
   if (run?.reason === "output_limit") return "The reply grew too long and was stopped.";
   switch (run?.reason) {

@@ -361,7 +361,7 @@
     @apply flex min-h-11 flex-auto items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
   }
   .segmented > a[aria-current="page"] {
-    @apply bg-surface text-ink shadow-sm;
+    @apply bg-surface text-ink shadow-sm ring-1 ring-line;
   }
 
   /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */
@@ -568,5 +568,30 @@
   }
   .switch:checked::before {
     @apply translate-x-5;
+  }
+}
+
+/* Shared across pages (DESIGN §22.14): a titled group of fields, the
+   outcome of an action, and destructive actions behind a confirmation. */
+@layer components {
+  .group-card {
+    @apply rounded-2xl border border-line bg-surface p-4;
+  }
+  .group-title {
+    @apply text-base font-bold;
+  }
+  .notice {
+    @apply rounded-xl bg-accent-soft px-4 py-3 font-semibold text-accent;
+  }
+  .notice-error {
+    @apply bg-danger-soft text-danger;
+  }
+}
+
+/* Skip link: full size (iOS audits a 1px element as too small), parked
+   above the page until it has focus. */
+@layer components {
+  .skip-link {
+    @apply fixed top-3 left-3 z-50 -translate-y-24 focus:translate-y-0;
   }
 }

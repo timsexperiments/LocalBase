@@ -34,8 +34,12 @@ type APIResult struct {
 func (a APIResult) apiError() string {
 	var e struct {
 		Error struct {
+			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
+	}
+	if json.Unmarshal(a.Body, &e) == nil && e.Error.Code == "model_unloading" {
+		return unloadingMessage
 	}
 	if json.Unmarshal(a.Body, &e) == nil && e.Error.Message != "" {
 		return e.Error.Message

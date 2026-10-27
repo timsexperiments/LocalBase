@@ -44,8 +44,8 @@
 
 {{define "voice-list"}}
 <div id="voice-list" class="mt-5" aria-live="polite">
-  {{with .Notice}}<p class="mb-3 rounded-xl px-4 py-3 font-semibold {{if $.Failed}}bg-danger-soft text-danger{{else}}bg-accent-soft text-accent{{end}}" {{if $.Failed}}role="alert"{{end}}>{{.}}</p>{{end}}
-  {{with .Error}}<p class="mb-3 rounded-xl bg-danger-soft px-4 py-3 font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+  {{with .Notice}}<p class="notice mb-3 {{if $.Failed}}notice-error{{end}}" {{if $.Failed}}role="alert"{{end}}>{{.}}</p>{{end}}
+  {{with .Error}}<p class="notice notice-error mb-3" role="alert">{{.}}</p>{{end}}
   {{if not .List.Data}}
   <div class="empty-state">
     <h2 class="text-lg font-bold">No voices yet</h2>
@@ -73,8 +73,8 @@
             <button type="submit" class="btn btn-quiet">Rename</button>
           </form>
           <p class="text-sm text-muted">In the speech API, this voice is <code class="break-all">{{.ID}}</code>.</p>
-          <form hx-post="/app/voices/{{.ID}}/delete" hx-target="#voice-list" hx-swap="outerHTML" hx-confirm="Delete {{.Name}} and its recording?">
-            <button type="submit" class="btn w-full bg-danger-soft text-danger">Delete voice</button>
+          <form hx-post="/app/voices/{{.ID}}/delete" hx-target="#voice-list" hx-swap="outerHTML">
+            {{template "confirm" (dict "Label" "Delete voice" "Action" "delete" "Confirm" "Delete" "Text" "The voice and its recording are deleted.")}}
           </form>
         </div>
       </dialog>

@@ -118,3 +118,11 @@ describe("snapshot after a gateway restart", () => {
     expect(text).toBe("All of it");
   });
 });
+
+describe("model_unloading", () => {
+  test("a run refused while its model unloads fails in plain words", async () => {
+    fakeGateway([[ev(1, "error", JSON.stringify({ error: { code: "model_unloading", message: "Model is unloading." } })), ev(2, "end", '{"status":"failed"}')]]);
+    const read = streamText(await response({ id: "run_8", after: "" }), () => {});
+    await expect(read).rejects.toThrow("The model was being unloaded, so this didn’t run.");
+  });
+});

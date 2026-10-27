@@ -84,7 +84,7 @@ func TestShellOnEveryPage(t *testing.T) {
 		if n := strings.Count(tabs, `aria-current="page"`); (current == "" && n != 0) || (current != "" && n != 1) {
 			t.Errorf("%s: %d current tabs", path, n)
 		}
-		if current != "" && !regexp.MustCompile(`aria-current="page">.*?<span class="tab-label">`+current+`<`).MatchString(tabs) {
+		if current != "" && !regexp.MustCompile(`aria-current="page" aria-label="`+current+`">`).MatchString(tabs) {
 			t.Errorf("%s: %s is not the current tab", path, current)
 		}
 		if current == "" && !strings.Contains(tabs, `data-active>`) {
@@ -154,7 +154,7 @@ func TestModelsSwitch(t *testing.T) {
 			t.Errorf("%s: the Models switch does not mark %s", path, current)
 		}
 	}
-	if strings.Contains(get(u, "/app/lab").Body.String(), `aria-label="Models"`) {
+	if strings.Contains(get(u, "/app/lab").Body.String(), `<nav aria-label="Models"`) {
 		t.Error("the Models switch shows on the Lab")
 	}
 }
@@ -206,7 +206,7 @@ func TestUnload(t *testing.T) {
 		want   string
 	}{
 		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Unloaded. Freed 4.2 GB."},
-		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "Still busy with 2 requests, so it stayed loaded."},
+		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "It’s busy with 2 requests. Try again when they finish."},
 		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already unloaded."},
 		{404, `404 page not found`, "This LocalBase can’t unload models yet."},
 		{403, `{"error":{"code":"forbidden","message":"Missing models:manage."}}`, "Missing models:manage."},
@@ -227,10 +227,32 @@ func TestUnload(t *testing.T) {
 			t.Errorf("%d %s: %s\n%s", c.status, c.body, path, body)
 		}
 	}
+	// With models:manage, Unload asks first in a sheet that says what it frees.
+	if body := get(shellUI(t, nil, ""), "/app/models/running").Body.String(); strings.Contains(body, `data-open-sheet="unload-sheet"`) &&
+		!strings.Contains(body, "Anything running on it finishes first") {
+		t.Error("the Unload confirmation does not say what happens")
+	}
 	// Without models:manage there is no Unload button, and the route refuses.
 	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read"}}
 	u := shellUI(t, p, "")
 	if strings.Contains(get(u, "/app/models/running").Body.String(), "/app/models/unload/") {
 		t.Error("Unload offered without models:manage")
+	}
+}
+
+// One look across pages: each has one title in the same style; Admin uses
+// titled groups, not loose cards, and keeps no Refresh button (its list
+// redraws after every change).
+func TestPagesConsistent(t *testing.T) {
+	u := shellUI(t, nil, "")
+	for _, path := range []string{"/app/models", "/app/models/get", "/app/models/running", "/app/lab", "/app/voices", "/app/settings",
+		"/app/admin?section=people", "/app/admin?section=access", "/app/admin?section=keys"} {
+		main := mainRe.FindString(get(u, path).Body.String())
+		if strings.Count(main, "<h1 ") != 1 || !regexp.MustCompile(`<h1 id="[a-z-]+" class="page-title">`).MatchString(main) {
+			t.Errorf("%s: the title is not the shared page title", path)
+		}
+		if strings.HasPrefix(path, "/app/admin") && (strings.Contains(main, `class="card p-5"`) || strings.Contains(main, ">Refresh<")) {
+			t.Errorf("%s: loose cards or a Refresh button", path)
+		}
 	}
 }

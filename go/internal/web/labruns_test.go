@@ -125,3 +125,21 @@ func TestLabDock(t *testing.T) {
 		t.Error("the prompt comes before the results")
 	}
 }
+
+// A request that reached a model while it was being unloaded says so in
+// plain words, on runs and on direct calls.
+func TestModelUnloadingMessage(t *testing.T) {
+	f := &fakeRuns{status: "failed"}
+	u := New(Deps{NoAuth: true, Call: func(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) APIResult {
+		if path == "/_localbase/runs/run_1" {
+			return APIResult{Status: 200, Body: []byte(`{"id":"run_1","target":"/v1/images/generations","status":"failed","error":{"code":"model_unloading","message":"Model is unloading."}}`)}
+		}
+		return f.call(ctx, p, method, path, ct, body)
+	}})
+	if out := get(u, "/app/lab/runs/run_1").Body.String(); !strings.Contains(out, unloadingMessage) {
+		t.Errorf("run: %s", out)
+	}
+	if got := (APIResult{Status: 503, Body: []byte(`{"error":{"code":"model_unloading","message":"x"}}`)}).apiError(); got != unloadingMessage {
+		t.Errorf("direct: %q", got)
+	}
+}

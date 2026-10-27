@@ -1,14 +1,9 @@
 {{define "title"}}Admin · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="admin-title">
-  <p class="eyebrow">Administration</p>
-  <h1 id="admin-title" class="mt-1 text-3xl font-bold tracking-tight">Admin</h1>
-  <nav aria-label="Administration" class="mt-4">
-    <ul class="flex flex-wrap gap-1">
-      {{range .Sections}}
-      <li><a class="btn min-h-11 {{if eq . $.Section}}bg-accent-soft text-accent{{else}}btn-quiet{{end}}" href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People &amp; roles{{else if eq . "access"}}Browser access{{else}}API keys{{end}}</a></li>
-      {{end}}
-    </ul>
+  <h1 id="admin-title" class="page-title">Admin</h1>
+  <nav aria-label="Administration" class="segmented mt-4 max-w-md">
+    {{range .Sections}}<a href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People{{else if eq . "access"}}Access{{else}}API keys{{end}}</a>{{end}}
   </nav>
   {{template "admin-section" .}}
 </section>
@@ -17,8 +12,8 @@
 
 {{define "admin-section"}}
 <div id="admin-section" class="mt-4 grid gap-4" data-section="{{.Section}}">
-  {{with .Notice}}<p class="card flex items-center justify-between gap-2 px-4 py-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
-  {{with .Error}}<p class="card border-danger-line bg-danger-soft px-4 py-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+  {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="notice notice-error" role="alert">{{.}}</p>{{end}}
   {{if and .Secret $.CanManageKeys}}
   <section class="card grid gap-2 border-accent p-4" aria-label="New API key secret" hx-history="false">
     <p class="font-bold">Copy this secret now</p>
@@ -29,8 +24,8 @@
   </section>
   {{end}}
   {{with .LoadError}}
-  <section class="card p-5">
-    <h2 class="text-lg font-bold">{{if eq $.Section "keys"}}API keys unavailable{{else}}Access policy unavailable{{end}}</h2>
+  <section class="group-card">
+    <h2 class="group-title">{{if eq $.Section "keys"}}API keys unavailable{{else}}Access policy unavailable{{end}}</h2>
     <p class="mt-1 text-sm text-danger" role="alert">{{.}}</p>
     <p class="mt-1 text-sm text-muted">No changes are available until it can be read.</p>
     <a class="btn btn-quiet mt-3 min-h-11" href="/app/admin?section={{$.Section}}">Try again</a>
@@ -55,29 +50,18 @@
 </div>
 {{end}}
 
-{{/* A named confirmation: dict "Label" "Text" "Confirm" and the hidden fields as "Fields". */}}
-{{define "confirm"}}
-<details class="confirm">
-  <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">{{.Label}}</summary>
-  <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm {{.Label}}">
-    <p class="text-sm">{{.Text}}</p>
-    <button type="submit" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger" name="action" value="{{.Action}}">{{.Confirm}}</button>
-  </div>
-</details>
-{{end}}
-
 {{define "admin-people"}}
 {{$s := .State}}
 {{if not .CanManageAccess}}
-<section class="card p-5" aria-labelledby="people-title">
-  <h2 id="people-title" class="text-lg font-bold">People</h2>
+<section class="group-card" aria-labelledby="people-title">
+  <h2 id="people-title" class="group-title">People</h2>
   <ul class="mt-2 grid gap-2">
     {{range $s.Users}}<li class="rounded-xl border border-line p-3"><span class="font-semibold wrap-anywhere">{{.Email}}</span><span class="block text-sm text-muted">{{.Status}} · {{with .Roles}}{{range $i, $r := .}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}No roles{{end}}</span></li>
     {{else}}<li class="text-sm text-muted">No managed users.</li>{{end}}
   </ul>
 </section>
-<section class="card p-5" aria-labelledby="roles-title">
-  <h2 id="roles-title" class="text-lg font-bold">Roles</h2>
+<section class="group-card" aria-labelledby="roles-title">
+  <h2 id="roles-title" class="group-title">Roles</h2>
   <p class="mt-1 text-sm text-muted">Default: {{with $s.Policy}}{{with .DefaultRole}}{{.}}{{else}}No default role{{end}}{{else}}No default role{{end}}</p>
   <ul class="mt-2 grid gap-2">
     {{range $s.Roles}}<li class="rounded-xl border border-line p-3"><span class="font-semibold">{{.Name}}</span>{{with .Description}}<span class="block text-sm">{{.}}</span>{{end}}<span class="block text-xs text-muted wrap-anywhere">{{with .Permissions}}{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{else}}No permissions{{end}}</span></li>
@@ -85,8 +69,8 @@
   </ul>
 </section>
 {{else if not $s.Policy}}
-<section class="card p-5" aria-labelledby="setup-title">
-  <h2 id="setup-title" class="text-lg font-bold">Set up roles</h2>
+<section class="group-card" aria-labelledby="setup-title">
+  <h2 id="setup-title" class="group-title">Set up roles</h2>
   <p class="mt-1 text-sm text-muted">This creates an admin role for your verified email and a default member role with chat access. Model management is not granted by default.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people">
@@ -100,8 +84,8 @@
   </form>
 </section>
 {{else}}
-<section class="card p-5" aria-labelledby="invite-title">
-  <h2 id="invite-title" class="text-lg font-bold">Invite a person</h2>
+<section class="group-card" aria-labelledby="invite-title">
+  <h2 id="invite-title" class="group-title">Invite a person</h2>
   <p class="mt-1 text-sm text-muted">Their verified sign-in email claims this invitation on first login.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="invite-user">
@@ -122,9 +106,9 @@
   {{end}}
 </section>
 
-<section class="card p-5" aria-labelledby="people-title">
+<section class="group-card" aria-labelledby="people-title">
   <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 id="people-title" class="text-lg font-bold">People <span class="text-sm font-normal text-muted">· {{len $s.Users}} managed</span></h2>
+    <h2 id="people-title" class="group-title">People <span class="text-sm font-normal text-muted">· {{len $s.Users}} managed</span></h2>
     <a class="btn btn-quiet min-h-11 text-base" href="/app/admin?section=people">Refresh</a>
   </div>
   <ul class="mt-3 grid gap-3">
@@ -152,9 +136,9 @@
   </ul>
 </section>
 
-<section class="card p-5" aria-labelledby="roles-title">
+<section class="group-card" aria-labelledby="roles-title">
   <div class="flex flex-wrap items-end justify-between gap-3">
-    <h2 id="roles-title" class="text-lg font-bold">Roles <span class="text-sm font-normal text-muted">· {{len $s.Roles}}</span></h2>
+    <h2 id="roles-title" class="group-title">Roles <span class="text-sm font-normal text-muted">· {{len $s.Roles}}</span></h2>
     <form class="flex flex-wrap items-end gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="default-role">
       <div class="grid gap-1"><label class="text-base font-semibold" for="default-role">Default for eligible sign-ins</label>
@@ -183,8 +167,8 @@
   </ul>
 </section>
 
-<section class="card p-5" aria-labelledby="new-role-title">
-  <h2 id="new-role-title" class="text-lg font-bold">Create a role</h2>
+<section class="group-card" aria-labelledby="new-role-title">
+  <h2 id="new-role-title" class="group-title">Create a role</h2>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="people"><input type="hidden" name="action" value="create-role">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
@@ -202,14 +186,14 @@
 {{$s := .State}}
 {{$cfg := $s.Config}}
 {{if not .CanManageAccess}}
-<section class="card p-5"><h2 class="text-lg font-bold">Human sign-in</h2><p class="mt-1">{{template "provider-label" $cfg}}</p>{{with $cfg}}<p class="text-sm text-muted">{{.Origin}}</p>{{end}}</section>
-<section class="card p-5"><h2 class="text-lg font-bold">Email delivery</h2><p class="mt-1">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></section>
-<section class="card p-5"><h2 class="text-lg font-bold">Access policy</h2><p class="mt-1">{{with $s.Policy}}{{len .Roles}} roles configured{{else}}Not configured{{end}}</p></section>
+<section class="group-card"><h2 class="group-title">Human sign-in</h2><p class="mt-1">{{template "provider-label" $cfg}}</p>{{with $cfg}}<p class="text-sm text-muted">{{.Origin}}</p>{{end}}</section>
+<section class="group-card"><h2 class="group-title">Email delivery</h2><p class="mt-1">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></section>
+<section class="group-card"><h2 class="group-title">Access policy</h2><p class="mt-1">{{with $s.Policy}}{{len .Roles}} roles configured{{else}}Not configured{{end}}</p></section>
 {{else}}
 {{$e := .Edit}}
-<section class="card p-5" aria-labelledby="signin-title">
+<section class="group-card" aria-labelledby="signin-title">
   <div class="flex flex-wrap items-start justify-between gap-2">
-    <div><h2 id="signin-title" class="text-lg font-bold">Human sign-in</h2><p class="text-sm text-muted">{{template "provider-label" $cfg}}</p></div>
+    <div><h2 id="signin-title" class="group-title">Human sign-in</h2><p class="text-sm text-muted">{{template "provider-label" $cfg}}</p></div>
     {{if $cfg}}<span class="badge badge-ok">Configured</span>{{end}}
   </div>
   {{if and $cfg (eq $cfg.Provider.Kind "direct")}}
@@ -266,9 +250,9 @@
   </form>
 </section>
 
-<section class="card p-5" aria-labelledby="smtp-title">
+<section class="group-card" aria-labelledby="smtp-title">
   <div class="flex flex-wrap items-start justify-between gap-2">
-    <div><h2 id="smtp-title" class="text-lg font-bold">Email delivery</h2><p class="text-sm text-muted">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></div>
+    <div><h2 id="smtp-title" class="group-title">Email delivery</h2><p class="text-sm text-muted">{{with $s.EmailDelivery}}{{.Host}}:{{.Port}} · {{.From}}{{else}}SMTP is not configured{{end}}</p></div>
     {{if $s.EmailDelivery}}<span class="badge badge-ok">Configured</span>{{end}}
   </div>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
@@ -300,8 +284,8 @@
   {{end}}
 </section>
 
-<section class="card p-5" aria-labelledby="policy-title" id="policy">
-  <h2 id="policy-title" class="text-lg font-bold">Access policy</h2>
+<section class="group-card" aria-labelledby="policy-title" id="policy">
+  <h2 id="policy-title" class="group-title">Access policy</h2>
   <p class="mt-1 text-sm text-muted">JSON roles and identity bindings. At least one binding must retain <code>access:manage</code>.</p>
   <form class="mt-3 grid gap-3" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="section" value="access"><input type="hidden" name="revision" value="{{with $s.PolicyRevision}}{{.}}{{else}}null{{end}}">
@@ -320,27 +304,25 @@
 
 {{define "admin-keys"}}
 {{if .CanManageKeys}}
-<section class="card p-5" aria-labelledby="new-key-title">
-  <h2 id="new-key-title" class="text-lg font-bold">Create API key</h2>
-  <form class="mt-3 grid gap-3" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+<div class="flex justify-end"><button type="button" class="btn btn-primary rounded-full" data-open-sheet="new-key" aria-haspopup="dialog">{{template "icon-plus"}}Create API key</button></div>
+<dialog id="new-key" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="new-key-title">
+  {{template "sheet-head" (dict "ID" "new-key-title" "Title" "Create API key")}}
+  <form class="grid gap-3 px-4 pb-2" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="action" value="create">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
       <div class="grid gap-1"><label class="text-base font-semibold" for="key-name">Name</label><input id="key-name" class="input" name="name" required maxlength="128"></div>
       <div class="grid gap-1"><label class="text-base font-semibold" for="key-expiry">Expires after days <span class="font-normal text-muted">(optional)</span></label><input id="key-expiry" class="input" type="number" inputmode="numeric" name="expiresDays" min="1" max="3650"></div>
     </div>
     <details class="reasoning"><summary>Scopes · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewKeyPerms "Name" "scopes")}}</details>
-    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create key</button>
+    <button type="submit" class="btn btn-primary w-full">Create key</button>
   </form>
-</section>
+</dialog>
 {{end}}
-<section class="card p-5" aria-labelledby="keys-title">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 id="keys-title" class="text-lg font-bold">Keys <span class="text-sm font-normal text-muted">· {{len .Keys}} total</span></h2>
-    <a class="btn btn-quiet min-h-11 text-base" href="/app/admin?section=keys">Refresh</a>
-  </div>
-  <ul class="mt-3 grid gap-3">
+<section aria-labelledby="keys-title">
+  <h2 id="keys-title" class="list-label">Keys · {{len .Keys}}</h2>
+  <ul class="list-group" aria-label="API keys">
     {{range .Keys}}{{$k := .Key}}{{$active := eq .Status "Active"}}
-    <li class="rounded-xl border border-line p-3">
+    <li class="px-4 py-3">
       <form class="grid gap-2" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="keyId" value="{{$k.ID}}">
         <div class="flex flex-wrap items-start justify-between gap-2">
@@ -364,7 +346,7 @@
         {{end}}
       </form>
     </li>
-    {{else}}<li class="text-sm text-muted">No API keys.</li>{{end}}
+    {{else}}<li class="px-6 py-10 text-center text-muted">No API keys yet.{{if $.CanManageKeys}} Create one for each app that calls LocalBase.{{end}}</li>{{end}}
   </ul>
 </section>
 {{end}}
