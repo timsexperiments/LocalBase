@@ -510,7 +510,7 @@ function renderModel() {
   const m = models.find((x) => x.id === active.model);
   const name = m ? m.name : active.model ? "Model not available" : "Choose a model";
   $("[data-model-name]").textContent = m && !m.ready ? `${name} (not installed)` : name;
-  $("[data-open-picker]").setAttribute("aria-label", `Choose model: ${m ? m.name : "none selected"}`);
+  $("[data-open-picker]").setAttribute("aria-label", m ? `${m.name}, change model` : "Choose a model");
 }
 
 function renderPicker() {

@@ -73,9 +73,9 @@
   {{if eq .Tab "transcribe"}}
   {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" "transcription"}}{{else}}
   <form class="card mt-4 grid gap-3 p-5" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button" data-audio-form data-audio-rate="16000">
-    <div class="grid gap-1"><span class="text-sm font-semibold">Recording</span>
+    <div class="grid gap-1"><span id="lab-recording-label" class="text-sm font-semibold">Recording</span>
       <div class="flex flex-wrap items-center gap-2">
-        <input class="input min-h-11 max-w-full" type="file" name="file" accept="audio/*" data-audio-input required>
+        <input class="input min-h-11 max-w-full" type="file" name="file" aria-labelledby="lab-recording-label" accept="audio/*" data-audio-input required>
         <button type="button" class="btn btn-quiet" data-record>Record</button>
       </div>
       <p class="text-sm text-muted" data-audio-status aria-live="polite">Any audio the browser can play; it is converted to WAV before upload.</p>

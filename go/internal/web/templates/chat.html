@@ -5,22 +5,21 @@
 
 {{define "page"}}
 <div class="flex h-dvh">
-  <aside class="hidden w-72 shrink-0 flex-col border-r border-line bg-surface lg:flex" aria-label="Menu and history">
-    {{template "chat-menu" .}}
-  </aside>
-  <dialog id="chat-drawer" aria-label="Menu and history"
+  {{template "sidebar" .}}
+  <dialog id="chat-drawer" aria-labelledby="drawer-title"
     class="m-0 h-dvh max-h-none w-[min(20rem,88vw)] max-w-none border-r border-line bg-surface p-0 text-ink backdrop:bg-black/40 lg:hidden">
     <div class="flex h-full flex-col">
-      <div class="flex items-center justify-end px-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <button type="button" class="btn btn-quiet size-11 p-0" data-close-drawer aria-label="Close menu">{{template "icon-close"}}</button>
+      <div class="flex items-center justify-between gap-2 pl-4 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <h2 id="drawer-title" class="text-lg font-bold">Conversations</h2>
+        <button type="button" class="btn btn-quiet size-11 p-0" data-close-drawer aria-label="Close conversations">{{template "icon-close"}}</button>
       </div>
-      {{template "chat-menu" .}}
+      <div class="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">{{template "chat-history" .}}</div>
     </div>
   </dialog>
 
-  <div class="flex min-w-0 flex-1 flex-col">
-    <header class="flex items-center gap-2 border-b border-line bg-canvas px-[max(0.5rem,env(safe-area-inset-left))] pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-      <button type="button" class="btn btn-quiet size-11 shrink-0 p-0 lg:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open menu and history">{{template "icon-menu"}}</button>
+  <div class="chat-col flex min-w-0 flex-1 flex-col">
+    <header class="flex items-center gap-2 border-b border-line bg-canvas px-[max(0.5rem,env(safe-area-inset-left))] pb-2 lg:px-6 pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <button type="button" class="btn btn-quiet size-11 shrink-0 p-0 lg:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open conversations">{{template "icon-menu"}}</button>
       <div class="min-w-0 flex-1">
         <h1 id="chat-title" class="truncate text-base font-bold leading-tight">New conversation</h1>
         <button type="button" class="-ml-1 flex min-h-11 max-w-full items-center gap-1 rounded-lg px-1 text-base text-muted hover:bg-hover hover:text-ink" data-open-picker aria-haspopup="dialog" {{if not .CanChat}}disabled{{end}}>
@@ -60,7 +59,7 @@
       <button type="button" class="chip absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 shadow-md" data-jump hidden aria-label="Jump to latest message">{{template "icon-down"}}<span aria-hidden="true">Latest</span></button>
     </main>
 
-    <form id="composer" aria-label="Message composer" class="border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3" novalidate>
+    <form id="composer" aria-label="Message composer" data-docked class="chat-composer border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-3" novalidate>
       <div class="mx-auto max-w-3xl">
         <div data-error-box></div>
         <div class="composer-box">
@@ -85,8 +84,11 @@
       </div>
     </form>
     <div id="chat-status" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+    {{template "tabbar" .}}
   </div>
 </div>
+
+{{template "more-sheet" .}}
 
 <dialog id="model-picker" aria-labelledby="picker-title"
   class="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-1.5rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40">
@@ -115,27 +117,19 @@
 <script type="module" src="{{asset "js/chat.js"}}"></script>
 {{end}}
 
-{{define "chat-menu"}}
-<div class="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-  <a href="/app" class="flex min-h-11 items-center gap-2.5 px-1 font-bold text-lg">
-    <span aria-hidden="true" class="grid size-9 place-items-center rounded-xl bg-accent text-on-accent text-base">⌘</span>LocalBase</a>
+{{define "sidebar-extra"}}
+<div class="mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-3">{{template "chat-history" .}}</div>
+{{end}}
+
+{{/* New conversation, search and the list; chat.js fills the list (twice:
+     the sidebar and the phone drawer). */}}
+{{define "chat-history"}}
+<div class="flex min-h-0 flex-1 flex-col gap-3">
   <button type="button" class="btn btn-primary w-full" data-new-chat>{{template "icon-plus"}}New conversation</button>
   <input type="search" class="input min-h-11" data-search placeholder="Search conversations" aria-label="Search conversations">
   <nav aria-label="Conversations" class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
     <ul class="grid gap-0.5" data-conversations></ul>
     <p class="px-2 py-3 text-sm text-muted" data-no-conversations hidden></p>
-  </nav>
-  <nav aria-label="Sections" class="border-t border-line pt-2">
-    <ul class="grid grid-cols-2 gap-1">
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models">Library</a></li>
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models/get">Get models</a></li>
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/models/running">Running now</a></li>
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/lab">Lab</a></li>
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/voices">My voices</a></li>
-      <li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/settings">Settings</a></li>
-      {{if and .Principal (or (.Principal.Can "access:read") (.Principal.Can "keys:read"))}}<li><a class="flex min-h-11 items-center rounded-xl px-3 font-semibold text-muted hover:bg-hover hover:text-ink" href="/app/admin">Admin</a></li>{{end}}
-    </ul>
-    {{if not .NoAuth}}<button type="button" class="btn btn-quiet mt-2 w-full text-base" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
   </nav>
 </div>
 {{end}}

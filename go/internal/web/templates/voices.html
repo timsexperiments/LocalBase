@@ -17,7 +17,7 @@
       <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
       <audio controls class="hidden w-full" data-audio-preview></audio>
     </div>
-    <label class="flex items-start gap-2 text-base"><input type="checkbox" name="consent" value="true" required class="mt-0.5 size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
+    <label class="flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="consent" value="true" required class="size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
     <button type="submit" class="btn btn-primary justify-self-start">Add voice</button>
   </form>
   {{end}}

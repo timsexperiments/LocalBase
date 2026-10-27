@@ -104,6 +104,14 @@ func New(d Deps) *UI {
 			}
 			return m
 		},
+		"section":  section,
+		"canAdmin": func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
+		"initial": func(name string) string {
+			for _, r := range strings.TrimSpace(name) {
+				return strings.ToUpper(string(r))
+			}
+			return "A"
+		},
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"
@@ -194,6 +202,18 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
 	w.Write(b)
+}
+
+// section is the top-level destination a page belongs to: it marks the
+// current tab on phones and the current item in the desktop sidebar.
+func section(page string) string {
+	switch page {
+	case "chat", "lab", "running":
+		return page
+	case "library", "get", "details", "import", "backends":
+		return "models"
+	}
+	return "more" // voices, settings, admin
 }
 
 // --- sign-in ------------------------------------------------------------------
