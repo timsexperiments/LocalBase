@@ -21,6 +21,18 @@ document.addEventListener("click", (event) => {
   if (event.target.matches?.("dialog.sheet")) event.target.close(); // the backdrop
 });
 
+// A form marked data-close-sheet-on-success closes its sheet once the server
+// accepts it (the answer shows no alert).
+document.addEventListener("htmx:afterRequest", (event) => {
+  const form = event.detail.elt?.closest?.("form[data-close-sheet-on-success]");
+  if (!form || !event.detail.successful) return;
+  // Look once the answer is in place.
+  document.addEventListener("htmx:afterSettle", () => {
+    const target = document.querySelector(form.getAttribute("hx-target"));
+    if (!target?.querySelector("[role=alert]")) form.closest("dialog")?.close();
+  }, { once: true });
+});
+
 // --- the on-screen keyboard -------------------------------------------------------
 // With interactive-widget=resizes-content (Chrome on Android) the layout
 // viewport shrinks for the keyboard. iOS Safari overlays it instead, so the

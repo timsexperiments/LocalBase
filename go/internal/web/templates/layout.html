@@ -129,3 +129,11 @@
 {{define "icon-chevron"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4 shrink-0 text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>{{end}}
 {{define "icon-plus"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>{{end}}
 {{define "icon-send"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>{{end}}
+
+{{/* A sheet's title and its close button. */}}
+{{define "sheet-head"}}
+<div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+  <h2 id="{{.ID}}" class="text-lg font-bold">{{.Title}}</h2>
+  <button type="button" class="btn btn-quiet size-11 p-0" data-close-sheet aria-label="Done">{{template "icon-x"}}</button>
+</div>
+{{end}}

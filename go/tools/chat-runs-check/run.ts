@@ -158,6 +158,31 @@ check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stri
 for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Unloaded")`)); i++) await sleep(250);
 const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Unloaded"), said: document.getElementById("running-status").textContent, empty: document.getElementById("running-live").textContent.includes("Nothing loaded") })`);
 check(unloaded.shown && /^Unloaded/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
+// 9. My voices: add one through the sheet (it closes and the list says so),
+// then Play shows as pressed. Needs any 3 to 30 second audio file in
+// LBGO_VOICE_FILE.
+const voiceFile = process.env.LBGO_VOICE_FILE;
+if (!voiceFile) console.log("skip voices (set LBGO_VOICE_FILE to a 3 to 30 second audio file)");
+else {
+  const voiceName = `Check ${Date.now() % 100000}`;
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/voices");
+  await ev(`document.querySelector("[data-open-sheet=voice-add]").click()`);
+  await sleep(300);
+  const doc = await send("DOM.getDocument", {});
+  const input = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#voice-add input[type=file]" });
+  await send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [voiceFile] });
+  for (let i = 0; i < 40 && !(await ev(`!document.querySelector("#voice-add audio[data-audio-preview]").classList.contains("hidden")`)); i++) await sleep(250);
+  await ev(`(() => { const f = document.querySelector("#voice-add form"); f.name.value = ${JSON.stringify(voiceName)}; f.consent.checked = true; f.querySelector("button[type=submit]").click(); })()`);
+  for (let i = 0; i < 40 && !(await ev(`document.getElementById("voice-list").textContent.includes(${JSON.stringify("Added " + voiceName + ".")})`)); i++) await sleep(250);
+  await sleep(300);
+  const added = await ev(`({ open: document.getElementById("voice-add").open, listed: [...document.querySelectorAll("#voice-list li")].some((li) => li.textContent.includes(${JSON.stringify(voiceName)})) })`);
+  check(!added.open && added.listed, `a voice added through the sheet closes it and joins the list: ${JSON.stringify(added)}`);
+  const box = await ev(`(() => { const r = document.querySelector("#voice-list [data-play]").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+  await sleep(600);
+  check((await ev(`document.querySelector("#voice-list [data-play]").getAttribute("aria-pressed")`)) === "true", "Play shows as pressed while it plays");
+}
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);

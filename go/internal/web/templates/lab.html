@@ -157,13 +157,6 @@
 <button type="button" class="chip lab-chip" data-open-sheet="{{.Sheet}}" aria-haspopup="dialog"><span class="sr-only">{{.Label}}: </span><span data-chip-label="{{.Name}}">{{.Value}}</span></button>
 {{end}}
 
-{{define "sheet-head"}}
-<div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
-  <h2 id="{{.ID}}" class="text-lg font-bold">{{.Title}}</h2>
-  <button type="button" class="btn btn-quiet size-11 p-0" data-close-sheet aria-label="Done">{{template "icon-x"}}</button>
-</div>
-{{end}}
-
 {{define "lab-model-sheet"}}
 <dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
   {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
