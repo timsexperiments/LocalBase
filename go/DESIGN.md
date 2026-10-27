@@ -3238,8 +3238,13 @@ and whether it is busy.
 - **In memory**: the loaded model as one row (size, waiting requests) with
   one state pill: Idle, Busy · N requests, or Finishing (draining before
   another model loads); "A model is starting…" while one starts; an empty
-  state otherwise. No unload action: the gateway has no unload route, and
-  models leave memory when another needs it.
+  state otherwise.
+- **Unload** (with models:manage; §23): one button on the loaded row.
+  While the gateway drains it says "Unloading… (waiting for N requests to
+  finish)"; then the page shows and announces the outcome once: "Unloaded.
+  Freed X GB.", still busy (it stayed loaded), already unloaded, or that
+  this LocalBase cannot unload yet. Polls are held off while an unload is
+  in flight (`hx-sync`).
 - **Quiet polling.** The region refreshes every 3 s (not while hidden), and
   carries one sentence (`data-announce`). `shell.js` writes it into a
   status region outside the swapped part only when it changes, so screen

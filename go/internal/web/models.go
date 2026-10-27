@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -215,6 +217,11 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
 }
 
 func (u *UI) running(w http.ResponseWriter, r *http.Request) {
+	u.renderRunning(w, r, "", false)
+}
+
+// renderRunning draws Running now; notice is the outcome of an unload.
+func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string, failed bool) {
 	snap := u.d.Memory.Snapshot(r.Context())
 	capacity := u.d.Memory.Topology().SystemCapacity
 	id, plan, active := u.d.LLM.Running()
@@ -254,8 +261,46 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 	u.render(w, r, "running", map[string]any{
 		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0),
 		"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
+		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed,
 	})
 }
+
+// unload asks the gateway to unload a model, waiting up to 30 s for its
+// requests to finish (DESIGN §23), then redraws the page with the outcome.
+func (u *UI) unload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	res := u.call(r, "POST", "/_localbase/models/"+url.PathEscape(id)+"/unload", "", nil)
+	var out struct {
+		Freed int64 `json:"memoryFreedBytes"`
+		Error struct {
+			Code     string `json:"code"`
+			Message  string `json:"message"`
+			InFlight int    `json:"in_flight"`
+		} `json:"error"`
+	}
+	json.Unmarshal(res.Body, &out)
+	switch {
+	case res.Status == http.StatusOK && out.Freed > 0:
+		u.renderRunning(w, r, fmt.Sprintf("Unloaded. Freed %.1f GB.", float64(out.Freed)/1e9), false)
+	case res.Status == http.StatusOK:
+		u.renderRunning(w, r, "Unloaded.", false)
+	case out.Error.Code == "model_busy" && out.Error.InFlight > 0:
+		u.renderRunning(w, r, fmt.Sprintf("Still busy with %d %s, so it stayed loaded. Try again when they finish.", out.Error.InFlight, map[bool]string{true: "request", false: "requests"}[out.Error.InFlight == 1]), true)
+	case out.Error.Code == "model_busy":
+		u.renderRunning(w, r, "It is busy, so it stayed loaded. Try again in a moment.", true)
+	case out.Error.Code == "model_not_loaded":
+		u.renderRunning(w, r, "It was already unloaded.", false)
+	case res.Status == http.StatusNotFound && out.Error.Code == "":
+		u.renderRunning(w, r, "This LocalBase can’t unload models yet.", true)
+	default:
+		msg := out.Error.Message
+		if msg == "" {
+			msg = "It could not be unloaded. Try again."
+		}
+		u.renderRunning(w, r, msg, true)
+	}
+}
+
 
 func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	s := u.d.Catalog.ByID(r.PathValue("id"))
