@@ -162,11 +162,13 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		modelNotFound(w, r, req.Model)
 		return
 	}
+	runHooksFrom(r.Context()).queue()
 	lease, err := s.TTS.Acquire(r.Context(), id)
 	if err != nil {
 		runtimeError(w, r, err, id, "TTS")
 		return
 	}
+	runHooksFrom(r.Context()).admit()
 	defer lease.Release()
 	tel := &inference{s: s, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}

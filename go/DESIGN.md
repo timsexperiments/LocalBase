@@ -2765,10 +2765,11 @@ under the same same-origin and session rules as the other UI endpoints
 
 | Route | Answer |
 | --- | --- |
-| `POST /_localbase/runs/v1/chat/completions` | **202** with the run object (output so far is empty) and `Location: /_localbase/runs/{id}`. A request `/v1` refuses before the queue (validation, scope, unknown model) gets the **same status and error envelope** as `/v1`, and no run exists. **429** `too_many_runs` (with `Retry-After: 5`) over the active-run limit. **503** while the gateway stops. |
+| `POST /_localbase/runs/v1/{chat/completions, images/generations, images/edits, audio/speech, audio/transcriptions}` (PR 2 adds the media four; bodies are the `/v1` JSON or multipart, ≤ 32 MiB) | **202** with the run object (output so far is empty) and `Location: /_localbase/runs/{id}`. A request `/v1` refuses before the queue (validation, scope, unknown model) gets the **same status and error envelope** as `/v1`, and no run exists. **429** `too_many_runs` (with `Retry-After: 5`) over the active-run limit. **503** while the gateway stops. |
 | `GET /_localbase/runs` | the caller's runs, newest first: `{"object":"list","data":[{id, target, label, model, status, reason?, createdAt, startedAt, endedAt}]}`. `label` is `"Chat"` (PR 2: `"Image"`, `"Image edit"`, `"Speech"`, `"Transcription"`). It carries **no prompt or output text**, and is meant for the shell's "Generating…" indicator. |
 | `GET /_localbase/runs/{id}` | the run object with `output` |
 | `GET /_localbase/runs/{id}/events` | SSE, §21.3 |
+| `GET /_localbase/runs/{id}/result` | a completed media run's `/v1` response body, with its content type (image JSON with `b64_json`, speech audio, transcription JSON or text) and `Cache-Control: no-store`. **409** `run_result_unavailable` before completion, for chat, or after a restart |
 | `POST /_localbase/runs/{id}/cancel` | **Stop**, the only thing that cancels a run. It returns the final run object, with the partial output kept. Stopping a finished run is a no-op that returns it. |
 | `DELETE /_localbase/runs/{id}` | **dismiss:** stops the run if active, deletes it and its checkpoint. Returns `{"id","object":"localbase.run.deleted","deleted":true}` |
 
@@ -2791,7 +2792,8 @@ accepted this on 2026-10-27.
  "lastEventId": 12,
  "resumable": false,
  "continuation": {"by": "client", "message": "…"},
- "output": {"content", "reasoning"?, "toolCalls"?, "finishReason"?, "usage"?}}
+ "output": {"content", "reasoning"?, "toolCalls"?, "finishReason"?, "usage"?},   // chat
+ "result": {"contentType", "bytes", "url": "/_localbase/runs/{id}/result"}}  // media, once completed
 ```
 
 - **`reason`** is present only when it applies. **`continuation`** is
@@ -3011,3 +3013,42 @@ The failure checks were confirmed by breaking the code on purpose:
   result.
 
 The FE thread owns the client.
+
+### 21.9 Media runs (PR 2)
+
+`images/generations`, `images/edits`, `audio/speech` and
+`audio/transcriptions` are run targets.
+- **Labels:** "Image", "Image edit", "Speech" and "Transcription".
+- **Body:** passed through unchanged, JSON or multipart, so the `/v1`
+  route applies its own limits and validation. A refusal before the queue
+  is byte-for-byte `/v1`'s. The indicator's `model` is read from the JSON
+  body or the multipart `model` field.
+- **Hooks:** the image, speech and transcription handlers call the same
+  hooks around their runtime's `Acquire` as chat. A media run is
+  therefore `queued` without admission, `in_progress` once admitted, and
+  `interrupted` / `memory_pressure` when the critical-memory monitor stops
+  its runtime.
+- **Events:** `status` events and `end`. Media has no partial output, so
+  there are no `chunk` events.
+- **Result:** the `/v1` response body and its content type, held in
+  memory only, never checkpointed, capped at 64 MiB (over the cap:
+  `failed` / `output_limit`). It is fetched from `GET …/result` and
+  deleted with the run.
+- **After a restart** the result is gone. A media run that had completed
+  reports `interrupted` / `gateway_restart`, with no `result`. The page
+  repeats the request if it still wants it.
+
+**Tests:**
+- `TestRunImage`: a fake sd-server run that completes, serves its result,
+  keeps the result out of the checkpoint, and is `interrupted` with no
+  result after a restart.
+- `TestRunImageCancel`: Stop reaches the image backend.
+- `TestRunImageEditMultipart`: multipart refusals are identical to
+  `/v1`'s.
+- `TestRunRequestModel`
+- `TestRunMediaTargetsNotConfigured`
+- `TestRunBrowserRoutes`: covers the media routes and `result`.
+
+Speech and transcription have no fake runtime in the unit tests. Their
+hooks are the same two calls, and the contract real runs exercise those
+handlers.

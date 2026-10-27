@@ -285,12 +285,14 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 		modelNotFound(w, r, model)
 		return nil, false
 	}
+	runHooksFrom(r.Context()).queue()
 	lease, err := s.Image.Acquire(r.Context(), id)
 	if err != nil {
 		s.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
 		runtimeError(w, r, err, id, "Image")
 		return nil, false
 	}
+	runHooksFrom(r.Context()).admit()
 	return lease, true
 }
 

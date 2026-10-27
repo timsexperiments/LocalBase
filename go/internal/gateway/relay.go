@@ -103,6 +103,9 @@ func (t *inference) observe(v map[string]any) {
 // begin starts the inference span under the request's server span, with
 // the admission facts (TS InferenceTelemetry constructor).
 func (t *inference) begin(ctx context.Context, method string) {
+	if t.hooks == nil {
+		t.hooks = runHooksFrom(ctx)
+	}
 	if t.ctx != nil {
 		return
 	}

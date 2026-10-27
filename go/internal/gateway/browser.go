@@ -68,6 +68,8 @@ func allowedUIRoute(method, p string) bool {
 			return method == "GET"
 		case action == "cancel":
 			return method == "POST"
+		case action == "result":
+			return method == "GET"
 		}
 		return false
 	}
