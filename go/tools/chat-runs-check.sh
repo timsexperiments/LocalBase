@@ -1,7 +1,8 @@
 #!/bin/sh
 # Detached chat runs in headless Chrome (DESIGN §22.7) against a --no-auth
 # scratch gateway whose chat model is the fake llama-server, so no weights
-# load. One way to get one (scratch root and port only):
+# load (and, for the Lab steps, the same fake as LOCALBASE_SD_SERVER with
+# sparse files for the active image model). One way (scratch root and port only):
 #   go build -o /tmp/fake/llama-server ./internal/runtime/fakebackend
 #   mkfile -n <size> <root>/models/llm/<the active model's file>   (sparse)
 #   LOCALBASE_LLAMA_SERVER=/tmp/fake/llama-server local-base --root <root> \

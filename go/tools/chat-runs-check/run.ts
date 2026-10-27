@@ -89,6 +89,75 @@ await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: 
 for (let i = 0; i < 20 && !(await ev(`document.getElementById("running-status").textContent`)); i++) await sleep(500);
 const busy = await ev(`({ said: document.getElementById("running-status").textContent, pill: document.querySelector("#running-live .pill")?.textContent.trim() })`);
 check(/is busy\.$/.test(busy.said) && busy.pill.startsWith("Busy"), `announces the change once: ${JSON.stringify(busy)}`);
+// 7. Lab (needs the fake as sd-server too, LOCALBASE_SD_SERVER): a result
+// keeps going while the person is away and is in the tray on return; Stop
+// and Remove work; the prompt is docked above the tab bar, and above the
+// keyboard while typing.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+await nav("/app/lab?tab=image");
+await ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>Promise.all(b.data.map(r=>fetch("/app/api/_localbase/runs/"+r.id,{method:"DELETE",headers:{"x-localbase-ui":"1"}}))))`);
+await nav("/app/lab?tab=image");
+if (!(await ev(`!!document.querySelector("#lab-prompt")`))) console.log("skip lab (no image model on this gateway)");
+else {
+  // At 360x740 the docked prompt stays small, and an example fills it.
+  await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/lab?tab=image");
+  const h = await ev(`Math.round(document.querySelector(".lab-dock").getBoundingClientRect().height)`);
+  check(h <= 0.2 * 740, `the docked prompt is at most a fifth of the screen at 360x740 (${h}px)`);
+  await ev(`document.querySelector("[data-lab-empty] [data-fill]").click()`);
+  const filled = await ev(`({ value: document.querySelector("#lab-prompt").value, focused: document.activeElement?.id })`);
+  check(filled.value.startsWith("A paper boat") && filled.focused === "lab-prompt", `an example fills the prompt: ${JSON.stringify(filled)}`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/lab?tab=image");
+  const dock = await ev(`(() => { const d = document.querySelector(".lab-dock").getBoundingClientRect(); const t = document.querySelector("nav.tabbar").getBoundingClientRect(); return { gap: Math.round(t.top - d.bottom) }; })()`);
+  check(dock.gap === 0, `the prompt sits right above the tab bar (gap ${dock.gap})`);
+  await ev(`(() => { document.querySelector("#lab-prompt").value = "a paper boat fake:slow-image"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 20 && !(await ev(`!!document.querySelector("#lab-items > li")`)); i++) await sleep(150);
+  const started = await ev(`document.querySelector("#lab-items > li")?.textContent.replace(/\\s+/g, " ").trim()`);
+  check(/paper boat/.test(started ?? ""), `a tray item appears with its caption: ${started}`);
+  await nav("/app/models");
+  await sleep(2000);
+  await nav("/app/lab?tab=speech");
+  for (let i = 0; i < 20 && !(await ev(`!!document.querySelector("#lab-items img")`)); i++) await sleep(250);
+  // The fake's PNG is a signature, not a picture: check what the page serves.
+  const done = await ev(`(async () => { const li = document.querySelector("#lab-items > li"); const img = li?.querySelector("img"); if (!img) return {};
+    const r = await fetch(img.getAttribute("src")); const b = new Uint8Array(await r.arrayBuffer());
+    return { type: r.headers.get("content-type"), png: b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, alt: img.alt, polling: li.hasAttribute("hx-get") }; })()`);
+  check(done.type === "image/png" && done.png && /paper boat/.test(done.alt) && !done.polling, `the finished image is in the tray on another tool's page: ${JSON.stringify(done)}`);
+  await nav("/app/lab?tab=image");
+  await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
+  await ev(`[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")?.click()`);
+  await sleep(1200);
+  check(await ev(`document.querySelector("#lab-items > li").textContent.includes("Stopped.")`), "Stop stops the run");
+  const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
+  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]").click()`);
+  await sleep(800);
+  const after = await ev(`document.querySelectorAll("#lab-items > li").length`);
+  const left = await runsNow();
+  check(after === before - 1 && left.length === 1, `Remove drops the item and its run (${before} → ${after}, runs ${left})`);
+  await ev(`document.querySelector("#lab-prompt").focus()`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844 - 336, deviceScaleFactor: 2, mobile: true });
+  await sleep(500);
+  const kb = await ev(`(() => { const d = document.querySelector(".lab-dock").getBoundingClientRect(); return { bottom: Math.round(d.bottom), h: innerHeight, tabbar: getComputedStyle(document.querySelector("nav.tabbar")).display }; })()`);
+  check(kb.bottom === kb.h && kb.tabbar === "none", `while typing the prompt sits on the keyboard: ${JSON.stringify(kb)}`);
+}
+// 8. Unload (§23): with a request in flight the page says it is waiting,
+// then the model is unloaded once the request finishes, and the outcome is
+// shown and announced.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+// Start the request from this page (navigating would cancel it).
+await nav("/app/models/running");
+await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
+for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) await sleep(250);
+await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
+await sleep(400);
+const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
+check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
+for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Unloaded")`)); i++) await sleep(250);
+const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Unloaded"), said: document.getElementById("running-status").textContent, empty: document.getElementById("running-live").textContent.includes("Nothing loaded") })`);
+check(unloaded.shown && /^Unloaded/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);

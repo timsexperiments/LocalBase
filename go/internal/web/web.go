@@ -66,6 +66,7 @@ type UI struct {
 	pending   map[string]pendingImport
 
 	results resultStore
+	notes   labNotes
 }
 
 func New(d Deps) *UI {
@@ -156,6 +157,9 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/lab/speech", u.mutating("inference:speech", u.labSpeech))
 	m.HandleFunc("POST /app/lab/transcribe", u.uploading("inference:transcription", 26<<20, u.labTranscribe))
 	m.HandleFunc("GET /app/lab/results/{id}", u.need("models:read", u.labResult))
+	m.HandleFunc("GET /app/lab/runs/{id}", u.need("models:read", u.labRunGet))
+	m.HandleFunc("POST /app/lab/runs/{id}/stop", u.mutating("models:read", u.labRunStop))
+	m.HandleFunc("POST /app/lab/runs/{id}/remove", u.mutating("models:read", u.labRunRemove))
 	m.HandleFunc("GET /app/lab/video/options", u.need("models:read", u.labVideoOptions))
 	m.HandleFunc("POST /app/lab/video", u.uploading("inference:video", videoFormLimit+(64<<10), u.labVideo))
 	m.HandleFunc("GET /app/lab/video/{id}", u.need("inference:video", u.labVideoStatus))

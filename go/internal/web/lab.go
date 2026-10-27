@@ -200,6 +200,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Tab": tab, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
 		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video")}
+	data["Items"] = u.labRuns(r)
 	switch tab {
 	case "image":
 		data["Models"] = u.labModels("image")
@@ -250,6 +251,9 @@ func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	body, _ := json.Marshal(req)
+	if u.labStart(w, r, "/v1/images/generations", "application/json", strings.TrimSpace(r.PostFormValue("prompt")), body) {
+		return
+	}
 	res := u.call(r, "POST", "/v1/images/generations", "application/json", body)
 	if msg := res.apiError(); msg != "" {
 		u.labOutcome(w, r, map[string]any{"Error": msg})
@@ -277,6 +281,9 @@ func (u *UI) labSpeech(w http.ResponseWriter, r *http.Request) {
 	req := map[string]any{"model": r.PostFormValue("model"), "input": r.PostFormValue("input"),
 		"voice": r.PostFormValue("voice"), "response_format": "wav"}
 	body, _ := json.Marshal(req)
+	if u.labStart(w, r, "/v1/audio/speech", "application/json", strings.TrimSpace(r.PostFormValue("input")), body) {
+		return
+	}
 	res := u.call(r, "POST", "/v1/audio/speech", "application/json", body)
 	if msg := res.apiError(); msg != "" {
 		u.labOutcome(w, r, map[string]any{"Error": msg})
@@ -313,7 +320,9 @@ func (u *UI) labTranscribe(w http.ResponseWriter, r *http.Request) {
 	mw.Close()
 	path := "/v1/audio/transcriptions"
 	if r.FormValue("translate") == "on" {
-		path = "/v1/audio/translations"
+		path = "/v1/audio/translations" // not a run target: always direct
+	} else if u.labStart(w, r, path, mw.FormDataContentType(), hdr.Filename, b.Bytes()) {
+		return
 	}
 	res := u.call(r, "POST", path, mw.FormDataContentType(), b.Bytes())
 	if msg := res.apiError(); msg != "" {

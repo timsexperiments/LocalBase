@@ -80,6 +80,11 @@ const clipped = `(() => {
     const g = group.getBoundingClientRect();
     for (const el of group.querySelectorAll("a, button, input, select, textarea, .tab-label")) {
       if (!shown(el)) continue;
+      // A row that scrolls sideways may hold more than fits (the Lab chips).
+      let scrolls = false;
+      for (let p = el.parentElement; p && p !== group; p = p.parentElement)
+        if (/auto|scroll/.test(getComputedStyle(p).overflowX)) scrolls = true;
+      if (scrolls) continue;
       const r = el.getBoundingClientRect();
       if (r.left < g.left - 0.5 || r.right > g.right + 0.5) out.push("outside its group: " + name(el) + " in " + name(group).split(" ")[0]);
     }
