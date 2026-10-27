@@ -3360,8 +3360,9 @@ for tests and a future Running page.
 ### 22.11 My voices (PR 6)
 
 The one thing people come to do: add a voice, hear it, and use it.
-- A title with one round + (Add a voice), a line on what voices are for
-  (linking the Lab), and the voices as a grouped list: a round **Play**
+- A title with one round + (Add a voice), one line on what voices are for
+  (its "How voices work" link opens a help sheet: length, privacy,
+  consent), and the voices as a grouped list: a round **Play**
   button (`aria-pressed`; one recording plays at a time, `voices.js`), the
   name, length and date, and "⋯" for an options sheet: Use in the Lab,
   Rename, the speech API id, Delete (confirmed).
