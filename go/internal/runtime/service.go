@@ -36,8 +36,9 @@ type Service struct {
 	queue     []*svcWaiter
 	closed    bool
 	failed    bool
-	switching bool // a model is being stopped or started
-	claimed   bool // idle recovery is stopping the backend; hold requests
+	switching bool   // a model is being stopped or started
+	claimed   bool   // idle recovery is stopping the backend; hold requests
+	unloading string // the model draining for an explicit unload (DESIGN §23)
 	switchW   sync.WaitGroup
 }
 
@@ -180,6 +181,10 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 		s.mu.Unlock()
 		return nil, ErrUnavailable
 	}
+	if s.unloading == modelID {
+		s.mu.Unlock()
+		return nil, ErrUnloading
+	}
 	if len(s.queue) >= s.d.QueueCapacity {
 		s.mu.Unlock()
 		return nil, ErrQueueFull
@@ -241,7 +246,7 @@ func (s *Service) abandon(w *svcWaiter) {
 
 // pump dispatches the head of the queue. Called with mu held.
 func (s *Service) pump() {
-	for len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed {
+	for len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed && s.unloading == "" {
 		head := s.queue[0]
 		if s.cur != nil && s.cur.modelID == head.model && s.cur.key == head.key {
 			s.queue = s.queue[1:]

@@ -396,3 +396,15 @@ func (c *Controller) Headroom(ctx context.Context, releasing []string) int64 {
 	}
 	return max(0, snap.Available+freed-pending-reserve)
 }
+
+// Reserved is the admission ledger: each runtime's reserved bytes (its pool
+// projection), resident or not.
+func (c *Controller) Reserved() map[string]int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]int64, len(c.reservations))
+	for id, r := range c.reservations {
+		out[id] = r.projected
+	}
+	return out
+}
