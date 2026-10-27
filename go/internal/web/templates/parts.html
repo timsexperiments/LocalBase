@@ -1,20 +1,70 @@
+{{/* One installed model: the whole row opens its page; the status is in
+     words, and one pill says the most important state. */}}
 {{define "model-row"}}
-<li class="card relative flex items-start gap-3 p-4 hover:bg-hover focus-within:outline-2 focus-within:outline-accent">
-  <span aria-hidden="true" class="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted font-bold text-muted">{{.Initial}}</span>
-  <div class="min-w-0 flex-1">
-    <h3 class="text-lg font-semibold leading-snug break-words"><a href="/app/models/m/{{.ID}}" class="outline-none after:absolute after:inset-0 after:content-['']">{{.Name}}</a></h3>
-    <p class="mt-0.5 text-sm text-muted">
-      {{.Task}} · {{size .DiskBytes}} on disk{{if .MemoryGB}} · planned {{.MemoryGB}} GB memory{{end}}
-    </p>
-    <ul class="mt-2 flex flex-wrap gap-1.5" aria-label="Status">
-      {{if .Enabled}}<li class="badge badge-ok">Enabled</li>{{else}}<li class="badge">Not enabled</li>{{end}}
-      {{if .Default}}<li class="badge badge-ok">{{.Task}} default</li>{{end}}
-      {{if .Busy}}<li class="badge badge-warn">Busy</li>{{else if .Loaded}}<li class="badge badge-ok">Loaded · idle</li>{{end}}
-      {{if eq .Trust "user" "modified"}}<li class="badge">Your entry</li>{{end}}
-    </ul>
-  </div>
-  <span aria-hidden="true" class="self-center text-xl text-muted">›</span>
+<li>
+  <a href="/app/models/m/{{.ID}}" class="model-row">
+    <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+      <span class="block text-sm text-muted">{{.Task}}{{if .Default}} · default{{end}} · {{size .DiskBytes}}{{if eq .Trust "user" "modified"}} · your entry{{end}}</span>
+    </span>
+    {{if .Busy}}<span class="pill pill-warn">Busy</span>{{else if .Loaded}}<span class="pill pill-ok"><span aria-hidden="true" class="size-1.5 rounded-full bg-current"></span>Loaded</span>{{else if not .Enabled}}<span class="pill">Off</span>{{else}}<span class="pill">Ready</span>{{end}}
+    {{template "icon-chevron"}}
+  </a>
 </li>
+{{end}}
+
+{{/* A qualified catalog model on Get models: the row opens its page; one
+     action gets it, or says it is installed. Fit is in words. */}}
+{{define "catalog-row"}}
+<li class="model-row" id="cat-{{.ID}}">
+  <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
+  <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
+    <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if eq .Fit "fits"}} · fits this machine{{else if eq .Fit "tight"}} · tight fit{{else if eq .Fit "wont-fit"}} · needs more memory{{end}}</span>
+  </a>
+  <span class="shrink-0" id="cat-{{.ID}}-action">
+  {{if .Installed}}<span class="pill pill-ok">Installed</span>
+  {{else if eq .Fit "wont-fit"}}<a class="btn btn-quiet rounded-full px-4" href="/app/models/m/{{.ID}}" aria-label="Why {{.Name}} doesn’t fit">Why?</a>
+  {{else if $.CanManage}}<form hx-post="/app/models/get/recipe" hx-target="#cat-{{.ID}}-action" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
+    <button type="submit" class="btn rounded-full bg-accent-soft px-5 text-accent hover:bg-accent hover:text-on-accent" aria-label="Get {{.Name}}">Get</button></form>
+  {{end}}
+  </span>
+</li>
+{{end}}
+
+{{/* Task filter chips (links, so Back works); one row that scrolls. */}}
+{{define "task-chips"}}
+<nav aria-label="Filter by task" class="chip-row">
+  <a class="chip" href="{{.Base}}{{with .Query}}?q={{.}}{{end}}" {{if eq .Filter "all"}}aria-current="true"{{end}}
+     hx-get="{{.Base}}?filter=all" {{with .Include}}hx-include="{{.}}"{{end}} hx-target="{{.Target}}" hx-select="{{.Target}}" hx-swap="outerHTML" hx-push-url="true">All</a>
+  {{range .Tasks}}{{$f := lower .}}
+  <a class="chip" href="{{$.Base}}?filter={{$f}}{{with $.Query}}&q={{.}}{{end}}" {{if eq $f $.Filter}}aria-current="true"{{end}}
+     hx-get="{{$.Base}}?filter={{$f}}" {{with $.Include}}hx-include="{{.}}"{{end}} hx-target="{{$.Target}}" hx-select="{{$.Target}}" hx-swap="outerHTML" hx-push-url="true">{{.}}</a>
+  {{end}}
+</nav>
+{{end}}
+
+{{/* An empty list: what is missing and the one thing to do about it. */}}
+{{define "empty-state"}}
+<div class="empty-state">
+  <h2 class="text-lg font-bold">{{.Title}}</h2>
+  <p class="mt-1 text-muted">{{.Text}}</p>
+  {{with .Href}}<a href="{{.}}" class="btn {{if $.Quiet}}btn-quiet{{else}}btn-primary{{end}} mt-4">{{$.Action}}</a>{{end}}
+</div>
+{{end}}
+
+{{/* Models: the title, the one "get" action, and Library / Get models. */}}
+{{define "models-header"}}
+<div class="flex items-center justify-between gap-3">
+  <h1 id="models-title" class="page-title">Models</h1>
+  {{if eq .Page "library"}}<a href="/app/models/get" class="btn btn-primary size-11 rounded-full p-0" aria-label="Get a model">{{template "icon-plus"}}</a>{{end}}
+</div>
+<nav aria-label="Models" class="segmented mt-4 max-w-sm">
+  <a href="/app/models" {{if eq .Page "library"}}aria-current="page"{{end}}>Library</a>
+  <a href="/app/models/get" {{if eq .Page "get"}}aria-current="page"{{end}}>Get models</a>
+</nav>
 {{end}}
 
 {{define "memory-bar"}}

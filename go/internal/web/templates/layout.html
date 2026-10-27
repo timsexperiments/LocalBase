@@ -26,7 +26,6 @@
   <div class="min-w-0 flex-1">
     <div id="session-notice" role="alert" aria-live="assertive" class="mx-auto max-w-5xl px-4 lg:px-10"></div>
     <main id="main" class="page">
-      {{if eq .Page "library" "get"}}{{template "models-nav" .}}{{end}}
       {{block "main" .}}{{end}}
     </main>
   </div>
@@ -110,14 +109,6 @@
 </dialog>
 {{end}}
 
-{{/* Models: Library and Get models are siblings. */}}
-{{define "models-nav"}}
-<nav aria-label="Models" class="segmented mb-5 max-w-sm">
-  <a href="/app/models" {{if eq .Page "library"}}aria-current="page"{{end}}>Library</a>
-  <a href="/app/models/get" {{if eq .Page "get"}}aria-current="page"{{end}}>Get models</a>
-</nav>
-{{end}}
-
 {{/* "Generating…": a run that keeps going while the person is elsewhere
      (filled in by shell.js; hidden until there is one). */}}
 {{define "run-pill"}}
@@ -136,3 +127,4 @@
 {{define "icon-more"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>{{end}}
 {{define "icon-x"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>{{end}}
 {{define "icon-chevron"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4 shrink-0 text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>{{end}}
+{{define "icon-plus"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>{{end}}

@@ -282,6 +282,11 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 		kind = "llm"
 	}
 	data := map[string]any{"Query": q, "Kind": kind, "Kinds": discoveryKinds, "CanManage": canManage}
+	if q == "" {
+		filter := taskFilter(r)
+		data["Catalog"], data["Tasks"] = u.catalogRows(filter)
+		data["Filter"] = filter
+	}
 	for _, k := range discoveryKinds {
 		if k.Value == kind {
 			data["KindLabel"] = strings.ToLower(k.Label)
@@ -390,6 +395,11 @@ func (u *UI) discoverRecipe(w http.ResponseWriter, r *http.Request) {
 		data["Failure"] = &discoveryFailure{Message: "The install did not start: " + detail}
 	} else {
 		data["Notice"], data["ModelID"] = fmt.Sprintf("Installing %s (%s).", res.DisplayName, res.ModelID), res.ModelID
+	}
+	// A catalog row has room for a word, not a sentence.
+	if r.PostFormValue("compact") == "1" {
+		u.fragment(w, r, "get", "catalog-installing", data)
+		return
 	}
 	u.fragment(w, r, "get", "discover-result", data)
 }

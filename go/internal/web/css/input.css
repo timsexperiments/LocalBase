@@ -443,3 +443,39 @@
     }
   }
 }
+
+/* Lists of models (Library, Get models): one row, one link, one state. */
+@layer components {
+  .model-row {
+    @apply flex min-h-16 items-center gap-3 px-4 py-2.5;
+  }
+  a.model-row {
+    @apply text-ink hover:bg-hover focus-visible:-outline-offset-2;
+  }
+  .model-avatar {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft font-bold text-accent;
+  }
+  .pill {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-muted px-2.5 py-0.5 text-sm font-semibold whitespace-nowrap text-muted;
+  }
+  .pill-ok {
+    @apply bg-accent-soft text-accent;
+  }
+  .pill-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  /* One row of filter chips that scrolls sideways instead of wrapping. */
+  .chip-row {
+    @apply -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0;
+    scrollbar-width: none;
+  }
+  .chip-row > .chip {
+    @apply shrink-0;
+  }
+  .search-field {
+    @apply min-h-12 rounded-xl border-transparent bg-surface-muted px-4;
+  }
+  .empty-state {
+    @apply rounded-2xl border border-dashed border-line px-6 py-10 text-center;
+  }
+}
