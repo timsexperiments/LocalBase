@@ -372,9 +372,6 @@
       animation: lb-sheet-in 220ms var(--lb-ease);
     }
   }
-  .sheet-grip {
-    @apply mx-auto mt-2 h-1.5 w-10 rounded-full bg-line;
-  }
 
   /* Grouped list (iOS Settings style): rows share one rounded container. */
   .list-group {
