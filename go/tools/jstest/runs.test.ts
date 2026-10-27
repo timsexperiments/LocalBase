@@ -95,3 +95,26 @@ describe("runs.response", () => {
       expect(endMessage(r)).not.toMatch(/\d/);
   });
 });
+
+describe("snapshot after a gateway restart", () => {
+  test("a resumed stream adds only what it had not delivered", async () => {
+    fakeGateway([[ev(1, "chunk", chunk("Hel")), ev(2, "chunk", chunk("lo"))],
+      [ev(3, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "Hello world" } })), ev(4, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
+    let text = "";
+    await expect(streamText(await response({ id: "run_5", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    expect(text).toBe("Hello world");
+  });
+  test("a stream ahead of the checkpoint adds nothing", async () => {
+    fakeGateway([[ev(1, "chunk", chunk("Hello world, more"))],
+      [ev(3, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "Hello world" } })), ev(4, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
+    let text = "";
+    await expect(streamText(await response({ id: "run_6", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    expect(text).toBe("Hello world, more");
+  });
+  test("re-attaching from the start gets the whole snapshot", async () => {
+    fakeGateway([[ev(1, "snapshot", JSON.stringify({ status: "interrupted", output: { content: "All of it" } })), ev(2, "end", '{"status":"interrupted","reason":"gateway_restart"}')]]);
+    let text = "";
+    await expect(streamText(await response({ id: "run_7", after: "" }), (t: string) => (text += t))).rejects.toThrow();
+    expect(text).toBe("All of it");
+  });
+});

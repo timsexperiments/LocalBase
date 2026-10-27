@@ -197,10 +197,20 @@ export async function response({ create: start, id, after, signal, onRun, onEnd 
     async start(controller) {
       try {
         let failed = false;
+        // What this stream has delivered, so a snapshot adds only the rest.
+        const sent = { content: "", reasoning: "" };
         for await (const e of events(id, { signal, after })) {
           if (e.event === "error") failed = true;
+          if (e.event === "chunk") {
+            const delta = e.data?.choices?.[0]?.delta ?? {};
+            sent.content += delta.content ?? "";
+            sent.reasoning += delta.reasoning ?? delta.reasoning_content ?? "";
+          }
           if (e.event === "chunk" || e.event === "error") controller.enqueue(line(e.raw));
-          else if (e.event === "snapshot") controller.enqueue(line(JSON.stringify(snapshotChunk(e.data))));
+          else if (e.event === "snapshot") {
+            const chunk = snapshotChunk(e.data, sent);
+            if (chunk) controller.enqueue(line(JSON.stringify(chunk)));
+          }
           else if (e.event === "end") {
             onEnd?.(e.data);
             if (e.data?.status === "completed") controller.enqueue(line("[DONE]"));
@@ -219,11 +229,18 @@ export async function response({ create: start, id, after, signal, onRun, onEnd 
   return new Response(body, { headers: { "content-type": "text/event-stream" } });
 }
 
-// After a gateway restart the event buffer is gone: the snapshot carries the
-// output so far, replayed as one chunk.
-function snapshotChunk(run) {
+// After a gateway restart the event buffer is gone and the snapshot carries
+// the output as of the last checkpoint (DESIGN §21.3: it replaces what was
+// rendered). As a stream that only appends, it adds what this stream has
+// not delivered yet; when the stream is already ahead of the checkpoint
+// (or differs from it) it adds nothing.
+export function snapshotChunk(run, sent = { content: "", reasoning: "" }) {
   const out = run?.output ?? {};
-  return { choices: [{ index: 0, delta: { ...(out.content ? { content: out.content } : {}), ...(out.reasoning ? { reasoning: out.reasoning } : {}) } }] };
+  const rest = (full = "", had) => (full.startsWith(had) ? full.slice(had.length) : "");
+  const content = rest(out.content, sent.content);
+  const reasoning = rest(out.reasoning, sent.reasoning);
+  if (!content && !reasoning) return null;
+  return { choices: [{ index: 0, delta: { ...(content ? { content } : {}), ...(reasoning ? { reasoning } : {}) } }] };
 }
 
 export function endMessage(run) {

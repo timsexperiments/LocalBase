@@ -115,7 +115,7 @@ func main() {
 		}
 		if stream, _ := req["stream"].(bool); stream {
 			w.Header().Set("Content-Type", "text/event-stream")
-			for _, part := range strings.Fields(content) {
+			for _, part := range parts(content) {
 				if r.Context().Err() != nil {
 					if f := os.Getenv("FAKE_CANCEL_LOG"); f != "" {
 						if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
@@ -125,7 +125,7 @@ func main() {
 					}
 					return
 				}
-				delta := map[string]any{"content": part + " "}
+				delta := map[string]any{"content": part}
 				if mode == "fake:reasoning" {
 					delta["reasoning_content"] = "hm"
 				}
@@ -269,4 +269,18 @@ func placementLines(model string, ngl, cpuMoE int) {
 	}
 	fmt.Fprintf(os.Stderr, "sched_reserve:      CUDA0 compute buffer size = %s MiB\n", compute)
 	os.Stderr.Write([]byte("\xff\xfe invalid bytes in the startup log\n"))
+}
+
+// parts splits a reply into streamed words. A multi-line reply keeps its
+// own whitespace (so markdown blocks survive); a one-line reply streams
+// each word followed by a space, as before.
+func parts(content string) []string {
+	if strings.Contains(content, "\n") {
+		return regexp.MustCompile(`\s*\S+\s*`).FindAllString(content, -1)
+	}
+	words := strings.Fields(content)
+	for i := range words {
+		words[i] += " "
+	}
+	return words
 }
