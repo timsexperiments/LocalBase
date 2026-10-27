@@ -356,8 +356,9 @@
   .segmented {
     @apply flex gap-1 rounded-xl bg-surface-muted p-1;
   }
+  /* Items share the row by their label width (four labels fit at 360px). */
   .segmented > a {
-    @apply flex min-h-11 flex-1 items-center justify-center rounded-lg px-3 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+    @apply flex min-h-11 flex-auto items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
   }
   .segmented > a[aria-current="page"] {
     @apply bg-surface text-ink shadow-sm;
@@ -477,5 +478,70 @@
   }
   .empty-state {
     @apply rounded-2xl border border-dashed border-line px-6 py-10 text-center;
+  }
+}
+
+/* Lab (DESIGN §22.10): results first, the prompt docked at the bottom. */
+@layer components {
+  .lab-items {
+    @apply mt-3 grid grid-cols-1 gap-3 min-[600px]:grid-cols-2 xl:grid-cols-3;
+  }
+  .lab-empty {
+    @apply mt-3 rounded-2xl border border-dashed border-line px-5 py-8 text-center text-muted;
+  }
+  .lab-results:has(#lab-items > li) .lab-empty,
+  .lab-results:has(#lab-result > *) .lab-empty {
+    @apply hidden;
+  }
+  .lab-item {
+    @apply grid content-start gap-2 rounded-2xl border border-line bg-surface p-2;
+  }
+  .lab-item > p,
+  .lab-item > audio {
+    @apply px-2;
+  }
+  .lab-image {
+    @apply aspect-square w-full rounded-xl bg-surface-muted object-contain;
+  }
+  .lab-progress {
+    @apply flex min-h-24 items-center justify-center gap-2 rounded-xl bg-surface-muted px-3 font-semibold text-muted;
+  }
+  .lab-item-foot {
+    @apply flex items-center gap-1 pl-2;
+  }
+  /* The prompt sits above the tab bar on phones, above the keyboard while
+     typing, and at the bottom of the page column on desktops. */
+  .lab-dock {
+    @apply fixed inset-x-0 z-20 border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-2 lg:sticky lg:bottom-0 lg:mt-6 lg:border-0 lg:bg-transparent lg:px-0 lg:pb-4;
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom)); /* the bar and its top border */
+  }
+  html[data-typing] .lab-dock {
+    bottom: var(--lb-kb);
+  }
+  @media (min-width: 1024px) {
+    .lab-dock,
+    html[data-typing] .lab-dock {
+      bottom: 0;
+    }
+  }
+  .lab-dock-box {
+    @apply mx-auto grid max-w-3xl gap-1 rounded-3xl border border-line bg-surface p-2 shadow-sm focus-within:outline-2 focus-within:outline-accent;
+  }
+  .lab-prompt {
+    @apply block max-h-[30dvh] min-h-11 w-full resize-none bg-transparent px-2 pt-2 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
+  }
+  .lab-dock-row {
+    @apply flex flex-wrap items-center gap-2;
+  }
+  .lab-chip {
+    @apply max-w-full text-left whitespace-normal;
+  }
+  /* Phones: room for the fixed prompt. Desktops: the column fills the
+     window, so the prompt sits at its foot until results push it down. */
+  .lab {
+    @apply lg:flex lg:min-h-[calc(100dvh-5rem)] lg:flex-col;
+  }
+  .lab-dock-spacer {
+    @apply h-40 lg:h-auto lg:flex-1;
   }
 }

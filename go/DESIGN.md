@@ -3253,6 +3253,40 @@ and whether it is busy.
   unchanged polls announce nothing, the loaded model shows Idle, and a
   request announces "… is busy." once.
 
+### 22.10 Lab (PR 5)
+
+The one thing people come to do: make something (an image, a video,
+speech, a transcript) and get it back.
+- **Layout.** One four-way switch (Image, Video, Speech, Transcribe; items
+  share the row by label width so all four fit at 360 px), then **Results**,
+  then the **prompt docked** at the bottom: above the tab bar on phones,
+  on the keyboard while typing, at the foot of the column on desktops.
+  One action (Generate, Speak, Transcribe). Model, size, voice and "More"
+  are chips that open sheets (radios and the advanced fields); `lab.js`
+  keeps each chip showing its choice.
+- **Runs.** When the gateway serves runs (§21.9), image, speech and
+  transcription requests start detached runs server-side (the handlers
+  build the same `/v1` bodies as before and post them to
+  `/_localbase/runs/v1/…` as the person). The answer is a tray item that
+  polls `GET /app/lab/runs/{id}` every 2 s (not while hidden) until the run
+  ends; a completed result is collected once into the Lab's result store
+  (memory, 30 min, owner-bound) with the prompt as caption and alt text.
+  The tray is rebuilt from the person's runs on every visit, so results
+  survive leaving the page or switching tools. Stop cancels the run;
+  Remove dismisses it. A media run lost to a restart says so and asks to
+  generate again. Translation and video are not run targets: translation
+  calls the API directly, video keeps its job polling.
+- **Without runs** the Lab calls the API directly as before, and the result
+  shows above the tray.
+- **Checks:** `TestLabImageRun`, `TestLabRunInterrupted`, `TestLabDock`
+  (plus the existing Lab tests on the direct path);
+  `tools/chat-runs-check.sh` (Lab steps with the fake as sd-server: the
+  prompt sits right on the tab bar; an item appears with its caption; the
+  finished image is in the tray on another tool's page after leaving the
+  Lab; Stop; Remove drops item and run; while typing the prompt sits on
+  the keyboard and the tab bar is hidden); `tools/phone-check.sh` (the
+  four-way switch fits at 360 px).
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
