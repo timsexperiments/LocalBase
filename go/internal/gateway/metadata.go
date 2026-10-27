@@ -20,6 +20,12 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/unload"); ok && raw != "" {
+		if id, err := url.PathUnescape(raw); err == nil {
+			s.unloadAPI(w, r, id)
+			return
+		}
+	}
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, r, "GET")
 		return

@@ -3061,3 +3061,65 @@ The FE thread owns the client.
 Speech and transcription have no fake runtime in the unit tests. Their
 hooks are the same two calls, and the contract real runs exercise those
 handlers.
+
+## 22. Explicit unload (2026-10-27)
+
+Operator request, for the FE's Running page (#388). There was no way to
+free a model's memory from the UI: freeing RAM for a bigger model on the
+live Mac meant restarting the gateway.
+
+**`POST /_localbase/models/{id}/unload`** needs `models:manage`.
+- **Browser:** mirrored under `/app/api` with the same same-origin,
+  `X-Localbase-Ui` and CSRF rules as the other UI mutations. Forwarding
+  keeps only `wait`.
+- **Scope:** acts on whichever runtime has `{id}` loaded: llm, stt, tts,
+  image or video.
+- **`?wait=true`** (the default) drains for up to 30 s. **`?wait=false`**
+  refuses at once if anything is in flight.
+
+**The drain** works like an eviction.
+1. Requests already holding the model finish. They are not cancelled.
+2. Requests for the model that are queued but not started are refused,
+   as is any new request for it until the drain ends. The refusal is 503
+   `model_unloading` with `Retry-After: 2`; a retry loads the model again.
+3. Other models' queued requests wait, as they would behind any switch.
+4. When the last lease is released, the backend stops. The admission
+   ledger drops its reservation, and `runtime.stopped` is logged with
+   reason `unload`, next to memory, switch, shutdown, crash, cancel and
+   idle, including `memory_freed_bytes`.
+
+**In flight** means held leases. A detached run (§21) is a request, so a
+run generating on the model counts, whichever principal owns it, and is
+drained, never cancelled. A queued run is refused like any queued request
+and ends `failed` with `model_unloading`.
+
+**Answers:**
+
+| Case | Answer |
+| --- | --- |
+| Unloaded | **200** `{"id","object":"localbase.model.unload","unloaded":true,"runtime":"llm"\|…,"memoryFreedBytes","drainedMs"}` |
+| Busy, `wait=false`; or still busy after 30 s; or a switch is under way | **409** `model_busy` with `error.in_flight`. The model keeps running and its work is undisturbed |
+| Known model, not loaded | **404** `model_not_loaded` |
+| Unknown model | **404** `model_not_found` |
+| No `models:manage` | **403**; no credentials: **401** |
+| `wait` not true/false | **400** |
+
+**Unchanged:** auto-eviction, idle recovery, pressure handling and the
+default-model logic. An unloaded model reloads on demand as usual.
+`memory.Controller.Reserved()` exposes the admission ledger, per runtime,
+for tests and a future Running page.
+
+**Tests (`internal/gateway/unload_test.go`):**
+- `TestUnloadIdle`: the ledger drops the reservation, `memoryFreedBytes`
+  equals it, and the stop event carries reason `unload`; the model then
+  reloads on demand.
+- `TestUnloadBusyDrains`: a detached run completes in full, and requests
+  queued before the unload or sent mid-drain are refused at once.
+  Removing the mid-drain refusal fails this test.
+- `TestUnloadBusyRefused`: `wait=false`, and the bounded wait, both give
+  409 with `in_flight` 1, with the run undisturbed.
+- `TestUnloadNotLoaded`
+- `TestUnloadScope`: a key with only `models:read` gets 403; another
+  principal's run counts as in flight.
+- `TestUnloadBrowserRoute`
+- `TestUnloadImageRuntime`: a media runtime unloads the same way.

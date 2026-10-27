@@ -53,6 +53,11 @@ func allowedUIRoute(method, p string) bool {
 		}
 		return false
 	}
+	if rest, ok := strings.CutPrefix(p, "/_localbase/models/"); ok {
+		if id, ok := strings.CutSuffix(rest, "/unload"); ok && id != "" && !strings.Contains(id, "/") {
+			return method == "POST"
+		}
+	}
 	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
 		if target, ok := strings.CutPrefix(rest, "v1/"); ok {
 			_, known := runTargets["/v1/"+target]
@@ -119,7 +124,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		}
 		fwd := r.Clone(context.WithValue(r.Context(), browserPrincipalKey{}, full))
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
-		fwd.URL.RawQuery = runEventsQuery(target, r)
+		fwd.URL.RawQuery = forwardedQuery(target, r)
 		s.mux.ServeHTTP(w, fwd)
 		return
 	}
@@ -224,7 +229,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fwd.URL.Path, fwd.URL.RawPath, fwd.URL.RawQuery, fwd.RequestURI = target, "", "", target
-	fwd.URL.RawQuery = runEventsQuery(target, r)
+	fwd.URL.RawQuery = forwardedQuery(target, r)
 	s.mux.ServeHTTP(w, fwd)
 }
 
@@ -235,11 +240,19 @@ func isRunEvents(target string) bool {
 	return ok && id != "" && !strings.HasPrefix(rest, "v1/") && action == "events"
 }
 
-// runEventsQuery keeps only `after` on a run's event stream; forwarding
-// drops every other query.
-func runEventsQuery(target string, r *http.Request) string {
-	if a := r.URL.Query().Get("after"); a != "" && isRunEvents(target) {
-		return url.Values{"after": {a}}.Encode()
+// forwardedQuery keeps the one query parameter a route reads: `after` on a
+// run's event stream and `wait` on a model unload. Forwarding drops every
+// other query.
+func forwardedQuery(target string, r *http.Request) string {
+	key := ""
+	switch {
+	case isRunEvents(target):
+		key = "after"
+	case strings.HasPrefix(target, "/_localbase/models/") && strings.HasSuffix(target, "/unload"):
+		key = "wait"
+	}
+	if v := r.URL.Query().Get(key); key != "" && v != "" {
+		return url.Values{key: {v}}.Encode()
 	}
 	return ""
 }

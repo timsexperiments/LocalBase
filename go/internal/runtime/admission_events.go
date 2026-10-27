@@ -96,6 +96,7 @@ const (
 	StopCrash    = "crash"    // the backend exited on its own (runtime.exited too)
 	StopCancel   = "cancel"   // a job was cancelled (video)
 	StopIdle     = "idle"     // unloaded after idling (no such timer yet)
+	StopUnload   = "unload"   // explicitly unloaded (POST /_localbase/models/{id}/unload)
 )
 
 // logStopped records a backend stop: runtime.evicted for memory, else

@@ -126,19 +126,20 @@ type waiter struct {
 type LLM struct {
 	d LLMDeps
 
-	mu       sync.Mutex
-	cfg      *store.Config
-	cur      *backend
-	starting bool
-	active   int
-	queue    []*waiter
-	closed   bool
-	geometry map[string]geometryEntry
-	probes   sync.WaitGroup
-	switches sync.WaitGroup // in-flight model switches; Close waits for them
-	failed   bool           // the last start failed and nothing runs
-	claimed  bool           // idle recovery is stopping the backend; hold requests
-	chooser  defaultChooser // the fit-aware default chat model
+	mu        sync.Mutex
+	cfg       *store.Config
+	cur       *backend
+	starting  bool
+	active    int
+	queue     []*waiter
+	closed    bool
+	geometry  map[string]geometryEntry
+	probes    sync.WaitGroup
+	switches  sync.WaitGroup // in-flight model switches; Close waits for them
+	failed    bool           // the last start failed and nothing runs
+	claimed   bool           // idle recovery is stopping the backend; hold requests
+	unloading string         // the model draining for an explicit unload (DESIGN §22)
+	chooser   defaultChooser // the fit-aware default chat model
 }
 
 type geometryEntry struct {
@@ -313,6 +314,10 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 		m.mu.Unlock()
 		return nil, ErrUnavailable
 	}
+	if m.unloading == modelID {
+		m.mu.Unlock()
+		return nil, ErrUnloading
+	}
 	if len(m.queue) >= m.d.QueueCapacity {
 		m.mu.Unlock()
 		return nil, ErrQueueFull
@@ -388,7 +393,7 @@ func (m *LLM) fail(w *waiter, err error) {
 // pump dispatches from the head of the queue. Called with mu held. Later
 // requests never bypass a switch the head is waiting for.
 func (m *LLM) pump() {
-	for len(m.queue) > 0 && !m.starting && !m.claimed && !m.closed {
+	for len(m.queue) > 0 && !m.starting && !m.claimed && !m.closed && m.unloading == "" {
 		head := m.queue[0]
 		if m.cur != nil && m.cur.modelID == head.model && m.cur.key == head.key {
 			if m.active >= m.cur.plan.Parallel.Slots {
