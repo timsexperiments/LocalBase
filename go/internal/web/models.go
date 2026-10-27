@@ -301,7 +301,6 @@ func (u *UI) unload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	s := u.d.Catalog.ByID(r.PathValue("id"))
 	var backend any

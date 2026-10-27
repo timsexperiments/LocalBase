@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -193,5 +195,42 @@ func TestRunningNow(t *testing.T) {
 	}
 	if strings.Index(main, `id="running-status"`) > strings.Index(main, `id="running-live"`) {
 		t.Error("the status region is inside the polled part")
+	}
+}
+
+// Unload: the outcomes of the gateway's unload route, in words.
+func TestUnload(t *testing.T) {
+	for _, c := range []struct {
+		status int
+		body   string
+		want   string
+	}{
+		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Unloaded. Freed 4.2 GB."},
+		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "Still busy with 2 requests, so it stayed loaded."},
+		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already unloaded."},
+		{404, `404 page not found`, "This LocalBase can’t unload models yet."},
+		{403, `{"error":{"code":"forbidden","message":"Missing models:manage."}}`, "Missing models:manage."},
+	} {
+		u := shellUI(t, nil, "")
+		var path string
+		u.d.Call = func(_ context.Context, _ *auth.Principal, method, p, _ string, _ []byte) APIResult {
+			path = method + " " + p
+			return APIResult{Status: c.status, Body: []byte(c.body)}
+		}
+		w := httptest.NewRecorder()
+		req := htmxPost("/app/models/unload/qwen3.5-4b-q4_k_m", url.Values{})
+		withCSRF(u, req) // this UI has a root, so its own key
+		u.ServeHTTP(w, req)
+		body := w.Body.String()
+		if path != "POST /_localbase/models/qwen3.5-4b-q4_k_m/unload" || !strings.Contains(body, c.want) ||
+			!strings.Contains(body, `data-announce="`+c.want) {
+			t.Errorf("%d %s: %s\n%s", c.status, c.body, path, body)
+		}
+	}
+	// Without models:manage there is no Unload button, and the route refuses.
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read"}}
+	u := shellUI(t, p, "")
+	if strings.Contains(get(u, "/app/models/running").Body.String(), "/app/models/unload/") {
+		t.Error("Unload offered without models:manage")
 	}
 }
