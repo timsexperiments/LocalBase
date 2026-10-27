@@ -1,23 +1,24 @@
 {{define "title"}}Settings · LocalBase{{end}}
 {{define "main"}}
-<section aria-labelledby="settings-title" class="mx-auto max-w-2xl">
-  <h1 id="settings-title" class="text-3xl font-bold tracking-tight">Settings</h1>
+<section aria-labelledby="settings-title" class="settings mx-auto max-w-2xl">
+  <h1 id="settings-title" class="page-title">Settings</h1>
 
-  <section aria-labelledby="history-title" class="card mt-6 p-5" data-history-settings>
-    <h2 id="history-title" class="text-lg font-bold">Chat history</h2>
-    <label class="mt-3 flex min-h-11 cursor-pointer items-center gap-3 font-semibold">
-      <input type="checkbox" class="size-5 accent-[var(--lb-accent)]" data-history-toggle>
-      Save text history on this device
-    </label>
-    <p class="mt-1 text-sm text-muted">Optional browser storage, visible to others using this browser. Credentials, attachments, and generated media are never saved. Turning this off removes saved history.</p>
-    <button type="button" class="btn mt-4 border border-danger-line bg-danger-soft text-danger hover:bg-hover" data-history-clear>Clear all history</button>
-    <p class="mt-2 text-sm font-semibold" role="status" data-history-status></p>
-  </section>
-
-  <section aria-labelledby="generation-title" class="card mt-4 p-5">
-    <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
-    <p class="mt-1 text-muted">Temperature, output length and the settings for images, video and speech are in Chat, under <span class="font-semibold text-ink">Generation controls</span> next to the message box. They apply until the page reloads and are not saved.</p>
-    <a href="/app/chat" class="btn btn-quiet mt-4" hx-boost="false">Open Chat</a>
+  <section aria-labelledby="history-title" data-history-settings>
+    <h2 id="history-title" class="list-label">Chat</h2>
+    <div class="list-group">
+      <label class="setting-row cursor-pointer">
+        <span class="min-w-0 flex-1"><span class="block font-semibold">Save text history on this device</span>
+          <span class="block text-sm text-muted">Visible to others using this browser. Credentials, attachments and generated media are never saved. Turning it off removes saved history.</span></span>
+        <input type="checkbox" class="switch" data-history-toggle>
+      </label>
+      <button type="button" class="list-row text-danger" data-history-clear>Clear all history</button>
+      <a href="/app/chat" hx-boost="false" class="setting-row">
+        <span class="min-w-0 flex-1"><span class="block font-semibold">Generation controls</span>
+          <span class="block text-sm text-muted">Temperature, length and media settings are in Chat, next to the message box, for this page only.</span></span>
+        {{template "icon-chevron"}}
+      </a>
+    </div>
+    <p class="mt-2 px-1 text-sm font-semibold" role="status" data-history-status></p>
   </section>
 
   {{with .Defaults}}{{template "default-models" .}}{{end}}
@@ -25,11 +26,16 @@
   {{with .Token}}{{template "hf-token" .}}{{end}}
 
   {{if and .Principal (not .NoAuth)}}
-  <section aria-labelledby="account-title" class="card mt-4 p-5">
-    <h2 id="account-title" class="text-lg font-bold">Account</h2>
-    <p class="mt-1 text-muted">{{with .Principal.Name}}Signed in as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span> in this browser.{{else}}You’re signed in to this LocalBase in this browser.{{end}}</p>
-    {{with .Can}}<p class="mt-2 text-sm"><span class="font-semibold">You can:</span> <span class="text-muted">{{.}}</span></p>{{end}}
-    <button type="button" class="btn btn-quiet mt-4" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
+  <section aria-labelledby="account-title">
+    <h2 id="account-title" class="list-label">Account</h2>
+    <div class="list-group">
+      <div class="setting-row">
+        <span aria-hidden="true" class="avatar size-10">{{initial .Principal.Name}}</span>
+        <span class="min-w-0 flex-1"><span class="block font-semibold wrap-anywhere">{{with .Principal.Name}}Signed in as {{.}}{{else}}Signed in{{end}}</span>
+          {{with .Can}}<span class="block text-sm text-muted">You can: {{.}}</span>{{end}}</span>
+      </div>
+      <button type="button" class="list-row text-danger" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
+    </div>
   </section>
   {{end}}
 </section>
@@ -37,50 +43,55 @@
 {{end}}
 
 {{define "hf-token"}}
-<section id="hf-token" aria-labelledby="hf-token-title" class="card mt-4 p-5">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 id="hf-token-title" class="text-lg font-bold">Hugging Face token</h2>
-    {{if .Status}}<span class="badge">{{if eq .Source "saved"}}Saved{{else if eq .Source "env"}}From HF_TOKEN{{else}}Not set{{end}}</span>{{end}}
+<section id="hf-token" aria-labelledby="hf-token-title">
+  <h2 id="hf-token-title" class="list-label">Hugging Face</h2>
+  <div class="list-group">
+    <div class="setting-row">
+      <span class="min-w-0 flex-1"><span class="block font-semibold">Token</span>
+        <span class="block text-sm text-muted">Downloads gated repositories you have accepted, with a higher rate limit. A <a class="font-semibold text-accent" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">read token</a> is enough; a saved one is never shown again.</span></span>
+      {{if .Status}}<span class="pill {{if .Status.Configured}}pill-ok{{end}}">{{if eq .Source "saved"}}Saved{{else if eq .Source "env"}}From HF_TOKEN{{else}}Not set{{end}}</span>{{end}}
+    </div>
+    <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/hf-token" hx-target="#hf-token" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <div class="grid gap-1">
+        <label for="hf-token-input" class="text-base font-semibold">{{if eq .Source "saved"}}Replace token{{else}}New token{{end}}</label>
+        <input id="hf-token-input" class="input" type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…" maxlength="256" required>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" name="action" value="save" class="btn btn-primary">{{if eq .Source "saved"}}Replace{{else}}Save{{end}}</button>
+        <button type="submit" name="action" value="validate" formnovalidate class="btn btn-quiet" {{if not (and .Status .Status.Configured)}}disabled{{end}}>Check token</button>
+        {{if eq .Source "saved"}}<button type="submit" name="action" value="clear" formnovalidate class="btn bg-danger-soft text-danger">Clear saved token</button>{{end}}
+      </div>
+    </form>
   </div>
-  <p class="mt-1 text-sm text-muted">A token lets LocalBase download gated repositories you have accepted and raises the Hub rate limit. A <a class="text-accent underline" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">read token</a> is enough. A saved token takes precedence over HF_TOKEN and is never shown again.</p>
-  <form class="mt-4 grid gap-3" hx-post="/app/settings/hf-token" hx-target="#hf-token" hx-swap="outerHTML" hx-disabled-elt="find button">
-    <div class="grid gap-1">
-      <label for="hf-token-input" class="text-base font-semibold">{{if eq .Source "saved"}}Replace token{{else}}Token{{end}}</label>
-      <input id="hf-token-input" class="input" type="password" name="token" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…" maxlength="256" required>
-    </div>
-    <div class="flex flex-wrap gap-2">
-      <button type="submit" name="action" value="save" class="btn btn-primary">{{if eq .Source "saved"}}Replace{{else}}Save{{end}}</button>
-      <button type="submit" name="action" value="validate" formnovalidate class="btn btn-quiet" {{if not (and .Status .Status.Configured)}}disabled{{end}}>Check token</button>
-      {{if eq .Source "saved"}}<button type="submit" name="action" value="clear" formnovalidate class="btn border border-danger-line bg-danger-soft text-danger hover:bg-hover">Clear saved token</button>{{end}}
-    </div>
-  </form>
-  {{if and (eq .Source "saved") .Status.EnvAvailable}}<p class="mt-3 text-sm text-muted">Clearing it falls back to HF_TOKEN.</p>{{end}}
-  {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
-  {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+  {{if and (eq .Source "saved") .Status.EnvAvailable}}<p class="mt-2 px-1 text-sm text-muted">Clearing it falls back to HF_TOKEN.</p>{{end}}
+  {{with .Notice}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="mt-2 px-1 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
 </section>
 {{end}}
 
 {{define "default-models"}}
-<section id="default-models" aria-labelledby="default-models-title" class="card mt-4 p-5">
-  <h2 id="default-models-title" class="text-lg font-bold">Default chat model</h2>
-  <p class="mt-1 text-sm text-muted">New conversations use the first model in this list that fits in the memory available now. A model someone picks, or an app names, is always used as asked.</p>
-  {{with .Effective}}<p class="mt-3"><span class="font-semibold">Now:</span> {{.}}</p>{{end}}
-  {{with .Reason}}<p class="mt-1 text-sm text-muted">{{.}}</p>{{end}}
-  {{if .CanManage}}
-  <form class="mt-4 grid gap-3" hx-post="/app/settings/default-models" hx-target="#default-models" hx-swap="outerHTML" hx-disabled-elt="find button">
-    {{range $i, $cur := .Slots}}
-    <div class="grid gap-1">
-      <label for="default{{$i}}" class="text-base font-semibold">{{if eq $i 0}}First choice{{else if eq $i 1}}If it doesn’t fit{{else}}Then{{end}}</label>
-      <select id="default{{$i}}" name="default{{$i}}" class="input min-h-11" {{if eq $i 0}}required{{end}}>
-        {{if ne $i 0}}<option value="">None</option>{{end}}
-        {{range $.Options}}<option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>{{end}}
-      </select>
-    </div>
+<section id="default-models" aria-labelledby="default-models-title">
+  <h2 id="default-models-title" class="list-label">Default chat model</h2>
+  <div class="list-group">
+    {{with .Effective}}<div class="setting-row"><span class="min-w-0 flex-1"><span class="block font-semibold">New chats use {{.}}</span>
+      {{with $.Reason}}<span class="block text-sm text-muted">{{.}}</span>{{end}}</span></div>{{end}}
+    {{if .CanManage}}
+    {{/* Each choice saves as soon as it changes (no Save button to scroll to). */}}
+    <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/default-models" hx-trigger="change" hx-target="#default-models" hx-swap="outerHTML">
+      {{range $i, $cur := .Slots}}
+      <div class="grid gap-1">
+        <label for="default{{$i}}" class="text-base font-semibold">{{if eq $i 0}}First choice{{else if eq $i 1}}If it doesn’t fit{{else}}Then{{end}}</label>
+        <select id="default{{$i}}" name="default{{$i}}" class="input" {{if eq $i 0}}required{{end}}>
+          {{if ne $i 0}}<option value="">None</option>{{end}}
+          {{range $.Options}}<option value="{{.ID}}" {{if eq .ID $cur}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      {{end}}
+    </form>
     {{end}}
-    <div><button type="submit" class="btn btn-primary">Save</button></div>
-  </form>
-  {{end}}
-  {{with .Notice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
-  {{with .Error}}<p class="mt-3 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+  </div>
+  <p class="mt-2 px-1 text-sm text-muted">LocalBase uses your first choice. If it needs more memory than is free right now, it uses the next one, then the one after. A model someone picks in Chat, or an app names, is used as asked. Changes save right away.</p>
+  {{with .Notice}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="mt-2 px-1 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
 </section>
 {{end}}

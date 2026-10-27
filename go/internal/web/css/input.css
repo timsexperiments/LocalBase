@@ -548,3 +548,25 @@
     @apply h-40 lg:h-auto lg:flex-1;
   }
 }
+
+/* Settings (DESIGN §22.12): one setting per row in grouped lists. */
+@layer components {
+  .setting-row {
+    @apply flex min-h-12 items-center gap-3 px-4 py-3 text-ink;
+  }
+  a.setting-row,
+  label.setting-row {
+    @apply hover:bg-hover;
+  }
+  /* A checkbox drawn as a switch; still a checkbox to assistive tech. */
+  .switch {
+    @apply relative h-7 w-12 shrink-0 cursor-pointer appearance-none rounded-full bg-muted transition-colors checked:bg-accent motion-reduce:transition-none;
+  }
+  .switch::before {
+    content: "";
+    @apply absolute top-0.5 left-0.5 size-6 rounded-full bg-surface shadow-sm transition-transform motion-reduce:transition-none;
+  }
+  .switch:checked::before {
+    @apply translate-x-5;
+  }
+}

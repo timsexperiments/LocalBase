@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -110,5 +111,35 @@ func TestSettingsHFToken(t *testing.T) {
 	}
 	if w := tokenPost(u, url.Values{"action": {"clear"}}); w.Code != http.StatusForbidden {
 		t.Errorf("without models:manage: %d", w.Code)
+	}
+}
+
+// Settings are grouped lists, one setting per row: the history switch is a
+// real checkbox (role and state for assistive tech), and the groups are
+// Chat, Default chat model, Hugging Face and Account.
+func TestSettingsGrouped(t *testing.T) {
+	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/settings").Body.String())
+	for _, want := range []string{`<h1 id="settings-title" class="page-title">Settings</h1>`, `<h2 id="history-title" class="list-label">Chat</h2>`,
+		`<input type="checkbox" class="switch" data-history-toggle>`, `data-history-clear>Clear all history</button>`, `href="/app/chat" hx-boost="false" class="setting-row"`} {
+		if !strings.Contains(main, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(main, `class="card`) {
+		t.Error("settings still use cards")
+	}
+}
+
+// The default chat models save on change (no Save button that can sit
+// under the tab bar), and the fallback order is said in plain words.
+func TestDefaultModelsAutoSave(t *testing.T) {
+	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/settings").Body.String())
+	if !strings.Contains(main, `id="default-models"`) {
+		t.Skip("no default-models group in this setup")
+	}
+	section := regexp.MustCompile(`(?s)<section id="default-models".*?</section>`).FindString(main)
+	if !strings.Contains(section, `hx-post="/app/settings/default-models" hx-trigger="change"`) || strings.Contains(section, `>Save</button>`) ||
+		!strings.Contains(section, "If it needs more memory than is free right now, it uses the next one") {
+		t.Errorf("default models: %s", section)
 	}
 }
