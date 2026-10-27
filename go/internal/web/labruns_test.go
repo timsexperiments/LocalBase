@@ -64,7 +64,8 @@ func TestLabImageRun(t *testing.T) {
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/runs/run_1", nil))
 	done := w.Body.String()
-	if !strings.Contains(done, `alt="a paper boat"`) || !strings.Contains(done, `src="/app/lab/results/`) || strings.Contains(done, "every 2s") {
+	if !strings.Contains(done, `alt="a paper boat"`) || !strings.Contains(done, `src="/app/lab/results/`) || strings.Contains(done, "every 2s") ||
+		!strings.Contains(done, `aria-label="Save image"`) || !strings.Contains(done, `data-share="/app/lab/results/`) || strings.Contains(done, "Try again") {
 		t.Fatalf("completed item: %s", done)
 	}
 	// The result is collected once, however often the item is drawn.
@@ -76,6 +77,12 @@ func TestLabImageRun(t *testing.T) {
 	page := get(u, "/app/lab?tab=speech").Body.String()
 	if !strings.Contains(page, `<li id="run-run_1"`) || strings.Contains(page, "run-run_c") {
 		t.Errorf("tray: %s", page)
+	}
+	// Interrupted: Try again puts the whole prompt back.
+	f.status, f.reason = "interrupted", "gateway_restart"
+	lost := get(u, "/app/lab/runs/run_1").Body.String()
+	if !strings.Contains(lost, `data-fill="a paper   boat" data-fill-tab="image">Try again</button>`) {
+		t.Errorf("interrupted item: %s", lost)
 	}
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, htmxPost("/app/lab/runs/run_1/remove", url.Values{}))
@@ -109,7 +116,7 @@ func TestLabDock(t *testing.T) {
 	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, Call: (&fakeRuns{status: "completed"}).call})
 	main := mainRe.FindString(get(u, "/app/lab?tab=image").Body.String())
 	for _, want := range []string{`<nav aria-label="Lab tools" class="segmented`, `id="lab-items"`, `class="lab-dock" data-docked`,
-		`data-open-sheet="lab-model"`, `data-open-sheet="lab-size"`, `<dialog id="lab-size" class="sheet`, `>Generate</button>`} {
+		`data-open-sheet="lab-model"`, `data-open-sheet="lab-size"`, `<dialog id="lab-size" class="sheet`, `aria-label="Generate"`, `class="composer-box lab-box"`, `data-fill="A paper boat`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}

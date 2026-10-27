@@ -507,7 +507,7 @@
     @apply flex min-h-24 items-center justify-center gap-2 rounded-xl bg-surface-muted px-3 font-semibold text-muted;
   }
   .lab-item-foot {
-    @apply flex items-center gap-1 pl-2;
+    @apply flex flex-wrap items-center gap-1;
   }
   /* The prompt sits above the tab bar on phones, above the keyboard while
      typing, and at the bottom of the page column on desktops. */
@@ -524,17 +524,20 @@
       bottom: 0;
     }
   }
-  .lab-dock-box {
-    @apply mx-auto grid max-w-3xl gap-1 rounded-3xl border border-line bg-surface p-2 shadow-sm focus-within:outline-2 focus-within:outline-accent;
+  /* The Lab uses Chat's composer box: options in one row that scrolls
+     sideways, then the field with its round action. */
+  .lab-box {
+    @apply mx-auto grid max-w-3xl gap-0.5 pt-1;
   }
-  .lab-prompt {
-    @apply block max-h-[30dvh] min-h-11 w-full resize-none bg-transparent px-2 pt-2 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
-  }
-  .lab-dock-row {
-    @apply flex flex-wrap items-center gap-2;
+  .lab-chips {
+    @apply flex gap-1.5 overflow-x-auto px-1.5 pt-0.5;
+    scrollbar-width: none;
   }
   .lab-chip {
-    @apply max-w-full text-left whitespace-normal;
+    @apply shrink-0 px-3 whitespace-nowrap;
+  }
+  .lab-prompt {
+    @apply block max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
   }
   /* Phones: room for the fixed prompt. Desktops: the column fills the
      window, so the prompt sits at its foot until results push it down. */

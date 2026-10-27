@@ -251,7 +251,7 @@ func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	body, _ := json.Marshal(req)
-	if u.labStart(w, r, "/v1/images/generations", "application/json", caption(r.PostFormValue("prompt")), body) {
+	if u.labStart(w, r, "/v1/images/generations", "application/json", strings.TrimSpace(r.PostFormValue("prompt")), body) {
 		return
 	}
 	res := u.call(r, "POST", "/v1/images/generations", "application/json", body)
@@ -281,7 +281,7 @@ func (u *UI) labSpeech(w http.ResponseWriter, r *http.Request) {
 	req := map[string]any{"model": r.PostFormValue("model"), "input": r.PostFormValue("input"),
 		"voice": r.PostFormValue("voice"), "response_format": "wav"}
 	body, _ := json.Marshal(req)
-	if u.labStart(w, r, "/v1/audio/speech", "application/json", caption(r.PostFormValue("input")), body) {
+	if u.labStart(w, r, "/v1/audio/speech", "application/json", strings.TrimSpace(r.PostFormValue("input")), body) {
 		return
 	}
 	res := u.call(r, "POST", "/v1/audio/speech", "application/json", body)
@@ -321,7 +321,7 @@ func (u *UI) labTranscribe(w http.ResponseWriter, r *http.Request) {
 	path := "/v1/audio/transcriptions"
 	if r.FormValue("translate") == "on" {
 		path = "/v1/audio/translations" // not a run target: always direct
-	} else if u.labStart(w, r, path, mw.FormDataContentType(), caption(hdr.Filename), b.Bytes()) {
+	} else if u.labStart(w, r, path, mw.FormDataContentType(), hdr.Filename, b.Bytes()) {
 		return
 	}
 	res := u.call(r, "POST", path, mw.FormDataContentType(), b.Bytes())

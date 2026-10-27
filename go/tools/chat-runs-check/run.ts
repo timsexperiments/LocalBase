@@ -100,6 +100,16 @@ await ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).the
 await nav("/app/lab?tab=image");
 if (!(await ev(`!!document.querySelector("#lab-prompt")`))) console.log("skip lab (no image model on this gateway)");
 else {
+  // At 360x740 the docked prompt stays small, and an example fills it.
+  await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/lab?tab=image");
+  const h = await ev(`Math.round(document.querySelector(".lab-dock").getBoundingClientRect().height)`);
+  check(h <= 0.2 * 740, `the docked prompt is at most a fifth of the screen at 360x740 (${h}px)`);
+  await ev(`document.querySelector("[data-lab-empty] [data-fill]").click()`);
+  const filled = await ev(`({ value: document.querySelector("#lab-prompt").value, focused: document.activeElement?.id })`);
+  check(filled.value.startsWith("A paper boat") && filled.focused === "lab-prompt", `an example fills the prompt: ${JSON.stringify(filled)}`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/lab?tab=image");
   const dock = await ev(`(() => { const d = document.querySelector(".lab-dock").getBoundingClientRect(); const t = document.querySelector("nav.tabbar").getBoundingClientRect(); return { gap: Math.round(t.top - d.bottom) }; })()`);
   check(dock.gap === 0, `the prompt sits right above the tab bar (gap ${dock.gap})`);
   await ev(`(() => { document.querySelector("#lab-prompt").value = "a paper boat fake:slow-image"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);

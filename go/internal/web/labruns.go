@@ -33,8 +33,8 @@ type labRun struct {
 // labNote is what the tray remembers about a run, in memory, bound to its
 // owner: the prompt as a caption, and the collected result.
 type labNote struct {
-	owner, caption, result, text string
-	at                           time.Time
+	owner, caption, prompt, result, text string
+	at                                   time.Time
 }
 
 type labNotes struct {
@@ -52,7 +52,7 @@ func (n *labNotes) get(owner, id string) *labNote {
 	return nil
 }
 
-func (n *labNotes) put(owner, id, caption string) {
+func (n *labNotes) put(owner, id, prompt string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.items == nil {
@@ -63,7 +63,7 @@ func (n *labNotes) put(owner, id, caption string) {
 			delete(n.items, k)
 		}
 	}
-	n.items[id] = &labNote{owner: owner, caption: caption, at: time.Now()}
+	n.items[id] = &labNote{owner: owner, caption: caption(prompt), prompt: prompt, at: time.Now()}
 }
 
 // runsServed: the gateway answers GET /_localbase/runs with a list.
@@ -77,7 +77,7 @@ func (u *UI) runsServed(r *http.Request) bool {
 
 // labStart starts path as a run and answers with its tray item; false means
 // runs are not served and the caller should call path directly.
-func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, caption string, body []byte) bool {
+func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, prompt string, body []byte) bool {
 	if !u.runsServed(r) {
 		return false
 	}
@@ -91,7 +91,7 @@ func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, capti
 		u.labOutcome(w, r, map[string]any{"Error": "LocalBase did not start the request. Try again."})
 		return true
 	}
-	u.notes.put(u.caller(r).OwnerID(), run.ID, caption)
+	u.notes.put(u.caller(r).OwnerID(), run.ID, prompt)
 	w.Header().Set("HX-Retarget", "#lab-items")
 	w.Header().Set("HX-Reswap", "afterbegin")
 	u.fragment(w, r, "lab", "lab-item", u.labItem(r, run))
@@ -101,6 +101,7 @@ func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, capti
 // labItemView is one tray item.
 type labItemView struct {
 	ID, Tool, Status, Caption, Message string
+	Prompt                             string // to try again (empty for a file)
 	Image, Audio, Transcript           string
 	Active                             bool
 }
@@ -113,7 +114,7 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	v := labItemView{ID: run.ID, Tool: tool, Status: run.Status, Active: run.Status == "queued" || run.Status == "in_progress"}
 	note := u.notes.get(owner, run.ID)
 	if note != nil {
-		v.Caption = note.caption
+		v.Caption, v.Prompt = note.caption, note.prompt
 	}
 	switch run.Status {
 	case "queued":

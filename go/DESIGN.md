@@ -3261,9 +3261,17 @@ speech, a transcript) and get it back.
   share the row by label width so all four fit at 360 px), then **Results**,
   then the **prompt docked** at the bottom: above the tab bar on phones,
   on the keyboard while typing, at the foot of the column on desktops.
-  One action (Generate, Speak, Transcribe). Model, size, voice and "More"
-  are chips that open sheets (radios and the advanced fields); `lab.js`
-  keeps each chip showing its choice.
+  It is Chat's composer box: one row of option chips that scrolls sideways
+  (model, size or voice, More; each opens a sheet, and `lab.js` keeps the
+  chip showing its choice), then the field with its one action as a round
+  button inside it. At 360×740 it takes at most a fifth of the screen.
+- **Before the first result** each tool says what it does, with two or
+  three examples that fill the prompt (no model names).
+- **Item actions** (44 px): Save and, where the browser can share files,
+  Share for images and speech; Copy for transcripts; Try again (puts the
+  whole prompt back, switching tool if needed) for a run that stopped,
+  failed or was lost; Remove. There is no image edit in the Lab yet, so no
+  "use as input".
 - **Runs.** When the gateway serves runs (§21.9), image, speech and
   transcription requests start detached runs server-side (the handlers
   build the same `/v1` bodies as before and post them to
