@@ -3408,3 +3408,24 @@ it away.
   policy) inside the new shell; restyling them into grouped lists is the
   next polish.
 - **Checks:** `TestAdminKeysSheet` and the existing admin tests.
+
+### 22.14 Consistency pass (operator review, 2026-10-27)
+
+Across the eight pages:
+- **Titles:** one `h1.page-title` per page (`TestPagesConsistent`).
+- **Groups:** grouped lists for rows (`.list-group`, `.list-row`,
+  `.setting-row`, `.model-row`); forms that need a box use one titled group
+  (`.group-card`, `.group-title`); Admin's People and Access use them, and
+  Admin keeps no Refresh (create, rotate and revoke redraw the list).
+- **Sheets:** every sheet has the same header (title left, Done/close
+  right, no rule); Chat's picker and generation sheets were aligned.
+- **Empty states:** `.empty-state` (dashed box, one sentence, at most one
+  action), including Chat's "no model" and "can't chat".
+- **Outcomes:** `.notice` / `.notice-error` (tinted, bold), the same on
+  Running, My voices and Admin.
+- **Destructive actions:** the shared `confirm` disclosure (a danger
+  button that reveals what will happen and a second button to do it):
+  Rotate, Revoke, Delete voice, Clear all history. Clear all history also
+  removes this tab's session copy of chats and the unsent message.
+- **Dark mode:** every page and sheet was captured at 390 px in dark
+  (`.design/screens/dark/`); the selected segment carries a ring.

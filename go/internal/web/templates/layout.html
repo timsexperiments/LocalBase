@@ -137,3 +137,14 @@
   <button type="button" class="btn btn-quiet size-11 p-0" data-close-sheet aria-label="Done">{{template "icon-x"}}</button>
 </div>
 {{end}}
+
+{{/* A named confirmation: dict "Label" "Text" "Confirm" and the hidden fields as "Fields". */}}
+{{define "confirm"}}
+<details class="confirm">
+  <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">{{.Label}}</summary>
+  <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm {{.Label}}">
+    <p class="text-sm">{{.Text}}</p>
+    <button type="submit" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger" name="action" value="{{.Action}}">{{.Confirm}}</button>
+  </div>
+</details>
+{{end}}

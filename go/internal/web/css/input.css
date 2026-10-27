@@ -570,3 +570,20 @@
     @apply translate-x-5;
   }
 }
+
+/* Shared across pages (DESIGN §22.14): a titled group of fields, the
+   outcome of an action, and destructive actions behind a confirmation. */
+@layer components {
+  .group-card {
+    @apply rounded-2xl border border-line bg-surface p-4;
+  }
+  .group-title {
+    @apply text-base font-bold;
+  }
+  .notice {
+    @apply rounded-xl bg-accent-soft px-4 py-3 font-semibold text-accent;
+  }
+  .notice-error {
+    @apply bg-danger-soft text-danger;
+  }
+}

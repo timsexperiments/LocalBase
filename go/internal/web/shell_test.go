@@ -234,3 +234,20 @@ func TestUnload(t *testing.T) {
 		t.Error("Unload offered without models:manage")
 	}
 }
+
+// One look across pages: each has one title in the same style; Admin uses
+// titled groups, not loose cards, and keeps no Refresh button (its list
+// redraws after every change).
+func TestPagesConsistent(t *testing.T) {
+	u := shellUI(t, nil, "")
+	for _, path := range []string{"/app/models", "/app/models/get", "/app/models/running", "/app/lab", "/app/voices", "/app/settings",
+		"/app/admin?section=people", "/app/admin?section=access", "/app/admin?section=keys"} {
+		main := mainRe.FindString(get(u, path).Body.String())
+		if strings.Count(main, "<h1 ") != 1 || !regexp.MustCompile(`<h1 id="[a-z-]+" class="page-title">`).MatchString(main) {
+			t.Errorf("%s: the title is not the shared page title", path)
+		}
+		if strings.HasPrefix(path, "/app/admin") && (strings.Contains(main, `class="card p-5"`) || strings.Contains(main, ">Refresh<")) {
+			t.Errorf("%s: loose cards or a Refresh button", path)
+		}
+	}
+}

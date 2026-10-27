@@ -35,7 +35,12 @@ if (box) {
   clear.addEventListener("click", () => {
     try {
       localStorage.removeItem(historyKey);
+      // This tab's conversations and unsent message go too (Chat keeps them
+      // in sessionStorage when history is off).
+      sessionStorage.removeItem(historyKey);
+      sessionStorage.removeItem("localbase.chat.draft.v1");
       toggle.checked = false;
+      clear.closest("details")?.removeAttribute("open");
       say("History cleared.");
     } catch {
       say("Saved device history could not be removed; clear this site’s browser data to remove it.");

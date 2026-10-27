@@ -9,7 +9,7 @@
   <div id="running-live" class="mt-5 grid gap-5"
        hx-get="/app/models/running" hx-select="#running-live" hx-target="this" hx-swap="outerHTML"
        hx-trigger="every 3s" hx-sync="this:drop" data-poll data-announce="{{with .Notice}}{{.}}{{else}}{{.Summary}}{{end}}" data-announce-into="running-status">
-    {{with .Notice}}<p class="rounded-xl px-4 py-3 font-semibold {{if $.Failed}}bg-danger-soft text-danger{{else}}bg-accent-soft text-accent{{end}}">{{.}}</p>{{end}}
+    {{with .Notice}}<p class="notice {{if $.Failed}}notice-error{{end}}">{{.}}</p>{{end}}
     <section aria-labelledby="memory-title" class="card p-4">
       <h2 id="memory-title" class="font-bold">Memory</h2>
       <p class="mt-1 text-muted">{{if ge .Available 0}}{{gib .Available}} free of {{gib .Capacity}}{{else}}Free memory is unknown{{end}}</p>
