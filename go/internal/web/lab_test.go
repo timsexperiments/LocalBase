@@ -223,3 +223,25 @@ func TestLabVideo(t *testing.T) {
 		t.Fatalf("failed: %s", w.Body.String())
 	}
 }
+
+// My voices: Add opens a sheet that closes on success; each voice has a
+// Play button and an options sheet (Use in the Lab, Rename, Delete); without
+// models:manage there is none of that, only the names.
+func TestVoicesSheets(t *testing.T) {
+	list := `{"object":"list","data":[{"id":"voice-0123456789ab","name":"Narrator","durationMs":4000,"createdAt":"2026-10-20T10:00:00.000Z"}],
+		"canManage":%s,"limits":{"minSeconds":3,"maxSeconds":30},"consentStatement":"I have the right."}`
+	api := &fakeAPI{reply: APIResult{Status: 200, Body: []byte(strings.Replace(list, "%s", "true", 1))}}
+	html := get(New(Deps{NoAuth: true, Call: api.call}), "/app/voices").Body.String()
+	for _, want := range []string{`data-open-sheet="voice-add" aria-haspopup="dialog" aria-label="Add a voice"`, `<dialog id="voice-add" class="sheet`,
+		`data-close-sheet-on-success`, `data-play="/app/voices/voice-0123456789ab/audio" aria-label="Play Narrator" aria-pressed="false"`,
+		`<dialog id="voice-voice-0123456789ab" class="sheet`, `href="/app/lab?tab=speech">Use in the Lab</a>`, "Delete voice", "js/voices.js"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	api.reply.Body = []byte(strings.Replace(list, "%s", "false", 1))
+	html = get(New(Deps{NoAuth: true, Call: api.call}), "/app/voices").Body.String()
+	if strings.Contains(html, "data-play") || strings.Contains(html, `id="voice-add"`) || strings.Contains(html, "Delete voice") || !strings.Contains(html, "Narrator") {
+		t.Errorf("read-only page offers management")
+	}
+}

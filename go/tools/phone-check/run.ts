@@ -154,9 +154,13 @@ else console.log(`ok   more sheet (${sheet.links.join(", ")})`);
 // The keyboard: focusing a text field on a touch screen hides the tab bar;
 // when the viewport shrinks (as Chrome on Android resizes for the keyboard)
 // the focused field is scrolled into view.
-for (const [path, field] of [["/app/lab?tab=image", "textarea[name=prompt]"], ["/app/voices", "input[name=name]"], ["/app/chat", "#chat-input"]]) {
+// [page, field, what to do first]; My voices types in its Add sheet.
+for (const [path, field, setup] of [["/app/lab?tab=image", "textarea[name=prompt]", ""],
+  ["/app/voices", "#voice-add input[name=name]", `document.querySelector("[data-open-sheet=voice-add]")?.click()`],
+  ["/app/chat", "#chat-input", ""]]) {
   await viewport(390, 844, true);
   await open(path);
+  if (setup) { await evaluate(setup); await sleep(300); }
   const exists = await evaluate(`!!document.querySelector(${JSON.stringify(field)}) && !document.querySelector(${JSON.stringify(field)}).disabled`);
   if (!exists) { console.log(`skip keyboard ${path} (no enabled ${field} on this gateway)`); continue; }
   await evaluate(`document.querySelector(${JSON.stringify(field)}).focus()`);

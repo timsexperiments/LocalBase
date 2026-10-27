@@ -3356,3 +3356,23 @@ for tests and a future Running page.
   principal's run counts as in flight.
 - `TestUnloadBrowserRoute`
 - `TestUnloadImageRuntime`: a media runtime unloads the same way.
+
+### 22.11 My voices (PR 6)
+
+The one thing people come to do: add a voice, hear it, and use it.
+- A title with one round + (Add a voice), one line on what voices are for
+  (its "How voices work" link opens a help sheet: length, privacy,
+  consent), and the voices as a grouped list: a round **Play**
+  button (`aria-pressed`; one recording plays at a time, `voices.js`), the
+  name, length and date, and "⋯" for an options sheet: Use in the Lab,
+  Rename, the speech API id, Delete (confirmed).
+- **Add a voice** is a sheet with name, recording (upload or record, as
+  before), the consent statement and one button; it closes once the voice
+  is added (`data-close-sheet-on-success`, a shell behaviour) and stays
+  open, with the error, when it is not.
+- Without models:manage the page lists names only (no playback, add or
+  options), as the API allows.
+- **Checks:** `TestVoicesSheets` (and `TestVoicesPage`);
+  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE` adds a voice through
+  the sheet (it closes, the list says "Added …") and plays one;
+  `tools/phone-check.sh` types in the Add sheet with the keyboard open.

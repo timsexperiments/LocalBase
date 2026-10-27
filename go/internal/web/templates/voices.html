@@ -1,62 +1,89 @@
 {{define "title"}}My voices · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="voices-title">
-  <h1 id="voices-title" class="text-3xl font-bold tracking-tight">My voices</h1>
-  <p class="mt-1 text-muted">A voice is a short recording that speech models clone from. Recordings stay on this LocalBase, in its own folder, and only people who manage models can play them back.</p>
-  {{if .List.CanManage}}
-  <form class="card mt-6 grid gap-3 p-5" hx-post="/app/voices" hx-encoding="multipart/form-data" hx-target="#voice-list" hx-swap="outerHTML"
-    hx-disabled-elt="find button[type=submit]" data-audio-form data-reset-on-success>
-    <h2 class="text-lg font-semibold">Add a voice</h2>
-    <label class="grid gap-1"><span class="text-sm font-semibold">Name</span>
-      <input class="input min-h-11" name="name" required maxlength="48" autocomplete="off"></label>
-    <div class="grid gap-1"><span id="voice-recording-label" class="text-sm font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
-      <div class="flex flex-wrap items-center gap-2">
-        <input class="input min-h-11 max-w-full" type="file" name="audio" aria-labelledby="voice-recording-label" accept="audio/*" data-audio-input required>
-        <button type="button" class="btn btn-quiet" data-record>Record</button>
-      </div>
-      <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
-      <audio controls class="hidden w-full" data-audio-preview></audio>
+  <div class="flex items-center justify-between gap-3">
+    <h1 id="voices-title" class="page-title">My voices</h1>
+    {{if .List.CanManage}}<button type="button" class="btn btn-primary size-11 rounded-full p-0" data-open-sheet="voice-add" aria-haspopup="dialog" aria-label="Add a voice">{{template "icon-plus"}}</button>{{end}}
+  </div>
+  <p class="page-lead">Voices the Lab can speak in. <button type="button" class="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline" data-open-sheet="voice-help" aria-haspopup="dialog">How voices work</button></p>
+  <dialog id="voice-help" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-help-title">
+    {{template "sheet-head" (dict "ID" "voice-help-title" "Title" "How voices work")}}
+    <div class="grid gap-3 px-5 pb-3 text-muted">
+      <p>A voice is a short recording ({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech) that speech models clone from. Use it in the <a class="font-semibold text-accent" href="/app/lab?tab=speech">Lab</a>, or by its id in the speech API.</p>
+      <p>Recordings stay on this LocalBase, in its own folder.{{if .List.CanManage}} Only people who manage models can play them back.{{end}}</p>
+      <p>Add only your own voice, or one whose speaker agreed to it.</p>
     </div>
-    <label class="flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="consent" value="true" required class="size-5 shrink-0"> <span>{{.List.ConsentStatement}}</span></label>
-    <button type="submit" class="btn btn-primary justify-self-start">Add voice</button>
-  </form>
-  {{end}}
+  </dialog>
+
   {{template "voice-list" .}}
+
+  {{if .List.CanManage}}
+  <dialog id="voice-add" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-add-title">
+    {{template "sheet-head" (dict "ID" "voice-add-title" "Title" "Add a voice")}}
+    <form class="grid gap-4 px-4 pb-2" hx-post="/app/voices" hx-encoding="multipart/form-data" hx-target="#voice-list" hx-swap="outerHTML"
+      hx-disabled-elt="find button[type=submit]" data-audio-form data-reset-on-success data-close-sheet-on-success>
+      <label class="grid gap-1"><span class="font-semibold">Name</span>
+        <input class="input" name="name" required maxlength="48" autocomplete="off"></label>
+      <div class="grid gap-1"><span id="voice-recording-label" class="font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
+        <div class="flex flex-wrap items-center gap-2">
+          <input class="input min-w-0 flex-1" type="file" name="audio" aria-labelledby="voice-recording-label" accept="audio/*" data-audio-input required>
+          <button type="button" class="btn btn-quiet rounded-full" data-record>Record</button>
+        </div>
+        <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
+        <audio controls class="hidden w-full" data-audio-preview></audio>
+      </div>
+      <label class="flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="consent" value="true" required class="size-5 shrink-0 accent-[var(--lb-accent)]"> <span>{{.List.ConsentStatement}}</span></label>
+      <button type="submit" class="btn btn-primary w-full">Add voice</button>
+    </form>
+  </dialog>
+  {{end}}
 </section>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
+<script src="{{asset "js/voices.js"}}" type="module"></script>
 {{end}}
 
 {{define "voice-list"}}
-<div id="voice-list" class="mt-6" aria-live="polite">
-  {{with .Notice}}<p class="card mb-3 p-4 {{if $.Failed}}text-danger{{end}}" {{if $.Failed}}role="alert"{{end}}>{{.}}</p>{{end}}
-  {{with .Error}}<p class="card mb-3 p-4 text-danger" role="alert">{{.}}</p>{{end}}
+<div id="voice-list" class="mt-5" aria-live="polite">
+  {{with .Notice}}<p class="mb-3 rounded-xl px-4 py-3 font-semibold {{if $.Failed}}bg-danger-soft text-danger{{else}}bg-accent-soft text-accent{{end}}" {{if $.Failed}}role="alert"{{end}}>{{.}}</p>{{end}}
+  {{with .Error}}<p class="mb-3 rounded-xl bg-danger-soft px-4 py-3 font-semibold text-danger" role="alert">{{.}}</p>{{end}}
   {{if not .List.Data}}
-  <p class="card p-4 text-muted">No voices yet.</p>
+  <div class="empty-state">
+    <h2 class="text-lg font-bold">No voices yet</h2>
+    <p class="mt-1 text-muted">Record a few seconds of clear speech, and speech models can talk in that voice.</p>
+    {{if .List.CanManage}}<button type="button" class="btn btn-primary mt-4" data-open-sheet="voice-add" aria-haspopup="dialog">Add a voice</button>{{end}}
+  </div>
   {{else}}
-  <ul class="grid gap-3">
+  <ul class="list-group" aria-label="Voices">
     {{range .List.Data}}
-    <li class="card grid gap-3 p-4">
-      <div class="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 class="text-lg font-semibold break-words">{{.Name}}</h2>
-        <span class="text-sm text-muted">{{printf "%.1f" (seconds .DurationMs)}} s · added {{slice .CreatedAt 0 10}}</span>
-      </div>
-      {{if $.List.CanManage}}
-      <audio controls preload="none" src="/app/voices/{{.ID}}/audio" class="w-full"></audio>
-      <div class="flex flex-wrap items-end gap-2">
-        <form class="flex flex-wrap items-end gap-2" hx-post="/app/voices/{{.ID}}/rename" hx-target="#voice-list" hx-swap="outerHTML">
-          <label class="grid gap-1"><span class="text-sm font-semibold">Rename</span>
-            <input class="input min-h-11" name="name" required maxlength="48" value="{{.Name}}" autocomplete="off"></label>
-          <button type="submit" class="btn btn-quiet">Save</button>
-        </form>
-        <form hx-post="/app/voices/{{.ID}}/delete" hx-target="#voice-list" hx-swap="outerHTML" hx-confirm="Delete {{.Name}} and its recording?">
-          <button type="submit" class="btn btn-quiet text-danger">Delete</button>
-        </form>
-      </div>
+    <li class="flex items-center gap-1 px-3 py-2">
+      {{if $.List.CanManage}}<button type="button" class="icon-btn bg-accent-soft text-accent hover:bg-accent hover:text-on-accent" data-play="/app/voices/{{.ID}}/audio" aria-label="Play {{.Name}}" aria-pressed="false">{{template "icon-play"}}</button>
+      {{else}}<span aria-hidden="true" class="model-avatar">{{initial .Name}}</span>{{end}}
+      <span class="min-w-0 flex-1 px-2">
+        <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+        <span class="block text-sm text-muted">{{printf "%.1f" (seconds .DurationMs)}} s · added {{slice .CreatedAt 0 10}}</span>
+      </span>
+      {{if $.List.CanManage}}<button type="button" class="icon-btn" data-open-sheet="voice-{{.ID}}" aria-haspopup="dialog" aria-label="Options for {{.Name}}">{{template "icon-more"}}</button>
+      <dialog id="voice-{{.ID}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-{{.ID}}-title">
+        {{template "sheet-head" (dict "ID" (printf "voice-%s-title" .ID) "Title" .Name)}}
+        <div class="grid gap-4 px-4 pb-2">
+          <a class="btn btn-quiet w-full" href="/app/lab?tab=speech">Use in the Lab</a>
+          <form class="grid gap-2" hx-post="/app/voices/{{.ID}}/rename" hx-target="#voice-list" hx-swap="outerHTML">
+            <label class="grid gap-1"><span class="font-semibold">Name</span>
+              <input class="input" name="name" required maxlength="48" value="{{.Name}}" autocomplete="off"></label>
+            <button type="submit" class="btn btn-quiet">Rename</button>
+          </form>
+          <p class="text-sm text-muted">In the speech API, this voice is <code class="break-all">{{.ID}}</code>.</p>
+          <form hx-post="/app/voices/{{.ID}}/delete" hx-target="#voice-list" hx-swap="outerHTML" hx-confirm="Delete {{.Name}} and its recording?">
+            <button type="submit" class="btn w-full bg-danger-soft text-danger">Delete voice</button>
+          </form>
+        </div>
+      </dialog>
       {{end}}
-      <p class="text-sm text-muted">Use it as <code class="break-all">{{.ID}}</code> in the speech API.</p>
     </li>
     {{end}}
   </ul>
   {{end}}
 </div>
 {{end}}
+
+{{define "icon-play"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="currentColor" data-play-icon><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg><svg aria-hidden="true" viewBox="0 0 24 24" class="hidden size-5" fill="currentColor" data-pause-icon><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>{{end}}
