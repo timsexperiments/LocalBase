@@ -66,7 +66,8 @@ copy)
   # The database: online backup through a read-only connection.
   sqlite3 "file:$src/local-base.db?mode=ro" ".backup '$root/local-base.db'" || die "database backup failed"
   # Everything else the gateway reads: clones. Not copied: service/ and
-  # runtime/ (they name the source's label and lock), backups and tmp.
+  # runtime/ (they name the source's label and lock), backups, tmp, and
+  # runs/ (in-flight model output, DESIGN §21.6).
   for x in catalog.d models ui-access.json voices credentials cache logs auth-profiles.json; do
     [ -e "$src/$x" ] && clone "$src/$x" "$root/$x"
   done

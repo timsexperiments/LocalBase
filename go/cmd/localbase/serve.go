@@ -354,6 +354,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	srv.Stopping()
+	srv.StopRuns(5 * time.Second) // runs end as interrupted, and their event streams close (DESIGN §21.6)
 	close(stopPoll)
 	<-feedDone // an in-flight refresh settles first
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

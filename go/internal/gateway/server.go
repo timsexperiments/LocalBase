@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -61,6 +62,8 @@ type Server struct {
 	Otel *otlp.Runtime
 
 	mgmt *management
+	// runs are the UI's detached runs (DESIGN §21).
+	runs *runManager
 	// UI handles /app and / when set.
 	UI http.Handler
 
@@ -76,6 +79,12 @@ func New(s *Server) *Server {
 		rootDir = s.Root.Dir
 	}
 	s.mgmt = newManagement(rootDir)
+	runsDir := ""
+	if rootDir != "" {
+		runsDir = filepath.Join(rootDir, "runs")
+	}
+	s.runs = newRunManager(s, runsDir)
+	go s.runs.janitor()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
 	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
@@ -100,6 +109,8 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/v1/videos/{job_id}", s.videoJobRoute("status"))
 	mux.HandleFunc("/v1/videos/{job_id}/content", s.videoJobRoute("content"))
 	mux.HandleFunc("/v1/videos/{job_id}/cancel", s.videoJobRoute("cancel"))
+	mux.HandleFunc("/_localbase/runs", s.guard("", s.runsList))
+	mux.HandleFunc("/_localbase/runs/{rest...}", s.guard("", s.runRoute))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
 	mux.HandleFunc("/_localbase/access-management", s.audited("access", s.accessManagement))
@@ -124,6 +135,10 @@ func New(s *Server) *Server {
 	return s
 }
 
+// StopRuns interrupts active runs (gateway_restart) and ends their event
+// streams; serve calls it before the HTTP server drains.
+func (s *Server) StopRuns(wait time.Duration) { s.runs.Shutdown(wait) }
+
 // Stopping makes health and readiness report the gateway is shutting down.
 func (s *Server) Stopping() { s.stopping.Store(true) }
 
@@ -137,7 +152,8 @@ func PrincipalFrom(ctx context.Context) *auth.Principal {
 	return auth.Anonymous
 }
 
-// guard enforces a route permission. API routes authenticate with API keys;
+// guard enforces a route permission. An empty permission admits any
+// authenticated principal. API routes authenticate with API keys;
 // browser sessions arrive with the auth milestone.
 func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +166,8 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			return
 		}
 		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
-			if !bp.Can(permission) {
+			setAuth(r, bp)
+			if permission != "" && !bp.Can(permission) {
 				forbidden(w, r)
 				return
 			}
@@ -168,7 +185,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			unauthorized(w, r)
 			return
 		}
-		if !p.Can(permission) {
+		if permission != "" && !p.Can(permission) {
 			forbidden(w, r)
 			return
 		}

@@ -2686,3 +2686,337 @@ it read-only.
 - **Copy:** capacity and CPU use only, with no model names.
 - **Checked:** at 390 px, with no horizontal overflow and 44 px controls.
 - **Tests:** `TestPlacementCard` and `TestPlacementCardSaves`.
+
+## 21. Detached runs: generation that outlives the page (design addendum, 2026-10-27)
+
+User request (operator, 2026-10-27): "make LocalBase work so that it
+continues generation even if the FE is moved on the wrong tab."
+
+**Today (verified).** The UI is client-driven.
+- **How it breaks:** `chat-core.js` reads a `fetch()` stream of
+  `/app/api/v1/chat/completions`. `relay` builds the backend request on
+  `r.Context()`. Anything that drops the connection cancels the
+  generation upstream: navigating away, a page change in the multi-page
+  app, or iOS suspending a background tab.
+- **Lab:** its image, speech and transcribe POSTs call the API with the
+  page request's context too (`u.call(r.Context())`).
+- **Test:** `TestChatDisconnectCancelsUpstream` pins this. The fake backend
+  sees the cancellation, and the gateway logs `inference.completed` with
+  `terminal_source: request_aborted`.
+
+**Goal.** A *run* is a server-side execution of one inference request.
+- It does not depend on any browser connection.
+- A returning page re-attaches to it: it replays what it missed, then
+  follows live.
+- Only an explicit Stop cancels it.
+
+**Non-goals.**
+- `/v1/*` semantics are unchanged. API clients keep disconnect-cancels, and
+  the test above stays.
+- No server-side conversation history: the browser still owns history.
+- No new runtime and no schema change.
+- Video already has jobs (`/v1/videos`), so it is not wrapped again.
+
+### 21.1 Execution: the same path as the API
+
+`POST /_localbase/runs/v1/<route>` takes exactly the body of `/v1/<route>`
+(JSON or multipart, ≤ 25 MiB).
+- **Targets:** PR 1 has `chat/completions`. PR 2 adds `images/generations`,
+  `images/edits`, `audio/speech` and `audio/transcriptions`. Other routes
+  get 404.
+- **How it executes:** the gateway dispatches the body to the real `/v1`
+  handler internally (`Server.ServeHTTP`) as the caller's principal. That
+  handler runs on a context detached from the creating request
+  (`context.WithoutCancel` plus the run's own cancel).
+- **What that gives for free:** validation, permission scopes, admission,
+  the queue, memory pressure, telemetry, the inner request's own
+  `request_id`, `inference.completed`, and its spans. They are identical to
+  the API's because they are the API's code.
+- **Validation:** the internal call's 4xx comes back to the creator
+  synchronously. The run is not created, and the client sees the same
+  error envelope `/v1` gives.
+- **Chat runs always stream upstream,** with `stream: true` and
+  `stream_options.include_usage: true`, so partial output exists at every
+  moment.
+- **The response is 202** with the run object. Its `Location` header is
+  `/_localbase/runs/{id}`.
+
+- **Queued runs hold nothing.** A run waits in the inference queue exactly
+  like a request: no memory admission and no slot until it is admitted.
+  Its status is `queued` until then, and Stop on a queued run is immediate.
+  Once admitted it holds the lease the way a request does, and it releases
+  the lease when the inner handler returns. Idle unload and eviction are
+  unchanged: a finished run pins nothing.
+
+### 21.2 API (final for the FE thread, 2026-10-27)
+
+Every route also works through `/app/api/…` as the signed-in browser,
+under the same same-origin and session rules as the other UI endpoints
+(`X-Localbase-Ui: 1` on fetches). The event stream is the one exception,
+§21.3. All run routes need an authenticated principal and are owner-bound.
+- **Owner:** the creating principal's `OwnerID()`, so a browser account,
+  an API key or the environment key. Under `--no-auth` it is one local
+  owner.
+- **Other principals** get 404 `run_not_found`, the same as an unknown id,
+  so no existence leak.
+- **Ids** are 128-bit random, `run_<32 hex>`.
+- **Creating** needs the target route's scope (`inference:chat`). The
+  inner `/v1` guard checks it, and a refusal is answered synchronously.
+
+| Route | Answer |
+| --- | --- |
+| `POST /_localbase/runs/v1/chat/completions` | **202** with the run object (output so far is empty) and `Location: /_localbase/runs/{id}`. A request `/v1` refuses before the queue (validation, scope, unknown model) gets the **same status and error envelope** as `/v1`, and no run exists. **429** `too_many_runs` (with `Retry-After: 5`) over the active-run limit. **503** while the gateway stops. |
+| `GET /_localbase/runs` | the caller's runs, newest first: `{"object":"list","data":[{id, target, label, model, status, reason?, createdAt, startedAt, endedAt}]}`. `label` is `"Chat"` (PR 2: `"Image"`, `"Image edit"`, `"Speech"`, `"Transcription"`). It carries **no prompt or output text**, and is meant for the shell's "Generating…" indicator. |
+| `GET /_localbase/runs/{id}` | the run object with `output` |
+| `GET /_localbase/runs/{id}/events` | SSE, §21.3 |
+| `POST /_localbase/runs/{id}/cancel` | **Stop**, the only thing that cancels a run. It returns the final run object, with the partial output kept. Stopping a finished run is a no-op that returns it. |
+| `DELETE /_localbase/runs/{id}` | **dismiss:** stops the run if active, deletes it and its checkpoint. Returns `{"id","object":"localbase.run.deleted","deleted":true}` |
+
+**Deliberate deviation from the operator's brief.** The brief had
+`DELETE` = Stop. Here Stop is `POST …/cancel` and `DELETE` dismisses, as
+with video jobs (`/v1/videos/{id}/cancel` and `DELETE`). A stopped run
+then keeps its partial text until the page has collected it. The operator
+accepted this on 2026-10-27.
+
+**Run object.**
+
+```json
+{"id": "run_…", "object": "localbase.run",
+ "target": "/v1/chat/completions", "label": "Chat", "model": "<model id>",
+ "status": "queued|in_progress|completed|failed|cancelled|interrupted",
+ "reason": "stopped|gateway_restart|memory_pressure|max_duration|output_limit",
+ "error": null | {"type", "code", "message", ...},
+ "requestId": "lbreq_…",
+ "createdAt", "startedAt", "endedAt", "expiresAt": RFC 3339 or null,
+ "lastEventId": 12,
+ "resumable": false,
+ "continuation": {"by": "client", "message": "…"},
+ "output": {"content", "reasoning"?, "toolCalls"?, "finishReason"?, "usage"?}}
+```
+
+- **`reason`** is present only when it applies. **`continuation`** is
+  present only when the run is `interrupted`.
+- **`resumable` is always false.** The server never resumes a run: it
+  does not keep the request (§21.6). After `interrupted`, continuing is a
+  client action. The page still has the conversation, and sends it again
+  with the partial reply. `continuation.message` says so in product words.
+- **`output`** is accumulated server-side from the stream, so `GET` alone
+  is "the result so far".
+- **`toolCalls`** are merged by index, in the OpenAI shape
+  `{id, type, function: {name, arguments}}`.
+- **`requestId`** is the inner `/v1` request's id. It joins the run to the
+  http, inference and backend logs and spans.
+
+### 21.3 Events and resume (final)
+
+`GET /_localbase/runs/{id}/events` answers `200` with these headers:
+- `Content-Type: text/event-stream; charset=utf-8`
+- `Cache-Control: no-store, no-transform`
+- `X-Accel-Buffering: no`
+
+It opens with a `: connected` comment and flushes after every event.
+
+**Events** (each with a per-run increasing `id:`):
+- `event: status`, data `{"status","reason"?}`: every transition,
+  starting with `queued`.
+- `event: chunk`, data: an OpenAI `chat.completion.chunk`, byte for byte
+  as `/v1` relays it (public model id, `reasoning` normalized). The
+  client's existing chunk parser reads it.
+- `event: error`, data: the error envelope (`{"error":{…}}`), when the
+  stream ends in an error.
+- `event: end`, data: the final run object without `output`. The server
+  then closes the stream.
+- `event: snapshot` (after a restart only), data: the run object with
+  `output`, followed by `end`.
+  - **Every** connection to a restored run gets both, whatever
+    `Last-Event-ID` or `?after` it sends. The buffer is gone, and a
+    resuming page's last id can be past the last checkpoint (written at
+    most once a second).
+  - They are numbered after the checkpointed event count, so their ids
+    are stable across reconnects.
+  - A client treats `snapshot` as replacing everything it rendered for the
+    run. This was found by the FE thread on 2026-10-27: a resume with id 52
+    used to receive nothing.
+
+**Resume.** `Last-Event-ID: N` (sent automatically by `EventSource` on its
+own reconnects) or `?after=N` (for a fresh `EventSource` on a returning
+page) replays every buffered event with id > N, then follows live. The
+header wins when both are present.
+- With no id, the stream starts from the beginning.
+- Several tabs can attach at once.
+- Ids have no gaps, so a page that renders chunks in order and remembers
+  the last id never duplicates or loses text.
+- A page that lost its state can always rebuild from `GET` (output so
+  far) plus `?after=<lastEventId>`.
+
+**Keep-alive.** A `: ping` comment every 15 s keeps Cloudflare, the
+tunnel and iOS Safari from closing a quiet stream. A quiet stream is one
+queued behind another run, or a model reading a long prompt.
+
+**Browser authentication.** `EventSource` cannot set headers, so through
+`/app/api` the event stream (GET only) needs only the session cookie, the
+exact host, and same-origin markers (`Sec-Fetch-Site: same-origin` and an
+`Origin`, when the browser sends them). This is
+`Browser.SameOriginStream`, and it is read-only: without CORS headers no
+other site can read the stream.
+
+The forwarding keeps only `after` from the query. Every mutating run
+route keeps the full same-origin, `X-Localbase-Ui` and CSRF rules.
+
+**Ownership.** The events route is owner-checked like the others. A
+buffer belongs to one run, and a run to one principal, so a resume cannot
+read across principals.
+
+### 21.4 Lifecycle and statuses
+
+`queued` → `in_progress` → `completed` | `failed` | `cancelled` |
+`interrupted`.
+- **`queued`:** waiting in the inference queue, holding no admission.
+- **`in_progress`:** from admission (the lease is held).
+- **`cancelled`,** reason `stopped`: the owner's Stop or dismiss. The
+  partial output is kept until dismissed or expired.
+- **`interrupted`:** the server stopped the run. The partial output is
+  kept, and continuing is the client's (§21.2). Reasons:
+  - `gateway_restart`: a graceful stop, or a crash found at the next start;
+  - `memory_pressure`: the critical-memory monitor stopped the runtime
+    mid-run. `/v1` reports that with a `service_unavailable` stream error,
+    which is also in `error`;
+  - `max_duration`: the run hit the limit.
+- **`failed`:** `error` holds the `/v1` error envelope (an admission
+  refusal after queueing, the backend failed, the context overflowed, …),
+  or reason `output_limit`.
+
+### 21.5 Limits
+
+| Limit | Value | On exceeding |
+| --- | --- | --- |
+| Active runs (queued + in progress) per principal | 4 | 429 `too_many_runs` on create |
+| Active runs per gateway | 32 | 429 `too_many_runs` |
+| Retained runs per principal (any status) | 32 | the oldest *finished* run is dropped (`run.dismissed`) |
+| Run duration | 30 min from creation | `interrupted` / `max_duration` |
+| Buffered output per run (chunk bytes) | 8 MiB | generation stops upstream; `failed` / `output_limit` |
+| Retention after a run ends | 30 min (`expiresAt`) | deleted with its checkpoint; `run.expired` |
+
+Admission is unchanged: a run is a request, so it waits in the same queue
+under the same queue timeout and capacity. A queue-timeout or memory
+refusal ends the run as `failed` with the `/v1` envelope.
+
+### 21.6 Privacy and storage
+
+**The one place model output touches disk.** Everything else about a run
+lives in memory.
+- **The checkpoint:** `<root>/runs/<id>.json` (directory 0700, file 0600)
+  holds the run object and its accumulated output, in plaintext. It is
+  written at every status change and at most once a second while
+  streaming.
+- **Why it exists:** a restart, graceful or a crash, must report
+  `interrupted` with the text the person already saw. Without the file the
+  partial reply would silently vanish.
+- **What is not on disk:** the request body (the prompt and the
+  conversation) is held in memory only, while the run executes. It is
+  never written and never returned.
+
+**Deletion.** The file goes on:
+- dismiss;
+- expiry, 30 minutes after the run ends, checked every minute and on
+  every runs request;
+- retention trimming.
+
+At start, the gateway sweeps `<root>/runs/`:
+- every non-finished record becomes `interrupted` / `gateway_restart`,
+  and its `expiresAt` is the start time plus 30 minutes;
+- expired records and unreadable or foreign files are deleted.
+
+Nothing outlives 30 minutes after the end of the run that made it. There
+is no long-term conversation storage: the page collects the result into
+browser-owned history, then dismisses the run.
+
+**Excluded everywhere else.**
+- `local-base diagnostics` bundles only logs and summaries, never
+  `runs/`.
+- `tools/shadow.sh` copies an allowlist of root entries that does not
+  include `runs/`, and no tool copies a whole root.
+- Tests:
+  - `TestRunCheckpointsStayOutOfBundles` (Go-only);
+  - the contract `TestCLIDiagnostics`, which plants a checkpoint holding
+    `runOutputSecret55` next to the other planted secrets.
+
+**Shutdown.** Graceful shutdown (`StopRuns`, before the HTTP server
+drains) cancels active runs, marks them `interrupted` /
+`gateway_restart`, checkpoints them, and closes every event stream.
+
+**Rollback.** There is no database change. Older binaries ignore
+`<root>/runs/`, and the next Go start sweeps it.
+
+### 21.7 Telemetry (no content, ever)
+
+JSONL and OTLP log events:
+- `run.started`, at queueing
+- `run.completed`
+- `run.failed`
+- `run.cancelled`
+- `run.interrupted`
+- `run.expired`
+- `run.dismissed`
+
+Attributes: `run_id`, `request_id` (the inner `/v1` request), `target`,
+`model_id`, `owner` (the principal id, as in `auth_principal_id`),
+`status`, `reason`, `error_code`, plus `duration_ms`, `output_bytes` and
+`events` once the run has ended. Message text, prompts and outputs are
+never logged.
+
+A `localbase.run` internal span parents the inner request's server span,
+so a trace shows the run, then the request, the inference and the backend.
+
+### 21.8 Tests and PRs
+
+**Tests (`internal/gateway/runs_test.go`):**
+- `TestChatDisconnectCancelsUpstream`: the `/v1` baseline, kept.
+- `TestRunSurvivesDisconnect`: the creator and every reader go away, and
+  the run completes upstream with the full text. The model is released
+  (active 0, still loaded).
+- `TestRunEventsResume`: `Last-Event-ID` and `?after=` replay exactly the
+  missed events, with no gaps or duplicates, then live.
+- `TestRunCancel`:
+  - Stop cancels upstream (the fake backend sees it) and keeps the
+    partial output;
+  - a queued run (one active, one waiting, no admission) stops in under
+    a second;
+  - dismiss deletes the run and its checkpoint.
+- `TestRunOwnership`: another key gets 404 on get, events, cancel and
+  dismiss, and its list is empty. No credentials gets 401. A key without
+  `inference:chat` gets 403, synchronously.
+- `TestRunValidationSynchronous`: the same status and envelope as `/v1`,
+  and no run exists afterwards.
+- `TestRunRestartInterrupted`: covers both a crash (a new gateway on the
+  same root) and a graceful stop. The run is `interrupted` /
+  `gateway_restart` with the partial text, `resumable: false` and
+  `continuation.by: "client"`, and its events are a snapshot then end.
+- `TestRunExpiry`: checks the 0600 and 0700 modes. Expiry deletes the
+  run and its file, and the startup sweep removes expired and junk files.
+- `TestRunLimits`: the active-run cap returns 429; the output cap stops
+  the generation upstream.
+- `TestRunMemoryPressure`: `interrupted` / `memory_pressure`.
+- `TestRunKeepAlive`: a quiet stream gets comments, plus the
+  Cloudflare/Safari headers.
+- `TestRunLogs`: the lifecycle events carry the ids and never the output
+  text.
+- `TestRunBrowserRoutes`: the `/app/api` allowlist, and `after` kept
+  through forwarding.
+
+The failure checks were confirmed by breaking the code on purpose:
+- a run on the creator's context fails `TestRunSurvivesDisconnect`;
+- ignoring `Last-Event-ID` fails `TestRunEventsResume`.
+
+**PRs**, drafts:
+- **PR 1** (`rewrite/go-runs`, on #382): the runs core, chat, and this
+  section.
+- **PR 2** stacks on PR 1.
+  It adds the Lab targets (`images/generations`, `images/edits`,
+  `audio/speech`, `audio/transcriptions`). Bodies may be multipart. The
+  media result is served from `GET /_localbase/runs/{id}/result` with its
+  content type, capped at 64 MiB, kept in memory only and never
+  checkpointed. After a restart a media run reports `interrupted` with no
+  result.
+
+The FE thread owns the client.

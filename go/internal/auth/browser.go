@@ -619,3 +619,18 @@ func (b *Browser) CloudflareLogout() string {
 	}
 	return ""
 }
+
+// SameOriginStream is SameOrigin for a GET event stream (DESIGN §21.3). An
+// EventSource cannot add X-Localbase-Ui, so it rests on the session cookie,
+// the exact host, and the browser's same-origin markers. It is read-only:
+// without CORS headers no other site can read the stream.
+func (b *Browser) SameOriginStream(r *http.Request) bool {
+	if !b.Enabled() || r.Method != http.MethodGet || !b.ExactHost(r) {
+		return false
+	}
+	site, origin := r.Header.Get("Sec-Fetch-Site"), r.Header.Get("Origin")
+	if site != "" && site != "same-origin" {
+		return false
+	}
+	return origin == "" || origin == b.Config.Origin
+}

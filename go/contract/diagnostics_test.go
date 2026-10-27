@@ -17,7 +17,7 @@ import (
 // service stderr capture: none may reach a bundle.
 var diagnosticsSecrets = []string{"hf_plantedTokenValue123", "lb_plantedLocalBaseKey1234567890abcd", "sekritBearerValue42",
 	"feedUserPassword", "feedSignature99", "otlpHeaderSecret77", "stderrCrashSecret", "secretPromptText",
-	"authProfileHeaderSecret31", "signedUrlSignature62", "VoiceNameSecretAda", "goSettingSecret48"}
+	"authProfileHeaderSecret31", "signedUrlSignature62", "VoiceNameSecretAda", "goSettingSecret48", "runOutputSecret55"}
 
 func diagnosticsLog() string {
 	ev := func(i int, extra map[string]any) string {
@@ -175,6 +175,9 @@ func compareManifests(t *testing.T, a, b []byte) {
 // and a Go-only setting.
 func plantPrivateState(t *testing.T, root string) {
 	t.Helper()
+	// A run checkpoint: in-flight model output (DESIGN §21.6).
+	mustMkdirAll(filepath.Join(root, "runs"), 0o700)
+	mustWriteFile(filepath.Join(root, "runs", "run_0123.json"), []byte(`{"id":"run_0123","owner":"local","status":"in_progress","output":{"content":"runOutputSecret55"}}`), 0o600)
 	mustMkdirAll(filepath.Join(root, "credentials"), 0o700)
 	mustWriteFile(filepath.Join(root, "credentials", "auth-profiles.json"), []byte(`{"profiles":[{"id":"vendor","origins":["https://cdn.example.com"],`+
 		`"headers":{"X-Vendor-Key":"authProfileHeaderSecret31"}}]}`), 0o600)

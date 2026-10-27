@@ -48,6 +48,8 @@ type inference struct {
 	// span is the localbase.inference span and ctx carries it.
 	span *otlp.Span
 	ctx  context.Context
+	// hooks tell a detached run (§21) how the request ended.
+	hooks *runHooks
 }
 
 var knownFinishReasons = []string{"stop", "length", "tool_calls", "content_filter", "function_call"}
@@ -162,6 +164,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 		return
 	}
 	t.finished = true
+	t.hooks.finish(source)
 	attrs := []any{"model_id", t.modelID}
 	if t.spec != nil {
 		attrs = append(attrs, "artifact_revision", t.revision(), "quantization", t.spec.Quant)

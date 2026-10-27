@@ -367,6 +367,8 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 		modelNotFound(w, r, model)
 		return
 	}
+	hooks := runHooksFrom(r.Context())
+	hooks.queue()
 	lease, err := s.LLM.Acquire(r.Context(), model)
 	if err != nil {
 		s.logAdmissionRejection(requestID, "llm", model, err)
@@ -374,6 +376,7 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 		return
 	}
 	defer lease.Release()
+	hooks.admit()
 	if finish != nil {
 		finish(leaseInfo{spec: lease.Spec, ctxSize: lease.Plan.CtxSize, slots: lease.Plan.Parallel.Slots})
 	}
@@ -381,7 +384,7 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 	body, _ := json.Marshal(req)
 	tel := &inference{s: s, modality: "llm", modelID: lease.ModelID, spec: lease.Spec, requestID: requestID,
 		started: started, queueWait: lease.Waited, active: lease.Active, slots: lease.Slots, waiting: lease.Waiting,
-		streaming: o.streaming, prepareMs: o.prepareMs}
+		streaming: o.streaming, prepareMs: o.prepareMs, hooks: hooks}
 	if o.schema != nil {
 		tel.schemaValidation = "not_performed"
 		if o.streaming {
