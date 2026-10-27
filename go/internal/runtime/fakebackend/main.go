@@ -14,6 +14,8 @@
 // without [DONE]. "fake:batch" (as the chat message, the embeddings input or
 // the decision state) fails like an input over the physical batch size, with
 // llama-server's exact 500; "fake:batch-plain" does so without the numbers.
+// "fake:slow <n>" streams n words 50 ms apart; when the client goes away
+// first it appends "cancelled" to the file FAKE_CANCEL_LOG names.
 //
 // For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
 // override per expert tensor of the first --n-cpu-moe layers and the
@@ -101,9 +103,27 @@ func main() {
 		case strings.HasPrefix(mode, "fake:reply "):
 			content = strings.TrimPrefix(mode, "fake:reply ")
 		}
+		pause := 10 * time.Millisecond
+		if n, ok := strings.CutPrefix(mode, "fake:slow "); ok {
+			words, _ := strconv.Atoi(n)
+			var b strings.Builder
+			for i := range words {
+				fmt.Fprintf(&b, "w%d ", i+1)
+			}
+			content, pause = b.String(), 50*time.Millisecond
+		}
 		if stream, _ := req["stream"].(bool); stream {
 			w.Header().Set("Content-Type", "text/event-stream")
 			for _, part := range strings.Fields(content) {
+				if r.Context().Err() != nil {
+					if f := os.Getenv("FAKE_CANCEL_LOG"); f != "" {
+						if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+							fmt.Fprintln(fh, "cancelled")
+							fh.Close()
+						}
+					}
+					return
+				}
 				delta := map[string]any{"content": part + " "}
 				if mode == "fake:reasoning" {
 					delta["reasoning_content"] = "hm"
@@ -113,7 +133,7 @@ func main() {
 				b, _ := json.Marshal(chunk)
 				fmt.Fprintf(w, "data: %s\n\n", b)
 				w.(http.Flusher).Flush()
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(pause)
 			}
 			if mode == "fake:truncated" {
 				return
