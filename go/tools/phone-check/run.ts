@@ -63,6 +63,29 @@ const overflow = `(() => {
   }).slice(0, 4).map((el) => el.tagName.toLowerCase() + "." + [...el.classList].slice(0, 3).join("."));
   return { scroll: document.scrollingElement.scrollWidth - w, wide };
 })()`;
+// Text cut off inside a control, or a control sticking out of the group it
+// belongs to (a segmented switch, the docked composer), even when the page
+// itself does not scroll sideways.
+const clipped = `(() => {
+  const out = [];
+  const name = (el) => el.tagName.toLowerCase() + "." + [...el.classList].slice(0, 2).join(".") + " " + JSON.stringify((el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 24));
+  const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden], dialog:not([open])"); };
+  for (const el of document.querySelectorAll(".segmented > *, .tab-label, .chip, .pill, .run-pill, .btn, .icon-btn, .nav-item, .list-row")) {
+    if (!shown(el)) continue;
+    if (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflow !== "visible") out.push("text cut off: " + name(el));
+    else if (el.scrollWidth > el.clientWidth + 1 && el.children.length === 0) out.push("text overflows: " + name(el));
+  }
+  for (const group of document.querySelectorAll(".segmented, [data-docked], .composer-box, .tabbar")) {
+    if (!shown(group)) continue;
+    const g = group.getBoundingClientRect();
+    for (const el of group.querySelectorAll("a, button, input, select, textarea, .tab-label")) {
+      if (!shown(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.left < g.left - 0.5 || r.right > g.right + 0.5) out.push("outside its group: " + name(el) + " in " + name(group).split(" ")[0]);
+    }
+  }
+  return out;
+})()`;
 const visible = (sel: string) => `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0; })()`;
 
 let failures = 0;
@@ -78,6 +101,7 @@ for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [430,
     const before = failures;
     const o = await evaluate(overflow);
     if (o.scroll > 0) fail(label, `scrolls sideways by ${o.scroll}px (${o.wide.join(", ")})`);
+    for (const c of (await evaluate(clipped)).slice(0, 6)) fail(label, c);
     const small = await evaluate(smallTargets);
     for (const s of small.slice(0, 6)) fail(label, `target under 44px: ${s}`);
     const tabbar = await evaluate(visible("nav.tabbar"));
@@ -86,17 +110,23 @@ for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [430,
     if (!mobile && (tabbar || !sidebar)) fail(label, `desktop shell: tab bar ${tabbar}, sidebar ${sidebar}`);
     if (mobile) {
       // Nothing scrollable hides under the fixed tab bar: the last element's bottom clears it.
+      // Scrolled to the end, the last list row (else the last element)
+      // clears the tab bar; the bar is opaque, so nothing shows through it.
       const covered = await evaluate(`(() => {
         if (document.body.classList.contains("overflow-hidden")) return 0;
         const bar = document.querySelector("nav.tabbar").getBoundingClientRect();
         window.scrollTo(0, document.scrollingElement.scrollHeight);
         const main = document.querySelector("main");
-        const last = [...main.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().height).pop();
+        const rows = [...main.querySelectorAll(".list-group > li")].filter((el) => el.getBoundingClientRect().height);
+        const last = rows.pop() ?? [...main.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().height).pop();
         const gap = last ? bar.top - last.getBoundingClientRect().bottom : 0;
         window.scrollTo(0, 0);
         return gap < 0 ? -gap : 0;
       })()`);
       if (covered) fail(label, `the tab bar covers the end of the page by ${Math.round(covered)}px`);
+      // rgba(r, g, b, a) or the CSS Color 4 form "… / a" (oklab, color-mix).
+      const alpha = await evaluate(`(() => { const c = getComputedStyle(document.querySelector("nav.tabbar")).backgroundColor; const m = c.match(/\\/\\s*([\\d.]+%?)\\s*\\)$/) || c.match(/^rgba\\([^,]+,[^,]+,[^,]+,\\s*([\\d.]+)\\)$/); if (!m) return 1; return m[1].endsWith("%") ? parseFloat(m[1]) / 100 : Number(m[1]); })()`);
+      if (alpha < 1) fail(label, `the tab bar is see-through (alpha ${alpha})`);
     }
     if (failures === before) console.log(`ok   ${label}`);
   }

@@ -105,13 +105,9 @@ func New(d Deps) *UI {
 			return m
 		},
 		"section":  section,
+		"lower":    strings.ToLower,
 		"canAdmin": func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
-		"initial": func(name string) string {
-			for _, r := range strings.TrimSpace(name) {
-				return strings.ToUpper(string(r))
-			}
-			return "A"
-		},
+		"initial":  initial,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"
@@ -285,4 +281,12 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "render failed", http.StatusInternalServerError)
 	}
+}
+
+// initial is a name's first letter, upper-cased, for avatars ("A" if none).
+func initial(name string) string {
+	for _, r := range strings.TrimSpace(name) {
+		return strings.ToUpper(string(r))
+	}
+	return "A"
 }

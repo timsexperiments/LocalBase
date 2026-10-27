@@ -1,19 +1,17 @@
 {{define "title"}}{{if .Query}}{{.Query}} · {{end}}Get models · LocalBase{{end}}
 {{define "main"}}
-<section aria-labelledby="get-title">
-  <p class="eyebrow">Add to your library</p>
-  <h1 id="get-title" class="mt-1 text-3xl font-bold tracking-tight">Get models</h1>
-  <p class="mt-1 max-w-2xl text-muted">Explore Hugging Face. Start with the <a class="text-accent underline" href="/app/models">Library</a> for qualified models. Community downloads are pinned to an exact file and revision.</p>
+<section aria-labelledby="models-title">
+  {{template "models-header" .}}
 
   {{if not .CanManage}}
   <p class="card mt-4 p-4 text-sm" role="status">Read-only access. Sign in with an account authorized to manage models to search and add them.</p>
   {{else}}
-  <form role="search" class="mt-5 grid grid-cols-1 gap-2 min-[600px]:grid-cols-[1fr_auto_auto]" action="/app/models/get" method="get"
+  <form role="search" class="mt-4 grid grid-cols-[1fr_auto] gap-2 min-[600px]:grid-cols-[1fr_auto_auto]" action="/app/models/get" method="get"
     hx-get="/app/models/get" hx-target="#results" hx-select="#results" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#search-busy" hx-disabled-elt="find button">
     <label for="discover-q" class="sr-only">Search Hugging Face</label>
-    <input id="discover-q" class="input min-h-11" type="search" name="q" value="{{.Query}}" maxlength="200" placeholder="Search Hugging Face, e.g. qwen 1.5b" autocomplete="off">
+    <input id="discover-q" class="input search-field col-span-2 min-[600px]:col-span-1" type="search" name="q" value="{{.Query}}" maxlength="200" placeholder="Search Hugging Face" autocomplete="off">
     <label for="discover-kind" class="sr-only">Model kind</label>
-    <select id="discover-kind" class="input min-h-11 w-auto" name="kind">
+    <select id="discover-kind" class="input min-h-11" name="kind">
       {{range .Kinds}}<option value="{{.Value}}" {{if eq .Value $.Kind}}selected{{end}}>{{.Label}}</option>{{end}}
     </select>
     <button type="submit" class="btn btn-primary min-h-11">Search<span id="search-busy" class="htmx-indicator" aria-hidden="true">…</span></button>
@@ -22,6 +20,16 @@
 
   <div id="results" class="mt-5">
     {{with .Failure}}{{template "discover-failure" .}}{{end}}
+    {{if not .Searched}}{{if .Catalog}}
+    <div id="catalog">
+      <h2 class="text-lg font-bold">From the LocalBase catalog</h2>
+      <p class="text-sm text-muted">Tested by LocalBase, with every file pinned. Search above for anything else on Hugging Face.</p>
+      <div class="mt-3">{{template "task-chips" (dict "Base" "/app/models/get" "Target" "#catalog" "Filter" .Filter "Tasks" .Tasks)}}</div>
+      <ul class="list-group mt-3" aria-label="Catalog models">
+        {{range .Catalog}}{{template "catalog-row" (dict "ID" .ID "Name" .Name "Initial" .Initial "Task" .Task "DownloadBytes" .DownloadBytes "Fit" .Fit "Installed" .Installed "CanManage" $.CanManage)}}{{end}}
+      </ul>
+    </div>
+    {{end}}{{end}}
     {{if .Searched}}
     <p class="text-sm text-muted" aria-live="polite">{{len .Cards}} result{{if ne (len .Cards) 1}}s{{end}} by downloads{{if .Cached}} (from the local cache){{end}}</p>
     {{if .Cards}}
@@ -37,10 +45,12 @@
     {{end}}
   </div>
 
-  <div class="mt-8 flex flex-wrap gap-2 border-t border-line pt-4">
-    <a class="btn btn-quiet" href="/app/models/import">Import a model</a>
-    <a class="btn btn-quiet" href="/app/backends">Backends</a>
-  </div>
+  <nav aria-label="More ways to add models" class="mt-8">
+    <ul class="list-group">
+      <li><a class="list-row" href="/app/models/import"><span class="flex-1">Import a model file</span>{{template "icon-chevron"}}</a></li>
+      <li><a class="list-row" href="/app/backends"><span class="flex-1">Backends</span>{{template "icon-chevron"}}</a></li>
+    </ul>
+  </nav>
 </section>
 <script type="module" src="{{asset "js/discover.js"}}"></script>
 {{end}}
@@ -171,6 +181,8 @@
 </ul>
 {{end}}
 {{end}}
+
+{{define "catalog-installing"}}{{if .Failure}}<span class="block max-w-48 text-sm text-danger" role="alert">{{.Failure.Message}}</span>{{else}}<span class="pill pill-ok" role="status">Installing…</span>{{end}}{{end}}
 
 {{define "discover-result"}}
 {{with .Notice}}<p class="mt-1 text-sm font-semibold" role="status">{{.}}{{with $.ModelID}} <a class="text-accent underline" href="/app/models/m/{{.}}">Open in Library →</a>{{end}}</p>{{end}}

@@ -3197,6 +3197,38 @@ no content is stored), `cancel` (Stop), `dismiss` and `result`.
   repeats). A gateway restart mid-reply was checked by hand: the reply
   keeps its text and offers Continue.
 
+### 22.8 Models: Library and Get models (PR 3)
+
+The one thing people come to do: Library, find and open a model they
+have; Get models, add one that fits.
+- **Header.** One title, "Models", the Library / Get models switch, and on
+  the Library one round + ("Get a model"). The eyebrow, second heading and
+  memory/disk card are gone; a single line says "N installed · size on
+  disk · free" with a link to Running now (memory lives there).
+- **Rows.** A grouped list; each row is one link (initial, name, task,
+  default, size) with one state pill in words: Busy, Loaded, Off (not
+  enabled) or Ready. Details stay on the model page.
+- **Filters.** Task chips for the tasks present (Chat, Images, Speech,
+  Transcription, Video, Embeddings, Decisions), one row that scrolls
+  sideways on phones. `?filter=other` still works.
+- **Get models** opens on the qualified LocalBase catalog (experimental
+  runtimes left out), grouped by task with those that fit first. Each row:
+  task, download size and fit in words (fits this machine, tight fit,
+  needs more memory), and one action: **Get** (the existing recipe
+  install, which answers "Installing…" in the row), **Installed**, or
+  **Why?** for a model that needs more memory. Hugging Face search stays at
+  the top; a search shows its results instead of the catalog. Import and
+  Backends are a short list at the foot.
+- **Empty states** hold the one action (Get a model; Show all).
+- **No numbers beyond sizes:** no downloads, scores or speeds in these
+  lists.
+- **Checks:** `TestLibraryModelsFirst`, `TestLibraryEmpty`,
+  `TestTaskFilter`, `TestGetModelsCatalog`, `TestRecipeCompact`.
+  `tools/phone-check.sh` now also fails on text cut off inside a control
+  (segmented items, tab labels, chips, pills, buttons, nav and list rows)
+  and on a control that sticks out of its group (a segmented switch, the
+  docked composer, the tab bar), not only on page-level overflow.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
