@@ -95,7 +95,7 @@ final class LBSafariUITests: XCTestCase {
     func test2AccessibilityAudit() throws {
         open("/app/chat")
         audit("chat")
-        let picker = safari.webViews.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Choose model'")).firstMatch
+        let picker = safari.webViews.descendants(matching: .any).matching(NSPredicate(format: "label ENDSWITH 'change model' OR label == 'Choose a model'")).firstMatch
         if picker.waitForExistence(timeout: 10) {
             picker.tap()
             sleep(2)
@@ -104,7 +104,7 @@ final class LBSafariUITests: XCTestCase {
             note("audit-picker", "AUDIT ERROR picker button not found")
         }
         open("/app/chat")
-        let menu = safari.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == 'Open menu and history'")).firstMatch
+        let menu = safari.webViews.descendants(matching: .any).matching(NSPredicate(format: "label == 'Open conversations'")).firstMatch
         if menu.waitForExistence(timeout: 10) {
             menu.tap()
             sleep(2)

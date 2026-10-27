@@ -458,8 +458,8 @@ the embedded file against `PINS`.
 
 ### Page map
 
-Navigation is a bottom bar on phones (Chat, Models, Lab, Settings) and a side
-rail at ≥1024 px.
+Navigation is a bottom tab bar on phones (Chat, Models, Lab, Running, More)
+and a sidebar at ≥1024 px (§22.1).
 
 | URL | Page | Parity source | Notes |
 | --- | --- | --- | --- |
@@ -3061,6 +3061,102 @@ The FE thread owns the client.
 Speech and transcription have no fake runtime in the unit tests. Their
 hooks are the same two calls, and the contract real runs exercise those
 handlers.
+
+## 22. Front-end redesign: shell, design system, keyboard (2026-10-27)
+
+User request (operator, 2026-10-27): the UI must be responsive and
+mobile-first, and each section should follow the best apps in its area.
+On an iPhone the old header wrapped (Sign out on two lines), the six
+sections were a two-row grid, and on the Lab the keyboard covered the
+prompt. The research brief and mockups are kept outside the repository
+(`.design/`, not committed); this section records the decisions.
+
+### 22.1 Information architecture
+
+- **Phones (< 1024 px):** a bottom tab bar with Chat, Models, Lab,
+  Running and More. More is a bottom sheet with My voices, Settings,
+  Admin (only with `access:read` or `keys:read`), the account and Sign out.
+  Pages have a large title and no header row.
+- **Desktop (≥ 1024 px):** a sidebar with every destination, and an
+  account menu at its foot (the Popover API: no script, light dismiss,
+  Escape) holding Sign out. On Chat the sidebar also holds New
+  conversation, search and the conversation list; the phone drawer holds
+  the same list.
+- **Models** is one destination: Library and Get models are siblings under
+  a segmented switch. Details, import and backends belong to it.
+- The current tab is `aria-current="page"`; when More holds the current
+  page its button is marked and says so to screen readers.
+- Routes, permission checks, CSRF and htmx boosting are unchanged.
+  `section()` in `web.go` maps a page to its destination.
+
+### 22.2 Design system
+
+Tokens stay CSS custom properties in `css/input.css` (light and dark by
+`prefers-color-scheme`, as before), plus scrim, two elevations
+(`shadow-pop`, `shadow-sheet`), one easing, and the shell geometry
+(`--lb-tabbar-h`, `--lb-sidebar-w`, `--lb-kb`). Components:
+`.page`, `.page-title`, `.sidebar`, `.nav-item`, `.tabbar`/`.tab`,
+`.sheet` (a modal `<dialog>` at the bottom edge, slide-in unless reduced
+motion), `.segmented`, `.list-group`/`.list-row`, `.menu`/`.menu-item`,
+`.run-pill`, alongside the existing `.btn`, `.chip`, `.badge`, `.card`,
+`.input`. `.input` now has the 44 px minimum height itself.
+
+### 22.3 The keyboard
+
+- Every page's viewport has `interactive-widget=resizes-content`, so Chrome
+  on Android shrinks the layout for the keyboard. Zoom stays enabled.
+- iOS Safari overlays the keyboard instead. `shell.js` measures the visual
+  viewport and sets `--lb-kb` (the covered part of the layout viewport,
+  0 when pinch-zoomed); `scroll-padding-bottom` uses it.
+- While a text field has focus on a touch screen, `html[data-typing]`
+  hides the tab bar and the "Generating…" pill, so the keyboard owns the
+  bottom edge. A focused field the keyboard covers is scrolled into view
+  once the keyboard settles. Docked composers (`[data-docked]`, the chat
+  composer and later the Lab prompt) sit above the keyboard and opt out.
+
+### 22.4 Detached runs in the UI
+
+Generation outlives the page (§21). `static/js/runs.js` is the client:
+`supported()`, `list()`/`active()`, `create(route, body, place)`,
+`get`, `events(id)` (an SSE reader that resumes from the last event id it
+rendered, kept per run in `localStorage` with the page to return to;
+no content is stored), `cancel` (Stop), `dismiss` and `result`.
+- Until the gateway answers `GET /_localbase/runs`, `supported()` is false
+  and Chat and the Lab keep today's direct requests.
+- The shell shows a quiet "Generating…" pill (sidebar, and above the tab
+  bar on phones) for active runs, linking back to where each started; it
+  refreshes on load, on navigation, when the tab is shown again and on a
+  `localbase:runs` event. A page that shows the run itself sets
+  `<body data-run-page>` to hide it there.
+- Chat and the Lab move onto runs in their own PRs: Stop, an
+  "Interrupted. Continue?" state, no lost text on tab switch, and a Lab
+  results tray across tools.
+
+### 22.5 Order of work (draft PRs stacked from `rewrite/go-fe-redesign`)
+
+1. Shell, IA, tokens, keyboard handling, runs client (this).
+2. Chat: composer, messages, actions, picker sheet, runs.
+3. Models: Library and Get models (search, filters, states, one primary
+   action per row).
+4. Running now: memory, loaded models, queue.
+5. Lab: docked prompt, results tray and history, runs.
+6. My voices. 7. Settings (grouped lists). 8. Admin (keys, access).
+
+### 22.6 Checks
+
+- **Go tests (`shell_test.go`):** `TestSection`, `TestShellOnEveryPage`,
+  `TestViewportKeyboardAndZoom`, `TestShellAccountAndAdmin`,
+  `TestModelsSwitch`, `TestShellSignedOut`.
+- **`tools/jstest/runs.test.ts`:** the event-stream parser under every
+  chunking.
+- **`tools/phone-check.sh <url>`** (headless Chrome against a `--no-auth`
+  scratch gateway): at 360, 390, 430 and 1280 px every page has no
+  horizontal overflow, controls of at least 44 px (inline text links
+  exempt), the tab bar on phones and the sidebar on desktop, and nothing
+  hidden under the tab bar; the More sheet takes focus, closes on Escape
+  and returns focus; a focused field hides the tab bar and stays in view
+  when the viewport shrinks for a keyboard. `tools/axe-check.sh` and
+  `tools/ios-check.sh` still apply.
 
 ## 23. Explicit unload (2026-10-27)
 

@@ -24,6 +24,15 @@
   --lb-error: #963e39;
   --lb-error-surface: #fff0ed;
   --lb-error-border: #e5bbb5;
+  --lb-scrim: rgb(20 16 24 / 0.42);
+  --lb-shadow-pop: 0 1px 2px rgb(41 37 46 / 0.08), 0 8px 24px rgb(41 37 46 / 0.12);
+  --lb-shadow-sheet: 0 -6px 32px rgb(41 37 46 / 0.18);
+  /* Shell geometry. --lb-kb is the on-screen keyboard's overlap with the
+     layout viewport (set by shell.js; 0 without a keyboard). */
+  --lb-tabbar-h: 3.5rem;
+  --lb-sidebar-w: 16rem;
+  --lb-kb: 0px;
+  --lb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -45,6 +54,9 @@
     --lb-error: #ffb4a9;
     --lb-error-surface: #3c282c;
     --lb-error-border: #71464a;
+    --lb-scrim: rgb(0 0 0 / 0.55);
+    --lb-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+    --lb-shadow-sheet: 0 -6px 32px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -66,12 +78,23 @@
   --color-danger: var(--lb-error);
   --color-danger-soft: var(--lb-error-surface);
   --color-danger-line: var(--lb-error-border);
+  --color-scrim: var(--lb-scrim);
+  --shadow-pop: var(--lb-shadow-pop);
+  --shadow-sheet: var(--lb-shadow-sheet);
+  --ease-lb: var(--lb-ease);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* Focus and find-in-page scroll targets clear the tab bar and keyboard. */
+    scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + 1rem);
+  }
+  @media (min-width: 1024px) {
+    html {
+      scroll-padding-bottom: 1rem;
+    }
   }
   body {
     @apply bg-canvas text-ink font-sans antialiased;
@@ -124,7 +147,7 @@
     @apply text-base font-semibold text-accent;
   }
   .input {
-    @apply w-full rounded-xl border border-line bg-canvas px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
+    @apply min-h-11 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
   }
 }
 
@@ -243,5 +266,176 @@
   }
   :is(.reasoning, .compaction, .discover-files, .discover-alternatives)[open] > summary::before {
     @apply rotate-90;
+  }
+}
+
+/* App shell (DESIGN §22): phones get a bottom tab bar and a "More" sheet,
+   desktops (≥1024px) a sidebar. Page titles replace the old header row. */
+@layer components {
+  .page-title {
+    @apply text-[1.75rem] leading-tight font-bold tracking-tight lg:text-3xl;
+  }
+  .page-lead {
+    @apply mt-1 max-w-2xl text-muted;
+  }
+
+  .sidebar {
+    @apply sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-surface px-3 pt-3 pb-3 lg:flex;
+    width: var(--lb-sidebar-w);
+  }
+  .brand {
+    @apply flex min-h-11 items-center gap-2.5 rounded-xl px-2 text-lg font-bold;
+  }
+  .brand-mark {
+    @apply grid size-8 place-items-center rounded-lg bg-accent text-base text-on-accent;
+  }
+  .nav-item {
+    @apply flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-muted transition-colors hover:bg-hover hover:text-ink;
+  }
+  .nav-item[aria-current="page"] {
+    @apply bg-accent-soft text-accent;
+  }
+  .account-button {
+    @apply flex min-h-12 w-full items-center gap-3 rounded-xl border border-line px-2 text-left text-base hover:bg-hover;
+  }
+  .avatar {
+    @apply grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft font-bold text-accent;
+  }
+  /* A popover menu (the Popover API: no script, light dismiss, Escape). */
+  .menu {
+    @apply m-0 w-56 rounded-xl border border-line bg-surface p-1 text-ink shadow-pop;
+    position: fixed;
+    inset: auto auto 4.25rem 0.75rem;
+  }
+  .menu-item {
+    @apply flex min-h-11 w-full items-center rounded-lg px-3 text-left text-base font-semibold hover:bg-hover;
+  }
+
+  .tabbar {
+    @apply fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/95 backdrop-blur lg:hidden;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .tabbar > ul {
+    @apply mx-auto grid max-w-lg grid-cols-5;
+    min-height: var(--lb-tabbar-h);
+  }
+  .tab {
+    @apply flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 text-base font-semibold text-muted transition-colors hover:text-ink;
+  }
+  .tab-label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .tab[aria-current="page"],
+  .tab[data-active] {
+    @apply text-accent;
+  }
+  .tab > svg {
+    @apply size-6;
+  }
+  /* While typing on a touch screen the keyboard owns the bottom edge. */
+  html[data-typing] .tabbar {
+    @apply hidden;
+  }
+  /* Pages leave room for the fixed tab bar on phones. */
+  .page {
+    @apply mx-auto w-full max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pt-[max(1rem,env(safe-area-inset-top))] lg:px-10 lg:pt-8;
+    padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 2rem);
+  }
+  @media (min-width: 1024px) {
+    .page {
+      padding-bottom: 3rem;
+    }
+  }
+
+  /* Segmented control for sibling pages (Models: Library / Get models). */
+  .segmented {
+    @apply flex gap-1 rounded-xl bg-surface-muted p-1;
+  }
+  .segmented > a {
+    @apply flex min-h-11 flex-1 items-center justify-center rounded-lg px-3 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+  }
+  .segmented > a[aria-current="page"] {
+    @apply bg-surface text-ink shadow-sm;
+  }
+
+  /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */
+  .sheet {
+    @apply mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-b-0 border-line bg-surface p-0 text-ink shadow-sheet;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .sheet::backdrop {
+    background: var(--lb-scrim);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet[open] {
+      animation: lb-sheet-in 220ms var(--lb-ease);
+    }
+  }
+
+  /* Grouped list (iOS Settings style): rows share one rounded container. */
+  .list-group {
+    @apply overflow-hidden rounded-2xl border border-line bg-surface;
+  }
+  .list-group > li + li,
+  .list-group > * + * {
+    @apply border-t border-line;
+  }
+  .list-row {
+    @apply flex min-h-12 w-full items-center gap-3 px-4 py-2 text-left text-base font-semibold hover:bg-hover;
+  }
+  .list-label {
+    @apply mt-6 mb-2 px-1 text-sm font-semibold text-muted;
+  }
+}
+
+@keyframes lb-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* "Generating…": a run in progress elsewhere in the app; tap to return. */
+@layer components {
+  .run-pill {
+    @apply pointer-events-auto inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-accent-line bg-surface px-4 text-base font-semibold text-ink shadow-pop;
+  }
+  .sidebar .run-pill {
+    @apply mt-2 rounded-xl shadow-none;
+  }
+  .run-dot {
+    @apply size-2.5 shrink-0 rounded-full bg-accent;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .run-dot {
+      animation: lb-pulse 1.6s ease-in-out infinite;
+    }
+  }
+  .run-pill-dock {
+    bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 0.5rem);
+  }
+  html[data-typing] .run-pill-dock {
+    @apply hidden;
+  }
+}
+
+@keyframes lb-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Chat: the tab bar sits under the composer in the page's column. */
+@layer components {
+  .chat-col > .tabbar {
+    position: static;
+  }
+  .chat-composer {
+    padding-bottom: 0.75rem;
+  }
+  @media (min-width: 1024px) {
+    .chat-composer {
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
   }
 }
