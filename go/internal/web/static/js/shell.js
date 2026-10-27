@@ -71,6 +71,31 @@ vv?.addEventListener("resize", () => {
 });
 document.addEventListener("htmx:afterSettle", syncKeyboard);
 
+// --- polled status ----------------------------------------------------------------
+// A polled region says what it shows in data-announce; the sentence goes to
+// the live region named by data-announce-into only when it changes, so a
+// refresh every few seconds stays quiet for screen readers.
+const announced = new Map();
+function announceChanges() {
+  for (const el of document.querySelectorAll("[data-announce][data-announce-into]")) {
+    const key = el.dataset.announceInto;
+    const text = el.dataset.announce;
+    if (!announced.has(key)) announced.set(key, text); // the first view is not news
+    else if (announced.get(key) !== text) {
+      announced.set(key, text);
+      const box = document.getElementById(key);
+      if (box) box.textContent = text;
+    }
+  }
+}
+document.addEventListener("htmx:afterSettle", (event) => {
+  // A new page (boosted navigation) starts over; a poll compares.
+  if (event.detail?.target === document.body) announced.clear();
+  announceChanges();
+});
+document.addEventListener("htmx:historyRestore", () => announced.clear());
+announceChanges();
+
 // --- "Generating…" --------------------------------------------------------------
 // A run started here keeps going while the person is elsewhere; the pill (in
 // the sidebar and above the tab bar) shows it and links back to it. A page

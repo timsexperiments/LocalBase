@@ -139,6 +139,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/models/get/add", u.mutating("models:manage", u.discoverAdd))
 	m.HandleFunc("POST /app/models/get/recipe", u.mutating("models:manage", u.discoverRecipe))
 	m.HandleFunc("GET /app/models/running", u.need("models:read", u.running))
+	m.HandleFunc("POST /app/models/unload/{id...}", u.mutating("models:manage", u.unload))
 	m.HandleFunc("GET /app/models/m/{id...}", u.need("models:read", u.details))
 	m.HandleFunc("POST /app/models/placement/{id...}", u.mutating("models:manage", u.placementPost))
 	m.HandleFunc("GET /app/models/import", u.need("models:manage", u.importPage))
