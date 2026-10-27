@@ -2829,7 +2829,16 @@ It opens with a `: connected` comment and flushes after every event.
 - `event: end`, data: the final run object without `output`. The server
   then closes the stream.
 - `event: snapshot` (after a restart only), data: the run object with
-  `output`. It comes as id 1, followed by `end` as id 2.
+  `output`, followed by `end`.
+  - **Every** connection to a restored run gets both, whatever
+    `Last-Event-ID` or `?after` it sends. The buffer is gone, and a
+    resuming page's last id can be past the last checkpoint (written at
+    most once a second).
+  - They are numbered after the checkpointed event count, so their ids
+    are stable across reconnects.
+  - A client treats `snapshot` as replacing everything it rendered for the
+    run. This was found by the FE thread on 2026-10-27: a resume with id 52
+    used to receive nothing.
 
 **Resume.** `Last-Event-ID: N` (sent automatically by `EventSource` on its
 own reconnects) or `?after=N` (for a fresh `EventSource` on a returning
