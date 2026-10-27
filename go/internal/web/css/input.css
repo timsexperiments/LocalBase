@@ -316,7 +316,7 @@
   }
 
   .tabbar {
-    @apply fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/95 backdrop-blur lg:hidden;
+    @apply fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas lg:hidden;
     padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
   .tabbar > ul {

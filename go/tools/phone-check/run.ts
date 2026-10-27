@@ -110,17 +110,23 @@ for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [430,
     if (!mobile && (tabbar || !sidebar)) fail(label, `desktop shell: tab bar ${tabbar}, sidebar ${sidebar}`);
     if (mobile) {
       // Nothing scrollable hides under the fixed tab bar: the last element's bottom clears it.
+      // Scrolled to the end, the last list row (else the last element)
+      // clears the tab bar; the bar is opaque, so nothing shows through it.
       const covered = await evaluate(`(() => {
         if (document.body.classList.contains("overflow-hidden")) return 0;
         const bar = document.querySelector("nav.tabbar").getBoundingClientRect();
         window.scrollTo(0, document.scrollingElement.scrollHeight);
         const main = document.querySelector("main");
-        const last = [...main.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().height).pop();
+        const rows = [...main.querySelectorAll(".list-group > li")].filter((el) => el.getBoundingClientRect().height);
+        const last = rows.pop() ?? [...main.querySelectorAll("*")].filter((el) => el.getBoundingClientRect().height).pop();
         const gap = last ? bar.top - last.getBoundingClientRect().bottom : 0;
         window.scrollTo(0, 0);
         return gap < 0 ? -gap : 0;
       })()`);
       if (covered) fail(label, `the tab bar covers the end of the page by ${Math.round(covered)}px`);
+      // rgba(r, g, b, a) or the CSS Color 4 form "… / a" (oklab, color-mix).
+      const alpha = await evaluate(`(() => { const c = getComputedStyle(document.querySelector("nav.tabbar")).backgroundColor; const m = c.match(/\\/\\s*([\\d.]+%?)\\s*\\)$/) || c.match(/^rgba\\([^,]+,[^,]+,[^,]+,\\s*([\\d.]+)\\)$/); if (!m) return 1; return m[1].endsWith("%") ? parseFloat(m[1]) / 100 : Number(m[1]); })()`);
+      if (alpha < 1) fail(label, `the tab bar is see-through (alpha ${alpha})`);
     }
     if (failures === before) console.log(`ok   ${label}`);
   }

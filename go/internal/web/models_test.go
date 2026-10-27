@@ -46,7 +46,7 @@ func TestLibraryModelsFirst(t *testing.T) {
 	if !strings.Contains(main, `<h1 id="models-title" class="page-title">Models</h1>`) || strings.Count(main, "<h1") != 1 {
 		t.Errorf("title: %s", main)
 	}
-	for _, gone := range []string{"eyebrow", "Your library", "Memory available now"} {
+	for _, gone := range []string{"eyebrow", "Your library", "Memory available now", `href="/app/models/running"`} {
 		if strings.Contains(main, gone) {
 			t.Errorf("still shows %q", gone)
 		}
@@ -60,7 +60,7 @@ func TestLibraryModelsFirst(t *testing.T) {
 	if !regexp.MustCompile(`<a href="/app/models/m/` + regexp.QuoteMeta(id) + `" class="model-row">[\s\S]*?<span class="pill">Off</span>`).MatchString(main) {
 		t.Errorf("row: %s", main)
 	}
-	if !strings.Contains(main, "1 installed · ") || !strings.Contains(main, `href="/app/models/running"`) {
+	if !strings.Contains(main, "1 installed · ") {
 		t.Error("the summary line is missing")
 	}
 }
@@ -125,5 +125,19 @@ func TestRecipeCompact(t *testing.T) {
 	out := discoverPost(u, "/app/models/get/recipe", url.Values{"modelId": {"rec"}, "compact": {"1"}})
 	if !strings.Contains(out, `<span class="pill pill-ok" role="status">Installing…</span>`) || strings.Contains(out, "Recipe Model") {
 		t.Errorf("compact: %s", out)
+	}
+}
+
+// Product copy states facts (sizes, tasks, fit), never rankings or speed
+// claims: no "best", "fastest", "faster", "top-rated" in any template.
+func TestNoRankingCopy(t *testing.T) {
+	files, _ := filepath.Glob("templates/*.html")
+	ranking := regexp.MustCompile(`(?i)\b(best|fastest|faster|top-rated|smartest|most popular)\b`)
+	comment := regexp.MustCompile(`(?s)\{\{/\*.*?\*/\}\}`)
+	for _, f := range files {
+		b, _ := os.ReadFile(f)
+		if m := ranking.FindString(comment.ReplaceAllString(string(b), "")); m != "" {
+			t.Errorf("%s: ranking word %q", f, m)
+		}
 	}
 }
