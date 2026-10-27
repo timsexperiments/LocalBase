@@ -19,14 +19,14 @@
 
   <div class="chat-col flex min-w-0 flex-1 flex-col">
     <header class="flex items-center gap-2 border-b border-line bg-canvas px-[max(0.5rem,env(safe-area-inset-left))] pb-2 lg:px-6 pt-[max(0.5rem,env(safe-area-inset-top))]">
-      <button type="button" class="btn btn-quiet size-11 shrink-0 p-0 lg:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open conversations">{{template "icon-menu"}}</button>
+      <button type="button" class="icon-btn lg:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open conversations">{{template "icon-menu"}}</button>
       <div class="min-w-0 flex-1">
         <h1 id="chat-title" class="truncate text-base font-bold leading-tight">New conversation</h1>
         <button type="button" class="-ml-1 flex min-h-11 max-w-full items-center gap-1 rounded-lg px-1 text-base text-muted hover:bg-hover hover:text-ink" data-open-picker aria-haspopup="dialog" {{if not .CanChat}}disabled{{end}}>
           <span class="truncate" data-model-name>Choose a model</span><span aria-hidden="true">▾</span>
         </button>
       </div>
-      <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-new-chat aria-label="New conversation">{{template "icon-plus"}}</button>
+      <button type="button" class="icon-btn" data-new-chat aria-label="New conversation">{{template "icon-plus"}}</button>
     </header>
     <div id="session-notice" role="alert" aria-live="assertive" class="px-4"></div>
 
@@ -68,17 +68,17 @@
           <textarea id="chat-input" rows="1" class="block max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none" placeholder="Message" autocomplete="off" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}></textarea>
           <div class="flex items-center gap-1 px-1 pb-1">
             <input type="file" multiple hidden data-attach-input aria-label="Choose attachments">
-            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-attach aria-label="Attach files" title="Attach files" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-clip"}}</button>
+            <button type="button" class="icon-btn" data-attach aria-label="Attach files" title="Attach files" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-clip"}}</button>
             {{if .CanDictate}}
-            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-dictate data-model="{{.DictationModel}}" aria-label="Dictate message" title="Dictate with LocalBase. Tap again to stop. Text is added without sending." {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>
+            <button type="button" class="icon-btn" data-dictate data-model="{{.DictationModel}}" aria-label="Dictate message" title="Dictate with LocalBase. Tap again to stop. Text is added without sending." {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>
               <span data-dictate-icon>{{template "icon-mic"}}</span><span data-dictate-stop hidden>{{template "icon-stop"}}</span><span data-dictate-cancel hidden>{{template "icon-close"}}</span>
             </button>
             {{end}}
-            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-open-generation aria-haspopup="dialog" aria-label="Generation controls" title="Generation controls" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-sliders"}}</button>
+            <button type="button" class="icon-btn" data-open-generation aria-haspopup="dialog" aria-label="Generation controls" title="Generation controls" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-sliders"}}</button>
             <span class="min-w-0 flex-1 truncate px-1 text-sm text-muted" data-composer-note role="status"></span>
             <button type="button" class="btn btn-quiet shrink-0 text-base" data-dictate-discard hidden>Discard</button>
-            <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
-            <button type="submit" class="btn btn-primary size-11 shrink-0 p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
+            <button type="button" class="btn size-11 shrink-0 rounded-full bg-ink p-0 text-canvas" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
+            <button type="submit" class="btn btn-primary size-11 shrink-0 rounded-full p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
           </div>
         </div>
       </div>
@@ -90,8 +90,7 @@
 
 {{template "more-sheet" .}}
 
-<dialog id="model-picker" aria-labelledby="picker-title"
-  class="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-1.5rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40">
+<dialog id="model-picker" aria-labelledby="picker-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
   <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
     <h2 id="picker-title" class="text-lg font-bold">Chat model</h2>
     <div class="flex items-center gap-1">
@@ -102,8 +101,7 @@
   <form method="dialog" class="grid gap-2 overflow-y-auto p-4" data-picker-list></form>
 </dialog>
 
-<dialog id="generation" aria-labelledby="generation-title"
-  class="m-auto max-h-[85dvh] w-[min(32rem,calc(100vw-1.5rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40">
+<dialog id="generation" aria-labelledby="generation-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
   <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
     <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
     <button type="button" class="btn btn-quiet size-11 p-0" data-close-generation aria-label="Close">{{template "icon-close"}}</button>

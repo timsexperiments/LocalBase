@@ -233,7 +233,11 @@
     @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-line bg-surface p-3;
   }
   .composer-box {
-    @apply rounded-2xl border border-line bg-canvas focus-within:outline-2 focus-within:outline-accent;
+    @apply rounded-3xl border border-line bg-surface shadow-sm focus-within:outline-2 focus-within:outline-accent;
+  }
+  /* A borderless round icon button (chat header and composer). */
+  .icon-btn {
+    @apply inline-flex size-11 shrink-0 items-center justify-center rounded-full text-base text-muted transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
   }
   .compaction {
     @apply rounded-xl border border-dashed border-line px-3;

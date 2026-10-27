@@ -62,7 +62,7 @@ export async function active() {
 export async function create(route, body, place, signal) {
   const init = body instanceof FormData ? { method: "POST", body, signal } : jsonRequest(body, signal);
   const run = await (await api(`${ROOT}/v1/${route}`, init)).json();
-  remember(run.id, { href: place?.href ?? "", label: place?.label ?? "", last: "" });
+  remember(run.id, { ...place, last: "" });
   notify();
   return run;
 }
@@ -91,42 +91,155 @@ export async function result(id) {
 }
 
 /**
- * Follows a run's events from just after the last one this browser rendered:
- * the gateway replays what was missed, then continues live. Yields
- * { id, event, data } with data parsed from JSON; ends after `end` or when
- * signal aborts. Events: status, chunk (the /v1 chunk), error, snapshot
- * (after a gateway restart), end.
+ * Follows a run's events: the gateway replays every event after `after`
+ * (default: the last one this browser rendered; "" for all), then continues
+ * live. Yields { id, event, data, raw } with data parsed from JSON; ends
+ * after `end` or when signal aborts. Events: status, chunk (the /v1 chunk),
+ * error, snapshot (the run with its output, after a gateway restart), end.
+ *
+ * A dropped connection (a phone suspending the tab, a network change) is
+ * resumed from the last event once the page is visible again, so nothing is
+ * lost or repeated.
  */
-export async function* events(id, signal) {
-  const headers = {};
-  const last = readPlaces()[id]?.last;
-  if (last) headers["last-event-id"] = last;
-  const response = await api(`${ROOT}/${encodeURIComponent(id)}/events`, { headers, signal });
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  const parse = sseParser();
-  let seen = "";
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      for (const message of parse(value)) {
-        if (message.id) seen = message.id;
-        let data = message.data;
-        try {
-          data = JSON.parse(data);
-        } catch {
-          // Not JSON: hand it over as text.
+export async function* events(id, { signal, after } = {}) {
+  let last = after ?? readPlaces()[id]?.last ?? "";
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      const headers = last ? { "last-event-id": last } : {};
+      response = await api(`${ROOT}/${encodeURIComponent(id)}/events`, { headers, signal });
+    } catch (error) {
+      if (signal?.aborted || error.status || attempt >= reconnectDelaysMs.length) throw error;
+      await reconnectPause(attempt, signal);
+      continue;
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    const parse = sseParser();
+    let got = false;
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        for (const message of parse(value)) {
+          got = true;
+          if (message.id) last = message.id;
+          let data = message.data;
+          try {
+            data = JSON.parse(data);
+          } catch {
+            // Not JSON: hand it over as text.
+          }
+          yield { ...message, data, raw: message.data };
+          if (message.event === "end") return;
         }
-        yield { ...message, data };
-        if (message.event === "end") return;
+        attempt = 0;
+      }
+    } catch (error) {
+      if (signal?.aborted || attempt >= reconnectDelaysMs.length) throw error;
+    } finally {
+      // Remember the position once per connection, not per token.
+      if (last) remember(id, { last });
+      reader.cancel().catch(() => {});
+    }
+    if (signal?.aborted) return;
+    // A resume that brings nothing may follow a gateway restart, after which
+    // the run's event ids start again: ask for its state, and end with it
+    // if it is over (the page already has the output up to `last`).
+    if (!got && last) {
+      const run = await get(id).catch(() => null);
+      if (run && !ACTIVE.has(run.status)) {
+        const { output, ...end } = run;
+        yield { id: "", event: "end", data: end, raw: JSON.stringify(end) };
+        return;
       }
     }
-  } finally {
-    // Remember the position once per batch, not per token.
-    if (seen) remember(id, { last: seen });
-    if (signal?.aborted) reader.cancel().catch(() => {});
+    // The stream closed or failed before `end`: resume.
+    await reconnectPause(attempt, signal);
   }
 }
+
+const reconnectDelaysMs = [500, 1000, 2000, 4000, 8000, 15000];
+
+// Waits before reconnecting, and first for the page to be shown again: a
+// hidden tab's requests fail or stall on phones.
+async function reconnectPause(attempt, signal) {
+  if (document.hidden)
+    await new Promise((resolve) => document.addEventListener("visibilitychange", function shown() {
+      if (document.hidden) return;
+      document.removeEventListener("visibilitychange", shown);
+      resolve();
+    }));
+  await new Promise((resolve) => setTimeout(resolve, reconnectDelaysMs[attempt]));
+  signal?.throwIfAborted();
+}
+
+/**
+ * A run as a /v1 streaming Response, for code that reads chat-completions
+ * streams (chat-core.js streamText): chunk events become `data:` lines, a
+ * completed run ends with [DONE], and an error, cancel or interruption
+ * becomes an error event. With `create`, the run is started first
+ * ({ route, body, place }); otherwise `id` is followed from `after`.
+ * Aborting the signal stops the run on the gateway (Stop); leaving the page
+ * does not. onRun(run) gets the run once known; onEnd(run) its final state.
+ */
+export async function response({ create: start, id, after, signal, onRun, onEnd }) {
+  if (start) {
+    const run = await create(start.route, start.body, start.place, signal);
+    id = run.id;
+    onRun?.(run);
+  }
+  // Stop: the page already holds the partial output, so the run can go.
+  const stop = () => cancel(id).then(() => dismiss(id)).catch(() => {});
+  signal?.addEventListener("abort", stop, { once: true });
+  const encoder = new TextEncoder();
+  const line = (data) => encoder.encode(`data: ${data}\n\n`);
+  const body = new ReadableStream({
+    async start(controller) {
+      try {
+        let failed = false;
+        for await (const e of events(id, { signal, after })) {
+          if (e.event === "error") failed = true;
+          if (e.event === "chunk" || e.event === "error") controller.enqueue(line(e.raw));
+          else if (e.event === "snapshot") controller.enqueue(line(JSON.stringify(snapshotChunk(e.data))));
+          else if (e.event === "end") {
+            onEnd?.(e.data);
+            if (e.data?.status === "completed") controller.enqueue(line("[DONE]"));
+            else if (!failed)
+              controller.enqueue(line(JSON.stringify({ error: { message: endMessage(e.data), code: `run_${e.data?.status}` } })));
+          }
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        signal?.removeEventListener("abort", stop);
+      }
+    },
+  });
+  return new Response(body, { headers: { "content-type": "text/event-stream" } });
+}
+
+// After a gateway restart the event buffer is gone: the snapshot carries the
+// output so far, replayed as one chunk.
+function snapshotChunk(run) {
+  const out = run?.output ?? {};
+  return { choices: [{ index: 0, delta: { ...(out.content ? { content: out.content } : {}), ...(out.reasoning ? { reasoning: out.reasoning } : {}) } }] };
+}
+
+export function endMessage(run) {
+  if (run?.status === "cancelled") return "Stopped.";
+  if (run?.reason === "output_limit") return "The reply grew too long and was stopped.";
+  switch (run?.reason) {
+    case "gateway_restart":
+      return "LocalBase restarted before the reply finished.";
+    case "memory_pressure":
+      return "The reply stopped because the computer ran low on memory.";
+    case "max_duration":
+      return "The reply ran for the maximum time and was stopped.";
+  }
+  return "The reply stopped before it finished.";
+}
+
 
 /** Forget a run's place (its result has been collected or it is gone). */
 export function forget(id) {
