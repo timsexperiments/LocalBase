@@ -159,11 +159,13 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		modelNotFound(w, r, model)
 		return
 	}
+	runHooksFrom(r.Context()).queue()
 	lease, err := s.STT.Acquire(r.Context(), id)
 	if err != nil {
 		runtimeError(w, r, err, id, "STT")
 		return
 	}
+	runHooksFrom(r.Context()).admit()
 	defer lease.Release()
 	tel := &inference{s: s, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}

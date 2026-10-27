@@ -7,7 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,8 +32,15 @@ import (
 // it. Nothing about /v1 itself changes.
 
 // runTargets are the /v1 routes a run may wrap, with the indicator label.
+// chatTarget is the one target whose output streams and is checkpointed.
+const chatTarget = "/v1/chat/completions"
+
 var runTargets = map[string]string{
-	"/v1/chat/completions": "Chat",
+	"/v1/chat/completions":     "Chat",
+	"/v1/images/generations":   "Image",
+	"/v1/images/edits":         "Image edit",
+	"/v1/audio/speech":         "Speech",
+	"/v1/audio/transcriptions": "Transcription",
 }
 
 const (
@@ -39,6 +49,8 @@ const (
 	runRetainedPerOwner = 32
 	runMaxDuration      = 30 * time.Minute
 	runMaxOutput        = 8 << 20
+	runMaxResult        = 64 << 20 // a media result, in memory only
+	runMaxBody          = 32 << 20 // a run's request body (the /v1 route applies its own limit)
 	runRetention        = 30 * time.Minute
 	runPing             = 15 * time.Second
 	runCheckpointEvery  = time.Second
@@ -131,6 +143,8 @@ type run struct {
 	mu sync.Mutex
 	runRecord
 	output     runOutput
+	result     []byte // a media run's response body, never checkpointed
+	resultType string
 	events     []runEvent
 	bytes      int
 	notify     chan struct{} // closed and replaced on every event
@@ -159,7 +173,7 @@ type runManager struct {
 	now func() time.Time
 
 	retention, maxDuration, ping time.Duration
-	maxOutput                    int
+	maxOutput, maxResult         int
 
 	mu      sync.Mutex
 	runs    map[string]*run
@@ -170,7 +184,7 @@ type runManager struct {
 
 func newRunManager(s *Server, dir string) *runManager {
 	m := &runManager{s: s, dir: dir, now: time.Now, retention: runRetention, maxDuration: runMaxDuration,
-		ping: runPing, maxOutput: runMaxOutput, runs: map[string]*run{}, quit: make(chan struct{})}
+		ping: runPing, maxOutput: runMaxOutput, maxResult: runMaxResult, runs: map[string]*run{}, quit: make(chan struct{})}
 	m.sweepStart()
 	return m
 }
@@ -238,7 +252,13 @@ func (m *runManager) sweepStart() {
 			r.output = *rec.Output
 		}
 		r.Output = nil
-		if !r.terminal() {
+		if r.terminal() && (r.ExpiresAt == nil || !now.Before(*r.ExpiresAt)) {
+			os.Remove(p)
+			continue
+		}
+		if !r.terminal() || (r.Target != chatTarget && r.Status == runCompleted) {
+			// Unfinished, or a media result that lived in memory only and is
+			// gone: either way the run was interrupted by the restart.
 			r.Status, r.Reason = runInterrupted, "gateway_restart"
 			r.EndedAt = &now
 			exp := now.Add(m.retention)
@@ -354,9 +374,12 @@ func (r *run) view(withOutput bool) map[string]any {
 		v["continuation"] = map[string]any{"by": "client", "message": "LocalBase does not keep the request, so it cannot " +
 			"resume this run. To continue, send the conversation again with the partial reply."}
 	}
-	if withOutput {
+	if withOutput && r.Target == chatTarget {
 		out := r.output
 		v["output"] = &out
+	}
+	if r.result != nil {
+		v["result"] = map[string]any{"contentType": r.resultType, "bytes": len(r.result), "url": "/_localbase/runs/" + r.ID + "/result"}
 	}
 	return v
 }
@@ -406,9 +429,11 @@ func (w *runWriter) Write(b []byte) (int, error) {
 		w.WriteHeader(200)
 	}
 	if !w.sse {
-		if w.body.Len() < 1<<20 {
-			w.body.Write(b[:min(len(b), 1<<20-w.body.Len())])
+		if w.body.Len()+len(b) > w.r.m.maxResult {
+			w.r.m.stop(w.r, runFailed, "output_limit")
+			return len(b), nil
 		}
+		w.body.Write(b)
 		return len(b), nil
 	}
 	w.buf = append(w.buf, b...)
@@ -547,11 +572,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	now := m.now()
 	r := &run{m: m, runRecord: runRecord{ID: newRunID(), Object: "localbase.run", Owner: owner, Target: target, Label: label,
 		Status: runQueued, CreatedAt: now}, notify: make(chan struct{}), done: make(chan struct{})}
-	var probe struct {
-		Model string `json:"model"`
-	}
-	json.Unmarshal(body, &probe)
-	r.Model = probe.Model
+	r.Model = requestModel(req.Header.Get("Content-Type"), body)
 
 	m.mu.Lock()
 	if m.closing {
@@ -665,11 +686,25 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	writeJSON(w, 202, v)
 }
 
-// readRunBody reads the /v1 body; chat runs always stream upstream so that
-// partial output exists at every moment (DESIGN §21.1).
+// readRunBody reads the /v1 body. Chat runs always stream upstream so that
+// partial output exists at every moment (DESIGN §21.1); media bodies (JSON
+// or multipart) pass through as they are, for the /v1 route to check.
 func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byte, bool) {
 	if target != "/v1/chat/completions" {
-		return nil, false
+		if req.ContentLength > runMaxBody {
+			payloadTooLarge(w, req)
+			return nil, false
+		}
+		b, err := io.ReadAll(io.LimitReader(req.Body, runMaxBody+1))
+		if err != nil {
+			badRequest(w, req, "The request body could not be read.", nil)
+			return nil, false
+		}
+		if len(b) > runMaxBody {
+			payloadTooLarge(w, req)
+			return nil, false
+		}
+		return b, true
 	}
 	obj, ok := readJSON(w, req)
 	if !ok {
@@ -701,6 +736,8 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 		status, reason = runInterrupted, "memory_pressure"
 	case r.Error != nil:
 		status = runFailed
+	case r.Target != chatTarget && rw.status >= 200 && rw.status < 300:
+		r.result, r.resultType = bytes.Clone(rw.body.Bytes()), rw.header.Get("Content-Type")
 	case rw.status >= 400 || !rw.sse:
 		status = runFailed
 		var env struct {
@@ -902,6 +939,23 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		v := r.view(true)
 		r.mu.Unlock()
 		writeJSON(w, 200, v)
+	case "result":
+		if req.Method != http.MethodGet {
+			methodNotAllowed(w, req, "GET")
+			return
+		}
+		r.mu.Lock()
+		body, ctype := r.result, r.resultType
+		r.mu.Unlock()
+		if body == nil {
+			writeError(w, req, 409, "invalid_request_error", "run_result_unavailable",
+				"This run has no result to fetch: it has not completed, or it is not a media run.", nil)
+			return
+		}
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.Write(body)
 	case "events":
 		if req.Method != http.MethodGet {
 			methodNotAllowed(w, req, "GET")
@@ -987,6 +1041,30 @@ func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
 			return
 		case <-m.quit:
 			return
+		}
+	}
+}
+
+// requestModel is the body's "model" (JSON or a multipart field), for the
+// indicator; "" means the route's active model.
+func requestModel(ctype string, body []byte) string {
+	mt, params, _ := mime.ParseMediaType(ctype)
+	if mt != "multipart/form-data" {
+		var probe struct {
+			Model string `json:"model"`
+		}
+		json.Unmarshal(body, &probe)
+		return probe.Model
+	}
+	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	for {
+		p, err := mr.NextPart()
+		if err != nil {
+			return ""
+		}
+		if p.FormName() == "model" && p.FileName() == "" {
+			b, _ := io.ReadAll(io.LimitReader(p, 256))
+			return strings.TrimSpace(string(b))
 		}
 	}
 }

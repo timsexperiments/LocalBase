@@ -79,6 +79,7 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 	addVideo(mux)
+	addImages(mux)
 	mux.HandleFunc("GET /props", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"model_path": model, "build_info": "fake",
 			"chat_template": "{% if tools %}{{ tools }}{% endif %}<think>", "modalities": map[string]any{"vision": false},
