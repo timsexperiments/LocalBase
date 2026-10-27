@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -233,9 +234,26 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 			"Slots": plan.Parallel.Slots, "Context": plan.Budget.EffectiveContext}
 	}
 	other := capacity - max(snap.Available, 0) - models
+	state := u.d.LLM.Snapshot()
+	if item != nil {
+		item["Waiting"] = state.Waiting
+		item["State"] = state.State
+	}
+	// One sentence for screen readers, announced only when it changes.
+	summary := "Nothing is loaded."
+	switch {
+	case state.State == "starting":
+		summary = "A model is starting."
+	case item != nil && state.State == "draining":
+		summary = fmt.Sprintf("%s is finishing before another model loads.", item["Name"])
+	case item != nil && active > 0:
+		summary = fmt.Sprintf("%s is busy.", item["Name"])
+	case item != nil:
+		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
+	}
 	u.render(w, r, "running", map[string]any{
 		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0),
-		"Item": item,
+		"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
 	})
 }
 

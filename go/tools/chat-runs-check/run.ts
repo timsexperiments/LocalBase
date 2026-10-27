@@ -76,6 +76,19 @@ const r5 = await ev(`(() => { const a = document.querySelector("[data-messages] 
     page: document.scrollingElement.scrollWidth - w, reply: Math.round(a.getBoundingClientRect().right - w), log: document.querySelector("#chat-log").scrollWidth - document.querySelector("#chat-log").clientWidth }; })()`);
 check(r5.li === 2 && r5.pre && r5.table && r5.code && r5.link === "https://example.com", `markdown blocks render: ${JSON.stringify(r5)}`);
 check(r5.page <= 0 && r5.reply <= 0 && r5.log <= 0, `nothing overflows at 360 px: page ${r5.page}, reply ${r5.reply}, log ${r5.log}`);
+// 6. Running now: quiet while nothing changes, one announcement on a change.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/models/running");
+await sleep(7000); // two polls with no change
+const quiet = await ev(`document.getElementById("running-status").textContent`);
+check(quiet === "", `no announcement while nothing changes: ${JSON.stringify(quiet)}`);
+const idle = await ev(`document.querySelector("#running-live .pill")?.textContent.trim()`);
+check(idle === "Idle", `the loaded model shows Idle: ${idle}`);
+// Start a slow reply without waiting for it.
+await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
+for (let i = 0; i < 20 && !(await ev(`document.getElementById("running-status").textContent`)); i++) await sleep(500);
+const busy = await ev(`({ said: document.getElementById("running-status").textContent, pill: document.querySelector("#running-live .pill")?.textContent.trim() })`);
+check(/is busy\.$/.test(busy.said) && busy.pill.startsWith("Busy"), `announces the change once: ${JSON.stringify(busy)}`);
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);

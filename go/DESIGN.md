@@ -3229,6 +3229,25 @@ have; Get models, add one that fits.
   and on a control that sticks out of its group (a segmented switch, the
   docked composer, the tab bar), not only on page-level overflow.
 
+### 22.9 Running now (PR 4)
+
+The one thing people come to do: see what LocalBase is using right now
+and whether it is busy.
+- **Memory** first: "X free of Y" and the shared bar (other apps, models,
+  available) with its legend.
+- **In memory**: the loaded model as one row (size, waiting requests) with
+  one state pill: Idle, Busy · N requests, or Finishing (draining before
+  another model loads); "A model is starting…" while one starts; an empty
+  state otherwise. No unload action: the gateway has no unload route, and
+  models leave memory when another needs it.
+- **Quiet polling.** The region refreshes every 3 s (not while hidden), and
+  carries one sentence (`data-announce`). `shell.js` writes it into a
+  status region outside the swapped part only when it changes, so screen
+  readers hear "… is busy." once, not every refresh.
+- **Checks:** `TestRunningNow`; `tools/chat-runs-check.sh` checks two
+  unchanged polls announce nothing, the loaded model shows Idle, and a
+  request announces "… is busy." once.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to

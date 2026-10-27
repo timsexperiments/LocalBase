@@ -178,3 +178,20 @@ func TestChatSheets(t *testing.T) {
 		}
 	}
 }
+
+// Running now: memory first, then what is in memory; the polled region
+// carries one sentence that shell.js announces only when it changes, into
+// a status region outside the swapped part.
+func TestRunningNow(t *testing.T) {
+	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/models/running").Body.String())
+	for _, want := range []string{`<h1 id="running-title" class="page-title">Running now</h1>`, `id="memory-title"`,
+		`data-announce="Nothing is loaded." data-announce-into="running-status"`,
+		`<p id="running-status" class="sr-only" role="status" aria-live="polite"></p>`, "Nothing loaded"} {
+		if !strings.Contains(main, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Index(main, `id="running-status"`) > strings.Index(main, `id="running-live"`) {
+		t.Error("the status region is inside the polled part")
+	}
+}
