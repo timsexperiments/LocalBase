@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -126,5 +127,19 @@ func TestSettingsGrouped(t *testing.T) {
 	}
 	if strings.Contains(main, `class="card`) {
 		t.Error("settings still use cards")
+	}
+}
+
+// The default chat models save on change (no Save button that can sit
+// under the tab bar), and the fallback order is said in plain words.
+func TestDefaultModelsAutoSave(t *testing.T) {
+	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/settings").Body.String())
+	if !strings.Contains(main, `id="default-models"`) {
+		t.Skip("no default-models group in this setup")
+	}
+	section := regexp.MustCompile(`(?s)<section id="default-models".*?</section>`).FindString(main)
+	if !strings.Contains(section, `hx-post="/app/settings/default-models" hx-trigger="change"`) || strings.Contains(section, `>Save</button>`) ||
+		!strings.Contains(section, "If it needs more memory than is free right now, it uses the next one") {
+		t.Errorf("default models: %s", section)
 	}
 }

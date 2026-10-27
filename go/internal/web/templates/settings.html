@@ -73,10 +73,11 @@
 <section id="default-models" aria-labelledby="default-models-title">
   <h2 id="default-models-title" class="list-label">Default chat model</h2>
   <div class="list-group">
-    {{with .Effective}}<div class="setting-row"><span class="min-w-0 flex-1"><span class="block font-semibold">Now using {{.}}</span>
+    {{with .Effective}}<div class="setting-row"><span class="min-w-0 flex-1"><span class="block font-semibold">New chats use {{.}}</span>
       {{with $.Reason}}<span class="block text-sm text-muted">{{.}}</span>{{end}}</span></div>{{end}}
     {{if .CanManage}}
-    <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/default-models" hx-target="#default-models" hx-swap="outerHTML" hx-disabled-elt="find button">
+    {{/* Each choice saves as soon as it changes (no Save button to scroll to). */}}
+    <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/default-models" hx-trigger="change" hx-target="#default-models" hx-swap="outerHTML">
       {{range $i, $cur := .Slots}}
       <div class="grid gap-1">
         <label for="default{{$i}}" class="text-base font-semibold">{{if eq $i 0}}First choice{{else if eq $i 1}}If it doesn’t fit{{else}}Then{{end}}</label>
@@ -86,11 +87,10 @@
         </select>
       </div>
       {{end}}
-      <div><button type="submit" class="btn btn-primary">Save</button></div>
     </form>
     {{end}}
   </div>
-  <p class="mt-2 px-1 text-sm text-muted">New conversations use the first one that fits in the memory free now. A model someone picks, or an app names, is used as asked.</p>
+  <p class="mt-2 px-1 text-sm text-muted">LocalBase uses your first choice. If it needs more memory than is free right now, it uses the next one, then the one after. A model someone picks in Chat, or an app names, is used as asked. Changes save right away.</p>
   {{with .Notice}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
   {{with .Error}}<p class="mt-2 px-1 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
 </section>
