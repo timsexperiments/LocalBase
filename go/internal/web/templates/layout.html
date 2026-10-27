@@ -15,7 +15,7 @@
 {{block "head" .}}{{end}}
 </head>
 <body class="{{block "bodyclass" .}}min-h-dvh{{end}}" hx-boost="{{block "boost" .}}true{{end}}" hx-headers='{"X-Localbase-UI": "1", "X-CSRF-Token": "{{.CSRF}}"}'>
-<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 btn btn-primary">Skip to content</a>
+<a href="#main" class="skip-link btn btn-primary">Skip to content</a>
 {{block "page" .}}
 <div class="lg:flex">
   {{if .Principal}}{{template "sidebar" .}}{{else}}
@@ -77,11 +77,11 @@
 <div class="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 lg:hidden run-pill-dock">{{template "run-pill" "dock"}}</div>
 <nav class="tabbar" aria-label="Primary">
   <ul>
-    <li><a class="tab" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}}>{{template "icon-chat"}}<span class="tab-label">Chat</span></a></li>
-    <li><a class="tab" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}}>{{template "icon-models"}}<span class="tab-label">Models</span></a></li>
-    <li><a class="tab" href="/app/lab" {{if eq $s "lab"}}aria-current="page"{{end}}>{{template "icon-lab"}}<span class="tab-label">Lab</span></a></li>
-    <li><a class="tab" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}}>{{template "icon-running"}}<span class="tab-label">Running</span></a></li>
-    <li><button type="button" class="tab" data-open-sheet="more-sheet" aria-haspopup="dialog" {{if eq $s "more"}}data-active{{end}}>{{template "icon-more"}}<span class="tab-label">More{{if eq $s "more"}}<span class="sr-only">, current section</span>{{end}}</span></button></li>
+    <li><a class="tab" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} aria-label="Chat">{{template "icon-chat"}}<span class="tab-label" aria-hidden="true">Chat</span></a></li>
+    <li><a class="tab" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}} aria-label="Models">{{template "icon-models"}}<span class="tab-label" aria-hidden="true">Models</span></a></li>
+    <li><a class="tab" href="/app/lab" {{if eq $s "lab"}}aria-current="page"{{end}} aria-label="Lab">{{template "icon-lab"}}<span class="tab-label" aria-hidden="true">Lab</span></a></li>
+    <li><a class="tab" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} aria-label="Running">{{template "icon-running"}}<span class="tab-label" aria-hidden="true">Running</span></a></li>
+    <li><button type="button" class="tab" data-open-sheet="more-sheet" aria-haspopup="dialog" aria-label="More{{if eq $s "more"}}, current section{{end}}" {{if eq $s "more"}}data-active{{end}}>{{template "icon-more"}}<span class="tab-label" aria-hidden="true">More</span></button></li>
   </ul>
 </nav>
 {{end}}

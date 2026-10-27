@@ -84,7 +84,7 @@ func TestShellOnEveryPage(t *testing.T) {
 		if n := strings.Count(tabs, `aria-current="page"`); (current == "" && n != 0) || (current != "" && n != 1) {
 			t.Errorf("%s: %d current tabs", path, n)
 		}
-		if current != "" && !regexp.MustCompile(`aria-current="page">.*?<span class="tab-label">`+current+`<`).MatchString(tabs) {
+		if current != "" && !regexp.MustCompile(`aria-current="page" aria-label="`+current+`">`).MatchString(tabs) {
 			t.Errorf("%s: %s is not the current tab", path, current)
 		}
 		if current == "" && !strings.Contains(tabs, `data-active>`) {
@@ -154,7 +154,7 @@ func TestModelsSwitch(t *testing.T) {
 			t.Errorf("%s: the Models switch does not mark %s", path, current)
 		}
 	}
-	if strings.Contains(get(u, "/app/lab").Body.String(), `aria-label="Models"`) {
+	if strings.Contains(get(u, "/app/lab").Body.String(), `<nav aria-label="Models"`) {
 		t.Error("the Models switch shows on the Lab")
 	}
 }

@@ -3429,3 +3429,12 @@ Across the eight pages:
   removes this tab's session copy of chats and the unsent message.
 - **Dark mode:** every page and sheet was captured at 390 px in dark
   (`.design/screens/dark/`); the selected segment carries a ring.
+- **iOS Safari** (`tools/ios-check.sh` on a dedicated simulator, booted
+  for the run and deleted after): the composer moves above the keyboard
+  (y 614 → 341 in a 874-point web view), Return adds a line and Send
+  submits. Apple's audit flagged the tab labels (12 px text taken as the
+  hit area) and two 14 px lines in the Lab: the tab links now carry their
+  name (`aria-label`, the small visible label is `aria-hidden`), and the
+  Lab lines are 16 px or part of the heading. One finding with no element
+  or frame remains on shell pages (not identified by the audit); the skip
+  link is now full size and parked off screen until focused.

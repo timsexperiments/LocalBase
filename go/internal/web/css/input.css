@@ -587,3 +587,11 @@
     @apply bg-danger-soft text-danger;
   }
 }
+
+/* Skip link: full size (iOS audits a 1px element as too small), parked
+   above the page until it has focus. */
+@layer components {
+  .skip-link {
+    @apply fixed top-3 left-3 z-50 -translate-y-24 focus:translate-y-0;
+  }
+}

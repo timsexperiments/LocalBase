@@ -10,10 +10,7 @@
   </nav>
 
   <section aria-labelledby="results-title" class="lab-results mt-5">
-    <div class="flex items-baseline justify-between gap-3">
-      <h2 id="results-title" class="font-bold">Results</h2>
-      <p class="text-sm text-muted">Kept for 30 minutes</p>
-    </div>
+    <h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for 30 minutes</span></h2>
     {{template "lab-result" .}}
     <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
     {{template "lab-empty" .Tab}}
@@ -180,7 +177,7 @@
   {{with .Audio}}<audio controls src="{{.}}" class="w-full"></audio>{{end}}
   {{if .Transcript}}<p class="whitespace-pre-wrap wrap-anywhere" data-transcript>{{.Transcript}}</p>{{end}}
   {{if and (not .Active) .Message}}<p class="text-sm {{if eq .Status "failed"}}text-danger{{else}}text-muted{{end}}">{{.Message}}</p>{{end}}
-  <p class="min-w-0 px-2 text-sm text-muted"><span class="font-semibold text-ink">{{if eq .Tool "image"}}Image{{else if eq .Tool "speech"}}Speech{{else}}Transcription{{end}}</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}}</p>
+  <p class="min-w-0 px-2 text-muted"><span class="font-semibold text-ink">{{if eq .Tool "image"}}Image{{else if eq .Tool "speech"}}Speech{{else}}Transcription{{end}}</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}}</p>
   <div class="lab-item-foot">
     {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML">Stop</button>
     {{else}}
