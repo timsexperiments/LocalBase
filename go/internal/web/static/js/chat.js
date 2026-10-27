@@ -6,13 +6,14 @@
 // markdown.js.
 import {
   chatContext, compact, contextWindow, interruptReply, learnContext, overflowContext, phaseLabel, planCompaction,
-  promptBudget, readHistory, steerAbortReason, titleFrom, toolOverhead, visibleMessages, writeHistory,
+  promptBudget, readHistory, steerAbortReason, streamText, titleFrom, toolOverhead, visibleMessages, writeHistory,
 } from "./chat-core.js";
 import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
 import { appendDictation, dictationUnavailable, startRecording, transcribe } from "./dictation.js";
 import { SessionRequiredError, api, generationTools, jsonRequest, modelGenerationSettings, modelName, runChat, toolModels } from "./tools.js";
 import { settingsFields } from "./generation.js";
+import * as runs from "./runs.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -61,6 +62,17 @@ const fresh = () => ({ id: uuid(), title: "New conversation", workspace: "chat",
 let conversations = [];
 let persistent = false;
 let historyError = "";
+// Without saved history this tab keeps its conversations in sessionStorage
+// (text only, gone when the tab closes), so leaving Chat and coming back,
+// or a phone reloading a backgrounded tab, loses nothing (DESIGN §22.4).
+const session = (() => {
+  try {
+    sessionStorage.getItem("");
+    return sessionStorage;
+  } catch {
+    return null;
+  }
+})();
 try {
   const saved = readHistory(localStorage);
   persistent = saved !== null;
@@ -68,6 +80,12 @@ try {
 } catch {
   historyError = "Saved history could not be read. You can clear it in Settings.";
 }
+if (!persistent && !historyError && session)
+  try {
+    conversations = readHistory(session) ?? [];
+  } catch {
+    session.removeItem("localbase.playground.history.v1");
+  }
 let active;
 let abort = null; // the running reply or compaction
 let running = null; // {conversation, answer} while a reply streams
@@ -115,15 +133,38 @@ function select(id) {
   const url = new URL(location.href);
   url.searchParams.set("conversation", active.id);
   history.replaceState(null, "", url);
+  // The shell's "Generating…" pill hides for runs shown on this page.
+  document.body.dataset.runPage = `/app/chat?conversation=${active.id}`;
+  runs.notify();
 }
 
 function save() {
-  if (!persistent) return;
+  const target = persistent ? localStorage : session;
+  if (!target) return;
   try {
     // Empty conversations are not worth keeping.
-    writeHistory(localStorage, conversations.filter((c) => c.messages.length || c === active));
+    writeHistory(target, conversations.filter((c) => c.messages.length || c === active));
   } catch {
-    showError("Device storage is unavailable, so this conversation was not saved.");
+    if (persistent) showError("Device storage is unavailable, so this conversation was not saved.");
+  }
+}
+
+// The unsent message survives leaving the page (this tab only).
+const draftKey = "localbase.chat.draft.v1";
+function saveDraft() {
+  try {
+    if (input.value) session?.setItem(draftKey, JSON.stringify({ conversation: active.id, text: input.value }));
+    else session?.removeItem(draftKey);
+  } catch {
+    // Storage full or blocked: the draft lives in the page only.
+  }
+}
+function restoreDraft() {
+  try {
+    const saved = JSON.parse(session?.getItem(draftKey) ?? "null");
+    if (saved?.conversation === active.id && !input.value) input.value = saved.text;
+  } catch {
+    // Unreadable: start empty.
   }
 }
 
@@ -197,7 +238,9 @@ function renderConversations() {
         select(c.id);
         render();
         drawer.close();
-        input.focus();
+        // On touch screens, opening the keyboard would hide the conversation.
+        if (preciseKeyboard.matches) input.focus();
+        reattach();
       });
       li.append(a);
       return li;
@@ -206,7 +249,7 @@ function renderConversations() {
     // Without saved history, say so even when the list has this session's chats.
     none.hidden = shown.length > 0 && (persistent || query);
     none.textContent = query ? "No conversations match." : persistent ? "No saved conversations yet." :
-      "These conversations aren’t saved on this device. Turn on history in Settings to keep them.";
+      "These conversations last until this tab closes. Turn on history in Settings to keep them.";
   }
 }
 
@@ -396,6 +439,9 @@ function messageNode(m) {
       actions.append(badge);
     }
     if (m.text) actions.append(copyButton(() => m.text, "Copy"));
+    // Another answer to the same message, on the newest reply only.
+    if (!abort && m === active.messages.at(-1) && (m.text || m.interrupted))
+      actions.append(button("Retry", "md-copy", () => retry(active), { "aria-label": "Retry this reply" }));
     if (!m.text && !m.interrupted && !m.reasoning) {
       const none = document.createElement("span");
       none.className = "text-sm text-muted";
@@ -509,8 +555,10 @@ function renderModel() {
   }
   const m = models.find((x) => x.id === active.model);
   const name = m ? m.name : active.model ? "Model not available" : "Choose a model";
-  $("[data-model-name]").textContent = m && !m.ready ? `${name} (not installed)` : name;
-  $("[data-open-picker]").setAttribute("aria-label", m ? `${m.name}, change model` : "Choose a model");
+  const shown = m && !m.ready ? `${name} (not installed)` : name;
+  $("[data-model-name]").textContent = shown;
+  // The accessible name starts with the visible text (WCAG 2.5.3).
+  $("[data-open-picker]").setAttribute("aria-label", shown === "Choose a model" ? shown : `${shown}, change model`);
 }
 
 function renderPicker() {
@@ -798,6 +846,7 @@ async function reply(conversation, model) {
   const history = [...conversation.messages];
   const answer = { id: uuid(), role: "assistant", text: "", pending: true };
   conversation.messages.push(answer);
+  save();
   const controller = new AbortController();
   abort = controller;
   running = { conversation, answer };
@@ -842,6 +891,18 @@ async function reply(conversation, model) {
     return true;
   };
   let outcome = "Reply finished";
+  // With detached runs the reply keeps going on the gateway when this page
+  // goes away, and a returning page re-attaches (reattach). Stop cancels it.
+  const detached = await runs.supported();
+  let ended = null;
+  const runPost = (body, signal) => runs.response({
+    create: { route: "chat/completions", body, place: placeOf(conversation, answer) },
+    signal,
+    onEnd: (run) => {
+      ended = run;
+      runs.dismiss(run.id).catch(() => {});
+    },
+  });
   try {
     await compactHistory(contextWindow(storage, model), false);
     let streamed = false;
@@ -856,6 +917,7 @@ async function reply(conversation, model) {
       messages: chatContext(history, compaction),
       toolsEnabled: true,
       permissions,
+      ...(detached ? { post: runPost } : {}),
       append: (t) => {
         streamed = true;
         answer.text += t;
@@ -902,7 +964,9 @@ async function reply(conversation, model) {
       // A session that ended (here or at the edge) needs a reload, not a retry.
       queueMicrotask(() => e instanceof SessionRequiredError
         ? showError(message, () => location.reload(), "Reload")
-        : showError(message, () => retry(conversation)));
+        : ended?.status === "interrupted" && answer.text
+          ? showError(message, () => continueReply(conversation), "Continue")
+          : showError(message, () => retry(conversation)));
     }
   } finally {
     clearInterval(tick);
@@ -924,11 +988,88 @@ async function reply(conversation, model) {
   }
 }
 
+// Where a run's "Generating…" pill returns to, and what re-attaching fills.
+function placeOf(conversation, answer) {
+  return { href: `/app/chat?conversation=${conversation.id}`, label: conversation.title, conversation: conversation.id, answer: answer.id };
+}
+
+// A reply stopped by the gateway (restart, memory, time limit) keeps its
+// text; Continue asks for the rest as a new turn.
+function continueReply(conversation) {
+  if (abort || conversation !== active) return;
+  errorBox.replaceChildren();
+  send("Continue from where you stopped.");
+}
+
+// Re-attaches to a reply of the open conversation that is still running, or
+// finished while this page was away, replaying it from the start into its
+// message. Earlier tool rounds of that reply are not replayed.
+async function reattach() {
+  if (!canChat || abort || !(await runs.supported())) return;
+  let found;
+  try {
+    found = (await runs.list()).find((r) => r.place?.conversation === active.id && active.messages.some((m) => m.id === r.place.answer));
+  } catch {
+    return;
+  }
+  if (!found || abort) return;
+  const conversation = active;
+  const answer = conversation.messages.find((m) => m.id === found.place.answer);
+  Object.assign(answer, { text: "", pending: true, pendingText: "Reconnecting…" });
+  delete answer.reasoning;
+  delete answer.interrupted;
+  const controller = new AbortController();
+  abort = controller;
+  running = { conversation, answer };
+  render();
+  setBusy();
+  let ended = null;
+  let frame = 0;
+  const update = () => {
+    if (!frame) frame = requestAnimationFrame(() => {
+      frame = 0;
+      rerenderMessage(answer);
+    });
+  };
+  try {
+    const response = await runs.response({ id: found.id, after: "", signal: controller.signal, onEnd: (run) => (ended = run) });
+    await streamText(response, (t) => {
+      answer.text += t;
+      update();
+    }, (t) => {
+      answer.reasoning = (answer.reasoning ?? "") + t;
+      update();
+    });
+    announce("Reply finished");
+  } catch (e) {
+    if (controller.signal.aborted) {
+      Object.assign(answer, interruptReply(answer, "Stopped"));
+      announce("Stopped");
+    } else {
+      answer.interrupted = true;
+      if (ended?.status === "interrupted" && answer.text) showError(e.message, () => continueReply(conversation), "Continue");
+      else showError(e.message, () => retry(conversation));
+    }
+  } finally {
+    if (frame) cancelAnimationFrame(frame);
+    delete answer.pending;
+    delete answer.pendingText;
+    if (abort === controller) {
+      abort = null;
+      running = null;
+      setBusy();
+    }
+    if (ended) runs.dismiss(found.id).catch(() => {});
+    save();
+    if (conversation === active) render();
+  }
+}
+
 function retry(conversation) {
   if (abort || conversation !== active) return;
   errorBox.replaceChildren();
   const last = conversation.messages.at(-1);
-  if (last?.role === "assistant" && last.interrupted) conversation.messages.pop();
+  if (last?.role === "assistant") conversation.messages.pop();
   const model = readyModel(conversation);
   if (model) reply(conversation, model);
 }
@@ -985,6 +1126,7 @@ form.addEventListener("submit", (e) => {
   if (!canChat || reading || (!text && (!draft.length || abort))) return;
   if (send(text)) {
     input.value = "";
+    saveDraft();
     grow();
     updateSend();
     input.focus();
@@ -1011,6 +1153,7 @@ function grow() {
 }
 input.addEventListener("input", () => {
   grow();
+  saveDraft();
   if (abort) updateSend();
 });
 
@@ -1128,6 +1271,13 @@ async function loadCatalog() {
 
 select(new URLSearchParams(location.search).get("conversation") ?? "");
 render();
+restoreDraft();
+grow();
+reattach();
+// A phone that suspended this tab may have missed the end of a reply.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && !abort) reattach();
+});
 if (canChat) loadCatalog();
 if (historyError) showError(historyError);
 if (canChat && matchMedia("(pointer: fine)").matches) input.focus();

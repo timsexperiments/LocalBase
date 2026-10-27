@@ -3158,6 +3158,45 @@ no content is stored), `cancel` (Stop), `dismiss` and `result`.
   when the viewport shrinks for a keyboard. `tools/axe-check.sh` and
   `tools/ios-check.sh` still apply.
 
+### 22.7 Chat (PR 2)
+
+- **Detached replies.** When the gateway serves runs, each chat-completions
+  request of a turn is a run (`runs.response`): its events are turned back
+  into a `/v1` stream, so `streamText`, tool calls, reasoning, compaction
+  and steering are unchanged. Stop (and steering) cancel the run and then
+  dismiss it; leaving the page, switching tabs or a phone suspending the
+  browser do not. A finished run is dismissed once its text is in the
+  conversation.
+- **Resume.** A dropped stream reconnects once the page is visible again
+  (0.5 s to 15 s back-off) with `Last-Event-ID`, so nothing is lost or
+  repeated. If a resume brings nothing (after a gateway restart the run's
+  event ids start again; reported to the backend thread), the client reads
+  the run and ends with its state.
+- **Re-attach.** Each run remembers, in this browser, the conversation and
+  reply it fills (`localStorage`, ids and the page link only). Opening that
+  conversation, or the tab becoming visible, replays the run from the start
+  into the reply. Earlier tool rounds of that reply are not replayed.
+- **Interrupted.** A run the gateway stopped (restart, memory, time limit)
+  keeps its text; the error offers **Continue**, which sends "Continue from
+  where you stopped." as a new turn. Otherwise **Retry**.
+- **Nothing lost on leaving.** Without saved history, the tab keeps its
+  conversations in `sessionStorage` (text only, gone when the tab closes),
+  and the unsent message is kept per tab. Saved history (`localStorage`)
+  works as before.
+- **Look.** The model picker and generation controls are bottom sheets on
+  phones (centered on desktop). Header and composer use borderless round
+  icon buttons; Send and Stop share a place. The newest reply offers Retry
+  next to Copy. Choosing a conversation on a touch screen no longer opens
+  the keyboard.
+- **Checks.** `TestChatSheets`; `tools/jstest/runs.test.ts`
+  (`runs.response`: streaming, resume from the last id, interrupted, the
+  empty resume); `tools/chat-runs-check.sh` (headless Chrome against a
+  scratch gateway with the fake llama-server: leave mid-reply and come back
+  to the whole reply, the "Generating…" pill, Stop keeps the partial text,
+  the draft survives, a dropped connection resumes without gaps or
+  repeats). A gateway restart mid-reply was checked by hand: the reply
+  keeps its text and offers Continue.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
