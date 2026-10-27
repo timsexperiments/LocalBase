@@ -133,6 +133,21 @@ else {
   const kb = await ev(`(() => { const d = document.querySelector(".lab-dock").getBoundingClientRect(); return { bottom: Math.round(d.bottom), h: innerHeight, tabbar: getComputedStyle(document.querySelector("nav.tabbar")).display }; })()`);
   check(kb.bottom === kb.h && kb.tabbar === "none", `while typing the prompt sits on the keyboard: ${JSON.stringify(kb)}`);
 }
+// 8. Unload (§23): with a request in flight the page says it is waiting,
+// then the model is unloaded once the request finishes, and the outcome is
+// shown and announced.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+// Start the request from this page (navigating would cancel it).
+await nav("/app/models/running");
+await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
+for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) await sleep(250);
+await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
+await sleep(400);
+const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
+check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
+for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Unloaded")`)); i++) await sleep(250);
+const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Unloaded"), said: document.getElementById("running-status").textContent, empty: document.getElementById("running-live").textContent.includes("Nothing loaded") })`);
+check(unloaded.shown && /^Unloaded/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);
