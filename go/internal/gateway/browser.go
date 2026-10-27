@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -35,6 +36,8 @@ func allowedUIRoute(method, p string) bool {
 		return method == "POST"
 	case "/_localbase/models":
 		return method == "GET"
+	case "/_localbase/runs":
+		return method == "GET"
 	case "/_localbase/voices":
 		return method == "GET" || method == "POST"
 	case "/v1/chat/completions", "/v1/embeddings", "/v1/systemone", "/v1/images/generations", "/v1/images/edits",
@@ -47,6 +50,24 @@ func allowedUIRoute(method, p string) bool {
 		}
 		if !strings.Contains(rest, "/") {
 			return method == "GET" || method == "PATCH" || method == "DELETE"
+		}
+		return false
+	}
+	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
+		if target, ok := strings.CutPrefix(rest, "v1/"); ok {
+			_, known := runTargets["/v1/"+target]
+			return known && method == "POST"
+		}
+		id, action, _ := strings.Cut(rest, "/")
+		switch {
+		case id == "":
+			return false
+		case action == "":
+			return method == "GET" || method == "DELETE"
+		case action == "events":
+			return method == "GET"
+		case action == "cancel":
+			return method == "POST"
 		}
 		return false
 	}
@@ -96,6 +117,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		}
 		fwd := r.Clone(context.WithValue(r.Context(), browserPrincipalKey{}, full))
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
+		fwd.URL.RawQuery = runEventsQuery(target, r)
 		s.mux.ServeHTTP(w, fwd)
 		return
 	}
@@ -164,11 +186,11 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		auth.Deny(w, 405)
 		return
 	}
-	if !b.SameOrigin(r) {
+	target := strings.TrimPrefix(p, "/app/api")
+	if !b.SameOrigin(r) && !(isRunEvents(target) && b.SameOriginStream(r)) {
 		auth.Deny(w, 403)
 		return
 	}
-	target := strings.TrimPrefix(p, "/app/api")
 	if !session && !allowedUIRoute(r.Method, target) {
 		auth.Deny(w, 404)
 		return
@@ -200,5 +222,22 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	fwd.URL.Path, fwd.URL.RawPath, fwd.URL.RawQuery, fwd.RequestURI = target, "", "", target
+	fwd.URL.RawQuery = runEventsQuery(target, r)
 	s.mux.ServeHTTP(w, fwd)
+}
+
+// isRunEvents reports a run's event stream path (/_localbase/runs/{id}/events).
+func isRunEvents(target string) bool {
+	rest, ok := strings.CutPrefix(target, "/_localbase/runs/")
+	id, action, _ := strings.Cut(rest, "/")
+	return ok && id != "" && !strings.HasPrefix(rest, "v1/") && action == "events"
+}
+
+// runEventsQuery keeps only `after` on a run's event stream; forwarding
+// drops every other query.
+func runEventsQuery(target string, r *http.Request) string {
+	if a := r.URL.Query().Get("after"); a != "" && isRunEvents(target) {
+		return url.Values{"after": {a}}.Encode()
+	}
+	return ""
 }
