@@ -3062,7 +3062,7 @@ Speech and transcription have no fake runtime in the unit tests. Their
 hooks are the same two calls, and the contract real runs exercise those
 handlers.
 
-## 22. Explicit unload (2026-10-27)
+## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
 free a model's memory from the UI: freeing RAM for a bigger model on the

@@ -138,7 +138,7 @@ type LLM struct {
 	switches  sync.WaitGroup // in-flight model switches; Close waits for them
 	failed    bool           // the last start failed and nothing runs
 	claimed   bool           // idle recovery is stopping the backend; hold requests
-	unloading string         // the model draining for an explicit unload (DESIGN §22)
+	unloading string         // the model draining for an explicit unload (DESIGN §23)
 	chooser   defaultChooser // the fit-aware default chat model
 }
 

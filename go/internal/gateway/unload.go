@@ -13,7 +13,7 @@ import (
 var unloadWait = 30 * time.Second
 
 // unloadAPI is POST /_localbase/models/{id}/unload (models:manage, DESIGN
-// §22): drain the loaded model like an eviction, then stop it and release
+// §23): drain the loaded model like an eviction, then stop it and release
 // its reservation. ?wait=false refuses at once while requests (detached
 // runs included) are in flight.
 func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {

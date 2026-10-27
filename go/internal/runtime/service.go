@@ -38,7 +38,7 @@ type Service struct {
 	failed    bool
 	switching bool   // a model is being stopped or started
 	claimed   bool   // idle recovery is stopping the backend; hold requests
-	unloading string // the model draining for an explicit unload (DESIGN §22)
+	unloading string // the model draining for an explicit unload (DESIGN §23)
 	switchW   sync.WaitGroup
 }
 

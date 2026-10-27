@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Explicit unload (DESIGN §22): drain a loaded model like an eviction, then
+// Explicit unload (DESIGN §23): drain a loaded model like an eviction, then
 // stop its backend and release its reservation. Nothing else changes: the
 // model reloads on demand, and idle recovery and the default-model logic
 // are untouched.

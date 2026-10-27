@@ -89,7 +89,7 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 	case errors.Is(err, runtime.ErrMemoryEmergency):
 		serviceUnavailable(w, r, "Inference")
 	case errors.Is(err, runtime.ErrUnloading):
-		// An explicit unload is draining the model (DESIGN §22); retrying after
+		// An explicit unload is draining the model (DESIGN §23); retrying after
 		// it loads the model again.
 		w.Header().Set("Retry-After", "2")
 		writeError(w, r, 503, "api_error", "model_unloading", "This model is being unloaded. Retry shortly to load it again.", nil)
