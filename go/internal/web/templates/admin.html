@@ -1,14 +1,9 @@
 {{define "title"}}Admin · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="admin-title">
-  <p class="eyebrow">Administration</p>
-  <h1 id="admin-title" class="mt-1 text-3xl font-bold tracking-tight">Admin</h1>
-  <nav aria-label="Administration" class="mt-4">
-    <ul class="flex flex-wrap gap-1">
-      {{range .Sections}}
-      <li><a class="btn min-h-11 {{if eq . $.Section}}bg-accent-soft text-accent{{else}}btn-quiet{{end}}" href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People &amp; roles{{else if eq . "access"}}Browser access{{else}}API keys{{end}}</a></li>
-      {{end}}
-    </ul>
+  <h1 id="admin-title" class="page-title">Admin</h1>
+  <nav aria-label="Administration" class="segmented mt-4 max-w-md">
+    {{range .Sections}}<a href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People{{else if eq . "access"}}Access{{else}}API keys{{end}}</a>{{end}}
   </nav>
   {{template "admin-section" .}}
 </section>
@@ -320,27 +315,28 @@
 
 {{define "admin-keys"}}
 {{if .CanManageKeys}}
-<section class="card p-5" aria-labelledby="new-key-title">
-  <h2 id="new-key-title" class="text-lg font-bold">Create API key</h2>
-  <form class="mt-3 grid gap-3" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
+<div class="flex justify-end"><button type="button" class="btn btn-primary rounded-full" data-open-sheet="new-key" aria-haspopup="dialog">{{template "icon-plus"}}Create API key</button></div>
+<dialog id="new-key" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="new-key-title">
+  {{template "sheet-head" (dict "ID" "new-key-title" "Title" "Create API key")}}
+  <form class="grid gap-3 px-4 pb-2" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="action" value="create">
     <div class="grid gap-3 min-[600px]:grid-cols-2">
       <div class="grid gap-1"><label class="text-base font-semibold" for="key-name">Name</label><input id="key-name" class="input" name="name" required maxlength="128"></div>
       <div class="grid gap-1"><label class="text-base font-semibold" for="key-expiry">Expires after days <span class="font-normal text-muted">(optional)</span></label><input id="key-expiry" class="input" type="number" inputmode="numeric" name="expiresDays" min="1" max="3650"></div>
     </div>
     <details class="reasoning"><summary>Scopes · 2 selected</summary>{{template "perm-picker" (dict "Groups" .NewKeyPerms "Name" "scopes")}}</details>
-    <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create key</button>
+    <button type="submit" class="btn btn-primary w-full">Create key</button>
   </form>
-</section>
+</dialog>
 {{end}}
-<section class="card p-5" aria-labelledby="keys-title">
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 id="keys-title" class="text-lg font-bold">Keys <span class="text-sm font-normal text-muted">· {{len .Keys}} total</span></h2>
-    <a class="btn btn-quiet min-h-11 text-base" href="/app/admin?section=keys">Refresh</a>
+<section aria-labelledby="keys-title">
+  <div class="flex items-center justify-between gap-2">
+    <h2 id="keys-title" class="list-label mt-0">Keys · {{len .Keys}}</h2>
+    <a class="btn btn-quiet min-h-11 rounded-full text-base" href="/app/admin?section=keys">Refresh</a>
   </div>
-  <ul class="mt-3 grid gap-3">
+  <ul class="list-group" aria-label="API keys">
     {{range .Keys}}{{$k := .Key}}{{$active := eq .Status "Active"}}
-    <li class="rounded-xl border border-line p-3">
+    <li class="px-4 py-3">
       <form class="grid gap-2" hx-post="/app/admin/keys" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="keyId" value="{{$k.ID}}">
         <div class="flex flex-wrap items-start justify-between gap-2">
@@ -364,7 +360,7 @@
         {{end}}
       </form>
     </li>
-    {{else}}<li class="text-sm text-muted">No API keys.</li>{{end}}
+    {{else}}<li class="px-4 py-6 text-center text-muted">No API keys yet.{{if $.CanManageKeys}} Create one for each app that calls LocalBase.{{end}}</li>{{end}}
   </ul>
 </section>
 {{end}}

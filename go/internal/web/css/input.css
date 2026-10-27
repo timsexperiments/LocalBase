@@ -361,7 +361,7 @@
     @apply flex min-h-11 flex-auto items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
   }
   .segmented > a[aria-current="page"] {
-    @apply bg-surface text-ink shadow-sm;
+    @apply bg-surface text-ink shadow-sm ring-1 ring-line;
   }
 
   /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */

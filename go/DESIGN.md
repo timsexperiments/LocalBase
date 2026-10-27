@@ -3393,3 +3393,18 @@ iOS-style grouped lists, one setting per row, no cards:
 - **Hugging Face:** the token row with its state, the form under it.
 - **Account:** who is signed in and what they can do, then Sign out.
 - **Checks:** `TestSettingsGrouped` and the existing settings tests.
+
+### 22.13 Admin (PR 8)
+
+The one thing people come to do: give an app or a person access, or take
+it away.
+- One title and a segmented switch (People, Access, API keys; short labels
+  so three fit at 360 px), always shown so the section is marked.
+- **API keys** follow the dashboard pattern: "Create API key" opens a sheet
+  (name, expiry, scopes); keys are rows in one list with their status, and
+  Rotate and Revoke keep their confirmations; the new secret is shown once,
+  as before. The empty state says what keys are for.
+- People and Access keep their forms (roles, invitations, providers,
+  policy) inside the new shell; restyling them into grouped lists is the
+  next polish.
+- **Checks:** `TestAdminKeysSheet` and the existing admin tests.

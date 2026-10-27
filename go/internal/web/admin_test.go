@@ -91,7 +91,7 @@ func TestAdminSections(t *testing.T) {
 	}
 	p.Permissions = []string{"models:read", "keys:read"}
 	body := get(u, "/app/admin?section=people").Body.String()
-	if !strings.Contains(body, `aria-current="page">API keys`) || strings.Contains(body, "People &amp; roles") || !strings.Contains(body, "laptop") {
+	if !strings.Contains(body, `aria-current="page">API keys`) || strings.Contains(body, `href="/app/admin?section=people"`) || !strings.Contains(body, "laptop") {
 		t.Error("keys:read alone should land on API keys only")
 	}
 	if strings.Contains(body, "Create API key") || strings.Contains(body, "Rotate") || !strings.Contains(body, "inference:chat</p>") {
@@ -223,5 +223,18 @@ func TestAdminKeySecretOnce(t *testing.T) {
 	u2, _, _ := adminUI("models:read", "keys:read")
 	if w := adminPost(u2, "/app/admin/keys", url.Values{"action": {"revoke"}, "keyId": {"key_1"}}); w.Code != http.StatusForbidden {
 		t.Errorf("revoke without keys:manage: %d", w.Code)
+	}
+}
+
+// Keys follow the dashboard pattern: Create API key opens a sheet, and each
+// key is a row in one list. The section switch fits a phone (short labels).
+func TestAdminKeysSheet(t *testing.T) {
+	u, _, _ := adminUI("keys:read", "keys:manage", "access:read")
+	body := get(u, "/app/admin?section=keys").Body.String()
+	for _, want := range []string{`data-open-sheet="new-key" aria-haspopup="dialog"`, `<dialog id="new-key" class="sheet`, `<ul class="list-group" aria-label="API keys">`,
+		`<nav aria-label="Administration" class="segmented`, `>People</a>`, `>Access</a>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }
