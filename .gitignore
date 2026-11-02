@@ -4,3 +4,4 @@ dist/
 src/db/migration-assets.ts
 src/ui/assets.generated.ts
 go/fakebackend
+go/localbase
