@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"os"
 	goruntime "runtime"
 	"sync"
 	"testing"
@@ -11,35 +12,40 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
-// holdSample makes the next memory sample wait for release, and says when one
-// has reached that point.
-func holdSample(t *testing.T) (reached, release chan struct{}) {
+// holdSample makes the next memory sample wait, and says when one has reached
+// that point. A sample that honors cancel ends with its context, as the real one
+// does (it kills the tool it runs); one that ignores it ends only on release.
+func holdSample(t *testing.T, honorCancel bool) (reached, release chan struct{}) {
 	t.Helper()
 	if goruntime.GOOS != "darwin" {
 		t.Skip("memory samples are macOS only")
 	}
 	reached, release = make(chan struct{}), make(chan struct{})
 	var once sync.Once
-	sampleFootprint = func(context.Context, int) (int64, bool) {
+	sampleFootprint = func(ctx context.Context, _ int) (int64, bool) {
 		once.Do(func() { close(reached) })
-		<-release
+		if honorCancel {
+			select {
+			case <-ctx.Done():
+				return 0, false
+			case <-release:
+			}
+		} else {
+			<-release
+		}
 		return memory.GiB, true
 	}
 	t.Cleanup(func() { sampleFootprint = memory.Footprint })
 	return reached, release
 }
 
-// closeWaits checks that closeFn does not return while a sample is out, then
-// that it does once the sample ends. A sample ends in a store write, so a Close
-// that does not wait lets that write land after the database and even the root
-// are gone: that is the late local-base.db-journal seen on macOS test teardown.
+// closeWaits: Close does not return while a sample is out, even one that ignores
+// its cancel, because a sample can end in a store write. Without this, that write
+// lands after the database and the root are gone: the late local-base.db-journal
+// seen on macOS test teardown.
 func closeWaits(t *testing.T, reached, release chan struct{}, closeFn func()) {
 	t.Helper()
-	select {
-	case <-reached:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no sample started")
-	}
+	waitReached(t, reached)
 	closed := make(chan struct{})
 	go func() { closeFn(); close(closed) }()
 	select {
@@ -55,19 +61,40 @@ func closeWaits(t *testing.T, reached, release chan struct{}, closeFn func()) {
 	}
 }
 
-func TestLLMCloseWaitsForMemorySample(t *testing.T) {
-	reached, release := holdSample(t)
+func waitReached(t *testing.T, reached chan struct{}) {
+	t.Helper()
+	select {
+	case <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no sample started")
+	}
+}
+
+// closeIsPrompt: launchd and the restart path wait on Close, so it signals a
+// running sample and does not sit out the sample's 4 s limit.
+func closeIsPrompt(t *testing.T, reached chan struct{}, closeFn func()) {
+	t.Helper()
+	waitReached(t, reached)
+	began := time.Now()
+	closeFn()
+	if d := time.Since(began); d > 500*time.Millisecond {
+		t.Errorf("Close took %v with a memory sample out", d)
+	}
+}
+
+func startLLM(t *testing.T) *LLM {
+	t.Helper()
 	m := newTestLLM(t, &bigHost{avail: 50 * memory.GiB})
 	l, err := m.Acquire(context.Background(), modelA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	l.Release()
-	closeWaits(t, reached, release, m.Close)
+	return m
 }
 
-func TestServiceCloseWaitsForMemorySample(t *testing.T) {
-	reached, release := holdSample(t)
+func startService(t *testing.T) (*Service, *catalog.Spec) {
+	t.Helper()
 	s, _ := newTestService(t)
 	var spec *catalog.Spec
 	for _, c := range s.d.Catalog.All() {
@@ -81,7 +108,7 @@ func TestServiceCloseWaitsForMemorySample(t *testing.T) {
 	}
 	// The sample only runs for a catalog model: serve the fake under its id.
 	gate := s.d.Gate
-	s.d.Gate = func(id string) (*Target, error) {
+	s.d.Gate = func(string) (*Target, error) {
 		tgt, err := gate("a")
 		if err == nil {
 			tgt.ModelID = spec.ModelID
@@ -93,8 +120,47 @@ func TestServiceCloseWaitsForMemorySample(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.Release()
+	return s, spec
+}
+
+func TestLLMCloseWaitsForMemorySample(t *testing.T) {
+	reached, release := holdSample(t, false)
+	closeWaits(t, reached, release, startLLM(t).Close)
+}
+
+func TestServiceCloseWaitsForMemorySample(t *testing.T) {
+	reached, release := holdSample(t, false)
+	s, spec := startService(t)
 	closeWaits(t, reached, release, s.Close)
-	if rows, err := s.d.Store.ObservedPeaks(context.Background(), spec.ModelID, spec.Primary().SHA256); err != nil || len(rows) == 0 {
-		t.Errorf("the sample's write: %v %v", rows, err)
+	// The sample came back after the stop: nothing is written.
+	if rows, err := s.d.Store.ObservedPeaks(context.Background(), spec.ModelID, spec.Primary().SHA256); err != nil || len(rows) != 0 {
+		t.Errorf("a stopped sample wrote: %v %v", rows, err)
+	}
+}
+
+func TestLLMClosePromptDuringMemorySample(t *testing.T) {
+	reached, _ := holdSample(t, true)
+	closeIsPrompt(t, reached, startLLM(t).Close)
+}
+
+func TestServiceClosePromptDuringMemorySample(t *testing.T) {
+	reached, _ := holdSample(t, true)
+	s, _ := startService(t)
+	closeIsPrompt(t, reached, s.Close)
+}
+
+// The real sampler stops when asked: it kills the tool it runs.
+func TestFootprintHonorsCancel(t *testing.T) {
+	if goruntime.GOOS != "darwin" {
+		t.Skip("memory samples are macOS only")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	began := time.Now()
+	if _, ok := memory.Footprint(ctx, os.Getpid()); ok {
+		t.Error("a cancelled sample returned a reading")
+	}
+	if d := time.Since(began); d > 500*time.Millisecond {
+		t.Errorf("a cancelled sample took %v", d)
 	}
 }

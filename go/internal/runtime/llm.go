@@ -103,6 +103,9 @@ type backend struct {
 	res     *memory.Reservation
 	baseURL string
 	stop    chan struct{}
+	// sampling ends with the backend: a stop does not wait out a memory sample.
+	sampling     context.Context
+	stopSampling context.CancelFunc
 	// emergency: stopped because memory turned critical.
 	emergency atomic.Bool
 }
@@ -658,7 +661,9 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		return nil, err
 	}
 	m.d.Log.InfoContext(ctx, name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
-	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
+	sampling, stopSampling := context.WithCancel(context.Background())
+	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base,
+		stop: make(chan struct{}), sampling: sampling, stopSampling: stopSampling}, nil
 }
 
 func (m *LLM) stopBackend(b *backend, reason string) {
@@ -667,6 +672,7 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 		m.cur = nil
 	}
 	m.mu.Unlock()
+	b.stopSampling()
 	close(b.stop)
 	b.proc.Stop(stopGrace)
 	logStopped(m.d.Log, "llm", b.modelID, reason, b.res.Bytes(), b.proc.PID())
@@ -676,6 +682,7 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 // watch samples the observed peak and handles an unexpected exit: the slot
 // is cleared and the next request starts the model again.
 func (m *LLM) watch(b *backend) {
+	defer b.stopSampling()
 	tick := time.NewTicker(samplePeriod)
 	defer tick.Stop()
 	var peak int64
@@ -684,10 +691,11 @@ func (m *LLM) watch(b *backend) {
 		if !record {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		ctx, cancel := context.WithTimeout(b.sampling, 4*time.Second)
 		bytes, ok := sampleFootprint(ctx, b.proc.PID())
 		cancel()
-		if ok && bytes > peak {
+		// Stopped meanwhile: leave the store alone. A write already begun finishes.
+		if ok && bytes > peak && b.sampling.Err() == nil {
 			peak = bytes
 			_ = m.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
 				ArtifactSHA256: b.spec.Primary().SHA256, LaunchShape: b.plan.Launch.LaunchShape(),

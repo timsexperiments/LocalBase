@@ -88,6 +88,9 @@ type svcBackend struct {
 	proc    *Process
 	res     *memory.Reservation
 	baseURL string
+	// sampling ends with the backend: a stop does not wait out a memory sample.
+	sampling     context.Context
+	stopSampling context.CancelFunc
 	// emergency: stopped because memory turned critical.
 	emergency atomic.Bool
 }
@@ -504,10 +507,12 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		return nil, fail(err)
 	}
 	s.d.Log.InfoContext(ctx, cmd.name+" is ready for "+t.ModelID+".", "event", "runtime.ready", "runtime", s.d.Modality, "model_id", t.ModelID, "pid", proc.PID())
-	return &svcBackend{modelID: t.ModelID, target: t, proc: proc, res: res, baseURL: base}, nil
+	sampling, stopSampling := context.WithCancel(context.Background())
+	return &svcBackend{modelID: t.ModelID, target: t, proc: proc, res: res, baseURL: base, sampling: sampling, stopSampling: stopSampling}, nil
 }
 
 func (s *Service) stop(b *svcBackend, reason string) {
+	b.stopSampling()
 	b.proc.Stop(stopGrace)
 	logStopped(s.d.Log, s.d.Modality, b.modelID, reason, b.res.Bytes(), b.proc.PID())
 	b.res.Release()
@@ -516,6 +521,7 @@ func (s *Service) stop(b *svcBackend, reason string) {
 // watch clears the slot when the backend exits on its own; the next request
 // starts it again.
 func (s *Service) watch(b *svcBackend) {
+	defer b.stopSampling()
 	// The observed peak footprint of catalog models (macOS), as for the LLM;
 	// non-LLM launches use the "default" shape.
 	spec := s.d.Catalog.ByID(b.modelID)
@@ -525,10 +531,11 @@ func (s *Service) watch(b *svcBackend) {
 		if !record {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		ctx, cancel := context.WithTimeout(b.sampling, 4*time.Second)
 		bytes, ok := sampleFootprint(ctx, b.proc.PID())
 		cancel()
-		if ok && bytes > peak {
+		// Stopped meanwhile: leave the store alone. A write already begun finishes.
+		if ok && bytes > peak && b.sampling.Err() == nil {
 			peak = bytes
 			_ = s.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
 				ArtifactSHA256: spec.Primary().SHA256, LaunchShape: "default", PeakBytes: bytes, Method: "footprint"})
