@@ -1210,6 +1210,10 @@ browser (`static/js/audio.js`), since the server decodes only WAV.
 `TestServeForUI` serves the contract fixture with `--no-auth` on a test
 port for checking the pages by hand.
 
+**Not a status change, but clients should know:** transcription with no `language`
+treats audio as English on every model, in TS and Go alike, and `language=auto`
+detects it (§24).
+
 ## 14. M5: catalog feed, discovery, declarative config, diagnostics, OTLP
 
 Stacked on M4 (`rewrite/go-m5` on `rewrite/go-m4`). M5 makes the Go gateway
@@ -3926,6 +3930,43 @@ every platform.
   itself. Runs are limited to 4 active and 32 retained per principal, so a
   page runs parts one at a time and dismisses each after collecting it.
 
+**Transcription language (2026-11-02, FE thread's report).** With no `language`,
+whisper-server treats audio as English: its `--language` defaults to `en`, and
+neither gateway sets it. Go and TS match: a real side-by-side run on scratch roots
+gave the same text and fields for every case below, on the pinned runtime.
+
+| Model | Audio | `language` | Result |
+| --- | --- | --- | --- |
+| `whisper-base-q8_0` | Spanish | none | wrong English, like a rough translation; `language: english`, `detected_language: spanish` |
+| `whisper-base-q8_0` | Spanish | `auto` or `es` | Spanish; `language: spanish` |
+| `whisper-base-q8_0` | English | none or `auto` | English, the same text |
+| `whisper-tiny-en-q8_0` | English | none or `auto` | English, the same text |
+| `whisper-tiny-en-q8_0` | Spanish | none, `auto` or `es` | "(speaking in foreign language)"; `language: english` |
+
+- **This is a known difference from what people expect, kept for TS parity
+  (operator).** `language=auto` is the workaround, and the Transcribe studio sends
+  it. Chat dictation (`dictation.js`) sends no language.
+- **`.en` models take `language=auto` safely.** They stay English and mark foreign
+  speech. Their `detected_language` is meaningless (it said "afrikaans" for
+  English speech), so do not show it for them.
+- **OpenAI:** its reference lists `language` as an optional hint with no default
+  and says nothing about omitting it, and its guide describes detection only for
+  `gpt-transcribe`. Auto-detection on omission is the common understanding, but
+  those pages do not state it; the platform.openai.com page could not be read.
+- **One short clip per language,** so this shows the behavior, not accuracy rates.
+
+**Considered, not built, for the user to decide:**
+1. **Auto by default on multilingual models:** the gateway adds `language=auto`
+   when the caller sends none and the model has the `multilingual` capability. `.en`
+   models are unaffected. It fixes API clients and dictation with no setup, and
+   would be an explicit difference from TS. The risk is misdetection on very short
+   or quiet audio, which today is at least consistently English.
+2. **A `speech.default-language` setting:** default `en` (today's behavior), with
+   `auto` or a code allowed. Parity stays by default, but people have to find it.
+
+I recommend the first: wrong text with a 200 is the worse failure, and callers who
+want English can still send `language=en`.
+
 **Transcription.** Only `whisper-server/v1` runs transcription in this
 build; the CrispASR command refuses it, and an imported `process-openai`
 backend answers in its own shape.
@@ -3957,6 +3998,86 @@ result; now the stream is its `result`, as `text/event-stream`.
   flagged. The fake `tts-server` speaks at the measured rates.
 - `TestLabImageSeed`, and `tools.test.ts` for the chat tool.
 - The fake sd-server now honors `n` and `seed` as measured above.
+
+**Known limitation: clicks in Qwen3-TTS speech (2026-11-02, FE thread's report).**
+An upstream `tts-server`/vocoder artifact, not a gateway fault; there is no
+gateway change (operator, 2026-11-02). In 73 requests of ordinary prose, 8
+(about 11%) had a burst of at least 3 sample jumps over 12,000 or one over
+20,000, and 12 (about 16%) had any jump over 12,000.
+Evidence: a recording proxy between the gateway and `tts-server`, on a scratch
+gateway. Nobody has listened to this audio; it was checked by analysis only.
+- **The gateway adds nothing:** in 73 of 73 requests the WAV's samples were
+  byte-identical to what `tts-server` sent. `/v1/audio/speech` adds a 44-byte
+  header and does no resampling or conversion.
+- **The clicks are the runtime's output.** They are short bursts, not single
+  samples: 8 of the 73 had one (jumps up to 26,622), and all were already in
+  `tts-server`'s bytes. They do not fall on its 72-frame vocoder windows.
+  `tts-server.cpp` only clamps and scales floats to s16, so a value of exactly
+  32767 in a burst had saturated before that point. Whether the vocoder or the
+  sampled codes cause them was not separated: the pipeline's source is upstream
+  llama.cpp, not in this repo.
+- **A seed does not repeat speech.** Three `/v1/generate` calls with the same
+  `seed` gave three lengths. The gateway sends no seed.
+
+**Why number lists vary (same day).** The only generation setting LocalBase
+passes is `-n 256`, the frame cap, as TS does; no sampling flags. The same
+112 characters of numbers, 8 runs each, on the real binary:
+
+| Launch | Frames (0.08 s each) | At the cap |
+| --- | --- | --- |
+| As shipped (`-n 256`) | 202–256 | 3 of 8 |
+| `--temp 0.5` | 185–256 | 7 of 8 |
+| `--repeat-penalty 1.1` | 188–256 | 4 of 8 |
+| `-n 512` | 195–311 | none; all stopped on their own |
+
+So the length is the model's own, varying by about a third, and the cap cuts
+speech that would have finished (5 of 8 ran past 256). Lists run up to about
+2.8 frames a character, so about 85 characters stays under the cap on this small
+sample. Sampling flags did not help the cap. Bursts were 2 of 10 as shipped
+and 0 of 10 for both sampling variants, too few to conclude anything.
+
+**Considered, not built: a higher speech frame cap (2026-11-02).**
+`SpeechMaxFrames` stays 256 (TS parity), and `speech.max-frames` is not being
+built (operator): the benefit is narrow, 512 does not solve it (about 600+ frames
+is needed), and the Studio already splits number lists. Reopen it if a user asks,
+or once Linux, Vulkan and CPU timing is measured. Measured once, on this machine
+(Metal), with 256 characters of numbers as the worst input and context 2048
+unless noted. Vulkan and CPU were not measured.
+
+| Cap | Frames reached | Time per request | Peak RSS | Footprint |
+| --- | --- | --- | --- | --- |
+| 256 (shipped) | 256, 4 of 4 | 6.4–7.0 s (14.6 s with the load) | 3.41 GiB | 2.6 GB |
+| 512 | 498–512, 3 of 4 at the cap | 12.0–13.0 s | 3.42 GiB | 2.3–2.6 GB |
+| 1024 | 458–599, none at the cap | 11.5–14.7 s | 3.42 GiB | 2.6 GB |
+
+- **Memory:** no measurable change; a higher cap only lets a request run longer.
+  The admission reservation was 4.11 GiB.
+- **Context:** 1024 ran 512 frames fine (2 of 2 at the cap), with 0.1 GiB less
+  peak RSS. At 600, both runs stopped short (417, 428 frames); that may be the
+  context or natural stopping, so 600 is not known to be enough. 2048 covers
+  every cap measured here.
+- **Time:** about 0.025 s a frame, well inside the gateway's 120 s speech timeout
+  here. A request running all the way to 1024 was not seen; by that rate it would
+  take about 26 s.
+- **Benefit:** narrow. Prose stayed under 256 (182–189 frames for 255 characters).
+  Only digit-heavy text gains, and 512 still cuts the worst input.
+
+**The proposal, as considered:** an opt-in `speech.max-frames`
+in `go_settings` (default 256, allowed 256–1024, a Go-only setting like
+`speech.provenance-marking`, so rollback stays safe), shown in doctor and config.
+It takes effect when `tts-server` next loads, applies to `tts-server` only, and
+the PCM limit and truncation flag follow it.
+
+**Known flake: `TestUnloadScope`.** One macOS CI run (41407289747, on
+`rewrite/go-fe-studio-speech`) failed only in Go's temp-dir cleanup, "directory
+not empty", with every check in the test passing; it passed on rerun. So a file
+appeared in the scratch root during teardown, and which file is unknown. Not
+reproduced: 470 parallel runs of the test (150 under `-race`), and 3 full
+`-race` package runs with the CPUs saturated. Delaying the `footprint` peak write
+in `LLM.watch`, which `Close` does not wait for, did not reproduce it either (240
+runs), though that test did not confirm the delayed write ran. Gateway test roots now use `scratchDir`, so a repeat fails with the files left
+behind (paths, sizes, ages, never contents), and says whether a retry cleared
+them: `TestRemoveScratch`.
 
 **Contract tests:** image admission tests need free memory and should not
 run alongside other model loads (`harness_test.go`).
