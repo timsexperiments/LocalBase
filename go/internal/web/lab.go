@@ -201,7 +201,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	allowed, hasModel, _ := u.toolAvailable(r, tab)
 	data := map[string]any{"Tab": tab, "ToolName": studioNames[tab], "Ready": allowed && hasModel, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
-		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video")}
+		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video"), "CanDecide": p.Can("inference:decision")}
 	var items []labItemView
 	for _, it := range u.labRuns(r) {
 		if it.Tool == tab {
@@ -227,6 +227,8 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 		}
 	case "transcribe":
 		data["Models"] = u.labModels("stt")
+	case "decisions":
+		data["Models"] = u.decisionModels()
 	}
 	u.render(w, r, "lab", data)
 }

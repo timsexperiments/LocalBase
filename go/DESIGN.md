@@ -3478,6 +3478,60 @@ The one thing people come to do: describe a picture and get it back.
   failed encode, and no file sharing. Measured facts about `n`, seeds and limits
   are §24.
 
+### 22.17 Decisions (PR 11)
+
+A playground for typed questions: one page (`/app/studio/decisions`) with a card
+on the Studio landing. The owner asked for "Jev-style decision AIs" to have
+their own place. It asks `POST /v1/systemone`.
+
+- **The form** keeps one fixed control at the top, the type: Pick one (`choice`),
+  Yes or no (`noul`), Rate (`score`). Below it the situation and the options,
+  and in the dock the Template chip, the Batch chip and the question as a real
+  input, with one round action. After sending, the form becomes a summary with
+  Edit, so the answer is on screen, and the type has not moved.
+- **Templates** fill the form and never run. "Save example" keeps the form in
+  this browser only (`localStorage`, at most 50), and the same sheet lists them.
+- **The read comes first, in words,** then the answer with its odds, then bars:
+  one accent for the top answer and one neutral, because answers are not good or
+  bad. Percentages are the answer here, not a performance claim, so they appear
+  next to the words. A scale keeps its own order; the rest go high to low.
+- **The words** come from one table, `BANDS` in `decision-read.js`, keyed by
+  model so another model can have its own row. With gap = top minus second:
+  Unsure (top < 0.50), Strongly favored (gap ≥ 0.70), Close call (gap < 0.25),
+  otherwise Leaning. A close call names both answers.
+- **These cuts are provisional and belong to one model,** Clef Flash, 93 questions
+  on 2026-11-01 (`docs/decision-calibration-2026-11-01.json`, from
+  `tools/decision-calibrate.ts`, which runs a real model and is not in CI). On
+  48 labelled questions all 48 were right; on 28 hard ones 24; 17 were judgment
+  calls with no right answer. High odds did not mean right, and a judgment call
+  could still come back at 0.989, so every result carries the same line: "These
+  are the model’s odds, not a check that it is right. Judgment calls can still
+  come back lopsided." The API snippets do not repeat it. No word claims accuracy,
+  and the sample is too small to promise a rate for any band.
+- **Runs.** A question is a detached run (§21): it survives a reload, and the
+  pill leads back here. The page deletes the run once it has the answer, so a
+  question stays in the browser (`sessionStorage` for this tab). Stop cancels it
+  and returns to the form with its text. Starting a template stops what is
+  running, and Send is off meanwhile.
+- **Batch** asks one question of many situations: one per line, pasted or from a
+  text or CSV file, at most 200. Rows run one at a time from the browser, and a
+  row is redrawn only when it changes. Rows belong to the form as sent, so editing
+  it cannot change later rows. Table on wide screens, cards on phones, with the
+  word as a column and the filters All, Close calls and unsure, Failed. Stop keeps
+  finished rows and offers Continue; Retry failed; Export CSV, where a cell that
+  could run as a formula is prefixed. Leaving the app stops the batch between
+  rows, and coming back offers Continue. A boosted navigation does not stop it.
+- **View code** gives cURL and JavaScript for the current form with the
+  `$LOCALBASE_API_KEY` placeholder. A real key is never in the page.
+- **Not built:** image and audio inputs, multiple questions in one request, and
+  comparing against an expected answer. Follow-ups if asked for.
+- **Checks:** `TestDecisionsPage`, `tools/jstest/decisions.test.ts` (band edges,
+  a model with its own row, each type, requests, code, CSV), and
+  `tools/chat-runs-check.sh` walks templates, every word, Stop, a reload, saved
+  examples and a batch against the fake backend, whose state text (`fake:close`,
+  `fake:unsure`, `fake:leaning`, `fake:slow`) reaches each word. The real
+  model has been run only through the calibration tool, not through this page.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to

@@ -6,6 +6,7 @@
     <h1 id="lab-title" class="page-title">{{.ToolName}}</h1>
   </div>
 
+  {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
   <section aria-labelledby="results-title" class="lab-results mt-4">
     <h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for 30 minutes</span></h2>
     {{template "lab-result" .}}
@@ -13,6 +14,7 @@
     {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
   </section>
   {{if .Ready}}<div class="lab-dock-spacer" aria-hidden="true"></div>{{end}}
+  {{end}}
 
   {{if eq .Tab "image"}}
   {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" "image"}}{{else}}
@@ -158,6 +160,89 @@
 <script src="{{asset "js/lab.js"}}" type="module"></script>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
 <script src="{{asset "js/video.js"}}" type="module"></script>
+{{if eq .Tab "decisions"}}<script src="{{asset "js/decisions.js"}}" type="module"></script>{{end}}
+{{end}}
+
+{{/* Decisions (DESIGN §22.17): decisions.js draws the options, the answer and
+     the batch from what it keeps in this browser. */}}
+{{define "decisions"}}
+<div data-decisions class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
+  {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" "decision"}}{{else}}
+  <form id="decide" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
+    <fieldset class="decide-types">
+      <legend class="sr-only">Question type</legend>
+      <label><input type="radio" name="decide-type" value="choice" class="sr-only" checked>Pick one</label>
+      <label><input type="radio" name="decide-type" value="noul" class="sr-only">Yes or no</label>
+      <label><input type="radio" name="decide-type" value="score" class="sr-only">Rate</label>
+    </fieldset>
+    <p id="decide-error" role="alert" class="decide-error" hidden></p>
+    <div data-form-open class="mt-3 grid gap-3">
+      <label class="grid gap-1"><span class="font-semibold" data-situation-title>Situation</span>
+        <textarea id="decide-situation" class="input min-h-20" rows="3" autocomplete="off"></textarea></label>
+      <div data-batch-tools class="flex flex-wrap items-center gap-2" hidden>
+        <button type="button" class="btn btn-quiet" data-pick-file>Load a file</button>
+        <input type="file" accept=".txt,.csv,text/plain,text/csv" class="sr-only text-base" data-batch-file tabindex="-1" aria-label="Situations file">
+        <span class="text-sm text-muted" data-situation-count></span>
+      </div>
+      <div data-options>
+        <p class="mb-1 font-semibold" data-options-title>Options</p>
+        <ul class="grid gap-2" data-option-rows></ul>
+        <button type="button" class="btn btn-quiet mt-1" data-add-option>Add an option</button>
+      </div>
+      <div><button type="button" class="btn btn-quiet" data-code aria-haspopup="dialog">View code</button></div>
+    </div>
+    <div data-form-summary class="decide-form-summary" hidden>
+      <div class="min-w-0 flex-1">
+        <p class="truncate" data-summary-situation></p>
+        <p class="truncate text-sm text-muted" data-summary-options></p>
+      </div>
+      <button type="button" class="btn btn-quiet shrink-0" data-edit>Edit</button>
+    </div>
+    <div data-result class="mt-3" hidden></div>
+    <div data-batch class="mt-3" hidden></div>
+    <div class="lab-dock-spacer" aria-hidden="true"></div>
+    <div class="lab-dock" data-docked>
+      <div class="composer-box lab-box">
+        <div class="lab-chips">
+          <button type="button" class="chip lab-chip gap-1" data-open-sheet="decide-template" data-template-chip aria-haspopup="dialog"><span class="font-normal text-muted">Template</span> <span data-value>None</span></button>
+          <button type="button" class="chip lab-chip gap-1" data-batch-chip aria-pressed="false"><span class="font-normal text-muted">Batch</span> <span data-value>Off</span></button>
+          {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+        </div>
+        {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask a question" "Action" "Decide")}}
+      </div>
+      {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    </div>
+  </form>
+  <p id="decide-said" class="sr-only" role="status"></p>
+
+  <dialog id="decide-template" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="decide-template-title">
+    {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Template")}}
+    <p class="px-5 pb-2 text-sm text-muted">Fills in the question. Nothing runs until you send it.</p>
+    <ul class="list-group mx-4 mb-3" data-templates></ul>
+    <div data-saved-box hidden>
+      <h3 class="list-label mx-5 mt-0">Saved in this browser</h3>
+      <ul class="list-group mx-4 mb-3" data-saved></ul>
+    </div>
+  </dialog>
+
+  <dialog id="decide-code" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="decide-code-title">
+    {{template "sheet-head" (dict "ID" "decide-code-title" "Title" "View code")}}
+    <div class="grid gap-2 px-4 pb-3">
+      <fieldset class="decide-types">
+        <legend class="sr-only">Language</legend>
+        <label><input type="radio" name="decide-code-lang" value="curl" class="sr-only" checked>cURL</label>
+        <label><input type="radio" name="decide-code-lang" value="js" class="sr-only">JavaScript</label>
+      </fieldset>
+      <p class="text-sm text-muted" data-code-note hidden>This is the request for the first line. A batch sends one per line.</p>
+      <pre class="decide-code" tabindex="0" aria-label="Request code"><code data-code-text></code></pre>
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm text-muted">Set <code>LOCALBASE_API_KEY</code> to your API key.</p>
+        <button type="button" class="btn btn-quiet shrink-0" data-copy-code>Copy</button>
+      </div>
+    </div>
+  </dialog>
+  {{end}}
+</div>
 {{end}}
 
 {{/* The prompt with its one action, a round button inside the field (the

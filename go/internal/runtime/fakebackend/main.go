@@ -172,8 +172,8 @@ func main() {
 			return
 		}
 		answers := map[string]any{}
-		for id := range req.Questions {
-			answers[id] = map[string]any{"type": "noul", "noul": 0.5}
+		for id, q := range req.Questions {
+			answers[id] = fakeDecision(q, req.State)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"model": name, "answers": answers,

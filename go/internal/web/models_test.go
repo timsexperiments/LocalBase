@@ -132,6 +132,7 @@ func TestRecipeCompact(t *testing.T) {
 // claims: no "best", "fastest", "faster", "top-rated" in any template.
 func TestNoRankingCopy(t *testing.T) {
 	files, _ := filepath.Glob("templates/*.html")
+	files = append(files, "static/js/decisions.js", "static/js/decision-read.js")
 	ranking := regexp.MustCompile(`(?i)\b(best|fastest|faster|top-rated|smartest|most popular)\b`)
 	comment := regexp.MustCompile(`(?s)\{\{/\*.*?\*/\}\}`)
 	for _, f := range files {

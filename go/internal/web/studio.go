@@ -11,9 +11,9 @@ import (
 // shows the person's latest results.
 
 // studioTools are the tools with a page, in landing order.
-var studioTools = []string{"image", "video", "speech", "transcribe"}
+var studioTools = []string{"image", "video", "speech", "transcribe", "decisions"}
 
-var studioNames = map[string]string{"image": "Image", "video": "Video", "speech": "Speech", "transcribe": "Transcribe"}
+var studioNames = map[string]string{"image": "Image", "video": "Video", "speech": "Speech", "transcribe": "Transcribe", "decisions": "Decisions"}
 
 // studioCard is one tool on the landing.
 type studioCard struct {
@@ -37,6 +37,8 @@ func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool
 		return p.Can("inference:speech"), len(u.labModels("tts")) > 0, "speech"
 	case "transcribe":
 		return p.Can("inference:transcription"), len(u.labModels("stt")) > 0, "transcription"
+	case "decisions":
+		return p.Can("inference:decision"), len(u.decisionModels()) > 0, "decisions"
 	}
 	return false, false, ""
 }
@@ -48,6 +50,7 @@ func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 		"video":      "A short clip from words or a picture.",
 		"speech":     "Turn a script into a voice.",
 		"transcribe": "Record or upload, and get the words.",
+		"decisions":  "Ask a question, and see the odds.",
 	}
 	var cards []studioCard
 	for _, tool := range studioTools {
@@ -87,6 +90,17 @@ func (u *UI) studioTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.lab(w, r, tool)
+}
+
+// decisionModels are the selected models that answer typed questions.
+func (u *UI) decisionModels() []labModel {
+	var out []labModel
+	for _, m := range u.labModels("llm") {
+		if s := u.d.Catalog.ByID(m.ID); s != nil && s.IsDecision() {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // labRedirect keeps old Lab links working.

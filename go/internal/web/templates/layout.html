@@ -155,7 +155,7 @@
 <span aria-hidden="true" class="art art-{{.}}">
 {{if eq . "video"}}<svg viewBox="0 0 24 24" class="size-6" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
 {{else if eq . "speech"}}<i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-{{else if eq . "transcribe"}}<i></i><i></i><i></i>
+{{else if or (eq . "transcribe") (eq . "decisions")}}<i></i><i></i><i></i>
 {{end}}
 </span>
 {{end}}

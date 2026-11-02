@@ -337,3 +337,50 @@ func TestImageDelete(t *testing.T) {
 		t.Errorf("after the last: %q %v", w.Body.String(), f.calls)
 	}
 }
+
+// Decisions has a landing card and its three states; its words and odds are
+// drawn in the browser (tools/jstest/decisions.test.ts, chat-runs-check).
+func TestDecisionsPage(t *testing.T) {
+	cat, _ := catalog.Load("")
+	cfg := &store.Config{Selected: map[string][]string{"llm": {"qwen3.5-4b-q4_k_m", "clef-flash-q4_k_m"}}}
+	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
+	perms := []string{"models:read", "inference:decision"}
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: perms}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm,
+		Call: func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
+			return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
+		}})
+	if main := mainRe.FindString(get(u, "/app/studio").Body.String()); !strings.Contains(main, `<a href="/app/studio/decisions" class="studio-card">`) {
+		t.Errorf("no landing card: %s", main)
+	}
+	body := get(u, "/app/studio/decisions").Body.String()
+	main := mainRe.FindString(body)
+	for _, want := range []string{`id="decide"`, `name="decide-type" value="choice"`, `name="decide-type" value="noul"`, `name="decide-type" value="score"`,
+		`data-open-sheet="decide-template"`, `name="question"`, `name="model" value="clef-flash-q4_k_m"`, `id="decide-code"`, `aria-label="Decide"`} {
+		if !strings.Contains(main, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	// Only decision models answer here, and one model needs no choosing.
+	if strings.Contains(main, "qwen3.5") || strings.Contains(main, `data-open-sheet="lab-model"`) {
+		t.Errorf("a chat model or a one-way choice: %s", main)
+	}
+	if !strings.Contains(body, "decisions.js") {
+		t.Error("the page's script is missing")
+	}
+
+	p.Permissions = []string{"models:read"}
+	denied := mainRe.FindString(get(u, "/app/studio/decisions").Body.String())
+	if !strings.Contains(denied, "Your access does not include decisions.") || strings.Contains(denied, `id="decide"`) {
+		t.Errorf("denied: %s", denied)
+	}
+	p.Permissions = perms
+	cfg.Selected["llm"] = []string{"qwen3.5-4b-q4_k_m"}
+	none := mainRe.FindString(get(u, "/app/studio/decisions").Body.String())
+	if !strings.Contains(none, "No decision model yet") || strings.Contains(none, `id="decide"`) {
+		t.Errorf("no model: %s", none)
+	}
+	if main := mainRe.FindString(get(u, "/app/studio").Body.String()); !strings.Contains(main, `href="/app/models/get?filter=decisions"`) {
+		t.Errorf("no way to get a model: %s", main)
+	}
+}

@@ -232,6 +232,120 @@ else {
   await sleep(600);
   check((await ev(`document.querySelector("#voice-list [data-play]").getAttribute("aria-pressed")`)) === "true", "Play shows as pressed while it plays");
 }
+// --- Decisions (DESIGN §22.17) --------------------------------------------------
+await nav("/app/studio/decisions");
+if (!(await ev(`!!document.getElementById("decide")`))) {
+  console.log("skip decisions (no decision model selected)");
+} else {
+  const typeTop = `document.querySelector(".decide-types").getBoundingClientRect().top`;
+  const pick = (id) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
+  const situation = (text) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
+  const send = `document.querySelector("#decide button[type=submit]").click()`;
+  const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-word") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
+  const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-label")].map((n) => n.firstChild.textContent), said: document.getElementById("decide-said").textContent })`;
+  const decisionRuns = async () => (await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.label === "Decision").map((x) => x.status))`));
+
+  const top = await ev(typeTop);
+  await ev(pick("route"));
+  check((await decisionRuns()).length === 0 && (await ev(`document.getElementById("lab-prompt").value`)).includes("team") && !(await ev(`document.querySelector("[data-result]").hidden === false`)), "a template fills the form and runs nothing");
+
+  await ev(`document.querySelector("input[name=decide-type][value=noul]").click()`);
+  check((await ev(typeTop)) === top && (await ev(`document.querySelector("[data-options]").hidden`)), "the question type stays put; yes or no needs no options");
+  await ev(`document.querySelector("input[name=decide-type][value=choice]").click()`);
+
+  await ev(send);
+  await finished();
+  const strong = await ev(read);
+  check(strong.word === "Strongly favored" && /^billing/.test(strong.verdict) && strong.labels[0] === "billing" && /Strongly favored: billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
+  check((await ev(`document.querySelector("[data-result]").textContent.includes("not a check that it is right")`)), "the standing line is under the answer");
+  check((await ev(`document.querySelector("[data-form-open]").hidden && !document.querySelector("[data-form-summary]").hidden`)) && (await ev(typeTop)) === top, "the form collapses to a summary, and the type did not move");
+  await sleep(200);
+  check((await decisionRuns()).length === 0, "the run is deleted once its answer is here");
+
+  await ev(`document.querySelector("[data-code]:not([data-form-open] *)").click()`);
+  const code = await ev(`({ open: document.getElementById("decide-code").open, text: document.querySelector("[data-code-text]").textContent })`);
+  check(code.open && code.text.includes("$LOCALBASE_API_KEY") && code.text.includes("/v1/systemone") && code.text.includes("billing"), "View code shows the request with the key as a placeholder");
+  await ev(`document.querySelector("input[name=decide-code-lang][value=js]").click()`);
+  check((await ev(`document.querySelector("[data-code-text]").textContent.includes("process.env.LOCALBASE_API_KEY")`)), "and JavaScript");
+  await ev(`document.getElementById("decide-code").close()`);
+
+  await ev(`document.querySelector("[data-edit]").click()`);
+  await ev(situation("fake:close it could be either"));
+  await ev(send);
+  await sleep(300); await finished();
+  const close = await ev(read);
+  check(close.word === "Close call" && /^billing or shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+
+  await ev(`document.querySelector("[data-edit]").click()`);
+  await ev(situation("fake:unsure"));
+  await ev(send);
+  await sleep(300); await finished();
+  check((await ev(read)).word === "Unsure", "no answer past half reads Unsure");
+
+  await ev(pick("urgent"));
+  await ev(send);
+  await sleep(300); await finished();
+  const scale = await ev(read);
+  check(scale.labels.join() === "low,medium,high" && /^low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
+
+  await ev(`document.querySelector("[data-edit]").click()`);
+  await ev(`(() => { document.querySelector("input[name=decide-type][value=choice]").click(); for (const n of document.querySelectorAll("[data-remove-option]")) document.querySelector("[data-remove-option]")?.click(); })()`);
+  await ev(send);
+  const none = await ev(`({ error: document.getElementById("decide-error").textContent, q: document.getElementById("lab-prompt").value })`);
+  check(/at least two options/.test(none.error) && none.q.length > 0, `too few options: says so and keeps the question: ${none.error}`);
+
+  // Stop, and finding a run again after a reload.
+  await ev(pick("route"));
+  await ev(situation("fake:slow one"));
+  await ev(send);
+  await sleep(300);
+  check((await ev(`!!document.querySelector("[data-result] [aria-busy] .skeleton") && !!document.querySelector("[data-stop]")`)), "while deciding: its place, and Stop");
+  await ev(`document.querySelector("[data-stop]").click()`);
+  await sleep(400);
+  check((await ev(`document.querySelector("[data-result]").hidden && !document.querySelector("[data-form-open]").hidden`)) && (await ev(`document.getElementById("decide-situation").value`)).includes("fake:slow"), "Stop returns to the form with its text");
+  await ev(send);
+  await sleep(400);
+  await nav("/app/studio/decisions");
+  check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-word")`)), "a reload finds the question still running");
+  await sleep(1000);
+  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-word")`)); i++) await sleep(100);
+  check((await ev(read)).word === "Strongly favored", "and then its answer");
+
+  // Saved examples stay in this browser.
+  await ev(`document.querySelector("[data-save]").click()`);
+  await nav("/app/studio/decisions");
+  await ev(`document.querySelector("[data-open-sheet=decide-template]").click()`);
+  check((await ev(`document.querySelector("#decide-template [data-saved] [data-template]")?.textContent.includes("Which team")`)), "a saved example is there after a reload");
+  await ev(`document.querySelector("#decide-template [data-unsave]").click()`);
+  check((await ev(`document.querySelector("[data-saved-box]").hidden`)), "and can be deleted");
+  await ev(`document.getElementById("decide-template").close()`);
+
+  // A batch.
+  await ev(pick("route"));
+  await ev(`document.querySelector("[data-batch-chip]").click()`);
+  await ev(situation("one\nfake:close two\nfake:unsure three\n=SUM(1)\nfive"));
+  check((await ev(`document.querySelector("[data-situation-count]").textContent`)) === "5 situations", "a batch counts its lines");
+  await ev(send);
+  for (let i = 0; i < 80 && (await ev(`!/5 of 5/.test(document.querySelector("[data-batch-summary]")?.textContent ?? "")`)); i++) await sleep(100);
+  const summary = await ev(`document.querySelector("[data-batch-summary]").textContent`);
+  check(summary === "5 of 5 done, 2 to review", `the batch says how it went: ${summary}`);
+  await ev(`document.querySelector("input[name=decide-filter][value=review]").click()`);
+  const visible = await ev(`[...document.querySelectorAll(".decide-row:not(.decide-row-head)")].filter((n) => !n.hidden).map((n) => n.querySelector(".decide-word").textContent)`);
+  check(visible.join() === "Close call,Unsure", `the filter leaves close calls and unsure: ${visible}`);
+  await ev(`document.querySelector("input[name=decide-filter][value=all]").click()`);
+  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "the batch fits the phone");
+  await ev(`document.querySelector("[data-edit]").click()`);
+  await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
+  await ev(send);
+  await sleep(3600);
+  await ev(`document.querySelector("[data-batch-stop]").click()`);
+  await sleep(500);
+  const stopped = await ev(`({ s: document.querySelector("[data-batch-summary]").textContent, more: !document.querySelector("[data-batch-continue]").hidden })`);
+  check(/^1 of 3 done/.test(stopped.s) && stopped.more, `Stop keeps finished rows and offers Continue: ${JSON.stringify(stopped)}`);
+  await ev(`document.querySelector("[data-batch-chip]").click()`);
+  await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
+}
+
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);
