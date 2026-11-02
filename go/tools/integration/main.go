@@ -49,7 +49,7 @@ func main() {
 	check(run("", "git", "fetch", "-q", "origin"))
 	if !*resume {
 		// Only ever removes this tool's own worktree.
-		exec.Command("git", "worktree", "remove", "--force", *dir).Run()
+		_ = exec.Command("git", "worktree", "remove", "--force", *dir).Run()
 		check(run("", "git", "worktree", "prune"))
 		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
 	}

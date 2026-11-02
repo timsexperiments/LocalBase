@@ -55,3 +55,9 @@ char-logs
 
 # UI
 ui-v2-host
+
+# Correctness review fixes
+fix-backend-stop
+fix-run-toolcalls
+fix-run-shutdown
+fix-run-cursor
