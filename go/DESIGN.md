@@ -614,6 +614,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A tool-call delta with an index outside 0-127, or a fractional one, stays out of a run's accumulated `output`. The stream still carries it. Runs are Go-only (§21), so TS has no matching route.
 
 ### M1 (done 2026-10-19)
 
