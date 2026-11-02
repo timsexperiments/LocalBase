@@ -552,6 +552,49 @@ wait:
 	s.mu.Unlock()
 }
 
+// PreviewAdmission is what a request for id would meet now, computed as doSwitch
+// does, changing nothing and without installing. A memory refusal comes before a
+// missing install where the real path preflights from the catalog (TS).
+func (s *Service) PreviewAdmission(ctx context.Context, id string) (memory.AdmissionPreview, memory.Demand, error) {
+	var demand memory.Demand
+	if s.d.Gate == nil {
+		return memory.AdmissionPreview{}, demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
+	}
+	t, err := s.d.Gate(id)
+	if err != nil {
+		return memory.AdmissionPreview{}, demand, err
+	}
+	demand = s.demand(t)
+	spec := s.d.Catalog.ByID(id)
+	var missing error
+	if spec != nil && !t.Imported && t.Variant.ID == "default" {
+		if ok, _ := spec.Installation(s.d.ModelsDir); !ok {
+			missing = &NotInstalledError{ModelID: id}
+		}
+	}
+	if missing != nil && !preflightsFromCatalog(s.d.Modality, spec, t) {
+		return memory.AdmissionPreview{}, demand, missing
+	}
+	p := s.d.Memory.Preview(ctx, demand, append([]string{s.d.Modality}, s.d.Recovery.idleIDs(s.d.Modality)...))
+	if s.Running() == id {
+		p.Err = nil // already loaded: nothing to admit
+	}
+	if p.Err == nil && missing != nil {
+		return p, demand, missing
+	}
+	return p, demand, nil
+}
+
+// Activity is the request count behind Busy: a backend runs one at a time.
+func (s *Service) Activity() (inFlight, queued int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.busy && !s.switching {
+		inFlight = 1
+	}
+	return inFlight, len(s.queue)
+}
+
 // Running reports the resident model.
 // Snapshot reports the service for /health (the LLM's Snapshot fields).
 func (s *Service) Snapshot() Snapshot {

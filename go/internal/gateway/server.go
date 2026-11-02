@@ -93,6 +93,8 @@ func New(s *Server) *Server {
 	}
 	mux.HandleFunc("/health/ready", s.ready)
 	mux.HandleFunc("/_localbase/instance", s.instance)
+	mux.HandleFunc("/_localbase/host", s.guard("models:read", s.hostAPI))
+	mux.HandleFunc("/_localbase/computer-name", s.computerNameAPI)
 	mux.HandleFunc("/_localbase/default-model", s.defaultModel)
 	mux.HandleFunc("/_localbase/placement-state", s.placementRuntimeState)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
@@ -298,8 +300,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	probe := r.Clone(r.Context())
 	_, probe.Pattern = s.mux.Handler(probe)
 	label, family, segments := routeLabel(probe)
-	ctx, span := s.Otel.Start(otlp.Extract(r.Context(), r.Header), r.Method+" "+label, otlp.KindServer,
-		"http.request.method", r.Method, "http.route", label)
+	ctx, span := r.Context(), (*otlp.Span)(nil)
+	if r.URL.Path != uiPollPath {
+		ctx, span = s.Otel.Start(otlp.Extract(r.Context(), r.Header), r.Method+" "+label, otlp.KindServer,
+			"http.request.method", r.Method, "http.route", label)
+	}
 	span.SetAttr("localbase.request_id", id)
 	if family != "" {
 		span.SetAttr("localbase.route.family", family)
@@ -337,8 +342,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(auth); i += 2 {
 			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
 		}
-		if (label == "/health" || label == "/health/ready") && status < 400 {
-			return // successful probes are not logged
+		if quietRoute(label, r.URL.Path) && status < 400 {
+			return // successful probes and polls are not logged
 		}
 		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
 		attrs := []any{"event", "http.request", "category", "http", "request_id", id,
