@@ -3211,7 +3211,11 @@ result; now the stream is its `result`, as `text/event-stream`.
 - `TestLabImageSeed`, and `tools.test.ts` for the chat tool.
 - The fake sd-server now honors `n` and `seed` as measured above.
 
-**Where the audio comes from (2026-11-02, FE thread's report of clicks).**
+**Known limitation: clicks in Qwen3-TTS speech (2026-11-02, FE thread's report).**
+An upstream `tts-server`/vocoder artifact, not a gateway fault; there is no
+gateway change (operator, 2026-11-02). In 73 requests of ordinary prose, 8
+(about 11%) had a burst of at least 3 sample jumps over 12,000 or one over
+20,000, and 12 (about 16%) had any jump over 12,000.
 Evidence: a recording proxy between the gateway and `tts-server`, on a scratch
 gateway. Nobody has listened to this audio; it was checked by analysis only.
 - **The gateway adds nothing:** in 73 of 73 requests the WAV's samples were
@@ -3241,10 +3245,37 @@ passes is `-n 256`, the frame cap, as TS does; no sampling flags. The same
 So the length is the model's own, varying by about a third, and the cap cuts
 speech that would have finished (5 of 8 ran past 256). Lists run up to about
 2.8 frames a character, so about 85 characters stays under the cap on this small
-sample. Raising `SpeechMaxFrames` is the one setting that would help. It is
-unchanged here: it departs from TS, and its memory and context limits were not
-measured. Sampling flags did not help the cap. Bursts were 2 of 10 as shipped
+sample. Sampling flags did not help the cap. Bursts were 2 of 10 as shipped
 and 0 of 10 for both sampling variants, too few to conclude anything.
+
+**What a higher frame cap costs (2026-11-02).** `SpeechMaxFrames` stays 256
+(TS parity, operator). Measured once for a possible opt-in, on this machine
+(Metal), with 256 characters of numbers as the worst input and context 2048
+unless noted. Vulkan and CPU were not measured.
+
+| Cap | Frames reached | Time per request | Peak RSS | Footprint |
+| --- | --- | --- | --- | --- |
+| 256 (shipped) | 256, 4 of 4 | 6.4–7.0 s (14.6 s with the load) | 3.41 GiB | 2.6 GB |
+| 512 | 498–512, 3 of 4 at the cap | 12.0–13.0 s | 3.42 GiB | 2.3–2.6 GB |
+| 1024 | 458–599, none at the cap | 11.5–14.7 s | 3.42 GiB | 2.6 GB |
+
+- **Memory:** no measurable change; a higher cap only lets a request run longer.
+  The admission reservation was 4.11 GiB.
+- **Context:** 1024 ran 512 frames fine (2 of 2 at the cap), with 0.1 GiB less
+  peak RSS. At 600, both runs stopped short (417, 428 frames); that may be the
+  context or natural stopping, so 600 is not known to be enough. 2048 covers
+  every cap measured here.
+- **Time:** about 0.025 s a frame, well inside the gateway's 120 s speech timeout
+  here. A request running all the way to 1024 was not seen; by that rate it would
+  take about 26 s.
+- **Benefit:** narrow. Prose stayed under 256 (182–189 frames for 255 characters).
+  Only digit-heavy text gains, and 512 still cuts the worst input.
+
+**Proposal, not built, for the user to decide:** an opt-in `speech.max-frames`
+in `go_settings` (default 256, allowed 256–1024, a Go-only setting like
+`speech.provenance-marking`, so rollback stays safe), shown in doctor and config.
+It takes effect when `tts-server` next loads, applies to `tts-server` only, and
+the PCM limit and truncation flag follow it.
 
 **Known flake: `TestUnloadScope`.** One macOS CI run (41407289747, on
 `rewrite/go-fe-studio-speech`) failed only in Go's temp-dir cleanup, "directory
@@ -3253,9 +3284,9 @@ appeared in the scratch root during teardown, and which file is unknown. Not
 reproduced: 470 parallel runs of the test (150 under `-race`), and 3 full
 `-race` package runs with the CPUs saturated. Delaying the `footprint` peak write
 in `LLM.watch`, which `Close` does not wait for, did not reproduce it either (240
-runs), though that test did not confirm the delayed write ran. Treat a repeat of
-exactly this message as this flake. If it recurs, list the root's contents at
-that point.
+runs), though that test did not confirm the delayed write ran. Gateway test roots now use `scratchDir`, so a repeat fails with the files left
+behind (paths, sizes, ages, never contents), and says whether a retry cleared
+them: `TestRemoveScratch`.
 
 **Contract tests:** image admission tests need free memory and should not
 run alongside other model loads (`harness_test.go`).

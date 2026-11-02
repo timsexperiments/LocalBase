@@ -92,7 +92,7 @@ func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *run
 // newTestGatewayWith also installs and selects extra LLMs.
 func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*httptest.Server, *runtime.LLM, *memory.Controller) {
 	t.Helper()
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
 		t.Fatal(err)

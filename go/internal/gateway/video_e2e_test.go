@@ -49,7 +49,7 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	if _, _, _, ok := runtime.VideoTarget(memory.Topology{Unified: true}); !ok {
 		t.Skip("video runs on macOS arm64 here")
 	}
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
 		t.Fatal(err)

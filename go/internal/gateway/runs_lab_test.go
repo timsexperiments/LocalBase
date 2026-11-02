@@ -38,7 +38,7 @@ func newImageGateway(t *testing.T, imageModel string) *httptest.Server {
 	if goruntime.GOOS != "darwin" {
 		t.Skip("the image runtime target here is Metal")
 	}
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
 		t.Fatal(err)

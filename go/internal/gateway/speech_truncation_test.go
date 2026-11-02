@@ -29,7 +29,7 @@ const speechModel = "qwen3-tts-1.7b-base-q4_k_m"
 // tts-server.
 func newSpeechGateway(t *testing.T, logs io.Writer) *httptest.Server {
 	t.Helper()
-	dir := t.TempDir()
+	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
 		t.Fatal(err)
