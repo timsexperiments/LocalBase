@@ -11,6 +11,22 @@
 - [ ] The first-run story is accepted: **a fresh install has no browser sign-in** until a provider is set up.
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
 
+## Decisions needed from the owner
+
+Drafted for the owner; the recommendations are proposals, not decisions.
+
+| Decision | Options | Recommended |
+| --- | --- | --- |
+| **Disclosure** of the 0.1.0 issue in `go/docs/merge-readiness.md` §4 | A security advisory and docs; docs only; or patch 0.1.0 first. Publish now or with 0.2.0 | An advisory and docs, published with 0.2.0 at the latest |
+| **Identity cleanup** | Support purge of closed PR refs; also rewrite `main`; or accept the address on `main` | Support purge, accept the address on `main`, and fix account settings before squashing #403 |
+| **Memory reserve default** | Keep 15%, at least 8 GiB, which stops any model loading on an 8 GiB Mac; or change it, such as 10%, at least 3 GiB. See `go/docs/memory-reserve.md` | 10%, at least 3 GiB, **after** a check on a real 8 or 16 GiB Mac. Otherwise keep today's and say so in the README |
+| **Speech marking and C2PA** | Marking on, no C2PA, as today; pass C2PA through; or marking off by default | Keep marking on. Leave C2PA for later |
+| **Transcription language default** | English, as 0.1.0 does; or auto-detect on multilingual models | Auto-detect on multilingual models |
+| **DCO** | No sign-off, inbound = outbound, as drafted; or require sign-off and enforce it in CI | No sign-off |
+| **`good first issue` issues** | Create the proposed list; change it; or none yet | Create it after 0.2.0 ships, when contributors can use a release |
+| **TypeScript retirement date** | A gate; or a fixed date. See [retirement](typescript-retirement.md) | The gate. A date adds nothing while its checks are open |
+| **Video, microphone and NVIDIA verification** | Each one can block the release, or ship as documented as unverified | Microphone and real-phone checks block, because they cover what people use first. Run video if a 25.6 GiB window comes up, otherwise ship it marked unverified. NVIDIA doesn't block, because the docs say it isn't qualified |
+
 ## Merge order
 
 Docs merge after what they describe. Arrows are stacks; each PR merges after the one before it.

@@ -26,3 +26,22 @@ path = "go/internal/web/static/app.css"
 precedence = "override"
 SPDX-FileCopyrightText = ["TimsExperiments", "Tailwind Labs, Inc."]
 SPDX-License-Identifier = "AGPL-3.0-or-later AND MIT"
+
+[[annotations]]
+path = "go/internal/web/static/fonts/figtree-*"
+precedence = "override"
+SPDX-FileCopyrightText = "2022 The Figtree Project Authors"
+SPDX-License-Identifier = "OFL-1.1"
+
+[[annotations]]
+path = "go/internal/web/static/fonts/newsreader-*"
+precedence = "override"
+SPDX-FileCopyrightText = "2020 The Newsreader Project Authors"
+SPDX-License-Identifier = "OFL-1.1"
+
+# The font license texts themselves.
+[[annotations]]
+path = "go/internal/web/static/fonts/LICENSE-*"
+precedence = "override"
+SPDX-FileCopyrightText = ["2022 The Figtree Project Authors", "2020 The Newsreader Project Authors"]
+SPDX-License-Identifier = "OFL-1.1"

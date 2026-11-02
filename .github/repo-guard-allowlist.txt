@@ -3,3 +3,10 @@
 #
 # Recorded video fixture for the gateway tests (6.3 MB of JSON text).
 go/internal/gateway/testdata/video.json
+#
+# The web interface's self-hosted fonts and app icons.
+go/internal/web/static/brand/app-icon-180.png
+go/internal/web/static/brand/app-icon-192.png
+go/internal/web/static/brand/app-icon-512.png
+go/internal/web/static/fonts/figtree-latin-wght-v1.woff2
+go/internal/web/static/fonts/newsreader-latin-wght-v1.woff2
