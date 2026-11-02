@@ -16,7 +16,7 @@ sh install.sh
 | --- | --- | --- |
 | `LOCALBASE_VERSION` | `latest` | Release to install, such as `0.2.0` |
 | `LOCALBASE_INSTALL_DIR` | `~/.local/bin` | Where the binary goes |
-| `LOCALBASE_LICENSE_DIR` | `~/.local/share/local-base/licenses` | Where the license texts go |
+| `LOCALBASE_LICENSE_DIR` | `~/.local/share/doc/local-base` | Where the license texts go |
 | `LOCALBASE_RELEASE_URL` | GitHub releases | Download from this base URL instead |
 
 ## Manual install and verification
@@ -73,6 +73,7 @@ Output goes to the user journal (`journalctl --user -u 'local-base-gateway-*'`).
 local-base stop
 local-base uninstall --yes                     # removes the service and the data directory
 rm -f ~/.local/bin/local-base ~/.local/bin/local-base.previous
+rm -rf ~/.local/share/doc/local-base
 ```
 
 **`uninstall` deletes all LocalBase data, including downloaded models, API keys and custom voices.** To keep the data, run only `local-base stop` and remove the binary. Chat history lives in your browser and isn't affected.
