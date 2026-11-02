@@ -83,6 +83,24 @@ vv?.addEventListener("resize", () => {
 });
 document.addEventListener("htmx:afterSettle", syncKeyboard);
 
+// --- generated pictures -------------------------------------------------------------
+// Results are kept for a while. A picture whose file is gone, or that will not
+// decode, shows its drawing and "Expired" instead of a broken-image icon.
+function pictureGone(img) {
+  img.hidden = true;
+  img.parentElement?.querySelector("[data-result-gone]")?.removeAttribute("hidden");
+}
+function checkPictures() {
+  for (const img of document.querySelectorAll("img[data-result-img]")) if (img.complete && !img.naturalWidth) pictureGone(img);
+}
+// Load errors do not bubble: listen in the capture phase. Pictures that failed
+// before this module ran are found by checkPictures.
+document.addEventListener("error", (event) => {
+  if (event.target.matches?.("img[data-result-img]")) pictureGone(event.target);
+}, true);
+document.addEventListener("htmx:afterSettle", checkPictures);
+checkPictures();
+
 // --- polled status ----------------------------------------------------------------
 // A polled region says what it shows in data-announce; the sentence goes to
 // the live region named by data-announce-into only when it changes, so a

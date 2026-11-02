@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -107,7 +108,25 @@ type labItemView struct {
 	ID, Tool, Status, Caption, Message string
 	Prompt                             string // to try again (empty for a file)
 	Image, Audio, Transcript           string
+	Ago                                string // "2 min ago"
 	Active                             bool
+}
+
+// agoText is how long ago something happened, in words.
+func agoText(t, now time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	switch d := now.Sub(t); {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d h ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d d ago", int(d.Hours()/24))
+	}
 }
 
 // labItem describes a run for the tray, collecting its result the first
@@ -115,7 +134,7 @@ type labItemView struct {
 func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	owner := u.caller(r).OwnerID()
 	tool := labTargets[run.Target]
-	v := labItemView{ID: run.ID, Tool: tool, Status: run.Status, Active: run.Status == "queued" || run.Status == "in_progress"}
+	v := labItemView{ID: run.ID, Tool: tool, Status: run.Status, Active: run.Status == "queued" || run.Status == "in_progress", Ago: agoText(run.CreatedAt, time.Now())}
 	note := u.notes.get(owner, run.ID)
 	if note != nil {
 		v.Caption, v.Prompt = note.caption, note.prompt

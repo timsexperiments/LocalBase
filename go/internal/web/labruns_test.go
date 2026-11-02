@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -191,5 +192,25 @@ func TestLabRedirects(t *testing.T) {
 	}
 	if w := get(u, "/app/studio/bogus"); w.Code != http.StatusNotFound {
 		t.Errorf("unknown tool: %d", w.Code)
+	}
+}
+
+// A generated picture carries its fallback (drawing and "Expired"), hidden
+// until shell.js finds the file gone; the times are in words.
+func TestResultImageFallback(t *testing.T) {
+	f := &fakeRuns{status: "completed"}
+	u := New(Deps{NoAuth: true, Call: f.call})
+	out := get(u, "/app/lab/runs/run_1").Body.String()
+	if !strings.Contains(out, `data-result-img>`) || !strings.Contains(out, `data-result-gone hidden>`) || !strings.Contains(out, "<b>Expired</b>") {
+		t.Errorf("no fallback: %s", out)
+	}
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	for d, want := range map[time.Duration]string{10 * time.Second: "just now", 2 * time.Minute: "2 min ago", 3 * time.Hour: "3 h ago", 50 * time.Hour: "2 d ago"} {
+		if got := agoText(now.Add(-d), now); got != want {
+			t.Errorf("%v: %q", d, got)
+		}
+	}
+	if agoText(time.Time{}, now) != "" {
+		t.Error("no time should say nothing")
 	}
 }

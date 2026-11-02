@@ -3399,14 +3399,23 @@ not "Create", because transcribing and deciding are not creating.
   picture), one line of purpose, and the caption of its last result. A tool
   with no model says "Needs a model" and the whole card links to Get models
   filtered to that task. A tool the account may not use says so and is not
-  a link.
+  a link. The caption is one line with a relative time.
+- **Expired results.** A generated picture carries its fallback: if the file
+  is gone or will not decode, `shell.js` shows the tool's drawing and
+  "Expired", never a broken-image icon (Save and Share hide with it).
 - **Tool pages.** A back link and the tool's name replace the four-way
   switch. The tray holds that tool's results only. Without a model or
   permission the page shows only that state, not a prompt.
 - **Waiting.** An active result is a `.skeleton` of its own shape with its
   state in words; the shimmer stops with reduced motion.
 - **Checks:** `TestStudioLanding`, `TestLabRedirects`, `TestLabImageRun`
-  (tray per tool, Recent), `tools/chat-runs-check.sh`, `phone-check`, `axe`.
+  (tray per tool, Recent), `TestResultImageFallback`,
+  `tools/chat-runs-check.sh` (a real PNG decodes; a missing file falls back),
+  `phone-check`, `axe`. `phone-check` now seeds a result with a long prompt,
+  so pages are checked with content in them, and fails when a card or list
+  leaves the 16 px gutter at 360, 390 or 430 px; page overflow alone had
+  missed this (cards were 1000 px wide once a long caption was present).
+  The fake backend's images are now real PNGs.
 - **Known limits of the backend, for the tool pages:** video runs only at
   each model's fixed profile (no duration or aspect presets; more qualified
   profiles are a product decision); `/v1/systemone` is not a run target.

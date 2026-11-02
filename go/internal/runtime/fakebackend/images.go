@@ -7,6 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"os"
 	"regexp"
@@ -17,19 +20,28 @@ import (
 
 var fakeSeedRe = regexp.MustCompile(`<sd_cpp_extra_args>.*"seed":(\d+).*</sd_cpp_extra_args>`)
 
-// fakePNG is a PNG header and sd-server's "parameters" text, enough for the
-// gateway to read the seed.
+// fakePNG is a real small picture a browser can decode, its colors following the
+// seed, with sd-server's "parameters" text, enough for the gateway to read the
+// seed.
 func fakePNG(prompt string, seed int64) string {
-	chunk := func(buf *bytes.Buffer, kind string, data []byte) {
-		binary.Write(buf, binary.BigEndian, uint32(len(data)))
-		body := append([]byte(kind), data...)
-		buf.Write(body)
-		binary.Write(buf, binary.BigEndian, crc32.ChecksumIEEE(body))
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for y := range 64 {
+		for x := range 64 {
+			img.Set(x, y, color.RGBA{uint8(seed*37) + uint8(x), uint8(seed*91) + uint8(y), 180, 255})
+		}
 	}
+	var encoded bytes.Buffer
+	png.Encode(&encoded, img)
+	raw := encoded.Bytes()
+	const afterIHDR = 8 + 25 // the signature, then the first chunk
 	var b bytes.Buffer
-	b.WriteString("\x89PNG\r\n\x1a\n")
-	chunk(&b, "tEXt", []byte(fmt.Sprintf("parameters\x00%s\nSteps: 4, Seed: %d, Size: 256x256, SDCPP: {\"seed\":%d}", prompt, seed, seed)))
-	chunk(&b, "IEND", nil)
+	b.Write(raw[:afterIHDR])
+	data := []byte(fmt.Sprintf("parameters\x00%s\nSteps: 4, Seed: %d, Size: 256x256, SDCPP: {\"seed\":%d}", prompt, seed, seed))
+	binary.Write(&b, binary.BigEndian, uint32(len(data)))
+	body := append([]byte("tEXt"), data...)
+	b.Write(body)
+	binary.Write(&b, binary.BigEndian, crc32.ChecksumIEEE(body))
+	b.Write(raw[afterIHDR:])
 	return base64.StdEncoding.EncodeToString(b.Bytes())
 }
 

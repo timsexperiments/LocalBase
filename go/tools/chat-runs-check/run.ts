@@ -120,6 +120,11 @@ else {
   await sleep(2000);
   await nav("/app/studio");
   check(await ev(`!!document.querySelector(".studio-recent a[href='/app/studio/image']")`), "the landing's Recent shows it");
+  check(await ev(`document.querySelector(".studio-recent img")?.naturalWidth > 0`), "a real picture decodes");
+  // A file that is gone shows the drawing and "Expired", never a broken icon.
+  await ev(`new Promise((done) => { const img = document.querySelector(".studio-recent img"); img.addEventListener("error", () => setTimeout(done, 50), { once: true }); img.src = "/app/lab/results/gone"; })`);
+  const gone = await ev(`(() => { const box = document.querySelector(".studio-recent .result-img"); return { img: box.querySelector("img").hidden, shown: !box.querySelector("[data-result-gone]").hidden, text: box.textContent.trim() }; })()`);
+  check(gone.img && gone.shown && gone.text === "Expired", `an expired result falls back: ${JSON.stringify(gone)}`);
   await nav("/app/studio/speech");
   check(await ev(`document.querySelectorAll("#lab-items > li").length === 0`), "another tool's tray does not");
   await nav("/app/studio/image");

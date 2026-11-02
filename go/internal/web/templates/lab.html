@@ -169,7 +169,7 @@
 {{/* One result in the tray. While its run is active it polls itself. */}}
 {{define "lab-item"}}
 <li id="run-{{.ID}}" class="lab-item lab-item-{{.Tool}}"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
-  {{with .Image}}<img src="{{.}}" alt="{{if $.Caption}}{{$.Caption}}{{else}}Generated image{{end}}" class="lab-image">{{end}}
+  {{with .Image}}<span class="block aspect-square overflow-hidden rounded-xl">{{template "result-image" (dict "Src" . "Alt" (or $.Caption "Generated image") "Class" "lab-image" "Tool" "image")}}</span>{{end}}
   {{if .Active}}<p class="lab-progress skeleton {{if eq .Tool "image"}}aspect-square{{end}}">{{.Message}}</p>{{end}}
   {{with .Audio}}<audio controls src="{{.}}" class="w-full"></audio>{{end}}
   {{if .Transcript}}<p class="whitespace-pre-wrap wrap-anywhere" data-transcript>{{.Transcript}}</p>{{end}}

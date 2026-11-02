@@ -8,8 +8,8 @@
     {{if .Recent}}
     <ul class="studio-recent">
       {{range .Recent}}
-      <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{end}}">
-        {{if .Image}}<img src="{{.Image}}" alt="" class="studio-tile-img">
+      <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{else}}{{with .Ago}}, {{.}}{{end}}{{end}}">
+        {{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
         {{else if .Active}}<span class="skeleton studio-tile-img"></span>
         {{else}}{{template "studio-art" .Tool}}{{end}}
       </a></li>
@@ -35,23 +35,14 @@
 {{end}}
 
 {{define "studio-card-body"}}
-<span class="studio-art-box">{{if .Image}}<img src="{{.Image}}" alt="" class="studio-tile-img">{{else}}{{template "studio-art" .Tool}}{{end}}</span>
+<span class="studio-art-box">{{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}{{else}}{{template "studio-art" .Tool}}{{end}}</span>
 <span class="min-w-0 flex-1">
   <span class="block font-bold">{{.Name}}</span>
   <span class="block text-sm text-muted">{{.Line}}</span>
   {{if eq .State "needs"}}<span class="pill pill-warn mt-1">Needs a model</span>
   {{else if eq .State "denied"}}<span class="pill mt-1">Not on your account</span>
-  {{else if .Last}}<span class="block truncate text-sm text-muted">Last: {{.Last}}</span>{{end}}
+  {{else if .Last}}<span class="block truncate text-sm text-muted">{{with .LastAgo}}{{.}} · {{end}}{{.Last}}</span>{{end}}
 </span>
 {{if .Href}}{{template "icon-chevron"}}{{end}}
 {{end}}
 
-{{/* A small drawing of what a tool makes. */}}
-{{define "studio-art"}}
-<span aria-hidden="true" class="art art-{{.}}">
-{{if eq . "video"}}<svg viewBox="0 0 24 24" class="size-6" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
-{{else if eq . "speech"}}<i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-{{else if eq . "transcribe"}}<i></i><i></i><i></i>
-{{end}}
-</span>
-{{end}}

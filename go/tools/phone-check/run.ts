@@ -91,6 +91,18 @@ const clipped = `(() => {
   }
   return out;
 })()`;
+// Cards and lists keep the page's 16 px gutter on phones. Page overflow alone
+// misses a card wider than its column inside something that clips or scrolls.
+const gutters = `(() => {
+  const w = document.documentElement.clientWidth, out = [];
+  for (const el of document.querySelectorAll(".list-group, .studio-card, .group-card, .card, .lab-item, .empty-state, .segmented, .notice")) {
+    if (el.closest("dialog, [hidden], [popover]")) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    if (r.right > w - 15.5 || r.left < 15.5) out.push(el.tagName.toLowerCase() + "." + [...el.classList].slice(0, 2).join(".") + " spans " + Math.round(r.left) + " to " + Math.round(r.right) + " of " + w);
+  }
+  return out;
+})()`;
 const visible = (sel: string) => `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return false; const r = el.getBoundingClientRect(); return getComputedStyle(el).display !== "none" && r.width > 0 && r.height > 0; })()`;
 
 let failures = 0;
@@ -98,6 +110,15 @@ const fail = (label: string, msg: string) => { failures++; console.log(`FAIL ${l
 
 await send("Page.enable");
 await send("Runtime.enable");
+// A real result with a long prompt, so the pages are checked with content in
+// them and not only empty. Needs an image model; skipped without one.
+await viewport(390, 844, true);
+await open("/app/studio/image");
+if (await evaluate(`!!document.querySelector("#lab-prompt")`)) {
+  await evaluate(`(() => { document.querySelector("#lab-prompt").value = ${JSON.stringify("A long prompt to stretch whatever shows it " + "unbrokenwordunbrokenword".repeat(4) + " and some more words after it")}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 30 && !(await evaluate(`!!document.querySelector("#lab-items img")`)); i++) await sleep(250);
+}
+
 for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [430, 932, true], [1280, 900, false]] as const) {
   await viewport(width, height, mobile);
   for (const path of pages) {
@@ -107,6 +128,7 @@ for (const [width, height, mobile] of [[360, 740, true], [390, 844, true], [430,
     const o = await evaluate(overflow);
     if (o.scroll > 0) fail(label, `scrolls sideways by ${o.scroll}px (${o.wide.join(", ")})`);
     for (const c of (await evaluate(clipped)).slice(0, 6)) fail(label, c);
+    if (mobile) for (const g of (await evaluate(gutters)).slice(0, 4)) fail(label, `outside the gutter: ${g}`);
     const small = await evaluate(smallTargets);
     for (const s of small.slice(0, 6)) fail(label, `target under 44px: ${s}`);
     const tabbar = await evaluate(visible("nav.tabbar"));

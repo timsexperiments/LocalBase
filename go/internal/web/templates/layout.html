@@ -149,3 +149,17 @@
   </div>
 </details>
 {{end}}
+
+{{/* A small drawing of what a tool makes. */}}
+{{define "studio-art"}}
+<span aria-hidden="true" class="art art-{{.}}">
+{{if eq . "video"}}<svg viewBox="0 0 24 24" class="size-6" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
+{{else if eq . "speech"}}<i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+{{else if eq . "transcribe"}}<i></i><i></i><i></i>
+{{end}}
+</span>
+{{end}}
+
+{{/* A generated picture. shell.js shows the drawing and "Expired" if the file
+     is gone or will not decode, so there is never a broken-image icon. */}}
+{{define "result-image"}}<span class="result-img"><img src="{{.Src}}" alt="{{.Alt}}" class="{{.Class}}" data-result-img><span class="result-gone" data-result-gone hidden>{{template "studio-art" .Tool}}<b>Expired</b></span></span>{{end}}

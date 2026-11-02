@@ -21,6 +21,7 @@ type studioCard struct {
 	Href             string
 	State            string // ready | needs | denied
 	Image, Last      string // the latest result: picture, or its caption
+	LastAgo          string
 }
 
 // toolAvailable says whether a person may use a tool and whether it has a
@@ -66,7 +67,7 @@ func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 				c.Image = it.Image
 			}
 			if c.Last == "" && it.Caption != "" {
-				c.Last = it.Caption
+				c.Last, c.LastAgo = it.Caption, it.Ago
 			}
 		}
 		cards = append(cards, c)

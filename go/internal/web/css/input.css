@@ -614,7 +614,8 @@
     @apply size-full;
   }
   .studio-cards {
-    @apply grid gap-2 min-[700px]:grid-cols-2;
+    /* minmax(0, 1fr): a long one-line caption must not widen the column. */
+    @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[700px]:grid-cols-[repeat(2,minmax(0,1fr))];
   }
   .studio-card {
     @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-ink;
@@ -683,5 +684,24 @@
 @keyframes lb-shimmer {
   to {
     transform: translateX(100%);
+  }
+}
+
+/* A result whose file is gone (kept 30 minutes): its drawing and a word. */
+@layer components {
+  .result-img {
+    @apply relative block size-full;
+  }
+  .result-gone {
+    @apply absolute inset-0 grid place-items-center bg-surface-muted;
+  }
+  .result-gone > .art {
+    @apply absolute inset-0 opacity-60;
+  }
+  .result-gone > b {
+    @apply relative rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-muted;
+  }
+  .lab-item:has([data-result-gone]:not([hidden])) :is([data-share], a[download]) {
+    @apply hidden;
   }
 }
