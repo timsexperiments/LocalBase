@@ -37,6 +37,21 @@ func freshRootModel(t *testing.T, root, id, src string, data []byte) {
 	}
 }
 
+// freshRootInit is init plus the small launch and reserves the other end-to-end
+// tests use, so a tiny model fits on a small CI runner with admission still on.
+// It sets memory and launch size only: models stay as init left them.
+func freshRootInit(t *testing.T, e *e2e, tmp string) {
+	t.Helper()
+	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
+		t.Fatalf("init: %s", r.stderr)
+	}
+	cfg := filepath.Join(tmp, "small.toml")
+	mustWriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
+	if r := e.cli(nil, "--non-interactive", "configure", "--config", cfg); r.code != 0 {
+		t.Fatalf("configure: %s%s", r.stdout, r.stderr)
+	}
+}
+
 // TestFreshRootFirstInstall runs what a new user does, with nothing seeded in
 // the database: init, list, install, chat. The deadlock it guards against: the
 // default model could not be installed because it was selected, nor disabled
@@ -61,9 +76,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 		serveBytes(w, r, data)
 	}), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
-	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
-		t.Fatalf("init: %s", r.stderr)
-	}
+	freshRootInit(t, e, tmp)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
 	freshRootModel(t, e.root, freshSecond, src.URL, second)
 	e.serve("--no-auth")
@@ -195,9 +208,7 @@ func TestFreshRootCLIInstall(t *testing.T) {
 	tiny := ggufFile(t, "qwen3", nil, 64*1024)
 	src := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveBytes(w, r, tiny) }), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
-	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
-		t.Fatalf("init: %s", r.stderr)
-	}
+	freshRootInit(t, e, tmp)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
 	if r := e.cli(nil, "--non-interactive", "models", "install", freshTiny); r.code != 0 {
 		t.Fatalf("install: %s", r.stderr)
