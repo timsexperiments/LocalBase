@@ -979,12 +979,39 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// eventCursor reads where a stream resumes: Last-Event-ID, or else ?after=. No
+// cursor is the start.
+func eventCursor(req *http.Request) (int, bool) {
+	raw := req.Header.Get("Last-Event-ID")
+	if raw == "" {
+		raw = req.URL.Query().Get("after")
+	}
+	if raw == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(raw)
+	return n, err == nil && n >= 0
+}
+
+// eventsAfter is what a stream has yet to send. The lock is released however
+// this ends: a run whose lock stays taken wedges every later caller.
+func (r *run) eventsAfter(after int) (pending []runEvent, notify chan struct{}, ended bool, total int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if after < len(r.events) {
+		pending = append(pending, r.events[after:]...)
+	}
+	return pending, r.notify, r.terminal() && r.EndedAt != nil, len(r.events)
+}
+
 // events streams a run: everything after Last-Event-ID (or ?after=), then
 // live, with a comment keep-alive, until the end event (DESIGN §21.3).
 func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
-	after, _ := strconv.Atoi(req.Header.Get("Last-Event-ID"))
-	if a, err := strconv.Atoi(req.URL.Query().Get("after")); err == nil && req.Header.Get("Last-Event-ID") == "" {
-		after = a
+	after, ok := eventCursor(req)
+	if !ok {
+		writeError(w, req, 400, "invalid_request_error", "invalid_event_cursor",
+			"The event cursor must be a whole number, 0 or more.", nil)
+		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -1021,15 +1048,7 @@ func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
 	ping := time.NewTicker(m.ping)
 	defer ping.Stop()
 	for {
-		r.mu.Lock()
-		var pending []runEvent
-		if after < len(r.events) {
-			pending = append(pending, r.events[after:]...)
-		}
-		notify := r.notify
-		ended := r.terminal() && r.EndedAt != nil
-		total := len(r.events)
-		r.mu.Unlock()
+		pending, notify, ended, total := r.eventsAfter(after)
 		for _, e := range pending {
 			if !write(e) {
 				return
