@@ -4221,6 +4221,34 @@ unchanged.
 The FE thread styles it. The contract is `web.LoginHelp{Local bool}`: a template that
 gets this one flag and shows the command, nothing else from the server.
 
+### 25.4a Threat model
+
+**What it protects against:**
+- Someone elsewhere on the network, or arriving through a tunnel or standard reverse
+  proxy, using a link or a session. They fail the loopback rule on every request.
+- A web page in a browser on this computer. Rebinding fails the `Host` check, and
+  cross-site requests fail the same-origin rules and the `SameSite=Strict` cookie.
+- A link in a log, a preview or a prefetch. The token is in the fragment, so it is not
+  sent to any server, and a `GET` never spends it.
+- A copy of the database or a diagnostics bundle being replayed. Only hashes are stored.
+- Guessing. Tokens are 32 random bytes, and redeem failures are rate limited.
+
+**What it does not protect against:**
+- **Anyone who can run commands as this user, or read the terminal or its scrollback,
+  within the 10 minutes.** They could already run the CLI, which has full control.
+- **Another account or process on this computer that gets the link before you use it.**
+  Anything that can reach loopback and holds the token can redeem it.
+- **Malware or a browser extension in your browser session.** The session has every
+  permission, and nothing stops code acting as you in that browser.
+- **Traffic on loopback.** It is plain HTTP, which does not leave the machine, but a
+  privileged local process could read it.
+- **A proxy that rewrites `Host` to loopback and strips every proxy header.** It looks
+  exactly like a local request. This setup is unsupported in front of a local session.
+- **Reviewing who did what.** Audit events say a local session acted. Every local
+  session is the same owner, `local`, not a named person.
+
+It is not sign-in for other people or devices. Those need an identity provider.
+
 ### 25.5 Telemetry
 
 `audit.local-login-issued` and `audit.local-login-redeemed`, with `link_id` (the first
