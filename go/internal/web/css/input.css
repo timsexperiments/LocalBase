@@ -621,7 +621,7 @@
   /* The prompt sits above the tab bar on phones, above the keyboard while
      typing, and at the bottom of the page column on desktops. */
   .lab-dock {
-    @apply fixed inset-x-0 z-20 border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-2 lg:sticky lg:bottom-0 lg:mt-6 lg:border-0 lg:bg-transparent lg:px-0 lg:pb-4;
+    @apply fixed inset-x-0 z-20 border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-2 lg:sticky lg:bottom-0 lg:mt-6 lg:border-0 lg:px-0 lg:pb-4;
     bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom)); /* the bar and its top border */
   }
   html[data-typing] .lab-dock {
@@ -939,10 +939,10 @@
     @apply grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-surface-muted p-1;
   }
   .decide-types label {
-    @apply flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+    @apply border border-transparent flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
   }
   .decide-types label:has(:checked) {
-    @apply bg-surface text-ink shadow-sm ring-1 ring-line;
+    @apply bg-surface text-ink shadow-sm ring-1 ring-line border-[var(--lb-edge)];
   }
   .decide-types label:has(:focus-visible),
   .decide-filter:has(:focus-visible) {

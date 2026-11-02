@@ -740,7 +740,7 @@ const measure = `(() => {
     const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
     if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));
   }
-  for (const [sel, side] of [[".tab[aria-current=page]", "Top"], [".segmented > a[aria-current=page]", "Top"], [".nav-item[aria-current=page]", "Left"]]) {
+  for (const [sel, side] of [[".tab[aria-current=page]", "Top"], [".segmented > a[aria-current=page]", "Top"], [".nav-item[aria-current=page]", "Left"], [".decide-types label:has(:checked)", "Top"]]) {
     for (const el of document.querySelectorAll(sel)) {
       if (!seen(el)) continue;
       const n = ratio(rgb(getComputedStyle(el)["border" + side + "Color"]), behind(el));
@@ -758,7 +758,7 @@ for (const scheme of ["light", "dark"]) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
   for (const [w, h] of [[390, 844], [1280, 800]]) {
     await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
-    for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings", "/app/studio/image"]) {
+    for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings", "/app/studio/image", "/app/studio/decisions"]) {
       await nav(path);
       const low = await ev(measure);
       check(low.length === 0, `${scheme} ${w}: boundaries and selection marks on ${path} are at least 3:1${low.length ? ": " + low.join(", ") : ""}`);
