@@ -58,7 +58,7 @@ func serveCommand() *cli.Command {
 		opt("stt-model-file", "<file>", "STT model filename override"),
 		opt("tts-model-file", "<file>", "TTS backbone model filename override"),
 		opt("image-model-file", "<file>", "Image model filename override"),
-		flag("auth", "Enable API key authentication (--no-auth disables it)"),
+		flag("auth", "Enable API key authentication (--no-auth disables it, on loopback only)"),
 		opt("auth-mode", "<bearer|x-api-key|either>", "Authentication header mode"),
 		flag("bypass-memory-check", "Start despite model memory warnings"),
 		opt("log-level", "<debug|info|warn|error>", "Minimum event severity (default info)"),
@@ -148,6 +148,11 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	if h := c.String("llm-host"); h != "" {
 		cfg.Host = h
+	}
+	if noAuth {
+		if err := noAuthHostError(listenHost); err != nil {
+			return nil, err
+		}
 	}
 	// Hold the operation lease (or claim the one a service start handed off)
 	// until this process owns the gateway lock.
@@ -313,6 +318,12 @@ func serve(c *cli.Ctx) (any, error) {
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))
 	if err != nil {
 		return nil, err
+	}
+	if noAuth {
+		if err := noAuthListenerError(ln.Addr()); err != nil {
+			ln.Close()
+			return nil, err
+		}
 	}
 	httpServer := &http.Server{Handler: srv, ReadHeaderTimeout: 30 * time.Second}
 
