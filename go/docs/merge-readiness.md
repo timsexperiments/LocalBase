@@ -194,6 +194,12 @@ commit it is.
 | Pages | `/app/studio/*` is gone; bookmarks there break | the same; the old UI |
 | Browser history | stays in the browser | stays in the browser |
 
+**Rolling back to TS reopens a permissions gap.** In TS, a browser session can read the
+model list and run inference through the UI whatever its policy grants, including an
+account the policy does not name. Admin routes stay guarded. Go refuses these (`DESIGN.md`
+§13.6 item 11). While on TS, restrict who can sign in at the identity provider, or don't
+expose the UI publicly.
+
 **After either rollback, delete `<root>/runs/*.json` by hand.** Those binaries don't
 sweep it, so model output stays on disk in plaintext until a newer build starts.
 Restoring a placement choice needs nothing: rows are kept for when Go returns.
