@@ -4148,6 +4148,12 @@ accelerator bytes against the GPU limit.
 - A model not on disk answers `admitted: false` with
   `model_install_consent_required`. For an LLM its figures are then `null`, because the
   real path checks the install first. Image and STT report memory first, as they do.
+- **`?assumeInstalled=1` answers the memory question alone,** for a model not yet on
+  disk: `admitted`, the figures, and `refusal` only for memory (`model_too_large` with
+  `permanent: true`, or `insufficient_memory`). The verdict is the real `evaluate` on
+  what the model is expected to need. That figure is an estimate: `demandSource` says
+  which (`estimated`, `measured`, `feed`, `observed` or `derived`), and it can change
+  once the file's real geometry can be read.
 - A video refusal has `jobFailure: true` and `status: null`, because the request is accepted
   and the job then fails (§13.6).
 - Readiness is not promised: a model can pass and still fail to start.

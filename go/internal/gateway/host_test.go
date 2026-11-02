@@ -387,3 +387,55 @@ func TestQuietRoutes(t *testing.T) {
 		}
 	}
 }
+
+// With assumeInstalled, a model not on disk gets the memory answer instead of the
+// install refusal: admitted, or the same refusal an installed model would get.
+func TestAdmissionPreviewAssumeInstalled(t *testing.T) {
+	const absent = "qwen3.5-4b-q4_k_m"
+	path := "/_localbase/models/" + absent + "/admission"
+	ts, _, _ := newTestGateway(t, host{})
+	code, p := getJSON(t, ts.URL+path+"?assumeInstalled=1")
+	if code != 200 || p["admitted"] != true || p["refusal"] != nil || p["requestedBytes"].(float64) <= 0 || p["reserveBytes"].(float64) <= 0 || p["availableBytes"].(float64) <= 0 || p["demandSource"] == "" {
+		t.Errorf("fits: %d %v", code, p)
+	}
+	if _, plain := getJSON(t, ts.URL+path); plain["admitted"] != false || plain["refusal"].(map[string]any)["code"] != "model_install_consent_required" {
+		t.Errorf("without the parameter: %v", plain)
+	}
+	ts, _, _ = newTestGateway(t, fixedHost{8 * memory.GiB, 7 * memory.GiB})
+	_, p = getJSON(t, ts.URL+path+"?assumeInstalled=1")
+	ref, _ := p["refusal"].(map[string]any)
+	if p["admitted"] != false || ref == nil || ref["code"] != "model_too_large" || ref["permanent"] != true || ref["status"] != 422.0 {
+		t.Errorf("can never fit: %v", p)
+	}
+	ts, _, _ = newTestGateway(t, fixedHost{64 * memory.GiB, 10 * memory.GiB})
+	_, p = getJSON(t, ts.URL+path+"?assumeInstalled=1")
+	ref, _ = p["refusal"].(map[string]any)
+	if p["admitted"] != false || ref == nil || ref["code"] != "insufficient_memory" || ref["permanent"] != false {
+		t.Errorf("low right now: %v", p)
+	}
+	// The same figure the model would be admitted with once installed: the estimate
+	// does not depend on the files being present.
+	ts, _, _ = newTestGatewayWith(t, host{}, absent)
+	_, installed := getJSON(t, ts.URL+"/_localbase/models/"+absent+"/admission")
+	ts, _, _ = newTestGateway(t, host{})
+	_, assumed := getJSON(t, ts.URL+path+"?assumeInstalled=1")
+	t.Logf("installed %v (%v), assumed %v (%v)", installed["requestedBytes"], installed["demandSource"], assumed["requestedBytes"], assumed["demandSource"])
+	if installed["requestedBytes"] != assumed["requestedBytes"] {
+		t.Errorf("estimate %v, installed %v", assumed["requestedBytes"], installed["requestedBytes"])
+	}
+}
+
+func TestAdmissionPreviewAssumeInstalledThroughUI(t *testing.T) {
+	if got := forwardedQuery("/_localbase/models/x/admission", mustGet(t, "/app/api/_localbase/models/x/admission?assumeInstalled=1&other=2")); got != "assumeInstalled=1" {
+		t.Errorf("forwarded %q", got)
+	}
+}
+
+func mustGet(t *testing.T, target string) *http.Request {
+	t.Helper()
+	r, err := http.NewRequest("GET", "http://127.0.0.1"+target, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}

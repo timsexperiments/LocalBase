@@ -255,6 +255,8 @@ func forwardedQuery(target string, r *http.Request) string {
 		key = "after"
 	case strings.HasPrefix(target, "/_localbase/models/") && strings.HasSuffix(target, "/unload"):
 		key = "wait"
+	case strings.HasPrefix(target, "/_localbase/models/") && strings.HasSuffix(target, "/admission"):
+		key = "assumeInstalled"
 	}
 	if v := r.URL.Query().Get(key); key != "" && v != "" {
 		return url.Values{key: {v}}.Encode()

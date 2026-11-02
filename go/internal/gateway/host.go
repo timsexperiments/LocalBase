@@ -296,6 +296,9 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 		name    = "llm"
 		service = "LLM"
 	)
+	// ?assumeInstalled=1 answers the memory question alone, for a model not yet
+	// on disk. The real request would first need the install.
+	assume := r.URL.Query().Get("assumeInstalled") == "1"
 	if spec := s.Catalog.ByID(id); spec != nil {
 		name = spec.Kind
 	} else if _, _, err := s.LLM.Resolve(id); err != nil {
@@ -304,7 +307,7 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 	}
 	switch name {
 	case "llm":
-		preview, demand, err = s.LLM.PreviewAdmission(r.Context(), id)
+		preview, demand, err = s.LLM.PreviewAdmission(r.Context(), id, assume)
 	default:
 		svc := s.service(name)
 		if svc == nil {
@@ -312,7 +315,7 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 			return
 		}
 		service = map[string]string{"stt": "STT", "tts": "TTS", "image": "Image", "video": "video"}[name]
-		preview, demand, err = svc.PreviewAdmission(r.Context(), id)
+		preview, demand, err = svc.PreviewAdmission(r.Context(), id, assume)
 	}
 	if errors.Is(err, runtime.ErrModelNotFound) {
 		modelNotFound(w, r, id)

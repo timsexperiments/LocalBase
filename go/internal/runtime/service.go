@@ -555,7 +555,8 @@ wait:
 // PreviewAdmission is what a request for id would meet now, computed as doSwitch
 // does, changing nothing and without installing. A memory refusal comes before a
 // missing install where the real path preflights from the catalog (TS).
-func (s *Service) PreviewAdmission(ctx context.Context, id string) (memory.AdmissionPreview, memory.Demand, error) {
+// assumeInstalled answers the memory question alone, for a model not yet on disk.
+func (s *Service) PreviewAdmission(ctx context.Context, id string, assumeInstalled bool) (memory.AdmissionPreview, memory.Demand, error) {
 	var demand memory.Demand
 	if s.d.Gate == nil {
 		return memory.AdmissionPreview{}, demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
@@ -567,7 +568,7 @@ func (s *Service) PreviewAdmission(ctx context.Context, id string) (memory.Admis
 	demand = s.demand(t)
 	spec := s.d.Catalog.ByID(id)
 	var missing error
-	if spec != nil && !t.Imported && t.Variant.ID == "default" {
+	if spec != nil && !t.Imported && t.Variant.ID == "default" && !assumeInstalled {
 		if ok, _ := spec.Installation(s.d.ModelsDir); !ok {
 			missing = &NotInstalledError{ModelID: id}
 		}
