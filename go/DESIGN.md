@@ -3123,3 +3123,79 @@ for tests and a future Running page.
   principal's run counts as in flight.
 - `TestUnloadBrowserRoute`
 - `TestUnloadImageRuntime`: a media runtime unloads the same way.
+
+## 24. Backend facts and small additions for the studios (2026-11-01)
+
+Asked by the FE thread for the per-modality studios. Each behavior below
+was measured on 2026-11-01 on a scratch gateway with the pinned runtimes
+(`sd-server` with `dreamshaper-v8`, `tts-server` with Qwen3-TTS,
+`whisper-server` with tiny.en, `llama-server` with Clef Flash), unless it
+says otherwise.
+
+**Image `n` and `seed`.** One adapter serves images, `sd-server/v1`, on
+every platform.
+- **`n`** (1–10) is honored. All images come back in one `/v1` response,
+  so in one run `result`. A batch runs one image after another on the same
+  runtime: 3 images took about 3 times as long as 1.
+- **`seed`** (0–2147483647) is exact: the same seed, prompt and parameters
+  give byte-identical PNGs.
+- **Batches use base + i.** Image 1 of `n=2, seed=42` is byte-identical to
+  `n=1, seed=43`.
+- **No seed means seed 42.** With no seed, the runtime uses 42 every time,
+  so the same prompt gives the same image. This is unchanged here; see
+  "Open" below.
+- **Echo:** `data[i].seed` is a Go extension on `/v1/images/generations`
+  and `/edits`. It comes from the image's own PNG `parameters` text, else
+  from the requested seed + i on `sd-server/v1` (JPEG and WebP carry no
+  parameters). With neither, the field is absent, not guessed.
+- **Metadata:** sd-server's PNGs carry the prompt and parameters in that
+  text, so a shared PNG shares its prompt.
+
+**Speech.**
+- **`speed`:** only `1` is accepted, on every runtime; other values get
+  400. Nothing here implements speed.
+- **Input:** 256 code points, gateway-wide, for every runtime.
+- **Silent truncation on Qwen3-TTS:** `tts-server` stops at 256 frames,
+  20.48 s, and answers 200 with what it has. 255 characters of prose took
+  14.08 s, but 256 characters of a number list came back at exactly
+  20.48 s with the end missing. A WAV of exactly 983,084 bytes (983,040 of
+  samples) has therefore probably been cut. CrispASR and Kokoro were not
+  measured: no weights are installed here.
+- **No server-side join.** Non-streamed WAVs all have a 44-byte header and
+  the same format (24 kHz, mono, s16le), so a page can join the parts
+  itself. Runs are limited to 4 active and 32 retained per principal, so a
+  page runs parts one at a time and dismisses each after collecting it.
+
+**Transcription.** Only `whisper-server/v1` runs transcription in this
+build; the CrispASR command refuses it, and an imported `process-openai`
+backend answers in its own shape.
+- **`verbose_json`:** gives `segments[].start` and `.end` in seconds, plus
+  `segments[].words[]`. `timestamp_granularities[]=word` adds no top-level
+  `words`; word timings are under segments. A run's `result` is the same
+  body.
+- **Translations:** on an English-only model the answer is a plain
+  transcription (`task: "transcribe"`). Multilingual models were not
+  measured.
+
+**New run targets** (§21.9), labels in brackets: `/v1/audio/translations`
+("Translation") and `/v1/systemone` ("Decision"). Scopes, refusals and
+queueing are the routes' own, as for every target. A real decision run was
+accepted at once while its model loaded, and completed in 9 s.
+
+**Fix.** A run's event-stream body is parsed as chunks only for chat. A
+speech run with `stream_format: "sse"` used to end `completed` with no
+result; now the stream is its `result`, as `text/event-stream`.
+
+**Tests:**
+- `TestImageSeedFromPNG`, using real sd-server text, including a prompt
+  that imitates the field.
+- `TestAnnotateImageSeeds`, `TestImageSeedEcho`
+- `TestRunDecision`, `TestRunTranslationNotConfigured`
+- `TestRunMediaEventStreamIsItsResult`
+- The fake sd-server now honors `n` and `seed` as measured above.
+
+**Open, for the operator:**
+1. Whether a request with no seed should get a random one. That would
+   change `/v1` behavior for API clients and for chat's image tool.
+2. Whether a truncated Qwen3-TTS answer should say so, rather than a
+   plain 200. TS launches `tts-server` with the same frame limit.

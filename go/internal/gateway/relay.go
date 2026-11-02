@@ -404,6 +404,9 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	if _, has := obj["model"]; has {
 		obj["model"] = modelID // the public id, not the backend's file path
 	}
+	if o.kind == "image" {
+		annotateImageSeeds(obj, o.imageSeed)
+	}
 	if st := t.serverTiming(); st != "" {
 		w.Header().Set("Server-Timing", st)
 	}

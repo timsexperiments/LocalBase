@@ -31,16 +31,18 @@ import (
 // it over SSE, resume with Last-Event-ID, and only an explicit Stop cancels
 // it. Nothing about /v1 itself changes.
 
-// runTargets are the /v1 routes a run may wrap, with the indicator label.
 // chatTarget is the one target whose output streams and is checkpointed.
 const chatTarget = "/v1/chat/completions"
 
+// runTargets are the /v1 routes a run may wrap, with the indicator label.
 var runTargets = map[string]string{
 	"/v1/chat/completions":     "Chat",
 	"/v1/images/generations":   "Image",
 	"/v1/images/edits":         "Image edit",
 	"/v1/audio/speech":         "Speech",
 	"/v1/audio/transcriptions": "Transcription",
+	"/v1/audio/translations":   "Translation",
+	"/v1/systemone":            "Decision",
 }
 
 const (
@@ -419,7 +421,9 @@ func (w *runWriter) WriteHeader(code int) {
 	}
 	w.status = code
 	ct := strings.TrimSpace(strings.SplitN(w.header.Get("Content-Type"), ";", 2)[0])
-	w.sse = code >= 200 && code < 300 && strings.EqualFold(ct, "text/event-stream")
+	// Only chat streams become chunks; any other target's body is its result,
+	// whatever its type (speech can answer as SSE).
+	w.sse = w.r.Target == chatTarget && code >= 200 && code < 300 && strings.EqualFold(ct, "text/event-stream")
 }
 
 func (w *runWriter) Flush() {}

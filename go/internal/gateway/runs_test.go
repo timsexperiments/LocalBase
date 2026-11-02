@@ -621,7 +621,8 @@ func TestRunBrowserRoutes(t *testing.T) {
 		{"GET", "/_localbase/runs/run_1/result", true}, {"POST", "/_localbase/runs/run_1/result", false},
 		{"POST", "/_localbase/runs/v1/images/generations", true}, {"POST", "/_localbase/runs/v1/images/edits", true},
 		{"POST", "/_localbase/runs/v1/audio/speech", true}, {"POST", "/_localbase/runs/v1/audio/transcriptions", true},
-		{"POST", "/_localbase/runs/v1/audio/translations", false}, {"POST", "/_localbase/runs/v1/videos", false},
+		{"POST", "/_localbase/runs/v1/audio/translations", true}, {"POST", "/_localbase/runs/v1/systemone", true},
+		{"POST", "/_localbase/runs/v1/videos", false},
 	} {
 		if got := allowedUIRoute(c.method, c.path); got != c.ok {
 			t.Errorf("%s %s: %v", c.method, c.path, got)

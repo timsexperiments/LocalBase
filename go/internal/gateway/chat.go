@@ -356,6 +356,8 @@ type inferOpts struct {
 	// interrupted reports whether the runtime was stopped for a memory
 	// emergency mid-request.
 	interrupted func() bool
+	// imageSeed is an image request's seed, the fallback for data[i].seed.
+	imageSeed *int64
 }
 
 // inferLLM admits the request on the LLM runtime, finishes the body, and
