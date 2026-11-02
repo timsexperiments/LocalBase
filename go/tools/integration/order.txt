@@ -64,3 +64,4 @@ fix-backend-stop
 fix-run-toolcalls
 fix-run-shutdown
 fix-run-cursor
+fix-close-waits
