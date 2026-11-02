@@ -1081,6 +1081,16 @@ Contract fixtures: launched gateways run offline (dead proxies, loopback
 exempt), so a missing runtime or model fails instead of downloading, and
 `bin/runtimes` fixtures merge instead of nesting.
 
+### 13.5c The checksum cache after publishing
+
+A verified file's identity includes `ctime`, and renaming a `.partial` into place changes it. TS and
+older Go therefore hash the whole file again on the next check, which is what every video start does
+(`runtime/video.go`). Go now records the identity again right after the rename, only if the inode,
+size and mtime still match what was hashed. `ctime` stays in the identity, since it is what catches a
+rewrite that restores all of those. If the file changed in that moment, or the record can't be written,
+the next check hashes once, as before. `.checksums.json` stays valid for TS
+(`TestChecksumCacheStaysValidForTS`).
+
 ### 13.6 Status changes for the cutover checklist
 
 Live clients (naya-device-worker, t3-opencode) retry on 503 with

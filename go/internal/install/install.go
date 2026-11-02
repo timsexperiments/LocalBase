@@ -209,7 +209,7 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 		case p == a.ExpectedSizeBytes:
 			if verify(partial) == nil {
 				*phase = "publishing"
-				return os.Rename(partial, out)
+				return publish(partial, out, a, dir)
 			}
 			*phase = "preparing"
 			os.Remove(partial)
@@ -233,7 +233,43 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 		return err
 	}
 	*phase = "publishing"
-	return os.Rename(partial, out)
+	return publish(partial, out, a, dir)
+}
+
+// publish moves a verified partial to its final name, and records the file's identity
+// again: the rename changes ctime, so otherwise the next Verify, which starts every
+// video runtime, would hash the whole model a second time. ctime stays in the identity,
+// since it is what notices a rewrite that restores size, inode and mtime.
+func publish(partial, out string, a catalog.Artifact, dir string) error {
+	if err := os.Rename(partial, out); err != nil {
+		return err
+	}
+	beforeRecord()
+	recordPublished(out, a, dir)
+	return nil
+}
+
+// beforeRecord runs between the rename and the new record (tests).
+var beforeRecord = func() {}
+
+// recordPublished updates the record only if this is still the file that was hashed:
+// same inode, size and mtime as when it was verified. Anything else, including failing
+// to write, leaves the old record, which costs one extra hash and nothing more.
+func recordPublished(out string, a catalog.Artifact, dir string) {
+	withCacheLock(dir, func() error {
+		c := readCache(dir)
+		e, ok := c.Entries[a.Filename]
+		if !ok || !strings.EqualFold(e.AuthoritativeSha256, a.SHA256) || e.ExpectedSizeBytes != a.ExpectedSizeBytes {
+			return nil
+		}
+		now, err := fileIdentity(out)
+		if err != nil || now.Ino != e.File.Ino || now.Dev != e.File.Dev || now.Size != e.File.Size || now.MtimeMs != e.File.MtimeMs {
+			return nil
+		}
+		e.File = now
+		c.Entries[a.Filename] = e
+		return writeCache(dir, c)
+	})
 }
 
 func downloadError(src, token string, err error) error {
@@ -423,7 +459,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		e.ExpectedSizeBytes == a.ExpectedSizeBytes && e.File == id {
 		return "cached-identity", nil
 	}
-	actual, err := SHA256File(path)
+	actual, err := hashFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -434,19 +470,26 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 	err = withCacheLock(dir, func() error {
 		c := readCache(dir)
 		c.Entries[a.Filename] = cacheEntry{AuthoritativeSha256: digest, ExpectedSizeBytes: a.ExpectedSizeBytes, File: id}
-		b, _ := json.MarshalIndent(c, "", "  ")
-		tmp := filepath.Join(dir, fmt.Sprintf(".checksums.json.%d.%s.tmp", os.Getpid(), store.UUID()))
-		if err := os.WriteFile(tmp, b, 0o600); err != nil {
-			return err
-		}
-		if err := os.Rename(tmp, filepath.Join(dir, ".checksums.json")); err != nil {
-			os.Remove(tmp)
-			return err
-		}
-		return nil
+		return writeCache(dir, c)
 	})
 	return "sha256", err
 }
+
+func writeCache(dir string, c cacheFile) error {
+	b, _ := json.MarshalIndent(c, "", "  ")
+	tmp := filepath.Join(dir, fmt.Sprintf(".checksums.json.%d.%s.tmp", os.Getpid(), store.UUID()))
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, filepath.Join(dir, ".checksums.json")); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// hashFile is what Verify hashes with (tests count the full hashes).
+var hashFile = SHA256File
 
 // SHA256File streams a file through sha256.
 func SHA256File(path string) (string, error) {
