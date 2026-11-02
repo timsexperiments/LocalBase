@@ -352,3 +352,14 @@ func TestLabImageSeed(t *testing.T) {
 		t.Errorf("blank seeds repeat: %v", seen)
 	}
 }
+
+// Detect has to ask for it: with no language, the runtime takes the speech as English.
+func TestTranscribeDetectsLanguage(t *testing.T) {
+	html, err := templateFS.ReadFile("templates/lab.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `name="language" value="auto" data-label="Detect language" checked`) {
+		t.Error("Detect does not send language=auto")
+	}
+}

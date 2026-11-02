@@ -169,7 +169,7 @@
     <dialog id="lab-language" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-language-title">
       {{template "sheet-head" (dict "ID" "lab-language-title" "Title" "Language")}}
       <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Language spoken</legend>
-        <label class="list-row cursor-pointer"><input type="radio" name="language" value="" data-label="Detect language" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Detect it</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="language" value="auto" data-label="Detect language" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Detect it</span></label>
         {{range .Languages}}<label class="list-row cursor-pointer"><input type="radio" name="language" value="{{.Code}}" data-label="{{.Name}}" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{.Name}}</span></label>{{end}}
       </fieldset>
       <label class="mx-5 mb-3 flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="translate" class="size-5 accent-[var(--lb-accent)]"> Translate to English</label>

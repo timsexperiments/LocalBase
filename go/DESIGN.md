@@ -3684,7 +3684,8 @@ Record or choose a file, and get the words with their times.
 - **Two equal starts,** Record and Choose a file (and dropping a file on a wide
   screen). Either one starts by itself: there is nothing to confirm once you have
   stopped or chosen. Language and Translate live in one sheet, on a chip that says
-  "Detect language". The browser converts to 16 kHz WAV, as before; the limit
+  "Detect language". Detect sends `language=auto`, because with no language the runtime
+  takes the speech as English (a real Spanish clip came back as confident, wrong English). The browser converts to 16 kHz WAV, as before; the limit
   works out at about 13 minutes, which recording stops at and the page says.
 - **A recording is hard to lose.** Sending starts at once, so what was sent stays in
   memory until it has become a run. A send that fails or is refused says "Your recording
@@ -3710,6 +3711,19 @@ Record or choose a file, and get the words with their times.
   only text, as subtitles would be invented.
 - **Export:** Text, Subtitles (.srt) and Web subtitles (.vtt), named by what they are
   for, built by the server from the same stretches. Copy gives the plain words.
+- **Real pass (2026-11-02, whisper-base-q8_0, scratch gateway, through this page):** files
+  only, no microphone. A 97 s clip of real speech (the Speech pass's story, known script)
+  came back at 4.2% word errors against the script, and the same clip three times over
+  (4 min 51 s) at 4.0%. Those errors mix the speech model's reading and the transcription.
+  Times held: a phrase repeating every 96.97 s landed within 0.4 s each time. SRT and VTT
+  from every clip passed a parser (format, numbering, order, no empty text). Direct API
+  time was 0.7 s and 1.9 s, with the server near 0.3 GiB. A Spanish clip made with macOS's
+  `say` was detected as Spanish once Detect sent `auto`. Translating it reported Spanish
+  but gave poor English ("The door was locked this morning" for "El puerto estaba
+  tranquilo"), so a translation is not to be trusted without checking, on this small model
+  at least. An English-only model takes `auto` safely: it stays English, and marked a
+  Spanish clip "(speaking in foreign language)". The page still offers the language
+  choices on such a model, which is a known gap.
 - **Not built:** word-level timing (`segments[].words[]` is optional), search in a
   long transcript. Chat's dictation is not reused: it records up to 60 seconds and adds the
   text to a draft in one step, with no panel, no Pause and no times, so the only code to
