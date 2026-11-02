@@ -117,8 +117,10 @@ func chooseFrom(rows []CatalogRow, disk int64) []welcomeChoice {
 	out := make([]welcomeChoice, 0, len(rows))
 	pick := -1
 	for i, row := range rows {
-		c := welcomeChoice{CatalogRow: row, Small: row.DownloadBytes < smallDownload, TooBigDisk: disk >= 0 && row.DownloadBytes > disk}
-		if row.Fit != "wont-fit" && !c.TooBigDisk && (pick < 0 || row.DownloadBytes < out[pick].DownloadBytes) {
+		c := welcomeChoice{CatalogRow: row, Small: !row.Installed && row.DownloadBytes < smallDownload, TooBigDisk: disk >= 0 && row.DownloadBytes > disk}
+		// What's already here comes first: there's nothing to download.
+		better := pick < 0 || (row.Installed && !out[pick].Installed) || (row.Installed == out[pick].Installed && row.DownloadBytes < out[pick].DownloadBytes)
+		if (row.Installed || (row.Fit != "wont-fit" && !c.TooBigDisk)) && better {
 			pick = i
 		}
 		out = append(out, c)
@@ -391,6 +393,19 @@ func (u *UI) notFound(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, p))
 	}
 	u.render(w, r, "notfound", map[string]any{})
+}
+
+// usesText says how much memory a model takes.
+func usesText(b int64) string {
+	return "Uses " + aboutGib(b) + " while running."
+}
+
+// aboutGib is a figure for a sentence: "<0.1 GiB" belongs in a table, not in words.
+func aboutGib(b int64) string {
+	if b < gibFloor {
+		return "less than 0.1 GiB"
+	}
+	return "about " + gibText(b)
 }
 
 // sizeText prints a download's size.

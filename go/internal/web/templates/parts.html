@@ -28,7 +28,7 @@
   {{else if eq .Fit "wont-fit"}}<a class="btn btn-quiet rounded-full px-4" href="/app/models/m/{{.ID}}" aria-label="Why {{.Name}} doesn’t fit">Why?</a>
   {{else if $.CanManage}}<form hx-post="/app/models/get/recipe" hx-target="#cat-{{.ID}}-action" hx-swap="innerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
-    <button type="submit" class="btn rounded-full bg-accent-soft px-5 text-accent hover:bg-accent hover:text-on-accent" aria-label="Get {{.Name}}">Get</button></form>
+    <button type="submit" class="btn btn-quiet rounded-full px-5" aria-label="Get {{.Name}}">Get</button></form>
   {{end}}
   </span>
 </li>
@@ -79,7 +79,7 @@
 <dl class="gauge-legend">
   {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>LocalBase{{with .Source}}, {{.}}{{end}}</dt><dd>{{gib .Models}}</dd></div>{{end}}
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps</dt><dd>{{gib .Other}}</dd></div>
-  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Free memory</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
 </dl>
 {{end}}

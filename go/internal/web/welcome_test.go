@@ -186,7 +186,7 @@ func TestChooseFromPicksTheSmallest(t *testing.T) {
 			if x.Pick {
 				id += x.ID
 			}
-			if x.Small != (x.DownloadBytes < smallDownload) {
+			if x.Small != (!x.Installed && x.DownloadBytes < smallDownload) {
 				t.Errorf("%s: small %v", x.ID, x.Small)
 			}
 		}
@@ -197,6 +197,12 @@ func TestChooseFromPicksTheSmallest(t *testing.T) {
 	}
 	if got := picked(chooseFrom(rows, 1_000_000_000)); got != "" {
 		t.Errorf("nothing fits the disk: %q", got)
+	}
+	// Already here: picked, with nothing to say about a download.
+	here := append([]CatalogRow{{ID: "here", DownloadBytes: 4_000_000_000, Fit: "fits", Installed: true}}, rows...)
+	c := chooseFrom(here, 100_000_000_000)
+	if got := picked(c); got != "here" || c[0].Small {
+		t.Errorf("installed: picked %q, small %v", got, c[0].Small)
 	}
 }
 
@@ -260,7 +266,7 @@ func TestStripReadsTheHost(t *testing.T) {
 	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, RootDir: t.TempDir(), Call: api})
 	r := httptest.NewRequest("GET", "/app/strip", nil).WithContext(context.WithValue(context.Background(), ctxKey{}, p))
 	strip := u.memoryStrip(r)
-	if strip["Host"] != "Attic Mac" || strip["Word"] != "Busy" || strip["Free"] != "30 GiB free" || strip["Source"] != "measured and planned" || strip["Known"] != true {
+	if strip["Host"] != "Attic Mac" || strip["Word"] != "Busy" || strip["Free"] != "30 GiB free" || strip["Source"] != "part measured, part estimated" || strip["Known"] != true {
 		t.Errorf("%+v", strip)
 	}
 	if got := gaugeSegments(strip["Other"].(int64), strip["Models"].(int64), strip["Capacity"].(int64)); got[0].Kind != "other" || got[20].Kind != "models" {
@@ -301,8 +307,8 @@ func TestForecast(t *testing.T) {
 			t.Errorf("%d: %+v", i, got[i])
 		}
 	}
-	if got[0].UsesBytes != 4000000000 {
-		t.Errorf("uses %d", got[0].UsesBytes)
+	if got := usesText(1 << 20); got != "Uses less than 0.1 GiB while running." {
+		t.Error(got)
 	}
 }
 
@@ -325,5 +331,26 @@ func TestComputerNameSave(t *testing.T) {
 	u.ServeHTTP(w, htmxPost("/app/settings/computer-name", url.Values{"name": {"Attic Mac"}, "action": {"reset"}}))
 	if sent != `{"name":""}` {
 		t.Errorf("reset: %s", sent)
+	}
+}
+
+// Running lists what its legend counts: every runtime holding memory, each with its own figure.
+func TestRunningListsEveryRuntime(t *testing.T) {
+	u := shellUI(t, nil, "")
+	u.d.Call = func(_ context.Context, _ *auth.Principal, _, _, _ string, _ []byte) APIResult {
+		return APIResult{Status: 200, Body: []byte(`{"host":{"memory":{"total":{"bytes":68719476736},"available":{"bytes":32212254720},"other":{"bytes":21474836480},"localBase":{"bytes":3221225472,"source":"mixed","runtimes":[
+			{"runtime":"image","modelId":"dreamshaper-8-lcm","bytes":2147483648,"source":"measured"},
+			{"runtime":"tts","modelId":"qwen3-tts-1.7b-base-q4_k_m","bytes":1073741824,"source":"planned"},
+			{"runtime":"stt","modelId":null,"bytes":0,"source":"planned"}]}},
+			"activity":{"busy":true,"image":{"inFlight":1,"queued":0},"tts":{"inFlight":0,"queued":0}}}}`)}
+	}
+	body := get(u, "/app/models/running").Body.String()
+	for _, want := range []string{"DreamShaper 8 LCM", "Images · 2.0 GiB, measured", "Busy · 1 request", "Speech · 1.0 GiB, estimated", `id="unload-sheet-image"`, `id="unload-sheet-tts"`, `hx-post="/app/models/unload/dreamshaper-8-lcm"`, "LocalBase, part measured, part estimated", "3.0 GiB", "2 models are loaded.", "Working on: Images."} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, "unload-sheet-stt") {
+		t.Error("a reservation with no model got a row")
 	}
 }
