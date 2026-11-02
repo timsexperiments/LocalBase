@@ -162,9 +162,11 @@ func TestModelsSwitch(t *testing.T) {
 // Without a signed-in person there is no navigation to show.
 func TestShellSignedOut(t *testing.T) {
 	u := New(Deps{})
-	body := get(u, "/app/models").Body.String()
-	if strings.Contains(body, `class="tabbar"`) || strings.Contains(body, `class="sidebar"`) || !strings.Contains(body, "Sign-in isn") {
-		t.Errorf("signed-out page: %s", body)
+	rec := get(u, "/app/models")
+	body := rec.Body.String()
+	if rec.Code != 401 || strings.Contains(body, `class="tabbar"`) || strings.Contains(body, `class="sidebar"`) ||
+		!strings.Contains(body, "Browser sign-in is not set up") {
+		t.Errorf("signed-out page: %d %s", rec.Code, body)
 	}
 }
 

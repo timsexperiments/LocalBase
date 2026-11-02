@@ -58,7 +58,7 @@ func serveCommand() *cli.Command {
 		opt("stt-model-file", "<file>", "STT model filename override"),
 		opt("tts-model-file", "<file>", "TTS backbone model filename override"),
 		opt("image-model-file", "<file>", "Image model filename override"),
-		flag("auth", "Enable API key authentication (--no-auth disables it)"),
+		flag("auth", "Enable API key authentication (--no-auth disables it: local development only, on loopback, never tunneled)"),
 		opt("auth-mode", "<bearer|x-api-key|either>", "Authentication header mode"),
 		flag("bypass-memory-check", "Start despite model memory warnings"),
 		opt("log-level", "<debug|info|warn|error>", "Minimum event severity (default info)"),
@@ -148,6 +148,11 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	if h := c.String("llm-host"); h != "" {
 		cfg.Host = h
+	}
+	if noAuth {
+		if err := noAuthHostError(listenHost); err != nil {
+			return nil, err
+		}
 	}
 	// Hold the operation lease (or claim the one a service start handed off)
 	// until this process owns the gateway lock.
@@ -289,7 +294,7 @@ func serve(c *cli.Ctx) (any, error) {
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
-	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
+	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
 		Call: func(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) web.APIResult {
@@ -297,6 +302,7 @@ func serve(c *cli.Ctx) (any, error) {
 			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}
 		},
 		Voices: voices.New(st, r.Dir).List})
+	srv.UI, srv.LoginPages = ui, ui
 	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
 	// started with, clearing a matching pending restart (TS serve).
@@ -314,6 +320,12 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if noAuth {
+		if err := noAuthListenerError(ln.Addr()); err != nil {
+			ln.Close()
+			return nil, err
+		}
+	}
 	httpServer := &http.Server{Handler: srv, ReadHeaderTimeout: 30 * time.Second}
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
@@ -329,15 +341,24 @@ func serve(c *cli.Ctx) (any, error) {
 		srv.OnReady()
 	}
 	baseURL := "http://" + ln.Addr().String()
+	var loginLink string
+	if firstRunLinkAllowed(noAuth, browser.Enabled(), os.Getenv("LOCALBASE_SERVICE_TOKEN")) {
+		loginLink = firstRunLoginLink(e, ln.Addr().String())
+	}
 	log.Info("LocalBase listening on "+baseURL, "event", "gateway.started", "root", r.Dir, "memory_gb", memoryGB, "auth", !noAuth)
 	if c.Global.JSON {
 		enabled := map[string]bool{}
 		for _, k := range store.Kinds {
 			enabled[k] = k == "llm" || len(cfg.Selected[k]) > 0
 		}
-		c.Line(map[string]any{"event": "started", "baseUrl": baseURL, "enabled": enabled})
+		line := map[string]any{"event": "started", "baseUrl": baseURL, "enabled": enabled}
+		if loginLink != "" {
+			line["loginLink"] = loginLink
+		}
+		c.Line(line)
 	} else {
 		c.Info("LocalBase gateway listening on %s", baseURL)
+		printLoginLink(c, loginLink)
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpServer.Serve(ln) }()

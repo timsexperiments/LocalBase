@@ -1210,6 +1210,34 @@ browser (`static/js/audio.js`), since the server decodes only WAV.
 `TestServeForUI` serves the contract fixture with `--no-auth` on a test
 port for checking the pages by hand.
 
+**Difference by design: `--no-auth` is loopback-only** (2026-11-02). `serve
+--no-auth` refuses a gateway host that is not loopback (127.0.0.0/8, `::1`,
+`localhost`, or a name resolving only to those), however the host was set, and
+checks the bound address again after listening. TS 0.1.0 allowed it. Backends
+always bind loopback (`runtime.BackendHost`), and the flag is the only way to turn
+authentication off. Tests: `TestHostIsLoopback`, `TestServeRefusesNoAuthBeyondLoopback`,
+`TestNoAuthOnlyOnLoopback`.
+
+**`--no-auth` is for local development only and must never be tunneled.** Binding
+loopback does not make it private: any web page in a browser on the machine can send
+it requests, a page can rebind its own name to 127.0.0.1, and a tunnel on the machine
+connects from loopback. So a `--no-auth` gateway also answers 403
+`no_auth_request_refused` to (`gateway.noAuthRefusal`):
+
+- a `Host` that is not loopback or `localhost`, on every route (stops DNS rebinding,
+  and a tunnel that keeps the public name);
+- any proxy header: `Forwarded`, `X-Forwarded-*`, `X-Real-Ip`, `Cf-Connecting-Ip`,
+  `Cf-Ray`, `Cf-Access-Jwt-Assertion`, on every route;
+- on `/v1/`, `/_localbase/`, `/app/api/` and `/app/session`, an `Origin` other than
+  this gateway's, or a `Sec-Fetch-Site` other than `same-origin` or `none`.
+
+Clients that are not browsers send neither header and are unaffected. The gateway has
+no CORS headers, so no other origin could use it properly before. A proxy that rewrites
+`Host` and strips every marker still gets through: that is the limit of what a server
+can see. With authentication on, none of this applies. Tests:
+`TestNoAuthRefusesForeignRequests`, `TestNoAuthAllowsInProcessCalls`,
+`TestAuthenticatedGatewayIgnoresTheNoAuthRules`, `TestLoopbackHost`.
+
 **Not a status change, but clients should know:** transcription with no `language`
 treats audio as English on every model, in TS and Go alike, and `language=auto`
 detects it (§24).
@@ -4132,3 +4160,168 @@ them: `TestRemoveScratch`.
 run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
+
+## 25. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
+
+Operator request, from the OSS-readiness audit. On a fresh root the browser has
+no way in: `/app/login` answers raw JSON `ui_access_denied`, and the only paths
+are configuring an identity provider or `--no-auth`. So "install, start, first
+chat" cannot end in the browser.
+
+**The idea.** Whoever can run the CLI on this root already has full control of
+it (the CLI is the break-glass path, §13.6). So the CLI may hand that same
+person a browser session, as long as the link can only be used from this
+computer.
+
+### 25.1 Issuing
+
+`local-base access login-link [--force] [--json]` prints:
+
+```text
+http://127.0.0.1:2273/app/login/once#<token>
+```
+
+- **Token:** 32 random bytes, base64url. Only its SHA-256 is stored, with a 10-minute
+  expiry, in a new Go table `local_login_links`. It is `CREATE TABLE IF NOT EXISTS`,
+  `go_schema` stays 1, and TS ignores it.
+- **One at a time:** issuing replaces any unused link.
+- **`--force` is needed when an identity provider is configured:** otherwise it
+  refuses and says so, since sign-in already exists.
+- **The URL uses the gateway's real port.** A wildcard host prints `127.0.0.1`. A
+  gateway with no loopback listener (a LAN IP only) refuses, because the link could
+  not be redeemed.
+- **It works with the gateway stopped:** the link is in the database, and the
+  output says to start it.
+
+**First-run output.** `start`, and foreground `serve`, issue and print one link
+**once**: when browser access is unconfigured and none has been shown on this root
+(`go_settings` key `access.first-run-link-shown`). It goes to the terminal only. A
+service-managed `serve` never prints it, so it cannot land in the captured service
+stderr. `--json` carries it as `loginLink` on the `started` event.
+
+**Deviation from the brief: a fragment, not `?token=`.** The token sits in the URL
+fragment and is redeemed by a same-origin POST from a hash-pinned script, exactly as
+magic links do (`MagicLinkPage`). A fragment never reaches a server log, and a link
+preview or a prefetching browser cannot use up a single-use token on GET.
+
+### 25.2 Redeeming, and the loopback rule
+
+`GET /app/login/once` serves the redeem page; `POST` takes the token. Both, and every
+later request on the resulting session, must pass **all** of:
+
+1. the socket: both `RemoteAddr` and the listener's local address are loopback;
+2. the `Host` header is a loopback literal or `localhost`, on the gateway's port;
+3. no proxy markers: `Forwarded`, `X-Forwarded-*`, `X-Real-Ip`, `Cf-Connecting-Ip`,
+   `Cf-Ray`, `Cf-Access-Jwt-Assertion`.
+
+**The socket alone is not enough:** a tunnel or reverse proxy on the same machine,
+such as this project's own Cloudflare deployment, connects from `127.0.0.1`, so a
+remote visitor also looks like a loopback client. Rules 2 and 3 are what exclude
+them, and rule 2 also stops DNS rebinding. A proxy configured to rewrite `Host` to
+loopback and strip every marker would pass; that is called out in the docs as
+unsupported in front of a local session.
+
+**Failures:** a wrong, used or expired token gets the same "This link has expired"
+page, status 410 (no oracle). Failures are limited to 10 per minute per gateway, then
+429 with `Retry-After`. A request that fails the loopback rule gets 403 and does not
+count, so a remote visitor cannot use up the local person's tries. There is at most
+one live link, so the token's hash is compared in constant time against it, and a
+single conditional `DELETE` spends it, so a double submit gets one session. `GET` only
+shows the page, so a link preview cannot spend a link.
+
+### 25.3 The session
+
+- **Cookie:** `localbase-local-session`, `HttpOnly`, `SameSite=Strict`, host-only,
+  **not** `Secure`. The existing `__Host-` cookie requires `Secure`, which Safari
+  rejects on `http://127.0.0.1`. Plain HTTP on loopback does not leave the machine.
+- **Server side:** a hashed token in a new Go table `local_sessions`. Keeping it apart
+  from the TS session rows leaves rollback untouched.
+- **Lifetime:** 12 hours idle, 7 days at most, shorter than the 7 and 30 days of
+  identity provider sessions, because nothing can review or disable this identity.
+- **At most 5 at once.** A new one ends the least recently used.
+- **Permissions: all of them, on purpose,** as `--no-auth` and the CLI have: whoever
+  can issue a link already controls the root. It deliberately does not go through the
+  role policy, and it does not count as a manager for the lockout rules (§13.6 item
+  5), because it is not an identity anyone else can see or manage. Because it bypasses
+  the policy, `login-link` refuses when an identity provider is configured unless
+  given `--force`, and the first-run link is not offered there.
+- **The same CSRF and same-origin rules** as other browser sessions, with this request's
+  loopback origin in place of the configured one.
+- **Identity:** the owner id is `local`, so runs and results (§21) belong to it.
+- **Sign out** works as usual. `local-base access login-link --revoke` removes every
+  local session and unused link. `local-base access sessions list` and `sessions revoke
+  <id>` list and end them, and `GET`/`POST /_localbase/local-sessions` does the same for
+  Admin (`sessions:read`, `sessions:revoke`; `{"action":"revoke","id":...}` or
+  `{"action":"revoke-all"}`). No response carries a token or a hash.
+- **Only from this computer.** A phone or another computer needs an identity provider.
+  The CLI says so when it prints a link.
+
+### 25.4 `/app/login` when there is no way in
+
+A navigation (`Accept` includes `text/html`) gets an HTML page, status 403, saying
+what to do; a page that needs sign-in shows the same help in place, status 401. API clients keep today's JSON, so the differential and any script are
+unchanged.
+
+| Situation | Page says |
+|---|---|
+| No access configured, request passes 25.2 | Run `local-base access login-link` in a terminal on this computer, then open the link it prints |
+| No access configured, request does not pass | Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer |
+
+The FE thread styles it. The contract is `web.LoginHelp{Local bool}`: a template that
+gets this one flag and shows the command, nothing else from the server.
+
+### 25.4a Threat model
+
+**What it protects against:**
+- Someone elsewhere on the network, or arriving through a tunnel or standard reverse
+  proxy, using a link or a session. They fail the loopback rule on every request.
+- A web page in a browser on this computer. Rebinding fails the `Host` check, and
+  cross-site requests fail the same-origin rules and the `SameSite=Strict` cookie.
+- A link in a log, a preview or a prefetch. The token is in the fragment, so it is not
+  sent to any server, and a `GET` never spends it.
+- A copy of the database or a diagnostics bundle being replayed. Only hashes are stored.
+- Guessing. Tokens are 32 random bytes, and redeem failures are rate limited.
+
+**What it does not protect against:**
+- **Anyone who can run commands as this user, or read the terminal or its scrollback,
+  within the 10 minutes.** They could already run the CLI, which has full control.
+- **Another account or process on this computer that gets the link before you use it.**
+  Anything that can reach loopback and holds the token can redeem it.
+- **Malware or a browser extension in your browser session.** The session has every
+  permission, and nothing stops code acting as you in that browser.
+- **Traffic on loopback.** It is plain HTTP, which does not leave the machine, but a
+  privileged local process could read it.
+- **A proxy that rewrites `Host` to loopback and strips every proxy header.** It looks
+  exactly like a local request. This setup is unsupported in front of a local session.
+- **Reviewing who did what.** Audit events say a local session acted. Every local
+  session is the same owner, `local`, not a named person.
+
+It is not sign-in for other people or devices. Those need an identity provider.
+
+### 25.5 Telemetry
+
+`audit.local-login-issued` and `audit.local-login-redeemed`, with `link_id` (the first
+8 characters of the token's hash), `actor_kind` and `forced`. Refusals log
+`auth.local-login-refused` with a reason (`expired`, `not-loopback`, `rate-limited`). Never
+the token, a URL with one, or a hostname.
+
+### 25.6 Rollback and tests
+
+**Rollback:** older binaries and TS ignore both tables, and `go_schema` stays 1. Local
+sessions stop working until a build that knows them returns, and the identity provider
+path is untouched. `tools/placement-rollback-check.sh` was not extended and no rollback
+drill was run; this rests on the tables being additive, as with `model_placements`.
+
+**Tests:**
+- `TestLoginLinkSingleUse`, `TestLoginLinkExpires`, `TestLoginLinkHashedAtRest`,
+  `TestLoginLinkReplacesUnused`, `TestLoginLinkRateLimited`, `TestLoginLinkSurvivesPreview`,
+  `TestLoginLinkRedeemForm`, `TestLocalSessionLifetime`, `TestLocalSessionsCappedAndRevoked`,
+  `TestLocalSessionCSRF`, `TestLocalSessionLogoutAndRevoke`.
+- `TestLocalSessionLoopbackRule`: a table over the socket, `Host` and each proxy marker,
+  on redeem and on every later request, including a tunnel-shaped request with a valid
+  cookie.
+- `TestFirstRunLocalSignIn`: the real binary from `init`: the link printed once, the
+  pages, the session, the refusal with a provider unless `--force`.
+  `TestServiceServeNeverPrintsLink`.
+- `TestLoginHelpPage`: HTML for navigations, JSON for API clients.
+- `TestLoginLinkAudit`: the planted-token scan over logs and the diagnostics bundle.

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sign in · LocalBase</title>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+</head>
+<body>
+<main class="mx-auto max-w-md p-6">
+  <p class="brand"><span aria-hidden="true" class="brand-mark">⌘</span>LocalBase</p>
+  {{if eq .Mode "redeem"}}
+  <h1 class="mt-6 text-2xl font-bold">Signing you in…</h1>
+  <form id="redeem" method="post" action="{{.Action}}"><input type="hidden" name="token"></form>
+  <noscript><p class="mt-3 text-muted">This page needs JavaScript to finish signing in.</p></noscript>
+  <script>{{.Script}}</script>
+  {{else if eq .Mode "expired"}}
+  <h1 class="mt-6 text-2xl font-bold">This link has expired</h1>
+  {{template "localhelp" .}}
+  {{else if eq .Mode "too-many"}}
+  <h1 class="mt-6 text-2xl font-bold">Too many tries</h1>
+  <p class="mt-3 text-muted">Too many tries. Wait a minute and try again.</p>
+  {{else}}
+  <h1 class="mt-6 text-2xl font-bold">Sign in to LocalBase</h1>
+  {{template "localhelp" .}}
+  {{end}}
+</main>
+</body>
+</html>
+{{define "localhelp"}}{{if .Local}}<p class="mt-3 text-muted">Run <code>local-base access login-link</code> in a terminal on this computer, then open the link it prints.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer.</p>{{end}}{{end}}
