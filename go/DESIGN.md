@@ -3546,12 +3546,15 @@ their own place. It asks `POST /v1/systemone`.
   present. 21 read Strongly favored, 6 Leaning, 4 Close call, 1 Unsure. A coin
   flip was a Close call (51/49), "xqzv plm" Unsure (29%), and a judgment call
   still came back at 99% (bring an umbrella at 50% rain), which is what the
-  standing line is for. A greeting routed to billing at 61% read as Leaning. A
+  standing line is for. The thresholds stay, and no second line depends on the
+  question's wording; "About these odds" under each answer shows this case. A greeting routed to billing at 61% read as Leaning. A
   question took about 0.2 s once loaded (7 s cold), 30 rows 8 to 10 s, 200 rows
   62 s; the table stayed responsive at 200 rows and 201 lines were refused. A
   row too long for the model failed alone, with the gateway's own sentence, and
   still failed on Retry; the rest went on. One computer's times, not product
-  copy. The 7 s includes the model's load.
+  copy. The 7 s includes the model's load. The load also caused a pressure blip on
+  the same computer, and the live gateway evicted its own idle copy of the model,
+  so later real passes check the live gateway's `/health` first.
 
 ## 23. Explicit unload (2026-10-27)
 

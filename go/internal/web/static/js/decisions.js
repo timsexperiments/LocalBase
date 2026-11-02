@@ -355,13 +355,14 @@ function renderOne() {
 function howToRead() {
   const line = (word, text) => el("li", {}, el("b", {}, word), `: ${text}`);
   return el("details", { class: "mt-2 text-sm text-muted" },
-    el("summary", { class: "decide-summary" }, "How to read this"),
+    el("summary", { class: "decide-summary" }, "About these odds"),
     el("ul", { class: "mt-1 grid gap-1 pb-1" },
       line("Strongly favored", "one answer is far ahead of the next."),
       line("Leaning", "one answer is ahead, with real room for another."),
       line("Close call", "the top two are near each other."),
       line("Unsure", "no answer reaches half."),
     ),
+    el("p", { class: "pb-1" }, "A judgment call can still come back lopsided. Told there was a 50% chance of rain and asked what to bring, it answered umbrella at 99%: strongly favored, and still only an opinion."),
   );
 }
 
