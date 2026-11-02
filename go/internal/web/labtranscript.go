@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -59,6 +60,33 @@ func languageName(code string) string {
 		return ""
 	}
 	return strings.ToUpper(code[:1]) + code[1:]
+}
+
+var englishOnlyRe = regexp.MustCompile(`(?i)(^|[-_.])en($|[-_.])`)
+
+// englishOnly says a transcription model hears English only. The catalog marks the
+// models that take other languages; anything else goes by the model's name, as the
+// Hub listing does (hub/entry.go), so an oddly named import can be misread.
+func (u *UI) englishOnly(id string) bool {
+	if u.d.Catalog != nil {
+		if s := u.d.Catalog.ByID(id); s != nil {
+			for _, c := range s.Capabilities {
+				if c.ID == "multilingual" {
+					return false
+				}
+			}
+		}
+	}
+	return englishOnlyRe.MatchString(id)
+}
+
+// sttModels are the selected transcription models, each saying if it hears English only.
+func (u *UI) sttModels() []labModel {
+	models := u.labModels("stt")
+	for i := range models {
+		models[i].EnglishOnly = u.englishOnly(models[i].ID)
+	}
+	return models
 }
 
 // transcriptCaption is the tray's name for it: a file's name, or that it was recorded.

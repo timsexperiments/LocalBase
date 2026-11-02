@@ -549,6 +549,31 @@
   }
 }
 
+/* A press answers at once (DESIGN §22.21). The dimming stays with reduced motion. */
+@layer components {
+  .btn:active:not(:disabled),
+  .chip:active,
+  .icon-btn:active,
+  .studio-card:active,
+  .studio-tile:active,
+  a.list-row:active,
+  button.list-row:active,
+  a.setting-row:active,
+  .model-row:active {
+    opacity: 0.72;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .btn:active:not(:disabled),
+    .chip:active,
+    .icon-btn:active {
+      transform: scale(0.97);
+    }
+  }
+  .player-gone {
+    @apply rounded-xl bg-surface-muted px-3 py-4 text-center text-sm font-semibold text-muted;
+  }
+}
+
 /* The Transcribe studio (DESIGN §22.20). */
 @layer components {
   .transcribe-start {

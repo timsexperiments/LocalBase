@@ -114,8 +114,18 @@ final class LBSafariUITests: XCTestCase {
         }
         open("/app/admin")
         audit("admin")
+        open("/app/studio")
+        audit("studio")
         open("/app/studio/image")
         audit("lab")
+        open("/app/studio/video")
+        audit("video")
+        open("/app/studio/speech")
+        audit("speech")
+        open("/app/studio/transcribe")
+        audit("transcribe")
+        open("/app/studio/decisions")
+        audit("decisions")
     }
 }
 

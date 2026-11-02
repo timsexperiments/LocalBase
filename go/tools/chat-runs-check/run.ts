@@ -569,13 +569,18 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     check(/^1\n00:00:00,000 --> 00:00:01,200\nThe harbor/.test(exports.srt?.[1] ?? "") && exports.vtt?.[1].startsWith("WEBVTT\n\n00:00:00.000") && /harbor/.test(exports.txt?.[1] ?? "") && /transcript\.srt/.test(exports.srt?.[0] ?? ""), `exports are real SRT, VTT and text`);
     check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
 
+    // A player past its keep says so.
+    await ev(`${trItem}.querySelector("audio").src = "/app/lab/results/nope"`);
+    await sleep(500);
+    check((await ev(`${trItem}.querySelector(".player-gone")?.textContent`)) === "Expired" && !(await ev(`!!${trItem}.querySelector("audio")`)), "a player past its keep says Expired");
+
     // A translation says so.
     await ev(`(() => { document.querySelector("form[data-transcribe] [name=translate]").checked = true; })()`);
     const before = await seen();
     await setFile(voiceFile);
     for (let i = 0; i < 60 && (await seen()) === before; i++) await sleep(150);
     const tr = await trUntil((s) => !s.active && /Translation/.test(s.text));
-    check(/Translation/.test(tr?.text ?? "") && /Translated:/.test(tr?.text ?? ""), `a translation says so: ${tr?.text.slice(0, 60)}`);
+    check(/Translation/.test(tr?.text ?? "") && /Translated:/.test(tr?.text ?? "") && /Check a translation before relying on it/.test(tr?.text ?? ""), `a translation says so, and to check it: ${tr?.text.slice(0, 60)}`);
     await nav("/app/studio/transcribe");
   } else console.log("skip transcribing a file (set LBGO_VOICE_FILE)");
 
@@ -583,6 +588,13 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await ev(`(() => { const real = navigator.mediaDevices.getUserMedia; navigator.mediaDevices.getUserMedia = () => new Promise(() => {}); document.querySelector("[data-record-start]").click(); navigator.mediaDevices.getUserMedia = real; })()`);
   await sleep(100);
   check(/Allow the microphone/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)), "waiting on the browser's question, it says so");
+  await nav("/app/studio/transcribe");
+
+  // An English-only model has nothing to choose.
+  const englishBefore = await ev(`({ chip: document.querySelector("[data-open-sheet=lab-language]").hidden, note: document.querySelector("[data-english-note]").hidden })`);
+  await ev(`(() => { document.querySelector("form[data-transcribe] input[type=hidden][name=model]").setAttribute("data-english-only", ""); document.dispatchEvent(new Event("htmx:afterSettle")); })()`);
+  const englishAfter = await ev(`({ chip: document.querySelector("[data-open-sheet=lab-language]").hidden, note: document.querySelector("[data-english-note]").hidden })`);
+  check(!englishBefore.chip && englishBefore.note && englishAfter.chip && !englishAfter.note, `an English-only model says so instead of offering languages: ${JSON.stringify(englishAfter)}`);
   await nav("/app/studio/transcribe");
 
   // Recording. This headless browser's own microphone never answers, so a generated

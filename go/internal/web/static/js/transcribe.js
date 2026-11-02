@@ -222,6 +222,30 @@ document.addEventListener("click", (event) => {
   }
 });
 
+// A model that hears English only has no language to choose and nothing to translate.
+function syncLanguage() {
+  const f = form();
+  if (!f) return;
+  const model = f.querySelector("input[name=model]:checked, input[type=hidden][name=model]");
+  const english = !!model?.hasAttribute("data-english-only");
+  const chip = f.querySelector("[data-open-sheet=lab-language]");
+  const note = f.querySelector("[data-english-note]");
+  if (chip) chip.hidden = english;
+  if (note) note.hidden = !english;
+  if (english) {
+    const detect = f.querySelector("input[name=language][value=auto]");
+    if (detect) detect.checked = true;
+    const translate = f.querySelector("[name=translate]");
+    if (translate) translate.checked = false;
+    chip?.querySelector("[data-chip-label]")?.replaceChildren("Detect language");
+  }
+}
+document.addEventListener("change", (event) => {
+  if (event.target.matches?.("form[data-transcribe] input[name=model]")) syncLanguage();
+});
+document.addEventListener("htmx:afterSettle", syncLanguage);
+syncLanguage();
+
 // Leaving while recording: a boosted link waits, and a full navigation asks.
 document.addEventListener("htmx:confirm", (event) => {
   if (!session || event.detail.elt?.closest?.("form[data-transcribe]")) return;

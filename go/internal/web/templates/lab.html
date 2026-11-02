@@ -140,6 +140,7 @@
     <div class="composer-box lab-box pb-1">
       <div class="lab-chips">
         {{template "lab-chip" (dict "Sheet" "lab-language" "Name" "language" "Label" "Language" "Value" "Detect language")}}
+        <span class="flex items-center px-2 text-sm text-muted" data-english-note hidden>This model hears English only.</span>
         {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
       </div>
       <div class="transcribe-start" data-transcribe-start>
@@ -165,7 +166,7 @@
       </div>
       <p class="px-2 text-sm text-muted" data-audio-status aria-live="polite"></p>
     </div>
-    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}" {{if (index .Models 0).EnglishOnly}}data-english-only{{end}}>{{end}}
     <dialog id="lab-language" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-language-title">
       {{template "sheet-head" (dict "ID" "lab-language-title" "Title" "Language")}}
       <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Language spoken</legend>
@@ -288,7 +289,7 @@
 <dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
   {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
   <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Model</legend>
-    {{range $i, $m := .}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}</span></label>{{end}}
+    {{range $i, $m := .}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if $m.EnglishOnly}}data-english-only{{end}} {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}</span></label>{{end}}
   </fieldset>
 </dialog>
 {{end}}
@@ -374,6 +375,7 @@
   <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>{{end}}
   {{if .Transcript}}
   {{with .Source}}<audio controls preload="metadata" src="{{.}}" class="transcript-audio" data-transcript-audio></audio>{{end}}
+  {{if .Translated}}<p class="px-2 text-sm text-muted">Check a translation before relying on it.</p>{{end}}
   <div class="flex flex-wrap items-center gap-1">
     <button type="button" class="btn btn-quiet rounded-full" data-copy-transcript>Copy</button>
     <button type="button" class="btn btn-quiet rounded-full" data-open-sheet="export-{{.ID}}" aria-haspopup="dialog">Export</button>

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -361,5 +362,69 @@ func TestTranscribeDetectsLanguage(t *testing.T) {
 	}
 	if !strings.Contains(string(html), `name="language" value="auto" data-label="Detect language" checked`) {
 		t.Error("Detect does not send language=auto")
+	}
+}
+
+// An English-only model offers no language and no translation.
+func TestEnglishOnlyModel(t *testing.T) {
+	cat, _ := catalog.Load("")
+	u := New(Deps{NoAuth: true, Catalog: cat})
+	for id, want := range map[string]bool{"whisper-tiny.en-q8_0": true, "whisper-base.en": true, "whisper-base-q8_0": false, "whisper-large-v3-turbo": false, "english-thing": false} {
+		if got := u.englishOnly(id); got != want {
+			t.Errorf("%s: %v", id, got)
+		}
+	}
+}
+
+// The Transcribe page says a language: the person's, else detect.
+func TestTranscribeSendsLanguage(t *testing.T) {
+	for chosen, want := range map[string]string{"": "auto", "auto": "auto", "es": "es"} {
+		api := &fakeAPI{reply: APIResult{Status: 200, Body: []byte(`{"text":"hi"}`)}}
+		u := New(Deps{NoAuth: true, Call: api.call})
+		var b bytes.Buffer
+		mw := multipart.NewWriter(&b)
+		fw, _ := mw.CreateFormFile("file", "a.wav")
+		fw.Write([]byte("RIFF"))
+		if chosen != "" {
+			mw.WriteField("language", chosen)
+		}
+		mw.Close()
+		r := httptest.NewRequest("POST", "/app/lab/transcribe", &b)
+		r.Header.Set("Content-Type", mw.FormDataContentType())
+		r.Header.Set("HX-Request", "true")
+		r.Header.Set("X-Localbase-UI", "1")
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
+		withCSRF(&UI{}, r)
+		u.ServeHTTP(httptest.NewRecorder(), r)
+		if !strings.Contains(string(api.body), "name=\"language\"\r\n\r\n"+want+"\r\n") {
+			t.Errorf("chose %q: %s", chosen, api.body)
+		}
+	}
+}
+
+// Text assets are compressed for browsers that take it, once.
+func TestAssetCompression(t *testing.T) {
+	u := New(Deps{NoAuth: true})
+	get := func(encoding string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/app/assets/app.css", nil)
+		if encoding != "" {
+			r.Header.Set("Accept-Encoding", encoding)
+		}
+		u.ServeHTTP(w, r)
+		return w
+	}
+	plain, zipped := get(""), get("br, gzip")
+	if plain.Header().Get("Content-Encoding") != "" || zipped.Header().Get("Content-Encoding") != "gzip" || zipped.Body.Len() >= plain.Body.Len()/2 ||
+		zipped.Header().Get("Vary") != "Accept-Encoding" || plain.Header().Get("Vary") != "Accept-Encoding" {
+		t.Fatalf("%d then %d bytes: %v", plain.Body.Len(), zipped.Body.Len(), zipped.Header())
+	}
+	back, err := gzip.NewReader(zipped.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unzipped, _ := io.ReadAll(back)
+	if !bytes.Equal(unzipped, plain.Body.Bytes()) {
+		t.Error("the compressed file is not the file")
 	}
 }

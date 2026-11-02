@@ -5,6 +5,8 @@
 package web
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -60,6 +62,8 @@ type UI struct {
 	d        Deps
 	pages    map[string]*template.Template
 	assetVer map[string]string
+	zipMu    sync.Mutex
+	zips     map[string][]byte
 	mux      *http.ServeMux
 
 	pendingMu sync.Mutex
@@ -216,7 +220,32 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
+	if strings.HasPrefix(w.Header().Get("Content-Type"), "text/") {
+		w.Header().Set("Vary", "Accept-Encoding")
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			b = u.zipped(name, b)
+		}
+	}
 	w.Write(b)
+}
+
+// zipped compresses an embedded asset once.
+func (u *UI) zipped(name string, b []byte) []byte {
+	u.zipMu.Lock()
+	defer u.zipMu.Unlock()
+	if z, ok := u.zips[name]; ok {
+		return z
+	}
+	var out bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&out, gzip.BestCompression)
+	zw.Write(b)
+	zw.Close()
+	if u.zips == nil {
+		u.zips = map[string][]byte{}
+	}
+	u.zips[name] = out.Bytes()
+	return out.Bytes()
 }
 
 // section is the top-level destination a page belongs to: it marks the

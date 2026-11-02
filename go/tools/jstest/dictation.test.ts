@@ -28,3 +28,12 @@ describe("encodePcm16Wav", () => {
       expect(() => go.encodePcm16Wav(samples)).toThrow(message);
     });
 });
+
+describe("dictationForm", () => {
+  test("asks the model to detect the language", () => {
+    const form = go.dictationForm(new Blob(["x"], { type: "audio/wav" }), "m");
+    expect(form.get("language")).toBe("auto");
+    expect(form.get("model")).toBe("m");
+    expect(form.get("response_format")).toBe("json");
+  });
+});

@@ -3419,7 +3419,7 @@ not "Create", because transcribing and deciding are not creating.
   The fake backend's images are now real PNGs.
 - **Known limits of the backend, for the tool pages:** video runs only at
   each model's fixed profile (no duration or aspect presets; more qualified
-  profiles are a product decision); `/v1/systemone` is not a run target.
+  profiles are a product decision). Speech has its own list (§22.19).
 
 ### 22.16 Image studio (PR 10)
 
@@ -3592,8 +3592,7 @@ runs."). The 10 minutes is the model's limit, not a measurement.
 - **Starting picture:** the "Start from" chip shows only for a model that takes
   one. A file, or one of the last six generated pictures; it is cropped to fill
   the frame, previewed, and can be removed.
-- **Not built:** a thumbnail of a finished video on the landing, and a fallback for
-  a player left open past the 15 minutes.
+- **Not built:** a thumbnail of a finished video on the landing.
 - **Checks:** `TestLabVideo`, and `tools/chat-runs-check.sh` walks stage, shape, Stop
   on the first screen, the busy message, the pill, leaving and returning, playback
   of a real file, a failure, Try again, a recent picture and Remove. Its scratch
@@ -3692,8 +3691,11 @@ Record or choose a file, and get the words with their times.
 - **Two equal starts,** Record and Choose a file (and dropping a file on a wide
   screen). Either one starts by itself: there is nothing to confirm once you have
   stopped or chosen. Language and Translate live in one sheet, on a chip that says
-  "Detect language". Detect sends `language=auto`, because with no language the runtime
-  takes the speech as English (a real Spanish clip came back as confident, wrong English). The browser converts to 16 kHz WAV, as before; the limit
+  "Detect language". Every transcription the web UI makes says a language: this page and
+  chat's dictation send `language=auto` unless the person chose one, because with no
+  language the runtime takes the speech as English (a real Spanish clip came back as
+  confident, wrong English). `/v1` keeps its default (§24). The page shows `language`,
+  never `detected_language`, which means nothing on English-only models. The browser converts to 16 kHz WAV, as before; the limit
   works out at about 13 minutes, which recording stops at and the page says.
 - **A recording is hard to lose.** Sending starts at once, so what was sent stays in
   memory until it has become a run. A send that fails or is refused says "Your recording
@@ -3728,10 +3730,12 @@ Record or choose a file, and get the words with their times.
   time was 0.7 s and 1.9 s, with the server near 0.3 GiB. A Spanish clip made with macOS's
   `say` was detected as Spanish once Detect sent `auto`. Translating it reported Spanish
   but gave poor English ("The door was locked this morning" for "El puerto estaba
-  tranquilo"), so a translation is not to be trusted without checking, on this small model
-  at least. An English-only model takes `auto` safely: it stays English, and marked a
-  Spanish clip "(speaking in foreign language)". The page still offers the language
-  choices on such a model, which is a known gap.
+  tranquilo"), so every translation says "Check a translation before relying on it." An
+  English-only model takes `auto` safely: it stays English, and marked a Spanish clip
+  "(speaking in foreign language)". On such a model the page hides Language and Translate
+  and says "This model hears English only." The signal is the catalog's `multilingual`
+  mark, else the model's name (as the Hub listing does), so an oddly named import can be
+  misread; the runtime knows from the file (`capabilities.go`) but does not tell the page.
 - **Not built:** word-level timing (`segments[].words[]` is optional), search in a
   long transcript. Chat's dictation is not reused: it records up to 60 seconds and adds the
   text to a draft in one step, with no panel, no Pause and no times, so the only code to
@@ -3742,6 +3746,69 @@ Record or choose a file, and get the words with their times.
   own never answers, so a real microphone has not been tried. The fake's whisper
   answers a fixed transcript. Very quiet, Too loud and the 13 minute stop have not been
   driven. No real transcription model has run through this page yet.
+
+### 22.21 Audit and performance (PR 15)
+
+**Performance.** The `web-perf` skill's Chrome DevTools server is not set up here, so the
+same measures came from the browser's debug protocol: 390x844 at 3x, CPU 4x slower, 1.6 Mbps
+down, 750 kbps up, 150 ms latency, cold cache, median of 3, on a scratch gateway with fake
+backends. Compressing text assets (gzip, once per asset, with `Vary`) was the one change
+worth making, as assets were already immutable and content-addressed. The tray was empty or
+short, so results add to these. KB is transferred, and `/app/studio` also counts the page its
+test tap opens.
+
+| Page | KB | First paint, ms | Largest paint, ms | CLS | Tap delay, ms | Blocking, ms |
+|---|---|---|---|---|---|---|
+| `/app/studio` | 207 → 90 | 1169 → 549 | 1169 → 549 | 0 | 24 | 0 |
+| `/app/studio/image` | 191 → 74 | 1281 → 577 | 1281 → 577 | 0 | 32 | 0 |
+| `/app/studio/decisions` | 223 → 81 | 1412 → 561 | 1478 → 916 | 0.01 | 16 | 0 |
+| `/app/studio/speech` | 204 → 84 | 1308 → 556 | 1308 → 556 | 0 | 32 | 0 |
+| `/app/studio/transcribe` | 200 → 77 | 1329 → 578 | 1329 → 578 | 0 | 32 | 0 |
+| `/app/studio/video` | 184 → 66 | 1260 → 575 | 1260 → 575 | 0 | 32 | 0 |
+| `/app/chat` | 349 → 160 | 1416 → 579 | 1416 → 579 | 0 | not measured | 0 |
+| `/app/models` | 168 → 61 | 1174 → 537 | 1174 → 537 | 0 | not measured | 0 |
+
+Web Vitals' good lines are 2,500 ms, 0.1 and 200 ms. Tap delay is one scripted tap, not a
+person's use over time, so it is only a floor for INP. The server here is on loopback, so a
+real connection adds to the first response. The public hostname's tunnel was not measured.
+
+**Audit.** Every existing page was shot from #393 and from this stack
+(`.design/screens/before-after/`): nothing regressed, and the pages' copy now says Studio.
+Added here: press feedback on buttons, chips and rows (dimming always, a small scale only
+without reduced motion), and "Expired" where a player outlives its file. iOS Safari
+(`tools/ios-check.sh`, iOS 27 simulator) passes the composer test on the new build, and its
+accessibility audit now covers every studio. It still flags Dynamic Type as partly unsupported
+on every page, plain text as small hit areas, and an unnamed element it cannot locate.
+
+**What has not been checked, across the studios:**
+
+- **Microphone:** no real microphone has recorded through Transcribe. The test browser's own
+  capture hangs, so a generated tone went through the real recorder, level and sending. The
+  browser's permission question, background and lock behaviour, "Very quiet", "Too loud" and
+  the 13 minute stop have not been driven. iOS Safari's recording format is unverified.
+- **Real phones and people:** no real device, no assistive technology (VoiceOver, TalkBack), no
+  usability testing. axe and Apple's audit are automated and catch only part of this. Contrast
+  is axe's reading only, and has not been checked by hand on a phone in daylight.
+- **Video:** no real model has run through the page. A pass needs 25.6 GiB available and has
+  not had it; the one attempt was refused before loading. So "a few minutes" and "a lot of
+  memory" are unmeasured here, the stage words are unchecked against the runtime, Stop's effect
+  on memory is unknown, and real H.264 has never played in the page (the test browser has no
+  H.264, so tests use VP9). Only the refusal message is verified on the real gateway.
+- **Speech:** checked by analysis, never by ear. Numbers and digit strings can be cut or repeated.
+  Short clicks from the model are possible (§22.19). The 350 ms pause is untested on people.
+  One voice was tested at length.
+- **Transcribe:** files only, on one small model. The clips were one speech model's voice and one
+  macOS voice, so real people, accents, noise and long files near the limit are untested. A
+  translation can be plainly wrong, and the page says to check it. The English-only signal goes by
+  name for models outside the catalog.
+- **Decisions:** one model. The bands are provisional, from 93 questions. No one has read results
+  and judged the words (the brief's H4).
+- **Image:** the looks were judged by one reviewer on 4 prompts, with DreamShaper 8 standing in for
+  the LCM model it lacks. A real phone's share sheet has not been tried; Share's paths ran with
+  a stubbed share call. The "Shared without the prompt" text is in the viewer, not the sheet.
+- **Across the pages:** a gateway restart loses video jobs and scripts in progress, and all results
+  in memory. Phone adaptations in the research brief are proposals, not tested patterns, and its
+  competitor evidence is mostly docs and published screenshots.
 
 ## 23. Explicit unload (2026-10-27)
 

@@ -235,15 +235,21 @@ export function dictationUnavailable(modelId) {
         : "";
 }
 
-/** Transcribes a recording as the signed-in person; resolves to the text. */
-export async function transcribe(audio, modelId, signal, apiError) {
+/** The request. With no language the runtime takes speech as English (DESIGN §22.20). */
+export function dictationForm(audio, modelId) {
   const form = new FormData();
   form.set("model", modelId);
+  form.set("language", "auto");
   form.set("response_format", "json");
   form.set("file", audio, "dictation.wav");
+  return form;
+}
+
+/** Transcribes a recording as the signed-in person; resolves to the text. */
+export async function transcribe(audio, modelId, signal, apiError) {
   const response = await gatewayFetch("/app/api/v1/audio/transcriptions", {
     method: "POST",
-    body: form,
+    body: dictationForm(audio, modelId),
     signal,
     credentials: "same-origin",
     cache: "no-store",

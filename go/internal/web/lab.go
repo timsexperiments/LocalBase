@@ -124,8 +124,9 @@ func (u *UI) uploading(permission string, limit int64, next http.HandlerFunc) ht
 }
 
 type labModel struct {
-	ID, Name string
-	Active   bool
+	ID, Name    string
+	Active      bool
+	EnglishOnly bool // a transcription model that hears English only
 }
 
 // labModels are the selected models of a kind, the active one first.
@@ -279,7 +280,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 			data["VoiceModel"] = models[0].ID
 		}
 	case "transcribe":
-		data["Models"] = u.labModels("stt")
+		data["Models"] = u.sttModels()
 		data["Languages"] = transcriptLanguages
 	case "decisions":
 		data["Models"] = u.decisionModels()
@@ -352,11 +353,16 @@ func (u *UI) labTranscribe(w http.ResponseWriter, r *http.Request) {
 	mw := multipart.NewWriter(&b)
 	fw, _ := mw.CreateFormFile("file", hdr.Filename)
 	fw.Write(audio)
-	for _, k := range []string{"model", "language"} {
-		if v := strings.TrimSpace(r.FormValue(k)); v != "" {
-			mw.WriteField(k, v)
-		}
+	if v := strings.TrimSpace(r.FormValue("model")); v != "" {
+		mw.WriteField("model", v)
 	}
+	// Whatever the person chose, else detect: with no language the runtime takes speech
+	// as English. It stays safe on English-only models.
+	language := strings.TrimSpace(r.FormValue("language"))
+	if language == "" {
+		language = "auto"
+	}
+	mw.WriteField("language", language)
 	// verbose_json: the times of each stretch, where the model gives them.
 	mw.WriteField("response_format", "verbose_json")
 	mw.Close()

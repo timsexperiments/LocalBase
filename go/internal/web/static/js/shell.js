@@ -98,6 +98,15 @@ function checkPictures() {
 document.addEventListener("error", (event) => {
   if (event.target.matches?.("img[data-result-img]")) pictureGone(event.target);
 }, true);
+// A player left open past the result's keep says so instead of showing a dead control.
+document.addEventListener("error", (event) => {
+  const player = event.target;
+  if (!player.matches?.("audio[src^='/app/lab/'], video[src^='/app/lab/']")) return;
+  const note = document.createElement("p");
+  note.className = "player-gone";
+  note.textContent = "Expired";
+  player.replaceWith(note);
+}, true);
 document.addEventListener("htmx:afterSettle", checkPictures);
 checkPictures();
 
