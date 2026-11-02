@@ -804,6 +804,26 @@ type Snapshot struct {
 	Accepting bool
 }
 
+// LoadedOrLoading returns the models this manager holds: the running one and
+// any being started. Unlike Snapshot it never reports the configured default,
+// so an idle manager holds nothing.
+func (m *LLM) LoadedOrLoading() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var ids []string
+	if m.cur != nil {
+		ids = append(ids, m.cur.modelID)
+	}
+	if m.starting {
+		for _, w := range m.queue {
+			if w.dispatching {
+				ids = append(ids, w.model)
+			}
+		}
+	}
+	return ids
+}
+
 func (m *LLM) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
