@@ -82,6 +82,11 @@ func TestSplitScript(t *testing.T) {
 	if strings.Join(got, " ") != numbers {
 		t.Errorf("lost numbers: %q", got)
 	}
+	for _, part := range got {
+		if n := utf8.RuneCountInString(part); n > 90 {
+			t.Errorf("a list of numbers in %d characters: %q", n, part)
+		}
+	}
 	// Nothing is lost.
 	text := "First sentence here. Second, with a comma, and more words after it! Third?\nFourth line."
 	joined := strings.Join(splitScript(text, 30), " ")

@@ -3623,9 +3623,11 @@ control, because the API takes only speed 1 (§24).
 - **Splitting** (`splitScript`): at most 200 characters a part (the API takes 256)
   and an estimated 200 frames (`partFrames`; the runtime's cap is 256). At sentence
   ends, then at a comma, then a space, and mid-word only for a run with no space.
-  The frame budget makes a cut smaller but does not prevent one: on the real model a
-  112-character list of numbers still ran to the cap, while the next part took 2 s.
-  Numbers are unpredictable there, so the cut flag is what keeps this honest.
+  A list of numbers comes to about 85 characters a part, from §24's measurements: a
+  112-character list ran 202 to 256 frames, 3 of 8 hit the cap, and it needed up to
+  about 2.8 frames a character. That is a small sample and the model's length varies,
+  so a cut is less likely but still possible, and the cut flag is what keeps this
+  honest. A fixed seed does not make speech repeatable (§24), so none is offered.
 - **Joining:** the sample format must match. Each part's own silence is trimmed at
   joined edges, since the model left anything from 0.16 s to 1.6 s and pacing came
   out uneven, and one pause goes between (`speechPartPause`, 350 ms, the one place it
