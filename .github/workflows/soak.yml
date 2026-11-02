@@ -5,6 +5,7 @@ name: Soak
 # go/docs/reliability.md. A failure here on Linux may be the harness rather than the
 # gateway, since it first ran on Linux in CI.
 on:
+  pull_request:
   schedule:
     - cron: "41 6 * * *" # nightly: one cycle
     - cron: "11 4 * * 0" # weekly: the 30-minute soak and a race-detector cycle
