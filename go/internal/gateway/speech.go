@@ -30,6 +30,10 @@ const (
 	speechMaxPCMBytes   = runtime.SpeechMaxFrames * 1920 * 2
 	speechPCMType       = "audio/pcm;rate=24000;channels=1;encoding=s16le"
 	speechTimeout       = 120 * time.Second
+	// audioTruncatedHeader marks speech cut at the runtime's frame cap (DESIGN §24).
+	audioTruncatedHeader = "X-Localbase-Audio-Truncated"
+	// noteAudioTruncated is the same flag in a detached run's result.notes.
+	noteAudioTruncated = "audio_truncated"
 )
 
 var (
@@ -190,6 +194,14 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 			tel.finish("error", 502, "")
 		}
 		return
+	}
+	if lease.Target.Backend.Adapter == "tts-server/v1" && len(pcm) == speechMaxPCMBytes {
+		// tts-server stops at the frame cap and answers normally; the audio is
+		// kept as it is, and the cut is made visible. Never the text.
+		w.Header().Set(audioTruncatedHeader, "true")
+		s.Log.WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
+			"runtime", "tts", "request_id", tel.requestID, "model_id", lease.ModelID, "frames", runtime.SpeechMaxFrames,
+			"input_chars", utf8.RuneCountInString(req.Input))
 	}
 	writeSpeech(w, req, pcm)
 	tel.finish("completed", 200, "")

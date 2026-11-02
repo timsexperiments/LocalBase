@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -70,6 +71,7 @@ func imageForm(parts ...imgPart) (string, string) {
 // TestDifferentialImageRejections sends invalid image generation and edit
 // requests to both gateways; none reaches a backend.
 func TestDifferentialImageRejections(t *testing.T) {
+	logFreeMemoryOnFailure(t)
 	post := func(path, ctype, body string) map[string]*Resp {
 		out := map[string]*Resp{}
 		for _, tg := range targets {
@@ -286,5 +288,39 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 	sameError(t, "missing catalog-sized model", flux)
 	if a, b := flux["ts"], flux["go"]; a != nil && b != nil && (a.Header.Get("Retry-After") == "") != (b.Header.Get("Retry-After") == "") {
 		t.Errorf("Retry-After differs: ts %q, go %q", a.Header.Get("Retry-After"), b.Header.Get("Retry-After"))
+	}
+}
+
+// logFreeMemoryOnFailure makes a failing admission test diagnosable: memory
+// refusals depend on what else is loaded on the machine.
+func logFreeMemoryOnFailure(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("free memory at failure: %s", freeMemoryReading())
+		}
+	})
+}
+
+// freeMemoryReading is the operating system's own figure: memory_pressure on
+// macOS, MemAvailable on Linux.
+func freeMemoryReading() string {
+	if out, err := exec.Command("memory_pressure").Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		return strings.TrimSpace(lines[len(lines)-1])
+	}
+	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "MemAvailable:") {
+				return strings.Join(strings.Fields(line), " ")
+			}
+		}
+	}
+	return "unavailable"
+}
+
+func TestFreeMemoryReading(t *testing.T) {
+	if got := freeMemoryReading(); got == "unavailable" || got == "" {
+		t.Errorf("no reading on this machine: %q", got)
 	}
 }

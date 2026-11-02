@@ -22,6 +22,9 @@
 // offloaded layer count. FAKE_PLACEMENT_BUG=cuda0 puts the first expert on
 // CUDA0; FAKE_COMPUTE_MIB sets the CUDA0 compute buffer (default 100).
 // FAKE_STARTUP_MS delays listening, like a slow model load.
+//
+// It also answers sd-server's image routes (images.go) and tts-server's
+// /v1/generate (speech.go).
 package main
 
 import (
@@ -80,6 +83,7 @@ func main() {
 	})
 	addVideo(mux)
 	addImages(mux)
+	addSpeech(mux)
 	mux.HandleFunc("GET /props", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"model_path": model, "build_info": "fake",
 			"chat_template": "{% if tools %}{{ tools }}{% endif %}<think>", "modalities": map[string]any{"vision": false},

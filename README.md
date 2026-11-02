@@ -82,6 +82,13 @@ Models that earlier releases shipped and this one no longer lists keep working a
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
+### Image seeds and speech limits
+
+- `seed` on `/v1/images/generations` and `/v1/images/edits` is exact: the same seed, prompt and parameters give the same image. With `n` above 1, the images use `seed`, `seed + 1`, and so on.
+- **With no `seed`, the API uses seed 42**, so the same prompt gives the same image. Send your own seed for variety. Chat and the browser playground send a random one when you leave it blank.
+- Each item in `data` carries the `seed` it was made with. It is left out when it cannot be known: a JPEG or WebP generated with no `seed`.
+- `/v1/audio/speech` takes up to 256 characters, and only `speed: 1`. The Qwen3 TTS runtime stops at 20.48 seconds of audio; text that needs longer is cut, and the response has the header `X-Localbase-Audio-Truncated: true`. A detached run carries the same fact as `result.notes: ["audio_truncated"]`. Split long text into shorter parts.
+
 ### Image and video inputs
 
 `POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.

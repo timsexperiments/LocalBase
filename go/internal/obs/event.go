@@ -37,7 +37,7 @@ var (
 
 	sensitiveKey     = regexp.MustCompile(`(?i)(?:authorization|bearer|api[-_. ]?key|token|secret|password|credential|cookie|hf[-_. ]?token)`)
 	contentKey       = regexp.MustCompile(`(?i)(?:content|prompt|messages?|input|body|response|completion|output)`)
-	metricKeys       = []string{"prompt_tokens", "completion_tokens", "total_tokens", "prompt_duration_ms", "predicted_duration_ms"}
+	metricKeys       = []string{"prompt_tokens", "completion_tokens", "total_tokens", "prompt_duration_ms", "predicted_duration_ms", "input_chars", "output_bytes"}
 	bearerRe         = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/-]+=*`)
 	labeledSecretRe  = regexp.MustCompile(`(?i)\b(authorization|api[-_ ]?key|token|secret|password|hf[-_ ]?token)\s*[:=]\s*([^\s,;]+)`)
 	knownTokenRe     = regexp.MustCompile(`(?i)\b(?:hf_[A-Za-z0-9_-]{8,}|lb_[A-Za-z0-9_-]{8,}|sk(?:-proj)?-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{12,}|AKIA[A-Z0-9]{16}|[A-Za-z0-9_-]*token[A-Za-z0-9_-]{12,})\b`)

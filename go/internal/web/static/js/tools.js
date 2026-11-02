@@ -176,6 +176,12 @@ export function imageParameters(s, model) {
   return { ...tuning, lora_strength: s.lora_strength };
 }
 
+// The gateway's default seed is fixed, so without this a chat would repeat the
+// same image for the same prompt (DESIGN §24).
+export function randomImageSeed() {
+  return Math.floor(Math.random() * 2147483648);
+}
+
 export function videoParameters(s) {
   check(s.negative_prompt === undefined || (typeof s.negative_prompt === "string" && s.negative_prompt.length <= 16384), "negative prompt");
   return defined({ negative_prompt: s.negative_prompt });
@@ -327,6 +333,7 @@ export async function generateMedia(options) {
       model: model.id,
       prompt: args.prompt,
       n: 1,
+      seed: randomImageSeed(),
       ...imageParameters(settings.image, model),
       response_format: "b64_json",
     }, signal))).json();

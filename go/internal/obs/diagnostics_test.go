@@ -43,3 +43,24 @@ func TestEventsGolden(t *testing.T) {
 		}
 	}
 }
+
+// Counts are metrics even when their names look like content; only a
+// non-negative number gets through, so text under those names stays redacted.
+func TestMetricAttributes(t *testing.T) {
+	for _, key := range []string{"input_chars", "output_bytes", "prompt_tokens"} {
+		if _, v, ok := attribute(key, 256); !ok || v != 256 {
+			t.Errorf("%s = 256: %v %v", key, v, ok)
+		}
+		if _, v, _ := attribute(key, "the secret text"); v != redacted {
+			t.Errorf("%s as text: %v", key, v)
+		}
+		if _, v, _ := attribute(key, -1); v != redacted {
+			t.Errorf("%s = -1: %v", key, v)
+		}
+	}
+	for _, key := range []string{"input", "input_text", "output", "output_text", "prompt"} {
+		if _, v, _ := attribute(key, 256); v != redacted {
+			t.Errorf("%s: %v, want redacted", key, v)
+		}
+	}
+}
