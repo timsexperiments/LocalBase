@@ -66,7 +66,10 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 
 func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	// No method check, as in TS: any other method fails as an invalid form.
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, r, "POST")
+		return
+	}
 	if r.ContentLength > maxRequestBytes {
 		payloadTooLarge(w, r)
 		return
