@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // Topology describes the memory pools admission reasons about. The skeleton
@@ -49,6 +50,10 @@ func NewHostProvider() HostProvider {
 // replacing the exec with purego).
 type darwinProvider struct {
 	topo Topology
+	// pinned: LOCALBASE_GPU_WORKING_SET_GB chose the limit, so no probe replaces it.
+	pinned bool
+	// probed is Metal's limit once read; 0 means the heuristic in topo stands.
+	probed atomic.Int64
 }
 
 const gpuWorkingSetEnv = "LOCALBASE_GPU_WORKING_SET_GB"
@@ -61,10 +66,11 @@ func newDarwinProvider() *darwinProvider {
 			ws = int64(gb * float64(GiB))
 		}
 	}
+	pinned := ws > 0
 	if ws == 0 {
 		ws = appleWorkingSetHeuristic(total)
 	}
-	return &darwinProvider{topo: Topology{Unified: true, SystemCapacity: total, GPUWorkingSetBytes: ws}}
+	return &darwinProvider{topo: Topology{Unified: true, SystemCapacity: total, GPUWorkingSetBytes: ws}, pinned: pinned}
 }
 
 // appleWorkingSetHeuristic: ~2/3 of memory up to 36 GiB, ~3/4 above.
@@ -78,7 +84,57 @@ func appleWorkingSetHeuristic(total int64) int64 {
 	return total * 3 / 4
 }
 
-func (d *darwinProvider) Topology() Topology { return d.topo }
+func (d *darwinProvider) Topology() Topology {
+	t := d.topo
+	if v := d.probed.Load(); v > 0 {
+		t.GPUWorkingSetBytes = v
+	}
+	return t
+}
+
+// listDevicesMetalRe is llama-server's --list-devices line for a Metal device,
+// whose size is MTLDevice.recommendedMaxWorkingSetSize in MiB:
+// "  MTL0: Apple M4 Max (53084 MiB, 53083 MiB free)".
+var listDevicesMetalRe = regexp.MustCompile(`(?m)^\s*MTL\d+:.*\((\d+) MiB`)
+
+// parseListDevices returns the Metal device's limit in bytes.
+func parseListDevices(out []byte) (int64, bool) {
+	m := listDevicesMetalRe.FindSubmatch(out)
+	if m == nil {
+		return 0, false
+	}
+	mib, err := strconv.ParseInt(string(m[1]), 10, 64)
+	if err != nil || mib <= 0 {
+		return 0, false
+	}
+	return mib * MiB, true
+}
+
+// ProbeGPUWorkingSet replaces the heuristic with Metal's own limit, read from the
+// managed llama-server (DESIGN §11: no purego). binary must be a real llama-server,
+// which only lists its devices and loads nothing. Resolution order, as TS: the
+// environment override, this probe, the heuristic. On any failure the current
+// limit stands, and it returns false. A host that is not a Mac does nothing.
+func ProbeGPUWorkingSet(ctx context.Context, h HostProvider, binary string) (int64, bool) {
+	d, ok := h.(*darwinProvider)
+	if !ok || d.pinned {
+		return 0, false
+	}
+	if v := d.probed.Load(); v > 0 {
+		return v, true // read once
+	}
+	out, err := exec.CommandContext(ctx, binary, "--list-devices").CombinedOutput()
+	if err != nil {
+		return 0, false
+	}
+	v, ok := parseListDevices(out)
+	// A limit past all of memory is not a reading to believe.
+	if !ok || v > d.topo.SystemCapacity {
+		return 0, false
+	}
+	d.probed.Store(v)
+	return v, true
+}
 
 var vmStatRe = regexp.MustCompile(`page size of (\d+) bytes`)
 
