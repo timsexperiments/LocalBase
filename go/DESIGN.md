@@ -3446,16 +3446,25 @@ The one thing people come to do: describe a picture and get it back.
   (same prompt, new seed; not "more like this", as nothing makes it similar)
   and **Regenerate** (same prompt, same seed). Details holds the prompt, size,
   look, seed, the model's name (the only place it appears), Copy prompt, Reuse
-  settings, a note that a saved PNG carries its prompt, and Delete with the
+  settings, the note "A saved copy includes its prompt", and Delete with the
   shared confirmation. Delete takes one picture of a batch; the last one takes
   the run with it.
+- **Share leaves the prompt out; Save keeps the file.** A generated PNG holds
+  its prompt and settings in text chunks. Share draws it to a canvas and encodes
+  a PNG again, which is lossless and keeps its size, so those chunks are gone;
+  the viewer says "Shared without the prompt", as a page cannot write in the
+  system's share sheet. Save hands over the original bytes. If encoding fails,
+  Share goes away and the viewer says to use Save; where files cannot be shared
+  at all, Details says so.
 - **Not built:** "Use as input" needs an edit flow and an edit-capable model
   (the API has `/v1/images/edits` as a run target); it is a follow-up.
 - **Checks:** `TestImageBatch`, `TestImageAgain`, `TestImageDelete`,
   `TestLabImageRun`, `TestLabDock`; `tools/chat-runs-check.sh` now opens the
   viewer and checks it fills the screen with its actions and 44 px targets (a
   closed dialog had hidden a stylesheet mistake from every other check) and
-  moves between pictures. Measured facts about `n`, seeds and limits are §24.
+  moves between pictures, and walks Share's three paths: without the prompt, a
+  failed encode, and no file sharing. Measured facts about `n`, seeds and limits
+  are §24.
 
 ## 23. Explicit unload (2026-10-27)
 

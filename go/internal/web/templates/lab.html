@@ -20,7 +20,7 @@
     <div class="composer-box lab-box">
       <div class="lab-chips">
         {{template "lab-chip" (dict "Sheet" "image-shape" "Name" "shape" "Label" "Shape" "Value" "Square")}}
-        {{template "lab-chip" (dict "Sheet" "image-look" "Name" "look" "Label" "Look" "Value" "No look")}}
+        {{template "lab-chip" (dict "Sheet" "image-look" "Name" "look" "Label" "Look" "Value" "Plain")}}
         {{template "lab-chip" (dict "Sheet" "image-count" "Name" "count" "Label" "Number" "Value" "1 picture")}}
         {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         <button type="button" class="chip lab-chip" data-open-sheet="lab-more" aria-haspopup="dialog">More</button>
@@ -325,6 +325,7 @@
   <div class="viewer-stage">{{template "result-image" (dict "Src" $p.URL "Alt" (or $i.Caption "Generated picture") "Class" "viewer-img" "Tool" "image")}}</div>
   <div class="viewer-foot">
     {{with $i.Caption}}<p class="viewer-caption">{{.}}</p>{{end}}
+    <p class="viewer-caption font-semibold" role="status" data-share-status hidden></p>
     <details class="viewer-details">
       <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>
       <div class="viewer-panel">
@@ -336,7 +337,8 @@
           {{with $i.Model}}<div><dt>Model</dt><dd>{{.}}</dd></div>{{end}}
           {{with $i.Ago}}<div><dt>Made</dt><dd>{{.}}</dd></div>{{end}}
         </dl>
-        <p class="text-xs text-[#b3a8bc]">A saved picture carries its prompt and settings in the file, so anyone you send it to can read them.</p>
+        <p class="text-xs text-[#b3a8bc]">A saved copy includes its prompt. Sharing from here leaves it out.</p>
+        <p class="text-xs text-[#b3a8bc]" data-no-share hidden>This browser can’t share files. Use Save instead.</p>
         <div class="flex flex-wrap gap-2">
           {{with $i.Prompt}}<button type="button" class="btn viewer-quiet rounded-full" data-copy-text="{{.}}">Copy prompt</button>{{end}}
           {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}

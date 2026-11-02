@@ -286,7 +286,7 @@ func TestImageAgain(t *testing.T) {
 	u.ServeHTTP(httptest.NewRecorder(), htmxPost("/app/lab/image", url.Values{"prompt": {"a boat"}, "shape": {"landscape"}, "seed": {"7"}, "count": {"2"}, "model": {"some-model"}}))
 	out := get(u, "/app/lab/runs/run_1").Body.String()
 	for _, want := range []string{`<dialog id="view-run_1-0" class="viewer"`, `<dialog id="view-run_1-1" class="viewer"`, "<dt>Seed</dt><dd>7</dd>", "<dt>Seed</dt><dd>8</dd>",
-		"<span>Regenerate</span>", "<span>Vary</span>", "<dt>Model</dt><dd>some-model</dd>", `data-copy-text="a boat"`, `data-seed="8"`, "carries its prompt and settings"} {
+		"<span>Regenerate</span>", "<span>Vary</span>", "<dt>Model</dt><dd>some-model</dd>", `data-copy-text="a boat"`, `data-seed="8"`, "A saved copy includes its prompt."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("viewer: missing %q", want)
 		}

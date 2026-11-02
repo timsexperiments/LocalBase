@@ -76,16 +76,58 @@ async function canShareFiles() {
 }
 
 async function revealShare() {
-  if (!(await canShareFiles())) return;
+  if (!(await canShareFiles())) {
+    // Where files cannot be shared, the Details say to use Save instead.
+    for (const n of document.querySelectorAll("[data-no-share]")) n.hidden = false;
+    return;
+  }
   for (const b of document.querySelectorAll("[data-share][hidden]")) b.hidden = false;
+}
+
+// A generated PNG carries its prompt and settings in text chunks. Drawing it to
+// a canvas and encoding it again keeps every pixel and its size, and drops them.
+async function withoutPrompt(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  const png = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!png) throw new Error("could not encode");
+  return png;
+}
+
+function shareStatus(from, text) {
+  const box = from.closest("dialog, .lab-item")?.querySelector("[data-share-status]");
+  if (!box) return;
+  box.textContent = text;
+  box.hidden = !text;
+}
+
+async function shareResult(button) {
+  const isPicture = button.dataset.shareName.endsWith(".png");
+  try {
+    let blob = await (await fetch(button.dataset.share)).blob();
+    if (isPicture) blob = await withoutPrompt(blob);
+    const file = new File([blob], button.dataset.shareName, { type: blob.type });
+    if (isPicture) shareStatus(button, "Shared without the prompt.");
+    await navigator.share({ files: [file] });
+  } catch (error) {
+    // The person closing the share sheet is not a failure.
+    if (error?.name === "AbortError") {
+      shareStatus(button, "");
+      return;
+    }
+    button.hidden = true;
+    shareStatus(button, "This could not be shared here. Use Save instead.");
+  }
 }
 
 document.addEventListener("click", async (event) => {
   const share = event.target.closest?.("[data-share]");
   if (share) {
-    const blob = await (await fetch(share.dataset.share)).blob();
-    const file = new File([blob], share.dataset.shareName, { type: blob.type });
-    navigator.share({ files: [file] }).catch(() => {});
+    await shareResult(share);
     return;
   }
   const copy = event.target.closest?.("[data-copy-transcript]");

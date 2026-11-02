@@ -146,7 +146,28 @@ else {
   const first = await ev(`document.querySelector("dialog.viewer[open]").id`);
   await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
   check((await ev(`document.querySelector("dialog.viewer[open]").id`)) !== first, "Next moves to another picture");
-  await ev(`document.querySelector("dialog.viewer[open] [data-close-sheet]").click()`);
+  // Share: the file leaves without its prompt, at the same size. If encoding
+  // fails it says so and offers Save; without file sharing, the Details say so.
+  const shareStub = `navigator.canShare = () => true; navigator.share = async (d) => { const b = new Uint8Array(await d.files[0].arrayBuffer()); window.__shared = { type: d.files[0].type, prompt: new TextDecoder("latin1").decode(b).includes("parameters"), w: new DataView(b.buffer).getUint32(16) }; };`;
+  const addStub = await send("Page.addScriptToEvaluateOnNewDocument", { source: shareStub });
+  await nav("/app/studio/image");
+  const shareBtn = `document.querySelector("#lab-items dialog.viewer [data-share]")`;
+  const original = await ev(`(async () => { const u = ${shareBtn}.dataset.share; const b = new Uint8Array(await (await fetch(u)).arrayBuffer()); return { prompt: new TextDecoder("latin1").decode(b).includes("parameters"), w: new DataView(b.buffer).getUint32(16) }; })()`);
+  check(original.prompt, "the saved file carries its prompt");
+  await ev(`${shareBtn}.closest("dialog").showModal(); ${shareBtn}.click()`);
+  for (let i = 0; i < 20 && !(await ev(`!!window.__shared`)); i++) await sleep(100);
+  const shared = await ev(`({ s: window.__shared, said: document.querySelector("dialog.viewer[open] [data-share-status]").textContent })`);
+  check(shared.s?.type === "image/png" && shared.s.prompt === false && shared.s.w === original.w && /without the prompt/.test(shared.said), `Share leaves the prompt out: ${JSON.stringify(shared)}`);
+  await ev(`createImageBitmap = async () => { throw new Error("no"); }; window.__shared = null; document.querySelector("dialog.viewer[open]").close(); ${shareBtn}.closest("dialog").showModal(); ${shareBtn}.click()`);
+  await sleep(400);
+  const failed = await ev(`({ shared: window.__shared, hidden: ${shareBtn}.hidden, said: document.querySelector("dialog.viewer[open] [data-share-status]").textContent })`);
+  check(!failed.shared && failed.hidden && /Use Save/.test(failed.said), `a failed encode falls back to Save: ${JSON.stringify(failed)}`);
+  await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: addStub.identifier });
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `navigator.canShare = () => false;` }).then((r) => (globalThis.__noShare = r.identifier));
+  await nav("/app/studio/image");
+  const noShare = await ev(`({ hidden: ${shareBtn}.hidden, note: !document.querySelector("#lab-items dialog.viewer [data-no-share]").hidden })`);
+  check(noShare.hidden && noShare.note, `without file sharing the Details say so: ${JSON.stringify(noShare)}`);
+  await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: globalThis.__noShare });
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
   for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);

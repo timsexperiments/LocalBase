@@ -26,7 +26,7 @@ var imageShapes = map[string]map[string]string{
 type imageLook struct{ ID, Name, Add, Avoid string }
 
 var imageLooks = []imageLook{
-	{ID: "", Name: "No look"},
+	{ID: "", Name: "Plain"},
 	{ID: "photo", Name: "Photo", Add: "photograph, natural light, realistic detail", Avoid: "illustration, painting, cartoon"},
 	{ID: "illustration", Name: "Illustration", Add: "digital illustration, clean shapes, soft shading", Avoid: "photograph"},
 	{ID: "watercolor", Name: "Watercolor", Add: "watercolor painting, soft edges, paper texture", Avoid: "photograph, hard edges"},
