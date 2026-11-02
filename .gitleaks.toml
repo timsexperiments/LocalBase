@@ -1,0 +1,17 @@
+# Secret scanning. Every exception is an exact made-up value used by a test, so
+# real secrets in the same files are still caught. Never allowlist a whole path.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed test fixtures"
+regexTarget = "match"
+regexes = [
+  '''AKIAABCDEFGHIJKLMNOP''',
+  '''6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab''',
+  '''vendor-secret-7d1e9a''',
+  '''hf_scopetest123''',
+  '''token=abc''',
+  '''voice-0123456789ab''',
+  '''qwen3moe.expert_count''',
+]
