@@ -7,7 +7,7 @@ Install LocalBase from its GitHub release archive.
 
 LOCALBASE_VERSION pins the release (default: latest).
 LOCALBASE_INSTALL_DIR selects the CLI destination (default: ~/.local/bin).
-LOCALBASE_LICENSE_DIR selects the license destination (default: ~/.local/share/local-base/licenses).
+LOCALBASE_LICENSE_DIR selects the license destination (default: ~/.local/share/doc/local-base).
 HELP
   exit 0
 fi
@@ -38,7 +38,8 @@ fi
 archive="local-base-$os-$arch"
 if [ "$os" = macos ]; then archive="$archive.zip"; else archive="$archive.tar.gz"; fi
 install_dir=${LOCALBASE_INSTALL_DIR:-"$HOME/.local/bin"}
-license_dir=${LOCALBASE_LICENSE_DIR:-"$HOME/.local/share/local-base/licenses"}
+# Outside the data root: LocalBase refuses to initialize a nonempty one.
+license_dir=${LOCALBASE_LICENSE_DIR:-"$HOME/.local/share/doc/local-base"}
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/local-base-install.XXXXXX")
 trap 'rm -rf "$tmp"' 0 HUP INT TERM
 
