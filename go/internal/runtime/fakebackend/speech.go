@@ -37,6 +37,9 @@ func addSpeech(mux *http.ServeMux) {
 			}
 		}
 		frames := min(max(tenths/10, 1), fakeMaxFrames)
+		if strings.Contains(body.Input, "fake:cut") {
+			frames = fakeMaxFrames
+		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("X-Audio-Format", "s16le")
 		w.Header().Set("X-Sample-Rate", "24000")

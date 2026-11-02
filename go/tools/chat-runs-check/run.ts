@@ -514,9 +514,9 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   check(seek.at > 0.4 && seek.at < 0.6 && parseFloat(seek.played) > 40, `tapping the waveform moves the player: ${JSON.stringify(seek)}`);
 
   // The cut flag is said.
-  await ev(typeScript("1234567890".repeat(20)));
+  await ev(typeScript("fake:cut 1234567890"));
   await ev(sendScript);
-  const cut = await until((s) => !s.active && /1234567890/.test(s.text));
+  const cut = await until((s) => !s.active && /fake:cut/.test(s.text));
   check(/cut part of this short/.test(cut?.text ?? ""), `speech cut by the model says so: ${cut?.text.slice(0, 70)}`);
 
   // Stop keeps what was made.

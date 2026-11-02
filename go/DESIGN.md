@@ -3655,23 +3655,22 @@ control, because the API takes only speed 1 (§24).
   (`GET /app/lab/active`).
 - **Real pass (2026-11-02, Qwen3-TTS, scratch gateway, through this page):** nobody
   has listened; this is analysis of the files. 1,532 characters made 11 parts and 97 s
-  of audio in about 37 s once loaded (first load about 10 s more), with the server
-  near 3.3 GiB. The page's count matched the parts on both scripts. Joins are an
+  of audio in about 37 s once loaded (57 s from cold), with the server near 3.3 GiB. The page's count matched the parts on both scripts. Joins are an
   even 350 to 388 ms, with quiet edges either side and DC near zero. A loud click
   (one sample step of 42,410, reaching full scale) sits 217 ms after a join and
   inside the model's own audio, and the first run had one too, so it is not the join;
   the cause is not established. A 256-character list of numbers through the API came
   back flagged at 20.48 s, and through the page the flag reached the words. A sample
   took about 1 s, then nothing once cached. Stop took about 2 s, kept the two parts
-  made, and left the model loaded until the gateway's own idle unload, so memory does
-  not come back at once. A custom voice, made from the model's shipped reference,
+  made, and left the model loaded: it still held its memory 15 s later, and the
+  gateway reported it running. A custom voice, made from the model's shipped reference,
   spoke through the picker. Files are in `.design/research/studios/speech-real/`.
 - **Not built:** a chat speech tool reading the cut flag (not this page's), MP3, and
   choosing a pause length.
 - **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestShapeEdges`, `TestWavePeaks`, `TestSpeechJob` (parts,
   one at a time, the cut flag, Stop, a failure part way, over the limit) and
   `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
-  part.
+  part, and `fake:cut` runs a part to the cap.
 
 ## 23. Explicit unload (2026-10-27)
 
