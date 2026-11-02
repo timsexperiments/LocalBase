@@ -204,20 +204,22 @@ func (u *UI) labVideoRemove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
-// labVideoActive says how many of the person's jobs are running, for the
-// indicator on other pages.
-func (u *UI) labVideoActive(w http.ResponseWriter, r *http.Request) {
-	count := 0
+// labActive says how many of the person's video jobs and scripts are running,
+// for the indicator on other pages. They are not detached runs.
+func (u *UI) labActive(w http.ResponseWriter, r *http.Request) {
+	counts := map[string]int{"video": 0, "speech": 0}
+	var items []labItemView
 	if u.caller(r).Can("inference:video") {
-		for _, it := range u.videoItems(r) {
-			if it.Active {
-				count++
-			}
+		items = u.videoItems(r)
+	}
+	for _, it := range append(items, u.speechItems(r)...) {
+		if it.Active {
+			counts[it.Tool]++
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]int{"count": count})
+	json.NewEncoder(w).Encode(counts)
 }
 
 // labVideoContent plays the result. Range requests are served, which

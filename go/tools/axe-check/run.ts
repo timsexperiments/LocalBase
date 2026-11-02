@@ -40,6 +40,7 @@ const states: [string, string, string][] = [
   ["lab-video", "/app/studio/video", ""],
   ["video-sheet", "/app/studio/video", `document.querySelector("[data-video-chip]")?.click()`],
   ["lab-speech", "/app/studio/speech", ""],
+  ["speech-voices", "/app/studio/speech", `document.querySelector("[data-open-sheet=lab-voice]")?.click()`],
   ["lab-transcribe", "/app/studio/transcribe", ""],
   ["decisions", "/app/studio/decisions", ""],
   ["decisions-answer", "/app/studio/decisions", `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector("[data-template=route]").click(); document.querySelector("#decide button[type=submit]").click(); await new Promise((r) => setTimeout(r, 1500)); })()`],

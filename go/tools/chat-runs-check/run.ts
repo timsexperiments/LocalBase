@@ -399,7 +399,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   await waitItem("fake:slow a paper boat", (g) => !g.active);
   await nav("/app/models/running");
   await sleep(7000);
-  const asks = await ev(`performance.getEntriesByName(location.origin + "/app/lab/video/active").length`);
+  const asks = await ev(`performance.getEntriesByName(location.origin + "/app/lab/active").length`);
   check(asks <= 1, `a polled page does not poll for videos: ${asks} request(s) in 8 s`);
   await nav("/app/studio/video");
   const stopped = await waitItem("fake:slow a paper boat", (g) => !g.active);
@@ -435,6 +435,101 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   await ev(`${itemFor("a quiet beach")}.querySelector("[hx-post$='/remove']").click()`);
   await sleep(500);
   check(!(await ev(`!!${itemFor("a quiet beach")}`)), "Remove takes it out of the tray");
+}
+
+// --- Speech (DESIGN §22.19) -----------------------------------------------------
+await nav("/app/studio/speech");
+if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
+  console.log("skip speech (no speech model selected)");
+} else {
+  const typeScript = (text) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); })()`;
+  const sendScript = `document.querySelector("form[aria-label='Make speech'] button[type=submit]").click()`;
+  const firstItem = `document.querySelector("#lab-items .lab-item-speech")`;
+  const itemState = async () => ev(`(() => { const n = ${firstItem}; return n ? { text: n.textContent.replace(/\\s+/g, " ").trim(), active: n.hasAttribute("data-poll"), parts: n.querySelector("progress")?.max ?? 0, audio: !!n.querySelector("audio"), bars: n.querySelectorAll("[data-wave] .speech-wave-base rect").length } : null; })()`);
+  const until = async (test, ms = 40000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await itemState(); if (s && test(s)) return s; await sleep(150); } return s; };
+  const sentence = "fake:slow The harbor was quiet this morning, and the boats were still. ";
+
+  // The count, and text is never cut in the field.
+  await ev(typeScript(sentence.repeat(20)));
+  check(/^About \d+ parts$/.test(await ev(`document.querySelector("[data-script-count]").textContent`)), "a long script says it will be made in parts");
+  await ev(typeScript("x".repeat(5001)));
+  const over = await ev(`({ count: document.querySelector("[data-script-count]").textContent, kept: document.getElementById("lab-prompt").value.length })`);
+  check(over.count === "5,001 / 5,000" && over.kept === 5001, `the count from near the limit, nothing cut in the field: ${JSON.stringify(over)}`);
+  await ev(sendScript);
+  await sleep(500);
+  check(/Nothing was cut/.test(await ev(`document.querySelector("#lab-result [role=alert]")?.textContent ?? ""`)) && (await ev(`document.getElementById("lab-prompt").value.length`)) === 5001, "over the limit it says so, and the script stays");
+
+  // The voice picker.
+  await ev(`document.querySelector("[data-open-sheet=lab-voice]").click()`);
+  const picker = await ev(`({ open: document.getElementById("lab-voice").open, radios: document.querySelectorAll("#lab-voices input[type=radio]").length, plays: document.querySelectorAll("#lab-voices [data-voice-preview]").length, add: !!document.querySelector("#lab-voices [data-open-sheet=voice-add]") })`);
+  check(picker.open && picker.radios > 1 && picker.plays === picker.radios && picker.add, `each voice has a separate Play, and Add a voice is there: ${JSON.stringify(picker)}`);
+  const clickSample = async (i) => { const b = await ev(`(() => { const r = document.querySelectorAll("#lab-voices [data-voice-preview]")[${i}]; r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
+  await sleep(400); // the sheet has slid in
+  await clickSample(0);
+  let pressed = 0;
+  for (let i = 0; i < 40 && !pressed; i++) { await sleep(150); if (/Playing/.test(await ev(`document.querySelector("[data-voice-status]").textContent`))) pressed = 1; }
+  check(pressed === 1, "a sample plays");
+  await clickSample(1);
+  await sleep(200);
+  check((await ev(`[...document.querySelectorAll("#lab-voices [data-voice-preview]")].filter((b) => b.getAttribute("aria-pressed") === "true").length`)) === 1, "one sample at a time");
+  check(!(await ev(`document.querySelectorAll("#lab-voices input[type=radio]")[1].checked`)), "playing a sample does not choose the voice");
+
+  if (voiceFile) {
+    const b64 = Buffer.from(await Bun.file(voiceFile).arrayBuffer()).toString("base64");
+    await ev(`document.querySelector("#lab-voices [data-open-sheet=voice-add]").click()`);
+    await ev(`(async () => { const bin = atob(${JSON.stringify(b64)}); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); const form = document.querySelector("#voice-add form"); form.querySelector("[name=name]").value = "Added Here"; form.querySelector("[name=consent]").checked = true; const t = new DataTransfer(); t.items.add(new File([a], "tone.wav", { type: "audio/wav" })); const input = form.querySelector("[data-audio-input]"); input.files = t.files; input.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+    await sleep(1500);
+    await ev(`document.querySelector("#voice-add button[type=submit]").click()`);
+    let added = null;
+    for (let i = 0; i < 40; i++) { await sleep(200); added = await ev(`(() => { const c = document.querySelector("#lab-voices input[type=radio]:checked"); return { checked: c?.dataset.label, beforeBuiltIn: [...document.querySelectorAll("#lab-voices input[type=radio]")].map((r) => r.dataset.label).indexOf("Added Here") < [...document.querySelectorAll("#lab-voices input[type=radio]")].map((r) => r.dataset.label).indexOf("Default"), open: document.getElementById("voice-add").open, chip: document.querySelector("[data-chip-label=voice]").textContent }; })()`); if (added.checked === "Added Here") break; }
+    check(added?.checked === "Added Here" && added.beforeBuiltIn && !added.open && added.chip === "Added Here", `a voice added here is chosen, above the model's own: ${JSON.stringify(added)}`);
+    await ev(`(async () => { const list = await (await fetch("/app/api/_localbase/voices", { headers: { "x-localbase-ui": "1" } })).json(); const v = (list.data ?? []).find((x) => x.name === "Added Here"); if (v) await fetch("/app/api/_localbase/voices/" + v.id, { method: "DELETE", headers: { "x-localbase-ui": "1" } }); })()`);
+    await nav("/app/studio/speech");
+  } else {
+    await ev(`document.getElementById("lab-voice").close()`);
+    console.log("skip adding a voice (set LBGO_VOICE_FILE)");
+  }
+
+  // A long script: real progress, it survives leaving, and it comes back joined.
+  await ev(typeScript(sentence.repeat(70)));
+  await ev(sendScript);
+  const started = await until((s) => s.active);
+  check(started?.active && started.parts > 5 && /Making part \d+ of \d+/.test(started.text) && /it keeps going/.test(started.text), `it shows real progress: ${started?.text.slice(0, 60)}, ${started?.parts} parts`);
+  await nav("/app/models");
+  await sleep(500);
+  const speechPill = await ev(`(() => { const p = [...document.querySelectorAll("[data-run-pill]")].find((n) => !n.hidden); return p ? { href: p.getAttribute("href"), text: p.textContent.trim() } : null; })()`);
+  check(speechPill?.href === "/app/studio/speech", `the pill leads back: ${JSON.stringify(speechPill)}`);
+  await send("Page.reload");
+  await sleep(800);
+  await nav("/app/studio/speech");
+  const finished = await until((s) => !s.active);
+  check(finished?.audio && finished.bars === 64 && /Make again/.test(finished.text), `it finishes after leaving and reloading, with a waveform: ${finished?.text.slice(0, 80)}`);
+  const audio = await ev(`(async () => { const a = ${firstItem}.querySelector("audio"); if (a.readyState < 1) await new Promise((r) => { a.onloadedmetadata = r; a.onerror = r; setTimeout(r, 4000); }); const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { duration: a.duration, x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
+  check(audio.duration > 60, `the parts are joined into one file (${audio.duration?.toFixed(0)} s)`);
+  await ev(`${firstItem}.querySelector("[data-wave]").scrollIntoView({ block: "center" })`);
+  const box = await ev(`(() => { const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
+  for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
+  await sleep(300);
+  const seek = await ev(`(() => { const a = ${firstItem}.querySelector("audio"); return { at: a.currentTime / a.duration, played: ${firstItem}.querySelector("[data-wave]").style.getPropertyValue("--played") }; })()`);
+  check(seek.at > 0.4 && seek.at < 0.6 && parseFloat(seek.played) > 40, `tapping the waveform moves the player: ${JSON.stringify(seek)}`);
+
+  // The cut flag is said.
+  await ev(typeScript("1234567890".repeat(20)));
+  await ev(sendScript);
+  const cut = await until((s) => !s.active && /1234567890/.test(s.text));
+  check(/cut part of this short/.test(cut?.text ?? ""), `speech cut by the model says so: ${cut?.text.slice(0, 70)}`);
+
+  // Stop keeps what was made.
+  await ev(typeScript(sentence.repeat(70)));
+  await ev(sendScript);
+  await until((s) => s.active && /Making part [3-9]/.test(s.text));
+  await ev(`${firstItem}.querySelector("[hx-post$='/stop']").click()`);
+  const stoppedSpeech = await until((s) => !s.active);
+  check(/Stopped after part \d+ of \d+/.test(stoppedSpeech?.text ?? "") && stoppedSpeech.audio, `Stop keeps what was made: ${stoppedSpeech?.text.slice(0, 70)}`);
+  await ev(`${firstItem}.querySelector("[hx-post$='/remove']").click()`);
+  await sleep(400);
+  check(!/Stopped after/.test((await itemState())?.text ?? ""), "Remove takes it out of the tray");
+  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
 }
 
 ws.close();

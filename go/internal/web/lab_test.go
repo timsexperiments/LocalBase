@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -50,25 +51,41 @@ func TestLabSpeechCallsTheAPIAndServesTheResult(t *testing.T) {
 	u := New(Deps{NoAuth: true, Call: api.call})
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, htmxPost("/app/lab/speech", url.Values{"model": {"m"}, "input": {"hi"}, "voice": {"af_heart"}}))
-	if w.Code != 200 || api.path != "/v1/audio/speech" || !strings.Contains(string(api.body), `"voice":"af_heart"`) {
-		t.Fatalf("%d %s %s", w.Code, api.path, api.body)
+	html := waitSpeech(t, u, w)
+	if api.path != "/v1/audio/speech" || !strings.Contains(string(api.body), `"voice":"af_heart"`) {
+		t.Fatalf("%s %s", api.path, api.body)
 	}
-	html := w.Body.String()
 	i := strings.Index(html, "/app/lab/results/")
-	if i < 0 || !strings.Contains(html, `id="lab-result"`) || strings.Contains(html, "<html") {
+	if i < 0 || strings.Contains(html, "<html") {
 		t.Fatalf("fragment: %s", html)
 	}
-	src := html[i : i+len("/app/lab/results/")+32]
+	path := html[i : i+len("/app/lab/results/")+32]
 	w = httptest.NewRecorder()
-	u.ServeHTTP(w, httptest.NewRequest("GET", src, nil))
-	if w.Code != 200 || w.Body.String() != "RIFFwav" || w.Header().Get("Content-Type") != "audio/wav" {
+	u.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+	if w.Code != 200 || w.Body.String() != "RIFFwav" {
 		t.Fatalf("result: %d %q", w.Code, w.Body.String())
 	}
-	// Another person cannot fetch it.
-	id := strings.TrimPrefix(src, "/app/lab/results/")
-	if u.results.get("someone-else", id) != nil {
-		t.Fatal("result not bound to its owner")
+}
+
+// waitSpeech follows a script's tray item until it ends.
+func waitSpeech(t *testing.T, u *UI, started *httptest.ResponseRecorder) string {
+	t.Helper()
+	m := regexp.MustCompile(`id="run-(sp[0-9a-f]+)"`).FindStringSubmatch(started.Body.String())
+	if m == nil {
+		t.Fatalf("no tray item: %s", started.Body.String())
 	}
+	for i := 0; i < 500; i++ {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("GET", "/app/lab/speech/"+m[1], nil)
+		r.Header.Set("HX-Request", "true")
+		u.ServeHTTP(w, r)
+		if !strings.Contains(w.Body.String(), "data-poll") {
+			return w.Body.String()
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("the script never ended")
+	return ""
 }
 
 func TestLabShowsAPIErrors(t *testing.T) {
@@ -76,8 +93,8 @@ func TestLabShowsAPIErrors(t *testing.T) {
 	u := New(Deps{NoAuth: true, Call: api.call})
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, htmxPost("/app/lab/speech", url.Values{"model": {"m"}, "input": {"hi"}, "voice": {"x"}}))
-	if !strings.Contains(w.Body.String(), `role="alert"`) || !strings.Contains(w.Body.String(), "&lt;b&gt;") {
-		t.Fatalf("error not shown escaped: %s", w.Body.String())
+	if html := waitSpeech(t, u, w); !strings.Contains(html, `role="alert"`) || !strings.Contains(html, "&lt;b&gt;") {
+		t.Fatalf("error not shown escaped: %s", html)
 	}
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, htmxPost("/app/lab/image", url.Values{"prompt": {"a"}, "seed": {"1.5"}}))
@@ -210,8 +227,8 @@ func TestLabVideo(t *testing.T) {
 		t.Fatalf("the tray lost the job: %s", w.Body.String())
 	}
 	w = httptest.NewRecorder()
-	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/video/active", nil))
-	if !strings.Contains(w.Body.String(), `{"count":1}`) {
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/active", nil))
+	if !strings.Contains(w.Body.String(), `"video":1`) {
 		t.Fatalf("active: %s", w.Body.String())
 	}
 

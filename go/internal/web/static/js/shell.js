@@ -136,28 +136,31 @@ announceChanges();
 // A run started here keeps going while the person is elsewhere; the pill (in
 // the sidebar and above the tab bar) shows it and links back to it. A page
 // that shows the run itself marks <body data-run-page="href">.
-// Video jobs are not runs (DESIGN §22.18), so they are asked about apart. Polled
-// pages call this often: it asks at most every 10 s while a job runs, every 60 s
-// when none does, and not at all while the page is hidden. Their own page shows
-// them, and leaving it asks at once.
-const VIDEO_PAGE = "/app/studio/video";
-let videoLast = 0;
-let videoAskedAt = -Infinity;
+// Video jobs and scripts are not runs (DESIGN §22.18, §22.19), so they are asked
+// about apart. Polled pages call this often: it asks at most every 10 s while one
+// runs, every 60 s when none does, and not at all while the page is hidden. Their
+// own pages show them, and leaving one asks at once.
+const OWN_PAGES = { video: "/app/studio/video", speech: "/app/studio/speech" };
+const OWN_LABELS = { video: "Video", speech: "Speech" };
+let ownLast = { video: 0, speech: 0 };
+let ownAskedAt = -Infinity;
 
-async function videoCount() {
-  if (location.pathname === VIDEO_PAGE) {
-    videoAskedAt = -Infinity;
-    return 0;
+async function ownJobs() {
+  const onOwnPage = Object.values(OWN_PAGES).includes(location.pathname);
+  const running = ownLast.video + ownLast.speech > 0;
+  if (!onOwnPage && !document.hidden && performance.now() - ownAskedAt >= (running ? 10_000 : 60_000)) {
+    ownAskedAt = performance.now();
+    try {
+      const response = await fetch("/app/lab/active", { cache: "no-store", redirect: "manual" });
+      ownLast = response.ok ? await response.json() : { video: 0, speech: 0 };
+    } catch {
+      // Unreachable: keep the last answer until the next ask.
+    }
   }
-  if (document.hidden || performance.now() - videoAskedAt < (videoLast ? 10_000 : 60_000)) return videoLast;
-  videoAskedAt = performance.now();
-  try {
-    const response = await fetch("/app/lab/video/active", { cache: "no-store", redirect: "manual" });
-    videoLast = response.ok ? (await response.json()).count : 0;
-  } catch {
-    // Unreachable: keep the last answer until the next ask.
-  }
-  return videoLast;
+  if (onOwnPage) ownAskedAt = -Infinity;
+  return Object.entries(ownLast).flatMap(([tool, count]) =>
+    OWN_PAGES[tool] === location.pathname ? [] : Array.from({ length: count }, () => ({ place: { href: OWN_PAGES[tool], label: OWN_LABELS[tool] } })),
+  );
 }
 
 async function syncRuns() {
@@ -167,8 +170,7 @@ async function syncRuns() {
   } catch {
     // Unreachable or signed out: session.js reports it; keep the pill hidden.
   }
-  const videos = await videoCount();
-  for (let i = 0; i < videos; i++) list.push({ place: { href: VIDEO_PAGE, label: "Video" } });
+  list.push(...(await ownJobs()));
   const here = document.body.dataset.runPage;
   // A run started in another browser has no place here: send it to its page.
   const shown = list

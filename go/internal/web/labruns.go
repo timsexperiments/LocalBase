@@ -22,7 +22,6 @@ import (
 // labTargets are the media routes a Lab run may target, by tool.
 var labTargets = map[string]string{
 	"/v1/images/generations":   "image",
-	"/v1/audio/speech":         "speech",
 	"/v1/audio/transcriptions": "transcribe",
 }
 
@@ -60,6 +59,7 @@ type labNote struct {
 	owner, caption, prompt, result, text string
 	image                                *imageRequest
 	video                                *videoRequest
+	speech                               *speechJob
 	pictures                             []labPicture
 	at                                   time.Time
 }
@@ -177,6 +177,9 @@ type labItemView struct {
 	At                                 time.Time
 	Video, Thumb, Announce             string // a video job: its file, starting picture, and what to say
 	Again, Slow, NeedsMemory           bool
+	VoiceName, Length                  string // a script
+	Part, Parts                        int
+	Bars                               []waveBar
 }
 
 // agoText is how long ago something happened, in words.
@@ -231,7 +234,7 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	case "queued":
 		v.Message = "Waiting to start…"
 	case "in_progress":
-		v.Message = map[string]string{"image": "Making the image…", "speech": "Speaking…", "transcribe": "Transcribing…"}[tool]
+		v.Message = map[string]string{"image": "Making the image…", "transcribe": "Transcribing…"}[tool]
 	case "cancelled":
 		v.Message = "Stopped."
 	case "interrupted":
@@ -310,8 +313,6 @@ func (u *UI) collect(r *http.Request, run labRun, tool string, note *labNote) {
 			}
 			note.pictures = append(note.pictures, p)
 		}
-	case "speech":
-		note.result = u.results.put(owner, "audio/wav", res.Body)
 	case "transcribe":
 		var out struct {
 			Text string `json:"text"`
@@ -340,6 +341,9 @@ func (u *UI) labRuns(r *http.Request) []labItemView {
 	}
 	if p := u.caller(r); p != nil && p.Can("inference:video") {
 		out = append(out, u.videoItems(r)...)
+	}
+	if p := u.caller(r); p != nil {
+		out = append(out, u.speechItems(r)...)
 	}
 	slices.SortStableFunc(out, func(a, b labItemView) int { return b.At.Compare(a.At) })
 	return out

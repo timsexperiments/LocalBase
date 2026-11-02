@@ -65,8 +65,10 @@ type UI struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
 
-	results resultStore
-	notes   labNotes
+	results   resultStore
+	notes     labNotes
+	previewMu sync.Mutex
+	previews  map[string][]byte // voice samples, by model and voice
 }
 
 func New(d Deps) *UI {
@@ -164,7 +166,12 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/lab/runs/{id}/again", u.mutating("inference:image", u.labImageAgain))
 	m.HandleFunc("POST /app/lab/runs/{id}/remove", u.mutating("models:read", u.labRunRemove))
 	m.HandleFunc("GET /app/lab/video/options", u.need("models:read", u.labVideoOptions))
-	m.HandleFunc("GET /app/lab/video/active", u.need("models:read", u.labVideoActive))
+	m.HandleFunc("GET /app/lab/active", u.need("models:read", u.labActive))
+	m.HandleFunc("GET /app/lab/voices/preview", u.need("inference:speech", u.labVoicePreview))
+	m.HandleFunc("GET /app/lab/speech/{id}", u.need("models:read", u.labSpeechStatus))
+	m.HandleFunc("POST /app/lab/speech/{id}/stop", u.mutating("inference:speech", u.labSpeechStop))
+	m.HandleFunc("POST /app/lab/speech/{id}/again", u.mutating("inference:speech", u.labSpeechAgain))
+	m.HandleFunc("POST /app/lab/speech/{id}/remove", u.mutating("inference:speech", u.labSpeechRemove))
 	m.HandleFunc("POST /app/lab/video/{id}/again", u.mutating("inference:video", u.labVideoAgain))
 	m.HandleFunc("POST /app/lab/video/{id}/remove", u.mutating("inference:video", u.labVideoRemove))
 	m.HandleFunc("POST /app/lab/video", u.uploading("inference:video", videoFormLimit+(64<<10), u.labVideo))

@@ -18,24 +18,7 @@
   {{template "voice-list" .}}
 
   {{if .List.CanManage}}
-  <dialog id="voice-add" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-add-title">
-    {{template "sheet-head" (dict "ID" "voice-add-title" "Title" "Add a voice")}}
-    <form class="grid gap-4 px-4 pb-2" hx-post="/app/voices" hx-encoding="multipart/form-data" hx-target="#voice-list" hx-swap="outerHTML"
-      hx-disabled-elt="find button[type=submit]" data-audio-form data-reset-on-success data-close-sheet-on-success>
-      <label class="grid gap-1"><span class="font-semibold">Name</span>
-        <input class="input" name="name" required maxlength="48" autocomplete="off"></label>
-      <div class="grid gap-1"><span id="voice-recording-label" class="font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
-        <div class="flex flex-wrap items-center gap-2">
-          <input class="input min-w-0 flex-1" type="file" name="audio" aria-labelledby="voice-recording-label" accept="audio/*" data-audio-input required>
-          <button type="button" class="btn btn-quiet rounded-full" data-record>Record</button>
-        </div>
-        <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
-        <audio controls class="hidden w-full" data-audio-preview></audio>
-      </div>
-      <label class="flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="consent" value="true" required class="size-5 shrink-0 accent-[var(--lb-accent)]"> <span>{{.List.ConsentStatement}}</span></label>
-      <button type="submit" class="btn btn-primary w-full">Add voice</button>
-    </form>
-  </dialog>
+  {{template "voice-add" (dict "List" .List "Target" "#voice-list" "Post" "/app/voices")}}
   {{end}}
 </section>
 <script src="{{asset "js/audio.js"}}" type="module"></script>

@@ -549,6 +549,30 @@
   }
 }
 
+/* The Speech studio (DESIGN §22.19). */
+@layer components {
+  .speech-count {
+    @apply ml-auto flex shrink-0 items-center px-2 text-sm whitespace-nowrap text-muted;
+  }
+  .speech-progress {
+    @apply h-2 w-full max-w-64 accent-[var(--lb-accent)];
+  }
+  /* The native player with what it plays drawn above it. Tap to move. */
+  .speech-wave {
+    @apply relative mb-1 block h-12 w-full cursor-pointer px-2;
+  }
+  .speech-wave svg {
+    @apply absolute inset-x-2 inset-y-0 h-full w-[calc(100%-1rem)];
+  }
+  .speech-wave-base {
+    @apply fill-line;
+  }
+  .speech-wave-played {
+    @apply fill-accent;
+    clip-path: inset(0 calc(100% - var(--played, 0%)) 0 0);
+  }
+}
+
 /* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
 @layer components {
   .lab-item-video {

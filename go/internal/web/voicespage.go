@@ -59,11 +59,20 @@ func (u *UI) voiceCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	res := u.call(r, "POST", "/_localbase/voices", r.Header.Get("Content-Type"), body)
 	if msg := res.apiError(); msg != "" {
+		if model := r.URL.Query().Get("speech"); model != "" {
+			u.fragment(w, r, "lab", "lab-voices", map[string]any{"Voices": u.voiceChoices(r.Context(), model, ""), "VoiceClones": u.voiceClones(model), "CanManage": true, "VoiceError": msg})
+			return
+		}
 		u.voicesFragment(w, r, map[string]any{"Notice": msg, "Failed": true})
 		return
 	}
 	var v voices.Voice
 	json.Unmarshal(res.Body, &v)
+	if model := r.URL.Query().Get("speech"); model != "" {
+		// Added from the Speech studio: the new voice is chosen there.
+		u.fragment(w, r, "lab", "lab-voices", map[string]any{"Voices": u.voiceChoices(r.Context(), model, v.ID), "VoiceClones": u.voiceClones(model), "CanManage": true})
+		return
+	}
 	u.voicesFragment(w, r, map[string]any{"Notice": "Added " + v.Name + "."})
 }
 

@@ -154,11 +154,18 @@ func (u *UI) labModels(kind string) []labModel {
 	return out
 }
 
-type labVoice struct{ ID, Name string }
+// labVoice is a voice to choose: a person's own, or the model's.
+type labVoice struct {
+	ID, Name, Preview string
+	Mine, Checked     bool
+}
 
 // labVoices are the voices a speech model accepts: its own, then custom
 // voices for models that clone from a reference.
 func (u *UI) labVoices(ctx context.Context, modelID string) []labVoice {
+	if u.d.Catalog == nil {
+		return nil
+	}
 	s := u.d.Catalog.ByID(modelID)
 	if s == nil || s.TTSRuntime == nil {
 		return nil
@@ -166,23 +173,63 @@ func (u *UI) labVoices(ctx context.Context, modelID string) []labVoice {
 	rt := s.TTSRuntime
 	var out []labVoice
 	if rt.Kind == "llama-tts" {
-		out = append(out, labVoice{"default", "Default"})
+		out = append(out, labVoice{ID: "default", Name: "Default"})
 		for _, v := range rt.ReferenceVoices {
-			out = append(out, labVoice{v.Name, voiceLabel(v.Name)})
+			out = append(out, labVoice{ID: v.Name, Name: voiceLabel(v.Name)})
 		}
 		if u.d.Voices != nil {
 			if list, err := u.d.Voices(ctx); err == nil {
 				for _, v := range list {
-					out = append(out, labVoice{v.ID, v.Name})
+					out = append(out, labVoice{ID: v.ID, Name: v.Name, Mine: true})
 				}
 			}
 		}
 		return out
 	}
 	for _, v := range rt.Voices {
-		out = append(out, labVoice{v.Name, voiceLabel(v.Name)})
+		out = append(out, labVoice{ID: v.Name, Name: voiceLabel(v.Name)})
 	}
 	return out
+}
+
+// voiceChoices lists a person's own voices first and checks one: the one asked
+// for, or else the model's first.
+func (u *UI) voiceChoices(ctx context.Context, model, checked string) []labVoice {
+	list := u.labVoices(ctx, model)
+	slices.SortStableFunc(list, func(a, b labVoice) int {
+		switch {
+		case a.Mine && !b.Mine:
+			return -1
+		case b.Mine && !a.Mine:
+			return 1
+		}
+		return 0
+	})
+	picked := false
+	for i := range list {
+		list[i].Preview = previewURL(model, list[i].ID)
+		if list[i].ID == checked {
+			list[i].Checked, picked = true, true
+		}
+	}
+	for i := range list {
+		if !picked && !list[i].Mine {
+			list[i].Checked, picked = true, true
+		}
+	}
+	if !picked && len(list) > 0 {
+		list[0].Checked = true
+	}
+	return list
+}
+
+// voiceClones says whether a model can speak in a recorded voice.
+func (u *UI) voiceClones(model string) bool {
+	if u.d.Catalog == nil {
+		return false
+	}
+	s := u.d.Catalog.ByID(model)
+	return s != nil && s.TTSRuntime != nil && s.TTSRuntime.Kind == "llama-tts"
 }
 
 func voiceLabel(name string) string {
@@ -224,7 +271,12 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 		models := u.labModels("tts")
 		data["Models"] = models
 		if len(models) > 0 {
-			data["Voices"] = u.labVoices(r.Context(), models[0].ID)
+			data["Voices"] = u.voiceChoices(r.Context(), models[0].ID, "")
+			data["VoiceClones"] = u.voiceClones(models[0].ID)
+			if p.Can("models:manage") {
+				data["VoiceAdd"] = u.voiceData(r, nil)["List"]
+			}
+			data["VoiceModel"] = models[0].ID
 		}
 	case "transcribe":
 		data["Models"] = u.labModels("stt")
@@ -236,7 +288,8 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 
 // labVoiceOptions refreshes the voice list when the speech model changes.
 func (u *UI) labVoiceOptions(w http.ResponseWriter, r *http.Request) {
-	u.render(w, r, "lab", map[string]any{"Voices": u.labVoices(r.Context(), r.URL.Query().Get("model"))})
+	model := r.URL.Query().Get("model")
+	u.render(w, r, "lab", map[string]any{"Voices": u.voiceChoices(r.Context(), model, ""), "VoiceClones": u.voiceClones(model), "CanManage": u.caller(r).Can("models:manage")})
 }
 
 func (u *UI) labOutcome(w http.ResponseWriter, r *http.Request, data map[string]any) {
@@ -278,22 +331,6 @@ func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
 	}
 	id := u.results.put(u.caller(r).OwnerID(), "image/png", img)
 	u.labOutcome(w, r, map[string]any{"Image": "/app/lab/results/" + id})
-}
-
-func (u *UI) labSpeech(w http.ResponseWriter, r *http.Request) {
-	req := map[string]any{"model": r.PostFormValue("model"), "input": r.PostFormValue("input"),
-		"voice": r.PostFormValue("voice"), "response_format": "wav"}
-	body, _ := json.Marshal(req)
-	if u.labStart(w, r, "/v1/audio/speech", "application/json", strings.TrimSpace(r.PostFormValue("input")), body) {
-		return
-	}
-	res := u.call(r, "POST", "/v1/audio/speech", "application/json", body)
-	if msg := res.apiError(); msg != "" {
-		u.labOutcome(w, r, map[string]any{"Error": msg})
-		return
-	}
-	id := u.results.put(u.caller(r).OwnerID(), "audio/wav", res.Body)
-	u.labOutcome(w, r, map[string]any{"Audio": "/app/lab/results/" + id})
 }
 
 const transcribeLimit = 25 << 20

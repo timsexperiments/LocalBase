@@ -3601,6 +3601,49 @@ runs."). The 10 minutes is the model's limit, not a measurement.
   writes a real MP4 the test browser can decode (VP9: the test Chromium has no
   H.264). No real video model has run through this page yet.
 
+### 22.19 Speech studio (PR 13)
+
+A script of up to 5,000 characters, a voice, and a joined file. There is no speed
+control, because the API takes only speed 1 (§24).
+
+- **A script is a job on the gateway's UI side,** not in the browser: split, made
+  one part at a time as the signed-in person, joined, and put in the result store.
+  A reload or a suspended phone loses nothing, and there is no client state to
+  restore. Parts call `/v1/audio/speech` directly rather than as detached runs, so
+  a long script does not use up the run limits. One script runs at a time per
+  person, said plainly. A gateway restart loses a running script and its note.
+- **Splitting** (`splitScript`): at most 200 characters a part (the API takes 256,
+  and a part full of digits reaches the frame cap sooner, §24), at sentence ends,
+  then at a comma, then a space, and mid-word only for a run with no space. Parts
+  join with a 150 ms pause, sample format checked, into one WAV.
+- **Progress is real here:** "Making part 3 of 8…" with a `<progress>`, because the
+  parts are real steps. The page's count ("About 8 parts") packs sentences the same
+  way but is only a count.
+- **Nothing is cut silently.** The field has no effective `maxlength`, since that
+  truncates a paste without saying so; past the limit the count turns red and the
+  send says so and keeps the script. If the API flags a part as cut
+  (`X-Localbase-Audio-Truncated`, §24), the result says "The model cut part of this
+  short, so some words may be missing." Stop and a failure keep what was made and
+  say which part they reached.
+- **Voices:** a sheet with the person's own first, "Mine". Choosing (a radio) and
+  hearing (a button) are separate controls, and one sample plays at a time. A sample
+  is one short sentence made on first play and cached per model and voice, which
+  costs compute once, so the sheet says so. "Add a voice" opens the same form as My
+  voices, for models that clone from a recording and people who manage models; the
+  new voice is chosen on return.
+- **The player** is the native `<audio controls>`. Above it, a waveform drawn by the
+  server from the real samples as SVG (the CSP allows no inline styles), filled as
+  it plays. Tapping moves the player; it is hidden from assistive technology and the
+  keyboard, since the native control does the same job.
+- **The pill** covers scripts with the same capped request as video jobs
+  (`GET /app/lab/active`).
+- **Not built:** a chat speech tool reading the cut flag (not this page's), MP3, and
+  choosing a pause length.
+- **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestWavePeaks`, `TestSpeechJob` (parts,
+  one at a time, the cut flag, Stop, a failure part way, over the limit) and
+  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
+  part. No real speech model has run through this page yet.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
