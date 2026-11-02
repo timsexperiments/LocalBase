@@ -4173,30 +4173,44 @@ loopback and strip every marker would pass; that is called out in the docs as
 unsupported in front of a local session.
 
 **Failures:** a wrong, used or expired token gets the same "This link has expired"
-page (no oracle). Failures are limited to 10 per minute per gateway, then 429 with
-`Retry-After`. Redeeming consumes the token in one transaction, so a double submit
-gets one session.
+page, status 410 (no oracle). Failures are limited to 10 per minute per gateway, then
+429 with `Retry-After`. A request that fails the loopback rule gets 403 and does not
+count, so a remote visitor cannot use up the local person's tries. There is at most
+one live link, so the token's hash is compared in constant time against it, and a
+single conditional `DELETE` spends it, so a double submit gets one session. `GET` only
+shows the page, so a link preview cannot spend a link.
 
 ### 25.3 The session
 
 - **Cookie:** `localbase-local-session`, `HttpOnly`, `SameSite=Strict`, host-only,
   **not** `Secure`. The existing `__Host-` cookie requires `Secure`, which Safari
   rejects on `http://127.0.0.1`. Plain HTTP on loopback does not leave the machine.
-- **Server side:** a hashed token with the existing session lifetime, in a new Go table
-  `local_sessions`. Keeping it apart from the TS session rows leaves rollback untouched.
-- **Permissions: all of them,** as `--no-auth` and the CLI have. It deliberately does
-  not go through the role policy, and it does not count as a manager for the lockout
-  rules (§13.6 item 5), because it is not an identity anyone else can see or manage.
+- **Server side:** a hashed token in a new Go table `local_sessions`. Keeping it apart
+  from the TS session rows leaves rollback untouched.
+- **Lifetime:** 12 hours idle, 7 days at most, shorter than the 7 and 30 days of
+  identity provider sessions, because nothing can review or disable this identity.
+- **At most 5 at once.** A new one ends the least recently used.
+- **Permissions: all of them, on purpose,** as `--no-auth` and the CLI have: whoever
+  can issue a link already controls the root. It deliberately does not go through the
+  role policy, and it does not count as a manager for the lockout rules (§13.6 item
+  5), because it is not an identity anyone else can see or manage. Because it bypasses
+  the policy, `login-link` refuses when an identity provider is configured unless
+  given `--force`, and the first-run link is not offered there.
 - **The same CSRF and same-origin rules** as other browser sessions, with this request's
   loopback origin in place of the configured one.
 - **Identity:** the owner id is `local`, so runs and results (§21) belong to it.
 - **Sign out** works as usual. `local-base access login-link --revoke` removes every
-  local session and unused link.
+  local session and unused link. `local-base access sessions list` and `sessions revoke
+  <id>` list and end them, and `GET`/`POST /_localbase/local-sessions` does the same for
+  Admin (`sessions:read`, `sessions:revoke`; `{"action":"revoke","id":...}` or
+  `{"action":"revoke-all"}`). No response carries a token or a hash.
+- **Only from this computer.** A phone or another computer needs an identity provider.
+  The CLI says so when it prints a link.
 
 ### 25.4 `/app/login` when there is no way in
 
 A navigation (`Accept` includes `text/html`) gets an HTML page, status 403, saying
-what to do. API clients keep today's JSON, so the differential and any script are
+what to do; a page that needs sign-in shows the same help in place, status 401. API clients keep today's JSON, so the differential and any script are
 unchanged.
 
 | Situation | Page says |
@@ -4216,17 +4230,21 @@ the token, a URL with one, or a hostname.
 
 ### 25.6 Rollback and tests
 
-**Rollback:** older binaries and TS ignore both tables. Local sessions stop working
-until a build that knows them returns, and the identity provider path is untouched.
-`tools/placement-rollback-check.sh` gains the two tables.
+**Rollback:** older binaries and TS ignore both tables, and `go_schema` stays 1. Local
+sessions stop working until a build that knows them returns, and the identity provider
+path is untouched. `tools/placement-rollback-check.sh` was not extended and no rollback
+drill was run; this rests on the tables being additive, as with `model_placements`.
 
-**Tests, written first:**
+**Tests:**
 - `TestLoginLinkSingleUse`, `TestLoginLinkExpires`, `TestLoginLinkHashedAtRest`,
-  `TestLoginLinkReplacesUnused`, `TestLoginLinkRateLimited`.
+  `TestLoginLinkReplacesUnused`, `TestLoginLinkRateLimited`, `TestLoginLinkSurvivesPreview`,
+  `TestLoginLinkRedeemForm`, `TestLocalSessionLifetime`, `TestLocalSessionsCappedAndRevoked`,
+  `TestLocalSessionCSRF`, `TestLocalSessionLogoutAndRevoke`.
 - `TestLocalSessionLoopbackRule`: a table over the socket, `Host` and each proxy marker,
   on redeem and on every later request, including a tunnel-shaped request with a valid
   cookie.
-- `TestLoginLinkRefusesWithProviderUnlessForced`, `TestFirstRunLinkPrintedOnce`,
+- `TestFirstRunLocalSignIn`: the real binary from `init`: the link printed once, the
+  pages, the session, the refusal with a provider unless `--force`.
   `TestServiceServeNeverPrintsLink`.
 - `TestLoginHelpPage`: HTML for navigations, JSON for API clients.
 - `TestLoginLinkAudit`: the planted-token scan over logs and the diagnostics bundle.

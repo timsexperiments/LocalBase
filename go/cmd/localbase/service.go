@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
@@ -77,6 +80,11 @@ func serviceCommands() []*cli.Command {
 			}
 			c.Info("%s LocalBase service with %s.", verb, in.Service.Manager)
 			printStatus(c, in)
+			if in.Gateway.State == "ready" && !c.Global.JSON {
+				if cfg, err := auth.LoadAccess(e.Root.Dir); err == nil && cfg == nil {
+					printLoginLink(c, firstRunLoginLink(e, net.JoinHostPort(e.Config.GatewayHost, strconv.Itoa(e.Config.GatewayPort))))
+				}
+			}
 			// The fit-aware default (DESIGN §18), when a list is configured.
 			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
 				if d := gatewayDefaultModel(e); d != nil {

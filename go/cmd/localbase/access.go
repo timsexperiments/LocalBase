@@ -401,6 +401,8 @@ func accessCommand() *cli.Command {
 			list("List magic-link registrations", "magic-link", "magic-link"),
 			idPositional("remove", "Remove native magic-link authentication", "magic-link", "Magic-link registration"),
 		}},
+		loginLinkCommand(),
+		localSessionsCommand(),
 		{Name: "disable", Summary: "Disable browser authentication", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 			var disabled bool
 			err := withOperation(e, "configure browser access", func() (err error) {
@@ -739,7 +741,7 @@ func accessCommand() *cli.Command {
 			userCommand("disable", "Disable a browser user and revoke all browser permissions", "disable a browser user", "Disabled", "disabled"),
 			userCommand("remove", "Remove a browser user and linked identities", "remove a browser user", "Removed", ""),
 		}},
-	}}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "users")
+	}}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "users", "login-link", "sessions")
 }
 
 // ordered puts a group's subcommands in the TS help order.
