@@ -148,7 +148,7 @@ func TestLabVideo(t *testing.T) {
 	u := New(Deps{NoAuth: true, Call: api.call, Catalog: cat, LLM: llm})
 
 	w := httptest.NewRecorder()
-	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab?tab=video", nil))
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/studio/video", nil))
 	page := w.Body.String()
 	if !strings.Contains(page, `value="wan2.1-t2v-1.3b-q8_0"`) || !strings.Contains(page, `value="fastwan2.2-ti2v-5b-q6_k"`) ||
 		strings.Contains(page, `value="wan2.2-s2v-14b-fp8"`) {
@@ -234,7 +234,7 @@ func TestVoicesSheets(t *testing.T) {
 	html := get(New(Deps{NoAuth: true, Call: api.call}), "/app/voices").Body.String()
 	for _, want := range []string{`data-open-sheet="voice-add" aria-haspopup="dialog" aria-label="Add a voice"`, `<dialog id="voice-add" class="sheet`,
 		`data-close-sheet-on-success`, `data-play="/app/voices/voice-0123456789ab/audio" aria-label="Play Narrator" aria-pressed="false"`,
-		`<dialog id="voice-voice-0123456789ab" class="sheet`, `href="/app/lab?tab=speech">Use in the Lab</a>`, "Delete voice", "js/voices.js"} {
+		`<dialog id="voice-voice-0123456789ab" class="sheet`, `href="/app/studio/speech">Use in Speech</a>`, "Delete voice", "js/voices.js"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q", want)
 		}

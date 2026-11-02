@@ -31,7 +31,7 @@ syncChips();
 // [data-fill] puts its text in the prompt (switching to its tool first when
 // data-fill-tab names another one) and focuses it, without sending.
 const fillKey = "localbase.lab.fill";
-const currentTab = () => new URLSearchParams(location.search).get("tab") || "image";
+const currentTab = () => location.pathname.split("/").pop();
 
 function fill(text) {
   const prompt = document.getElementById("lab-prompt");
@@ -47,7 +47,7 @@ document.addEventListener("click", (event) => {
   const tab = button.dataset.fillTab;
   if (tab && tab !== currentTab()) {
     sessionStorage.setItem(fillKey, JSON.stringify({ tab, text: button.dataset.fill }));
-    location.assign(`/app/lab?tab=${encodeURIComponent(tab)}`);
+    location.assign(`/app/studio/${encodeURIComponent(tab)}`);
     return;
   }
   fill(button.dataset.fill);

@@ -5,11 +5,11 @@
     <h1 id="voices-title" class="page-title">My voices</h1>
     {{if .List.CanManage}}<button type="button" class="btn btn-primary size-11 rounded-full p-0" data-open-sheet="voice-add" aria-haspopup="dialog" aria-label="Add a voice">{{template "icon-plus"}}</button>{{end}}
   </div>
-  <p class="page-lead">Voices the Lab can speak in. <button type="button" class="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline" data-open-sheet="voice-help" aria-haspopup="dialog">How voices work</button></p>
+  <p class="page-lead">Voices the Studio can speak in. <button type="button" class="inline-flex min-h-11 items-center font-semibold text-accent underline-offset-4 hover:underline" data-open-sheet="voice-help" aria-haspopup="dialog">How voices work</button></p>
   <dialog id="voice-help" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-help-title">
     {{template "sheet-head" (dict "ID" "voice-help-title" "Title" "How voices work")}}
     <div class="grid gap-3 px-5 pb-3 text-muted">
-      <p>A voice is a short recording ({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech) that speech models clone from. Use it in the <a class="font-semibold text-accent" href="/app/lab?tab=speech">Lab</a>, or by its id in the speech API.</p>
+      <p>A voice is a short recording ({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech) that speech models clone from. Use it in <a class="font-semibold text-accent" href="/app/studio/speech">Speech</a>, or by its id in the speech API.</p>
       <p>Recordings stay on this LocalBase, in its own folder.{{if .List.CanManage}} Only people who manage models can play them back.{{end}}</p>
       <p>Add only your own voice, or one whose speaker agreed to it.</p>
     </div>
@@ -66,7 +66,7 @@
       <dialog id="voice-{{.ID}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-{{.ID}}-title">
         {{template "sheet-head" (dict "ID" (printf "voice-%s-title" .ID) "Title" .Name)}}
         <div class="grid gap-4 px-4 pb-2">
-          <a class="btn btn-quiet w-full" href="/app/lab?tab=speech">Use in the Lab</a>
+          <a class="btn btn-quiet w-full" href="/app/studio/speech">Use in Speech</a>
           <form class="grid gap-2" hx-post="/app/voices/{{.ID}}/rename" hx-target="#voice-list" hx-swap="outerHTML">
             <label class="grid gap-1"><span class="font-semibold">Name</span>
               <input class="input" name="name" required maxlength="48" value="{{.Name}}" autocomplete="off"></label>

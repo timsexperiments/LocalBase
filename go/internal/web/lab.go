@@ -195,16 +195,20 @@ func voiceLabel(name string) string {
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
-func (u *UI) lab(w http.ResponseWriter, r *http.Request) {
-	tab := r.URL.Query().Get("tab")
-	if !slices.Contains([]string{"image", "video", "speech", "transcribe"}, tab) {
-		tab = "image"
-	}
+// lab draws one tool's page: its results, and its prompt when it can run.
+func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	p := u.caller(r)
-	data := map[string]any{"Tab": tab, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
+	allowed, hasModel, _ := u.toolAvailable(r, tab)
+	data := map[string]any{"Tab": tab, "ToolName": studioNames[tab], "Ready": allowed && hasModel, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
 		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video")}
-	data["Items"] = u.labRuns(r)
+	var items []labItemView
+	for _, it := range u.labRuns(r) {
+		if it.Tool == tab {
+			items = append(items, it)
+		}
+	}
+	data["Items"] = items
 	switch tab {
 	case "image":
 		data["Models"] = u.labModels("image")

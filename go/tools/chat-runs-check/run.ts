@@ -50,7 +50,7 @@ check((await runsNow()).length === 0, `stopped run gone: ${await runsNow()}`);
 
 // 3. Draft survives leaving the page.
 await ev(`(() => { const i = document.querySelector("#chat-input"); i.value = "half a thought"; i.dispatchEvent(new Event("input")); })()`);
-await nav("/app/lab");
+await nav("/app/studio");
 await send("Page.navigate", { url: base + "/app/chat?conversation=" + conv }); await sleep(1500);
 check((await ev(`document.querySelector("#chat-input").value`)) === "half a thought", "draft restored");
 check((await ev(`document.querySelectorAll("[data-messages] article").length`)) >= 4, "conversation kept in this tab without saved history");
@@ -95,21 +95,21 @@ check(/is busy\.$/.test(busy.said) && busy.pill.startsWith("Busy"), `announces t
 // keyboard while typing.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await send("Emulation.setTouchEmulationEnabled", { enabled: true });
-await nav("/app/lab?tab=image");
+await nav("/app/studio/image");
 await ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>Promise.all(b.data.map(r=>fetch("/app/api/_localbase/runs/"+r.id,{method:"DELETE",headers:{"x-localbase-ui":"1"}}))))`);
-await nav("/app/lab?tab=image");
+await nav("/app/studio/image");
 if (!(await ev(`!!document.querySelector("#lab-prompt")`))) console.log("skip lab (no image model on this gateway)");
 else {
   // At 360x740 the docked prompt stays small, and an example fills it.
   await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 740, deviceScaleFactor: 2, mobile: true });
-  await nav("/app/lab?tab=image");
+  await nav("/app/studio/image");
   const h = await ev(`Math.round(document.querySelector(".lab-dock").getBoundingClientRect().height)`);
   check(h <= 0.2 * 740, `the docked prompt is at most a fifth of the screen at 360x740 (${h}px)`);
   await ev(`document.querySelector("[data-lab-empty] [data-fill]").click()`);
   const filled = await ev(`({ value: document.querySelector("#lab-prompt").value, focused: document.activeElement?.id })`);
   check(filled.value.startsWith("A paper boat") && filled.focused === "lab-prompt", `an example fills the prompt: ${JSON.stringify(filled)}`);
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
-  await nav("/app/lab?tab=image");
+  await nav("/app/studio/image");
   const dock = await ev(`(() => { const d = document.querySelector(".lab-dock").getBoundingClientRect(); const t = document.querySelector("nav.tabbar").getBoundingClientRect(); return { gap: Math.round(t.top - d.bottom) }; })()`);
   check(dock.gap === 0, `the prompt sits right above the tab bar (gap ${dock.gap})`);
   await ev(`(() => { document.querySelector("#lab-prompt").value = "a paper boat fake:slow-image"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
@@ -118,14 +118,18 @@ else {
   check(/paper boat/.test(started ?? ""), `a tray item appears with its caption: ${started}`);
   await nav("/app/models");
   await sleep(2000);
-  await nav("/app/lab?tab=speech");
+  await nav("/app/studio");
+  check(await ev(`!!document.querySelector(".studio-recent a[href='/app/studio/image']")`), "the landing's Recent shows it");
+  await nav("/app/studio/speech");
+  check(await ev(`document.querySelectorAll("#lab-items > li").length === 0`), "another tool's tray does not");
+  await nav("/app/studio/image");
   for (let i = 0; i < 20 && !(await ev(`!!document.querySelector("#lab-items img")`)); i++) await sleep(250);
   // The fake's PNG is a signature, not a picture: check what the page serves.
   const done = await ev(`(async () => { const li = document.querySelector("#lab-items > li"); const img = li?.querySelector("img"); if (!img) return {};
     const r = await fetch(img.getAttribute("src")); const b = new Uint8Array(await r.arrayBuffer());
     return { type: r.headers.get("content-type"), png: b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, alt: img.alt, polling: li.hasAttribute("hx-get") }; })()`);
-  check(done.type === "image/png" && done.png && /paper boat/.test(done.alt) && !done.polling, `the finished image is in the tray on another tool's page: ${JSON.stringify(done)}`);
-  await nav("/app/lab?tab=image");
+  check(done.type === "image/png" && done.png && /paper boat/.test(done.alt) && !done.polling, `the finished image is in its tray after leaving: ${JSON.stringify(done)}`);
+  await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
   for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
   await ev(`[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")?.click()`);

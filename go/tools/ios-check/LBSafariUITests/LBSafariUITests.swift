@@ -114,7 +114,7 @@ final class LBSafariUITests: XCTestCase {
         }
         open("/app/admin")
         audit("admin")
-        open("/app/lab?tab=image")
+        open("/app/studio/image")
         audit("lab")
     }
 }

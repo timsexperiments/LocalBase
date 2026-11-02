@@ -47,7 +47,7 @@ func shellUI(t *testing.T, p *auth.Principal, logoutURL string) *UI {
 func TestSection(t *testing.T) {
 	for page, want := range map[string]string{
 		"chat": "chat", "library": "models", "get": "models", "details": "models", "import": "models", "backends": "models",
-		"lab": "lab", "running": "running", "voices": "more", "settings": "more", "admin": "more",
+		"lab": "studio", "studio": "studio", "running": "running", "voices": "more", "settings": "more", "admin": "more",
 	} {
 		if got := section(page); got != want {
 			t.Errorf("section(%q) = %q, want %q", page, got, want)
@@ -64,7 +64,7 @@ func TestShellOnEveryPage(t *testing.T) {
 	u := shellUI(t, nil, "")
 	for path, current := range map[string]string{
 		"/app/chat": "Chat", "/app/models": "Models", "/app/models/get": "Models", "/app/models/running": "Running",
-		"/app/lab": "Lab", "/app/voices": "", "/app/settings": "", "/app/admin": "",
+		"/app/studio": "Studio", "/app/studio/image": "Studio", "/app/voices": "", "/app/settings": "", "/app/admin": "",
 	} {
 		w := get(u, path)
 		body := w.Body.String()
@@ -76,7 +76,7 @@ func TestShellOnEveryPage(t *testing.T) {
 			t.Fatalf("%s: no tab bar", path)
 		}
 		tabs := m[1]
-		for _, label := range []string{">Chat<", ">Models<", ">Lab<", ">Running<", ">More"} {
+		for _, label := range []string{">Chat<", ">Models<", ">Studio<", ">Running<", ">More"} {
 			if !strings.Contains(tabs, label) {
 				t.Errorf("%s: tab bar lacks %s", path, label)
 			}
@@ -106,7 +106,7 @@ func TestShellOnEveryPage(t *testing.T) {
 // disables zoom.
 func TestViewportKeyboardAndZoom(t *testing.T) {
 	u := shellUI(t, nil, "")
-	for _, path := range []string{"/app/chat", "/app/models", "/app/lab", "/app/voices", "/app/settings", "/app/admin"} {
+	for _, path := range []string{"/app/chat", "/app/models", "/app/studio", "/app/studio/image", "/app/voices", "/app/settings", "/app/admin"} {
 		body := get(u, path).Body.String()
 		if !strings.Contains(body, "interactive-widget=resizes-content") {
 			t.Errorf("%s: no interactive-widget=resizes-content", path)
@@ -154,8 +154,8 @@ func TestModelsSwitch(t *testing.T) {
 			t.Errorf("%s: the Models switch does not mark %s", path, current)
 		}
 	}
-	if strings.Contains(get(u, "/app/lab").Body.String(), `<nav aria-label="Models"`) {
-		t.Error("the Models switch shows on the Lab")
+	if strings.Contains(get(u, "/app/studio").Body.String(), `<nav aria-label="Models"`) {
+		t.Error("the Models switch shows on the Studio")
 	}
 }
 
@@ -245,7 +245,7 @@ func TestUnload(t *testing.T) {
 // redraws after every change).
 func TestPagesConsistent(t *testing.T) {
 	u := shellUI(t, nil, "")
-	for _, path := range []string{"/app/models", "/app/models/get", "/app/models/running", "/app/lab", "/app/voices", "/app/settings",
+	for _, path := range []string{"/app/models", "/app/models/get", "/app/models/running", "/app/studio", "/app/studio/image", "/app/voices", "/app/settings",
 		"/app/admin?section=people", "/app/admin?section=access", "/app/admin?section=keys"} {
 		main := mainRe.FindString(get(u, path).Body.String())
 		if strings.Count(main, "<h1 ") != 1 || !regexp.MustCompile(`<h1 id="[a-z-]+" class="page-title">`).MatchString(main) {

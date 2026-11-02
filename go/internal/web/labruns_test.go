@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -74,9 +75,16 @@ func TestLabImageRun(t *testing.T) {
 	if strings.Count(strings.Join(f.calls, "\n"), "/result") != before {
 		t.Error("the result was fetched again")
 	}
-	page := get(u, "/app/lab?tab=speech").Body.String()
+	// Each tool's tray holds its own results; the landing shows the latest.
+	page := get(u, "/app/studio/image").Body.String()
 	if !strings.Contains(page, `<li id="run-run_1"`) || strings.Contains(page, "run-run_c") {
 		t.Errorf("tray: %s", page)
+	}
+	if page := get(u, "/app/studio/speech").Body.String(); strings.Contains(page, `<li id="run-run_1"`) {
+		t.Error("an image result in the Speech tray")
+	}
+	if page := get(u, "/app/studio").Body.String(); !strings.Contains(page, `class="studio-tile" aria-label="Image: a paper boat"`) || strings.Contains(page, "run_c") {
+		t.Errorf("recent: %s", page)
 	}
 	// Interrupted: Try again puts the whole prompt back.
 	f.status, f.reason = "interrupted", "gateway_restart"
@@ -114,8 +122,8 @@ func TestLabDock(t *testing.T) {
 	cfg := &store.Config{Active: map[string]string{"image": "dreamshaper-8-lcm"}, Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
 	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, Call: (&fakeRuns{status: "completed"}).call})
-	main := mainRe.FindString(get(u, "/app/lab?tab=image").Body.String())
-	for _, want := range []string{`<nav aria-label="Lab tools" class="segmented`, `id="lab-items"`, `class="lab-dock" data-docked`,
+	main := mainRe.FindString(get(u, "/app/studio/image").Body.String())
+	for _, want := range []string{`aria-label="Back to Studio"`, `<h1 id="lab-title" class="page-title">Image</h1>`, `id="lab-items"`, `class="lab-dock" data-docked`,
 		`data-open-sheet="lab-model"`, `data-open-sheet="lab-size"`, `<dialog id="lab-size" class="sheet`, `aria-label="Generate"`, `class="composer-box lab-box"`, `data-fill="A paper boat`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
@@ -141,5 +149,47 @@ func TestModelUnloadingMessage(t *testing.T) {
 	}
 	if got := (APIResult{Status: 503, Body: []byte(`{"error":{"code":"model_unloading","message":"x"}}`)}).apiError(); got != unloadingMessage {
 		t.Errorf("direct: %q", got)
+	}
+}
+
+// The landing: a card per tool. Ready tools open their page; one without a
+// model says so and the whole card goes to Get models for that task; one the
+// account may not use is not a link. An empty Recent says what will appear.
+func TestStudioLanding(t *testing.T) {
+	cat, _ := catalog.Load("")
+	cfg := &store.Config{Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
+	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "inference:image", "inference:speech", "inference:video"}}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm,
+		Call: func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
+			return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
+		}})
+	main := mainRe.FindString(get(u, "/app/studio").Body.String())
+	for _, want := range []string{`<h1 id="studio-title" class="page-title">Studio</h1>`, `<a href="/app/studio/image" class="studio-card">`,
+		`<a href="/app/models/get?filter=speech" class="studio-card">`, "Needs a model", "Not on your account", "What you make appears here"} {
+		if !strings.Contains(main, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(main, `href="/app/studio/transcribe"`) {
+		t.Error("a tool the account may not use is a link")
+	}
+	// A tool without a model has no prompt or examples, only the way to get one.
+	tool := mainRe.FindString(get(u, "/app/studio/speech").Body.String())
+	if !strings.Contains(tool, "No speech model yet") || strings.Contains(tool, "data-lab-empty") || strings.Contains(tool, `class="lab-dock"`) {
+		t.Errorf("speech without a model: %s", tool)
+	}
+}
+
+// Old Lab links land on the new pages; an unknown tool is not found.
+func TestLabRedirects(t *testing.T) {
+	u := New(Deps{NoAuth: true})
+	for from, to := range map[string]string{"/app/lab": "/app/studio", "/app/lab?tab=speech": "/app/studio/speech", "/app/lab?tab=bogus": "/app/studio"} {
+		if w := get(u, from); w.Code != http.StatusFound || w.Header().Get("Location") != to {
+			t.Errorf("%s: %d %s", from, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := get(u, "/app/studio/bogus"); w.Code != http.StatusNotFound {
+		t.Errorf("unknown tool: %d", w.Code)
 	}
 }

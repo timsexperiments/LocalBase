@@ -129,7 +129,7 @@ async function syncRuns() {
   // A run started in another browser has no place here: send it to its page.
   const shown = list
     .map((run) => ({
-      href: run.place?.href || (run.target?.includes("chat") ? "/app/chat" : "/app/lab"),
+      href: run.place?.href || (run.target?.includes("chat") ? "/app/chat" : "/app/studio"),
       label: run.place?.label || run.label || "Generating",
     }))
     .filter((run) => run.href !== here);

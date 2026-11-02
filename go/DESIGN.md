@@ -3385,6 +3385,32 @@ Across the eight pages:
   `model_unloading`) says "The model was being unloaded, so this didn't
   run. Try again: it loads again when needed." in Chat and the Lab.
 
+### 22.15 Studio (PR 9, operator direction 2026-11-01)
+
+"Lab" was everything on one page. It becomes **Studio**: a landing page and
+one page per tool, each to follow the best apps in its category. "Studio",
+not "Create", because transcribing and deciding are not creating.
+- **Routes.** `/app/studio` is the landing; `/app/studio/{image,video,speech,
+  transcribe}` are the tools (Decisions joins in its own PR). `GET /app/lab`
+  and `?tab=` redirect. The form and polling routes under `/app/lab/` stay.
+- **Landing.** Recent (the person's four latest results across tools, or a
+  line saying what will appear), then one card per tool: a small drawing of
+  what it makes (built from theme colors; a picture tool shows its latest
+  picture), one line of purpose, and the caption of its last result. A tool
+  with no model says "Needs a model" and the whole card links to Get models
+  filtered to that task. A tool the account may not use says so and is not
+  a link.
+- **Tool pages.** A back link and the tool's name replace the four-way
+  switch. The tray holds that tool's results only. Without a model or
+  permission the page shows only that state, not a prompt.
+- **Waiting.** An active result is a `.skeleton` of its own shape with its
+  state in words; the shimmer stops with reduced motion.
+- **Checks:** `TestStudioLanding`, `TestLabRedirects`, `TestLabImageRun`
+  (tray per tool, Recent), `tools/chat-runs-check.sh`, `phone-check`, `axe`.
+- **Known limits of the backend, for the tool pages:** video runs only at
+  each model's fixed profile (no duration or aspect presets; more qualified
+  profiles are a product decision); `/v1/systemone` is not a run target.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to

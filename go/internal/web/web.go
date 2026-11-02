@@ -118,7 +118,7 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "voices", "chat", "settings", "admin"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -151,7 +151,9 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/models/backend/{id}", u.mutating("models:manage", u.backendPanel))
 	m.HandleFunc("GET /app/backends", u.need("models:read", u.backendsPage))
 	m.HandleFunc("POST /app/backends", u.mutating("models:manage", u.backendsPage))
-	m.HandleFunc("GET /app/lab", u.need("models:read", u.lab))
+	m.HandleFunc("GET /app/studio", u.need("models:read", u.studio))
+	m.HandleFunc("GET /app/studio/{tool}", u.need("models:read", u.studioTool))
+	m.HandleFunc("GET /app/lab", u.need("models:read", u.labRedirect))
 	m.HandleFunc("GET /app/lab/voices", u.need("models:read", u.labVoiceOptions))
 	m.HandleFunc("POST /app/lab/image", u.mutating("inference:image", u.labImage))
 	m.HandleFunc("POST /app/lab/speech", u.mutating("inference:speech", u.labSpeech))
@@ -209,8 +211,10 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 // current tab on phones and the current item in the desktop sidebar.
 func section(page string) string {
 	switch page {
-	case "chat", "lab", "running":
+	case "chat", "running":
 		return page
+	case "studio", "lab":
+		return "studio"
 	case "library", "get", "details", "import", "backends":
 		return "models"
 	}

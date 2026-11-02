@@ -32,8 +32,8 @@ const open = async (path: string) => {
   await sleep(400);
 };
 
-const pages = ["/app/chat", "/app/models", "/app/models/get", "/app/models/running", "/app/lab?tab=image", "/app/lab?tab=video",
-  "/app/lab?tab=speech", "/app/lab?tab=transcribe", "/app/voices", "/app/settings", "/app/admin?section=keys", "/app/admin?section=access"];
+const pages = ["/app/chat", "/app/models", "/app/models/get", "/app/models/running", "/app/studio", "/app/studio/image", "/app/studio/video",
+  "/app/studio/speech", "/app/studio/transcribe", "/app/voices", "/app/settings", "/app/admin?section=keys", "/app/admin?section=access"];
 
 // Controls under 44x44 CSS px. Inline links in running text are exempt
 // (WCAG 2.5.8's inline exception), as are hidden and disabled-looking ones.
@@ -80,7 +80,7 @@ const clipped = `(() => {
     const g = group.getBoundingClientRect();
     for (const el of group.querySelectorAll("a, button, input, select, textarea, .tab-label")) {
       if (!shown(el)) continue;
-      // A row that scrolls sideways may hold more than fits (the Lab chips).
+      // A row that scrolls sideways may hold more than fits (the Studio chips).
       let scrolls = false;
       for (let p = el.parentElement; p && p !== group; p = p.parentElement)
         if (/auto|scroll/.test(getComputedStyle(p).overflowX)) scrolls = true;
@@ -155,7 +155,7 @@ else console.log(`ok   more sheet (${sheet.links.join(", ")})`);
 // when the viewport shrinks (as Chrome on Android resizes for the keyboard)
 // the focused field is scrolled into view.
 // [page, field, what to do first]; My voices types in its Add sheet.
-for (const [path, field, setup] of [["/app/lab?tab=image", "textarea[name=prompt]", ""],
+for (const [path, field, setup] of [["/app/studio/image", "textarea[name=prompt]", ""],
   ["/app/voices", "#voice-add input[name=name]", `document.querySelector("[data-open-sheet=voice-add]")?.click()`],
   ["/app/chat", "#chat-input", ""]]) {
   await viewport(390, 844, true);

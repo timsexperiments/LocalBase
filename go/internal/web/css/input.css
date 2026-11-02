@@ -595,3 +595,93 @@
     @apply fixed top-3 left-3 z-50 -translate-y-24 focus:translate-y-0;
   }
 }
+
+/* Studio (DESIGN §22.15): the landing and what its tools share. */
+@layer components {
+  .studio-head {
+    @apply -ml-2 flex items-center gap-1;
+  }
+  .studio-recent {
+    @apply grid grid-cols-4 gap-2 lg:max-w-md;
+  }
+  .studio-tile {
+    @apply block aspect-square overflow-hidden rounded-xl bg-surface-muted;
+  }
+  .studio-tile-img {
+    @apply block size-full object-cover;
+  }
+  .studio-tile .art {
+    @apply size-full;
+  }
+  .studio-cards {
+    @apply grid gap-2 min-[700px]:grid-cols-2;
+  }
+  .studio-card {
+    @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-ink;
+  }
+  a.studio-card {
+    @apply transition-colors hover:bg-hover motion-reduce:transition-none;
+  }
+  .studio-art-box {
+    @apply block size-14 shrink-0 overflow-hidden rounded-xl bg-surface-muted;
+  }
+  /* The drawings are built from theme colors, so they follow dark mode. */
+  .art {
+    @apply flex size-full items-center justify-center text-accent;
+  }
+  .art-image {
+    background: linear-gradient(140deg, var(--lb-accent-soft), var(--lb-accent-border));
+  }
+  .art-video {
+    background: linear-gradient(140deg, var(--lb-surface-muted), var(--lb-accent-soft));
+  }
+  .art-speech {
+    @apply gap-0.5;
+  }
+  .art-speech i {
+    @apply block h-3 w-0.5 rounded-full bg-accent;
+  }
+  .art-speech i:nth-child(2),
+  .art-speech i:nth-child(6) {
+    @apply h-6;
+  }
+  .art-speech i:nth-child(3),
+  .art-speech i:nth-child(5) {
+    @apply h-4;
+  }
+  .art-speech i:nth-child(4) {
+    @apply h-8;
+  }
+  .art-transcribe {
+    @apply flex-col items-stretch gap-1.5 px-2.5;
+  }
+  .art-transcribe i {
+    @apply block h-1 rounded-full bg-muted;
+  }
+  .art-transcribe i:nth-child(2) {
+    @apply w-2/3;
+  }
+  .art-transcribe i:nth-child(3) {
+    @apply w-5/6 bg-accent;
+  }
+  /* Waiting for a result: its place, softly moving. Still when motion is off. */
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-muted;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--lb-surface) 45%, transparent), transparent);
+      animation: lb-shimmer 1.6s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes lb-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}

@@ -44,7 +44,7 @@
     <ul class="grid gap-0.5">
       <li><a class="nav-item" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}}>{{template "icon-chat"}}Chat</a></li>
       <li><a class="nav-item" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}}>{{template "icon-models"}}Models</a></li>
-      <li><a class="nav-item" href="/app/lab" {{if eq $s "lab"}}aria-current="page"{{end}}>{{template "icon-lab"}}Lab</a></li>
+      <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}}>{{template "icon-studio"}}Studio</a></li>
       <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}}>{{template "icon-running"}}Running now</a></li>
       <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}}>{{template "icon-voices"}}My voices</a></li>
       <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>{{template "icon-settings"}}Settings</a></li>
@@ -79,7 +79,7 @@
   <ul>
     <li><a class="tab" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} aria-label="Chat">{{template "icon-chat"}}<span class="tab-label" aria-hidden="true">Chat</span></a></li>
     <li><a class="tab" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}} aria-label="Models">{{template "icon-models"}}<span class="tab-label" aria-hidden="true">Models</span></a></li>
-    <li><a class="tab" href="/app/lab" {{if eq $s "lab"}}aria-current="page"{{end}} aria-label="Lab">{{template "icon-lab"}}<span class="tab-label" aria-hidden="true">Lab</span></a></li>
+    <li><a class="tab" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}} aria-label="Studio">{{template "icon-studio"}}<span class="tab-label" aria-hidden="true">Studio</span></a></li>
     <li><a class="tab" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} aria-label="Running">{{template "icon-running"}}<span class="tab-label" aria-hidden="true">Running</span></a></li>
     <li><button type="button" class="tab" data-open-sheet="more-sheet" aria-haspopup="dialog" aria-label="More{{if eq $s "more"}}, current section{{end}}" {{if eq $s "more"}}data-active{{end}}>{{template "icon-more"}}<span class="tab-label" aria-hidden="true">More</span></button></li>
   </ul>
@@ -119,7 +119,8 @@
 
 {{define "icon-chat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-5 4v-4.2A1.5 1.5 0 0 1 4 14.5z"/></svg>{{end}}
 {{define "icon-models"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>{{end}}
-{{define "icon-lab"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5.2 9.1A2 2 0 0 0 6.5 21h11a2 2 0 0 0 1.7-2.9L14 9V3M7.5 15h9"/></svg>{{end}}
+{{define "icon-studio"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5 14 10l6.5 2-6.5 2-2 6.5-2-6.5-6.5-2L10 10z"/></svg>{{end}}
+{{define "icon-back"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>{{end}}
 {{define "icon-running"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>{{end}}
 {{define "icon-voices"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M8 8v8M4 10.5v3M16 7v10M20 10.5v3"/></svg>{{end}}
 {{define "icon-settings"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>{{end}}
