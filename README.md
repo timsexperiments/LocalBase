@@ -82,12 +82,13 @@ Models that earlier releases shipped and this one no longer lists keep working a
 
 Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
 
-### Image seeds and speech limits
+### Image seeds, speech limits and transcription language
 
 - `seed` on `/v1/images/generations` and `/v1/images/edits` is exact: the same seed, prompt and parameters give the same image. With `n` above 1, the images use `seed`, `seed + 1`, and so on.
 - **With no `seed`, the API uses seed 42**, so the same prompt gives the same image. Send your own seed for variety. Chat and the browser playground send a random one when you leave it blank.
 - Each item in `data` carries the `seed` it was made with. It is left out when it cannot be known: a JPEG or WebP generated with no `seed`.
 - `/v1/audio/speech` takes up to 256 characters, and only `speed: 1`. The Qwen3 TTS runtime stops at 20.48 seconds of audio; text that needs longer is cut, and the response has the header `X-Localbase-Audio-Truncated: true`. A detached run carries the same fact as `result.notes: ["audio_truncated"]`. Split long text into shorter parts.
+- `/v1/audio/transcriptions` and `/translations` with no `language` treat the audio as **English**, even on a multilingual model. That is whisper-server's own default. Foreign speech then comes back as confident, wrong English. Send `language=auto` to detect the language, or a code such as `es`. With `response_format=verbose_json`, `detected_language` still names what the model heard, so a mismatch with `language` is a warning sign. English-only (`.en`) models accept `language=auto` and any other code safely and stay English, marking foreign speech rather than transcribing it.
 
 ### Image and video inputs
 

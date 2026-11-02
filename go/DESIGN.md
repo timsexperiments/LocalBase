@@ -1210,6 +1210,10 @@ browser (`static/js/audio.js`), since the server decodes only WAV.
 `TestServeForUI` serves the contract fixture with `--no-auth` on a test
 port for checking the pages by hand.
 
+**Not a status change, but clients should know:** transcription with no `language`
+treats audio as English on every model, in TS and Go alike, and `language=auto`
+detects it (§24).
+
 ## 14. M5: catalog feed, discovery, declarative config, diagnostics, OTLP
 
 Stacked on M4 (`rewrite/go-m5` on `rewrite/go-m4`). M5 makes the Go gateway
@@ -3178,6 +3182,43 @@ every platform.
   the same format (24 kHz, mono, s16le), so a page can join the parts
   itself. Runs are limited to 4 active and 32 retained per principal, so a
   page runs parts one at a time and dismisses each after collecting it.
+
+**Transcription language (2026-11-02, FE thread's report).** With no `language`,
+whisper-server treats audio as English: its `--language` defaults to `en`, and
+neither gateway sets it. Go and TS match: a real side-by-side run on scratch roots
+gave the same text and fields for every case below, on the pinned runtime.
+
+| Model | Audio | `language` | Result |
+| --- | --- | --- | --- |
+| `whisper-base-q8_0` | Spanish | none | wrong English, like a rough translation; `language: english`, `detected_language: spanish` |
+| `whisper-base-q8_0` | Spanish | `auto` or `es` | Spanish; `language: spanish` |
+| `whisper-base-q8_0` | English | none or `auto` | English, the same text |
+| `whisper-tiny-en-q8_0` | English | none or `auto` | English, the same text |
+| `whisper-tiny-en-q8_0` | Spanish | none, `auto` or `es` | "(speaking in foreign language)"; `language: english` |
+
+- **This is a known difference from what people expect, kept for TS parity
+  (operator).** `language=auto` is the workaround, and the Transcribe studio sends
+  it. Chat dictation (`dictation.js`) sends no language.
+- **`.en` models take `language=auto` safely.** They stay English and mark foreign
+  speech. Their `detected_language` is meaningless (it said "afrikaans" for
+  English speech), so do not show it for them.
+- **OpenAI:** its reference lists `language` as an optional hint with no default
+  and says nothing about omitting it, and its guide describes detection only for
+  `gpt-transcribe`. Auto-detection on omission is the common understanding, but
+  those pages do not state it; the platform.openai.com page could not be read.
+- **One short clip per language,** so this shows the behavior, not accuracy rates.
+
+**Considered, not built, for the user to decide:**
+1. **Auto by default on multilingual models:** the gateway adds `language=auto`
+   when the caller sends none and the model has the `multilingual` capability. `.en`
+   models are unaffected. It fixes API clients and dictation with no setup, and
+   would be an explicit difference from TS. The risk is misdetection on very short
+   or quiet audio, which today is at least consistently English.
+2. **A `speech.default-language` setting:** default `en` (today's behavior), with
+   `auto` or a code allowed. Parity stays by default, but people have to find it.
+
+I recommend the first: wrong text with a 200 is the worse failure, and callers who
+want English can still send `language=en`.
 
 **Transcription.** Only `whisper-server/v1` runs transcription in this
 build; the CrispASR command refuses it, and an imported `process-openai`
