@@ -354,3 +354,16 @@ func TestRunningListsEveryRuntime(t *testing.T) {
 		t.Error("a reservation with no model got a row")
 	}
 }
+
+// A figure guessed without the model's file doesn't turn into advice.
+func TestForecastIgnoresAGuess(t *testing.T) {
+	u := shellUI(t, nil, "")
+	u.d.Call = func(_ context.Context, _ *auth.Principal, _, _, _ string, _ []byte) APIResult {
+		return APIResult{Status: 200, Body: []byte(`{"admitted":false,"requestedBytes":21000000000,"demandSource":"estimated","refusal":{"code":"insufficient_memory","permanent":false}}`)}
+	}
+	r := httptest.NewRequest("GET", "/app/welcome/choose", nil)
+	got := u.withForecast(r, []CatalogRow{{ID: "m", Fit: "fits"}})
+	if got[0].Forecast || got[0].Fit != "fits" || got[0].UsesBytes != 0 {
+		t.Errorf("a guess was used: %+v", got[0])
+	}
+}

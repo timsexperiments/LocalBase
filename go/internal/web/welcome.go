@@ -87,12 +87,18 @@ func (u *UI) withForecast(r *http.Request, rows []CatalogRow) []CatalogRow {
 		var a struct {
 			Admitted       bool   `json:"admitted"`
 			RequestedBytes *int64 `json:"requestedBytes"`
+			DemandSource   string `json:"demandSource"`
 			Refusal        *struct {
 				Permanent bool   `json:"permanent"`
 				Code      string `json:"code"`
 			} `json:"refusal"`
 		}
 		if u.apiCall(r, "GET", "/_localbase/models/"+url.PathEscape(rows[i].ID)+"/admission?assumeInstalled=1", nil, &a) != "" {
+			continue
+		}
+		// Without the model's file the figure is a rough guess, and has been measured at more
+		// than twice the real one. A guess doesn't get to tell someone to close their apps.
+		if a.DemandSource == "estimated" {
 			continue
 		}
 		switch {
