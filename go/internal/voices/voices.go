@@ -299,7 +299,7 @@ func ensurePrivateDir(dir string) error {
 		return errors.New("the custom voice directory is not a directory")
 	}
 	if info.Mode().Perm() != 0o700 {
-		return os.Chmod(dir, 0o700)
+		return os.Chmod(dir, 0o700) //nolint:gosec // a directory needs its execute bit
 	}
 	return nil
 }

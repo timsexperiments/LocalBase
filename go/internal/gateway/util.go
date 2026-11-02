@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"encoding/json"
 	"slices"
 	"sort"
 )
@@ -18,5 +17,3 @@ func sortedKeys[V any](m map[string]V) []string {
 	sort.Strings(keys)
 	return keys
 }
-
-func jsonUnmarshal(b []byte, v any) { _ = json.Unmarshal(b, v) }
