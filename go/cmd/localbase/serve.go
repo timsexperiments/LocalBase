@@ -365,6 +365,13 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	srv.StopManagement(3 * time.Second) // an accepted install gets a moment, then is interrupted and recorded
 	llm.Close()
+	// Every runtime is down before the log says the gateway is (the deferred
+	// closes above then find nothing left to do).
+	for _, s := range []*runtime.Service{stt, tts, image, videoService} {
+		if s != nil {
+			s.Close()
+		}
+	}
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")
 	if serveErr != nil {
 		return nil, serveErr
