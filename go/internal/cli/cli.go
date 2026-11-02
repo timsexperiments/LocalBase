@@ -25,6 +25,16 @@ import (
 // InputError is invalid command input (exit 2, code invalid_input).
 type InputError struct{ Message string }
 
+// ReasonedError gives a command's failure a stable reason, added to its JSON error
+// and printed after its message. The message itself does not change.
+type ReasonedError struct {
+	Err    error
+	Reason string
+}
+
+func (e *ReasonedError) Error() string { return e.Err.Error() }
+func (e *ReasonedError) Unwrap() error { return e.Err }
+
 func (e *InputError) Error() string { return e.Message }
 
 // Inputf returns an InputError.
@@ -167,6 +177,8 @@ var globalOptions = []Option{
 
 // App is a CLI program.
 type App struct {
+	// reason is the failing command's ReasonedError reason, for fail.
+	reason  string
 	Name    string
 	Version string
 	Summary string
@@ -186,9 +198,16 @@ func (a *App) fail(json bool, code, message string, exit int, help *Command, pat
 	// TS redacts every CLI error message like an external log text.
 	message = obs.BoundedText(message, 2048)
 	if json {
-		a.writeEnvelope(map[string]any{"ok": false, "error": map[string]string{"code": code, "message": message}})
+		detail := map[string]string{"code": code, "message": message}
+		if a.reason != "" {
+			detail["reason"] = a.reason
+		}
+		a.writeEnvelope(map[string]any{"ok": false, "error": detail})
 	}
 	fmt.Fprintf(a.Stderr, "Error: %s\n", message)
+	if a.reason != "" {
+		fmt.Fprintf(a.Stderr, "Reason: %s\n", a.reason)
+	}
 	if help != nil {
 		fmt.Fprintln(a.Stderr, a.help(help, path))
 	}
@@ -252,10 +271,20 @@ func (a *App) Run(args []string) int {
 		if errors.As(err, &ie) {
 			return a.fail(g.JSON, "invalid_input", ie.Message, cmd.inputExit(), cmd, path)
 		}
+		reason := ""
+		var re *ReasonedError
+		if errors.As(err, &re) {
+			reason = re.Reason
+		}
 		if ctx.streamingOK && g.JSON {
-			ctx.Line(map[string]any{"event": "error", "error": map[string]string{"code": "operational_error", "message": err.Error()}})
+			detail := map[string]string{"code": "operational_error", "message": err.Error()}
+			if reason != "" {
+				detail["reason"] = reason
+			}
+			ctx.Line(map[string]any{"event": "error", "error": detail})
 			return 1
 		}
+		a.reason = reason
 		return a.fail(g.JSON, "operational_error", err.Error(), 1, nil, path)
 	}
 	if g.JSON && !ctx.streamingOK {

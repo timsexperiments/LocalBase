@@ -50,6 +50,8 @@ type Options struct {
 	Client  *http.Client
 	// Available overrides the free-disk probe (tests).
 	Available func(dir string) (int64, error)
+	// wrapWriter wraps the file a download writes to (tests: a full disk).
+	wrapWriter func(io.Writer) io.Writer
 }
 
 // DownloadURL is where an artifact downloads from.
@@ -141,8 +143,8 @@ func Model(ctx context.Context, s *catalog.Spec, dir string, o Options) (string,
 	}
 	if free, err := avail(dir); err == nil {
 		if need := RequiredBytes(s, dir); free < need {
-			return fail(fmt.Errorf("Insufficient disk space to install %q: requires %.2f GiB, %.2f GiB available at %s.",
-				s.ModelID, float64(need)/gib, float64(free)/gib, dir))
+			return fail(&diskSpaceError{fmt.Sprintf("Insufficient disk space to install %q: requires %.2f GiB, %.2f GiB available at %s.",
+				s.ModelID, float64(need)/gib, float64(free)/gib, dir)})
 		}
 	}
 	report(Event{Kind: "started", ModelID: s.ModelID, ArtifactCount: len(s.Artifacts)})
@@ -221,7 +223,7 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 	if token == "" {
 		token = os.Getenv("HF_TOKEN")
 	}
-	if err := download(ctx, src, partial, a.ExpectedSizeBytes, token, o.Client, func(n int64) {
+	if err := download(ctx, src, partial, a.ExpectedSizeBytes, token, o.Client, o.wrapWriter, func(n int64) {
 		e := ev
 		e.Kind, e.Downloaded, e.Total, e.Percent = "download-progress", n, a.ExpectedSizeBytes, int(n*100/a.ExpectedSizeBytes)
 		report(e)
@@ -239,10 +241,10 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 func downloadError(src, token string, err error) error {
 	low := strings.ToLower(src)
 	if token == "" && (strings.Contains(low, "gemma") || strings.Contains(low, "llama")) {
-		return fmt.Errorf("Failed to download model from %s.\n\nThis model is gated on Hugging Face. To download it:\n"+
+		return &messageError{cause: err, message: fmt.Sprintf("Failed to download model from %s.\n\nThis model is gated on Hugging Face. To download it:\n"+
 			"1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n"+
 			"2. Save your access token in the database: local-base configure --hf-token \"your_token\" (or set the HF_TOKEN environment variable)\n"+
-			"3. Re-run the command.", src)
+			"3. Re-run the command.", src)}
 	}
 	return fmt.Errorf("Failed to download model from %s: %w", src, err)
 }
@@ -251,7 +253,7 @@ var contentRangeRe = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+)$`)
 
 // download appends to partial from its current size, checking the response
 // framing (200 for a new file, 206 with a matching Content-Range to resume).
-func download(ctx context.Context, src, partial string, expected int64, token string, client *http.Client, progress func(int64)) error {
+func download(ctx context.Context, src, partial string, expected int64, token string, client *http.Client, wrap func(io.Writer) io.Writer, progress func(int64)) error {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -274,7 +276,7 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		removeIfEmpty(partial)
-		return fmt.Errorf("HTTP %d %s", resp.StatusCode, strings.TrimPrefix(resp.Status, strconv.Itoa(resp.StatusCode)+" "))
+		return &HTTPStatusError{resp.StatusCode, strings.TrimPrefix(resp.Status, strconv.Itoa(resp.StatusCode)+" ")}
 	}
 	if err := checkFraming(resp, offset, expected); err != nil {
 		removeIfEmpty(partial)
@@ -285,6 +287,10 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 		return err
 	}
 	defer f.Close()
+	var w io.Writer = f
+	if wrap != nil {
+		w = wrap(f)
+	}
 	n := offset
 	buf := make([]byte, 1<<20)
 	last := time.Time{}
@@ -294,9 +300,9 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 		if k > 0 {
 			n += int64(k)
 			if n > expected {
-				return fmt.Errorf("downloaded size exceeds authoritative size %d", expected)
+				return &integrityError{fmt.Sprintf("downloaded size exceeds authoritative size %d", expected)}
 			}
-			if _, err := f.Write(buf[:k]); err != nil {
+			if _, err := w.Write(buf[:k]); err != nil {
 				return err
 			}
 			if time.Since(last) > 250*time.Millisecond || n == expected {
@@ -315,7 +321,7 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 		return err
 	}
 	if n != expected {
-		return fmt.Errorf("download ended at %d bytes; expected %d", n, expected)
+		return &truncatedError{fmt.Sprintf("download ended at %d bytes; expected %d", n, expected)}
 	}
 	return nil
 }
@@ -335,7 +341,7 @@ func checkFraming(resp *http.Response, offset, expected int64) error {
 			return fmt.Errorf("Expected an HTTP 200 response without Content-Range for a new download, received %d", resp.StatusCode)
 		}
 		if length >= 0 && length != expected {
-			return fmt.Errorf("Content-Length %d does not match authoritative size %d", length, expected)
+			return &integrityError{fmt.Sprintf("Content-Length %d does not match authoritative size %d", length, expected)}
 		}
 		return nil
 	}
@@ -416,7 +422,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		return "", err
 	}
 	if id.Size != a.ExpectedSizeBytes {
-		return "", fmt.Errorf("Size mismatch for %s: expected %d bytes, got %d bytes.", a.Filename, a.ExpectedSizeBytes, id.Size)
+		return "", &integrityError{fmt.Sprintf("Size mismatch for %s: expected %d bytes, got %d bytes.", a.Filename, a.ExpectedSizeBytes, id.Size)}
 	}
 	digest := strings.ToLower(a.SHA256)
 	if e, ok := readCache(dir).Entries[a.Filename]; ok && strings.ToLower(e.AuthoritativeSha256) == digest &&
@@ -428,8 +434,8 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		return "", err
 	}
 	if actual != digest {
-		return "", fmt.Errorf("Checksum mismatch for %s!\n  Expected: %s\n  Got:      %s\n  File may be corrupted or tampered with. Delete it and retry.",
-			a.Filename, digest, actual)
+		return "", &integrityError{fmt.Sprintf("Checksum mismatch for %s!\n  Expected: %s\n  Got:      %s\n  File may be corrupted or tampered with. Delete it and retry.",
+			a.Filename, digest, actual)}
 	}
 	err = withCacheLock(dir, func() error {
 		c := readCache(dir)

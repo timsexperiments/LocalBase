@@ -360,7 +360,11 @@ func installModel(ctx context.Context, e *env, id string, report func(install.Ev
 		return "", fmt.Errorf("%s: %s", id, reason)
 	}
 	token := e.Config.HFToken
-	return install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, Report: report})
+	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, Report: report})
+	if err != nil {
+		return "", &cli.ReasonedError{Err: err, Reason: install.Reason(err)}
+	}
+	return path, nil
 }
 
 // progressReporter prints download progress on a terminal, as TS does.

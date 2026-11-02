@@ -34,6 +34,13 @@ type mgmtOperation struct {
 	Detail          string `json:"detail"`
 	DownloadedBytes *int64 `json:"downloadedBytes"`
 	TotalBytes      *int64 `json:"totalBytes"`
+	// Error is why a failed install failed; Detail stays the sentence it was.
+	Error *mgmtOpError `json:"error,omitempty"`
+}
+
+// mgmtOpError carries a stable install.Reason* value.
+type mgmtOpError struct {
+	Reason string `json:"reason"`
 }
 
 type mgmtEntry struct {
@@ -94,6 +101,10 @@ func newManagement(rootDir string) *management {
 			}
 			if op.State == "running" {
 				op.State, op.Detail = "failed", interruptedDetail
+				op.Error = &mgmtOpError{install.ReasonInterrupted}
+			}
+			if op.State == "failed" && op.Error == nil {
+				op.Error = &mgmtOpError{install.ReasonUnknown} // recorded before reasons existed
 			}
 			m.operations[id] = op
 		}
@@ -544,8 +555,10 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		case accepted:
 			op := *m.operations[spec.ModelID]
 			op.State, op.Detail = "failed", "Installation failed. Check storage, network access, and catalog verification."
+			op.Error = &mgmtOpError{install.Reason(err)}
 			if m.ctx.Err() != nil {
 				op.Detail = interruptedDetail
+				op.Error = &mgmtOpError{install.ReasonInterrupted}
 			}
 			m.operations[spec.ModelID] = &op
 		}
