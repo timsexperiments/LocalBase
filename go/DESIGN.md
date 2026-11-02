@@ -3635,6 +3635,9 @@ control, because the API takes only speed 1 (§24).
 - **Progress is real here:** "Making part 3 of 8…" with a `<progress>`, because the
   parts are real steps. The page's count ("About 8 parts") packs sentences the same
   way but is only a count.
+- **Digits:** a script of mostly digits (at least 12, and more than half of what is not
+  a space) shows "Long runs of digits can come out cut off or repeated." under the
+  count, since numbers measured unpredictable on the real model.
 - **Nothing is cut silently.** The field has no effective `maxlength`, since that
   truncates a paste without saying so; past the limit the count turns red and the
   send says so and keeps the script. If the API flags a part as cut

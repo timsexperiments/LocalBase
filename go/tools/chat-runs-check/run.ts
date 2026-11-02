@@ -459,6 +459,9 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await sleep(500);
   check(/Nothing was cut/.test(await ev(`document.querySelector("#lab-result [role=alert]")?.textContent ?? ""`)) && (await ev(`document.getElementById("lab-prompt").value.length`)) === 5001, "over the limit it says so, and the script stays");
 
+  const digitsNote = async (text) => { await ev(typeScript(text)); return ev(`!document.querySelector("[data-digits-note]").hidden`); };
+  check((await digitsNote("1000, 1001, 1002, 1003, 1004")) && !(await digitsNote("Call me on the 12th, about 3 boats and 40 nets, in the morning.")) && !(await digitsNote("")), "the digits note shows only for a script of mostly digits");
+
   // The voice picker.
   await ev(`document.querySelector("[data-open-sheet=lab-voice]").click()`);
   const picker = await ev(`({ open: document.getElementById("lab-voice").open, radios: document.querySelectorAll("#lab-voices input[type=radio]").length, plays: document.querySelectorAll("#lab-voices [data-voice-preview]").length, add: !!document.querySelector("#lab-voices [data-open-sheet=voice-add]") })`);

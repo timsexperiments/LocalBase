@@ -114,6 +114,7 @@
         {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         <span class="speech-count" data-script-count aria-live="polite" hidden></span>
       </div>
+      <p class="px-2 text-sm text-muted" data-digits-note role="status" hidden>Long runs of digits can come out cut off or repeated.</p>
       {{template "lab-field" (dict "Name" "input" "Label" "Script" "Max" 200000 "Placeholder" "Write a script" "Action" "Make speech")}}
     </div>
     {{if eq (len .Models) 1}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}

@@ -28,10 +28,19 @@ export function countParts(text, limit = PART) {
   return parts;
 }
 
+// Mostly digits, and more than a few of them.
+export function mostlyDigits(text) {
+  const marks = [...text].filter((c) => !/\s/.test(c));
+  const digits = marks.filter((c) => /\p{Nd}/u.test(c)).length;
+  return digits >= 12 && digits * 2 > marks.length;
+}
+
 function syncCount() {
   const area = document.querySelector("form[aria-label='Make speech'] textarea");
   const count = document.querySelector("[data-script-count]");
   if (!area || !count) return;
+  const note = document.querySelector("[data-digits-note]");
+  if (note) note.hidden = !mostlyDigits(area.value);
   const n = [...area.value].length;
   count.hidden = n <= PART;
   if (n <= PART) return;
