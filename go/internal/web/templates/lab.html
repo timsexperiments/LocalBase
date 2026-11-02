@@ -217,7 +217,8 @@
     </div>
     <div data-form-summary class="decide-form-summary" hidden>
       <div class="min-w-0 flex-1">
-        <p class="truncate" data-summary-situation></p>
+        <h2 class="decide-question" data-summary-question></h2>
+        <p class="wrap-anywhere text-muted" data-summary-situation></p>
         <p class="truncate text-sm text-muted" data-summary-options></p>
       </div>
       <button type="button" class="btn btn-quiet shrink-0" data-edit>Edit</button>
@@ -483,6 +484,8 @@
     <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Stop {{if gt (len .Tiles) 1}}these pictures{{else}}this picture{{end}}">Stop</button>
   </div>
   {{else if .Pictures}}
+  {{with .Caption}}<h3 class="image-title">{{.}}</h3>{{end}}
+  <p class="image-facts">{{if .Look}}{{.LookName}} · {{end}}{{.Ago}}</p>
   <div class="image-grid">
     {{range $p := .Pictures}}
     <div class="image-tile image-{{$shape}}">
@@ -491,7 +494,6 @@
     {{template "image-viewer" (dict "Item" $item "Picture" $p)}}
     {{end}}
   </div>
-  <div class="image-cap"><p class="min-w-0 flex-1 truncate text-sm text-muted">{{with .Ago}}{{.}} · {{end}}{{.Caption}}</p></div>
   {{else}}
   <div class="image-tile image-{{$shape}}"><p class="image-stage {{if eq .Status "failed"}}text-danger{{end}}">{{or .Message "This picture is no longer available."}}</p></div>
   <div class="image-cap">
@@ -512,10 +514,12 @@
     <span class="viewer-count" data-view-count></span>
     <button type="button" class="viewer-btn" data-view-step="-1" aria-label="Previous picture">{{template "icon-back"}}</button>
     <button type="button" class="viewer-btn" data-view-step="1" aria-label="Next picture">{{template "icon-forward"}}</button>
+    <button type="button" class="viewer-btn" data-view-zoom aria-pressed="false" aria-label="Zoom in">{{template "icon-zoom"}}</button>
   </div>
   <div class="viewer-stage">{{template "result-image" (dict "Src" $p.URL "Alt" (or $i.Caption "Generated picture") "Class" "viewer-img" "Tool" "image")}}</div>
   <div class="viewer-foot">
-    {{with $i.Caption}}<p class="viewer-caption">{{.}}</p>{{end}}
+    {{with $i.Caption}}<p class="viewer-caption viewer-words">{{.}}</p>{{end}}
+    <p class="viewer-caption viewer-hint">Tap the picture to zoom.</p>
     <p class="viewer-caption font-semibold" role="status" data-share-status hidden></p>
     <details class="viewer-details">
       <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>

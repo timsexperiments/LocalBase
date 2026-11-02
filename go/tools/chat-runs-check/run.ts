@@ -280,6 +280,8 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await sleep(300); await finished();
   const close = await ev(read);
   check(close.word === "Close call" && /^billing or shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+  const tracks = await ev(`(() => { const t = [...document.querySelectorAll("[data-result] .decide-track")].map((n) => Math.round(n.getBoundingClientRect().width)); const rows = [...document.querySelectorAll("[data-result] .decide-bar")].map((r) => r.querySelector(".decide-track").getBoundingClientRect().left < r.querySelector(".decide-bar-label > :last-child").getBoundingClientRect().left); return { t, numbersAfter: rows.every(Boolean), note: document.querySelector("[data-result] .decide-read")?.textContent.includes("worth a person’s look"), leads: document.querySelectorAll("[data-result] .decide-bar-top").length, question: document.querySelector("[data-summary-question]")?.textContent }; })()`);
+  check(new Set(tracks.t).size === 1 && tracks.t[0] > 0 && tracks.numbersAfter && tracks.note && tracks.leads === 2, `a close result: equal tracks, numbers after them, both answers lead, and it says to look: ${JSON.stringify(tracks)}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:unsure"));
@@ -719,6 +721,25 @@ await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, devi
 await nav("/app/chat");
 const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
 check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
+
+// --- The picture viewer inspects: zoom in and out, and the whole picture again on moving on -----
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+const hasPicture = await ev(`!!document.querySelector(".image-open")`);
+if (hasPicture) {
+  await ev(`document.querySelector(".image-open").click()`);
+  await sleep(300);
+  const view = `(() => { const d = document.querySelector("dialog.viewer[open]"); const st = d.querySelector(".viewer-stage"), b = d.querySelector("[data-view-zoom]"); return { zoomed: st.classList.contains("viewer-zoomed"), wider: st.scrollWidth > st.clientWidth, pressed: b.getAttribute("aria-pressed"), label: b.getAttribute("aria-label") }; })()`;
+  check((await ev(view)).zoomed === false, "the viewer opens on the whole picture");
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-zoom]").click()`);
+  await sleep(100);
+  const inn = await ev(view);
+  check(inn.zoomed && inn.wider && inn.pressed === "true" && inn.label === "Zoom out", `Zoom in enlarges it, and says how to come back: ${JSON.stringify(inn)}`);
+  await ev(`document.querySelector("dialog.viewer[open] .viewer-img").click()`);
+  await sleep(100);
+  check((await ev(view)).zoomed === false, "a tap on the zoomed picture comes back");
+  await ev(`document.querySelector("dialog.viewer[open] [data-close-sheet]").click()`);
+}
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });

@@ -118,6 +118,7 @@ function renderCollapse() {
   if (!state.collapsed) return;
   const names = f.type === "noul" ? "Yes or no" : namedOptions(f[f.type]).map((o) => o.name).join(", ");
   const rows = f.batch ? situations(f.situation).length : 0;
+  $("[data-summary-question]").textContent = f.question?.trim() ?? "";
   $("[data-summary-situation]").textContent = f.batch ? (rows === 1 ? "1 situation" : `${rows} situations`) : excerpt(f.situation.trim()) || "No situation given";
   $("[data-summary-options]").textContent = names;
 }
@@ -338,9 +339,10 @@ function renderOne() {
   }
   const read = one.read;
   box.replaceChildren(
-    el("article", { class: "decide-card" },
+    el("article", { class: "decide-read" },
       el("p", { class: `decide-word decide-word-${read.band}` }, read.word),
-      el("p", { class: "decide-verdict" }, el("span", { class: "min-w-0 break-words" }, read.verdict), " ", el("span", { class: "decide-odds" }, read.odds)),
+      el("p", { class: "decide-verdict" }, read.verdict),
+      read.note ? el("p", { class: "mt-1" }, read.note) : null,
       bars(read),
       el("p", { class: "mt-3 text-sm text-muted" }, STANDING_LINE),
       howToRead(),

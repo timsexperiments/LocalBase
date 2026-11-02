@@ -11,7 +11,7 @@
       <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "video"}}Video{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{else}}{{with .Ago}}, {{.}}{{end}}{{end}}">
         {{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
         {{else if .Active}}<span class="skeleton studio-tile-img"></span>
-        {{else}}{{template "studio-art" .Tool}}{{end}}
+        {{else}}<span class="tool-icon">{{template "tool-icon" .Tool}}</span>{{end}}
       </a></li>
       {{end}}
     </ul>
@@ -22,7 +22,7 @@
 
   <section aria-labelledby="tools-title" class="mt-5">
     <h2 id="tools-title" class="list-label mt-0">Tools</h2>
-    <ul class="studio-cards">
+    <ul class="studio-cards list-group">
       {{range .Cards}}
       <li>
         {{if .Href}}<a href="{{.Href}}" class="studio-card">{{template "studio-card-body" .}}</a>
@@ -35,13 +35,13 @@
 {{end}}
 
 {{define "studio-card-body"}}
-<span class="studio-art-box">{{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}{{else}}{{template "studio-art" .Tool}}{{end}}</span>
+<span class="tool-icon" aria-hidden="true">{{template "tool-icon" .Tool}}</span>
 <span class="min-w-0 flex-1">
-  <span class="block font-bold">{{.Name}}</span>
+  <span class="tool-name">{{.Name}}</span>
   <span class="block text-sm text-muted">{{.Line}}</span>
   {{if eq .State "needs"}}<span class="pill pill-warn mt-1">Needs a model</span>
   {{else if eq .State "denied"}}<span class="pill mt-1">Not on your account</span>
-  {{else if .Last}}<span class="block truncate text-sm text-muted">{{with .LastAgo}}{{.}} · {{end}}{{.Last}}</span>{{end}}
+  {{end}}
 </span>
 {{if .Href}}{{template "icon-chevron"}}{{end}}
 {{end}}

@@ -57,11 +57,11 @@ func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool
 func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 	items := u.labRuns(r)
 	lines := map[string]string{
-		"image":      "Describe a picture and get it back.",
-		"video":      "A short clip from words or a picture.",
-		"speech":     "Turn a script into a voice.",
-		"transcribe": "Record or upload, and get the words.",
-		"decisions":  "Ask a question, and see the odds.",
+		"image":      "A picture, from a few words.",
+		"video":      "A short clip, from words or a picture.",
+		"speech":     "A script, read in a voice.",
+		"transcribe": "A recording, turned into words.",
+		"decisions":  "A question, with odds you can read.",
 	}
 	var cards []studioCard
 	for _, tool := range studioTools {

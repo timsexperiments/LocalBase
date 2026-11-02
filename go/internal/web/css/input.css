@@ -1036,8 +1036,18 @@
   .decide-option-fields {
     @apply grid min-w-0 flex-1 gap-1 sm:grid-cols-2;
   }
+  /* The question leads, and a rule separates it from what the model said. */
   .decide-form-summary {
-    @apply mt-3 flex items-center gap-2 rounded-xl bg-surface-muted py-1.5 pr-1.5 pl-3;
+    @apply mt-3 flex items-start gap-2 border-b-2 border-accent pb-3;
+  }
+  .decide-question {
+    @apply wrap-anywhere empty:hidden;
+    font-family: var(--lb-font-reading);
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+  .decide-read {
+    @apply px-0.5;
   }
   .decide-card {
     @apply rounded-2xl border border-bound bg-surface p-4;
@@ -1052,22 +1062,39 @@
     @apply text-ink;
   }
   .decide-verdict {
-    @apply mt-0.5 text-2xl leading-tight font-bold break-words;
-  }
-  .decide-odds {
-    @apply text-lg font-semibold whitespace-nowrap text-muted;
+    @apply mt-0.5 break-words;
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-hello);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
   }
   .decide-bars {
-    @apply mt-3 grid gap-2.5;
+    @apply mt-3 grid items-center gap-x-3 gap-y-2.5;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  }
+  /* Each row shares the columns and orders only its own items. */
+  .decide-bar {
+    @apply col-span-full grid items-center gap-x-3;
+    grid-template-columns: subgrid;
   }
   .decide-bar-label {
-    @apply flex items-baseline justify-between gap-3 text-base;
+    display: contents;
+  }
+  .decide-bar-label > :last-child {
+    @apply order-1 text-right tabular-nums;
   }
   .decide-bar-top .decide-bar-label {
     @apply font-bold;
   }
   .decide-track {
-    @apply mt-1 block h-2 overflow-hidden rounded-full bg-surface-muted;
+    @apply block h-2 overflow-hidden rounded-full bg-surface-muted;
+  }
+  .decide-bar-top > .decide-bar-label {
+    @apply font-semibold;
+  }
+  .decide-bar-top > .decide-bar-label > * {
+    @apply font-semibold;
   }
   /* One accent and one neutral: answers are not good or bad. */
   .decide-track i {
@@ -1186,10 +1213,21 @@
   }
   .studio-cards {
     /* minmax(0, 1fr): a long one-line caption must not widen the column. */
-    @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[1100px]:grid-cols-[repeat(2,minmax(0,1fr))];
+    @apply max-w-3xl;
   }
   .studio-card {
-    @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-bound bg-surface p-3 text-ink;
+    @apply flex h-full min-h-[4.25rem] items-center gap-3 px-3 py-2.5 text-ink;
+  }
+  .tool-icon {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted;
+  }
+  .studio-tile .tool-icon {
+    @apply size-full;
+  }
+  .tool-name {
+    @apply block leading-tight;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
   }
   a.studio-card {
     @apply transition-colors hover:bg-hover motion-reduce:transition-none;
@@ -1294,12 +1332,22 @@
   .image-run {
     @apply min-w-0;
   }
+  /* The words first: this is what you asked for. */
+  .image-title {
+    @apply wrap-anywhere;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
+    line-height: 1.3;
+  }
+  .image-facts {
+    @apply mb-2 text-sm text-muted empty:hidden;
+  }
   .image-grid {
     @apply grid grid-cols-2 gap-1.5;
   }
   /* One picture takes the row; a batch shares it. */
   .image-grid:has(> .image-tile:only-of-type) {
-    @apply grid-cols-1;
+    @apply grid-cols-1 min-[768px]:max-w-md;
   }
   .image-tile {
     @apply relative grid min-w-0 place-items-center overflow-hidden rounded-xl bg-surface-muted;
@@ -1356,9 +1404,33 @@
   }
   .viewer-stage {
     @apply min-h-0 flex-1 p-2;
+    touch-action: pinch-zoom;
   }
   .viewer-img {
-    @apply block size-full object-contain;
+    @apply block size-full cursor-zoom-in object-contain;
+  }
+  /* Inspect: twice the size, moved by scrolling. */
+  .viewer-zoomed {
+    @apply overflow-auto p-0;
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+  .viewer-zoomed .result-img {
+    @apply block;
+    width: 200%;
+    height: 200%;
+  }
+  .viewer-zoomed .viewer-img {
+    @apply cursor-zoom-out;
+  }
+  .viewer-words {
+    font-family: var(--lb-font-reading);
+    font-size: 1.0625rem;
+  }
+  .viewer-hint {
+    @apply text-[var(--lb-viewer-muted)];
+  }
+  .viewer-stage:has(.viewer-zoomed) ~ .viewer-foot .viewer-hint {
+    @apply hidden;
   }
   .viewer-foot {
     @apply flex flex-wrap items-stretch justify-around gap-1 bg-[var(--lb-viewer-bar)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];

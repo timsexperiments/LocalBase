@@ -12,6 +12,9 @@ export const BAND_WORDS = { strong: "Strongly favored", leaning: "Leaning", clos
 
 export const STANDING_LINE = "These are the model’s odds, not a check that it is right. Judgment calls can still come back lopsided.";
 
+/** What a close result asks of the reader. Keyed to the band table, not to any number here. */
+export const BAND_NOTES = { close: "Neither is far ahead, so this one is worth a person’s look." };
+
 export const MAX_ROWS = 200;
 export const MAX_OPTIONS = { choice: 255, score: 10 };
 
@@ -51,7 +54,9 @@ export function readAnswer(answer, model) {
     verdict: close ? `${first.label} or ${next.label}` : first.label,
     odds: close ? `${percent(first.p)} and ${percent(next.p)}` : percent(first.p),
     top: first,
-    rows: rows.map((r) => ({ ...r, top: r.label === first.label, text: percent(r.p) })),
+    note: BAND_NOTES[id] ?? "",
+    // In a close result both answers lead, because the verdict names both.
+    rows: rows.map((r) => ({ ...r, top: r.label === first.label || (close && r.label === next.label), text: percent(r.p) })),
   };
 }
 

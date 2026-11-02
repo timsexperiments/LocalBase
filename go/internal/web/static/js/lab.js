@@ -147,7 +147,23 @@ revealShare();
 // One <dialog> per picture; previous and next move between them.
 const viewers = () => [...document.querySelectorAll("#lab-items dialog.viewer")];
 
+// Inspect: a tap, the button or Z doubles the picture, centered where it was tapped. Pinching
+// is the browser's own. It's always the whole picture again when you move on.
+function setZoom(dialog, on, x = 0.5, y = 0.5) {
+  const stage = dialog.querySelector(".viewer-stage");
+  const button = dialog.querySelector("[data-view-zoom]");
+  if (!stage || !button) return;
+  stage.classList.toggle("viewer-zoomed", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.setAttribute("aria-label", on ? "Zoom out" : "Zoom in");
+  if (on) {
+    stage.scrollLeft = stage.scrollWidth * x - stage.clientWidth / 2;
+    stage.scrollTop = stage.scrollHeight * y - stage.clientHeight / 2;
+  }
+}
+
 function paintViewer(dialog) {
+  setZoom(dialog, false);
   const all = viewers();
   const at = all.indexOf(dialog);
   const count = dialog.querySelector("[data-view-count]");
@@ -159,12 +175,25 @@ function stepViewer(dialog, by) {
   const all = viewers();
   if (all.length < 2) return;
   const next = all[(all.indexOf(dialog) + by + all.length) % all.length];
+  setZoom(dialog, false);
   dialog.close();
   next.showModal();
   paintViewer(next);
 }
 
 document.addEventListener("click", (event) => {
+  const zoom = event.target.closest?.("[data-view-zoom]");
+  if (zoom) {
+    const dialog = zoom.closest("dialog");
+    setZoom(dialog, zoom.getAttribute("aria-pressed") !== "true");
+    return;
+  }
+  if (event.target.matches?.(".viewer-img")) {
+    const dialog = event.target.closest("dialog");
+    const box = event.target.getBoundingClientRect();
+    setZoom(dialog, !dialog.querySelector(".viewer-zoomed"), (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+    return;
+  }
   const step = event.target.closest?.("[data-view-step]");
   if (step) {
     stepViewer(step.closest("dialog"), Number(step.dataset.viewStep));
@@ -206,4 +235,5 @@ document.addEventListener("keydown", (event) => {
   if (!dialog || event.target.closest?.("input, textarea")) return;
   if (event.key === "ArrowLeft") stepViewer(dialog, -1);
   if (event.key === "ArrowRight") stepViewer(dialog, 1);
+  if (event.key === "z") setZoom(dialog, !dialog.querySelector(".viewer-zoomed"));
 });
