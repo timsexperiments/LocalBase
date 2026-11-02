@@ -3684,6 +3684,12 @@ Record or choose a file, and get the words with their times.
   stopped or chosen. Language and Translate live in one sheet, on a chip that says
   "Detect language". The browser converts to 16 kHz WAV, as before; the limit
   works out at about 13 minutes, which recording stops at and the page says.
+- **A recording is hard to lose.** Sending starts at once, so what was sent stays in
+  memory until it has become a run. A send that fails or is refused says "Your recording
+  is still here, send again.", with Send again and Discard, and that survives moving
+  around the app, since the script stays loaded for as long as the page lives. A full
+  reload ends that memory, so the browser asks first while a recording or an unsent
+  send exists.
 - **Recording** is a panel in the dock: time, a level bar with a calm fall, one word
   ("Hearing you", "Very quiet" after 3 s, "Too loud"), Pause and Stop. The level is
   reassurance, not a measurement. "You'll get the text after you stop", since nothing
@@ -3703,8 +3709,9 @@ Record or choose a file, and get the words with their times.
 - **Export:** Text, Subtitles (.srt) and Web subtitles (.vtt), named by what they are
   for, built by the server from the same stretches. Copy gives the plain words.
 - **Not built:** word-level timing (`segments[].words[]` is optional), search in a
-  long transcript, and sharing code with chat's dictation, which has a 60 second
-  limit and its own path.
+  long transcript. Chat's dictation is not reused: it records up to 60 seconds and adds the
+  text to a draft in one step, with no panel, no Pause and no times, so the only code to
+  share would be the WAV encoding.
 - **Checks:** `TestSubtitleFormats`, `TestSegmentWords`, `TestTranscriptExport` and
   `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The microphone there is a generated
   tone through the real recorder, level and sending, because the headless browser's

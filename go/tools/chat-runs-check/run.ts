@@ -610,6 +610,30 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   const rec = await trUntil((s) => !s.active && /Recording/.test(s.text));
   check(/Recording/.test(rec?.text ?? "") && rec.times === 3 && (await ev(`document.querySelector("[data-record-panel]").hidden`)), `Stop sends it by itself: ${rec?.text.slice(0, 60)}`);
 
+  // A send that fails keeps the recording, even across a page change.
+  await send("Network.enable");
+  await mouse("[data-record-start]");
+  for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-record-panel]").hidden`)); i++) await sleep(100);
+  await sleep(600);
+  await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const beforeLost = await seen();
+  await ev(`document.querySelector("[data-record-stop]").click()`);
+  for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
+  const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
+  await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
+  await ev(`document.querySelector("a[href='/app/models']").click()`);
+  await sleep(900);
+  await ev(`document.querySelector("a[href='/app/studio']")?.click()`);
+  await sleep(900);
+  await ev(`document.querySelector("a[href='/app/studio/transcribe']")?.click()`);
+  await sleep(900);
+  check(!(await ev(`document.querySelector("[data-keep]").hidden`)), "and it is still offered after moving around the app");
+  await ev(`document.querySelector("[data-keep-send]").click()`);
+  for (let i = 0; i < 60 && (await seen()) === beforeLost; i++) await sleep(150);
+  const resent = await trUntil((s) => !s.active && s.times > 0);
+  check((await seen()) === beforeLost + 1 && resent?.times === 3 && (await ev(`document.querySelector("[data-keep]").hidden`)), "Send again makes the transcript and clears it");
+
   // No microphone: it says how to fix it, and a file still works.
   await ev(`navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError"))`);
   await ev(`document.querySelector("[data-record-start]").click()`);

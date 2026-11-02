@@ -8,6 +8,9 @@ const LOUD = 0.95;
 const QUIET_AFTER_MS = 3000;
 
 let session = null;
+// What was last sent, kept until it has become a run: a failed send or a page change
+// must not lose a recording. In memory only, for as long as this page lives.
+let kept = null;
 
 const form = () => document.querySelector("form[data-transcribe]");
 const q = (selector) => form()?.querySelector(selector);
@@ -23,6 +26,58 @@ function showPanel(on) {
   if (start) start.hidden = on;
   if (panel) panel.hidden = !on;
 }
+
+function showKept() {
+  const box = q("[data-keep]");
+  const start = q("[data-transcribe-start]");
+  if (!box) return;
+  const waiting = kept?.failed;
+  box.hidden = !waiting;
+  if (start && !session) start.hidden = !!waiting;
+  if (waiting) {
+    q("[data-keep-said]").textContent = kept.recorded ? "Your recording is still here, send again." : "Your file is still here, send again.";
+    say("");
+  }
+}
+
+// Put the kept audio back and send it. It is already converted.
+function sendKept() {
+  const input = q("[data-audio-input]");
+  if (!kept || !input) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(kept.file);
+  input.files = transfer.files;
+  kept.failed = false;
+  showKept();
+  say("Sending…");
+  form().requestSubmit();
+}
+
+document.addEventListener("htmx:beforeRequest", (event) => {
+  if (!event.detail.elt?.matches?.("form[data-transcribe]")) return;
+  const file = q("[data-audio-input]")?.files?.[0];
+  if (file) kept = { file, recorded: file.name.startsWith("recording"), failed: false };
+});
+
+document.addEventListener("htmx:afterRequest", (event) => {
+  if (!event.detail.elt?.matches?.("form[data-transcribe]") || !kept) return;
+  // A refusal comes back as an alert in the result; a run joins the tray.
+  const refused = event.detail.successful && event.detail.target?.id === "lab-result";
+  if (event.detail.successful && !refused) {
+    kept = null;
+    say("");
+    return;
+  }
+  kept.failed = true;
+  showKept();
+  if (!event.detail.successful) {
+    const said = q("[data-keep-said]");
+    if (said) said.textContent += " LocalBase could not be reached.";
+  }
+});
+document.addEventListener("htmx:afterSettle", () => {
+  if (kept?.failed) showKept();
+});
 
 const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 
@@ -143,7 +198,14 @@ function togglePause(button) {
 document.addEventListener("click", (event) => {
   const t = event.target.closest?.("button");
   if (!t) return;
-  if (t.matches("[data-record-start]")) startRecording();
+  if (t.matches("[data-keep-send]")) sendKept();
+  else if (t.matches("[data-keep-drop]")) {
+    kept = null;
+    q("[data-keep]").hidden = true;
+    q("[data-transcribe-start]").hidden = false;
+    const input = q("[data-audio-input]");
+    if (input) input.value = "";
+  } else if (t.matches("[data-record-start]")) startRecording();
   else if (t.matches("[data-pick-audio]")) q("[data-audio-input]")?.click();
   else if (t.matches("[data-record-pause]")) togglePause(t);
   else if (t.matches("[data-record-stop]")) session?.recorder.stop();
@@ -168,8 +230,9 @@ document.addEventListener("htmx:confirm", (event) => {
     say("Stop the recording first, or it will be lost.");
   }
 });
+// A full reload ends this page's memory too, so a recording not yet sent also asks.
 window.addEventListener("beforeunload", (event) => {
-  if (session) event.preventDefault();
+  if (session || kept) event.preventDefault();
 });
 
 // A file dropped anywhere on a wide screen.

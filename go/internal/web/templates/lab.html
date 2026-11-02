@@ -156,6 +156,13 @@
           <button type="button" class="btn btn-primary" data-record-stop>Stop</button>
         </div>
       </div>
+      <div class="transcribe-panel" data-keep hidden>
+        <p class="font-semibold" role="status" data-keep-said></p>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" class="btn btn-quiet" data-keep-drop>Discard</button>
+          <button type="button" class="btn btn-primary" data-keep-send>Send again</button>
+        </div>
+      </div>
       <p class="px-2 text-sm text-muted" data-audio-status aria-live="polite"></p>
     </div>
     {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
