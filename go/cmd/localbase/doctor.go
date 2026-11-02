@@ -74,7 +74,12 @@ func doctorCommand() *cli.Command {
 				for _, p := range problems {
 					c.Info("Unsafe file: %s", p.Error())
 				}
-				c.Info("The gateway will not start until these are fixed.")
+				line := "The gateway will not start until these are fixed."
+				if since := obs.StartRefusal(e.Root.Dir); since != nil {
+					line = "The gateway has been refusing to start since " + since.Since + ", and a service manager keeps retrying it. It will not start until these are fixed."
+					data["startRefusedSince"] = since.Since
+				}
+				c.Info("%s", line)
 				data["unsafeFiles"] = problems
 			}
 			return data, nil

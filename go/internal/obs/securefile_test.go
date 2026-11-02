@@ -101,6 +101,11 @@ func TestOpenOwnedRegular(t *testing.T) {
 	os.Link(hard, other)
 	_, err = OpenOwnedRegular(hard, os.O_WRONLY)
 	wantUnsafe(t, err, "hard link")
+	for _, want := range []string{"second name points at the same file", "`ln`", "Delete the other name", "`cp`"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the hard-link message lacks %q: %v", want, err)
+		}
+	}
 
 	fifo := filepath.Join(dir, "fifo")
 	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
@@ -303,4 +308,70 @@ func TestCheckRootFiles(t *testing.T) {
 	if got := CheckRootFiles(root2); len(got) != 1 || !strings.HasSuffix(got[0].Path, "logs") {
 		t.Errorf("a linked directory: %v", got)
 	}
+}
+
+// Retries of the same cause log once; a new cause, or a clean start, resets it.
+func TestStartRefusalLoggedOncePerCause(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "runtime"), 0o700)
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	a := &UnsafeFileError{filepath.Join(root, "runs", "run_a.json"), "it is a symbolic link"}
+	if !RecordStartRefusal(root, a, now) {
+		t.Error("the first refusal should be new")
+	}
+	for range 5 {
+		if RecordStartRefusal(root, a, now.Add(time.Minute)) {
+			t.Error("a retry of the same cause was new")
+		}
+	}
+	if got := StartRefusal(root); got == nil || got.Since != "2026-11-02T12:00:00Z" {
+		t.Errorf("since should stay the first time: %+v", got)
+	}
+	if !RecordStartRefusal(root, &UnsafeFileError{a.Path, hardLinkProblem}, now) {
+		t.Error("another problem should be new")
+	}
+	ClearStartRefusal(root)
+	if StartRefusal(root) != nil {
+		t.Error("not cleared")
+	}
+	if !RecordStartRefusal(root, a, now) {
+		t.Error("after a clean start it should be new again")
+	}
+	// With no runtime directory yet, it makes one.
+	fresh := t.TempDir()
+	RecordStartRefusal(fresh, a, now)
+	if StartRefusal(fresh) == nil {
+		t.Error("a first start's refusal was not recorded")
+	}
+	// A linked runtime directory can't be recorded through, and still counts as new.
+	linked := t.TempDir()
+	elsewhere := t.TempDir()
+	os.Symlink(elsewhere, filepath.Join(linked, "runtime"))
+	for range 2 {
+		if !RecordStartRefusal(linked, a, now) {
+			t.Error("an unrecorded refusal should count as new")
+		}
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("wrote through a linked directory: %v", entries)
+	}
+}
+
+func TestLogStartRefusal(t *testing.T) {
+	root := t.TempDir()
+	logs := filepath.Join(root, "logs")
+	cause := &UnsafeFileError{filepath.Join(root, "runs", "run_a.json"), "it is a symbolic link"}
+	LogStartRefusal(root, logs, cause)
+	got, _ := os.ReadFile(filepath.Join(logs, "events.jsonl"))
+	if !strings.Contains(string(got), "gateway.start-refused") || !strings.Contains(string(got), "run_a.json") {
+		t.Errorf("%s", got)
+	}
+	// When the log is the unsafe file, nothing is written through it.
+	target, content := victim(t)
+	root = t.TempDir()
+	logs = filepath.Join(root, "logs")
+	os.Mkdir(logs, 0o700)
+	os.Symlink(target, filepath.Join(logs, "events.jsonl"))
+	LogStartRefusal(root, logs, &UnsafeFileError{filepath.Join(logs, "events.jsonl"), "it is a symbolic link"})
+	victimUntouched(t, target, content)
 }

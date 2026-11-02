@@ -1,13 +1,16 @@
 package obs
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // UnsafeFileError is a log or checkpoint path that cannot be trusted: something
@@ -19,8 +22,13 @@ type UnsafeFileError struct {
 }
 
 func (e *UnsafeFileError) Error() string {
+	if e.Problem == hardLinkProblem {
+		return fmt.Sprintf("Refusing to use %s: %s. That means a second name points at the same file, which a backup made with `ln` does. Delete the other name, or replace it with a real copy (`cp`), then try again.", e.Path, e.Problem)
+	}
 	return fmt.Sprintf("Refusing to use %s: %s. Remove it, check who can write to %s, then try again.", e.Path, e.Problem, filepath.Dir(e.Path))
 }
+
+const hardLinkProblem = "it has another hard link"
 
 var (
 	currentUID = os.Getuid
@@ -45,7 +53,7 @@ func checkOwnedRegular(path string, info fs.FileInfo) error {
 		return &UnsafeFileError{path, "another user owns it"}
 	}
 	if st.Nlink > 1 {
-		return &UnsafeFileError{path, "it has another hard link"}
+		return &UnsafeFileError{path, hardLinkProblem}
 	}
 	return nil
 }
@@ -191,6 +199,7 @@ func CheckRootFiles(rootDir string) []*UnsafeFileError {
 	runtimeDir := filepath.Join(rootDir, "runtime")
 	if checkDir(runtimeDir) {
 		checkFile(filepath.Join(runtimeDir, "model-operations.json"))
+		checkFile(startRefusalPath(rootDir))
 	}
 	// A glob and the explicit path can name one file twice.
 	seen := map[string]bool{}
@@ -202,4 +211,66 @@ func CheckRootFiles(rootDir string) []*UnsafeFileError {
 		}
 	}
 	return unique
+}
+
+// startRefusal remembers why the gateway refused to start. A service manager retries
+// a failing gateway every few seconds, so the record lets each cause be logged once,
+// and lets doctor say how long it has been going on.
+type startRefusal struct {
+	Path    string `json:"path"`
+	Problem string `json:"problem"`
+	Since   string `json:"since"`
+}
+
+func startRefusalPath(rootDir string) string {
+	return filepath.Join(rootDir, "runtime", "start-refusal.json")
+}
+
+// RecordStartRefusal notes a refusal and reports whether it is new: the first for
+// this file and problem since the gateway last started. If it can't be recorded it
+// counts as new, so the cause is still reported.
+func RecordStartRefusal(rootDir string, cause *UnsafeFileError, now time.Time) bool {
+	if prior := StartRefusal(rootDir); prior != nil && prior.Path == cause.Path && prior.Problem == cause.Problem {
+		return false
+	}
+	b, err := json.Marshal(startRefusal{cause.Path, cause.Problem, now.UTC().Format(time.RFC3339)})
+	if err != nil {
+		return true
+	}
+	dir := filepath.Dir(startRefusalPath(rootDir))
+	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
+		os.Mkdir(dir, 0o700) // a first start refused before anything made it
+	}
+	if info, err := os.Lstat(dir); err == nil && info.IsDir() {
+		WritePrivateAtomic(startRefusalPath(rootDir), b)
+	}
+	return true
+}
+
+// StartRefusal is the recorded refusal, or nil.
+func StartRefusal(rootDir string) *startRefusal {
+	b, err := ReadOwnedRegular(startRefusalPath(rootDir))
+	if err != nil {
+		return nil
+	}
+	var r startRefusal
+	if json.Unmarshal(b, &r) != nil {
+		return nil
+	}
+	return &r
+}
+
+// ClearStartRefusal is for a gateway that got past the check.
+func ClearStartRefusal(rootDir string) { os.Remove(startRefusalPath(rootDir)) }
+
+// LogStartRefusal writes the event if the log itself is safe to open. If the log is
+// the unsafe file, the refusal on stderr is all there is.
+func LogStartRefusal(rootDir string, logsDir string, cause *UnsafeFileError) {
+	sink, err := OpenSink(logsDir)
+	if err != nil {
+		return
+	}
+	defer sink.Close()
+	slog.New(NewHandler(sink, slog.LevelInfo)).Error("The gateway refused to start: "+cause.Error(),
+		"event", "gateway.start-refused", "category", "runtime", "path", cause.Path, "problem", cause.Problem)
 }

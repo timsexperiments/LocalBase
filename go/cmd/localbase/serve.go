@@ -122,8 +122,14 @@ func serve(c *cli.Ctx) (any, error) {
 
 	// Before anything writes to them: a planted link must not redirect a log (TS).
 	if problems := obs.CheckRootFiles(r.Dir); len(problems) > 0 {
+		// A service manager retries this: the event is once per cause, and stderr
+		// (the returned error) says it every time.
+		if obs.RecordStartRefusal(r.Dir, problems[0], time.Now()) {
+			obs.LogStartRefusal(r.Dir, r.LogsDir(), problems[0])
+		}
 		return nil, problems[0]
 	}
+	obs.ClearStartRefusal(r.Dir)
 	if os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
 		if err := obs.BoundServiceStderr(r.Dir); err != nil { // #357: launchd never rotates the capture
 			var unsafe *obs.UnsafeFileError

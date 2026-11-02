@@ -1098,6 +1098,14 @@ name instead of a fixed `.tmp`.
 **Difference from TS:** TS also refuses a log directory other users can read. Go does not, and a
 separate change tightens a loose root at startup instead.
 
+**A refusal under a service manager:** launchd retries a gateway that exits. Each try prints the
+reason on stderr, and `gateway.start-refused` is logged once per cause, not per retry, using
+`runtime/start-refusal.json`, which a clean start removes. If the log itself is the unsafe file,
+stderr is all there is. `doctor` says how long it has been refusing (`startRefusedSince`).
+
+**A hard link** refuses as in TS, and the message explains it: a second name for the same file,
+which a backup made with `ln` creates. A `cp` copy is fine.
+
 **Not covered:** other files in the root written through fixed `.tmp` names (`ui-access.json`,
 `catalog.d`, auth profiles, the feed cache) and model and runtime downloads. A link at those paths
 is still followed.

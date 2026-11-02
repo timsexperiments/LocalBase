@@ -47,6 +47,12 @@ func TestPlantedLogLinkRefusesToStart(t *testing.T) {
 	if got, _ := os.ReadFile(victim); string(got) != content {
 		t.Errorf("the victim changed: %q", got)
 	}
+	// A retry by a service manager: stderr says it again; the record does not move.
+	again := exec.Command(goCLI(t), args...)
+	again.Env = cleanEnv()
+	if out, err := again.CombinedOutput(); err == nil || !strings.Contains(string(out), "Remove it") {
+		t.Errorf("a retry: %v %s", err, out)
+	}
 	doctor := e.cli(nil, "--non-interactive", "doctor")
 	if doctor.code != 0 || !strings.Contains(doctor.stderr+doctor.stdout, "Unsafe file") || !strings.Contains(doctor.stderr+doctor.stdout, active) {
 		t.Errorf("doctor: %d %s %s", doctor.code, doctor.stdout, doctor.stderr)
@@ -54,6 +60,9 @@ func TestPlantedLogLinkRefusesToStart(t *testing.T) {
 	asJSON := e.json("doctor")
 	if list, _ := asJSON["unsafeFiles"].([]any); len(list) != 1 {
 		t.Errorf("doctor --json: %v", asJSON["unsafeFiles"])
+	}
+	if asJSON["startRefusedSince"] == nil || !strings.Contains(doctor.stderr+doctor.stdout, "has been refusing to start since") {
+		t.Errorf("doctor should say how long this has been going on: %v %s", asJSON["startRefusedSince"], doctor.stderr)
 	}
 	if got, _ := os.ReadFile(victim); string(got) != content {
 		t.Errorf("doctor changed the victim: %q", got)
