@@ -96,6 +96,9 @@ type reservation struct {
 	accelerator int64
 	resident    bool
 	pid         int
+	// residentAt is the sample epoch it became resident in: a sample that began
+	// earlier cannot show its memory.
+	residentAt uint64
 }
 
 // Controller reserves memory for runtimes before they start. It is the Go
@@ -108,6 +111,7 @@ type Controller struct {
 
 	mu           sync.Mutex
 	reservations map[string]*reservation
+	epoch        uint64 // advanced when a runtime becomes resident
 	state        string // healthy | constrained | critical
 	normalRun    int
 }
@@ -136,12 +140,15 @@ type Reservation struct {
 	r  *reservation
 }
 
-// Materialize marks the runtime resident (its memory now shows in samples).
+// Materialize marks the runtime resident: loaded, so its memory shows in samples
+// taken from now on. Until then its demand counts as pending. Call it when the
+// backend is ready, not when it is spawned: a spawned process has not loaded yet.
 func (r *Reservation) Materialize(pid int) {
 	r.c.mu.Lock()
 	defer r.c.mu.Unlock()
 	if r.c.reservations[r.id] == r.r {
-		r.r.resident, r.r.pid = true, pid
+		r.c.epoch++
+		r.r.resident, r.r.pid, r.r.residentAt = true, pid, r.c.epoch
 	}
 }
 
@@ -164,6 +171,7 @@ func (r *Reservation) Release() {
 
 // Reserve admits a runtime or returns *AdmissionError.
 func (c *Controller) Reserve(ctx context.Context, id string, d Demand) (*Reservation, error) {
+	seen := c.sampleEpoch()
 	snap := c.host.Snapshot(ctx)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -171,7 +179,7 @@ func (c *Controller) Reserve(ctx context.Context, id string, d Demand) (*Reserva
 		return nil, fmt.Errorf("runtime %q already has a memory reservation", id)
 	}
 	if !c.bypass {
-		if err := c.evaluate(d, snap, nil, nil); err != nil {
+		if err := c.evaluate(d, snap, nil, nil, seen); err != nil {
 			return nil, err
 		}
 	}
@@ -208,13 +216,22 @@ func (c *Controller) CheckAdmission(ctx context.Context, d Demand, releasing []s
 			}
 		}
 	}
+	seen := c.sampleEpoch()
 	snap := c.host.Snapshot(ctx)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.evaluate(d, snap, rel, measured)
+	return c.evaluate(d, snap, rel, measured, seen)
 }
 
-func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool, measured map[string]int64) error {
+// sampleEpoch is read before a sample is taken: runtimes resident by this epoch
+// show in that sample.
+func (c *Controller) sampleEpoch() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.epoch
+}
+
+func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool, measured map[string]int64, seen uint64) error {
 	topo := c.host.Topology()
 	req := c.projected(d)
 	reserve := c.system.Bytes(topo.SystemCapacity)
@@ -222,8 +239,9 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 
 	var pending, freed, resident int64
 	for id, r := range c.reservations {
+		inSample := r.resident && r.residentAt <= seen
 		if releasing[id] {
-			if r.resident {
+			if inSample {
 				credit := r.projected
 				if m, ok := measured[id]; ok {
 					credit = min(credit, m)
@@ -233,7 +251,7 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 			continue
 		}
 		resident += r.accelerator
-		if !r.resident {
+		if !inSample {
 			pending += r.projected
 		}
 	}
