@@ -130,6 +130,10 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 	// whose header says so.
 	for i := range arts {
 		ff := models.InspectFile(filepath.Join(staging, arts[i].Filename))
+		if ff.Refused {
+			os.Remove(filepath.Join(staging, arts[i].Filename))
+			return nil, fmt.Errorf("%s was not published: %s", arts[i].Filename, ff.Problem)
+		}
 		switch {
 		case ff.Role == models.RoleProjector:
 			arts[i].Role = models.RoleProjector
