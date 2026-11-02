@@ -171,6 +171,20 @@ func WritePrivateChecked(path string, data []byte) error {
 	return WritePrivateAtomic(path, data)
 }
 
+// WarnRefusedWrite logs a refused write for a caller that otherwise ignores write
+// failures, so a planted link there can still be found. Path and reason only. Other
+// errors stay as quiet as they were.
+func WarnRefusedWrite(log *slog.Logger, err error) {
+	var unsafe *UnsafeFileError
+	if !errors.As(err, &unsafe) {
+		return
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("A write was refused: "+unsafe.Error(), "event", "root.write-refused", "path", unsafe.Path, "problem", unsafe.Problem)
+}
+
 // CheckRootFiles finds what would stop the gateway: an unsafe log, stderr capture or
 // checkpoint path, or one of their directories that is not this user's real
 // directory. It changes nothing, so doctor reports it without starting anything.

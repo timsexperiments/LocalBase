@@ -1,9 +1,12 @@
 package obs
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +58,30 @@ func TestWritePrivateChecked(t *testing.T) {
 	var unsafe *UnsafeFileError
 	if err := WritePrivateChecked(sub, []byte("y")); !errors.As(err, &unsafe) {
 		t.Errorf("a directory: %v", err)
+	}
+}
+
+func TestWarnRefusedWrite(t *testing.T) {
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	WarnRefusedWrite(log, nil)
+	WarnRefusedWrite(log, errors.New("disk trouble"))
+	if logs.Len() != 0 {
+		t.Errorf("logged more than refusals: %s", logs.String())
+	}
+	dir := t.TempDir()
+	target, _ := victim(t)
+	link := filepath.Join(dir, "cache.json")
+	os.Symlink(target, link)
+	WarnRefusedWrite(log, WritePrivateChecked(link, []byte("private contents")))
+	got := logs.String()
+	if !strings.Contains(got, "root.write-refused") || !strings.Contains(got, link) || !strings.Contains(got, "symbolic link") {
+		t.Errorf("%s", got)
+	}
+	if strings.Contains(got, "private contents") {
+		t.Errorf("the log holds contents: %s", got)
+	}
+	if strings.Count(got, "level=WARN") != 1 {
+		t.Errorf("%s", got)
 	}
 }

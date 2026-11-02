@@ -191,6 +191,9 @@ func AdoptFormerEntries(rootDir string, referenced []string) []string {
 			return written
 		}
 		if err := obs.WritePrivateChecked(path, append(jsjson.Indent(spec), '\n')); err != nil {
+			// This runs while the catalog loads, before the gateway's log is open, so
+			// it goes to the default logger.
+			obs.WarnRefusedWrite(nil, err)
 			return written
 		}
 		adopted[id] = true
@@ -202,7 +205,7 @@ func AdoptFormerEntries(rootDir string, referenced []string) []string {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		os.WriteFile(FormerAdoptionLogPath(rootDir), []byte(strings.Join(ids, "\n")+"\n"), 0o600)
+		obs.WarnRefusedWrite(nil, obs.WritePrivateChecked(FormerAdoptionLogPath(rootDir), []byte(strings.Join(ids, "\n")+"\n")))
 	}
 	return written
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -39,6 +40,8 @@ type Client struct {
 	Endpoint string
 	HTTP     *http.Client
 	Now      func() time.Time
+	// Log hears about a refused cache write (nil: the default logger).
+	Log *slog.Logger
 }
 
 func (c *Client) endpoint() string {
@@ -98,7 +101,8 @@ func (c *Client) writeCache(u string, body []byte, now time.Time) {
 	}
 	b, _ := json.Marshal(cacheEntry{URL: u, FetchedAt: float64(now.UnixMilli()), Body: body})
 	path := c.cachePath(u)
-	obs.WritePrivateChecked(path, b) // a cache: failing to save it costs a refetch
+	// A cache: failing to save it costs a refetch, but a refusal should be findable.
+	obs.WarnRefusedWrite(c.Log, obs.WritePrivateChecked(path, b))
 }
 
 // getJSON fetches JSON with caching and offline-safe errors.
