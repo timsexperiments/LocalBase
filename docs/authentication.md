@@ -1,5 +1,7 @@
 # Authentication and authorization
 
+> GitHub sign-in applies to the older TypeScript version. The Go version offers OIDC, Cloudflare Access and magic links; existing GitHub registrations can only be listed and removed.
+
 LocalBase separates browser users from machine clients.
 
 | Caller              | Credential                                             | Configuration           |
