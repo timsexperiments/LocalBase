@@ -183,8 +183,9 @@ reproduces them byte for byte and the table tests are ported from TS:
 - Switch preflight for media models follows the TS supervisor factory: a
   catalog image or stt model whose files are missing is still sized from the
   catalog (primary artifact, `expectedSizeBytes`) and fit-checked before the
-  install check, so too little memory answers 503 `insufficient_memory` and
-  leaves the model inactive; tts has no switch preflight in TS. Go once
+  install check, so too little memory answers 503 `insufficient_memory` (422
+  `model_too_large` when it can never fit, §13.6) and leaves the model
+  inactive; tts has no switch preflight in TS. Go once
   skipped the check for image models without an `imageRuntime` profile, which
   a full contract run exposed (realvis-xl-v5.0 needs 15.5 GB above the 9.6 GiB
   reserve on a 64 GB host). `TestMediaAdmissionGolden`
@@ -1095,6 +1096,8 @@ gateways with a real sd-server.
 | A backend crashed or did not become healthy | 503 `service_unavailable` ("Image service is currently restarting…", the service named as in TS) | 5 | same |
 | A chosen or imported backend failed to start (M3.5, Go only) | 503 `backend_startup_failed` | 5 | no equivalent |
 | Memory pressure | 503 `insufficient_memory` | 5 | same |
+| A model that can never fit here, even idle (chat, embeddings, decisions, images, speech, transcription) | 422 `model_too_large` | none | same |
+| The same, for a video job | job `failed` with `insufficient_memory` | n/a | same: TS's job error codes have no `model_too_large`, and in both its message says to retry although that cannot help |
 | Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
 | Files not installed | 409 `model_install_consent_required` | none | same on the first request |
 | Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
