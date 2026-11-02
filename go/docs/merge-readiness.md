@@ -120,7 +120,13 @@ rewrite.
 
 ### Exact steps (single squash)
 
-1. Update #403 if the user's checks change anything.
+1. Update #403 if the user's checks change anything. **#411 and #421 must land with
+   #403:** merge #411, then #421, into `rewrite/go-merge-readiness` before the squash,
+   and rerun CI and `-impl=both` on the result. Without #411 a model that can never
+   fit answers 503 instead of TS's 422. Without #421 a fresh root can't install its
+   default model from the API. Both are draft and green at their own heads (#411 at
+   `f9e9beb2`, #421 at `b68f9a3b`). A trial merge of the two reports no conflicts. They
+   have not yet been tested together.
 2. Mark #403 ready. Confirm all five checks at its final head.
 3. Squash-merge #403. The title should say what it is, not "DO NOT MERGE".
 4. Check the result: `git log -1 --format='%an %cn'` must show the account's profile
@@ -244,8 +250,7 @@ repo and the TS binary stays on disk.
 
 - [ ] **Do not push a `v*` tag yet.** `release.yml` builds and publishes the TS binary
       only, and there is no Go release job.
-- [ ] Add a Go release job. Also make `go.yml` run on pushes to main; today it runs only
-      on PRs, so Go tests don't run on main itself.
+- [ ] Add a Go release job.
 - [ ] Separate later PR: retire TS sources and bun CI, and move `drizzle/` (§17.3).
 
 ## 6. Evidence and limits
