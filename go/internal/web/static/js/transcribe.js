@@ -54,8 +54,11 @@ function paint() {
     const bar = q("[data-record-level]");
     if (bar) bar.style.width = `${Math.round(s.level * 100)}%`;
     const now = performance.now();
-    if (rms >= QUIET) s.heardAt = now;
-    const word = peak >= LOUD ? "Too loud" : now - s.heardAt > QUIET_AFTER_MS ? "Very quiet" : "Hearing you";
+    if (rms >= QUIET) {
+      s.heardAt = now;
+      s.heard = true;
+    }
+    const word = peak >= LOUD ? "Too loud" : now - s.heardAt > QUIET_AFTER_MS ? "Very quiet" : s.heard ? "Hearing you" : "Listening…";
     const box = q("[data-record-word]");
     if (box && box.textContent !== word) box.textContent = word;
   }
