@@ -2793,7 +2793,8 @@ accepted this on 2026-10-27.
  "resumable": false,
  "continuation": {"by": "client", "message": "…"},
  "output": {"content", "reasoning"?, "toolCalls"?, "finishReason"?, "usage"?},   // chat
- "result": {"contentType", "bytes", "url": "/_localbase/runs/{id}/result"}}  // media, once completed
+ "result": {"contentType", "bytes", "url": "/_localbase/runs/{id}/result",
+            "notes"?: ["audio_truncated"]}}  // media, once completed
 ```
 
 - **`reason`** is present only when it applies. **`continuation`** is
@@ -2963,8 +2964,8 @@ JSONL and OTLP log events:
 
 Attributes: `run_id`, `request_id` (the inner `/v1` request), `target`,
 `model_id`, `owner` (the principal id, as in `auth_principal_id`),
-`status`, `reason`, `error_code`, plus `duration_ms`, `output_bytes` and
-`events` once the run has ended. Message text, prompts and outputs are
+`status`, `reason`, `error_code`, plus `duration_ms`, `output_bytes` (chunk
+bytes, or the media result's size) and `events` once the run has ended. Message text, prompts and outputs are
 never logged.
 
 A `localbase.run` internal span parents the inner request's server span,
@@ -3141,9 +3142,12 @@ every platform.
   give byte-identical PNGs.
 - **Batches use base + i.** Image 1 of `n=2, seed=42` is byte-identical to
   `n=1, seed=43`.
-- **No seed means seed 42.** With no seed, the runtime uses 42 every time,
-  so the same prompt gives the same image. This is unchanged here; see
-  "Open" below.
+- **No seed means seed 42,** by design (operator, 2026-11-01), so the same
+  prompt gives the same image. This matches TS, and API clients may rely on
+  it. Revisit only if the user asks. Everywhere LocalBase generates on a
+  person's behalf sends a random seed when none was chosen: the chat image
+  tool (`randomImageSeed` in `tools.js`, the one deliberate difference from
+  TS in `tools.test.ts`), the Lab (`labImage`), and the FE studios.
 - **Echo:** `data[i].seed` is a Go extension on `/v1/images/generations`
   and `/edits`. It comes from the image's own PNG `parameters` text, else
   from the requested seed + i on `sd-server/v1` (JPEG and WebP carry no
@@ -3158,8 +3162,17 @@ every platform.
 - **Silent truncation on Qwen3-TTS:** `tts-server` stops at 256 frames,
   20.48 s, and answers 200 with what it has. 255 characters of prose took
   14.08 s, but 256 characters of a number list came back at exactly
-  20.48 s with the end missing. A WAV of exactly 983,084 bytes (983,040 of
-  samples) has therefore probably been cut. CrispASR and Kokoro were not
+  20.48 s with the end missing. The bytes are not changed, but the cut is
+  visible (operator, 2026-11-01):
+  - a warn event `speech.output_truncated` with `request_id`, `model_id`,
+    `frames` (256) and `input_chars`, never the text;
+  - the response header `X-Localbase-Audio-Truncated: true` on
+    `/v1/audio/speech`;
+  - `result.notes: ["audio_truncated"]` on a run object and its `end` event,
+    since run results keep no headers. `notes` is absent otherwise.
+
+  The flag means the output reached the cap exactly; text that happens to
+  end on frame 256 is flagged too. It applies to `tts-server` only. CrispASR and Kokoro were not
   measured: no weights are installed here.
 - **No server-side join.** Non-streamed WAVs all have a 44-byte header and
   the same format (24 kHz, mono, s16le), so a page can join the parts
@@ -3192,10 +3205,13 @@ result; now the stream is its `result`, as `text/event-stream`.
 - `TestAnnotateImageSeeds`, `TestImageSeedEcho`
 - `TestRunDecision`, `TestRunTranslationNotConfigured`
 - `TestRunMediaEventStreamIsItsResult`
+- `TestSpeechTruncationVisible` and `TestSpeechTruncationInRun`, with the
+  256-character number list as the fixture; prose of the same length is not
+  flagged. The fake `tts-server` speaks at the measured rates.
+- `TestLabImageSeed`, and `tools.test.ts` for the chat tool.
 - The fake sd-server now honors `n` and `seed` as measured above.
 
-**Open, for the operator:**
-1. Whether a request with no seed should get a random one. That would
-   change `/v1` behavior for API clients and for chat's image tool.
-2. Whether a truncated Qwen3-TTS answer should say so, rather than a
-   plain 200. TS launches `tts-server` with the same frame limit.
+**Contract tests:** image admission tests need free memory and should not
+run alongside other model loads (`harness_test.go`).
+`TestDifferentialImageRejections` logs the free-memory reading when it fails.
+Its one failure (2026-11-01) came during a 7 GB model load in another session.

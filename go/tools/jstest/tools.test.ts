@@ -92,6 +92,16 @@ async function run(impl: "go" | "ts", replies: any[][], options: any = {}, gw: a
   return out;
 }
 
+// The one deliberate difference from TS (DESIGN §24): with no seed set, the Go
+// tool sends a random one. A chosen seed still has to match below.
+function expectRandomSeeds(got: any, want: any) {
+  got.requests.forEach((r: any, i: number) => {
+    if (!r.url.endsWith("/v1/images/generations") || want.requests[i]?.body?.seed !== undefined) return;
+    expect(Number.isInteger(r.body.seed) && r.body.seed >= 0 && r.body.seed <= 2147483647).toBe(true);
+    delete r.body.seed;
+  });
+}
+
 describe("runChat", () => {
   const cases: [string, any[][], any?, any?][] = [
     ["plain reply, no tool model", [text("Hello there")], { model: plain }],
@@ -123,12 +133,22 @@ describe("runChat", () => {
     test(name, async () => {
       const want = await run("ts", replies, options, gw);
       const got = await run("go", replies, options, gw);
+      expectRandomSeeds(got, want);
       if (want.session) {
         expect(got.session).toBe(true);
         delete want.error, delete got.error;
       }
       expect(got).toEqual(want);
     }, 20_000);
+});
+
+test("a chat image with no seed gets a random one", async () => {
+  const seeds = new Set<number>();
+  for (let i = 0; i < 8; i++) {
+    const got = await run("go", [call("generate_image", '{"model":"image","prompt":"x"}'), text("ok")]);
+    seeds.add(got.requests.find((r: any) => r.url.endsWith("/v1/images/generations")).body.seed);
+  }
+  expect(seeds.size).toBeGreaterThan(1);
 });
 
 describe("settings", () => {

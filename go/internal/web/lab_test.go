@@ -223,3 +223,36 @@ func TestLabVideo(t *testing.T) {
 		t.Fatalf("failed: %s", w.Body.String())
 	}
 }
+
+// A blank seed in the Lab is a random one, sent explicitly; a seed the person
+// chose goes through as it is.
+func TestLabImageSeed(t *testing.T) {
+	api := &fakeAPI{reply: APIResult{Status: 200, Body: []byte(`{"data":[{"b64_json":"cG5n"}]}`)}}
+	u := New(Deps{NoAuth: true, Call: api.call})
+	send := func(form url.Values) int64 {
+		t.Helper()
+		w := httptest.NewRecorder()
+		u.ServeHTTP(w, htmxPost("/app/lab/image", form))
+		var req struct {
+			Seed *int64 `json:"seed"`
+		}
+		if err := json.Unmarshal(api.body, &req); err != nil || req.Seed == nil {
+			t.Fatalf("request %s: %v", api.body, err)
+		}
+		return *req.Seed
+	}
+	if got := send(url.Values{"prompt": {"a"}, "seed": {"7"}}); got != 7 {
+		t.Errorf("chosen seed: %d", got)
+	}
+	seen := map[int64]bool{}
+	for range 8 {
+		got := send(url.Values{"prompt": {"a"}, "seed": {" "}})
+		if got < 0 || got > 2147483647 {
+			t.Errorf("seed %d is out of the API's range", got)
+		}
+		seen[got] = true
+	}
+	if len(seen) < 2 {
+		t.Errorf("blank seeds repeat: %v", seen)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	mrand "math/rand/v2"
 	"mime/multipart"
 	"net/http"
 	"slices"
@@ -249,6 +250,9 @@ func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
 			req[k] = n
 		}
 	}
+	if _, set := req["seed"]; !set {
+		req["seed"] = randomImageSeed() // /v1's default is a fixed seed (DESIGN §24)
+	}
 	body, _ := json.Marshal(req)
 	res := u.call(r, "POST", "/v1/images/generations", "application/json", body)
 	if msg := res.apiError(); msg != "" {
@@ -337,3 +341,7 @@ func (u *UI) labResult(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	http.ServeContent(w, r, "", res.at, bytes.NewReader(res.body))
 }
+
+// randomImageSeed is what a person gets when they leave the seed blank: the
+// gateway's own default is fixed, so the same prompt would repeat its image.
+func randomImageSeed() int64 { return mrand.Int64N(1 << 31) }

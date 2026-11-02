@@ -13,6 +13,9 @@
 // because it refuses to start without the active model's files. Adding
 // LOCALBASE_CONTRACT_RUNTIMES (a bin/runtimes directory, copied) runs the
 // real-inference cases.
+//
+// Image admission tests need free memory: do not run them alongside other
+// model loads, or memory refusals can change which error a gateway reaches.
 package contract
 
 import (

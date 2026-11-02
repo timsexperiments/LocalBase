@@ -147,6 +147,7 @@ type run struct {
 	output     runOutput
 	result     []byte // a media run's response body, never checkpointed
 	resultType string
+	notes      []string // facts about the result that a header carries on /v1
 	events     []runEvent
 	bytes      int
 	notify     chan struct{} // closed and replaced on every event
@@ -327,7 +328,7 @@ func (m *runManager) log(r *run, event string) {
 		attrs = append(attrs, "error_code", code)
 	}
 	if r.EndedAt != nil {
-		attrs = append(attrs, "duration_ms", round2(ms(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes, "events", len(r.events))
+		attrs = append(attrs, "duration_ms", round2(ms(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes+len(r.result), "events", len(r.events))
 	}
 	level := slog.LevelInfo
 	switch event {
@@ -381,7 +382,11 @@ func (r *run) view(withOutput bool) map[string]any {
 		v["output"] = &out
 	}
 	if r.result != nil {
-		v["result"] = map[string]any{"contentType": r.resultType, "bytes": len(r.result), "url": "/_localbase/runs/" + r.ID + "/result"}
+		res := map[string]any{"contentType": r.resultType, "bytes": len(r.result), "url": "/_localbase/runs/" + r.ID + "/result"}
+		if len(r.notes) > 0 {
+			res["notes"] = r.notes
+		}
+		v["result"] = res
 	}
 	return v
 }
@@ -742,6 +747,9 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 		status = runFailed
 	case r.Target != chatTarget && rw.status >= 200 && rw.status < 300:
 		r.result, r.resultType = bytes.Clone(rw.body.Bytes()), rw.header.Get("Content-Type")
+		if rw.header.Get(audioTruncatedHeader) == "true" {
+			r.notes = append(r.notes, noteAudioTruncated)
+		}
 	case rw.status >= 400 || !rw.sse:
 		status = runFailed
 		var env struct {
