@@ -212,6 +212,9 @@ func TestNoAccessPage(t *testing.T) {
 		if w.Code != 403 || !strings.Contains(body, "doesn’t have access yet") || !strings.Contains(body, "someone@example.com") || !strings.Contains(body, "data-logout") {
 			t.Errorf("%s: %d %s", path, w.Code, body)
 		}
+		if !strings.Contains(body, `href="/app/login?switch=1"`) {
+			t.Errorf("%s: no way to use another account", path)
+		}
 		if strings.Contains(body, "tabbar") || strings.Contains(body, "/app/models/running") {
 			t.Errorf("%s offers somewhere to go", path)
 		}
@@ -223,8 +226,15 @@ func TestSignedOutPage(t *testing.T) {
 	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return nil }})
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, httptest.NewRequest("GET", "/app?signedout=1", nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "You’re signed out") || !strings.Contains(w.Body.String(), `href="/app/login"`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "You’re signed out") || !strings.Contains(w.Body.String(), `href="/app/login"`) || !strings.Contains(w.Body.String(), `href="/app/login?switch=1"`) {
 		t.Errorf("%d %s", w.Code, w.Body.String())
+	}
+	// Local sign-in has no other account to choose.
+	local := New(Deps{Principal: func(*http.Request) *auth.Principal { return nil }})
+	w = httptest.NewRecorder()
+	local.ServeHTTP(w, httptest.NewRequest("GET", "/app?signedout=1", nil))
+	if strings.Contains(w.Body.String(), "switch=1") {
+		t.Errorf("local: %s", w.Body.String())
 	}
 }
 

@@ -1,10 +1,9 @@
 # Owner's test script
 
+**Nothing from the UI v2 stack goes live until step 1 passes on a real phone.**
+
 What only a real device can prove. Automated checks run in headless Chrome on a scratch
 gateway with a fake sign-in provider and fake models, so none of this has been done by them.
-
-**Do step 1 before anything from the UI v2 stack goes live.** Your phone's sign-in is the path
-you depend on.
 
 ## 1. Sign in with Google on your phone
 
@@ -16,6 +15,15 @@ Do this on a test gateway running the new build, at its public address.
 4. Reload that page. You should still be signed out.
 5. Tap **Sign in again**. You should get back in.
 6. Close the tab, open the address again. You should still be signed in.
+
+**Switching accounts.** This has only been tested against a fake provider. If you have a second
+Google account (if not, skip this and tell the operator it was skipped):
+
+7. Sign out, then tap **Use another account**. Google should ask which account to use.
+8. Choose the second account. If your policy doesn't name it, you should see "You're signed in, but
+   this account doesn't have access yet", with that account's address.
+9. Tap **Use another account** there, and choose your own. You should get back in.
+10. Sign out, then tap **Sign in again**. It should not ask which account, or at most one tap.
 
 **If it breaks:** nothing is lost. Keep the current build live. Once the first-run link is live,
 on the Mac run `local-base access login-link` and open the link it prints in a browser on the

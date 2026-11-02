@@ -41,7 +41,7 @@ func (u *UI) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("signedout") == "1" && !p.Authenticated() {
-		u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "signed-out"})
+		u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "signed-out", Provider: u.d.SignInEnabled})
 		return
 	}
 	if p.Authenticated() && p.Can("models:manage") && !u.hasChatModel() {

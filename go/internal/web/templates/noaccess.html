@@ -7,5 +7,6 @@
   <p class="mt-3 text-muted">Ask the owner of this computer to add you.</p>
   {{with .Principal.Name}}<p class="mt-5 text-sm text-muted">Signed in as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span></p>{{end}}
   <button type="button" class="btn btn-quiet mt-3 w-full" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>
+  <a href="/app/login?switch=1" hx-boost="false" class="welcome-skip mt-1 w-full">Use another account</a>
 </main>
 {{end}}
