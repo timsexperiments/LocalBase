@@ -257,19 +257,30 @@ func Deny(w http.ResponseWriter, status int) {
 	w.Write([]byte(`{"error":{"message":"UI access denied.","type":"authentication_error","code":"ui_access_denied"}}`))
 }
 
-const pageStyle = `body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}nav,form{display:grid;gap:.75rem}a{color:inherit;text-decoration:none;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730}a:focus,a:hover{border-color:#a4d3bc}input,button{font:inherit;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730;color:inherit;min-height:44px}button{background:#a4d3bc;color:#14241d;border:0;font-weight:650}button:disabled{opacity:.5}`
+// Stylesheet is the app's style sheet, with its version. The web UI sets it, so these pages
+// look like the rest of the app.
+var Stylesheet = "/app/assets/app.css"
+
+// pageOpen is the head of a sign-in page: the same page as the app's other sign-in pages.
+func pageOpen() string {
+	return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><link rel="stylesheet" href="` + html.EscapeString(Stylesheet) + `"><main class="welcome signin"><span aria-hidden="true" class="welcome-mark"><svg viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg></span>`
+}
 
 func page(w http.ResponseWriter, body, csp, referrer string) {
+	pageAt(w, http.StatusOK, body, csp, referrer)
+}
+
+func pageAt(w http.ResponseWriter, status int, body, csp, referrer string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", referrer)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	fmt.Fprintf(w, `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>%s</style><main>%s</main></html>`,
-		pageStyle, body)
+	w.WriteHeader(status)
+	fmt.Fprint(w, pageOpen()+body+"</main></html>")
 }
 
-const formCSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+const formCSP = "default-src 'none'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // --- login ------------------------------------------------------------------------------
 
@@ -370,10 +381,10 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 	if !given && len(regs) > 1 {
 		var links strings.Builder
 		for _, reg := range regs {
-			fmt.Fprintf(&links, `<a href="/app/login?provider=%s">%s</a>`, url.QueryEscape(reg.ID), html.EscapeString(reg.Name))
+			fmt.Fprintf(&links, `<a class="btn btn-quiet w-full" href="/app/login?provider=%s">Continue with %s</a>`, url.QueryEscape(reg.ID), html.EscapeString(reg.Name))
 		}
-		page(w, "<h1>Sign in to LocalBase</h1><nav>"+links.String()+"</nav>",
-			"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", "no-referrer")
+		page(w, `<h1 class="welcome-title">Sign in to LocalBase</h1><nav class="mt-5 grid gap-2">`+links.String()+"</nav>",
+			"default-src 'none'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", "no-referrer")
 		return
 	}
 	var reg *Registration
@@ -384,18 +395,27 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if reg == nil {
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			pageAt(w, http.StatusNotFound, `<h1 class="welcome-title">That way of signing in isn’t here</h1><p class="mt-3 text-muted">The link may be old.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in</a>`, formCSP, "same-origin")
+			return
+		}
 		w.Header().Set("Cache-Control", "no-store")
 		http.Error(w, "Identity provider not found.", 404)
 		return
 	}
 	if reg.Kind == "magic-link" {
-		page(w, fmt.Sprintf(`<h1>%s</h1><p>Enter your invited email address to receive a sign-in link.</p><form method="post" action="%s?provider=%s"><label>Email<input name="email" type="email" autocomplete="email" maxlength="320" required></label><button type="submit">Email sign-in link</button></form>`,
-			html.EscapeString(reg.Name), MagicRequestPath, url.QueryEscape(reg.ID)), formCSP, "same-origin")
+		page(w, fmt.Sprintf(`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Enter your invited email address, and we’ll send you a sign-in link.</p><form method="post" action="%s?provider=%s" class="mt-5 grid gap-3"><label class="grid gap-1 font-semibold">Email<input class="input font-normal" name="email" type="email" autocomplete="email" maxlength="320" required></label><button class="btn btn-primary w-full" type="submit">Email me a link</button></form>`,
+			MagicRequestPath, url.QueryEscape(reg.ID)), formCSP, "same-origin")
 		return
 	}
 	rt := b.oidc[reg.ID]
 	m, err := b.metadata(r.Context(), rt)
 	if err != nil {
+		// A person opening the page gets words; anything else gets the usual answer.
+		if strings.Contains(r.Header.Get("Accept"), "text/html") {
+			pageAt(w, http.StatusServiceUnavailable, `<h1 class="welcome-title">Sign-in isn’t answering</h1><p class="mt-3 text-muted">LocalBase couldn’t reach the sign-in service. Try again in a moment.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Try again</a>`, formCSP, "same-origin")
+			return
+		}
 		Deny(w, 503)
 		return
 	}
@@ -538,7 +558,7 @@ func readForm(r *http.Request, max int64, field string) (string, bool) {
 // whether or not the address can sign in.
 func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliver func(to, link string) error) {
 	done := func() {
-		page(w, "<h1>Check your email</h1><p>If that address can sign in, a link is on its way. It expires in 15 minutes.</p>", formCSP, "same-origin")
+		page(w, `<h1 class="welcome-title">Check your email</h1><p class="mt-3 text-muted">If that address can sign in, a link is on its way. It works once, for 15 minutes.</p>`, formCSP, "same-origin")
 	}
 	reg := b.HasMagicLink()
 	if reg == nil || r.URL.Query().Get("provider") != reg.ID || !formOK(r, b.Config.Origin) {
@@ -570,15 +590,15 @@ const redeemScript = `const token=location.hash.slice(1);history.replaceState(nu
 // fragment and is posted by a hash-pinned script.
 func (b *Browser) MagicLinkPage(w http.ResponseWriter) {
 	sum := sha256.Sum256([]byte(redeemScript))
-	csp := fmt.Sprintf("default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-%s'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+	csp := fmt.Sprintf("default-src 'none'; style-src 'self'; font-src 'self'; script-src 'sha256-%s'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
 		base64.StdEncoding.EncodeToString(sum[:]))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	fmt.Fprintf(w, `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><style>%s</style><main><h1>Sign in to LocalBase</h1><p>Continue to use this one-time sign-in link.</p><form method="post" action="%s"><input name="token" type="hidden"><button type="submit">Sign in</button></form></main><script>%s</script></html>`,
-		pageStyle, MagicCallbackPath, redeemScript)
+	fmt.Fprintf(w, pageOpen()+`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Continue to use this one-time sign-in link.</p><form method="post" action="%s" class="mt-5"><input name="token" type="hidden"><button class="btn btn-primary w-full" type="submit">Sign in</button></form></main><script>%s</script></html>`,
+		MagicCallbackPath, redeemScript)
 }
 
 // CompleteMagicLink serves POST /magic-link/callback.

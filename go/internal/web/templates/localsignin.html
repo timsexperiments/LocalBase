@@ -22,6 +22,22 @@
   <h1 class="welcome-title">This link has run out</h1>
   <p class="mt-3 text-muted">A sign-in link works once, for about ten minutes.</p>
   {{template "localhelp" .}}
+  {{else if eq .Mode "failed"}}
+  <h1 class="welcome-title">That sign-in didn’t work</h1>
+  <p class="mt-3 text-muted">Nothing changed. You can try again.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Try again</a>
+  {{else if eq .Mode "signed-out"}}
+  <h1 class="welcome-title">You’re signed out</h1>
+  <p class="mt-3 text-muted">Your chats on this computer are still here.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in again</a>
+  {{else if eq .Mode "unavailable"}}
+  <h1 class="welcome-title">That way of signing in isn’t here</h1>
+  <p class="mt-3 text-muted">The link may be old.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in</a>
+  {{else if eq .Mode "wrong-address"}}
+  <h1 class="welcome-title">Sign in at the usual address</h1>
+  <p class="mt-3 text-muted">This LocalBase signs people in at its own address.</p>
+  <a class="btn btn-primary mt-5 w-full" href="{{.Origin}}/app">Go to LocalBase</a>
   {{else if eq .Mode "too-many"}}
   <h1 class="welcome-title">Too many tries</h1>
   <p class="mt-3 text-muted">Wait a minute and try again.</p>
@@ -34,4 +50,5 @@
 </html>
 {{define "localhelp"}}{{if .Local}}<p class="mt-3 text-muted">To make a new link, run this in a terminal on this computer, then open the link it prints.</p>
 <pre class="command" tabindex="0" aria-label="Command"><code>local-base access login-link</code></pre>
-<p class="mt-4 text-sm text-muted">To sign in from a phone or another computer, set up a sign-in provider first.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer.</p>{{end}}{{end}}
+<p class="mt-4 text-sm text-muted">To sign in from a phone or another computer, set up a sign-in provider first.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Ask the owner of this computer to set it up.</p>
+<p class="mt-2 text-muted">If this is your computer, open LocalBase in a browser on it.</p>{{end}}{{end}}

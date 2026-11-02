@@ -135,6 +135,11 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !b.Enabled() {
+		// Only the pages people open: the session and API paths stay as they are.
+		if p != "/app/session" && !strings.HasPrefix(p, "/app/api") {
+			s.loginHelp(w, r, 401)
+			return
+		}
 		auth.Deny(w, 401)
 		return
 	}
@@ -145,24 +150,24 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		case r.Method != http.MethodGet:
 			auth.Deny(w, 405)
 		case !exact:
-			auth.Deny(w, 403)
+			s.denyPerson(w, r, 403)
 		default:
 			b.StartLogin(w, r)
 		}
 		return
 	case auth.OIDCCallbackPath:
 		if r.Method != http.MethodGet || !exact || !b.Direct() {
-			auth.Deny(w, 403)
+			s.denyPerson(w, r, 403)
 			return
 		}
 		b.CompleteLogin(w, r)
 		return
 	case "/github/callback":
-		auth.Deny(w, 403) // GitHub OAuth is not offered (DESIGN §11)
+		s.denyPerson(w, r, 403) // GitHub OAuth is not offered (DESIGN §11)
 		return
 	case auth.MagicRequestPath:
 		if r.Method != http.MethodPost || !exact || !b.Direct() {
-			auth.Deny(w, 403)
+			s.denyPerson(w, r, 403)
 			return
 		}
 		b.RequestMagicLink(w, r, func(to, link string) error {
@@ -177,7 +182,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 	case auth.MagicCallbackPath:
 		switch {
 		case !exact || !b.Direct():
-			auth.Deny(w, 403)
+			s.denyPerson(w, r, 403)
 		case r.Method == http.MethodGet:
 			b.MagicLinkPage(w)
 		case r.Method == http.MethodPost:
@@ -188,7 +193,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/app/logout":
 		if r.Method != http.MethodPost || !b.SameOrigin(r) {
-			auth.Deny(w, 403)
+			s.denyPerson(w, r, 403)
 			return
 		}
 		b.Logout(w, r)

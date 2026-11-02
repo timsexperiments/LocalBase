@@ -18,6 +18,10 @@ type LoginPages interface {
 	LoginOnce(w http.ResponseWriter, r *http.Request)
 	LoginExpired(w http.ResponseWriter, r *http.Request, status int)
 	LoginTooMany(w http.ResponseWriter, r *http.Request)
+	// LoginWrongAddress says where sign-in lives, for a request to another host name.
+	LoginWrongAddress(w http.ResponseWriter, r *http.Request, origin string)
+	// LoginUnavailable is for a person who followed a way in this gateway doesn't offer.
+	LoginUnavailable(w http.ResponseWriter, r *http.Request, status int)
 }
 
 // localLimit counts failed redeems: at most 10 a minute per gateway.
@@ -131,6 +135,19 @@ func (s *Server) localOnce(w http.ResponseWriter, r *http.Request) {
 	s.Log.Info("Local sign-in link used.", "event", "audit.local-login-redeemed", "link_id", auth.LocalLinkID(token),
 		"session_id", id, "actor_kind", "local")
 	auth.Redirect(w, "/app", auth.LocalSessionCookie(cookieToken))
+}
+
+// denyPerson refuses a sign-in route. A person opening a page gets words; anything else gets
+// the usual answer.
+func (s *Server) denyPerson(w http.ResponseWriter, r *http.Request, status int) {
+	switch b := s.Browser; {
+	case s.LoginPages == nil || !localNavigation(r):
+		auth.Deny(w, status)
+	case !b.ExactHost(r):
+		s.LoginPages.LoginWrongAddress(w, r, b.Config.Origin)
+	default:
+		s.LoginPages.LoginUnavailable(w, r, status)
+	}
 }
 
 func (s *Server) loginHelp(w http.ResponseWriter, r *http.Request, status int) {
