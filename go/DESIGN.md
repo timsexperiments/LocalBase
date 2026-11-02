@@ -3583,7 +3583,9 @@ runs."). The 10 minutes is the model's limit, not a measurement.
 - **One job at a time** is the API's rule. A second says "One video at a time. Stop
   the one that’s running, or send this when it finishes." and keeps the words.
 - **Failures** are in plain words with a next step: not enough memory links to
-  what is running, and leaves out the API's byte figures. Stop says "Stopped.
+  what is running, and leaves out the API's byte figures. Verified against the real
+  gateway (2026-11-02, FastWan): its refusal, at an estimate of about 16 GiB plus a
+  9.6 GiB reserve, reached the tray with these words within 2 seconds. Stop says "Stopped.
   Nothing was saved." Try again repeats the words, model and starting picture; the
   picture lives in the result store, so if it has expired it says so.
 - **Starting picture:** the "Start from" chip shows only for a model that takes
