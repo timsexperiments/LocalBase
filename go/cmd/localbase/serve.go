@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -167,6 +168,24 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	defer tel.Shutdown() // after gateway.stopped, before the log closes
 
+	// The GPU limit from Metal, once the managed llama-server exists. It is not
+	// waited for: admission uses the heuristic until it answers. A first run has no
+	// binary yet, so the next load tries again.
+	var gpuLimitLogged sync.Once
+	probeGPU := func() {
+		bin, err := runtime.ResolveBinary(r.RuntimesDir(), "llama-server")
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if v, ok := memory.ProbeGPUWorkingSet(ctx, e.Host, bin); ok {
+			gpuLimitLogged.Do(func() {
+				log.Info("Read the GPU memory limit from Metal.", "event", "memory.gpu-limit", "gpu_limit_bytes", v, "source", "metal")
+			})
+		}
+	}
+	go probeGPU()
 	memoryGB := e.memoryGB()
 	mem := memory.NewController(e.Host, memory.Reserve{Percent: cfg.SystemReserve.Percent, MinimumGB: cfg.SystemReserve.MinimumGB},
 		c.Bool("bypass-memory-check"))
@@ -201,7 +220,7 @@ func serve(c *cli.Ctx) (any, error) {
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
 		PortOverride: llmPort, QueueCapacity: queueCap, QueueTimeout: time.Duration(queueTimeout) * time.Millisecond,
 		Binary: os.Getenv("LOCALBASE_LLAMA_SERVER"), ModelFileOverride: c.String("llm-model-file"),
-		Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery,
+		BeforeSwitch: probeGPU, Install: installer(e, installMissing, log), Gate: lib.Gate(), SelectionKey: lib.SelectionKey, Activate: activate, Otel: tel, Recovery: recovery,
 		Placement: placementSource, GPUPool: &memory.GPUPool{Reserve: placement.ReserveBytes}}, cfg)
 	recovery.Add(llm)
 	defer llm.Close()

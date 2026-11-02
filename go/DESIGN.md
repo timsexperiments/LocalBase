@@ -681,6 +681,12 @@ Remaining for M3: UI pages (Chat with streaming, attachments, picker and auto-co
    comes from `vm_stat`, and the Metal working set from the managed
    llama-server's `--list-devices` output, read once and cached. The 0.75×
    heuristic and `LOCALBASE_GPU_WORKING_SET_GB` remain the fallback.
+   Built after #403 (`memory.ProbeGPUWorkingSet`): serve reads it in the background at
+   startup, and before a switch if a runtime has been installed since, so the first
+   load on a fresh root still uses the heuristic. Order: the environment, the
+   probe, the heuristic. On a 64 GiB M4 Max it reads 53084 MiB (0.81 of memory) against
+   the heuristic's 48 GiB. Metal's exact figure is 55662788608 bytes; the output rounds
+   down to MiB. Only serve probes: CLI commands such as `doctor` keep the heuristic.
 7. **TOML without a library.** TS already has its own small TOML reader and
    writer (`src/utils/toml.ts`); Go ports that subset too. The only third-party
    module stays `modernc.org/sqlite`.
