@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -66,6 +67,21 @@ func TestSplitScript(t *testing.T) {
 			t.Errorf("no spaces: %q", part)
 		}
 	}
+	// Numbers take longer to say: a list is cut well before the character limit.
+	list := make([]string, 80)
+	for i := range list {
+		list[i] = strconv.Itoa(1000 + i)
+	}
+	numbers := strings.Join(list, ", ")
+	got := splitScript(numbers, speechPartLimit)
+	for _, part := range got {
+		if partFrames(part) > speechPartFrames {
+			t.Errorf("%d frames: %q", partFrames(part), part)
+		}
+	}
+	if strings.Join(got, " ") != numbers {
+		t.Errorf("lost numbers: %q", got)
+	}
 	// Nothing is lost.
 	text := "First sentence here. Second, with a comma, and more words after it! Third?\nFourth line."
 	joined := strings.Join(splitScript(text, 30), " ")
@@ -90,7 +106,7 @@ func TestJoinWAV(t *testing.T) {
 	if err != nil || f != format || len(samples) != len(pcm) {
 		t.Fatalf("not a file: %v %+v", err, f)
 	}
-	if int16(binary.LittleEndian.Uint16(samples[len(samples)-2:])) != 3 || int16(binary.LittleEndian.Uint16(samples[:2])) != 1 {
+	if int16(binary.LittleEndian.Uint16(samples[len(samples)-2:])) != 3 {
 		t.Fatal("the parts are out of order")
 	}
 	other := testWAV(1)
@@ -106,6 +122,49 @@ func TestJoinWAV(t *testing.T) {
 	list := append(append(append([]byte{}, extra[:36]...), []byte("LIST\x02\x00\x00\x00ab")...), extra[36:]...)
 	if _, s, err := parseWAV(list); err != nil || len(s) != 2 {
 		t.Errorf("extra chunk: %v %d", err, len(s))
+	}
+}
+
+// A part's own silence goes, so every gap is the same; the outer edges stay, and an
+// edge the model cut mid-sound fades instead of clicking.
+func TestShapeEdges(t *testing.T) {
+	format := wavFormat{Channels: 1, Bits: 16, Rate: 24000}
+	silence := make([]int16, 24000) // a second
+	tone := make([]int16, 2400)
+	for i := range tone {
+		tone[i] = 10000
+	}
+	make16 := func(parts ...[]int16) []byte {
+		var all []int16
+		for _, p := range parts {
+			all = append(all, p...)
+		}
+		_, pcm, _ := parseWAV(testWAV(all...))
+		return pcm
+	}
+	keep := int(speechEdgeKeep.Seconds()*24000) * 2
+	got := shapeEdges(make16(silence, tone, silence), format, true, true)
+	if len(got) != len(tone)*2+2*keep {
+		t.Errorf("trimmed to %d bytes, want %d", len(got), len(tone)*2+2*keep)
+	}
+	// Not asked to trim that side: it stays.
+	if got := shapeEdges(make16(silence, tone), format, false, false); len(got) != (len(silence)+len(tone))*2 {
+		t.Errorf("an outer edge changed: %d", len(got))
+	}
+	// Cut mid-sound: the last sample is nearly silent, and the middle is untouched.
+	cut := shapeEdges(make16(tone), format, false, true)
+	last := int16(binary.LittleEndian.Uint16(cut[len(cut)-2:]))
+	if last > 100 || last < -100 || int16(binary.LittleEndian.Uint16(cut[100:])) != 10000 {
+		t.Errorf("fade: last %d", last)
+	}
+	// The input is not changed, and nothing of a silent part breaks.
+	original := make16(tone)
+	shapeEdges(original, format, false, true)
+	if int16(binary.LittleEndian.Uint16(original[len(original)-2:])) != 10000 {
+		t.Error("changed the input")
+	}
+	if got := shapeEdges(make16(silence), format, true, true); len(got) > 2*keep+2 {
+		t.Errorf("a silent part: %d bytes", len(got))
 	}
 }
 

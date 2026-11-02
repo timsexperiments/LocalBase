@@ -3609,13 +3609,29 @@ control, because the API takes only speed 1 (§24).
 - **A script is a job on the gateway's UI side,** not in the browser: split, made
   one part at a time as the signed-in person, joined, and put in the result store.
   A reload or a suspended phone loses nothing, and there is no client state to
-  restore. Parts call `/v1/audio/speech` directly rather than as detached runs, so
-  a long script does not use up the run limits. One script runs at a time per
-  person, said plainly. A gateway restart loses a running script and its note.
-- **Splitting** (`splitScript`): at most 200 characters a part (the API takes 256,
-  and a part full of digits reaches the frame cap sooner, §24), at sentence ends,
-  then at a comma, then a space, and mid-word only for a run with no space. Parts
-  join with a 150 ms pause, sample format checked, into one WAV.
+  restore. One script runs at a time per person, said plainly.
+- **Limits.** Parts call `/v1/audio/speech` directly rather than as detached runs, so
+  they do not count against the run limits (§21). That is safe because a script is
+  sequential: it holds at most one speech request at a time, and each part goes
+  through the API's own admission. What stops one person holding the speech model
+  for long is the 5,000 character limit, refused before anything runs, the one
+  script per person, and a 30 minute limit on the job.
+- **A gateway restart loses:** a script still running, including parts already made,
+  since nothing is on disk until it is joined; every note, so all scripts leave the
+  tray; and finished files, which live in memory only. It does not lose the script's
+  text anywhere else, because there is no other copy: the person writes it again.
+- **Splitting** (`splitScript`): at most 200 characters a part (the API takes 256)
+  and an estimated 200 frames (`partFrames`; the runtime's cap is 256). At sentence
+  ends, then at a comma, then a space, and mid-word only for a run with no space.
+  The frame budget makes a cut smaller but does not prevent one: on the real model a
+  112-character list of numbers still ran to the cap, while the next part took 2 s.
+  Numbers are unpredictable there, so the cut flag is what keeps this honest.
+- **Joining:** the sample format must match. Each part's own silence is trimmed at
+  joined edges, since the model left anything from 0.16 s to 1.6 s and pacing came
+  out uneven, and one pause goes between (`speechPartPause`, 350 ms, the one place it
+  is set: about the middle of the model's own gaps between sentences, checked by
+  analysis and not by ear). The last 10 ms before a pause fades, so an edge the
+  model cut does not click.
 - **Progress is real here:** "Making part 3 of 8…" with a `<progress>`, because the
   parts are real steps. The page's count ("About 8 parts") packs sentences the same
   way but is only a count.
@@ -3637,12 +3653,25 @@ control, because the API takes only speed 1 (§24).
   keyboard, since the native control does the same job.
 - **The pill** covers scripts with the same capped request as video jobs
   (`GET /app/lab/active`).
+- **Real pass (2026-11-02, Qwen3-TTS, scratch gateway, through this page):** nobody
+  has listened; this is analysis of the files. 1,532 characters made 11 parts and 97 s
+  of audio in about 37 s once loaded (first load about 10 s more), with the server
+  near 3.3 GiB. The page's count matched the parts on both scripts. Joins are an
+  even 350 to 388 ms, with quiet edges either side and DC near zero. A loud click
+  (one sample step of 42,410, reaching full scale) sits 217 ms after a join and
+  inside the model's own audio, and the first run had one too, so it is not the join;
+  the cause is not established. A 256-character list of numbers through the API came
+  back flagged at 20.48 s, and through the page the flag reached the words. A sample
+  took about 1 s, then nothing once cached. Stop took about 2 s, kept the two parts
+  made, and left the model loaded until the gateway's own idle unload, so memory does
+  not come back at once. A custom voice, made from the model's shipped reference,
+  spoke through the picker. Files are in `.design/research/studios/speech-real/`.
 - **Not built:** a chat speech tool reading the cut flag (not this page's), MP3, and
   choosing a pause length.
-- **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestWavePeaks`, `TestSpeechJob` (parts,
+- **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestShapeEdges`, `TestWavePeaks`, `TestSpeechJob` (parts,
   one at a time, the cut flag, Stop, a failure part way, over the limit) and
   `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
-  part. No real speech model has run through this page yet.
+  part.
 
 ## 23. Explicit unload (2026-10-27)
 

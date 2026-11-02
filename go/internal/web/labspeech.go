@@ -28,9 +28,19 @@ const (
 	speechScriptLimit = 5000 // runes in a script
 	// speechPartLimit stays under the API's 256 runes, and further under the
 	// frame cap a part full of digits can reach (DESIGN §24).
-	speechPartLimit  = 200
+	speechPartLimit = 200
+	// speechPartFrames budgets a part by how long it takes to say (partFrames),
+	// under the runtime's cap of 256 frames: 200 characters of numbers measured
+	// over it on the real model, and were cut.
+	speechPartFrames = 200
 	speechJobTimeout = 30 * time.Minute
-	speechPartPause  = 150 * time.Millisecond // between joined parts
+	// speechPartPause is the gap between joined parts, after each side's own
+	// silence is trimmed. It is about the middle of the gaps the real model leaves
+	// between sentences inside a part (2026-11-02); checked by analysis, not by ear.
+	speechPartPause  = 350 * time.Millisecond
+	speechEdgeQuiet  = 64                    // a sample this small is silence at a part's edge
+	speechEdgeKeep   = 40 * time.Millisecond // of that silence, kept each side
+	speechEdgeFade   = 10 * time.Millisecond // so an edge the model cut does not click
 	speechPeaks      = 64
 	speechBarMax     = 24 // the waveform's height
 	previewCacheSize = 32
@@ -40,9 +50,29 @@ const (
 // sentenceEnd reports a rune that ends a sentence.
 func sentenceEnd(c rune) bool { return strings.ContainsRune(".!?…。！？\n", c) }
 
-// splitScript cuts text into parts of at most limit runes: at sentence ends
-// where it can, then at a comma or semicolon, then at a space, and only for a
-// run with no space at all, in the middle.
+// partFrames estimates the frames a part takes to say. Measured on the real model
+// (2026-11-01 and 2026-11-02): prose takes about 0.7 a character, and digits and
+// their punctuation about 2.
+func partFrames(s string) int {
+	tenths := 0
+	for _, c := range s {
+		if unicode.IsDigit(c) || c == ',' {
+			tenths += 20
+		} else {
+			tenths += 7
+		}
+	}
+	return tenths / 10
+}
+
+// fits says whether text can be one part.
+func fits(s string, limit int) bool {
+	return utf8.RuneCountInString(s) <= limit && partFrames(s) <= speechPartFrames
+}
+
+// splitScript cuts text into parts of at most limit runes and speechPartFrames: at
+// sentence ends where it can, then at a comma or semicolon, then at a space, and
+// only for a run with no space at all, in the middle.
 func splitScript(text string, limit int) []string {
 	var sentences []string
 	var cur []rune
@@ -64,7 +94,7 @@ func splitScript(text string, limit int) []string {
 	var parts []string
 	var part string
 	add := func(s string) {
-		if part != "" && utf8.RuneCountInString(part)+1+utf8.RuneCountInString(s) > limit {
+		if part != "" && !fits(part+" "+s, limit) {
 			parts = append(parts, part)
 			part = ""
 		}
@@ -75,7 +105,7 @@ func splitScript(text string, limit int) []string {
 		}
 	}
 	for _, s := range sentences {
-		for utf8.RuneCountInString(s) > limit {
+		for !fits(s, limit) {
 			head, rest := cutLong([]rune(s), limit)
 			add(head)
 			s = rest
@@ -90,6 +120,11 @@ func splitScript(text string, limit int) []string {
 
 // cutLong takes up to limit runes from a sentence too long for one part.
 func cutLong(r []rune, limit int) (string, string) {
+	// As many runes as fit the part's budget.
+	for limit > 1 && !fits(string(r[:min(limit, len(r))]), limit) {
+		limit--
+	}
+	limit = min(limit, len(r))
 	at := -1
 	for i := limit - 1; i > limit/2 && at < 0; i-- {
 		if strings.ContainsRune(",;:，；：", r[i]) {
@@ -155,8 +190,9 @@ func joinWAV(parts [][]byte) ([]byte, wavFormat, []byte, error) {
 		} else if f != first {
 			return nil, first, nil, errors.New("the parts have different formats")
 		}
+		bytesPerSecond := int(f.Rate) * int(f.Channels) * int(f.Bits) / 8
+		samples = shapeEdges(samples, f, i > 0, i < len(parts)-1)
 		if i > 0 {
-			bytesPerSecond := int(f.Rate) * int(f.Channels) * int(f.Bits) / 8
 			pause := int(speechPartPause.Seconds()*float64(bytesPerSecond)) &^ 1
 			pcm.Write(make([]byte, pause))
 		}
@@ -176,6 +212,44 @@ func joinWAV(parts [][]byte) ([]byte, wavFormat, []byte, error) {
 	copy(h[36:], "data")
 	binary.LittleEndian.PutUint32(h[40:], uint32(pcm.Len()))
 	return append(h, pcm.Bytes()...), first, pcm.Bytes(), nil
+}
+
+// shapeEdges prepares a part's joined edges: its own silence is trimmed, so every
+// gap is the same length, and the last moment fades, so an edge the model cut does
+// not click. Only 16-bit audio is touched, on a copy.
+func shapeEdges(samples []byte, f wavFormat, head, tail bool) []byte {
+	if f.Bits != 16 || f.Channels == 0 || f.Rate == 0 {
+		return samples
+	}
+	frame := 2 * int(f.Channels)
+	count := func(d time.Duration) int { return int(d.Seconds()*float64(f.Rate)) * frame }
+	loud := func(at int) bool {
+		v := int(int16(binary.LittleEndian.Uint16(samples[at:])))
+		return v > speechEdgeQuiet || v < -speechEdgeQuiet
+	}
+	from, to := 0, len(samples)&^1
+	if head {
+		for from < to && !loud(from) {
+			from += 2
+		}
+		from = max(0, from-count(speechEdgeKeep)) / frame * frame
+	}
+	if tail {
+		for to > from && !loud(to-2) {
+			to -= 2
+		}
+		to = min(len(samples)&^1, to+count(speechEdgeKeep)) / frame * frame
+	}
+	out := append([]byte(nil), samples[from:to]...)
+	if tail {
+		fade := min(count(speechEdgeFade), len(out)) &^ 1
+		for i := 0; i < fade; i += 2 {
+			at := len(out) - fade + i
+			v := float64(int16(binary.LittleEndian.Uint16(out[at:])))
+			binary.LittleEndian.PutUint16(out[at:], uint16(int16(v*float64(fade-i)/float64(fade))))
+		}
+	}
+	return out
 }
 
 // waveBar is one bar of a drawn waveform.
