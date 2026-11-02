@@ -3248,8 +3248,11 @@ speech that would have finished (5 of 8 ran past 256). Lists run up to about
 sample. Sampling flags did not help the cap. Bursts were 2 of 10 as shipped
 and 0 of 10 for both sampling variants, too few to conclude anything.
 
-**What a higher frame cap costs (2026-11-02).** `SpeechMaxFrames` stays 256
-(TS parity, operator). Measured once for a possible opt-in, on this machine
+**Considered, not built: a higher speech frame cap (2026-11-02).**
+`SpeechMaxFrames` stays 256 (TS parity), and `speech.max-frames` is not being
+built (operator): the benefit is narrow, 512 does not solve it (about 600+ frames
+is needed), and the Studio already splits number lists. Reopen it if a user asks,
+or once Linux, Vulkan and CPU timing is measured. Measured once, on this machine
 (Metal), with 256 characters of numbers as the worst input and context 2048
 unless noted. Vulkan and CPU were not measured.
 
@@ -3271,7 +3274,7 @@ unless noted. Vulkan and CPU were not measured.
 - **Benefit:** narrow. Prose stayed under 256 (182–189 frames for 255 characters).
   Only digit-heavy text gains, and 512 still cuts the worst input.
 
-**Proposal, not built, for the user to decide:** an opt-in `speech.max-frames`
+**The proposal, as considered:** an opt-in `speech.max-frames`
 in `go_settings` (default 256, allowed 256–1024, a Go-only setting like
 `speech.provenance-marking`, so rollback stays safe), shown in doctor and config.
 It takes effect when `tts-server` next loads, applies to `tts-server` only, and
