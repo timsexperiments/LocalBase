@@ -1,8 +1,17 @@
 // The detached-runs client's event-stream parser.
 //
 //   bun test go/tools/jstest
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { sseParser } from "../../internal/web/static/js/runs.js";
+
+// `bun test` runs every file in one process, so the stubs below must not outlive
+// this file: they broke the TS gateway tests that run after it.
+const original = { fetch: globalThis.fetch, document: (globalThis as any).document, localStorage: (globalThis as any).localStorage };
+afterAll(() => {
+  globalThis.fetch = original.fetch;
+  (globalThis as any).document = original.document;
+  (globalThis as any).localStorage = original.localStorage;
+});
 
 const stream = 'id: 1\nevent: status\ndata: {"status":"in_progress"}\n\n: ping\n\nid: 2\nevent: chunk\ndata: {"a":1}\n\nid: 3\nevent: end\ndata: {"status":"completed"}\n\n';
 
