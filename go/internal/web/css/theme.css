@@ -29,12 +29,14 @@
   --lb-muted: #565d69;
   --lb-border: #dad6cc; /* separators, which may be faint */
   --lb-edge: #85888d; /* what bounds a control: at least 3:1 */
+  --lb-bound: #dad6cc; /* what bounds a card: faint on paper, where the fill shows it */
   --lb-accent: #17202c; /* action is ink */
   --lb-accent-hover: #2b3748;
   --lb-accent-text: #fcfbf8;
   --lb-accent-soft: #e9e6dd;
   --lb-accent-border: #85888d;
-  --lb-lamp: #b56b00; /* live on this machine: fills and marks */
+  --lb-brand: #b56b00; /* the mark, and nothing else */
+  --lb-lamp: #b56b00; /* live status: something is happening on this machine */
   --lb-lamp-text: #8a5200;
   --lb-other: #6b7280; /* other apps on the gauge */
   --lb-warn: #8a5200;
@@ -48,7 +50,9 @@
   /* Shell geometry. --lb-kb is the on-screen keyboard's overlap with the layout viewport
      (set by shell.js; 0 without a keyboard). */
   --lb-tabbar-h: 3.5rem;
-  --lb-sidebar-w: 16rem;
+  --lb-sidebar-w: 14.5rem;
+  --lb-rail-w: 4.5rem;
+  --lb-measure: 34rem; /* about 70 characters of a model's words: ch measures a wide zero */
   --lb-kb: 0px;
   --lb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -63,11 +67,13 @@
     --lb-muted: #a7aeb9;
     --lb-border: #2c323d;
     --lb-edge: #7a828f;
+    --lb-bound: #6b727d; /* at night a card has only its line: 3:1 on canvas and surface */
     --lb-accent: #eef0f2;
     --lb-accent-hover: #ffffff;
     --lb-accent-text: #10141b;
     --lb-accent-soft: #232934;
     --lb-accent-border: #7a828f;
+    --lb-brand: #f2b23e;
     --lb-lamp: #f2b23e;
     --lb-lamp-text: #f2b23e;
     --lb-other: #8e96a3;
@@ -75,10 +81,17 @@
     --lb-warn-soft: #33280f;
     --lb-error: #ff9b7d;
     --lb-error-surface: #35201a;
-    --lb-error-border: #8a4a35;
+    --lb-error-border: #b5634a;
     --lb-scrim: rgb(0 0 0 / 0.55);
     --lb-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
     --lb-shadow-sheet: 0 -6px 32px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Tablets get a rail of icons, so the page keeps the room. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  :root {
+    --lb-sidebar-w: var(--lb-rail-w);
   }
 }
 
@@ -88,9 +101,10 @@
   --lb-font-display: "Newsreader", ui-serif, Georgia, serif;
   --lb-font-reading: "Newsreader", ui-serif, Georgia, serif; /* a model's words */
   --lb-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --lb-weight-display: 500;
+  --lb-weight-display: 430;
   --lb-tracking-display: -0.01em;
-  --lb-size-display: 2.125rem;
+  --lb-size-display: 1.75rem;
+  --lb-size-hello: 2rem;
   --lb-radius-sm: 0.25rem;
   --lb-radius-md: 0.375rem;
   --lb-radius-lg: 0.625rem;
@@ -129,6 +143,7 @@ dialog.viewer {
   --lb-muted: #a7aeb9;
   --lb-border: #2c323d;
   --lb-edge: #7a828f;
+  --lb-bound: #6b727d;
   --lb-accent: #eef0f2;
   --lb-accent-hover: #ffffff;
   --lb-accent-text: #10141b;
@@ -136,7 +151,7 @@ dialog.viewer {
   --lb-accent-border: #7a828f;
   --lb-error: #ff9b7d;
   --lb-error-surface: #35201a;
-  --lb-error-border: #8a4a35;
+  --lb-error-border: #b5634a;
 }
 
 /* The browser's own bar. web.go reads these two for <meta name="theme-color">. */

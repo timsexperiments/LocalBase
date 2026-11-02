@@ -192,21 +192,32 @@ else {
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 // Start the request from this page (navigating would cancel it).
 await nav("/app/models/running");
-await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
-for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) await sleep(250);
-await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
+await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 400" }] }) })`);
+// Running refreshes every 10 s; its Refresh button shows the state now.
+for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) {
+  await ev(`[...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Refresh").click()`);
+  await sleep(250);
+}
+// At the narrowest width a model's name stays whole: the controls move, not the letters.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+check(nameAt320.lines === 1 && !nameAt320.over, `Running at 320: the model's name stays on one line: ${JSON.stringify(nameAt320)}`);
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+await ev(`document.querySelector("#running-live [data-open-sheet='unload-sheet']").click()`);
 await sleep(300);
 const asked = await ev(`({ open: document.getElementById("unload-sheet")?.open, text: document.getElementById("unload-sheet")?.textContent.replace(/\\s+/g, " ") })`);
-check(asked.open && /This frees about .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
-await sleep(3500); // a poll would have replaced the sheet; it waits while it is open
+check(asked.open && /This frees .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
+await sleep(10500); // a poll would have replaced the sheet; it waits while it is open
 check(await ev(`document.getElementById("unload-sheet")?.open === true`), "the sheet survives polling");
 await ev(`document.querySelector("#unload-sheet button.btn-primary").click()`);
 await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
-check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
-for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Unloaded")`)); i++) await sleep(250);
-const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Unloaded"), said: document.getElementById("running-status").textContent, empty: document.getElementById("running-live").textContent.includes("Nothing loaded") })`);
-check(unloaded.shown && /^Unloaded/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
+check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
+for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
+const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
+check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
 // then Play shows as pressed. Needs any 3 to 30 second audio file in
 // LBGO_VOICE_FILE.
@@ -416,7 +427,10 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   const failed = await waitItem("fake:fail a bad one", (g) => !g.active);
   check(failed?.alert && /Try again/.test(failed.text), `a failure says so in words and offers Try again: ${failed?.alert}`);
   const before = await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`);
-  await ev(`[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again").click()`);
+  // htmx wires a swapped-in button when it settles; a click sooner does nothing, and no person is that quick.
+  const retry = `[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again")`;
+  for (let i = 0; i < 50 && !(await ev(`!!${retry}["htmx-internal-data"]`)); i++) await sleep(50);
+  await ev(`${retry}.click()`);
   for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`)) === before; i++) await sleep(200);
   const again = await ev(`({ count: document.querySelectorAll("#lab-items .lab-item-video").length, said: document.querySelector("#lab-result [role=alert]")?.textContent ?? "" })`);
   check(again.count === before + 1, `Try again starts another job: ${JSON.stringify(again)}`);
@@ -653,6 +667,154 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await sleep(300);
   check(/site settings, or choose a file/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)) && (await ev(`!document.querySelector("[data-transcribe-start]").hidden`)), "a refused microphone says how to fix it and leaves the file");
 }
+
+// --- Chat's strip and chip (DESIGN §25) -----------------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const stripNow = await ev(`(() => { const s = document.querySelector(".strip"); if (!s) return null; const r = s.getBoundingClientRect(); return { h: r.height, href: s.getAttribute("href"), font: parseFloat(getComputedStyle(s.querySelector(".strip-row")).fontSize), chip: !!document.querySelector("[data-open-picker] [data-model-name]") }; })()`);
+check(stripNow && stripNow.h >= 44 && stripNow.font >= 12 && stripNow.href === "/app/models/running" && stripNow.chip, `the strip is at least 44 px tall, its words at least 12 px, it opens Running, and the model shows: ${JSON.stringify(stripNow)}`);
+await ev(`document.querySelector("[data-suggest]")?.click()`);
+check((await ev(`document.getElementById("chat-input").value.length > 0 && document.querySelectorAll("[data-messages] article").length === 0`)), "a suggestion starts a message and does not send it");
+
+// --- A model that can never fit: its sentence stands, and nothing offers a retry --------------
+await nav("/app/chat");
+const tooLarge = "This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host.";
+await ev(`(() => {
+  window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: ${JSON.stringify(tooLarge)} } }), { status: 422, headers: { "content-type": "application/json" } });
+  const p = document.getElementById("chat-input"); p.value = "Hello"; p.dispatchEvent(new Event("input", { bubbles: true }));
+  document.querySelector("#composer [data-send]").click();
+})()`);
+await sleep(800);
+const refused = await ev(`(() => { const box = document.querySelector("[data-error-box]"); return { text: box.textContent, buttons: [...box.querySelectorAll("button")].map((b) => b.textContent) }; })()`);
+check(refused.text.includes("too big for this computer") && refused.text.includes(tooLarge) && refused.buttons.join() === "Choose a model,Dismiss", `a model too large for this computer says so, keeps the gateway's sentence a tap away, and offers no retry: ${JSON.stringify(refused.buttons)}`);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip says the same as the refusal");
+await sleep(3500);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip still says so after a refresh");
+await ev(`[...document.querySelectorAll("[data-error-box] button")].find((b) => b.textContent === "Dismiss").click()`);
+await sleep(3500);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "dismissing the refusal gives the strip back to real state");
+
+// --- Decisions' prompt never covers what is above it (review of #410) --------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/decisions");
+const dockClear = await ev(`(() => {
+  const dock = document.querySelector("[data-docked]"), space = document.querySelector(".lab-dock-spacer");
+  scrollTo(0, document.documentElement.scrollHeight);
+  const before = space.previousElementSibling; let last = before;
+  while (last && !last.getBoundingClientRect().height) last = last.previousElementSibling;
+  return { dock: dock.getBoundingClientRect().height, space: space.getBoundingClientRect().height, lastBottom: last.getBoundingClientRect().bottom, dockTop: dock.getBoundingClientRect().top };
+})()`);
+check(dockClear.space >= dockClear.dock && dockClear.lastBottom <= dockClear.dockTop, `at 360 px the page scrolls clear of the Decisions prompt: ${JSON.stringify(dockClear)}`);
+
+// --- With the keyboard up on a short phone, the words come first ------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+await send("Emulation.setEmitTouchEventsForMouse", { enabled: true });
+await nav("/app/chat");
+await ev(`document.getElementById("chat-input").focus()`);
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
+await sleep(700);
+const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+check(typing.flag && typing.h >= 44 && typing.h < 64 && typing.gauge !== "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, with its gauge as a thin rule, and the composer stays in view: ${JSON.stringify(typing)}`);
+if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+
+await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+await send("Emulation.setEmitTouchEventsForMouse", { enabled: false });
+
+// --- The smallest phone, empty: the heading is under the strip, not behind it -----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
+check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
+
+// --- Transcribe: the prompt clears the last card; dismiss is a real target ----------------------
+for (const [w, h] of [[390, 844], [1280, 800]]) {
+  await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
+  await nav("/app/studio/transcribe");
+  const cleared = await ev(`(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+    const items = [...document.querySelectorAll("#lab-items > li")], dock = document.querySelector("[data-docked]");
+    if (!items.length || !dock) return { none: true };
+    const small = [...document.querySelectorAll("#lab-items [hx-post$='/remove']")].map((b) => { const r = b.getBoundingClientRect(); return Math.min(r.width, r.height); }).filter((n) => n < 44);
+    return { last: Math.round(items.at(-1).getBoundingClientRect().bottom), dock: Math.round(dock.getBoundingClientRect().top), small };
+  })()`);
+  check(cleared.none || (cleared.last <= cleared.dock && cleared.small.length === 0), `Transcribe at ${w}: the prompt clears the last card and dismiss is at least 44 px: ${JSON.stringify(cleared)}`);
+}
+
+// --- Running agrees with its own legend: a row for every runtime holding memory ----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/models/running");
+const shown = await ev(`(() => { const rows = [...document.querySelectorAll("#running-live .running-row")].map((r) => r.textContent.replace(/\\s+/g, " ").trim()); return { rows, buttons: document.querySelectorAll("#running-live [aria-label^='Free memory']").length, sheets: document.querySelectorAll("#running-live dialog[id^=unload-sheet]").length }; })()`);
+check(shown.buttons === shown.rows.length && shown.sheets === shown.rows.length, `every row on Running has its own Free memory: ${JSON.stringify(shown.rows).slice(0, 300)}`);
+
+// --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get", "/app/models/running", "/app/settings", "/app/welcome", "/app/welcome/choose", "/app/studio/image", "/app/studio/decisions"]) {
+  await nav(path);
+  const sizes = await ev(`(() => {
+    const seen = (el) => { const r = el.getBoundingClientRect(), st = getComputedStyle(el); return r.width > 1 && r.height > 1 && st.visibility !== "hidden" && !el.closest(".sr-only, dialog:not([open]), [hidden]"); };
+    const small = [...document.querySelectorAll("a.btn, button, input:not([type=hidden]):not([type=radio]):not([type=checkbox]), select, .chip, .tab, .list-row, .strip")].filter(seen).filter((el) => el.getBoundingClientRect().height < 43.5).map((el) => (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 30) + " " + Math.round(el.getBoundingClientRect().height));
+    const tiny = new Set();
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) { const n = walk.currentNode, el = n.parentElement; if (n.textContent.trim() && el && !["SCRIPT", "STYLE", "NOSCRIPT"].includes(el.tagName) && seen(el) && parseFloat(getComputedStyle(el).fontSize) < 11.99) tiny.add(n.textContent.trim().slice(0, 24) + " " + getComputedStyle(el).fontSize); }
+    return { small, tiny: [...tiny] };
+  })()`);
+  check(sizes.small.length === 0 && sizes.tiny.length === 0, `at 320, ${path}: targets at least 44 px and text at least 12 px${sizes.small.length || sizes.tiny.length ? ": " + JSON.stringify(sizes).slice(0, 320) : ""}`);
+}
+
+// --- The strip's words, under long names (review of #410) ---------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio");
+for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタジオ工房のマックスタジオ工房のマックスタジオ"]) {
+  const fits = await ev(`(() => {
+    const b = document.querySelector(".strip-host b"), w = document.querySelector(".strip-word"), s = document.querySelector(".strip");
+    b.textContent = ${JSON.stringify(name)}; w.textContent = "Getting the model ready";
+    return { over: document.documentElement.scrollWidth > innerWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
+  })()`);
+  check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
+}
+
+// --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+const measure = `(() => {
+  const rgb = (c) => c.match(/[\\d.]+/g).map(Number);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const behind = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length < 4 || c[3] > 0) return c; } return [255, 255, 255]; };
+  const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const out = [];
+  const seen = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  for (const el of document.querySelectorAll(".composer-box, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
+    if (!seen(el) || parseFloat(getComputedStyle(el).borderTopWidth) === 0) continue;
+    const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
+    if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));
+  }
+  for (const [sel, side] of [[".tab[aria-current=page]", "Top"], [".segmented > a[aria-current=page]", "Top"], [".nav-item[aria-current=page]", "Left"], [".decide-types label:has(:checked)", "Top"]]) {
+    for (const el of document.querySelectorAll(sel)) {
+      if (!seen(el)) continue;
+      const n = ratio(rgb(getComputedStyle(el)["border" + side + "Color"]), behind(el));
+      if (n < 3) out.push(sel + " " + n.toFixed(2));
+    }
+  }
+  for (const el of document.querySelectorAll(".chip[aria-current=true]")) {
+    if (!seen(el)) continue;
+    const n = ratio(rgb(getComputedStyle(el).backgroundColor), behind(el.parentElement));
+    if (n < 3) out.push("chip selected " + n.toFixed(2));
+  }
+  return out;
+})()`;
+for (const scheme of ["light", "dark"]) {
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+  for (const [w, h] of [[390, 844], [1280, 800]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
+    for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings", "/app/studio/image", "/app/studio/decisions"]) {
+      await nav(path);
+      const low = await ev(measure);
+      check(low.length === 0, `${scheme} ${w}: boundaries and selection marks on ${path} are at least 3:1${low.length ? ": " + low.join(", ") : ""}`);
+    }
+  }
+}
+await send("Emulation.setEmulatedMedia", { features: [] });
 
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");

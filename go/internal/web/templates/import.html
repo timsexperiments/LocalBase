@@ -32,7 +32,7 @@
   {{with .Plan}}
   <form class="card grid gap-3 p-5" hx-post="/app/models/import/start" hx-target="#import-plan" hx-swap="outerHTML">
     {{range $.Plan.Warnings}}
-    <p class="rounded-xl border border-line bg-surface-muted p-3 text-sm" role="alert"><span class="font-semibold">⚠ {{if eq .Code "custom-source"}}Custom source{{else if eq .Code "insecure-http"}}Not encrypted{{else}}Note{{end}}.</span> {{.Text}}</p>
+    <p class="rounded-xl border border-bound bg-surface-muted p-3 text-sm" role="alert"><span class="font-semibold">⚠ {{if eq .Code "custom-source"}}Custom source{{else if eq .Code "insecure-http"}}Not encrypted{{else}}Note{{end}}.</span> {{.Text}}</p>
     {{end}}
     <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
       <dt class="text-muted">Source</dt><dd class="break-all">{{.Display}}</dd>

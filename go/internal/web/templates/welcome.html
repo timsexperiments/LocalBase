@@ -1,0 +1,113 @@
+{{define "title"}}{{if eq .Step "choose"}}Choose a model{{else if eq .Step "getting"}}Getting it ready{{else}}Welcome{{end}} · LocalBase{{end}}
+
+{{/* First run has one thing to do, so it has no tabs or sidebar. "Not now" always leaves. */}}
+{{define "page"}}
+<main id="main" class="welcome">
+  {{if eq .Step "choose"}}{{template "welcome-choose" .}}
+  {{else if eq .Step "getting"}}{{template "welcome-getting" .}}
+  {{else}}{{template "welcome-hello" .}}{{end}}
+</main>
+{{end}}
+
+{{define "welcome-hello"}}
+<span aria-hidden="true" class="welcome-mark">{{template "mark"}}</span>
+<h1 class="welcome-title">Your own AI to talk to, running on {{.Host}}.</h1>
+<p class="mt-3 text-muted">Ask it questions, have it write or explain things. Your chats and files stay on {{.Host}}.</p>
+<p class="mt-2 text-muted">A model is what answers you. To start, you need one.</p>
+{{with .Strip}}<div class="strip strip-here strip-{{.State}} mt-5">{{template "strip-body" .}}</div>{{end}}
+{{if ge .FreeDisk 0}}<p class="mt-1.5 px-1 text-sm text-muted">{{gb .FreeDisk}} of disk free.</p>{{end}}
+{{if .NoSignIn}}
+<p class="welcome-note text-sm text-muted">To sign in on your phone, set up a sign-in provider in a browser on {{.Host}} first.{{if .CanAdmin}} <a class="font-semibold whitespace-nowrap text-ink underline" href="/app/admin?section=access">Set up sign-in</a>{{end}}</p>
+{{end}}
+<div class="welcome-actions">
+  {{if .CanManage}}<a href="/app/welcome/choose" class="btn btn-primary w-full">Choose a model</a>
+  {{else}}<p class="text-muted">Someone who manages this LocalBase needs to add a model.</p>{{end}}
+  <a href="/app/chat" hx-boost="false" class="welcome-skip">Not now</a>
+</div>
+{{end}}
+
+{{define "welcome-choose"}}
+<div class="flex items-center gap-1">
+  <a href="/app/welcome" class="icon-btn -ml-2" aria-label="Back">{{template "icon-back"}}</a>
+  <h1 class="welcome-title">Choose a model</h1>
+</div>
+{{with .Strip}}<div class="mt-3">{{template "memory-strip" .}}</div>{{end}}
+{{with .Failure}}<p class="notice notice-error mt-3" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/app/welcome/get" class="welcome-form">
+  <p class="mt-3 px-1 text-sm text-muted">Based on memory available now.</p>
+  <fieldset class="mt-2 grid gap-2">
+    <legend class="sr-only">Chat models</legend>
+    {{range .Choices}}
+    <label class="choice{{if or (eq .Fit "wont-fit") .TooBigDisk}} choice-off{{end}}">
+      <input type="radio" name="modelId" value="{{.ID}}" data-action-label="{{if .Installed}}Use this model{{else}}Download {{size .DownloadBytes}}{{end}}" {{if .Pick}}checked{{end}} {{if or (eq .Fit "wont-fit") .TooBigDisk}}disabled{{end}} required>
+      <span class="min-w-0">
+        <span class="choice-name">{{.Name}}{{if .Small}} <span class="choice-tag">Small download</span>{{end}}</span>
+        <span class="block text-sm text-muted">{{if .Installed}}Already on this computer.{{else}}Downloads {{size .DownloadBytes}}.{{end}}{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}</span>
+        {{if .TooBigDisk}}<span class="choice-fit choice-fit-no">Not enough disk space</span>
+        {{else if eq .Fit "wont-fit"}}<span class="choice-fit choice-fit-no">Too big for this computer</span>
+        {{else if eq .Fit "close-others"}}<span class="choice-fit">Close other apps first</span>
+        {{else if eq .Fit "tight"}}<span class="choice-fit">Fits, with little room left</span>
+        {{else if and (eq .Fit "fits") .Forecast}}<span class="choice-fit">Fits now</span>
+        {{else if eq .Fit "fits"}}<span class="choice-fit">Fits this computer</span>
+        {{else}}<span class="choice-fit">Fit unknown</span>{{end}}
+        {{if and .Pick (not .Installed)}}<span class="mt-1 block text-sm text-muted">Selected to keep your first download small.</span>{{end}}
+      </span>
+    </label>
+    {{end}}
+  </fieldset>
+  <p class="mt-3 px-1 text-sm text-muted">This can change before a long download finishes. Small download means under {{.SmallRule}}. You can add or change models any time.</p>
+  <div class="welcome-actions">
+    {{if and .CanManage .Picked}}<button type="submit" class="btn btn-primary w-full"><span data-action-label-text>{{if .Picked.Installed}}Use this model{{else}}Download {{size .Picked.DownloadBytes}}{{end}}</span></button>
+    {{else if and .CanManage .DiskShort}}<p class="text-muted">There isn’t enough disk space for any of these. Free some space, then come back.</p>
+    <a href="/app/welcome/choose" class="btn btn-primary w-full">Check again</a>
+    {{else if .CanManage}}<p class="text-muted">None of these fit this computer. You can look for a smaller model in Get models.</p>
+    <a href="/app/models/get" class="btn btn-primary w-full">Open Get models</a>
+    {{else}}<p class="text-muted">Someone who manages this LocalBase needs to add a model.</p>{{end}}
+    <a href="/app/chat" hx-boost="false" class="welcome-skip">Not now</a>
+  </div>
+</form>
+{{end}}
+
+{{define "welcome-getting"}}{{template "welcome-progress" .}}{{end}}
+
+{{/* All of it refreshes, so a failure replaces what no longer holds. */}}
+{{define "welcome-progress"}}
+{{$host := .Host}}
+{{with .Install}}
+<div id="welcome-progress" class="welcome-form"{{if not .Failed}} hx-get="/app/welcome/progress?model={{.ID}}" hx-trigger="every 1s" hx-swap="outerHTML"{{end}}>
+  <h1 class="welcome-title">{{if .Failed}}That didn’t finish{{else}}Getting it ready{{end}}</h1>
+  <div class="card mt-5 p-4">
+    <div class="flex items-baseline justify-between gap-3">
+      <p class="min-w-0 font-semibold wrap-anywhere">{{.Name}}</p>
+      {{if .Total}}<p class="shrink-0 text-sm tabular-nums">{{size .Done}} of {{size .Total}}</p>{{end}}
+    </div>
+    {{if .Failed}}
+    <p class="mt-2 font-semibold text-danger" role="alert">{{.Reason}}</p>
+    {{with .Detail}}<details class="mt-1 text-sm text-muted"><summary class="cursor-pointer py-1">Why</summary><p>{{.}}</p></details>{{end}}
+    {{else}}
+    {{if .Total}}<progress class="welcome-bar" max="{{.Total}}" value="{{.Done}}" aria-label="Download progress">{{pct .Done .Total}}%</progress>
+    {{else}}<div class="skeleton mt-3 h-2 rounded-full" aria-hidden="true"></div>{{end}}
+    <p class="mt-2 text-sm text-muted" role="status">{{with .Word}}{{.}}{{else}}Getting started.{{end}}{{with .Left}} {{.}}{{end}}</p>
+    {{end}}
+  </div>
+  {{if .Failed}}
+  <form hx-post="/app/welcome/get" class="welcome-actions">
+    <input type="hidden" name="modelId" value="{{.ID}}">
+    <button type="submit" class="btn btn-primary w-full">Try again</button>
+    <a href="/app/welcome/choose" class="btn btn-quiet w-full">Choose another model</a>
+    <a href="/app/chat" hx-boost="false" class="welcome-skip">Not now</a>
+  </form>
+  {{else}}
+  <ul class="welcome-points">
+    <li>It keeps going if you close this page, as long as LocalBase stays running and {{$host}} stays awake.</li>
+    <li>When it’s ready, this page moves to Chat by itself.</li>
+    <li>Until then Chat can’t answer, but you can look around.</li>
+  </ul>
+  <div class="welcome-actions">
+    <a href="/app/chat" hx-boost="false" class="welcome-skip">Go to Chat for now</a>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{with .Failure}}<p class="notice notice-error mt-3" role="alert">{{.}}</p>{{end}}
+{{end}}

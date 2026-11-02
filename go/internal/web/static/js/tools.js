@@ -90,6 +90,7 @@ export async function api(path, init = {}) {
       : typeof value?.error?.message === "string" ? value.error.message : `Request failed (${response.status}). Try again.`;
     const error = new Error(message);
     error.status = response.status;
+    error.code = value?.error?.code;
     throw error;
   }
   if (response.headers.get("content-type")?.includes("text/html")) {

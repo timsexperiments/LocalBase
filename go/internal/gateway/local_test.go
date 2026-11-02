@@ -23,6 +23,14 @@ func (localPages) LoginHelp(w http.ResponseWriter, r *http.Request, status int) 
 	}
 	w.Write([]byte("help remote"))
 }
+func (localPages) LoginUnavailable(w http.ResponseWriter, r *http.Request, status int) {
+	w.WriteHeader(status)
+	w.Write([]byte("unavailable"))
+}
+func (localPages) LoginWrongAddress(w http.ResponseWriter, r *http.Request, origin string) {
+	w.WriteHeader(http.StatusForbidden)
+	w.Write([]byte("wrong address"))
+}
 func (localPages) LoginOnce(w http.ResponseWriter, r *http.Request) { w.Write([]byte("redeem page")) }
 func (localPages) LoginExpired(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)

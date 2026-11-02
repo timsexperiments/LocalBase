@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -284,8 +285,20 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Query": q, "Kind": kind, "Kinds": discoveryKinds, "CanManage": canManage}
 	if q == "" {
 		filter := taskFilter(r)
-		data["Catalog"], data["Tasks"] = u.catalogRows(filter)
+		rows, tasks := u.catalogRows(filter)
+		data["Catalog"], data["Tasks"] = u.withForecast(r, rows), tasks
 		data["Filter"] = filter
+		// Nothing to chat with yet: the smallest that fits comes before anything to search.
+		if canManage && !u.hasChatModel() {
+			for _, c := range u.welcomeChoices(r) {
+				if c.Pick {
+					row := c.CatalogRow
+					data["Recommended"] = &row
+					// Once on the page is enough.
+					data["Catalog"] = slices.DeleteFunc(slices.Clone(data["Catalog"].([]CatalogRow)), func(x CatalogRow) bool { return x.ID == row.ID })
+				}
+			}
+		}
 	}
 	for _, k := range discoveryKinds {
 		if k.Value == kind {
