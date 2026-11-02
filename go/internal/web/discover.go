@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -293,6 +294,8 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 				if c.Pick {
 					row := c.CatalogRow
 					data["Recommended"] = &row
+					// Once on the page is enough.
+					data["Catalog"] = slices.DeleteFunc(slices.Clone(data["Catalog"].([]CatalogRow)), func(x CatalogRow) bool { return x.ID == row.ID })
 				}
 			}
 		}

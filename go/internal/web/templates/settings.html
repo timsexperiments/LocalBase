@@ -110,9 +110,9 @@
   <div class="list-group">
     <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/computer-name" hx-target="#computer-name" hx-swap="outerHTML" hx-disabled-elt="find button">
       <div class="grid gap-1">
-        <label for="computer-name-input" class="text-base font-semibold">Name</label>
-        <input id="computer-name-input" class="input" name="name" value="{{.Name}}" maxlength="64" autocomplete="off" placeholder="This computer's own name">
-        <p class="text-sm text-muted">Shown at the top of every page, to anyone who can sign in. Leave it empty to use the computer's own name, which can include yours.</p>
+        <label for="computer-name-input" class="text-base font-semibold">Computer name</label>
+        <input id="computer-name-input" class="input" name="name" value="{{.Name}}" maxlength="64" autocomplete="off" placeholder="{{.Fallback}}">
+        <p class="text-sm text-muted">Shown at the top of every page, to anyone who can sign in. Leave it empty to use this computer’s own name, “{{.Fallback}}”, which may include your personal name.</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>

@@ -120,6 +120,8 @@ func New(d Deps) *UI {
 		"canAdmin":   func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
 		"initial":    initial,
 		"firstWords": firstWords,
+		"uses":       usesText,
+		"aboutGib":   aboutGib,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"
