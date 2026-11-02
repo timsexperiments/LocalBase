@@ -4,10 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="{{block "viewport" .}}width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content{{end}}">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#faf9fc" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#201e25" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="{{themeColor "light"}}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{themeColor "dark"}}" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="{{asset "brand/favicon.svg"}}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{asset "brand/app-icon-180.png"}}">
+<link rel="manifest" href="{{asset "brand/manifest.webmanifest"}}">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"historyCacheSize":0}'>
 <title>{{block "title" .}}LocalBase{{end}}</title>
+<link rel="preload" href="/app/assets/fonts/figtree-latin-wght-v1.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{asset "app.css"}}">
 <script src="{{asset "vendor/htmx-2.0.10.min.js"}}" defer></script>
 <script src="{{asset "js/session.js"}}" type="module"></script>
@@ -20,7 +24,7 @@
 <div class="lg:flex">
   {{if .Principal}}{{template "sidebar" .}}{{else}}
   <header class="mx-auto flex max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pt-[max(0.75rem,env(safe-area-inset-top))]">
-    <a href="/app" hx-boost="false" class="brand -ml-2"><span aria-hidden="true" class="brand-mark">⌘</span>LocalBase</a>
+    <a href="/app" hx-boost="false" class="brand -ml-2"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span>LocalBase</a>
   </header>
   {{end}}
   <div class="min-w-0 flex-1">
@@ -39,13 +43,13 @@
 {{define "sidebar"}}
 {{$s := section .Page}}
 <aside class="sidebar" aria-label="LocalBase">
-  <a href="/app" hx-boost="false" class="brand"><span aria-hidden="true" class="brand-mark">⌘</span>LocalBase</a>
+  <a href="/app" hx-boost="false" class="brand"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span>LocalBase</a>
   <nav aria-label="Primary" class="mt-2">
     <ul class="grid gap-0.5">
       <li><a class="nav-item" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}}>{{template "icon-chat"}}Chat</a></li>
       <li><a class="nav-item" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}}>{{template "icon-models"}}Models</a></li>
       <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}}>{{template "icon-studio"}}Studio</a></li>
-      <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}}>{{template "icon-running"}}Running now</a></li>
+      <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}}>{{template "icon-running"}}Running</a></li>
       <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}}>{{template "icon-voices"}}My voices</a></li>
       <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>{{template "icon-settings"}}Settings</a></li>
       {{if canAdmin .Principal}}<li><a class="nav-item" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}}>{{template "icon-admin"}}Admin</a></li>{{end}}
@@ -116,6 +120,10 @@
   <span aria-hidden="true" class="run-dot"></span><span class="min-w-0 truncate" data-run-label>Generating…</span>
 </a>
 {{end}}
+
+{{/* The mark: a doorway with a light inside. Usage: always this shape, in one color or
+     in the accent; never on a busy picture, and at 16 px or larger. */}}
+{{define "mark"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="mark"><path fill="currentColor" fill-rule="evenodd" d="M3.5 21.5V11a8.5 8.5 0 0 1 17 0v10.5Zm3-3h11V11a5.5 5.5 0 0 0-11 0Z"/><path class="mark-light" d="M8.8 18.5V12.7a3.2 3.2 0 0 1 6.4 0v5.8Z"/></svg>{{end}}
 
 {{define "icon-chat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-5 4v-4.2A1.5 1.5 0 0 1 4 14.5z"/></svg>{{end}}
 {{define "icon-models"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg>{{end}}

@@ -3876,6 +3876,37 @@ for tests and a future Running page.
 - `TestUnloadBrowserRoute`
 - `TestUnloadImageRuntime`: a media runtime unloads the same way.
 
+## 25. UI v2: Hearth (2026-11-02)
+
+The owner's bar: "The UI is still trash and needs real work." What shipped was sound and generic. v2 keeps the structure and gives it an identity. The critique, the three directions and the independent review are in `.design/screens/v2-before/` and `.design/mockups/v2/`.
+
+### 25.1 The identity
+
+**Hearth, revised:** warm, plain and readable, with one signature: **the host-and-memory strip**, naming the computer doing the work, its state in words, and a ruled gauge of its real memory. Only a local product can show that. On a phone it matters most, because the phone isn't the computer doing the work.
+
+- **Color:** cool warm paper, ink for action, and one lamp amber that means "live on your machine". Dark is a lit window at night. Reviewed as too close to Claude's look in its first form, so rust, drop caps, italics and engraved vignettes went.
+- **Type:** Newsreader for titles and a model's words, Figtree for everything you operate. Upright only. Both SIL OFL, self-hosted, about 78 KB.
+- **Gauge:** 48 places. Tall lamp blocks are the model in memory, short blocks everything else, and rules free space. They differ by shape, because the two fills are close in lightness.
+- **Mark:** a doorway with a light inside, replacing a ⌘ nobody chose. Files are in `static/brand/`, with favicon, app icon and manifest.
+
+### 25.2 How it is built
+
+- **One theme file.** `css/theme.css` holds every value a direction chooses. `TestThemeIsOneFile` fails on a color anywhere else.
+- **Budgets in CI.** `TestSizeBudgets` holds gzipped HTML, CSS, scripts and fonts per page.
+- **Screenshots.** `tools/ui-shots.sh` shoots every page at 360, 390, 430, 768 and 1280 in both schemes, with contact sheets, and compares with a baseline. Pictures stay out of the repository. It is not in CI, because it needs a scratch gateway.
+- **Inventory.** `docs/ui-components.md` lists every component and how far it has come.
+
+### 25.3 The strip's facts
+
+- **Name:** `os.Hostname()` without `.local`, on the server, or `LOCALBASE_COMPUTER_NAME` for scratch gateways. A hostname often holds its owner's name and everyone signed in sees the strip, so the Go thread is adding an owner-editable name (`host.name`, `PUT /_localbase/computer-name`). Fixtures only ever use generic names.
+- **Memory:** machine-wide figures from the host. The model's share is its plan, for the text model only, and the Running page's legend says "Text model" and "Everything else" until `host.memory.localbase` lands, as other runtimes would otherwise count as other apps. The strip does not call `LLM.Footprint`, which runs a process per call and is macOS-only.
+- **"This needs N GB"** shows only from the planned admission preview (`GET /_localbase/models/{id}/admission`), never computed in the browser. A refusal has no figures as fields today, so until then a refusal shows the gateway's plain sentence.
+- **Refresh:** every 15 s, not while hidden. A failed refresh marks it "Can’t reach this computer", in the same shape.
+
+### 25.4 Acceptance for v2, across the PRs
+
+From the review: first-run, Models, Running, desktop layouts, keyboard-open states, long replies, failures, enlarged text at 320 px, and a real device. Each is shown as built screens in the PR that builds it, or listed as open.
+
 ## 24. Backend facts and small additions for the studios (2026-11-01)
 
 Asked by the FE thread for the per-modality studios. Each behavior below
