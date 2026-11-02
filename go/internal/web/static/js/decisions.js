@@ -118,7 +118,7 @@ function renderCollapse() {
   if (!state.collapsed) return;
   const names = f.type === "noul" ? "Yes or no" : namedOptions(f[f.type]).map((o) => o.name).join(", ");
   const rows = f.batch ? situations(f.situation).length : 0;
-  $("[data-summary-situation]").textContent = f.batch ? (rows === 1 ? "1 situation" : `${rows} situations`) : f.situation.trim() || "No situation given";
+  $("[data-summary-situation]").textContent = f.batch ? (rows === 1 ? "1 situation" : `${rows} situations`) : excerpt(f.situation.trim()) || "No situation given";
   $("[data-summary-options]").textContent = names;
 }
 
@@ -162,6 +162,9 @@ async function askOnce(body, onRun, onStatus, signal) {
   signal?.addEventListener("abort", () => runs.cancel(run.id).then(() => runs.dismiss(run.id)).catch(() => {}), { once: true });
   return follow(run.id, signal, onStatus);
 }
+
+// fetch rejects with a TypeError when it cannot reach the gateway at all.
+const unreachable = (error) => error instanceof TypeError;
 
 function collect(json, modelID) {
   const answer = json?.answers?.answer;
@@ -225,7 +228,7 @@ function failOne(error, stopped) {
     state.collapsed = false;
     say("Stopped.");
   } else {
-    state.one = { ...state.one, status: "failed", error: error.message, runId: "" };
+    state.one = { ...state.one, status: "failed", error: unreachable(error) ? "Could not reach LocalBase. Check the connection and try again." : error.message, runId: "" };
     say(error.message);
   }
   update();
@@ -234,6 +237,7 @@ function failOne(error, stopped) {
 async function runBatch() {
   if (batchRunning) return;
   batchRunning = true;
+  state.rowsPaused = "";
   // The rows belong to the form as it was sent: editing it starts the next batch.
   const modelID = state.rowsModel ?? model();
   const form = state.rowsForm ?? state.form;
@@ -254,6 +258,11 @@ async function runBatch() {
       row.read = collect(json, modelID);
       row.status = "done";
     } catch (error) {
+      // A lost connection is not this row's fault: pause, and every row is still there.
+      if (!stopped && unreachable(error)) {
+        stopped = true;
+        state.rowsPaused = "Lost the connection to LocalBase, so this paused. Continue when it is back.";
+      }
       row.status = stopped ? "waiting" : "failed";
       row.error = stopped ? "" : error.message;
     }
@@ -280,6 +289,7 @@ function startBatch() {
   state.filter = "all";
   state.rowsModel = model();
   state.rowsForm = structuredClone(state.form);
+  state.rowsPaused = "";
   state.rows = situations(state.form.situation).map((situation, i) => ({ id: i, situation, status: "waiting" }));
   update();
   return runBatch();
@@ -375,6 +385,9 @@ function rowShown(row) {
   return true;
 }
 
+// A row shows the start of its situation; the export has all of it.
+const excerpt = (text, length = 240) => (text.length > length ? `${text.slice(0, length)}…` : text);
+
 function rowNode(row) {
   const answer = row.read
     ? el("details", {}, el("summary", { class: "decide-summary font-semibold" }, `${row.read.verdict} · ${row.read.odds}`), bars(row.read))
@@ -382,7 +395,7 @@ function rowNode(row) {
       ? el("span", { class: "text-danger" }, row.error || STATUS_WORDS.failed)
       : el("span", { class: "text-muted" }, STATUS_WORDS[row.status] ?? "");
   const tr = el("div", { role: "row", class: "decide-row", id: `decide-row-${row.id}` },
-    el("div", { role: "cell", class: "decide-cell-text" }, row.situation),
+    el("div", { role: "cell", class: "decide-cell-text" }, excerpt(row.situation)),
     el("div", { role: "cell" }, answer),
     el("div", { role: "cell" }, row.read ? el("span", { class: `decide-word decide-word-${row.read.band}` }, row.read.word) : row.status === "failed" ? el("span", { class: "decide-word" }, STATUS_WORDS.failed) : null),
   );
@@ -402,6 +415,12 @@ function renderBatchHead() {
   const waiting = rows.some((r) => r.status === "waiting");
   const failed = rows.some((r) => r.status === "failed");
   const set = (selector, shown) => { const n = $(selector); if (n) n.hidden = !shown; };
+  set("[data-batch-note]", batchRunning || waiting);
+  const paused = $("[data-batch-paused]");
+  if (paused) {
+    paused.textContent = state.rowsPaused ?? "";
+    paused.hidden = !state.rowsPaused;
+  }
   set("[data-batch-stop]", batchRunning);
   set("[data-batch-continue]", !batchRunning && waiting);
   set("[data-batch-retry]", !batchRunning && failed);
@@ -425,6 +444,8 @@ function renderBatch() {
           el("button", { type: "button", class: "btn btn-quiet", "data-batch-export": "", hidden: true }, "Export CSV"),
         ),
       ),
+      el("p", { class: "mt-1 text-sm text-muted", "data-batch-note": "", hidden: true }, "Keep this page open; reloading pauses it."),
+      el("p", { class: "decide-error", role: "status", "data-batch-paused": "", hidden: true }),
       el("fieldset", { class: "mt-2 flex flex-wrap gap-1.5" }, el("legend", { class: "sr-only" }, "Show"), filter("all", "All"), filter("review", "Close calls and unsure"), filter("failed", "Failed")),
       el("div", { role: "table", "aria-label": "Answers", class: "decide-table" },
         el("div", { role: "row", class: "decide-row decide-row-head" }, ...["Situation", "Answer", "Read"].map((t) => el("div", { role: "columnheader" }, t))),

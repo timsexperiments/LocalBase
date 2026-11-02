@@ -240,7 +240,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const typeTop = `document.querySelector(".decide-types").getBoundingClientRect().top`;
   const pick = (id) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
   const situation = (text) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
-  const send = `document.querySelector("#decide button[type=submit]").click()`;
+  const decide = `document.querySelector("#decide button[type=submit]").click()`;
   const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-word") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
   const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-label")].map((n) => n.firstChild.textContent), said: document.getElementById("decide-said").textContent })`;
   const decisionRuns = async () => (await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.label === "Decision").map((x) => x.status))`));
@@ -253,8 +253,9 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   check((await ev(typeTop)) === top && (await ev(`document.querySelector("[data-options]").hidden`)), "the question type stays put; yes or no needs no options");
   await ev(`document.querySelector("input[name=decide-type][value=choice]").click()`);
 
-  await ev(send);
+  await ev(decide);
   await finished();
+  check((await ev(`location.search`)) === "", "the question stays out of the address");
   const strong = await ev(read);
   check(strong.word === "Strongly favored" && /^billing/.test(strong.verdict) && strong.labels[0] === "billing" && /Strongly favored: billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
   check((await ev(`document.querySelector("[data-result]").textContent.includes("not a check that it is right")`)), "the standing line is under the answer");
@@ -271,39 +272,39 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:close it could be either"));
-  await ev(send);
+  await ev(decide);
   await sleep(300); await finished();
   const close = await ev(read);
   check(close.word === "Close call" && /^billing or shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:unsure"));
-  await ev(send);
+  await ev(decide);
   await sleep(300); await finished();
   check((await ev(read)).word === "Unsure", "no answer past half reads Unsure");
 
   await ev(pick("urgent"));
-  await ev(send);
+  await ev(decide);
   await sleep(300); await finished();
   const scale = await ev(read);
   check(scale.labels.join() === "low,medium,high" && /^low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(`(() => { document.querySelector("input[name=decide-type][value=choice]").click(); for (const n of document.querySelectorAll("[data-remove-option]")) document.querySelector("[data-remove-option]")?.click(); })()`);
-  await ev(send);
+  await ev(decide);
   const none = await ev(`({ error: document.getElementById("decide-error").textContent, q: document.getElementById("lab-prompt").value })`);
   check(/at least two options/.test(none.error) && none.q.length > 0, `too few options: says so and keeps the question: ${none.error}`);
 
   // Stop, and finding a run again after a reload.
   await ev(pick("route"));
   await ev(situation("fake:slow one"));
-  await ev(send);
+  await ev(decide);
   await sleep(300);
   check((await ev(`!!document.querySelector("[data-result] [aria-busy] .skeleton") && !!document.querySelector("[data-stop]")`)), "while deciding: its place, and Stop");
   await ev(`document.querySelector("[data-stop]").click()`);
   await sleep(400);
   check((await ev(`document.querySelector("[data-result]").hidden && !document.querySelector("[data-form-open]").hidden`)) && (await ev(`document.getElementById("decide-situation").value`)).includes("fake:slow"), "Stop returns to the form with its text");
-  await ev(send);
+  await ev(decide);
   await sleep(400);
   await nav("/app/studio/decisions");
   check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-word")`)), "a reload finds the question still running");
@@ -323,9 +324,13 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   // A batch.
   await ev(pick("route"));
   await ev(`document.querySelector("[data-batch-chip]").click()`);
+  await ev(situation(Array.from({ length: 201 }, (_, i) => `line ${i}`).join("\n")));
+  await ev(decide);
+  await sleep(200);
+  check(/at most 200/.test(await ev(`document.getElementById("decide-error").textContent`)) && (await ev(`document.querySelector("[data-batch]").hidden`)), "201 lines are refused, and say why");
   await ev(situation("one\nfake:close two\nfake:unsure three\n=SUM(1)\nfive"));
   check((await ev(`document.querySelector("[data-situation-count]").textContent`)) === "5 situations", "a batch counts its lines");
-  await ev(send);
+  await ev(decide);
   for (let i = 0; i < 80 && (await ev(`!/5 of 5/.test(document.querySelector("[data-batch-summary]")?.textContent ?? "")`)); i++) await sleep(100);
   const summary = await ev(`document.querySelector("[data-batch-summary]").textContent`);
   check(summary === "5 of 5 done, 2 to review", `the batch says how it went: ${summary}`);
@@ -336,13 +341,21 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "the batch fits the phone");
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
-  await ev(send);
+  await ev(decide);
   await sleep(3600);
   await ev(`document.querySelector("[data-batch-stop]").click()`);
   await sleep(500);
   const stopped = await ev(`({ s: document.querySelector("[data-batch-summary]").textContent, more: !document.querySelector("[data-batch-continue]").hidden })`);
   check(/^1 of 3 done/.test(stopped.s) && stopped.more, `Stop keeps finished rows and offers Continue: ${JSON.stringify(stopped)}`);
-  await ev(`document.querySelector("[data-batch-chip]").click()`);
+  // A lost connection pauses a batch rather than failing every row left.
+  await ev(`document.querySelector("[data-batch-continue]").click()`);
+  await sleep(200);
+  await send("Network.enable");
+  await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await sleep(4000);
+  const dropped = await ev(`({ paused: document.querySelector("[data-batch-paused]").textContent, more: !document.querySelector("[data-batch-continue]").hidden, failed: /failed/.test(document.querySelector("[data-batch-summary]").textContent) })`);
+  await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  check(/Lost the connection/.test(dropped.paused) && dropped.more && !dropped.failed, `a lost connection pauses the batch: ${JSON.stringify(dropped)}`);
   await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
 }
 

@@ -3519,8 +3519,13 @@ their own place. It asks `POST /v1/systemone`.
   it cannot change later rows. Table on wide screens, cards on phones, with the
   word as a column and the filters All, Close calls and unsure, Failed. Stop keeps
   finished rows and offers Continue; Retry failed; Export CSV, where a cell that
-  could run as a formula is prefixed. Leaving the app stops the batch between
-  rows, and coming back offers Continue. A boosted navigation does not stop it.
+  could run as a formula is prefixed. A row shows the first 240 characters (a
+  200 KB row stopped the page from painting) and the export has all of it. The
+  batch says "Keep this page open; reloading pauses it": a reload offers
+  Continue, and a boosted navigation does not stop it. A lost connection pauses
+  it too, rather than failing every row left in an instant, which is what the
+  real pass found. Running a batch as gateway-side runs is a follow-up; the
+  `/v1/systemone` run target exists (§24).
 - **View code** gives cURL and JavaScript for the current form with the
   `$LOCALBASE_API_KEY` placeholder. A real key is never in the page.
 - **Not built:** image and audio inputs, multiple questions in one request, and
@@ -3529,8 +3534,24 @@ their own place. It asks `POST /v1/systemone`.
   a model with its own row, each type, requests, code, CSV), and
   `tools/chat-runs-check.sh` walks templates, every word, Stop, a reload, saved
   examples and a batch against the fake backend, whose state text (`fake:close`,
-  `fake:unsure`, `fake:leaning`, `fake:slow`) reaches each word. The real
-  model has been run only through the calibration tool, not through this page.
+  `fake:unsure`, `fake:leaning`, `fake:slow`) reaches each word.
+- **The form is not boosted.** `<body hx-boost>` also takes forms, and with it on
+  a validation message was wiped right after it appeared (found by the real
+  pass; it stayed once the boost was off). The form says `hx-boost="false"`, and Send starts
+  disabled until the script is ready, so a form that needs the script cannot
+  submit natively.
+- **Real pass (2026-11-02, Clef Flash, scratch gateway, through this page):** 32
+  questions of all three types, including all 17 ambiguous ones. Each word was
+  recomputed from the raw answer and every one matched, with the standing line
+  present. 21 read Strongly favored, 6 Leaning, 4 Close call, 1 Unsure. A coin
+  flip was a Close call (51/49), "xqzv plm" Unsure (29%), and a judgment call
+  still came back at 99% (bring an umbrella at 50% rain), which is what the
+  standing line is for. A greeting routed to billing at 61% read as Leaning. A
+  question took about 0.2 s once loaded (7 s cold), 30 rows 8 to 10 s, 200 rows
+  62 s; the table stayed responsive at 200 rows and 201 lines were refused. A
+  row too long for the model failed alone, with the gateway's own sentence, and
+  still failed on Retry; the rest went on. One computer's times, not product
+  copy. The 7 s includes the model's load.
 
 ## 23. Explicit unload (2026-10-27)
 

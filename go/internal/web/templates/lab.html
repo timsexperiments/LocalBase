@@ -168,7 +168,7 @@
 {{define "decisions"}}
 <div data-decisions class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
   {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" "decision"}}{{else}}
-  <form id="decide" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
+  <form id="decide" hx-boost="false" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
     <fieldset class="decide-types">
       <legend class="sr-only">Question type</legend>
       <label><input type="radio" name="decide-type" value="choice" class="sr-only" checked>Pick one</label>
@@ -208,7 +208,7 @@
           <button type="button" class="chip lab-chip gap-1" data-batch-chip aria-pressed="false"><span class="font-normal text-muted">Batch</span> <span data-value>Off</span></button>
           {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         </div>
-        {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask a question" "Action" "Decide")}}
+        {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask a question" "Action" "Decide" "Scripted" true)}}
       </div>
       {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
     </div>
@@ -251,7 +251,7 @@
 <div class="flex items-end gap-1 px-1 pb-1">
   <label for="lab-prompt" class="sr-only">{{.Label}}</label>
   <textarea id="lab-prompt" class="lab-prompt text-base" name="{{.Name}}" rows="1" required maxlength="{{.Max}}" placeholder="{{.Placeholder}}" autocomplete="off" data-grow></textarea>
-  <button type="submit" class="btn btn-primary size-11 shrink-0 rounded-full p-0" aria-label="{{.Action}}">{{template "icon-send"}}</button>
+  <button type="submit" class="btn btn-primary size-11 shrink-0 rounded-full p-0" aria-label="{{.Action}}"{{if .Scripted}} disabled{{end}}>{{template "icon-send"}}</button>
 </div>
 {{end}}
 
