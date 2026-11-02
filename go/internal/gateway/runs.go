@@ -183,6 +183,9 @@ type runManager struct {
 	closing bool
 	quit    chan struct{}
 	wg      sync.WaitGroup
+
+	// afterPublish, if set, runs once a new run is visible to Shutdown (tests).
+	afterPublish func()
 }
 
 func newRunManager(s *Server, dir string) *runManager {
@@ -607,12 +610,19 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 			fmt.Sprintf("Too many generations are running (at most %d per account). Wait for one to finish or stop one.", runActivePerOwner), nil)
 		return
 	}
+	// Everything Shutdown needs is in place before the run can be seen, and
+	// under the lock that checked closing: it either refused this run above or
+	// finds it here, stops it and waits for it.
+	ctx, cancel := context.WithCancel(context.WithoutCancel(req.Context()))
+	r.cancel = cancel
+	m.wg.Add(1)
 	m.runs[r.ID] = r
 	m.trim(owner)
 	m.mu.Unlock()
+	if m.afterPublish != nil {
+		m.afterPublish()
+	}
 
-	ctx, cancel := context.WithCancel(context.WithoutCancel(req.Context()))
-	r.cancel = cancel
 	ctx, r.span = m.s.Otel.Start(ctx, "localbase.run", otlp.KindInternal)
 	r.span.SetAttr("localbase.run.id", r.ID)
 	r.span.SetAttr("localbase.run.target", target)
@@ -655,7 +665,6 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	inner.Host, inner.RemoteAddr = req.Host, req.RemoteAddr
 	timer := time.AfterFunc(m.maxDuration, func() { m.stop(r, runInterrupted, "max_duration") })
 
-	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		defer timer.Stop()
