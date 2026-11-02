@@ -3211,6 +3211,52 @@ result; now the stream is its `result`, as `text/event-stream`.
 - `TestLabImageSeed`, and `tools.test.ts` for the chat tool.
 - The fake sd-server now honors `n` and `seed` as measured above.
 
+**Where the audio comes from (2026-11-02, FE thread's report of clicks).**
+Evidence: a recording proxy between the gateway and `tts-server`, on a scratch
+gateway. Nobody has listened to this audio; it was checked by analysis only.
+- **The gateway adds nothing:** in 73 of 73 requests the WAV's samples were
+  byte-identical to what `tts-server` sent. `/v1/audio/speech` adds a 44-byte
+  header and does no resampling or conversion.
+- **The clicks are the runtime's output.** They are short bursts, not single
+  samples: 8 of the 73 had one (jumps up to 26,622), and all were already in
+  `tts-server`'s bytes. They do not fall on its 72-frame vocoder windows.
+  `tts-server.cpp` only clamps and scales floats to s16, so a value of exactly
+  32767 in a burst had saturated before that point. Whether the vocoder or the
+  sampled codes cause them was not separated: the pipeline's source is upstream
+  llama.cpp, not in this repo.
+- **A seed does not repeat speech.** Three `/v1/generate` calls with the same
+  `seed` gave three lengths. The gateway sends no seed.
+
+**Why number lists vary (same day).** The only generation setting LocalBase
+passes is `-n 256`, the frame cap, as TS does; no sampling flags. The same
+112 characters of numbers, 8 runs each, on the real binary:
+
+| Launch | Frames (0.08 s each) | At the cap |
+| --- | --- | --- |
+| As shipped (`-n 256`) | 202–256 | 3 of 8 |
+| `--temp 0.5` | 185–256 | 7 of 8 |
+| `--repeat-penalty 1.1` | 188–256 | 4 of 8 |
+| `-n 512` | 195–311 | none; all stopped on their own |
+
+So the length is the model's own, varying by about a third, and the cap cuts
+speech that would have finished (5 of 8 ran past 256). Lists run up to about
+2.8 frames a character, so about 85 characters stays under the cap on this small
+sample. Raising `SpeechMaxFrames` is the one setting that would help. It is
+unchanged here: it departs from TS, and its memory and context limits were not
+measured. Sampling flags did not help the cap. Bursts were 2 of 10 as shipped
+and 0 of 10 for both sampling variants, too few to conclude anything.
+
+**Known flake: `TestUnloadScope`.** One macOS CI run (41407289747, on
+`rewrite/go-fe-studio-speech`) failed only in Go's temp-dir cleanup, "directory
+not empty", with every check in the test passing; it passed on rerun. So a file
+appeared in the scratch root during teardown, and which file is unknown. Not
+reproduced: 470 parallel runs of the test (150 under `-race`), and 3 full
+`-race` package runs with the CPUs saturated. Delaying the `footprint` peak write
+in `LLM.watch`, which `Close` does not wait for, did not reproduce it either (240
+runs), though that test did not confirm the delayed write ran. Treat a repeat of
+exactly this message as this flake. If it recurs, list the root's contents at
+that point.
+
 **Contract tests:** image admission tests need free memory and should not
 run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.

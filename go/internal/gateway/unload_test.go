@@ -143,6 +143,9 @@ func TestUnloadNotLoaded(t *testing.T) {
 
 // Unload needs models:manage; it acts on the shared model, so another
 // principal's in-flight requests count and are drained, not cancelled.
+//
+// Known flake (DESIGN §24): one macOS CI run failed only in TempDir cleanup
+// ("directory not empty"), with every check here passing. Not reproduced.
 func TestUnloadScope(t *testing.T) {
 	ts := newTestServer(t)
 	s := runServer(ts)
