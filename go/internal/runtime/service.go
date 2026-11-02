@@ -477,6 +477,9 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		}
 		return nil, fail(err)
 	}
+	if err := checkPortFree(host, port); err != nil {
+		return nil, fail(err)
+	}
 	res, err := s.d.Memory.Reserve(context.Background(), s.d.Modality, demand)
 	if err != nil {
 		logAdmissionRejected(s.d.Log, s.d.Modality, cmd.name, err)
