@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
-.PHONY: help bootstrap build run test race contract ui lint fmt check hooks rehearse docs
+.PHONY: help bootstrap build run test race contract ui lint fmt check hooks rehearse docs soak soak-smoke soak-race
 
 PORT ?= 26400
 
 # Tools from `make bootstrap` come first.
 export PATH := $(CURDIR)/.cache/tools/bin:$(PATH)
 
+need_go_makefile = [ -f go/Makefile ] || { echo "The soak tools (go/Makefile) aren't in this tree yet."; exit 1; }
+
 help: ## List the commands
-	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | expand -t 12
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | expand -t 12
 
 bootstrap: ## Install the pinned tools into .cache/tools, verified by checksum
 	scripts/bootstrap.sh
@@ -55,3 +57,15 @@ rehearse: ## Rehearse a release from local artifacts; publishes nothing. Needs m
 
 docs: ## Build the documentation site into .cache/docs-site/book. Needs make bootstrap
 	scripts/docs-site.sh
+
+soak: ## 30 minutes against fake backends. Needs go/Makefile
+	@$(call need_go_makefile)
+	$(MAKE) -C go soak
+
+soak-smoke: ## One soak cycle, about 2 minutes. Needs go/Makefile
+	@$(call need_go_makefile)
+	$(MAKE) -C go soak-smoke
+
+soak-race: ## One soak cycle with the race detector. Needs go/Makefile
+	@$(call need_go_makefile)
+	$(MAKE) -C go soak-race
