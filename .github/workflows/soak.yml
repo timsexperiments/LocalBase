@@ -59,7 +59,14 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: soak-smoke-scratch-${{ matrix.runner }}
-          path: ${{ runner.temp }}/soak-scratch
+          # An allow-list, so whatever the lab adds later stays out. It must never upload
+          # bin/, which holds a lab-tagged build, or models/, which are huge sparse files.
+          path: |
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/serve.log
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/race.*
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/host.json
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/root/logs/**
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/root/runs/**
           retention-days: 7
           if-no-files-found: ignore
 
@@ -101,6 +108,13 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: soak-full-scratch
-          path: ${{ runner.temp }}/soak-scratch
+          # An allow-list, so whatever the lab adds later stays out. It must never upload
+          # bin/, which holds a lab-tagged build, or models/, which are huge sparse files.
+          path: |
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/serve.log
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/race.*
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/host.json
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/root/logs/**
+            ${{ runner.temp }}/soak-scratch/lblab-*/*/root/runs/**
           retention-days: 7
           if-no-files-found: ignore
