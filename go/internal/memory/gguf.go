@@ -113,9 +113,48 @@ func MetadataPath(path string) string {
 	return filepath.Join(filepath.Dir(path), m[1]+"-00001-of-"+m[3]+".gguf")
 }
 
+const (
+	// maxKeptBytes bounds what one header can make the gateway hold: kept strings
+	// and tensor table entries. A hostile file is otherwise limited only by its size.
+	maxKeptBytes = 64 << 20
+	// maxSkippedBytes bounds how much of a file a header may ask to step over, so
+	// reading a header stays cheap however large the file is.
+	maxSkippedBytes = 2 << 30
+)
+
+// ErrNestedGGUFArray: GGUF has no arrays of arrays, so a file that has them is
+// not a model. The reader refuses them instead of following them.
+var ErrNestedGGUFArray = errors.New("GGUF arrays of arrays are not allowed")
+
+const (
+	ggufTypeString = 8
+	ggufTypeArray  = 9
+)
+
 type ggufReader struct {
-	r    *bufio.Reader
-	work int
+	r       *bufio.Reader
+	work    int
+	kept    int
+	skipped int64
+}
+
+// keep charges n bytes of what the header makes the gateway hold.
+func (g *ggufReader) keep(n int) error {
+	g.kept += n
+	if g.kept > maxKeptBytes {
+		return errors.New("GGUF header keeps too much")
+	}
+	return nil
+}
+
+// skip steps over n bytes of the file.
+func (g *ggufReader) skip(n int) error {
+	g.skipped += int64(n)
+	if g.skipped > maxSkippedBytes {
+		return errors.New("GGUF header too large")
+	}
+	_, err := g.r.Discard(n)
+	return err
 }
 
 func (g *ggufReader) spend(n int) error {
@@ -147,7 +186,9 @@ func (g *ggufReader) str(keep bool, maxBytes int) (string, bool, error) {
 		return "", false, errors.New("implausible GGUF string")
 	}
 	if !keep || n > uint64(maxBytes) {
-		_, err := g.r.Discard(int(n))
+		return "", false, g.skip(int(n))
+	}
+	if err := g.keep(int(n)); err != nil {
 		return "", false, err
 	}
 	b := make([]byte, n)
@@ -205,45 +246,14 @@ func (g *ggufReader) scalar(t uint32) (float64, error) {
 // value is a kept scalar (float64), string, or []float64.
 func (g *ggufReader) value(t uint32, keep bool, maxStr int) (any, error) {
 	switch {
-	case t == 8:
+	case t == ggufTypeString:
 		s, ok, err := g.str(keep, maxStr)
 		if !ok {
 			return nil, err
 		}
 		return s, err
-	case t == 9:
-		et, err := g.u32()
-		if err != nil {
-			return nil, err
-		}
-		n, err := g.u64()
-		if err != nil {
-			return nil, err
-		}
-		if err := g.spend(int(min(n, maxParseWork+1))); err != nil {
-			return nil, err
-		}
-		size, fixed := fixedSizes[et]
-		keepArr := keep && fixed && n <= maxKeptArrayElements
-		if !keepArr {
-			if fixed {
-				_, err := g.r.Discard(int(n) * size)
-				return nil, err
-			}
-			for i := uint64(0); i < n; i++ {
-				if _, err := g.value(et, false, 0); err != nil {
-					return nil, err
-				}
-			}
-			return nil, nil
-		}
-		out := make([]float64, n)
-		for i := range out {
-			if out[i], err = g.scalar(et); err != nil {
-				return nil, err
-			}
-		}
-		return out, nil
+	case t == ggufTypeArray:
+		return g.array(keep)
 	default:
 		if _, ok := fixedSizes[t]; !ok {
 			return nil, fmt.Errorf("unknown GGUF type %d", t)
@@ -254,6 +264,46 @@ func (g *ggufReader) value(t uint32, keep bool, maxStr int) (any, error) {
 		}
 		return v, err
 	}
+}
+
+// array reads an array of scalars or strings. It never calls value: the elements
+// are not arrays, so no input can make the reader's stack grow.
+func (g *ggufReader) array(keep bool) (any, error) {
+	et, err := g.u32()
+	if err != nil {
+		return nil, err
+	}
+	if et == ggufTypeArray {
+		return nil, ErrNestedGGUFArray
+	}
+	n, err := g.u64()
+	if err != nil {
+		return nil, err
+	}
+	if err := g.spend(int(min(n, maxParseWork+1))); err != nil {
+		return nil, err
+	}
+	size, fixed := fixedSizes[et]
+	switch {
+	case !fixed && et != ggufTypeString:
+		return nil, fmt.Errorf("unknown GGUF type %d", et)
+	case keep && fixed && n <= maxKeptArrayElements:
+		out := make([]float64, n)
+		for i := range out {
+			if out[i], err = g.scalar(et); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	case fixed:
+		return nil, g.skip(int(n) * size)
+	}
+	for i := uint64(0); i < n; i++ {
+		if _, _, err := g.str(false, 0); err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 // ReadGGUFKeys reads the geometry-relevant header keys of a GGUF file.
@@ -291,22 +341,36 @@ func ReadTensorTable(path string) ([]TensorInfo, error) {
 	return tensors, err
 }
 
-const maxTensorCount = 1 << 20
+const (
+	maxTensorCount = 1 << 20
+	// tensorEntryBytes is what a table entry costs beyond its name.
+	tensorEntryBytes = 112
+)
 
 func readHeader(path string, keep func(string) bool, maxStr func(string) int, withTensors bool) (map[string]any, []TensorInfo, error) {
-	values, tensorCount, g, f, err := readKeyBlock(path, keep, maxStr)
-	if f != nil {
-		defer f.Close()
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
 	}
+	defer f.Close()
+	return parseHeader(f, keep, maxStr, withTensors)
+}
+
+func parseHeader(src io.Reader, keep func(string) bool, maxStr func(string) int, withTensors bool) (map[string]any, []TensorInfo, error) {
+	values, tensorCount, g, err := parseKeyBlock(src, keep, maxStr)
 	if err != nil || !withTensors {
 		return values, nil, err
 	}
 	if tensorCount > maxTensorCount {
 		return nil, nil, errors.New("implausible GGUF tensor count")
 	}
-	tensors := make([]TensorInfo, 0, tensorCount)
+	// The header's count is a claim: the table grows as entries actually arrive.
+	tensors := make([]TensorInfo, 0, min(tensorCount, 4096))
 	for i := uint64(0); i < tensorCount; i++ {
 		if err := g.spend(1); err != nil {
+			return nil, nil, err
+		}
+		if err := g.keep(tensorEntryBytes); err != nil {
 			return nil, nil, err
 		}
 		name, _, err := g.str(true, 1024)
@@ -335,49 +399,45 @@ func readHeader(path string, keep func(string) bool, maxStr func(string) int, wi
 	return values, tensors, nil
 }
 
-func readKeyBlock(path string, keep func(string) bool, maxStr func(string) int) (map[string]any, uint64, *ggufReader, *os.File, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, nil, nil, err
-	}
-	g := &ggufReader{r: bufio.NewReaderSize(f, 1<<20)}
+func parseKeyBlock(src io.Reader, keep func(string) bool, maxStr func(string) int) (map[string]any, uint64, *ggufReader, error) {
+	g := &ggufReader{r: bufio.NewReaderSize(src, 1<<20)}
 	if magic, err := g.u32(); err != nil || magic != ggufMagic {
-		return nil, 0, nil, f, errors.New("not a GGUF file")
+		return nil, 0, nil, errors.New("not a GGUF file")
 	}
 	if v, _ := g.u32(); v != 2 && v != 3 {
-		return nil, 0, nil, f, fmt.Errorf("unsupported GGUF version %d", v)
+		return nil, 0, nil, fmt.Errorf("unsupported GGUF version %d", v)
 	}
 	tensorCount, err := g.u64()
 	if err != nil {
-		return nil, 0, nil, f, err
+		return nil, 0, nil, err
 	}
 	count, err := g.u64()
 	if err != nil || count > maxKVCount {
-		return nil, 0, nil, f, errors.New("implausible GGUF key count")
+		return nil, 0, nil, errors.New("implausible GGUF key count")
 	}
 	values := map[string]any{}
 	for i := uint64(0); i < count; i++ {
 		if err := g.spend(1); err != nil {
-			return nil, 0, nil, f, err
+			return nil, 0, nil, err
 		}
 		key, _, err := g.str(true, maxKeptStringBytes)
 		if err != nil {
-			return nil, 0, nil, f, err
+			return nil, 0, nil, err
 		}
 		t, err := g.u32()
 		if err != nil {
-			return nil, 0, nil, f, err
+			return nil, 0, nil, err
 		}
 		k := keep(key)
 		v, err := g.value(t, k, maxStr(key))
 		if err != nil {
-			return nil, 0, nil, f, err
+			return nil, 0, nil, err
 		}
 		if k && v != nil {
 			values[key] = v
 		}
 	}
-	return values, tensorCount, g, f, nil
+	return values, tensorCount, g, nil
 }
 
 // ReadGeometry returns nil on any failure, like the TS reader.
