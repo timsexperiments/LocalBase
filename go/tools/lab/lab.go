@@ -181,8 +181,10 @@ type Options struct {
 	CtxSize int
 	// FakeEnv adds environment entries, for the fake backends' behaviors.
 	FakeEnv []string
-	// RootDir reuses an existing root (a restart); its keys come from Keys.
-	Reuse *Gateway
+	// Reuse restarts on another gateway's root, with its keys. SamePorts keeps
+	// its ports too, as a real restart would.
+	Reuse     *Gateway
+	SamePorts bool
 }
 
 // Keys are the API keys a fixture creates.
@@ -234,11 +236,16 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 	g.Root = filepath.Join(g.Dir, "root")
 	g.Fake = &FakeHost{Path: filepath.Join(g.Dir, "host.json"), Spec: o.Host}
 	g.LogPath = filepath.Join(g.Dir, "serve.log")
-	ports, err := w.ports.take(7)
-	if err != nil {
-		return nil, err
+	if o.Reuse != nil && o.SamePorts {
+		g.ports = o.Reuse.ports
+	} else {
+		ports, err := w.ports.take(7)
+		if err != nil {
+			return nil, err
+		}
+		g.ports = map[string]int{"gateway": ports[0], "debug": ports[1], "llm": ports[2], "stt": ports[3], "tts": ports[4], "image": ports[5], "video": ports[6]}
 	}
-	g.ports = map[string]int{"gateway": ports[0], "debug": ports[1], "llm": ports[2], "stt": ports[3], "tts": ports[4], "image": ports[5], "video": ports[6]}
+	var err error
 	if o.Reuse != nil {
 		g.Dir, g.Root, g.Keys, g.Fake, g.LogPath = o.Reuse.Dir, o.Reuse.Root, o.Reuse.Keys, o.Reuse.Fake, o.Reuse.LogPath
 	} else {
