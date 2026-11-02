@@ -1186,6 +1186,29 @@ Deliberate status changes to verify against the live clients at cutover:
    model on each gateway. `TestDifferentialModelManagement` first activates
    the same chat model on both.
 
+10. **The first install on a fresh root** (operator, after the first-run pass).
+    TS refuses to install a selected or active model and to disable the default
+    LLM, so from a fresh root the default model could not be installed from the
+    API without first downloading another model. TS never reached this from a
+    fresh root: its `serve` exits while the default is missing, unless given
+    `--install-missing`. Go serves, so it needs a way through:
+    - A selected or active model with files missing no longer blocks an install.
+      Nothing can load it. A model loaded or loading, or an installed model that
+      is selected or active, still refuses with TS's 409.
+    - A finished install of a chat model, through the API or `models install`,
+      selects it and makes it the default when the current default cannot run
+      (none is set, or a catalog model with files missing). The operation reads
+      `complete` only after that. A working or imported default is left alone,
+      and decision and embedding models never become the default. Other
+      modalities are not activated this way.
+    - `activate` on an installed model also selects it, so it is one idempotent
+      call. TS answers 409 "Enable the model before activating it."
+    - Disabling the active LLM is still a 409 `conflict`. With no other chat
+      model installed, the message names the way out instead of TS's "Activate
+      another LLM before disabling the default."
+    `TestFreshRootFirstInstall` and `TestFreshRootCLIInstall` run this on a root
+    with nothing seeded. No response shape changed.
+
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
 
