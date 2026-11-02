@@ -36,9 +36,10 @@ Docs merge after what they describe. Arrows are stacks; each PR merges after the
 | 1 | #403, then #411 and #421, as `go/docs/merge-readiness.md` says |
 | 2 | #404, #408, #444 |
 | 3 | #413 → #414 → #415 → #416 → #417 → #418. #414's commit and date stamping needs #406 |
-| 4 | Go features: #405 → #409 → #424, #423, #425, #426, #427, #430, #406, #422, #432 |
+| 4 | Go features: #421, #405 → #409 → #424, #423, #425, #426, #427, #430, #406, #422, #432, #447. #424 and #406 both change the same line in `go/cmd/localbase/serve.go`, so whichever goes second needs a small conflict fix |
 | 5 | Feature docs, each after its feature: #436 (#409), #437 (#424), #438 (#426), #439 (#411), #440 (#423), #441 (#430), #442 (#425), #443 (#427) |
-| 6 | The wiring PR, last, because it links to all of the feature docs |
+| 6 | UI v2: #410, then #448 directly after it, then the rest of its stack. #418 must already be in, because it allowlists the fonts and icons and annotates their license |
+| 7 | #446, last, because it links to all of the feature docs |
 
 The Go order within step 4 belongs to the Go thread. If it changes, keep the doc PRs after their features.
 
