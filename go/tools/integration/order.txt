@@ -56,6 +56,9 @@ char-logs
 # UI
 ui-v2-host
 
+# Live hotfixes: carried here before they merge
+sec-options-auth
+
 # Correctness review fixes
 fix-backend-stop
 fix-run-toolcalls

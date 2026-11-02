@@ -53,7 +53,7 @@ func main() {
 		check(run("", "git", "worktree", "prune"))
 		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
 	}
-	for _, kv := range [][2]string{{"rerere.enabled", "true"}, {"rerere.autoupdate", "true"}} {
+	for _, kv := range [][2]string{{"rerere.enabled", "true"}, {"rerere.autoupdate", "false"}} {
 		check(run(*dir, "git", "config", kv[0], kv[1]))
 	}
 	for _, b := range list {
@@ -89,8 +89,14 @@ func main() {
 		check(run(*dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
 	}
 	if removed > 0 {
-		fmt.Printf("removed %d repeated DESIGN sections\n", removed)
+		fmt.Printf("removed %d repeats from DESIGN\n", removed)
 	}
+	// The differential runs the TS gateway from this tree, and a worktree starts
+	// with no node_modules: without them TS never becomes healthy.
+	if _, err := exec.LookPath("bun"); err != nil {
+		fatalf("bun is not installed; the tree cannot run -impl=both without it")
+	}
+	check(run(*dir, "bun", "install", "--frozen-lockfile"))
 	if *test {
 		gosrc := filepath.Join(*dir, "go")
 		check(run(gosrc, "sh", "-c", `test -z "$("$(go env GOROOT)/bin/gofmt" -l .)"`))
@@ -104,7 +110,9 @@ func main() {
 }
 
 // resolve handles a stopped merge and returns what still needs a person. rerere has
-// already staged what it remembers.
+// already written what it remembers into the tree, but a remembered resolution of a
+// union file holds that file's content from an older build: those are rebuilt from
+// the conflict itself.
 func resolve(dir string) ([]string, error) {
 	out, err := exec.Command("git", "-C", dir, "diff", "--name-only", "--diff-filter=U").Output()
 	if err != nil {
@@ -121,12 +129,23 @@ func resolve(dir string) ([]string, error) {
 			}
 			continue
 		}
+		path := filepath.Join(dir, f)
 		if !unionFiles[f] {
-			left = append(left, f)
-			continue
-		}
-		if err := keepBothSides(filepath.Join(dir, f)); err != nil {
-			return nil, err
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			if markerRe.Match(b) {
+				left = append(left, f)
+				continue
+			}
+		} else {
+			if err := run(dir, "git", "checkout", "-m", "--", f); err != nil {
+				return nil, err
+			}
+			if err := keepBothSides(path); err != nil {
+				return nil, err
+			}
 		}
 		if err := run(dir, "git", "add", f); err != nil {
 			return nil, err
@@ -154,7 +173,15 @@ func tidyDesign(path string) (int, error) {
 	}
 	var sections [][]byte
 	var cur []byte
+	removedHeadings := 0
+	var prev []byte
 	for _, line := range bytes.SplitAfter(b, []byte("\n")) {
+		// Both sides of a renumbered heading, kept one above the other.
+		if sameTitle(prev, line) {
+			removedHeadings++
+			continue
+		}
+		prev = line
 		if bytes.HasPrefix(line, []byte("## ")) && len(cur) > 0 {
 			sections = append(sections, cur)
 			cur = nil
@@ -173,10 +200,18 @@ func tidyDesign(path string) (int, error) {
 		seen[key] = true
 		out.Write(s)
 	}
-	if removed == 0 {
+	if removed+removedHeadings == 0 {
 		return 0, nil
 	}
-	return removed, os.WriteFile(path, out.Bytes(), 0o600)
+	return removed + removedHeadings, os.WriteFile(path, out.Bytes(), 0o600)
+}
+
+var numberedHeading = regexp.MustCompile(`^## \d+\. (.*)`)
+
+// sameTitle: two top-level headings that differ only in their number.
+func sameTitle(a, b []byte) bool {
+	x, y := numberedHeading.FindSubmatch(a), numberedHeading.FindSubmatch(b)
+	return x != nil && y != nil && bytes.Equal(x[1], y[1])
 }
 
 func orderPath() string {

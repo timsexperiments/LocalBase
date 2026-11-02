@@ -24,6 +24,18 @@ func TestTidyDesignDropsOnlyExactRepeats(t *testing.T) {
 	}
 }
 
+func TestTidyDesignDropsRenumberedHeading(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "DESIGN.md")
+	os.WriteFile(p, []byte("## 28. First\n## 25. First\n\nbody\n\n## 25. Other\n\nx\n"), 0o600)
+	if n, err := tidyDesign(p); err != nil || n != 1 {
+		t.Fatalf("%d %v", n, err)
+	}
+	got, _ := os.ReadFile(p)
+	if string(got) != "## 28. First\n\nbody\n\n## 25. Other\n\nx\n" {
+		t.Errorf("%q", got)
+	}
+}
+
 func TestKeepBothSides(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "f")
 	os.WriteFile(p, []byte("a\n<<<<<<< HEAD\nb\n=======\nc\n>>>>>>> origin/x\nd\n"), 0o600)
