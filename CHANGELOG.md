@@ -12,6 +12,11 @@ LocalBase is rewritten in Go. It's one static binary with the UI built in, and i
 
 ### Added
 
+- **First-run sign-in link:** `local-base access login-link`, for a browser on the same computer only. See [first-run sign-in](docs/first-run-sign-in.md).
+- **Failed installs say why:** `error.reason`. See [install failures](docs/install-failures.md).
+- **Host and admission API:** `GET /_localbase/host` and `GET /_localbase/models/{id}/admission`.
+### Added
+
 - **Studio pages:** Image, Speech, Transcribe, Video and Decisions, in a redesigned web interface with Chat, Models, Running now, voices, Settings and Admin.
 - **Detached runs:** generation in the web interface carries on when you leave the page, and the page re-attaches when you return. Checkpoints in `<root>/runs/` hold model output in plaintext for up to 30 minutes after a run ends.
 - **Placement:** run each model automatically, GPU only, CPU only or with custom layers. NVIDIA support is tested with synthetic fixtures only.
@@ -27,6 +32,8 @@ LocalBase is rewritten in Go. It's one static binary with the UI built in, and i
 
 These differ from 0.1.0 for API clients:
 
+- `serve --no-auth` refuses a non-loopback host, and answers 403 to foreign `Host` values, proxy headers and foreign origins.
+- The database is created 0600, and `serve` tightens older data directories.
 - An unparseable multipart body returns 400 `validation_failed`, not 500 `gateway_error`.
 - The wrong method on a JSON inference route returns 405 with `Allow`, not 400.
 - A chat request with an empty `messages` list is refused.

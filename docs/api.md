@@ -24,6 +24,6 @@ The gateway listens on `http://127.0.0.1:2273` by default. Send an API key from 
 | `/_localbase/runs` and below | Detached runs |
 | `/_localbase/api-keys`, `/_localbase/access-management`, `/_localbase/voices`, `/_localbase/backends`, `/_localbase/model-imports` | Administration |
 
-`/_localbase/` routes aren't part of the [stable `/v1` API](versioning.md) and can change between releases.
+`/_localbase/` routes aren't part of the [stable `/v1` API](versioning.md) and can change between releases. See the [host and admission API](host-api.md).
 
 See [API details](api-details.md) for request and response contracts, and `go/DESIGN.md` §21 for detached runs.

@@ -13,12 +13,17 @@ local-base diagnostics   # a redacted ZIP to attach to a bug report
 
 | Response | Meaning | What to do |
 | --- | --- | --- |
-| `503 insufficient_memory` | Not enough memory is available to start the model right now | Close other apps, wait for idle models to be evicted, or use a smaller model |
+| `422 model_too_large` | This model can never fit on this machine | Use a smaller model. Retrying won't help |
+| `503 insufficient_memory` | Not enough memory is free right now | Close other apps, wait for idle models to be evicted, or use a smaller model |
 | `503` with `memory_pressure` or `memory_emergency` in the logs | The system ran short while running, so LocalBase evicted or stopped runtimes | Retry after `Retry-After`. Run less at once |
 
-`local-base models recommend` lists what fits. `--bypass-memory-check` on `serve` starts despite memory warnings, and can make the machine swap or kill processes, so use it only when you understand that risk.
+See [why a model was refused](model-refusals.md) and [the memory reserve](memory-reserve-guide.md). `local-base models recommend` lists what fits. `--bypass-memory-check` on `serve` starts despite memory warnings, and can make the machine swap or kill processes, so use it only when you understand that risk.
 
 **On hosts with an NVIDIA GPU:** memory admission and placement for NVIDIA aren't qualified on real hardware yet. Rejection logs say which pool refused.
+
+## Downloads
+
+A failed install prints a reason. See [install failures](install-failures.md).
 
 ## Queues
 
@@ -32,7 +37,7 @@ local-base diagnostics   # a redacted ZIP to attach to a bug report
 
 ## Sign-in
 
-- **`/app/login` returns `ui_access_denied`.** No provider is configured, which is the default on a fresh install. Run `local-base access show`, then follow [authentication](authentication.md).
+- **No way to sign in.** No provider is configured, which is the default on a fresh install. On this computer, run `local-base access login-link` and open the link. For a phone or another computer, follow [authentication](authentication.md).
 - **OIDC errors after sign-in.** The redirect URI at the provider must be exactly `<origin>/oidc/callback`, and `--origin` must be the exact HTTPS origin people visit, with no path or trailing slash.
 - **Locked out.** The local CLI still works: use `local-base access` from the machine that holds the data directory.
 - **API key refused in the browser.** That's expected: the browser accepts only sign-in sessions.

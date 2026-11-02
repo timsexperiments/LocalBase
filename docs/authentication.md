@@ -1,5 +1,7 @@
 # Authentication and authorization
 
+> For a browser on the same computer, you don't need any of this: see the [first-run sign-in link](first-run-sign-in.md). `--no-auth` is [for local development only](no-auth.md).
+
 > GitHub sign-in applies to the older TypeScript version. The Go version offers OIDC, Cloudflare Access and magic links; existing GitHub registrations can only be listed and removed.
 
 LocalBase separates browser users from machine clients.

@@ -18,11 +18,11 @@ Export is off until you set an endpoint. When on, it sends operational logs and 
 
 ## What is stored, and where
 
-Everything is under the data directory, `~/.local/share/local-base` by default, which is created readable by your user only (0700).
+Everything is under the data directory, `~/.local/share/local-base` by default, which is created readable by your user only (0700). **Nothing is encrypted at rest**, and copies of the database hold its secrets. See [where secrets live](secrets.md).
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Settings | `local-base.db` | **Your Hugging Face token and OTLP headers, if you set them, are stored here unencrypted.** The file itself is currently 0644, so the 0700 data directory is what keeps other users out. Keep those permissions |
+| Settings | `local-base.db` (0600) | **Your Hugging Face token and OTLP headers, if you set them, are stored here in plain text** |
 | API keys | `local-base.db` | Stored as hashes. The secret is shown once |
 | Browser sign-in secrets | `ui-access.json` (0600) | Provider secrets |
 | Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives |

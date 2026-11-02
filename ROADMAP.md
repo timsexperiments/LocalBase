@@ -6,7 +6,6 @@ This is the current direction, not a promise, and it has no dates.
 
 - Release 0.2.0, the Go version. See the [release checklist](docs/release-checklist.md).
 - Remove the TypeScript version. See the [retirement plan](docs/typescript-retirement.md).
-- A first-run browser sign-in link. It's designed but not built. It will only work from a browser on the same computer, so phone access will still need a sign-in provider.
 
 **Later**
 

@@ -8,7 +8,6 @@
 - [ ] The stack on top is merged: #404, #413-#417 and this PR, and the backend fixes #405, #406, #409 and #411.
 - [ ] Transcription default decided: English, or auto-detect on multilingual models.
 - [ ] `go-dual` green. It needs #411.
-- [ ] The first-run story is accepted: **a fresh install has no browser sign-in** until a provider is set up.
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
 
 ## Decisions needed from the owner
@@ -61,6 +60,7 @@ The Go order within step 4 belongs to the Go thread. If it changes, keep the doc
 | **Real microphone** (Transcribe, dictation) | **Not verified** |
 | **Real video through the page** (needs 25.6 GiB free) | **Not verified.** The API has run on a Mac |
 | **Listening to long speech, reading Decisions wording** | **Not verified** |
+| **First-run link in real browsers, and `start`'s link end to end** | **Not verified.** Tested at the HTTP level |
 | Homebrew formula | Syntax check only. No tap exists |
 
 Everything marked not verified is stated in the README or docs, so shipping with it is a judgment call rather than a hidden risk. **The maintainer decides which of these block.**

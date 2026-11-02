@@ -35,7 +35,7 @@ curl http://127.0.0.1:2273/v1/chat/completions \
 
 Requests must name a model. `local-base models recommend` lists what fits your machine. The first request also downloads the model's runtime, so it takes a little longer. Models that reason before answering can use a small `max_tokens` entirely on reasoning and return empty content, so leave room.
 
-**The web interface needs one more step.** A fresh install has no browser sign-in, so `/app/login` refuses access until you [configure a sign-in provider](docs/authentication.md). There's no local-only sign-in yet, and API keys don't work in the browser.
+**The web interface:** `local-base start` prints a [one-time sign-in link](docs/first-run-sign-in.md), and `local-base access login-link` makes another. **The link only works from a browser on the same computer.** A phone or another computer needs an [identity provider](docs/authentication.md). API keys don't work in the browser.
 
 ### Build from source
 
@@ -86,9 +86,10 @@ The gateway listens on loopback (`127.0.0.1`) by default. To reach it from elsew
 | --- | --- | --- |
 | API clients | A scoped API key from `local-base keys` | Only the scopes on that key. By default, inference and reading the model list |
 | Browser users | OpenID Connect (such as Google), Cloudflare Access or an emailed magic link, set up with `local-base access` | The permissions from their provider or role. By default, chat and reading the model list |
+| You, on this computer | A [one-time link](docs/first-run-sign-in.md) from `local-base access login-link` | Everything. It works only from a browser on the same computer |
 | Local administrator | Read and write access to the data directory | Everything, through the CLI. This is also the recovery path if you lock yourself out |
 
-Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-session CSRF token. See [authentication](docs/authentication.md) and [SECURITY.md](SECURITY.md).
+Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-session CSRF token. `--no-auth` is [for local development only](docs/no-auth.md) and must never be tunneled. See [authentication](docs/authentication.md) and [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
@@ -96,8 +97,9 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 - [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
 - [API overview](docs/api.md) and [API details](docs/api-details.md)
 - [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
-- [Authentication](docs/authentication.md) and [user catalog entries](docs/user-catalog.md)
-- [Privacy](docs/privacy.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
+- [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)
+- [Why a model was refused](docs/model-refusals.md), [the memory reserve](docs/memory-reserve-guide.md), [GPU memory limit](docs/gpu-memory-limit.md) and [install failures](docs/install-failures.md)
+- [Privacy](docs/privacy.md), [where secrets live](docs/secrets.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
 - [Design notes](go/DESIGN.md) and [changelog](CHANGELOG.md)
 - [Versioning and deprecation](docs/versioning.md), [release checklist](docs/release-checklist.md) and [TypeScript retirement](docs/typescript-retirement.md)
 

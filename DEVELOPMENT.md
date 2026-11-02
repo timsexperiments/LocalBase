@@ -67,6 +67,7 @@ sequenceDiagram
 | --- | --- |
 | `go.yml` | Format, vet, race tests, CSS check and contract suite, on macOS and Linux |
 | `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
+| `go-lint.yml` | golangci-lint with `go/.golangci.yml` |
 | `release-go.yml` | Release build, installer test on four platforms. Publishes a draft on tags only |
 | `go-dual.yml` | Differential tests against TypeScript: nightly, by hand, or with the `dual` label |
 | `ci.yml` | TypeScript checks, on PRs into main |

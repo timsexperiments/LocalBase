@@ -33,6 +33,12 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 
 `tools/tailwind.sh` has pinned CSS tools for macOS ARM64 and Linux x86-64 only, so `make ui` won't run on other platforms.
 
+## Linting
+
+CI runs golangci-lint v2.15.0 with `go/.golangci.yml`. To run it locally, install that version and run `golangci-lint run` from `go/`.
+
+`go/docs/lint-baseline.md` lists findings that haven't been reviewed. **It isn't a clean bill of health:** it includes real unchecked errors, and they're excluded rather than fixed. New code is still held to the rules. The one gap is a new call to a function already listed for that file, so don't rely on the linter to catch that.
+
 ## Never touch a real install
 
 Tests and experiments must never use your real data directory, service or port.
