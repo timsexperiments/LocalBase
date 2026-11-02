@@ -1,0 +1,208 @@
+// Command integration rebuilds the integration branch from the ordered list in
+// order.txt, in a scratch worktree, so the whole tree is one command:
+//
+//	go run ./tools/integration              # build and report
+//	go run ./tools/integration -test        # also gofmt, vet and the unit tests
+//	go run ./tools/integration -push        # also force-push with a lease
+//
+// It merges each branch with no fast-forward. A conflict goes first to git rerere,
+// which replays a resolution recorded earlier. Files in unionFiles keep both sides,
+// since their conflicts are sections added side by side. Anything else stops with the
+// worktree left as it is: resolve it, commit, and run again with -resume; rerere
+// remembers the resolution for every later rebuild.
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+const prefix = "rewrite/go-"
+
+var unionFiles = map[string]bool{
+	"go/DESIGN.md": true, "go/docs/merge-readiness.md": true, "CHANGELOG.md": true, "go/contract/fsguard_test.go": true,
+}
+
+const trailer = "\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
+
+func main() {
+	target := flag.String("target", prefix+"integration-2", "the branch to rebuild")
+	base := flag.String("base", prefix+"merge-readiness", "the branch it starts from")
+	dir := flag.String("worktree", filepath.Join(os.TempDir(), "lb-integration"), "where to build it")
+	push := flag.Bool("push", false, "force-push the result with a lease")
+	test := flag.Bool("test", false, "run gofmt, vet and the unit tests on the result")
+	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
+	flag.Parse()
+	list, err := readOrder(orderPath())
+	check(err)
+	check(run("", "git", "fetch", "-q", "origin"))
+	if !*resume {
+		// Only ever removes this tool's own worktree.
+		exec.Command("git", "worktree", "remove", "--force", *dir).Run()
+		check(run("", "git", "worktree", "prune"))
+		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
+	}
+	for _, kv := range [][2]string{{"rerere.enabled", "true"}, {"rerere.autoupdate", "true"}} {
+		check(run(*dir, "git", "config", kv[0], kv[1]))
+	}
+	for _, b := range list {
+		ref := "origin/" + prefix + b
+		if exec.Command("git", "-C", *dir, "rev-parse", "--verify", "-q", ref).Run() != nil {
+			fatalf("no branch %s", ref)
+		}
+		if exec.Command("git", "-C", *dir, "merge-base", "--is-ancestor", ref, "HEAD").Run() == nil {
+			fmt.Printf("have    %s\n", b)
+			continue
+		}
+		msg := "Merge " + prefix + b + " into the integration tree" + trailer
+		if exec.Command("git", "-C", *dir, "merge", "--no-ff", "-q", "-m", msg, ref).Run() == nil {
+			fmt.Printf("merged  %s\n", b)
+			continue
+		}
+		left, err := resolve(*dir)
+		check(err)
+		if len(left) > 0 {
+			fmt.Printf("\nSTOPPED at %s. Unresolved in %s:\n  %s\nResolve them, commit, then run again with -resume.\n",
+				b, *dir, strings.Join(left, "\n  "))
+			os.Exit(1)
+		}
+		check(run(*dir, "git", "commit", "-q", "-m", msg))
+		fmt.Printf("merged  %s (conflicts resolved)\n", b)
+	}
+	removed, err := tidyDesign(filepath.Join(*dir, "go", "DESIGN.md"))
+	check(err)
+	check(run(filepath.Join(*dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
+	if out, _ := exec.Command("git", "-C", *dir, "status", "--porcelain").Output(); len(out) > 0 {
+		check(run(*dir, "git", "add", "-A"))
+		check(run(*dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
+	}
+	if removed > 0 {
+		fmt.Printf("removed %d repeated DESIGN sections\n", removed)
+	}
+	if *test {
+		gosrc := filepath.Join(*dir, "go")
+		check(run(gosrc, "sh", "-c", `test -z "$("$(go env GOROOT)/bin/gofmt" -l .)"`))
+		check(run(gosrc, "go", "vet", "./..."))
+		check(run(gosrc, "go", "test", "./internal/...", "./cmd/...", "-count=1", "-timeout", "400s"))
+	}
+	if *push {
+		check(run(*dir, "git", "push", "--force-with-lease", "origin", *target))
+	}
+	fmt.Printf("built %s in %s\n", *target, *dir)
+}
+
+// resolve handles a stopped merge and returns what still needs a person. rerere has
+// already staged what it remembers.
+func resolve(dir string) ([]string, error) {
+	out, err := exec.Command("git", "-C", dir, "diff", "--name-only", "--diff-filter=U").Output()
+	if err != nil {
+		return nil, err
+	}
+	var left []string
+	for _, f := range strings.Fields(string(out)) {
+		if !unionFiles[f] {
+			left = append(left, f)
+			continue
+		}
+		if err := keepBothSides(filepath.Join(dir, f)); err != nil {
+			return nil, err
+		}
+		if err := run(dir, "git", "add", f); err != nil {
+			return nil, err
+		}
+	}
+	return left, nil
+}
+
+var markerRe = regexp.MustCompile(`(?m)^(<<<<<<<|=======|>>>>>>>)( .*)?\n`)
+
+func keepBothSides(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, markerRe.ReplaceAll(b, nil), 0o600)
+}
+
+// tidyDesign drops a top-level section that exactly repeats an earlier one, which
+// keeping both sides produces when two branches carry the same section.
+func tidyDesign(path string) (int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var sections [][]byte
+	var cur []byte
+	for _, line := range bytes.SplitAfter(b, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte("## ")) && len(cur) > 0 {
+			sections = append(sections, cur)
+			cur = nil
+		}
+		cur = append(cur, line...)
+	}
+	sections = append(sections, cur)
+	seen, removed := map[string]bool{}, 0
+	var out bytes.Buffer
+	for _, s := range sections {
+		key := string(bytes.TrimSpace(s))
+		if seen[key] {
+			removed++
+			continue
+		}
+		seen[key] = true
+		out.Write(s)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	return removed, os.WriteFile(path, out.Bytes(), 0o600)
+}
+
+func orderPath() string {
+	if _, err := os.Stat("tools/integration/order.txt"); err == nil {
+		return "tools/integration/order.txt"
+	}
+	return "go/tools/integration/order.txt"
+}
+
+func readOrder(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var out []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			out = append(out, line)
+		}
+	}
+	return out, sc.Err()
+}
+
+func run(dir, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
+func check(err error) {
+	if err != nil {
+		fatalf("%v", err)
+	}
+}
+
+func fatalf(format string, a ...any) {
+	fmt.Fprintf(os.Stderr, "integration: "+format+"\n", a...)
+	os.Exit(1)
+}

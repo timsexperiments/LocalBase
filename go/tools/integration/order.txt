@@ -1,0 +1,57 @@
+# What rebuilds rewrite/go-integration-2, in order. One branch per line, without the
+# rewrite/go- prefix. A branch brings its ancestors, so list leaves; a branch the tree
+# already has is skipped. Add a new thread's PRs at the end of their group.
+
+# OSS
+oss-neutralize-names
+oss-docs-wiring
+oss-dual-ci
+oss-lint
+oss-fonts-license
+
+# Foundations
+integration-tool
+version-stamp
+clean-inventory
+golangci
+test-ports
+
+# Admission and memory
+reserve-analysis
+host-block
+oss-docs-memory-reserve
+oss-docs-host-api
+oss-docs-model-refusals
+metal-limit
+oss-docs-gpu-memory-limit
+
+# Roots, files and installs
+fresh-root-install
+file-perms
+oss-docs-secrets
+install-reasons
+oss-docs-install-failures
+secure-log-open
+secure-root-writes
+init-licenses
+char-downloads
+install-identity
+
+# Sign-in and access
+login-switch
+policy-lockout-wording
+char-oidc
+diff-unlisted-user
+char-cloudflare
+char-browser-edges
+noauth-origin
+oss-docs-no-auth
+first-run-login
+oss-docs-first-run-sign-in
+
+# Characterization
+char-admission-order
+char-logs
+
+# UI
+ui-v2-host
