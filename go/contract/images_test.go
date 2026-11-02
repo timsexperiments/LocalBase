@@ -277,7 +277,9 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 	// Both size the model first, so on a busy machine it is a memory 503.
 	missing := ask("juggernaut-xl-v9")
 	sameError(t, "files missing", missing)
-	if r := missing["go"]; r != nil && r.Status == 503 && r.JSON(t)["error"].(map[string]any)["code"] == "insufficient_memory" {
+	if r := missing["go"]; r != nil && r.Status == 422 && r.JSON(t)["error"].(map[string]any)["code"] == "model_too_large" {
+		t.Log("files missing: the model can never fit this machine; the 409 path was not reached")
+	} else if r := missing["go"]; r != nil && r.Status == 503 && r.JSON(t)["error"].(map[string]any)["code"] == "insufficient_memory" {
 		t.Log("files missing: refused for memory first on this machine; the 409 path was not reached")
 	} else {
 		check("files missing", missing, 409, "model_install_consent_required", false)
