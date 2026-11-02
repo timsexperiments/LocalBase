@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -105,6 +107,48 @@ func (p *Process) Done() <-chan struct{} { return p.done }
 
 func (p *Process) ExitErr() error { return p.err }
 
+// How long a port may take to come free, for a backend that has just stopped, and
+// how long a healthy answer waits to see the child survive.
+const (
+	portReleaseWait = time.Second
+	healthySettle   = 100 * time.Millisecond
+)
+
+// checkPortFree refuses a port something else holds, before a backend is spawned
+// for it. The child would fail to bind and exit, while the other server answered
+// the health probe: requests would then be relayed to a process this gateway did
+// not start.
+func checkPortFree(host string, port int) error {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	deadline := time.Now().Add(portReleaseWait)
+	for {
+		busy := portBusy(addr)
+		if !busy {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("port %d on %s is already in use by another process, so no backend was started there; "+
+				"stop that process or choose other ports", port, host)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// portBusy tries both ways: on macOS a bind can succeed beside a wildcard listener,
+// which a connection still reaches.
+func portBusy(addr string) bool {
+	if c, err := net.DialTimeout("tcp", addr, 250*time.Millisecond); err == nil {
+		c.Close()
+		return true
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return errors.Is(err, syscall.EADDRINUSE)
+	}
+	ln.Close()
+	return false
+}
+
 // WaitHealthy polls url until it returns 200, the process exits, or the
 // startup budget runs out.
 func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Duration) error {
@@ -119,7 +163,14 @@ func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Durat
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return nil
+				// An answer proves nothing if the child is gone: it may be another
+				// server on this port, which the child failed to bind.
+				select {
+				case <-p.done:
+					return fmt.Errorf("%s exited during startup, and another process answered on its port: %v", p.Name, p.err)
+				case <-time.After(healthySettle):
+					return nil
+				}
 			}
 		}
 		select {
