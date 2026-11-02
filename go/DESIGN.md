@@ -3670,6 +3670,14 @@ control, because the API takes only speed 1 (§24).
   made, and left the model loaded: it still held its memory 15 s later, and the
   gateway reported it running. A custom voice, made from the model's shipped reference,
   spoke through the picker. Files are in `.design/research/studios/speech-real/`.
+- **Known limits of the backend:**
+  - **Speech clicks:** Qwen3-TTS output sometimes has a short burst of noise, a click of a
+    few milliseconds. This is an upstream `tts-server`/vocoder artifact, not the gateway or
+    the page: the gateway's audio was byte-identical to `tts-server`'s in 73 of 73 requests.
+    In ordinary prose, about 1 request in 9 had a burst. There is no fix on our side. Whether
+    they're audible hasn't been checked by ear. Details: §24.
+  - **Numbers:** a list of numbers can be cut or repeated, as above. The cap stays at 256
+    frames; the 85-character split and `audio_truncated` hold either way.
 - **Not built:** a chat speech tool reading the cut flag (not this page's), MP3, and
   choosing a pause length.
 - **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestShapeEdges`, `TestWavePeaks`, `TestSpeechJob` (parts,
