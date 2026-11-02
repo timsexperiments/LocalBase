@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
@@ -93,6 +94,9 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	}()
 	return p, nil
 }
+
+// sampleFootprint reads a backend's memory. A variable so a test can hold a sample.
+var sampleFootprint = memory.Footprint
 
 func (p *Process) PID() int { return p.cmd.Process.Pid }
 
