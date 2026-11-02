@@ -3433,13 +3433,25 @@ The one thing people come to do: describe a picture and get it back.
   there is a choice, and More (Avoid, Seed, Steps).
 - **Looks** are six named sets of words added to the prompt and negative
   prompt; the sheet says so, and results depend on the model. A result's
-  caption stays the person's own prompt, and its details name the look.
+  caption stays the person's own prompt, and its details name the look. A real
+  pass (2026-11-01, DreamShaper 8, 4 prompts by each look) kept Photo,
+  Illustration, Watercolor and Cinematic. 3D render looked like Plain and Line
+  art stayed photographic, so both have new words. Line art still lets strong
+  colors through (oranges stayed orange), and a dark subject can invert to white
+  on black: a limit of the words, not a promise of pure line work.
 - **A batch is one run with `n`** (§24): separate runs would meet the limit
   of four active runs. The pictures arrive together, and Stop stops the batch;
-  the Number sheet says more means a longer wait.
+  the Number sheet says more means a longer wait. Measured on that pass, each
+  extra picture adds its full time and no memory: 14 s each at 512x512 (1, 2 and
+  4 took 14, 29 and 57 s), 22 s at 512x768, 50 s at 768x1024, 72 s at 1024x1024,
+  with the server near 2.1 GiB throughout. These are one computer's times and
+  stay out of the product's copy. Sizes came back exactly as asked.
 - **Seeds.** The page always picks the seed (no seed means the same seed every
   time at the gateway), leaving room below the API's limit for a batch, and
-  reads each picture's seed from `data[i].seed`, else base + i.
+  reads each picture's seed from `data[i].seed`, else base + i. On real weights
+  `data[i].seed` matched what was sent, the same seed gave identical bytes, a
+  batch's second picture equalled seed + 1 alone, and through the page's own
+  routes Regenerate returned identical bytes and Vary a new seed and picture.
 - **The viewer** is a full-screen modal `<dialog>` per picture, always dark,
   with Previous and Next (buttons and arrow keys; swipe is not needed) and
   "2 of 6". Its bar: Details, Save, Share where files can be shared, **Vary**

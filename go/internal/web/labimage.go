@@ -30,8 +30,8 @@ var imageLooks = []imageLook{
 	{ID: "photo", Name: "Photo", Add: "photograph, natural light, realistic detail", Avoid: "illustration, painting, cartoon"},
 	{ID: "illustration", Name: "Illustration", Add: "digital illustration, clean shapes, soft shading", Avoid: "photograph"},
 	{ID: "watercolor", Name: "Watercolor", Add: "watercolor painting, soft edges, paper texture", Avoid: "photograph, hard edges"},
-	{ID: "render", Name: "3D render", Add: "3D render, studio lighting, smooth materials", Avoid: "photograph, flat illustration"},
-	{ID: "line", Name: "Line art", Add: "black ink line art on white, no shading", Avoid: "color, photograph, shading"},
+	{ID: "render", Name: "3D render", Add: "3D render, clay model, smooth plastic materials, bright soft studio lighting, simple background", Avoid: "photograph, realistic, dark, film grain, flat illustration"},
+	{ID: "line", Name: "Line art", Add: "black ink line drawing, pen outlines only, white background, monochrome, coloring book page", Avoid: "color, photograph, realistic, shading, gray, gradient"},
 	{ID: "cinematic", Name: "Cinematic", Add: "cinematic still, dramatic lighting, shallow depth of field", Avoid: "illustration, cartoon"},
 }
 
