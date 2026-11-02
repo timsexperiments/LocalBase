@@ -24,10 +24,12 @@ var fakeSeedRe = regexp.MustCompile(`<sd_cpp_extra_args>.*"seed":(\d+).*</sd_cpp
 // seed, with sd-server's "parameters" text, enough for the gateway to read the
 // seed.
 func fakePNG(prompt string, seed int64) string {
+	// Warm and quiet: it stands in for a picture, and must not out-shout the page in a capture.
 	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	tint := uint8((seed*37%48 + 48) % 48)
 	for y := range 64 {
 		for x := range 64 {
-			img.Set(x, y, color.RGBA{uint8(seed*37) + uint8(x), uint8(seed*91) + uint8(y), 180, 255})
+			img.Set(x, y, color.RGBA{180 + tint/2 + uint8(x/2), 160 + tint/3 + uint8(y/2), 130 + tint/4, 255})
 		}
 	}
 	var encoded bytes.Buffer

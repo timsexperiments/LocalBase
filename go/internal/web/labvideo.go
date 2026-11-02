@@ -84,6 +84,17 @@ func (u *UI) videoModels() []videoLabModel {
 	return out
 }
 
+// readyVideoModels are the ones on disk, so the page and the landing agree.
+func (u *UI) readyVideoModels() []videoLabModel {
+	var out []videoLabModel
+	for _, m := range u.videoModels() {
+		if len(u.installedOnly([]labModel{m.labModel})) > 0 {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 func (u *UI) videoModel(id string) *videoLabModel {
 	for _, m := range u.videoModels() {
 		if m.ID == id {

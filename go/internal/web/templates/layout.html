@@ -162,15 +162,10 @@
 {{/* A small drawing of what a tool makes. */}}
 {{define "icon-image"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m4.5 17 4.5-4 3.5 3 2.5-2 4.5 3.5"/></svg>{{end}}
 {{define "icon-transcribe"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M4.5 12h15M4.5 17h9"/></svg>{{end}}
-{{define "studio-art"}}
-<span aria-hidden="true" class="art art-{{.}}">
-{{if eq . "video"}}<svg viewBox="0 0 24 24" class="size-6" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>
-{{else if eq . "speech"}}<i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-{{else if or (eq . "transcribe") (eq . "decisions")}}<i></i><i></i><i></i>
-{{end}}
-</span>
-{{end}}
+{{define "icon-video"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m10.5 9.5 4 2.5-4 2.5Z"/></svg>{{end}}
+{{define "icon-decide"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5v13M8 8h11M8 12h6.5M8 16h2.5"/></svg>{{end}}
+{{define "tool-icon"}}{{if eq . "image"}}{{template "icon-image"}}{{else if eq . "video"}}{{template "icon-video"}}{{else if eq . "speech"}}{{template "icon-voices"}}{{else if eq . "transcribe"}}{{template "icon-transcribe"}}{{else}}{{template "icon-decide"}}{{end}}{{end}}
 
-{{/* A generated picture. shell.js shows the drawing and "Expired" if the file
+{{/* A generated picture. shell.js shows the tool's icon and "Expired" if the file
      is gone or will not decode, so there is never a broken-image icon. */}}
-{{define "result-image"}}<span class="result-img"><img src="{{.Src}}" alt="{{.Alt}}" class="{{.Class}}" data-result-img><span class="result-gone" data-result-gone hidden>{{template "studio-art" .Tool}}<b>Expired</b></span></span>{{end}}
+{{define "result-image"}}<span class="result-img"><img src="{{.Src}}" alt="{{.Alt}}" class="{{.Class}}" data-result-img><span class="result-gone" data-result-gone hidden>{{template "tool-icon" .Tool}}<b>Expired</b></span></span>{{end}}

@@ -6,8 +6,8 @@ import (
 	"slices"
 )
 
-// The Studio (DESIGN §22.15): a landing page of tools, each with its own
-// page. The landing says what each tool makes, whether it can run here, and
+// The Studio (DESIGN §22.15, §27): a landing page of tools, each with its own
+// page. The landing says what each tool makes and whether it can run here, and
 // shows the person's latest results.
 
 // studioTools are the tools with a page, in landing order.
@@ -15,41 +15,46 @@ var studioTools = []string{"image", "video", "speech", "transcribe", "decisions"
 
 var studioNames = map[string]string{"image": "Image", "video": "Video", "speech": "Speech", "transcribe": "Transcribe", "decisions": "Decisions"}
 
+// studioRecentMax is how many results the landing's strip holds: enough to find
+// your place, and the strip scrolls within itself.
+const studioRecentMax = 6
+
 // studioCard is one tool on the landing.
 type studioCard struct {
 	Tool, Name, Line string
 	Href             string
-	State            string // ready | needs | denied
-	Image, Last      string // the latest result: picture, or its caption
-	LastAgo          string
+	State            string // ready | needs | ask | denied
+	Calm             bool   // the page's banner already says it, so the row need not repeat it
+}
+
+// installedOnly keeps the models a tool can really run. A fresh install selects default
+// models before any of them has been downloaded, and selected isn't usable: a tool never
+// offers one that would only fail, and its page and the landing agree.
+func (u *UI) installedOnly(models []labModel) []labModel {
+	var out []labModel
+	for _, m := range models {
+		if s := u.d.Catalog.ByID(m.ID); s != nil && u.installedBytes(s) > 0 {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // toolAvailable says whether a person may use a tool and whether it has a
 // model, with the Get models filter that offers one.
-// anyInstalled says whether one of these is on disk. A fresh install selects default models
-// before any of them has been downloaded, and selected isn't usable.
-func (u *UI) anyInstalled(models []labModel) bool {
-	for _, m := range models {
-		if s := u.d.Catalog.ByID(m.ID); s != nil && u.installedBytes(s) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool, filter string) {
 	p := u.caller(r)
 	switch tool {
 	case "image":
-		return p.Can("inference:image"), u.anyInstalled(u.labModels("image")), "images"
+		return p.Can("inference:image"), len(u.installedOnly(u.labModels("image"))) > 0, "images"
 	case "video":
-		return p.Can("inference:video"), len(u.videoModels()) > 0, "video"
+		return p.Can("inference:video"), len(u.readyVideoModels()) > 0, "video"
 	case "speech":
-		return p.Can("inference:speech"), u.anyInstalled(u.labModels("tts")), "speech"
+		return p.Can("inference:speech"), len(u.installedOnly(u.labModels("tts"))) > 0, "speech"
 	case "transcribe":
-		return p.Can("inference:transcription"), u.anyInstalled(u.labModels("stt")), "transcription"
+		return p.Can("inference:transcription"), len(u.installedOnly(u.labModels("stt"))) > 0, "transcription"
 	case "decisions":
-		return p.Can("inference:decision"), len(u.decisionModels()) > 0, "decisions"
+		return p.Can("inference:decision"), len(u.installedOnly(u.decisionModels())) > 0, "decisions"
 	}
 	return false, false, ""
 }
@@ -57,46 +62,55 @@ func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool
 func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 	items := u.labRuns(r)
 	lines := map[string]string{
-		"image":      "Describe a picture and get it back.",
-		"video":      "A short clip from words or a picture.",
-		"speech":     "Turn a script into a voice.",
-		"transcribe": "Record or upload, and get the words.",
-		"decisions":  "Ask a question, and see the odds.",
+		"image":      "A picture, from a few words.",
+		"video":      "A short clip, from words or a picture.",
+		"speech":     "A script, read in a voice.",
+		"transcribe": "A recording, turned into words.",
+		"decisions":  "A question, with odds you can read.",
 	}
+	canGet := u.caller(r).Can("models:manage")
 	var cards []studioCard
+	usable, missing := false, false
 	for _, tool := range studioTools {
 		c := studioCard{Tool: tool, Name: studioNames[tool], Line: lines[tool], Href: "/app/studio/" + tool, State: "ready"}
 		allowed, hasModel, filter := u.toolAvailable(r, tool)
 		switch {
 		case !allowed:
 			c.State, c.Href = "denied", ""
-		case !hasModel:
+		case !hasModel && canGet:
 			c.State, c.Href = "needs", "/app/models/get?filter="+url.QueryEscape(filter)
-		}
-		for _, it := range items {
-			if it.Tool != tool {
-				continue
-			}
-			if c.Image == "" && it.Image != "" {
-				c.Image = it.Image
-			}
-			if c.Last == "" && it.Caption != "" {
-				c.Last, c.LastAgo = it.Caption, it.Ago
-			}
+			missing = true
+		case !hasModel:
+			c.State, c.Href = "ask", ""
+			missing = true
+		default:
+			usable = true
 		}
 		cards = append(cards, c)
 	}
-	recent := items
-	if len(recent) > 4 {
-		recent = recent[:4]
-	}
-	none := true
-	for _, c := range cards {
-		if c.State == "ready" {
-			none = false
+	if missing && !usable {
+		for i := range cards {
+			cards[i].Calm = true
 		}
 	}
-	u.render(w, r, "studio", map[string]any{"Cards": cards, "Recent": recent, "NoModels": none})
+	recent := items
+	if len(recent) > studioRecentMax {
+		recent = recent[:studioRecentMax]
+	}
+	u.render(w, r, "studio", map[string]any{"Cards": cards, "Recent": recent, "NoModels": missing && !usable, "CanGet": canGet})
+}
+
+// studioTile re-draws one result on the landing while it is being made. Only the
+// tile changes, so the strip keeps its scroll position.
+func (u *UI) studioTile(w http.ResponseWriter, r *http.Request) {
+	for _, it := range u.labRuns(r) {
+		if it.ID == r.PathValue("id") {
+			u.fragment(w, r, "studio", "studio-tile", it)
+			return
+		}
+	}
+	// Gone (removed or expired): the tile leaves the strip.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
 // studioTool is one tool's page.

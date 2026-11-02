@@ -1,55 +1,69 @@
 {{define "title"}}Studio · LocalBase{{end}}
 {{define "main"}}
-<section aria-labelledby="studio-title">
+<section aria-labelledby="studio-title" class="studio">
   <h1 id="studio-title" class="page-title">Studio</h1>
 
   {{if .NoModels}}
-  <a href="/app/models/get" class="calm-banner">
-    <span class="min-w-0 flex-1"><span class="block font-semibold">Get a model to unlock Studio</span><span class="block text-sm text-muted">Each tool needs its own. They download to this computer.</span></span>
+  {{if .CanGet}}<a href="/app/models/get" class="calm-banner">
+    <span class="min-w-0 flex-1"><span class="block font-semibold">Studio needs a model</span><span class="block text-sm text-muted">Each tool uses its own, and it downloads to this computer.</span></span>
     {{template "icon-chevron"}}
   </a>
+  {{else}}<p class="calm-banner calm-banner-still"><span class="min-w-0 flex-1"><span class="block font-semibold">No models here yet</span><span class="block text-sm text-muted">Ask whoever runs this computer to add one.</span></span></p>{{end}}
   {{end}}
 
-  <section aria-labelledby="recent-title" class="mt-4">
-    <h2 id="recent-title" class="list-label mt-0">Recent</h2>
+  <div class="studio-body{{if .Recent}} studio-body-recent{{end}}">
     {{if .Recent}}
-    <ul class="studio-recent">
-      {{range .Recent}}
-      <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "video"}}Video{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{else}}{{with .Ago}}, {{.}}{{end}}{{end}}">
-        {{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
-        {{else if .Active}}<span class="skeleton studio-tile-img"></span>
-        {{else}}{{template "studio-art" .Tool}}{{end}}
-      </a></li>
-      {{end}}
-    </ul>
-    {{else}}
-    <p class="px-1 text-muted">What you make stays here for 30 minutes, and videos for 15.</p>
+    <section aria-labelledby="recent-title" class="studio-recent-box">
+      <div class="studio-recent-head"><h2 id="recent-title" class="list-label my-0">Recent</h2><p class="text-sm text-muted">Kept 30 minutes, videos 15</p></div>
+      <ul class="studio-recent">{{range .Recent}}{{template "studio-tile" .}}{{end}}</ul>
+    </section>
     {{end}}
-  </section>
 
-  <section aria-labelledby="tools-title" class="mt-5">
-    <h2 id="tools-title" class="list-label mt-0">Tools</h2>
-    <ul class="studio-cards">
-      {{range .Cards}}
-      <li>
-        {{if .Href}}<a href="{{.Href}}" class="studio-card">{{template "studio-card-body" .}}</a>
-        {{else}}<div class="studio-card">{{template "studio-card-body" .}}</div>{{end}}
-      </li>
-      {{end}}
-    </ul>
-  </section>
+    <section aria-labelledby="tools-title" class="studio-tools">
+      <h2 id="tools-title" class="list-label mt-0">Tools</h2>
+      <ul class="list-group">
+        {{range .Cards}}
+        <li>
+          {{if .Href}}<a href="{{.Href}}" class="studio-card">{{template "studio-card-body" .}}</a>
+          {{else}}<div class="studio-card">{{template "studio-card-body" .}}</div>{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{if not .Recent}}<p class="studio-keep">What you make stays here for 30 minutes, and videos for 15.</p>{{end}}
+    </section>
+  </div>
 </section>
 {{end}}
 
 {{define "studio-card-body"}}
-<span class="studio-art-box">{{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}{{else}}{{template "studio-art" .Tool}}{{end}}</span>
+<span class="tool-icon" aria-hidden="true">{{template "tool-icon" .Tool}}</span>
 <span class="min-w-0 flex-1">
-  <span class="block font-bold">{{.Name}}</span>
+  <span class="tool-name">{{.Name}}</span>
   <span class="block text-sm text-muted">{{.Line}}</span>
-  {{if eq .State "needs"}}<span class="pill mt-1">Needs a model</span>
-  {{else if eq .State "denied"}}<span class="pill mt-1">Not on your account</span>
-  {{else if .Last}}<span class="block truncate text-sm text-muted">{{with .LastAgo}}{{.}} · {{end}}{{.Last}}</span>{{end}}
+  {{if eq .State "needs"}}<span class="{{if .Calm}}sr-only{{else}}tool-state{{end}}">Needs a model</span>
+  {{else if eq .State "ask"}}<span class="{{if .Calm}}sr-only{{else}}tool-state{{end}}">Needs a model. Ask whoever runs this computer.</span>
+  {{else if eq .State "denied"}}<span class="tool-state">Not on your account</span>{{end}}
 </span>
 {{if .Href}}{{template "icon-chevron"}}{{end}}
 {{end}}
 
+{{/* One result: what it is, in the words it was asked for, and how it stands. While it is
+     being made it asks after itself, and only this tile changes. */}}
+{{define "studio-tile"}}
+<li id="tile-{{.ID}}"{{if .Active}} hx-get="/app/studio/tile/{{.ID}}" hx-trigger="every 3s" hx-swap="outerHTML"{{end}}>
+  <a href="/app/studio/{{.Tool}}#run-{{.ID}}" class="studio-tile">
+    <span class="studio-tile-media">
+      {{if .Active}}<span class="studio-tile-live"><i aria-hidden="true"></i><span>{{.Message}}</span></span>
+      {{else if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
+      {{else if .Video}}<video src="{{.Video}}#t=0.1" preload="metadata" muted playsinline tabindex="-1" aria-hidden="true" class="studio-tile-img"></video>
+      {{else if .Transcript}}<span class="studio-tile-words">{{firstWords .Transcript}}</span>
+      {{else if .Audio}}{{if .Bars}}<svg viewBox="0 0 192 24" preserveAspectRatio="none" class="studio-tile-wave" aria-hidden="true">{{range .Bars}}<rect x="{{.X}}" y="{{.Y}}" width="2" height="{{.H}}" rx="1"/>{{end}}</svg>{{else}}<span class="tool-icon" aria-hidden="true">{{template "tool-icon" .Tool}}</span>{{end}}
+      {{else if eq .Status "failed"}}<span class="studio-tile-word text-danger">Didn’t finish</span>
+      {{else if eq .Status "interrupted"}}<span class="studio-tile-word">Didn’t finish</span>
+      {{else}}<span class="studio-tile-word">Stopped</span>{{end}}
+    </span>
+    <span class="studio-tile-cap">{{or .Caption (studioName .Tool)}}</span>
+    <span class="studio-tile-meta">{{studioName .Tool}}{{if and (not .Active) .Ago}} · {{.Ago}}{{end}}</span>
+  </a>
+</li>
+{{end}}

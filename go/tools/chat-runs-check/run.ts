@@ -119,7 +119,7 @@ else {
   await nav("/app/models");
   await sleep(2000);
   await nav("/app/studio");
-  check(await ev(`!!document.querySelector(".studio-recent a[href='/app/studio/image']")`), "the landing's Recent shows it");
+  check(await ev(`!!document.querySelector(".studio-recent a[href^='/app/studio/image']")`), "the landing's Recent shows it");
   check(await ev(`document.querySelector(".studio-recent img")?.naturalWidth > 0`), "a real picture decodes");
   // A file that is gone shows the drawing and "Expired", never a broken icon.
   await ev(`new Promise((done) => { const img = document.querySelector(".studio-recent img"); img.addEventListener("error", () => setTimeout(done, 50), { once: true }); img.src = "/app/lab/results/gone"; })`);
@@ -400,7 +400,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   const pill = await ev(`(() => { const p = [...document.querySelectorAll("[data-run-pill]")].find((n) => !n.hidden); return p ? { href: p.getAttribute("href"), text: p.textContent.trim() } : null; })()`);
   check(pill?.href === "/app/studio/video" && /Video/.test(pill.text), `the pill leads back: ${JSON.stringify(pill)}`);
   await nav("/app/studio");
-  check((await ev(`!!document.querySelector('.studio-recent a[href="/app/studio/video"]')`)), "the landing's Recent shows it");
+  check((await ev(`!!document.querySelector('.studio-recent a[href^="/app/studio/video"]')`)), "the landing's Recent shows it");
   await nav("/app/studio/video");
   check((await waitItem("fake:slow a paper boat", (g) => g.active))?.active, "it is still there after leaving");
   check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
