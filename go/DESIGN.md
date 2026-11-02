@@ -614,6 +614,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
 
 ### M1 (done 2026-10-19)
 
