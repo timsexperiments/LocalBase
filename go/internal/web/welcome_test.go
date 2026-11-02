@@ -237,3 +237,83 @@ func TestSignInFailedPage(t *testing.T) {
 		t.Errorf("%d %s", w.Code, w.Body.String())
 	}
 }
+
+// The strip shows the gateway's reading. An unknown figure is no picture, never a 0.
+func TestStripReadsTheHost(t *testing.T) {
+	t.Setenv("LOCALBASE_COMPUTER_NAME", "")
+	cat, _ := catalog.Load("")
+	reply := `{"host":{"name":"Attic Mac","nameSource":"setting","memory":{"total":{"bytes":68719476736,"source":"system"},"available":{"bytes":32212254720,"source":"system"},"pressure":"healthy","other":{"bytes":21474836480,"source":"derived"},"localBase":{"bytes":15032385536,"source":"mixed","runtimes":[]}},"activity":{"busy":true,"runs":{"active":1}}}}`
+	api := func(_ context.Context, _ *auth.Principal, _, _, _ string, _ []byte) APIResult {
+		return APIResult{Status: 200, Body: []byte(reply)}
+	}
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read"}}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, RootDir: t.TempDir(), Call: api})
+	r := httptest.NewRequest("GET", "/app/strip", nil).WithContext(context.WithValue(context.Background(), ctxKey{}, p))
+	strip := u.memoryStrip(r)
+	if strip["Host"] != "Attic Mac" || strip["Word"] != "Busy" || strip["Free"] != "30 GiB free" || strip["Source"] != "measured and planned" || strip["Known"] != true {
+		t.Errorf("%+v", strip)
+	}
+	if got := gaugeSegments(strip["Other"].(int64), strip["Models"].(int64), strip["Capacity"].(int64)); got[0].Kind != "other" || got[20].Kind != "models" {
+		t.Errorf("segments %+v, %+v", got[0], got[20])
+	}
+	reply = `{"host":{"name":null,"memory":{"total":{"bytes":null,"source":"unavailable"},"available":{"bytes":null,"source":"unavailable"},"pressure":null,"other":{"bytes":null,"source":"unavailable"},"localBase":{"bytes":0,"source":"none","runtimes":[]}},"activity":{"busy":false}}}`
+	strip = u.memoryStrip(r)
+	if strip["Known"] != false || strip["Free"] != "Memory unavailable" || strip["Word"] != "Ready" {
+		t.Errorf("no reading: %+v", strip)
+	}
+	if got := gaugeSegments(strip["Other"].(int64), strip["Models"].(int64), strip["Capacity"].(int64)); got[0].Kind != "unknown" {
+		t.Errorf("no reading drew %+v", got[0])
+	}
+}
+
+// Fit is the gateway's answer for now, in words that say so; a row keeps its old answer without one.
+func TestForecast(t *testing.T) {
+	answers := map[string]string{
+		"a": `{"admitted":true,"requestedBytes":4000000000}`,
+		"b": `{"admitted":false,"refusal":{"code":"insufficient_memory","permanent":false}}`,
+		"c": `{"admitted":false,"refusal":{"code":"model_too_large","permanent":true}}`,
+	}
+	u := New(Deps{Call: func(_ context.Context, _ *auth.Principal, _, path, _ string, _ []byte) APIResult {
+		for id, a := range answers {
+			if strings.Contains(path, "/models/"+id+"/admission?assumeInstalled=1") {
+				return APIResult{Status: 200, Body: []byte(a)}
+			}
+		}
+		return APIResult{Status: 500}
+	}})
+	rows := []CatalogRow{{ID: "a", Fit: "tight"}, {ID: "b", Fit: "fits"}, {ID: "c", Fit: "fits"}, {ID: "d", Fit: "tight"}, {ID: "a", Fit: "fits", Installed: true}}
+	got := u.withForecast(httptest.NewRequest("GET", "/", nil), rows)
+	for i, want := range []struct {
+		fit      string
+		forecast bool
+	}{{"fits", true}, {"close-others", true}, {"wont-fit", true}, {"tight", false}, {"fits", false}} {
+		if got[i].Fit != want.fit || got[i].Forecast != want.forecast {
+			t.Errorf("%d: %+v", i, got[i])
+		}
+	}
+	if got[0].UsesBytes != 4000000000 {
+		t.Errorf("uses %d", got[0].UsesBytes)
+	}
+}
+
+// The Computer name setting saves through the API, and an empty name goes back to the machine's own.
+func TestComputerNameSave(t *testing.T) {
+	var sent string
+	u := New(Deps{NoAuth: true, Call: func(_ context.Context, _ *auth.Principal, method, path, _ string, body []byte) APIResult {
+		if method == "PUT" && path == "/_localbase/computer-name" {
+			sent = string(body)
+			return APIResult{Status: 200, Body: []byte(`{"name":"Attic Mac","nameSource":"setting"}`)}
+		}
+		return APIResult{Status: 200, Body: []byte(`{"host":{"name":"Attic Mac","nameSource":"setting"}}`)}
+	}})
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/settings/computer-name", url.Values{"name": {" Attic Mac "}, "action": {"save"}}))
+	if sent != `{"name":"Attic Mac"}` || !strings.Contains(w.Body.String(), `value="Attic Mac"`) || !strings.Contains(w.Body.String(), "Saved.") {
+		t.Errorf("save: %s: %s", sent, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/settings/computer-name", url.Values{"name": {"Attic Mac"}, "action": {"reset"}}))
+	if sent != `{"name":""}` {
+		t.Errorf("reset: %s", sent)
+	}
+}

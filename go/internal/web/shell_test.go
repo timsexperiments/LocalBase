@@ -216,6 +216,10 @@ func TestUnload(t *testing.T) {
 		u := shellUI(t, nil, "")
 		var path string
 		u.d.Call = func(_ context.Context, _ *auth.Principal, method, p, _ string, _ []byte) APIResult {
+			// Drawing the page afterwards also reads the host.
+			if method != "POST" {
+				return APIResult{Status: 200, Body: []byte(`{}`)}
+			}
 			path = method + " " + p
 			return APIResult{Status: c.status, Body: []byte(c.body)}
 		}

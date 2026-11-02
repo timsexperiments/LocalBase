@@ -82,6 +82,7 @@ func (u *UI) settings(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Can": strings.Join(can, " · ")}
 	if p.Can("models:manage") {
 		data["Token"] = u.tokenData(r, nil, "", "")
+		data["ComputerName"] = u.computerNameData(r, "", "")
 	}
 	if p.Can("models:read") && u.d.LLM != nil {
 		data["Defaults"] = u.defaultsData(r, "", "")
@@ -154,4 +155,38 @@ func (u *UI) tokenFragment(w http.ResponseWriter, r *http.Request, token map[str
 	r.Header.Set("HX-Request", "true")
 	r.Header.Set("HX-Target", "hf-token")
 	u.render(w, r, "settings", token)
+}
+
+// computerNameData is the Computer name setting: the name the owner gave this computer, if any,
+// and what it's called without one.
+func (u *UI) computerNameData(r *http.Request, notice, failure string) map[string]any {
+	var host struct {
+		Host struct {
+			Name       *string `json:"name"`
+			NameSource string  `json:"nameSource"`
+		} `json:"host"`
+	}
+	u.apiCall(r, "GET", "/_localbase/host", nil, &host)
+	name := ""
+	if host.Host.Name != nil && host.Host.NameSource == "setting" {
+		name = *host.Host.Name
+	}
+	return map[string]any{"Name": name, "Notice": notice, "Failure": failure}
+}
+
+// computerNameSave saves or resets the name shown for this computer.
+func (u *UI) computerNameSave(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if r.PostFormValue("action") == "reset" {
+		name = ""
+	}
+	notice, failure := "Saved.", ""
+	if name == "" {
+		notice = "It uses this computer's own name."
+	}
+	var out json.RawMessage
+	if msg := u.apiCall(r, "PUT", "/_localbase/computer-name", map[string]any{"name": name}, &out); msg != "" {
+		notice, failure = "", msg
+	}
+	u.fragment(w, r, "settings", "computer-name", u.computerNameData(r, notice, failure))
 }

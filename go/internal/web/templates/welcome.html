@@ -44,7 +44,9 @@
         <span class="block text-sm text-muted">{{if .Installed}}Already on this computer.{{else}}Downloads {{size .DownloadBytes}}.{{end}}{{if .UsesBytes}} Uses about {{gib .UsesBytes}} while running.{{end}}</span>
         {{if .TooBigDisk}}<span class="choice-fit choice-fit-no">Not enough disk space</span>
         {{else if eq .Fit "wont-fit"}}<span class="choice-fit choice-fit-no">Too big for this computer</span>
+        {{else if eq .Fit "close-others"}}<span class="choice-fit">Close other apps first</span>
         {{else if eq .Fit "tight"}}<span class="choice-fit">Fits, with little room left</span>
+        {{else if and (eq .Fit "fits") .Forecast}}<span class="choice-fit">Fits now</span>
         {{else if eq .Fit "fits"}}<span class="choice-fit">Fits this computer</span>
         {{else}}<span class="choice-fit">Fit unknown</span>{{end}}
         {{if .Pick}}<span class="mt-1 block text-sm text-muted">Selected to keep your first download small.</span>{{end}}
@@ -52,7 +54,7 @@
     </label>
     {{end}}
   </fieldset>
-  <p class="mt-3 px-1 text-sm text-muted">Fit is based on total memory. Other apps may need to be closed before it runs. Small download means under {{.SmallRule}}. You can add or change models any time.</p>
+  <p class="mt-3 px-1 text-sm text-muted">Fit and memory are estimates for right now, and can change before a long download finishes. Small download means under {{.SmallRule}}. You can add or change models any time.</p>
   <div class="welcome-actions">
     {{if and .CanManage .Picked}}<button type="submit" class="btn btn-primary w-full"><span data-action-label-text>{{if .Picked.Installed}}Use this model{{else}}Download {{size .Picked.DownloadBytes}}{{end}}</span></button>
     {{else if and .CanManage .DiskShort}}<p class="text-muted">There isn’t enough disk space for any of these. Free some space, then come back.</p>

@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"compress/gzip"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"io"
 	"io/fs"
@@ -14,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -88,18 +86,19 @@ func TestGaugeSegments(t *testing.T) {
 	for _, c := range []struct {
 		st       runtime.Snapshot
 		pressure string
+		busy     bool
 		word     string
 	}{
-		{runtime.Snapshot{State: "idle"}, "normal", "Ready"},
-		{runtime.Snapshot{State: "running"}, "normal", "Ready"},
-		{runtime.Snapshot{State: "running", Active: 1}, "normal", "Text model busy"},
-		{runtime.Snapshot{State: "running", Waiting: 2}, "normal", "Text model busy"},
-		{runtime.Snapshot{State: "starting"}, "normal", "Getting the model ready"},
-		{runtime.Snapshot{State: "running"}, "critical", "Not enough memory"},
-		{runtime.Snapshot{State: "running"}, "constrained", "Memory is tight"},
+		{runtime.Snapshot{State: "idle"}, "healthy", false, "Ready"},
+		{runtime.Snapshot{State: "running"}, "healthy", false, "Ready"},
+		{runtime.Snapshot{State: "idle"}, "healthy", true, "Busy"},
+		{runtime.Snapshot{State: "starting"}, "healthy", true, "Getting the model ready"},
+		{runtime.Snapshot{State: "running"}, "critical", true, "Not enough memory"},
+		{runtime.Snapshot{State: "running"}, "constrained", false, "Memory is tight"},
+		{runtime.Snapshot{State: "running"}, "constrained", true, "Busy"},
 	} {
-		if word, _ := stripWord(c.st, c.pressure); word != c.word {
-			t.Errorf("%+v, %s: %q, want %q", c.st, c.pressure, word, c.word)
+		if word, _ := stripWord(c.st, c.pressure, c.busy); word != c.word {
+			t.Errorf("%+v, %s, %v: %q, want %q", c.st, c.pressure, c.busy, word, c.word)
 		}
 	}
 	// Nearly full, but not full: a place stays free.
@@ -208,19 +207,3 @@ func TestSizeBudgets(t *testing.T) {
 }
 
 const budgetChatAssets = 86 << 10
-
-func TestStripMemoryIsShared(t *testing.T) {
-	var c memoryCache
-	reads := 0
-	fresh := func() memory.Snapshot { reads++; return memory.Snapshot{Available: int64(reads)} }
-	start := time.Unix(1000, 0)
-	for i := 0; i < 5; i++ {
-		c.read(start.Add(time.Duration(i)*3*time.Second), fresh)
-	}
-	if reads != 1 {
-		t.Errorf("five refreshes across 12 s read memory %d times", reads)
-	}
-	if got := c.read(start.Add(30*time.Second), fresh); got.Available != 2 {
-		t.Errorf("an old reading stayed: %+v", got)
-	}
-}

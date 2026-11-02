@@ -21,7 +21,7 @@
   <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
   <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
-    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if eq .Fit "fits"}} · fits this computer{{else if eq .Fit "tight"}} · tight fit{{else if eq .Fit "wont-fit"}} · needs more memory{{end}}</span>
+    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if .Forecast}}{{if eq .Fit "fits"}} · fits now{{else if eq .Fit "close-others"}} · close other apps first{{else if eq .Fit "wont-fit"}} · too big for this computer{{end}}{{else if eq .Fit "fits"}} · fits this computer{{else if eq .Fit "tight"}} · tight fit{{else if eq .Fit "wont-fit"}} · needs more memory{{end}}</span>
   </a>
   <span class="shrink-0" id="cat-{{.ID}}-action">
   {{if .Installed}}<span class="pill pill-ok">Installed</span>
@@ -70,18 +70,17 @@
 {{define "gauge"}}
 {{/* This computer's memory, in equal places. The words nearby say the same, so it is never
      shape or color alone, and the picture itself is hidden from assistive technology. */}}
-<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Used 0 .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
+<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Other .Models .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
 {{end}}
 
-{{/* What the strip's picture is made of, on Running: the computer's own reading. The text
-     model's figure is labelled as exactly that, because it is not all of LocalBase. */}}
+{{/* What the strip's picture is made of, on Running. */}}
 {{define "memory-legend"}}
 {{if .Known}}
 <dl class="gauge-legend">
-  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>In use on this computer</dt><dd>{{gib .Used}}</dd></div>
+  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>LocalBase{{with .Source}}, {{.}}{{end}}</dt><dd>{{gib .Models}}</dd></div>{{end}}
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps</dt><dd>{{gib .Other}}</dd></div>
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
-  {{if .TextModel}}<div class="gauge-legend-part"><dt>Text model only, {{.Source}}</dt><dd>{{gib .TextModel}}</dd></div>{{end}}
 </dl>
 {{end}}
 {{end}}

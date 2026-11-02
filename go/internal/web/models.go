@@ -179,7 +179,8 @@ type CatalogRow struct {
 	ID, Name, Initial, Task string
 	DownloadBytes           int64
 	UsesBytes               int64  // memory while running, at these launch settings
-	Fit                     string // fits | tight | wont-fit | "" (unknown)
+	Fit                     string // fits | tight | close-others | wont-fit | "" (unknown)
+	Forecast                bool   // Fit is the gateway's answer for right now, not total memory
 	Installed               bool
 }
 
@@ -224,17 +225,17 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 // renderRunning draws Running now; notice is the outcome of an unload.
 func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string, failed bool) {
 	id, plan, active := u.d.LLM.Running()
-	var models int64
-	source := "planned"
+	h, ok := u.readHost(r)
+	if !ok {
+		h = &hostReading{}
+	}
 	var item map[string]any
 	if id != "" {
-		used, measured := u.d.LLM.Footprint(r.Context())
-		if !measured {
-			used = plan.Demand.UnifiedBytes
-		}
-		models = used
-		if measured {
-			source = "measured"
+		used, measured := plan.Demand.UnifiedBytes, false
+		for _, rt := range h.Host.Memory.LocalBase.Runtimes {
+			if rt.Runtime == "llm" {
+				used, measured = rt.Bytes, rt.Source == "measured"
+			}
 		}
 		name := id
 		if s := u.d.Catalog.ByID(id); s != nil {
@@ -260,7 +261,7 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 	case item != nil:
 		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
 	}
-	data := u.memoryView(u.d.Memory.Snapshot(r.Context()), models, source)
+	data := u.memoryView(r, h)
 	for k, v := range map[string]any{"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
 		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed} {
 		data[k] = v

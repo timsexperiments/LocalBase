@@ -55,7 +55,7 @@ func (u *UI) welcome(w http.ResponseWriter, r *http.Request) {
 	p := u.caller(r)
 	u.render(w, r, "welcome", map[string]any{"Step": "hello", "FreeDisk": freeDisk(u.d.RootDir),
 		"CanManage": p.Can("models:manage"), "CanAdmin": p.Can("access:read") || p.Can("keys:read"), "NoSignIn": !u.d.SignInEnabled,
-		"Host": computerName()})
+		"Host": u.nameOfHost(r)})
 }
 
 // smallDownload is the stated rule behind the "Small download" label. It's about size only:
@@ -71,9 +71,45 @@ type welcomeChoice struct {
 }
 
 // welcomeChoices lists the chat models.
-func (u *UI) welcomeChoices() []welcomeChoice {
+func (u *UI) welcomeChoices(r *http.Request) []welcomeChoice {
 	rows, _ := u.catalogRows("chat")
-	return chooseFrom(rows, freeDisk(u.d.RootDir))
+	return chooseFrom(u.withForecast(r, rows), freeDisk(u.d.RootDir))
+}
+
+// withForecast asks the gateway whether each model that isn't installed would fit right now. A
+// row keeps its total-memory answer when the gateway can't say. It's a forecast: the figure can
+// change once the real file can be read, and "now" can change during a long download.
+func (u *UI) withForecast(r *http.Request, rows []CatalogRow) []CatalogRow {
+	for i := range rows {
+		if rows[i].Installed {
+			continue
+		}
+		var a struct {
+			Admitted       bool   `json:"admitted"`
+			RequestedBytes *int64 `json:"requestedBytes"`
+			Refusal        *struct {
+				Permanent bool   `json:"permanent"`
+				Code      string `json:"code"`
+			} `json:"refusal"`
+		}
+		if u.apiCall(r, "GET", "/_localbase/models/"+url.PathEscape(rows[i].ID)+"/admission?assumeInstalled=1", nil, &a) != "" {
+			continue
+		}
+		switch {
+		case a.Admitted:
+			rows[i].Fit, rows[i].Forecast = "fits", true
+		case a.Refusal != nil && a.Refusal.Permanent:
+			rows[i].Fit, rows[i].Forecast = "wont-fit", true
+		case a.Refusal != nil && a.Refusal.Code == "insufficient_memory":
+			rows[i].Fit, rows[i].Forecast = "close-others", true
+		default:
+			continue
+		}
+		if a.RequestedBytes != nil {
+			rows[i].UsesBytes = *a.RequestedBytes
+		}
+	}
+	return rows
 }
 
 // chooseFrom picks the smallest that fits both memory and disk, so the first download is small.
@@ -124,7 +160,7 @@ func (u *UI) downloading(r *http.Request) string {
 }
 
 func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string) {
-	choices := u.welcomeChoices()
+	choices := u.welcomeChoices(r)
 	picked := slices.IndexFunc(choices, func(c welcomeChoice) bool { return c.Pick })
 	diskShort := len(choices) > 0 && !slices.ContainsFunc(choices, func(c welcomeChoice) bool { return !c.TooBigDisk })
 	data := map[string]any{"Step": "choose", "Choices": choices, "Failure": failure, "DiskShort": diskShort,
@@ -316,7 +352,7 @@ func (u *UI) welcomeGetting(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, u.finishInstall(r, id), http.StatusSeeOther)
 		return
 	}
-	u.render(w, r, "welcome", map[string]any{"Step": "getting", "Install": v, "Failure": msg, "Host": computerName()})
+	u.render(w, r, "welcome", map[string]any{"Step": "getting", "Install": v, "Failure": msg, "Host": u.nameOfHost(r)})
 }
 
 // welcomeProgress is the download's refresh.
@@ -328,7 +364,13 @@ func (u *UI) welcomeProgress(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	u.fragment(w, r, "welcome", "welcome-progress", map[string]any{"Install": v, "Failure": msg, "Host": computerName()})
+	u.fragment(w, r, "welcome", "welcome-progress", map[string]any{"Install": v, "Failure": msg, "Host": u.nameOfHost(r)})
+}
+
+// nameOfHost is this computer's name, on its own.
+func (u *UI) nameOfHost(r *http.Request) string {
+	h, _ := u.readHost(r)
+	return u.hostName(r, h)
 }
 
 // noAccess is the page for someone signed in with no permissions, whatever they opened.

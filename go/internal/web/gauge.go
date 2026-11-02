@@ -1,17 +1,13 @@
 package web
 
 import (
-	"context"
 	"fmt"
 	"hash/fnv"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -95,9 +91,9 @@ func computerName() string {
 	return strings.TrimSuffix(host, ".local")
 }
 
-// stripWord says what this computer is doing, from what it is really doing. Its words cover
-// the text model and memory pressure until host.memory.localbase reports the other runtimes.
-func stripWord(st runtime.Snapshot, pressure string) (word, state string) {
+// stripWord says what this computer is doing, from what it is really doing. busy covers every
+// modality and detached runs (host.activity, DESIGN §26).
+func stripWord(st runtime.Snapshot, pressure string, busy bool) (word, state string) {
 	switch {
 	case st.State == "starting":
 		return "Getting the model ready", "load"
@@ -105,69 +101,106 @@ func stripWord(st runtime.Snapshot, pressure string) (word, state string) {
 		return "Finishing", "load"
 	case pressure == "critical":
 		return "Not enough memory", "short"
-	case st.Active+st.Waiting > 0:
-		return "Text model busy", "load"
+	case busy:
+		return "Busy", "load"
 	case pressure == "constrained":
 		return "Memory is tight", "short"
 	}
 	return "Ready", "ready"
 }
 
-// stripMemoryEvery is how old the strip's memory reading may be. Reading memory runs vm_stat
-// on macOS, and the strip's state word refreshes every 3 s from every open tab: that word
-// comes from the runtime's own state, and this reading is shared.
-const stripMemoryEvery = 15 * time.Second
-
-// memoryCache keeps one memory reading for everyone who asks within stripMemoryEvery.
-type memoryCache struct {
-	mu   sync.Mutex
-	at   time.Time
-	snap memory.Snapshot
+// hostFigure is a figure the gateway may not have: nil means unknown, never 0.
+type hostFigure struct {
+	Bytes *int64 `json:"bytes"`
 }
 
-func (c *memoryCache) read(now time.Time, fresh func() memory.Snapshot) memory.Snapshot {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.at.IsZero() || now.Sub(c.at) >= stripMemoryEvery {
-		c.snap, c.at = fresh(), now
+// hostReading is GET /_localbase/host (DESIGN §26).
+type hostReading struct {
+	Host struct {
+		Name   *string `json:"name"`
+		Memory struct {
+			Total     hostFigure `json:"total"`
+			Available hostFigure `json:"available"`
+			Pressure  *string    `json:"pressure"`
+			Other     hostFigure `json:"other"`
+			LocalBase struct {
+				Bytes    int64  `json:"bytes"`
+				Source   string `json:"source"`
+				Runtimes []struct {
+					Runtime string  `json:"runtime"`
+					ModelID *string `json:"modelId"`
+					Bytes   int64   `json:"bytes"`
+					Source  string  `json:"source"`
+				} `json:"runtimes"`
+			} `json:"localBase"`
+		} `json:"memory"`
+		Activity struct {
+			Busy bool `json:"busy"`
+		} `json:"activity"`
+	} `json:"host"`
+}
+
+// readHost asks the gateway what this computer is doing. It shares one reading a second, so
+// the strip's refresh spawns nothing per call.
+func (u *UI) readHost(r *http.Request) (*hostReading, bool) {
+	var h hostReading
+	if u.apiCall(r, "GET", "/_localbase/host", nil, &h) != "" {
+		return nil, false
 	}
-	return c.snap
+	return &h, true
 }
 
-// memoryView is what the strip and Running share: the computer's own reading, in use and
-// free, from one source. It draws no share for LocalBase, because the only figure there is
-// covers the text model alone and would pass for all of LocalBase. textModel is that figure,
-// and Running labels it for what it is, until host.memory.localbase can say the whole.
-func (u *UI) memoryView(snap memory.Snapshot, textModel int64, source string) map[string]any {
-	capacity := u.d.Memory.Topology().SystemCapacity
-	known := capacity > 0 && snap.Available >= 0
-	used, free := int64(-1), "Memory unavailable"
+// hostName is what this computer is called: the owner's name for it, else the machine's own.
+// LOCALBASE_COMPUTER_NAME wins, so a scratch gateway never shows a real hostname.
+func (u *UI) hostName(r *http.Request, h *hostReading) string {
+	if strings.TrimSpace(os.Getenv("LOCALBASE_COMPUTER_NAME")) == "" && h != nil && h.Host.Name != nil && *h.Host.Name != "" {
+		return *h.Host.Name
+	}
+	return computerName()
+}
+
+// sourceWords says how LocalBase's share was arrived at.
+var sourceWords = map[string]string{"measured": "measured", "planned": "planned", "mixed": "measured and planned"}
+
+// memoryView is what the strip and Running share. Every figure is the gateway's, from one reading.
+func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
+	m := h.Host.Memory
+	known := m.Total.Bytes != nil && m.Available.Bytes != nil && m.Other.Bytes != nil
+	capacity, available, other := int64(0), int64(-1), int64(-1)
+	free := "Memory unavailable"
 	if known {
-		used = max(capacity-snap.Available, 0)
-		free = fmt.Sprintf("%.0f GiB free", float64(snap.Available)/(1<<30))
+		capacity, available, other = *m.Total.Bytes, *m.Available.Bytes, *m.Other.Bytes
+		free = fmt.Sprintf("%.0f GiB free", float64(available)/(1<<30))
 	}
-	word, state := stripWord(u.d.LLM.Snapshot(), snap.Pressure)
-	// What a refresh must see change to redraw anything: the words, and a place on the gauge.
-	places := int64(0)
+	pressure := ""
+	if m.Pressure != nil {
+		pressure = *m.Pressure
+	}
+	var st runtime.Snapshot
+	if u.d.LLM != nil {
+		st = u.d.LLM.Snapshot()
+	}
+	word, state := stripWord(st, pressure, h.Host.Activity.Busy)
+	name := u.hostName(r, h)
+	// What a refresh must see change to redraw anything: the words, and places on the gauge.
+	places := [2]int64{}
 	if capacity > 0 {
-		places = used * gaugeSegmentCount / capacity
+		places = [2]int64{other * gaugeSegmentCount / capacity, m.LocalBase.Bytes * gaugeSegmentCount / capacity}
 	}
 	sum := fnv.New32a()
-	sum.Write([]byte(word + "|" + free + "|" + computerName() + "|" + strconv.FormatInt(places, 10)))
-	key := strconv.FormatUint(uint64(sum.Sum32()), 16)
-	return map[string]any{"Host": computerName(), "Word": word, "State": state, "Free": free, "Known": known, "Key": key,
-		"Capacity": capacity, "Available": snap.Available, "Used": used, "TextModel": textModel, "Source": source}
+	fmt.Fprint(sum, word, "|", free, "|", name, "|", places)
+	return map[string]any{"Host": name, "Word": word, "State": state, "Free": free, "Known": known, "Key": strconv.FormatUint(uint64(sum.Sum32()), 16),
+		"Capacity": capacity, "Available": available, "Other": other, "Models": m.LocalBase.Bytes, "Source": sourceWords[m.LocalBase.Source]}
 }
 
-// memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state
-// in words, and its memory. Nil where the gateway has no memory reading.
+// memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state in
+// words, and its memory. Nil for someone who can't read it.
 func (u *UI) memoryStrip(r *http.Request) map[string]any {
-	if u.d.Memory == nil || u.d.LLM == nil {
+	h, ok := u.readHost(r)
+	if !ok {
 		return nil
 	}
-	// Its own context: this reading is shared, and one request ending must not spoil it.
-	snap := u.stripMemory.read(time.Now(), func() memory.Snapshot { return u.d.Memory.Snapshot(context.WithoutCancel(r.Context())) })
-	return u.memoryView(snap, 0, "")
+	return u.memoryView(r, h)
 }
 
 // stripFragment is the strip's refresh.
