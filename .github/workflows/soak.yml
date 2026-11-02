@@ -1,0 +1,106 @@
+name: Soak
+
+# Reliability runs against fake backends: no models, no GPU. Not a pull request gate,
+# because they take minutes and a failure needs a person to read it. See
+# go/docs/reliability.md. A failure here on Linux may be the harness rather than the
+# gateway, since it first ran on Linux in CI.
+on:
+  schedule:
+    - cron: "41 6 * * *" # nightly: one cycle
+    - cron: "11 4 * * 0" # weekly: the 30-minute soak and a race-detector cycle
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Also run the 30-minute soak and the race-detector cycle
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soak
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # Forks shouldn't spend their minutes on this schedule.
+    if: github.repository == 'timsexperiments/LocalBase'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: One cycle
+        # TMPDIR keeps a failing run's scratch root somewhere the next step can find it.
+        run: |
+          mkdir -p "$RUNNER_TEMP/soak-scratch"
+          TMPDIR="$RUNNER_TEMP/soak-scratch" LOCALBASE_SOAK_HARD_SECONDS=900 \
+            go/tools/soak.sh -smoke -out "$RUNNER_TEMP/soak"
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-smoke-${{ matrix.runner }}
+          path: ${{ runner.temp }}/soak
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Keep the scratch root of a failing run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-smoke-scratch-${{ matrix.runner }}
+          path: ${{ runner.temp }}/soak-scratch
+          retention-days: 7
+          if-no-files-found: ignore
+
+  full:
+    if: github.repository == 'timsexperiments/LocalBase' && (github.event.schedule == '11 4 * * 0' || inputs.full)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: The 30-minute soak
+        run: |
+          mkdir -p "$RUNNER_TEMP/soak-scratch"
+          TMPDIR="$RUNNER_TEMP/soak-scratch" go/tools/soak.sh -duration 30m -out "$RUNNER_TEMP/soak"
+      - name: One cycle with the race detector
+        # Runs even if the soak fails, because a race report often explains it.
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/soak-scratch"
+          TMPDIR="$RUNNER_TEMP/soak-scratch" LOCALBASE_SOAK_HARD_SECONDS=1200 \
+            go/tools/soak.sh -smoke -race -out "$RUNNER_TEMP/soak-race"
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-full
+          path: |
+            ${{ runner.temp }}/soak
+            ${{ runner.temp }}/soak-race
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Keep the scratch root of a failing run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soak-full-scratch
+          path: ${{ runner.temp }}/soak-scratch
+          retention-days: 7
+          if-no-files-found: ignore
