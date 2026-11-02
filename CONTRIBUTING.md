@@ -1,19 +1,17 @@
 # Contributing
 
-## Development
+New work goes in [`go/`](go/); [`src/`](src/README.md) is the legacy TypeScript version. See [`go/README.md`](go/README.md) for build and test commands.
 
-Use Bun `1.4.2` (the version in `packageManager` and CI). Install with `bun install`.
-
-Before opening a pull request, run:
+Before opening a pull request, from `go/`:
 
 ```sh
-bun run check
-bun test path/to/relevant.test.ts
-bun run build
+test -z "$(gofmt -l .)"
+go vet ./...
+go test ./internal/... ./cmd/...
 ```
 
 Use a focused branch named `type/short-description` and a pull request title in `type: concise summary` form. Follow the repository guidance in [AGENTS.md](.agents/AGENTS.md).
 
-## Developer Certificate of Origin
+## Licensing of contributions
 
-Contributions are accepted under AGPL-3.0-or-later: inbound contributions are licensed on the same terms as the project (inbound = outbound). Every commit must include a DCO sign-off; use `git commit -s`. The sign-off certifies the [Developer Certificate of Origin](https://developercertificate.org/).
+Contributions are accepted under AGPL-3.0-or-later: inbound contributions are licensed on the same terms as the project (inbound = outbound).

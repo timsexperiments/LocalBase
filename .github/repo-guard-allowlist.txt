@@ -1,0 +1,5 @@
+# Files allowed past scripts/check-repo-hygiene.sh, one exact path per line.
+# Add a path only with a reason in the commit message.
+#
+# Recorded video fixture for the gateway tests (6.3 MB of JSON text).
+go/internal/gateway/testdata/video.json

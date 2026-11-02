@@ -8,6 +8,6 @@
 
 ## Checklist
 
-- [ ] `bun run check` passes.
+- [ ] `gofmt`, `go vet` and `go test ./internal/... ./cmd/...` pass in `go/`.
 - [ ] Relevant targeted tests pass.
-- [ ] Commits are DCO signed (`git commit -s`).
+- [ ] I can contribute this under AGPL-3.0-or-later.
