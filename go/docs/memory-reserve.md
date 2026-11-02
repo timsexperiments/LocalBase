@@ -71,9 +71,10 @@ constrained lines. On a Mac, both providers report the pressure as `normal` and 
 above to decide. A new default would be a deliberate difference from TS.
 
 One existing difference: TS asks Metal for the GPU working-set limit and falls back to the
-heuristic. Go only has the heuristic. TS's own note says a 64 GiB M-series reports about 0.81 of
-memory, about 52 GiB, against Go's 48 GiB. I did not probe it here. It affects the last column of
-every table, and it is separate from the reserve.
+heuristic, and Go only has the heuristic until #427 lands. This 64 GiB Mac really reports 53084 MiB
+(0.81 of memory, 51.8 GiB) against the heuristic's 48 GiB. So the last column of every table, which
+uses the heuristic, is lower than a real Mac may allow once that lands, and this is separate from the
+reserve. Other Mac sizes are unmeasured.
 
 ## Options
 
