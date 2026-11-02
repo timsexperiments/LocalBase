@@ -107,3 +107,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). New work goes in [`go/`](go/); [`src/`](
 ## License
 
 Copyright (C) 2026 TimsExperiments. LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).
+
+FFmpeg, which LocalBase downloads on demand for video conversion, is GPL-licensed. It isn't included in LocalBase and runs as a separate program; see [third-party notices](THIRD_PARTY_NOTICES.md).
