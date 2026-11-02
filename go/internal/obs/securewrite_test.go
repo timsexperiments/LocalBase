@@ -21,7 +21,7 @@ func TestWritePrivateChecked(t *testing.T) {
 			t.Errorf("%q", got)
 		}
 	}
-	if m := perm(t, path); m != 0o600 {
+	if m := fileMode(t, path); m != 0o600 {
 		t.Errorf("mode: %o", m)
 	}
 	// A loose file is rewritten private.
@@ -29,7 +29,7 @@ func TestWritePrivateChecked(t *testing.T) {
 	if err := WritePrivateChecked(path, []byte("three")); err != nil {
 		t.Fatal(err)
 	}
-	if m := perm(t, path); m != 0o600 {
+	if m := fileMode(t, path); m != 0o600 {
 		t.Errorf("after a loose file: %o", m)
 	}
 	// A link at the path fails the write, stays in place, and its target is untouched.
