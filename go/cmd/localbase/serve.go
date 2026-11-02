@@ -120,8 +120,17 @@ func serve(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 
+	// Before anything writes to them: a planted link must not redirect a log (TS).
+	if problems := obs.CheckRootFiles(r.Dir); len(problems) > 0 {
+		return nil, problems[0]
+	}
 	if os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
-		obs.BoundServiceStderr(r.Dir) // #357: launchd never rotates the capture
+		if err := obs.BoundServiceStderr(r.Dir); err != nil { // #357: launchd never rotates the capture
+			var unsafe *obs.UnsafeFileError
+			if errors.As(err, &unsafe) {
+				return nil, err
+			}
+		}
 	}
 	sink, err := obs.OpenSink(r.LogsDir())
 	if err != nil {

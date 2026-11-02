@@ -106,7 +106,7 @@ func Snapshot(rootDir string, f Filters, limit int) ([]*Event, error) {
 	files := paths(rootDir)
 	var out []*Event
 	for i := len(files) - 1; i >= 0 && len(out) < limit; i-- {
-		b, err := os.ReadFile(files[i])
+		b, err := ReadOwnedRegular(files[i])
 		if err != nil {
 			continue
 		}
@@ -152,7 +152,7 @@ func Follow(ctx context.Context, rootDir string, f Filters, emit func(*Event) er
 		}
 		var order []string
 		for _, p := range paths(rootDir) {
-			fh, err := os.Open(p)
+			fh, err := OpenOwnedRegular(p, os.O_RDONLY)
 			if err != nil {
 				continue
 			}

@@ -1081,6 +1081,27 @@ Contract fixtures: launched gateways run offline (dead proxies, loopback
 exempt), so a missing runtime or model fails instead of downloading, and
 `bin/runtimes` fixtures merge instead of nesting.
 
+### 13.5b Log and checkpoint files are opened safely
+
+As TS does, log and stderr files open through `obs.OpenOwnedRegular`: no following a link
+(`O_NOFOLLOW`), a regular file, owned by this user, one hard link, the same file before and after
+the open, and 0600 afterwards. Without this, a link planted at `logs/service-stderr.log` got its
+target truncated. The port had lost this.
+
+`serve` **refuses to start** on `obs.CheckRootFiles`: an unsafe `logs/events*.jsonl`, stderr
+capture, `runs/*.json` or `runtime/model-operations.json`, or a linked `logs`, `runs` or `runtime`
+directory. The message names the file and says to remove it and check who can write to its
+directory. `doctor` reports the same (`unsafeFiles`, only when there are any) without starting
+anything. Checkpoints write through `obs.WritePrivateAtomic`, with a fresh exclusive temporary
+name instead of a fixed `.tmp`.
+
+**Difference from TS:** TS also refuses a log directory other users can read. Go does not, and a
+separate change tightens a loose root at startup instead.
+
+**Not covered:** other files in the root written through fixed `.tmp` names (`ui-access.json`,
+`catalog.d`, auth profiles, the feed cache) and model and runtime downloads. A link at those paths
+is still followed.
+
 ### 13.6 Status changes for the cutover checklist
 
 Live clients (naya-device-worker, t3-opencode) retry on 503 with

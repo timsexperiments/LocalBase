@@ -70,6 +70,13 @@ func doctorCommand() *cli.Command {
 					st.Bytes, st.Path, st.ModifiedAt, archive)
 				data["serviceStderr"] = st
 			}
+			if problems := obs.CheckRootFiles(e.Root.Dir); len(problems) > 0 {
+				for _, p := range problems {
+					c.Info("Unsafe file: %s", p.Error())
+				}
+				c.Info("The gateway will not start until these are fixed.")
+				data["unsafeFiles"] = problems
+			}
 			return data, nil
 		}}
 }
