@@ -15,8 +15,8 @@ Goals:
   OpenAI-compatible API, the admin API, the browser UI and the CLI.
 - Take over an existing `~/.local/share/local-base` root in place, with no data
   loss and a working rollback to the TypeScript binary.
-- Keep the HTTP contracts that existing clients use: t3-opencode,
-  naya-device-worker, decision clients and the browser.
+- Keep the HTTP contracts that existing clients use: an editor client,
+  a device-worker client, decision clients and the browser.
 - Far less code. The TypeScript tree is about 60k lines of production code and
   58k lines of tests, without the UI. The target is under 15k lines of Go
   production code for full parity, and the UI in a few thousand lines of
@@ -515,7 +515,7 @@ migration. The UI runs under a strict CSP (`script-src 'self'`,
 2. **Side-by-side on live data, read-only for the operator.** The Go binary
    runs on a spare port against a *copy* of the live root, with live model
    files mounted read-only by symlink, and serves real traffic from one test
-   client (for example a t3-opencode profile).
+   client (for example an editor client profile).
 3. **Cutover (coordinated with the LocalBase operator thread).** Back up
    `local-base.db` with the SQLite backup API. Stop the launchd job. Install
    the Go binary as `~/.local/bin/local-base` (mv-replace, never in-place
@@ -670,7 +670,7 @@ Remaining for M3: UI pages (Chat with streaming, attachments, picker and auto-co
    (`/github/callback` and `access github add`; existing GitHub registrations
    stay in `ui-access.json` for rollback and can be listed and removed). Magic-link mail uses `net/smtp`.
 3. **Linux NVIDIA-only features (S2V video, whisper PCI matching): deferred.**
-   The modality slot and the platform probe stay open for them, and Pixelator
+   The modality slot and the platform probe stay open for them, and the GPU test host
    is available to test NVIDIA work when they are added.
 4. **Compaction.** The chat UI compacts automatically, as today. The API never
    rewrites a conversation: an overflowing prompt gets OpenAI's
@@ -1083,7 +1083,7 @@ exempt), so a missing runtime or model fails instead of downloading, and
 
 ### 13.6 Status changes for the cutover checklist
 
-Live clients (naya-device-worker, t3-opencode) retry on 503 with
+Live clients (a device-worker client, an editor client) retry on 503 with
 `Retry-After`. The contract: **transient failures keep 503 (or 429) with
 `Retry-After`**, as TS answers them; **failures that need someone to act
 answer their real 4xx without it**. `gateway.TestRuntimeErrorRetrySemantics`
@@ -1650,7 +1650,7 @@ carries `not-chosen-automatically` (`TestUnpinnedManagedBackendIsManualOnly`).
 
 ### 16.4 Linux/systemd qualification (step 3)
 
-Pixelator is not used for this: it is System One's GPU host, held by other
+The GPU test host is not used for this: it is shared and held by other
 work. The qualification runs locally and is opt-in:
 `tools/systemd-check.sh` (Docker and bun). It builds the linux/arm64
 binary, then starts a disposable Debian container with systemd as PID 1:
@@ -1713,8 +1713,8 @@ Each item is done, or waived on record by the operator.
 
    | Client | Routes to check | Differences that can reach it |
    | --- | --- | --- |
-   | naya-device-worker | `POST /v1/chat/completions` (3827 calls in the Oct 2026 logs), `GET /v1/models` (3348), `GET /v1/models/{id}` (13, logged as unmatched before #362), `POST /v1/systemone` (6). Its client allows only `{base}/models` and `{base}/chat/completions`, retries on 503 with `Retry-After`, and treats 499 as its own cancel | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
-   | t3-opencode | `/v1/chat/completions` (streaming), `/v1/models` | 3, 6 |
+   | Device-worker client | `POST /v1/chat/completions` (3827 calls in the Oct 2026 logs), `GET /v1/models` (3348), `GET /v1/models/{id}` (13, logged as unmatched before #362), `POST /v1/systemone` (6). Its client allows only `{base}/models` and `{base}/chat/completions`, retries on 503 with `Retry-After`, and treats 499 as its own cancel | 1 (repeated request after a permanent start failure), 3 (wrong method on a JSON route), 6 (503 on a memory emergency) |
+   | Editor client | `/v1/chat/completions` (streaming), `/v1/models` | 3, 6 |
    | decision clients | `/v1/systemone` | 3, 6 |
    | browser (Chat, Admin, Lab) | `/app/**`, `/_localbase/**` | 2 (unparseable multipart), 4 (model management while a runtime is up), 5 (Admin lockout, 409) |
 
@@ -1766,8 +1766,8 @@ settings. It is served on loopback only and deleted after the rehearsal.
    - the contract suite in Go-only mode (`-url http://127.0.0.1:<port>
      -key <a copy key>`);
    - `status`, `diagnostics`, `/health`, `/health/ready`.
-4. **No real clients (operator decision).** naya would process real jobs
-   twice, and opencode sessions are the user's. Instead, `TestClientReplay`
+4. **No real clients (operator decision).** the device worker would process real jobs
+   twice, and editor sessions are the user's. Instead, `TestClientReplay`
    (`contract/replay_test.go`) replays their request shapes with the
    operator's temporary key: models list, retrieve of every listed model,
    chat (non-streaming and streaming) and one decision request.
@@ -1837,7 +1837,7 @@ has the checks): no inference in flight, no benchmark backends, at least
      effective default and its reason;
    - the public hostname through Cloudflare Access: Google sign-in, then
      Chat from the phone, Admin and Lab;
-   - naya-device-worker and t3-opencode work normally;
+   - the device-worker and editor clients work normally;
    - the Grafana telemetry flow: traces and logs from the new gateway
      arrive;
    - 30 minutes of `local-base logs --level warn`, watching
@@ -1874,7 +1874,7 @@ has the checks): no inference in flight, no benchmark backends, at least
 cloudflared and the Cloudflare Access configuration; every launchd service
 other than the LocalBase gateway's own label; model files (no download,
 move or rewrite; the Go binary reads the same files); the user's
-OpenTelemetry collector and Grafana; System One and Pixelator.
+OpenTelemetry collector and Grafana; the GPU test host.
 
 ### 17.5 Feature audit of the live root (2026-10-21, read-only)
 
@@ -2261,7 +2261,7 @@ be my default chat model now when it will fit in VRAM."
   conversation", via `GET /app/chat/default`.
 - `LLM.Resolve("")` also uses it for internal callers.
 - A request that names a model is never substituted: it gets that model,
-  or its real admission error (a retryable 503). Naya and OpenCode name
+  or its real admission error (a retryable 503). Existing clients name
   their models and are unaffected.
 
 **Choice.**
@@ -2320,7 +2320,7 @@ with the user's apps open, so the fallback will often be what runs.
 ## 19. Observability additions and the NVIDIA VRAM gap (operator audit, 2026-10-24)
 
 The audit covered three days of live Mac Loki and Tempo data, plus a
-serialized Linux run of 6b908f76 on the Pixelator. It found no secrets in
+serialized Linux run of 6b908f76 on the GPU test host. It found no secrets in
 logs, Loki or Tempo, and the 429 queue-full and timeout responses and the
 SIGKILL → `runtime.exited` path were all captured. Four gaps, fixed here.
 
@@ -2358,7 +2358,7 @@ also checks that no message text is logged, and `TestDifferentialOTLP`.
 
 ### 19.3 NVIDIA GPUs on Linux: reported, not admitted
 
-On the Pixelator, doctor said "CPU / Integrated Graphics, 0 GB VRAM", while
+On the GPU test host, doctor said "CPU / Integrated Graphics, 0 GB VRAM", while
 the backend host found CUDA and a custom CUDA backend worked. Admission
 rejections named `pool=system` with nothing about the GPU. Full NVML
 admission stays deferred (§11.3); the gap is now explicit:
@@ -2386,7 +2386,7 @@ admission stays deferred (§11.3); the gap is now explicit:
   same observed-peak table under a new method.
 - **Pressure:** VRAM is not pageable, so a GPU pool has no "constrained"
   state, only admit or refuse. Eviction recovery still applies.
-- **Qualification:** on the Pixelator, through its serialized queue (never
+- **Qualification:** on the GPU test host, through its serialized queue (never
   without the operator), against the TS-free Linux CI plus a real 12 GB
   card.
 
@@ -2511,8 +2511,8 @@ VRAM, the planner reproduces from the header alone:
   GPU pool is admit-or-refuse only.
 - **Single GPU:** one device (index 0) only. Multi-GPU split is out of
   scope and refused clearly.
-- **Qualification:** CUDA qualification runs later on the Pixelator through
-  the DFS-owned queue with the user. This repo ships the code and the tests
+- **Qualification:** CUDA qualification runs later on the GPU test host through
+  its serialized queue with the user. This repo ships the code and the tests
   with synthetic fixtures only.
 
 ### 20.5 Startup placement check (fail closed)
@@ -2664,7 +2664,7 @@ on GPU 0 against an `nvidia-smi` sample taken at start time.
 - **Test:** `TestDoctorNVIDIALines`.
 
 **Linux CUDA qualification** is the operator's, with the user, through the
-Pixelator's DFS-owned queue. Nothing here ran on it.
+GPU test host's serialized queue. Nothing here ran on it.
 
 ### 20.11 The Placement card (PR 5)
 

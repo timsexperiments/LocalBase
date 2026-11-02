@@ -154,7 +154,7 @@ rebase or merge from main is needed. GitHub reports #403 `MERGEABLE`/`CLEAN`.
 - `src/`, `drizzle/`, `package.json` and `bun.lock` are unchanged from main, so TS is
   byte-for-byte what main has. Outside `go/` the stack changes only `.github/workflows/go.yml`
   (new), `.gitignore`, `README.md` and `.design/research/chat/BRIEF.md` (new).
-- The local `main` checkout at `~/Projects/LocalBase` is 53 commits behind origin. That
+- The operator's local `main` checkout is 53 commits behind origin. That
   doesn't affect any of this, and I did not touch it.
 - **Recheck** if anything lands on main first, such as a Dependabot update.
 
@@ -230,14 +230,14 @@ simulators and test browsers)
 **Before retiring TS (planned about 2026-11-04, two weeks after cutover)**
 
 - [ ] Real video through the page. It needs 25.6 GiB available, and has never had it.
-- [ ] **Pixelator, operator with you, through the DFS queue:** NVIDIA placement (auto
+- [ ] **GPU test host, operator with you, through its serialized queue:** NVIDIA placement (auto
       split, GPU-only refusal, the startup check), GPU admission; whisper, speech and
       image on Linux. None of this has run on real NVIDIA hardware.
 - [ ] A rollback rehearsal from this tree on a copy of the live root.
 - [ ] Confirm no rollback happened since cutover, so the two weeks actually count.
 
 The date is the earliest possible, not a deadline: on current evidence I expect the
-Pixelator and video items to decide it. Merging can come first, since TS stays in the
+GPU test host and video items to decide it. Merging can come first, since TS stays in the
 repo and the TS binary stays on disk.
 
 **After merging, before tagging**
