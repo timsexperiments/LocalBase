@@ -100,3 +100,68 @@ document.addEventListener("click", async (event) => {
 document.addEventListener("htmx:afterSettle", revealShare);
 fillFromStorage();
 revealShare();
+
+// --- the picture viewer ---------------------------------------------------------------
+// One <dialog> per picture; previous and next move between them.
+const viewers = () => [...document.querySelectorAll("#lab-items dialog.viewer")];
+
+function paintViewer(dialog) {
+  const all = viewers();
+  const at = all.indexOf(dialog);
+  const count = dialog.querySelector("[data-view-count]");
+  if (count) count.textContent = all.length > 1 ? `${at + 1} of ${all.length}` : "";
+  for (const b of dialog.querySelectorAll("[data-view-step]")) b.hidden = all.length < 2;
+}
+
+function stepViewer(dialog, by) {
+  const all = viewers();
+  if (all.length < 2) return;
+  const next = all[(all.indexOf(dialog) + by + all.length) % all.length];
+  dialog.close();
+  next.showModal();
+  paintViewer(next);
+}
+
+document.addEventListener("click", (event) => {
+  const step = event.target.closest?.("[data-view-step]");
+  if (step) {
+    stepViewer(step.closest("dialog"), Number(step.dataset.viewStep));
+    return;
+  }
+  const open = event.target.closest?.(".image-open");
+  if (open) {
+    const dialog = document.getElementById(open.dataset.openSheet);
+    if (dialog) paintViewer(dialog);
+    return;
+  }
+  const copy = event.target.closest?.("[data-copy-text]");
+  if (copy) {
+    navigator.clipboard?.writeText(copy.dataset.copyText);
+    const before = copy.textContent;
+    copy.textContent = "Copied";
+    setTimeout(() => (copy.textContent = before), 1500);
+    return;
+  }
+  // Reuse settings: the form takes this picture's prompt, shape, look and seed.
+  const reuse = event.target.closest?.("[data-reuse]");
+  if (reuse) {
+    const { prompt: text, shape, look, seed } = reuse.dataset;
+    const form = document.querySelector("form.lab-dock");
+    if (!form) return;
+    for (const [name, value] of [["shape", shape], ["look", look]]) {
+      const radio = [...form.querySelectorAll(`input[type=radio][name="${name}"]`)].find((r) => r.value === value);
+      if (radio) radio.checked = true;
+    }
+    if (form.seed) form.seed.value = seed;
+    syncChips(form);
+    reuse.closest("dialog")?.close();
+    fill(text);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  const dialog = document.querySelector("dialog.viewer[open]");
+  if (!dialog || event.target.closest?.("input, textarea")) return;
+  if (event.key === "ArrowLeft") stepViewer(dialog, -1);
+  if (event.key === "ArrowRight") stepViewer(dialog, 1);
+});

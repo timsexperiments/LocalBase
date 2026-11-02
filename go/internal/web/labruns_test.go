@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,7 +69,7 @@ func TestLabImageRun(t *testing.T) {
 	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/runs/run_1", nil))
 	done := w.Body.String()
 	if !strings.Contains(done, `alt="a paper boat"`) || !strings.Contains(done, `src="/app/lab/results/`) || strings.Contains(done, "every 2s") ||
-		!strings.Contains(done, `aria-label="Save image"`) || !strings.Contains(done, `data-share="/app/lab/results/`) || strings.Contains(done, "Try again") {
+		!strings.Contains(done, `download="image.png"`) || !strings.Contains(done, `data-share="/app/lab/results/`) || strings.Contains(done, "Try again") {
 		t.Fatalf("completed item: %s", done)
 	}
 	// The result is collected once, however often the item is drawn.
@@ -125,7 +127,7 @@ func TestLabDock(t *testing.T) {
 	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, Call: (&fakeRuns{status: "completed"}).call})
 	main := mainRe.FindString(get(u, "/app/studio/image").Body.String())
 	for _, want := range []string{`aria-label="Back to Studio"`, `<h1 id="lab-title" class="page-title">Image</h1>`, `id="lab-items"`, `class="lab-dock" data-docked`,
-		`data-open-sheet="lab-model"`, `data-open-sheet="lab-size"`, `<dialog id="lab-size" class="sheet`, `aria-label="Generate"`, `class="composer-box lab-box"`, `data-fill="A paper boat`} {
+		`data-open-sheet="image-shape"`, `data-open-sheet="image-look"`, `data-open-sheet="image-count"`, `<dialog id="image-shape" class="sheet`, `aria-label="Generate"`, `class="composer-box lab-box"`, `data-fill="A paper boat`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -212,5 +214,126 @@ func TestResultImageFallback(t *testing.T) {
 	}
 	if agoText(time.Time{}, now) != "" {
 		t.Error("no time should say nothing")
+	}
+}
+
+// imageCalls records what the Image studio asks the runs API for.
+type imageCalls struct {
+	fakeRuns
+	bodies []map[string]any
+	seeds  []int64 // what the finished run's images report
+}
+
+func (f *imageCalls) call(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) APIResult {
+	png := base64.StdEncoding.EncodeToString([]byte("\x89PNG"))
+	switch {
+	case method == "POST" && path == "/_localbase/runs/v1/images/generations":
+		var in map[string]any
+		json.Unmarshal(body, &in)
+		f.bodies = append(f.bodies, in)
+		return APIResult{Status: 202, Body: []byte(`{"id":"run_1","target":"/v1/images/generations","status":"queued"}`)}
+	case path == "/_localbase/runs/run_1/result":
+		var data []string
+		for _, s := range f.seeds {
+			data = append(data, fmt.Sprintf(`{"b64_json":%q,"seed":%d}`, png, s))
+		}
+		return APIResult{Status: 200, Body: []byte(`{"data":[` + strings.Join(data, ",") + `]}`)}
+	}
+	return f.fakeRuns.call(ctx, p, method, path, ct, body)
+}
+
+// A batch is one run with n; shape and resolution pick the size; a look adds
+// its words, and the caption stays the person's own prompt.
+func TestImageBatch(t *testing.T) {
+	f := &imageCalls{fakeRuns: fakeRuns{status: "in_progress"}}
+	u := New(Deps{NoAuth: true, Call: f.call})
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/lab/image", url.Values{"prompt": {"a boat"}, "shape": {"portrait"}, "resolution": {"large"},
+		"look": {"watercolor"}, "count": {"4"}, "seed": {"100"}, "negative_prompt": {"people"}}))
+	body := w.Body.String()
+	if len(f.bodies) != 1 || strings.Count(body, "image-tile image-portrait") != 4 {
+		t.Fatalf("%d runs: %s", len(f.bodies), body)
+	}
+	b := f.bodies[0]
+	if b["n"] != float64(4) || b["seed"] != float64(100) || b["size"] != "768x1024" ||
+		!strings.HasPrefix(b["prompt"].(string), "a boat, watercolor painting") || !strings.HasPrefix(b["negative_prompt"].(string), "people, ") {
+		t.Errorf("request: %v", b)
+	}
+	if strings.Contains(body, "watercolor painting") || !strings.Contains(body, ">a boat<") {
+		t.Error("the caption is not the person's own prompt")
+	}
+	// An unknown count is one picture, with a seed the page chose, with room
+	// under the API's limit for a batch.
+	f.bodies = nil
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/lab/image", url.Values{"prompt": {"x"}, "count": {"99"}, "size": {"512x512"}}))
+	if len(f.bodies) != 1 || f.bodies[0]["n"] != nil || f.bodies[0]["seed"] == nil || f.bodies[0]["size"] != "512x512" {
+		t.Errorf("default: %v", f.bodies)
+	}
+	for range 1000 {
+		if s := randomSeed(); s < 0 || s > 2147483647-10 {
+			t.Fatalf("seed %d", s)
+		}
+	}
+}
+
+// Each picture of a batch has the seed the API reports, its own viewer and its
+// own Delete. Regenerate repeats that picture's seed, Vary picks a new one;
+// both make one picture. The model's name appears only in the details.
+func TestImageAgain(t *testing.T) {
+	f := &imageCalls{fakeRuns: fakeRuns{status: "completed"}, seeds: []int64{7, 8}}
+	u := New(Deps{NoAuth: true, Call: f.call})
+	u.ServeHTTP(httptest.NewRecorder(), htmxPost("/app/lab/image", url.Values{"prompt": {"a boat"}, "shape": {"landscape"}, "seed": {"7"}, "count": {"2"}, "model": {"some-model"}}))
+	out := get(u, "/app/lab/runs/run_1").Body.String()
+	for _, want := range []string{`<dialog id="view-run_1-0" class="viewer"`, `<dialog id="view-run_1-1" class="viewer"`, "<dt>Seed</dt><dd>7</dd>", "<dt>Seed</dt><dd>8</dd>",
+		"<span>Regenerate</span>", "<span>Vary</span>", "<dt>Model</dt><dd>some-model</dd>", `data-copy-text="a boat"`, `data-seed="8"`, "carries its prompt and settings"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("viewer: missing %q", want)
+		}
+	}
+	if strings.Count(out, "some-model") != 2 { // once per viewer, under Details
+		t.Errorf("the model name appears outside the details: %d", strings.Count(out, "some-model"))
+	}
+	for _, c := range []struct {
+		mode string
+		same bool
+	}{{"same", true}, {"vary", false}} {
+		mode, same := c.mode, c.same
+		f.bodies = nil
+		w := httptest.NewRecorder()
+		u.ServeHTTP(w, htmxPost("/app/lab/runs/run_1/again", url.Values{"mode": {mode}, "picture": {"1"}}))
+		if len(f.bodies) != 1 || f.bodies[0]["prompt"] != "a boat" || f.bodies[0]["size"] != "768x512" || f.bodies[0]["n"] != nil {
+			t.Fatalf("%s: %v %s", mode, f.bodies, w.Body.String())
+		}
+		if (f.bodies[0]["seed"] == float64(8)) != same {
+			t.Errorf("%s: seed %v", mode, f.bodies[0]["seed"])
+		}
+	}
+	// A result whose settings are gone says so.
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/lab/runs/run_nope/again", url.Values{"mode": {"vary"}}))
+	if !strings.Contains(w.Body.String(), "no longer available") {
+		t.Errorf("gone: %s", w.Body.String())
+	}
+}
+
+// Delete takes one picture of a batch; the last one takes the run with it.
+func TestImageDelete(t *testing.T) {
+	f := &imageCalls{fakeRuns: fakeRuns{status: "completed"}, seeds: []int64{1, 2}}
+	u := New(Deps{NoAuth: true, Call: f.call})
+	u.ServeHTTP(httptest.NewRecorder(), htmxPost("/app/lab/image", url.Values{"prompt": {"a"}, "count": {"2"}}))
+	get(u, "/app/lab/runs/run_1")
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/lab/runs/run_1/remove", url.Values{"picture": {"0"}}))
+	if strings.Contains(w.Body.String(), "view-run_1-0") || !strings.Contains(w.Body.String(), "view-run_1-1") {
+		t.Errorf("after one: %s", w.Body.String())
+	}
+	if strings.Contains(strings.Join(f.calls, " "), "DELETE") {
+		t.Error("the run was dismissed with a picture left")
+	}
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, htmxPost("/app/lab/runs/run_1/remove", url.Values{"picture": {"1"}}))
+	if w.Body.Len() != 0 || !strings.Contains(strings.Join(f.calls, " "), "DELETE /_localbase/runs/run_1") {
+		t.Errorf("after the last: %q %v", w.Body.String(), f.calls)
 	}
 }

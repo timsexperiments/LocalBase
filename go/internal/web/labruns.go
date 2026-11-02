@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,19 +27,38 @@ var labTargets = map[string]string{
 
 // labRun is the part of a run object the tray uses.
 type labRun struct {
-	ID, Target, Status, Reason string
-	Error                      *struct{ Code, Message string } `json:"error"`
-	CreatedAt                  time.Time
+	ID, Target, Status, Reason, Model string
+	Error                             *struct{ Code, Message string } `json:"error"`
+	CreatedAt                         time.Time
 }
 
 // unloadingMessage: a request reached a model while someone unloaded it
 // (DESIGN §23); the gateway answers 503 model_unloading.
 const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed."
 
+// labPicture is one image of a result.
+type labPicture struct {
+	Index, URL string
+	Seed       int64
+	Removed    bool
+}
+
+// picture finds a picture by its index in the batch.
+func (n *labNote) picture(index string) *labPicture {
+	for i := range n.pictures {
+		if n.pictures[i].Index == index {
+			return &n.pictures[i]
+		}
+	}
+	return nil
+}
+
 // labNote is what the tray remembers about a run, in memory, bound to its
 // owner: the prompt as a caption, and the collected result.
 type labNote struct {
 	owner, caption, prompt, result, text string
+	image                                *imageRequest
+	pictures                             []labPicture
 	at                                   time.Time
 }
 
@@ -69,6 +89,14 @@ func (n *labNotes) put(owner, id, prompt string) {
 		}
 	}
 	n.items[id] = &labNote{owner: owner, caption: caption(prompt), prompt: prompt, at: time.Now()}
+}
+
+func (n *labNotes) setImage(owner, id string, q imageRequest) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if v := n.items[id]; v != nil && v.owner == owner {
+		v.image = &q
+	}
 }
 
 // runsServed: the gateway answers GET /_localbase/runs with a list.
@@ -107,6 +135,11 @@ func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, promp
 type labItemView struct {
 	ID, Tool, Status, Caption, Message string
 	Prompt                             string // to try again (empty for a file)
+	Fresh                              bool   // just started: its skeleton may shimmer once
+	Size, Shape, Look, LookName, Model string // how a picture was made
+	Seed                               int64
+	Pictures                           []labPicture // a batch's pictures, without deleted ones
+	Tiles                              []int        // placeholders while it is made
 	Image, Audio, Transcript           string
 	Ago                                string // "2 min ago"
 	Active                             bool
@@ -138,6 +171,27 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	note := u.notes.get(owner, run.ID)
 	if note != nil {
 		v.Caption, v.Prompt = note.caption, note.prompt
+		if q := note.image; q != nil {
+			v.Size, v.Look, v.LookName, v.Seed = q.Size, q.Look, lookByID(q.Look).Name, q.Seed
+			for shape, sizes := range imageShapes {
+				if sizes["standard"] == q.Size || sizes["large"] == q.Size {
+					v.Shape = shape
+				}
+			}
+			v.Model = q.Model
+		}
+	}
+	if v.Model == "" {
+		v.Model = run.Model
+	}
+	if v.Model != "" && u.d.Catalog != nil {
+		if s := u.d.Catalog.ByID(v.Model); s != nil {
+			v.Model = s.Name()
+		}
+	}
+	v.Tiles = make([]int, 1)
+	if note != nil && note.image != nil && note.image.N > 1 {
+		v.Tiles = make([]int, note.image.N)
 	}
 	switch run.Status {
 	case "queued":
@@ -167,11 +221,18 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 		}
 		// Two tabs may poll the same run: collect once.
 		u.notes.collecting.Lock()
-		if note.result == "" && note.text == "" {
+		if note.result == "" && note.text == "" && len(note.pictures) == 0 {
 			u.collect(r, run, tool, note)
+		}
+		for _, p := range note.pictures {
+			if !p.Removed {
+				v.Pictures = append(v.Pictures, p)
+			}
 		}
 		u.notes.collecting.Unlock()
 		switch {
+		case tool == "image" && len(v.Pictures) > 0:
+			v.Image = v.Pictures[0].URL
 		case note.text != "" || tool == "transcribe":
 			v.Transcript = note.text
 		case note.result != "" && tool == "image":
@@ -196,13 +257,24 @@ func (u *UI) collect(r *http.Request, run labRun, tool string, note *labNote) {
 	case "image":
 		var out struct {
 			Data []struct {
-				B64 string `json:"b64_json"`
+				B64  string `json:"b64_json"`
+				Seed *int64 `json:"seed"`
 			} `json:"data"`
 		}
-		if json.Unmarshal(res.Body, &out) == nil && len(out.Data) > 0 {
-			if img, err := base64.StdEncoding.DecodeString(out.Data[0].B64); err == nil {
-				note.result = u.results.put(owner, "image/png", img)
+		json.Unmarshal(res.Body, &out)
+		for i, d := range out.Data {
+			img, err := base64.StdEncoding.DecodeString(d.B64)
+			if err != nil {
+				continue
 			}
+			p := labPicture{Index: strconv.Itoa(i), URL: "/app/lab/results/" + u.results.put(owner, "image/png", img)}
+			switch {
+			case d.Seed != nil:
+				p.Seed = *d.Seed
+			case note.image != nil:
+				p.Seed = note.image.Seed + int64(i)
+			}
+			note.pictures = append(note.pictures, p)
 		}
 	case "speech":
 		note.result = u.results.put(owner, "audio/wav", res.Body)
@@ -261,6 +333,24 @@ func (u *UI) labRunStop(w http.ResponseWriter, r *http.Request) {
 
 // labRunRemove dismisses a run and drops it from the tray.
 func (u *UI) labRunRemove(w http.ResponseWriter, r *http.Request) {
+	// One picture of a batch goes on its own; the last one takes the run with it.
+	if note := u.notes.get(u.caller(r).OwnerID(), r.PathValue("id")); note != nil {
+		u.notes.collecting.Lock()
+		left := 0
+		if p := note.picture(r.PostFormValue("picture")); p != nil {
+			p.Removed = true
+		}
+		for _, p := range note.pictures {
+			if !p.Removed {
+				left++
+			}
+		}
+		u.notes.collecting.Unlock()
+		if left > 0 && r.PostFormValue("picture") != "" {
+			u.labRunRender(w, r, r.PathValue("id"))
+			return
+		}
+	}
 	u.call(r, "DELETE", "/_localbase/runs/"+r.PathValue("id"), "", nil)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }

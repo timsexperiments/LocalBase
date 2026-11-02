@@ -132,8 +132,21 @@ else {
   // The fake's PNG is a signature, not a picture: check what the page serves.
   const done = await ev(`(async () => { const li = document.querySelector("#lab-items > li"); const img = li?.querySelector("img"); if (!img) return {};
     const r = await fetch(img.getAttribute("src")); const b = new Uint8Array(await r.arrayBuffer());
-    return { type: r.headers.get("content-type"), png: b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, alt: img.alt, polling: li.hasAttribute("hx-get") }; })()`);
-  check(done.type === "image/png" && done.png && /paper boat/.test(done.alt) && !done.polling, `the finished image is in its tray after leaving: ${JSON.stringify(done)}`);
+    return { type: r.headers.get("content-type"), png: b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47, alt: li.querySelector("dialog img").alt, label: li.querySelector(".image-open").getAttribute("aria-label"), polling: li.hasAttribute("hx-get") }; })()`);
+  check(done.type === "image/png" && done.png && /paper boat/.test(done.alt) && /paper boat/.test(done.label) && !done.polling, `the finished image is in its tray after leaving: ${JSON.stringify(done)}`);
+  // The viewer: full screen, with its actions; a batch moves between pictures.
+  await nav("/app/studio/image");
+  await ev(`(() => { const f = document.querySelector("form.lab-dock"); f.querySelector("#lab-prompt").value = "a batch of two"; f.querySelector("input[name=count][value='2']").checked = true; f.querySelector("button[type=submit]").click(); })()`);
+  for (let i = 0; i < 24 && (await ev(`document.querySelectorAll("#lab-items dialog.viewer").length`)) < 3; i++) await sleep(250);
+  await ev(`document.querySelector("#lab-items .image-open").click()`);
+  await sleep(250);
+  const view = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"); const r = d.getBoundingClientRect(); const img = d.querySelector(".viewer-img").getBoundingClientRect(); const tile = document.querySelector(".image-tile").getBoundingClientRect();
+    return { full: Math.round(r.width) === innerWidth && Math.round(r.height) === innerHeight, img: img.height > 150, count: d.querySelector("[data-view-count]").textContent, acts: [...d.querySelectorAll(".viewer-foot .viewer-act span")].map((s) => s.textContent).filter(Boolean), small: [...d.querySelectorAll("button, a, summary")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 43.5).length, tile: tile.width > 100 }; })()`);
+  check(view.full && view.img && view.tile && view.small === 0 && /of/.test(view.count) && ["Save", "Vary", "Regenerate", "Details"].every((a) => view.acts.includes(a)), `the viewer fills the screen with its actions: ${JSON.stringify(view)}`);
+  const first = await ev(`document.querySelector("dialog.viewer[open]").id`);
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
+  check((await ev(`document.querySelector("dialog.viewer[open]").id`)) !== first, "Next moves to another picture");
+  await ev(`document.querySelector("dialog.viewer[open] [data-close-sheet]").click()`);
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
   for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
@@ -145,7 +158,7 @@ else {
   await sleep(800);
   const after = await ev(`document.querySelectorAll("#lab-items > li").length`);
   const left = await runsNow();
-  check(after === before - 1 && left.length === 1, `Remove drops the item and its run (${before} → ${after}, runs ${left})`);
+  check(after === before - 1 && left.length === after, `Remove drops the item and its run (${before} → ${after}, runs ${left})`);
   await ev(`document.querySelector("#lab-prompt").focus()`);
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844 - 336, deviceScaleFactor: 2, mobile: true });
   await sleep(500);

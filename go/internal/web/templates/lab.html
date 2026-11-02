@@ -19,17 +19,41 @@
   <form class="lab-dock" data-docked aria-label="Make an image" hx-post="/app/lab/image" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
     <div class="composer-box lab-box">
       <div class="lab-chips">
-        {{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}
-        {{template "lab-chip" (dict "Sheet" "lab-size" "Name" "size" "Label" "Size" "Value" (index .Sizes 0))}}
+        {{template "lab-chip" (dict "Sheet" "image-shape" "Name" "shape" "Label" "Shape" "Value" "Square")}}
+        {{template "lab-chip" (dict "Sheet" "image-look" "Name" "look" "Label" "Look" "Value" "No look")}}
+        {{template "lab-chip" (dict "Sheet" "image-count" "Name" "count" "Label" "Number" "Value" "1 picture")}}
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         <button type="button" class="chip lab-chip" data-open-sheet="lab-more" aria-haspopup="dialog">More</button>
       </div>
       {{template "lab-field" (dict "Name" "prompt" "Label" "Prompt" "Max" 16384 "Placeholder" "Describe the picture" "Action" "Generate")}}
     </div>
-    {{template "lab-model-sheet" .Models}}
-    <dialog id="lab-size" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-size-title">
-      {{template "sheet-head" (dict "ID" "lab-size-title" "Title" "Size")}}
-      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Size</legend>
-        {{range $i, $s := .Sizes}}<label class="list-row cursor-pointer"><input type="radio" name="size" value="{{$s}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$s}}</span></label>{{end}}
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    <dialog id="image-shape" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-shape-title">
+      {{template "sheet-head" (dict "ID" "image-shape-title" "Title" "Shape")}}
+      <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Shape</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="square" data-label="Square" checked class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-square"></span><span class="flex-1">Square</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="portrait" data-label="Portrait" class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-portrait"></span><span class="flex-1">Portrait</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="landscape" data-label="Landscape" class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-landscape"></span><span class="flex-1">Landscape</span></label>
+      </fieldset>
+      <fieldset class="list-group mx-4 mb-2"><legend class="list-label mt-0 px-1">Resolution</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="resolution" value="standard" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Standard</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="resolution" value="large" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Large <span class="font-normal text-muted">· takes longer</span></span></label>
+      </fieldset>
+    </dialog>
+    <dialog id="image-look" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-look-title">
+      {{template "sheet-head" (dict "ID" "image-look-title" "Title" "Look")}}
+      <p class="px-5 pb-2 text-sm text-muted">A look adds a few words to your prompt. Results depend on the model.</p>
+      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Look</legend>
+        {{range $i, $l := .Looks}}<label class="list-row cursor-pointer"><input type="radio" name="look" value="{{$l.ID}}" data-label="{{$l.Name}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$l.Name}}</span></label>{{end}}
+      </fieldset>
+    </dialog>
+    <dialog id="image-count" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-count-title">
+      {{template "sheet-head" (dict "ID" "image-count-title" "Title" "Number of pictures")}}
+      <p class="px-5 pb-2 text-sm text-muted">Each picture takes its turn, so more means a longer wait.</p>
+      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Number of pictures</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="1" data-label="1 picture" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">1 picture</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="2" data-label="2 pictures" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">2 pictures</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="4" data-label="4 pictures" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">4 pictures</span></label>
       </fieldset>
     </dialog>
     <dialog id="lab-more" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-more-title">
@@ -41,6 +65,7 @@
           <label class="grid gap-1"><span class="font-semibold">Seed</span><input class="input" name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="Random"></label>
           <label class="grid gap-1"><span class="font-semibold">Steps</span><input class="input" name="steps" inputmode="numeric" pattern="[0-9]*" placeholder="Default"></label>
         </div>
+        <p class="text-sm text-muted">A seed stays here until you clear it, so the same prompt can repeat a picture.</p>
       </div>
     </dialog>
   </form>
@@ -167,7 +192,9 @@
 {{end}}
 
 {{/* One result in the tray. While its run is active it polls itself. */}}
-{{define "lab-item"}}
+{{define "lab-item"}}{{if eq .Tool "image"}}{{template "image-item" .}}{{else}}{{template "tool-item" .}}{{end}}{{end}}
+
+{{define "tool-item"}}
 <li id="run-{{.ID}}" class="lab-item lab-item-{{.Tool}}"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
   {{with .Image}}<span class="block aspect-square overflow-hidden rounded-xl">{{template "result-image" (dict "Src" . "Alt" (or $.Caption "Generated image") "Class" "lab-image" "Tool" "image")}}</span>{{end}}
   {{if .Active}}<p class="lab-progress skeleton {{if eq .Tool "image"}}aspect-square{{end}}">{{.Message}}</p>{{end}}
@@ -251,3 +278,86 @@
 
 {{define "icon-share"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m-4 4 4-4 4 4M6 12v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7"/></svg>{{end}}
 {{define "icon-download"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>{{end}}
+
+{{/* One batch in the gallery: tiles while it is made, then pictures that open
+     a full-screen viewer. Polling replaces the whole item, so only a
+     just-started batch (.Fresh) shimmers. */}}
+{{define "image-item"}}
+<li id="run-{{.ID}}" class="image-run"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
+  {{$item := .}}{{$shape := or .Shape "square"}}
+  {{if .Active}}
+  <div class="image-grid">{{range .Tiles}}<div class="image-tile image-{{$shape}} {{if $item.Fresh}}skeleton{{end}}"></div>{{end}}</div>
+  <div class="image-cap">
+    <p class="min-w-0 flex-1"><span class="block font-semibold text-muted">{{.Message}}</span>{{with .Caption}}<span class="block truncate text-sm text-muted">{{.}}</span>{{end}}</p>
+    <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Stop {{if gt (len .Tiles) 1}}these pictures{{else}}this picture{{end}}">Stop</button>
+  </div>
+  {{else if .Pictures}}
+  <div class="image-grid">
+    {{range $p := .Pictures}}
+    <div class="image-tile image-{{$shape}}">
+      <button type="button" class="image-open" data-open-sheet="view-{{$item.ID}}-{{$p.Index}}" aria-haspopup="dialog" aria-label="Open picture{{with $item.Caption}}: {{.}}{{end}}">{{template "result-image" (dict "Src" $p.URL "Alt" "" "Class" "image-thumb" "Tool" "image")}}</button>
+    </div>
+    {{template "image-viewer" (dict "Item" $item "Picture" $p)}}
+    {{end}}
+  </div>
+  <div class="image-cap"><p class="min-w-0 flex-1 truncate text-sm text-muted">{{with .Ago}}{{.}} · {{end}}{{.Caption}}</p></div>
+  {{else}}
+  <div class="image-tile image-{{$shape}}"><p class="image-stage {{if eq .Status "failed"}}text-danger{{end}}">{{or .Message "This picture is no longer available."}}</p></div>
+  <div class="image-cap">
+    <p class="min-w-0 flex-1 truncate text-sm text-muted">{{.Caption}}</p>
+    {{if .Prompt}}<button type="button" class="btn btn-quiet shrink-0 rounded-full" data-fill="{{.Prompt}}" data-fill-tab="image">Try again</button>{{end}}
+    <button type="button" class="icon-btn" hx-post="/app/lab/runs/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this result">{{template "icon-x"}}</button>
+  </div>
+  {{end}}
+</li>
+{{end}}
+
+{{/* One picture, full screen. The model's name appears only under Details. */}}
+{{define "image-viewer"}}
+{{$i := .Item}}{{$p := .Picture}}
+<dialog id="view-{{$i.ID}}-{{$p.Index}}" class="viewer" aria-label="Picture{{with $i.Caption}}: {{.}}{{end}}">
+  <div class="viewer-top">
+    <button type="button" class="viewer-btn" data-close-sheet aria-label="Close">{{template "icon-x"}}</button>
+    <span class="viewer-count" data-view-count></span>
+    <button type="button" class="viewer-btn" data-view-step="-1" aria-label="Previous picture">{{template "icon-back"}}</button>
+    <button type="button" class="viewer-btn" data-view-step="1" aria-label="Next picture">{{template "icon-forward"}}</button>
+  </div>
+  <div class="viewer-stage">{{template "result-image" (dict "Src" $p.URL "Alt" (or $i.Caption "Generated picture") "Class" "viewer-img" "Tool" "image")}}</div>
+  <div class="viewer-foot">
+    {{with $i.Caption}}<p class="viewer-caption">{{.}}</p>{{end}}
+    <details class="viewer-details">
+      <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>
+      <div class="viewer-panel">
+        <p class="whitespace-pre-wrap wrap-anywhere">{{$i.Prompt}}</p>
+        <dl class="viewer-facts">
+          {{with $i.Size}}<div><dt>Size</dt><dd>{{.}}</dd></div>{{end}}
+          {{if $i.Look}}<div><dt>Look</dt><dd>{{$i.LookName}}</dd></div>{{end}}
+          <div><dt>Seed</dt><dd>{{$p.Seed}}</dd></div>
+          {{with $i.Model}}<div><dt>Model</dt><dd>{{.}}</dd></div>{{end}}
+          {{with $i.Ago}}<div><dt>Made</dt><dd>{{.}}</dd></div>{{end}}
+        </dl>
+        <p class="text-xs text-[#b3a8bc]">A saved picture carries its prompt and settings in the file, so anyone you send it to can read them.</p>
+        <div class="flex flex-wrap gap-2">
+          {{with $i.Prompt}}<button type="button" class="btn viewer-quiet rounded-full" data-copy-text="{{.}}">Copy prompt</button>{{end}}
+          {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}
+        </div>
+        <form hx-post="/app/lab/runs/{{$i.ID}}/remove" hx-target="#run-{{$i.ID}}" hx-swap="outerHTML">
+          <input type="hidden" name="picture" value="{{$p.Index}}">
+          {{template "confirm" (dict "Label" "Delete" "Action" "delete" "Confirm" "Delete picture" "Text" "This picture is removed from the Studio.")}}
+        </form>
+      </div>
+    </details>
+    <a class="viewer-act" href="{{$p.URL}}" download="image.png">{{template "icon-download"}}<span>Save</span></a>
+    <button type="button" class="viewer-act" data-share="{{$p.URL}}" data-share-name="image.png" hidden>{{template "icon-share"}}<span>Share</span></button>
+    {{if $i.Size}}
+    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"vary","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt with a new seed">{{template "icon-shuffle"}}<span>Vary</span></button>
+    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"same","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt and seed">{{template "icon-repeat"}}<span>Regenerate</span></button>
+    {{end}}
+  </div>
+</dialog>
+{{end}}
+
+{{define "icon-forward"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>{{end}}
+{{define "icon-info"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>{{end}}
+{{define "icon-shuffle"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h4l10 10h4M3 17h4l3-3m4-4 3-3h4m-3-3 3 3-3 3m0 7 3 3-3 3"/></svg>{{end}}
+{{define "icon-repeat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3L20 9m0-5v5h-5M20 12a8 8 0 0 1-14 5.3L4 15m0 5v-5h5"/></svg>{{end}}

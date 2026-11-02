@@ -35,6 +35,8 @@ const states: [string, string, string][] = [
   ["admin-keys", "/app/admin?section=keys", ""],
   ["studio", "/app/studio", ""],
   ["lab-image", "/app/studio/image", ""],
+  ["image-shape", "/app/studio/image", `document.querySelector("[data-open-sheet=image-shape]")?.click()`],
+  ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click()`],
   ["lab-video", "/app/studio/video", ""],
   ["lab-speech", "/app/studio/speech", ""],
   ["lab-transcribe", "/app/studio/transcribe", ""],

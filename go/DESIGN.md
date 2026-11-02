@@ -3420,6 +3420,43 @@ not "Create", because transcribing and deciding are not creating.
   each model's fixed profile (no duration or aspect presets; more qualified
   profiles are a product decision); `/v1/systemone` is not a run target.
 
+### 22.16 Image studio (PR 10)
+
+The one thing people come to do: describe a picture and get it back.
+- **Gallery first.** Each generation is a group: its pictures (one takes the
+  row, a batch shares it, in the chosen shape) and a line with when and the
+  prompt. While it is made, tiles of the final shape and the state in words;
+  only a just-started group shimmers (about 5 s at most, then still), so
+  polling does not replay it.
+- **The dock** is the shared composer. Chips show their values: Shape (with
+  Standard or Large resolution), Look, Number (1, 2 or 4), Model only when
+  there is a choice, and More (Avoid, Seed, Steps).
+- **Looks** are six named sets of words added to the prompt and negative
+  prompt; the sheet says so, and results depend on the model. A result's
+  caption stays the person's own prompt, and its details name the look.
+- **A batch is one run with `n`** (§24): separate runs would meet the limit
+  of four active runs. The pictures arrive together, and Stop stops the batch;
+  the Number sheet says more means a longer wait.
+- **Seeds.** The page always picks the seed (no seed means the same seed every
+  time at the gateway), leaving room below the API's limit for a batch, and
+  reads each picture's seed from `data[i].seed`, else base + i.
+- **The viewer** is a full-screen modal `<dialog>` per picture, always dark,
+  with Previous and Next (buttons and arrow keys; swipe is not needed) and
+  "2 of 6". Its bar: Details, Save, Share where files can be shared, **Vary**
+  (same prompt, new seed; not "more like this", as nothing makes it similar)
+  and **Regenerate** (same prompt, same seed). Details holds the prompt, size,
+  look, seed, the model's name (the only place it appears), Copy prompt, Reuse
+  settings, a note that a saved PNG carries its prompt, and Delete with the
+  shared confirmation. Delete takes one picture of a batch; the last one takes
+  the run with it.
+- **Not built:** "Use as input" needs an edit flow and an edit-capable model
+  (the API has `/v1/images/edits` as a run target); it is a follow-up.
+- **Checks:** `TestImageBatch`, `TestImageAgain`, `TestImageDelete`,
+  `TestLabImageRun`, `TestLabDock`; `tools/chat-runs-check.sh` now opens the
+  viewer and checks it fills the screen with its actions and 44 px targets (a
+  closed dialog had hidden a stylesheet mistake from every other check) and
+  moves between pictures. Measured facts about `n`, seeds and limits are §24.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to

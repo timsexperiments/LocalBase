@@ -66,7 +66,7 @@ type resultStore struct {
 }
 
 const (
-	resultLimit = 16
+	resultLimit = 48 // batches of up to four
 	resultTTL   = 30 * time.Minute
 )
 
@@ -212,6 +212,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	switch tab {
 	case "image":
 		data["Models"] = u.labModels("image")
+		data["Looks"] = imageLooks
 	case "video":
 		models := u.videoModels()
 		data["Models"] = models
@@ -241,28 +242,19 @@ func (u *UI) labOutcome(w http.ResponseWriter, r *http.Request, data map[string]
 }
 
 func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
-	req := map[string]any{"prompt": r.PostFormValue("prompt"), "size": r.PostFormValue("size"), "response_format": "b64_json"}
-	if m := r.PostFormValue("model"); m != "" {
-		req["model"] = m
-	}
-	if v := strings.TrimSpace(r.PostFormValue("negative_prompt")); v != "" {
-		req["negative_prompt"] = v
-	}
-	for _, k := range []string{"seed", "steps"} {
-		if v := strings.TrimSpace(r.PostFormValue(k)); v != "" {
-			var n json.Number = json.Number(v)
-			if _, err := n.Int64(); err != nil {
-				u.labOutcome(w, r, map[string]any{"Error": k + " must be a whole number."})
-				return
-			}
-			req[k] = n
-		}
-	}
-	body, _ := json.Marshal(req)
-	if u.labStart(w, r, "/v1/images/generations", "application/json", strings.TrimSpace(r.PostFormValue("prompt")), body) {
+	q, msg := imageForm(r)
+	if msg != "" {
+		u.labOutcome(w, r, map[string]any{"Error": msg})
 		return
 	}
-	res := u.call(r, "POST", "/v1/images/generations", "application/json", body)
+	if u.startImages(w, r, q) {
+		return
+	}
+	// Without runs: directly, showing the first picture.
+	if q.Seed < 0 {
+		q.Seed = randomSeed()
+	}
+	res := u.call(r, "POST", "/v1/images/generations", "application/json", q.body())
 	if msg := res.apiError(); msg != "" {
 		u.labOutcome(w, r, map[string]any{"Error": msg})
 		return
