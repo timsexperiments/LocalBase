@@ -59,6 +59,13 @@ const states: [string, string, string][] = [
 const tags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 await send("Page.enable");
 await send("Runtime.enable");
+await send("Network.enable");
+// A gateway with sign-in on: AXE_COOKIE="name=value" scans as that session. Get one from
+// `local-base access login-link` on a scratch gateway.
+if (process.env.AXE_COOKIE) {
+  const at = process.env.AXE_COOKIE.indexOf("=");
+  await send("Network.setCookie", { name: process.env.AXE_COOKIE.slice(0, at), value: process.env.AXE_COOKIE.slice(at + 1), url: base });
+}
 let failures = 0;
 for (const [width, mobile] of [[1280, false], [390, true]] as const) {
   await send("Emulation.setDeviceMetricsOverride", { width, height: mobile ? 844 : 900, deviceScaleFactor: mobile ? 3 : 1, mobile });
