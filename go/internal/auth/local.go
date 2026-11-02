@@ -13,7 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// One-time local sign-in (DESIGN §25). Whoever can run the CLI on this root
+// One-time local sign-in (DESIGN §28). Whoever can run the CLI on this root
 // already controls it, so the CLI may hand that person a browser session, as long
 // as it can only be used from this computer. A session therefore has every
 // permission on purpose, and is not an identity anyone else can see or manage.

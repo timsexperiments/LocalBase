@@ -4112,7 +4112,7 @@ run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
 
-## 25. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
+## 28. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
 
 Operator request, from the OSS-readiness audit. On a fresh root the browser has
 no way in: `/app/login` answers raw JSON `ui_access_denied`, and the only paths
@@ -4124,7 +4124,7 @@ it (the CLI is the break-glass path, §13.6). So the CLI may hand that same
 person a browser session, as long as the link can only be used from this
 computer.
 
-### 25.1 Issuing
+### 28.1 Issuing
 
 `local-base access login-link [--force] [--json]` prints:
 
@@ -4155,7 +4155,7 @@ fragment and is redeemed by a same-origin POST from a hash-pinned script, exactl
 magic links do (`MagicLinkPage`). A fragment never reaches a server log, and a link
 preview or a prefetching browser cannot use up a single-use token on GET.
 
-### 25.2 Redeeming, and the loopback rule
+### 28.2 Redeeming, and the loopback rule
 
 `GET /app/login/once` serves the redeem page; `POST` takes the token. Both, and every
 later request on the resulting session, must pass **all** of:
@@ -4180,7 +4180,7 @@ one live link, so the token's hash is compared in constant time against it, and 
 single conditional `DELETE` spends it, so a double submit gets one session. `GET` only
 shows the page, so a link preview cannot spend a link.
 
-### 25.3 The session
+### 28.3 The session
 
 - **Cookie:** `localbase-local-session`, `HttpOnly`, `SameSite=Strict`, host-only,
   **not** `Secure`. The existing `__Host-` cookie requires `Secure`, which Safari
@@ -4207,7 +4207,7 @@ shows the page, so a link preview cannot spend a link.
 - **Only from this computer.** A phone or another computer needs an identity provider.
   The CLI says so when it prints a link.
 
-### 25.4 `/app/login` when there is no way in
+### 28.4 `/app/login` when there is no way in
 
 A navigation (`Accept` includes `text/html`) gets an HTML page, status 403, saying
 what to do; a page that needs sign-in shows the same help in place, status 401. API clients keep today's JSON, so the differential and any script are
@@ -4215,13 +4215,13 @@ unchanged.
 
 | Situation | Page says |
 |---|---|
-| No access configured, request passes 25.2 | Run `local-base access login-link` in a terminal on this computer, then open the link it prints |
+| No access configured, request passes 28.2 | Run `local-base access login-link` in a terminal on this computer, then open the link it prints |
 | No access configured, request does not pass | Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer |
 
 The FE thread styles it. The contract is `web.LoginHelp{Local bool}`: a template that
 gets this one flag and shows the command, nothing else from the server.
 
-### 25.4a Threat model
+### 28.4a Threat model
 
 **What it protects against:**
 - Someone elsewhere on the network, or arriving through a tunnel or standard reverse
@@ -4249,14 +4249,14 @@ gets this one flag and shows the command, nothing else from the server.
 
 It is not sign-in for other people or devices. Those need an identity provider.
 
-### 25.5 Telemetry
+### 28.5 Telemetry
 
 `audit.local-login-issued` and `audit.local-login-redeemed`, with `link_id` (the first
 8 characters of the token's hash), `actor_kind` and `forced`. Refusals log
 `auth.local-login-refused` with a reason (`expired`, `not-loopback`, `rate-limited`). Never
 the token, a URL with one, or a hostname.
 
-### 25.6 Rollback and tests
+### 28.6 Rollback and tests
 
 **Rollback:** older binaries and TS ignore both tables, and `go_schema` stays 1. Local
 sessions stop working until a build that knows them returns, and the identity provider

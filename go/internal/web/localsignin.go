@@ -10,7 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
 
-// The pages of one-time local sign-in (DESIGN §25). The template gets only these
+// The pages of one-time local sign-in (DESIGN §28). The template gets only these
 // fields: nothing else from the server reaches a signed-out visitor.
 type localSignIn struct {
 	Mode   string // help | redeem | expired | too-many

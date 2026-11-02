@@ -11,7 +11,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
 
-// LoginPages renders the browser pages of local sign-in (DESIGN §25). The UI
+// LoginPages renders the browser pages of local sign-in (DESIGN §28). The UI
 // provides them; the status is already chosen here.
 type LoginPages interface {
 	LoginHelp(w http.ResponseWriter, r *http.Request, status int)

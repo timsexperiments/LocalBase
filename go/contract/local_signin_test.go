@@ -17,7 +17,7 @@ var localLinkRe = regexp.MustCompile(`http://127\.0\.0\.1:\d+/app/login/once#[A-
 
 // The whole path on the real binary with nothing configured: first-run link once,
 // the page, the session, the app, and the refusal once a provider exists. Go only:
-// TS has no local sign-in (DESIGN §25).
+// TS has no local sign-in (DESIGN §28).
 func TestFirstRunLocalSignIn(t *testing.T) {
 	if *implFlag != "go" && *implFlag != "both" {
 		t.Skip("runs the Go gateway")

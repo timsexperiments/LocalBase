@@ -66,7 +66,7 @@ type Server struct {
 	runs *runManager
 	// UI handles /app and / when set.
 	UI http.Handler
-	// LoginPages renders local sign-in's pages (DESIGN §25); nil in tests without a UI.
+	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
 	LoginPages LoginPages
 	localFails localLimit
 

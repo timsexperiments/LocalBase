@@ -39,7 +39,7 @@ var goSchema = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY (model_id, device_id)
 	)`,
-	// One-time local sign-in (DESIGN §25): hashes only. Added without raising
+	// One-time local sign-in (DESIGN §28): hashes only. Added without raising
 	// goSchemaVersion, like model_placements below.
 	`CREATE TABLE IF NOT EXISTS local_login_links (
 		token_hash TEXT PRIMARY KEY,
