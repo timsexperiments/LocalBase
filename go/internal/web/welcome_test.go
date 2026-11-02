@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -196,5 +197,43 @@ func TestChooseFromPicksTheSmallest(t *testing.T) {
 	}
 	if got := picked(chooseFrom(rows, 1_000_000_000)); got != "" {
 		t.Errorf("nothing fits the disk: %q", got)
+	}
+}
+
+// Signed in with no permissions: every page says so, offers Sign out, and offers nothing else.
+func TestNoAccessPage(t *testing.T) {
+	cat, _ := catalog.Load("")
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Name: "someone@example.com", Permissions: []string{}}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, RootDir: t.TempDir()})
+	for _, path := range []string{"/app/chat", "/app/models", "/app/studio", "/app/settings", "/app/admin", "/app/welcome", "/app/nope"} {
+		w := httptest.NewRecorder()
+		u.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		body := w.Body.String()
+		if w.Code != 403 || !strings.Contains(body, "doesn’t have access yet") || !strings.Contains(body, "someone@example.com") || !strings.Contains(body, "data-logout") {
+			t.Errorf("%s: %d %s", path, w.Code, body)
+		}
+		if strings.Contains(body, "tabbar") || strings.Contains(body, "/app/models/running") {
+			t.Errorf("%s offers somewhere to go", path)
+		}
+	}
+}
+
+// Signing out stays out: it doesn't go back to a provider that would sign you straight in.
+func TestSignedOutPage(t *testing.T) {
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return nil }})
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app?signedout=1", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "You’re signed out") || !strings.Contains(w.Body.String(), `href="/app/login"`) {
+		t.Errorf("%d %s", w.Code, w.Body.String())
+	}
+}
+
+// A sign-in that failed says so, rather than starting another one.
+func TestSignInFailedPage(t *testing.T) {
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return nil }})
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app?signin=failed", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "didn’t work") || !strings.Contains(w.Body.String(), `href="/app/login"`) {
+		t.Errorf("%d %s", w.Code, w.Body.String())
 	}
 }

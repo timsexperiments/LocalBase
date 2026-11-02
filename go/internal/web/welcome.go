@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
 
 // First run (DESIGN §25): a computer with no chat model goes from hello, to choosing one, to
@@ -33,6 +35,15 @@ func (u *UI) hasChatModel() bool {
 // home is where /app leads: the first-run hello for someone who can act on it, else Chat.
 func (u *UI) home(w http.ResponseWriter, r *http.Request) {
 	p := u.principal(r)
+	// The identity provider's way back from a sign-in that failed.
+	if r.URL.Query().Get("signin") == "failed" && !p.Authenticated() {
+		u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "failed"})
+		return
+	}
+	if r.URL.Query().Get("signedout") == "1" && !p.Authenticated() {
+		u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "signed-out"})
+		return
+	}
 	if p.Authenticated() && p.Can("models:manage") && !u.hasChatModel() {
 		http.Redirect(w, r, "/app/welcome", http.StatusFound)
 		return
@@ -320,10 +331,21 @@ func (u *UI) welcomeProgress(w http.ResponseWriter, r *http.Request) {
 	u.fragment(w, r, "welcome", "welcome-progress", map[string]any{"Install": v, "Failure": msg, "Host": computerName()})
 }
 
+// noAccess is the page for someone signed in with no permissions, whatever they opened.
+func (u *UI) noAccess(w http.ResponseWriter, r *http.Request, p *auth.Principal) {
+	w.WriteHeader(http.StatusForbidden)
+	u.render(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)), "noaccess", map[string]any{})
+}
+
 // notFound is the page for an address that isn't one, in the app's own clothes.
 func (u *UI) notFound(w http.ResponseWriter, r *http.Request) {
+	p := u.principal(r)
+	if p.Authenticated() && len(p.Permissions) == 0 {
+		u.noAccess(w, r, p)
+		return
+	}
 	w.WriteHeader(http.StatusNotFound)
-	if p := u.principal(r); p.Authenticated() {
+	if p.Authenticated() {
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, p))
 	}
 	u.render(w, r, "notfound", map[string]any{})

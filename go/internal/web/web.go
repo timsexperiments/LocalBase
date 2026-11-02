@@ -130,8 +130,9 @@ func New(d Deps) *UI {
 	}
 	u.localSignIn = template.Must(template.New("localsignin.html").Funcs(funcs).ParseFS(templateFS, "templates/localsignin.html"))
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
+	auth.Stylesheet = "/app/assets/app.css?v=" + u.assetVer["app.css"]
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound"} {
+	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound", "noaccess"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -334,6 +335,10 @@ func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/app/login", http.StatusSeeOther)
 			return
 		}
+		if len(p.Permissions) == 0 {
+			u.noAccess(w, r, p)
+			return
+		}
 		if !p.Can(permission) {
 			w.WriteHeader(http.StatusForbidden)
 			u.render(w, r, "forbidden", map[string]any{"Permission": permission})
@@ -356,7 +361,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	}
 	data["Page"] = page
 	// Everywhere someone is signed in. Running draws its own, with the legend under it.
-	if name == "layout" && data["Principal"] != nil && page != "running" {
+	if name == "layout" && data["Principal"] != nil && page != "running" && page != "noaccess" {
 		if strip := u.memoryStrip(r); strip != nil {
 			data["Strip"] = strip
 		}
