@@ -3,6 +3,14 @@
 <section aria-labelledby="models-title">
   {{template "models-header" .}}
 
+  {{with .Recommended}}
+  <section class="mt-4" aria-labelledby="start-here">
+    <h2 id="start-here" class="text-lg font-bold">Start here</h2>
+    <p class="text-sm text-muted">The smallest chat model that fits this computer.</p>
+    <ul class="list-group mt-3">{{template "catalog-row" (dict "ID" .ID "Name" .Name "Initial" .Initial "Task" .Task "DownloadBytes" .DownloadBytes "Fit" .Fit "Installed" .Installed "CanManage" $.CanManage)}}</ul>
+  </section>
+  {{end}}
+
   {{if not .CanManage}}
   <p class="card mt-4 p-4 text-sm" role="status">Read-only access. Sign in with an account authorized to manage models to search and add them.</p>
   {{else}}
@@ -23,7 +31,7 @@
     {{if not .Searched}}{{if .Catalog}}
     <div id="catalog">
       <h2 class="text-lg font-bold">From the LocalBase catalog</h2>
-      <p class="text-sm text-muted">Tested by LocalBase, with every file pinned. Search above for anything else on Hugging Face.</p>
+      <p class="text-sm text-muted">Tested by LocalBase. Search above for anything else on Hugging Face.</p>
       <div class="mt-3">{{template "task-chips" (dict "Base" "/app/models/get" "Target" "#catalog" "Filter" .Filter "Tasks" .Tasks)}}</div>
       <ul class="list-group mt-3" aria-label="Catalog models">
         {{range .Catalog}}{{template "catalog-row" (dict "ID" .ID "Name" .Name "Initial" .Initial "Task" .Task "DownloadBytes" .DownloadBytes "Fit" .Fit "Installed" .Installed "CanManage" $.CanManage)}}{{end}}

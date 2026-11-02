@@ -3,9 +3,14 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
+	"sync"
+	"time"
 )
 
 // First run (DESIGN §25): a computer with no chat model goes from hello, to choosing one, to
@@ -38,28 +43,41 @@ func (u *UI) home(w http.ResponseWriter, r *http.Request) {
 func (u *UI) welcome(w http.ResponseWriter, r *http.Request) {
 	p := u.caller(r)
 	u.render(w, r, "welcome", map[string]any{"Step": "hello", "FreeDisk": freeDisk(u.d.RootDir),
-		"CanManage": p.Can("models:manage"), "CanAdmin": p.Can("access:read") || p.Can("keys:read"), "NoSignIn": !u.d.SignInEnabled})
+		"CanManage": p.Can("models:manage"), "CanAdmin": p.Can("access:read") || p.Can("keys:read"), "NoSignIn": !u.d.SignInEnabled,
+		"Host": computerName()})
 }
+
+// smallDownload is the stated rule behind the "Small download" label. It's about size only:
+// it says nothing about how good a model is.
+const smallDownload = int64(5_000_000_000)
 
 // welcomeChoice is one chat model on the choosing page.
 type welcomeChoice struct {
 	CatalogRow
 	TooBigDisk bool
+	Small      bool
 	Pick       bool
 }
 
-// welcomeChoices lists the chat models. The first that fits both memory and disk is picked.
+// welcomeChoices lists the chat models.
 func (u *UI) welcomeChoices() []welcomeChoice {
 	rows, _ := u.catalogRows("chat")
-	disk := freeDisk(u.d.RootDir)
+	return chooseFrom(rows, freeDisk(u.d.RootDir))
+}
+
+// chooseFrom picks the smallest that fits both memory and disk, so the first download is small.
+func chooseFrom(rows []CatalogRow, disk int64) []welcomeChoice {
 	out := make([]welcomeChoice, 0, len(rows))
-	picked := false
-	for _, row := range rows {
-		c := welcomeChoice{CatalogRow: row, TooBigDisk: disk >= 0 && row.DownloadBytes > disk}
-		if !picked && row.Fit != "wont-fit" && !c.TooBigDisk {
-			c.Pick, picked = true, true
+	pick := -1
+	for i, row := range rows {
+		c := welcomeChoice{CatalogRow: row, Small: row.DownloadBytes < smallDownload, TooBigDisk: disk >= 0 && row.DownloadBytes > disk}
+		if row.Fit != "wont-fit" && !c.TooBigDisk && (pick < 0 || row.DownloadBytes < out[pick].DownloadBytes) {
+			pick = i
 		}
 		out = append(out, c)
+	}
+	if pick >= 0 {
+		out[pick].Pick = true
 	}
 	return out
 }
@@ -97,8 +115,9 @@ func (u *UI) downloading(r *http.Request) string {
 func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string) {
 	choices := u.welcomeChoices()
 	picked := slices.IndexFunc(choices, func(c welcomeChoice) bool { return c.Pick })
-	data := map[string]any{"Step": "choose", "Choices": choices, "Failure": failure,
-		"CanManage": u.caller(r).Can("models:manage")}
+	diskShort := len(choices) > 0 && !slices.ContainsFunc(choices, func(c welcomeChoice) bool { return !c.TooBigDisk })
+	data := map[string]any{"Step": "choose", "Choices": choices, "Failure": failure, "DiskShort": diskShort,
+		"SmallRule": "5 GB", "CanManage": u.caller(r).Can("models:manage")}
 	if picked >= 0 {
 		data["Picked"] = choices[picked]
 	}
@@ -143,7 +162,67 @@ type welcomeInstall struct {
 	State       string
 	Done, Total int64
 	Word        string
+	Left        string // time left, or that it depends on the connection
 	Failed      bool
+	Reason      string // why it failed, in plain words
+	Detail      string // the gateway's own sentence
+}
+
+// Time left is only said once the download has shown its speed.
+const (
+	paceAfter = 20 * time.Second
+	paceBytes = int64(50_000_000)
+)
+
+// installPace is where a download was when this gateway first saw it moving.
+type installPace struct {
+	mu    sync.Mutex
+	since map[string]paceMark
+}
+
+type paceMark struct {
+	at    time.Time
+	bytes int64
+}
+
+// left says how long a download will take, from its measured speed so far.
+func (p *installPace) left(id string, now time.Time, done, total int64) string {
+	const unknown = "How long this takes depends on your connection."
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.since == nil {
+		p.since = map[string]paceMark{}
+	}
+	mark, ok := p.since[id]
+	if !ok || done < mark.bytes {
+		p.since[id] = paceMark{now, done}
+		return unknown
+	}
+	elapsed, moved := now.Sub(mark.at), done-mark.bytes
+	if elapsed < paceAfter || moved < paceBytes || total <= done {
+		return unknown
+	}
+	seconds := float64(total-done) / (float64(moved) / elapsed.Seconds())
+	switch minutes := int(math.Ceil(seconds / 60)); {
+	case minutes <= 1:
+		return "Less than a minute left."
+	case minutes >= 120:
+		return "More than two hours left."
+	default:
+		return fmt.Sprintf("About %d minutes left.", minutes)
+	}
+}
+
+// installFailure says why a download stopped, in plain words. The gateway's sentence covers
+// every cause at once, so what's checked here is the one thing that can be: the disk.
+func installFailure(detail string, total, free int64) string {
+	switch {
+	case free >= 0 && total > free:
+		return "There isn’t enough disk space. This needs " + sizeText(total) + ", and " + sizeText(free) + " is free."
+	case strings.HasPrefix(detail, "Interrupted"):
+		return "LocalBase stopped before this finished. It can pick up where it left off."
+	}
+	return "The download stopped. This is usually the connection."
 }
 
 // installWords says what a download is doing, from the installer's own events.
@@ -193,7 +272,10 @@ func (u *UI) readInstall(r *http.Request, id string) (welcomeInstall, string) {
 				v.Total = *op.TotalBytes
 			}
 			if op.State == "failed" {
-				v.Failed, v.Word = true, op.Detail
+				v.Failed, v.Detail = true, op.Detail
+				v.Reason = installFailure(op.Detail, v.Total, freeDisk(u.d.RootDir))
+			} else {
+				v.Left = u.pace.left(id, time.Now(), v.Done, v.Total)
 			}
 		}
 	}
@@ -223,7 +305,7 @@ func (u *UI) welcomeGetting(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, u.finishInstall(r, id), http.StatusSeeOther)
 		return
 	}
-	u.render(w, r, "welcome", map[string]any{"Step": "getting", "Install": v, "Failure": msg})
+	u.render(w, r, "welcome", map[string]any{"Step": "getting", "Install": v, "Failure": msg, "Host": computerName()})
 }
 
 // welcomeProgress is the download's refresh.
@@ -235,7 +317,7 @@ func (u *UI) welcomeProgress(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	u.fragment(w, r, "welcome", "welcome-progress", map[string]any{"Install": v, "Failure": msg})
+	u.fragment(w, r, "welcome", "welcome-progress", map[string]any{"Install": v, "Failure": msg, "Host": computerName()})
 }
 
 // notFound is the page for an address that isn't one, in the app's own clothes.
@@ -245,4 +327,12 @@ func (u *UI) notFound(w http.ResponseWriter, r *http.Request) {
 		r = r.WithContext(context.WithValue(r.Context(), ctxKey{}, p))
 	}
 	u.render(w, r, "notfound", map[string]any{})
+}
+
+// sizeText prints a download's size.
+func sizeText(b int64) string {
+	if b < 1e9 {
+		return fmt.Sprintf("%.0f MB", float64(b)/1e6)
+	}
+	return fmt.Sprintf("%.1f GB", float64(b)/1e9)
 }

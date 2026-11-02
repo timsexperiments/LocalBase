@@ -23,11 +23,11 @@
       <h2 id="loaded-title" class="list-label mt-0">In memory</h2>
       {{with .Item}}
       <ul class="list-group">
-        <li class="flex items-center gap-1 pr-3">
-          <a href="/app/models/m/{{.ID}}" class="model-row min-w-0 flex-1">
+        <li class="running-row">
+          <a href="/app/models/m/{{.ID}}" class="model-row min-w-0">
             <span aria-hidden="true" class="model-avatar">{{initial .Name}}</span>
             <span class="min-w-0 flex-1">
-              <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+              <span class="block font-semibold leading-snug break-words">{{.Name}}</span>
               <span class="block text-sm text-muted">{{gib .Bytes}}{{if not .Measured}} planned{{end}}{{if .Waiting}} · {{.Waiting}} waiting{{end}}</span>
             </span>
             {{if eq .State "draining"}}<span class="pill pill-warn">Finishing</span>

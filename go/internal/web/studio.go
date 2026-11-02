@@ -90,7 +90,13 @@ func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 	if len(recent) > 4 {
 		recent = recent[:4]
 	}
-	u.render(w, r, "studio", map[string]any{"Cards": cards, "Recent": recent})
+	none := true
+	for _, c := range cards {
+		if c.State == "ready" {
+			none = false
+		}
+	}
+	u.render(w, r, "studio", map[string]any{"Cards": cards, "Recent": recent, "NoModels": none})
 }
 
 // studioTool is one tool's page.

@@ -74,6 +74,7 @@ type UI struct {
 	pending   map[string]pendingImport
 
 	stripMemory memoryCache
+	pace        installPace
 
 	results   resultStore
 	notes     labNotes
@@ -96,12 +97,7 @@ func New(d Deps) *UI {
 		"themeColor":    themeColor,
 		"asset":         func(name string) string { return "/app/assets/" + name + "?v=" + u.assetVer[name] },
 		"gb":            func(b int64) string { return fmt.Sprintf("%.1f GB", float64(b)/1e9) },
-		"size": func(b int64) string {
-			if b < 1e9 {
-				return fmt.Sprintf("%.0f MB", float64(b)/1e6)
-			}
-			return fmt.Sprintf("%.1f GB", float64(b)/1e9)
-		},
+		"size":          sizeText,
 		"num": func(n int) string {
 			s := fmt.Sprint(n)
 			for i := len(s) - 3; i > 0; i -= 3 {
@@ -119,10 +115,11 @@ func New(d Deps) *UI {
 			}
 			return m
 		},
-		"section":  section,
-		"lower":    strings.ToLower,
-		"canAdmin": func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
-		"initial":  initial,
+		"section":    section,
+		"lower":      strings.ToLower,
+		"canAdmin":   func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
+		"initial":    initial,
+		"firstWords": firstWords,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"

@@ -198,6 +198,13 @@ for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .p
   await ev(`[...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Refresh").click()`);
   await sleep(250);
 }
+// At the narrowest width a model's name stays whole: the controls move, not the letters.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+check(nameAt320.lines === 1 && !nameAt320.over, `Running at 320: the model's name stays on one line: ${JSON.stringify(nameAt320)}`);
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
 await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
 await sleep(300);
 const asked = await ev(`({ open: document.getElementById("unload-sheet")?.open, text: document.getElementById("unload-sheet")?.textContent.replace(/\\s+/g, " ") })`);
@@ -719,6 +726,20 @@ await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, devi
 await nav("/app/chat");
 const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
 check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
+
+// --- Transcribe: the prompt clears the last card; dismiss is a real target ----------------------
+for (const [w, h] of [[390, 844], [1280, 800]]) {
+  await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
+  await nav("/app/studio/transcribe");
+  const cleared = await ev(`(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+    const items = [...document.querySelectorAll("#lab-items > li")], dock = document.querySelector("[data-docked]");
+    if (!items.length || !dock) return { none: true };
+    const small = [...document.querySelectorAll("#lab-items [hx-post$='/remove']")].map((b) => { const r = b.getBoundingClientRect(); return Math.min(r.width, r.height); }).filter((n) => n < 44);
+    return { last: Math.round(items.at(-1).getBoundingClientRect().bottom), dock: Math.round(dock.getBoundingClientRect().top), small };
+  })()`);
+  check(cleared.none || (cleared.last <= cleared.dock && cleared.small.length === 0), `Transcribe at ${w}: the prompt clears the last card and dismiss is at least 44 px: ${JSON.stringify(cleared)}`);
+}
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });

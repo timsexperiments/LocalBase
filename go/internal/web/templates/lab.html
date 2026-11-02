@@ -374,12 +374,13 @@
   {{if .Active}}<p class="lab-progress skeleton">{{.Message}}</p>
   <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>{{end}}
   {{if .Transcript}}
+  <h3 class="image-title px-2">{{firstWords .Transcript}}</h3>
   {{with .Source}}<audio controls preload="metadata" src="{{.}}" class="transcript-audio" data-transcript-audio></audio>{{end}}
   {{if .Translated}}<p class="px-2 text-sm text-muted">Check a translation before relying on it.</p>{{end}}
   <div class="flex flex-wrap items-center gap-1">
     <button type="button" class="btn btn-quiet rounded-full" data-copy-transcript>Copy</button>
     <button type="button" class="btn btn-quiet rounded-full" data-open-sheet="export-{{.ID}}" aria-haspopup="dialog">Export</button>
-    {{if .Segments}}<button type="button" class="btn btn-quiet rounded-full" data-toggle-times aria-pressed="true">Times</button>{{end}}
+    {{if .Segments}}<button type="button" class="btn btn-quiet rounded-full" data-toggle-times aria-pressed="true">Timestamps</button>{{end}}
   </div>
   <p class="hidden" data-transcript>{{.Transcript}}</p>
   {{if .Segments}}<div class="transcript-text" data-times>{{range .Segments}}

@@ -467,6 +467,17 @@
   html[data-typing] .strip-row {
     @apply mb-0 w-full;
   }
+  @media (max-width: 1099px) {
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip .gauge {
+      @apply hidden;
+    }
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip-row {
+      @apply mb-0;
+    }
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip {
+      @apply flex items-center py-1;
+    }
+  }
   /* A short screen: the words and the error come first, and the page never outgrows it. */
   @media (max-height: 620px) {
     .chat-strip .strip .gauge {
@@ -522,6 +533,9 @@
     .chat-suggestion:nth-child(n + 3) {
       @apply hidden;
     }
+  }
+  .tool-icon {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted;
   }
   .chat-suggestion {
     @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
@@ -827,8 +841,45 @@
   .welcome-note {
     @apply mt-4;
   }
+  /* A short screen: the words matter more than the picture of memory. */
+  @media (max-height: 620px) {
+    .welcome .gauge {
+      @apply hidden;
+    }
+    .welcome .strip-row {
+      @apply mb-0;
+    }
+  }
   .welcome-actions {
-    @apply sticky bottom-0 mt-auto grid gap-1 bg-canvas pt-4 pb-[env(safe-area-inset-bottom)];
+    @apply sticky bottom-0 mt-auto grid gap-1 bg-canvas pt-4 pb-[env(safe-area-inset-bottom)] min-[768px]:static min-[768px]:mt-6;
+  }
+  .welcome-points {
+    @apply mt-4 grid list-disc gap-1.5 pl-5 text-sm text-muted;
+  }
+  /* Calm: it says what's next, and warns about nothing. */
+  .calm-banner {
+    @apply mt-3 flex min-h-14 items-center gap-3 rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2.5 text-ink hover:bg-hover;
+  }
+  .running-row {
+    @apply flex flex-wrap items-center gap-x-1 pr-3;
+  }
+  .running-row > a {
+    flex: 1 1 15rem;
+  }
+  /* Narrow: the state goes under the name, so the name keeps the row. */
+  @media (max-width: 399px) {
+    .running-row > a {
+      @apply flex-wrap;
+    }
+    .running-row > a > span:nth-child(2) {
+      flex: 1 1 calc(100% - 3.5rem) !important; /* over the row's own flex-1 utility */
+    }
+    .running-row > a > .pill {
+      @apply ml-[3.25rem];
+    }
+  }
+  .running-row > button {
+    @apply mb-2 ml-auto min-[400px]:mb-0;
   }
   .welcome-skip {
     @apply inline-flex min-h-11 items-center justify-center font-medium text-muted hover:text-ink;
@@ -836,9 +887,17 @@
   .choice {
     @apply flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--lb-edge)] bg-surface p-3.5 hover:bg-hover has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent;
   }
+  /* Drawn, so both schemes get the same control. */
   .choice input {
-    @apply mt-1.5 shrink-0;
-    accent-color: var(--lb-accent);
+    @apply mt-1 size-5 shrink-0 cursor-pointer rounded-full border-2 border-[var(--lb-edge)] bg-surface;
+    appearance: none;
+  }
+  .choice input:checked {
+    border-color: var(--lb-accent);
+    box-shadow: inset 0 0 0 3px var(--lb-surface), inset 0 0 0 10px var(--lb-accent);
+  }
+  .choice input:disabled {
+    @apply cursor-not-allowed;
   }
   /* Picked is a heavier line in ink, at well over 3:1. */
   .choice:has(:checked) {
@@ -854,9 +913,13 @@
     font-size: 1.25rem;
     line-height: 1.3;
   }
+  /* A fact about this computer, so ink: amber is only for something happening now. */
   .choice-fit {
-    @apply mt-1 block text-sm font-semibold;
-    color: var(--lb-lamp-text);
+    @apply mt-1 block text-sm font-semibold text-ink;
+  }
+  .choice-tag {
+    @apply ml-1 inline-block rounded-md bg-surface-muted px-1.5 py-0.5 align-middle text-xs font-semibold whitespace-nowrap text-ink;
+    font-family: var(--lb-font-sans);
   }
   .choice-fit-no {
     @apply text-danger;

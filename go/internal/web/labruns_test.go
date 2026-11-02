@@ -174,7 +174,7 @@ func TestStudioLanding(t *testing.T) {
 	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: call})
 	main := mainRe.FindString(get(u, "/app/studio").Body.String())
 	for _, want := range []string{`<h1 id="studio-title" class="page-title">Studio</h1>`, `<a href="/app/studio/image" class="studio-card">`,
-		`<a href="/app/models/get?filter=speech" class="studio-card">`, "Needs a model", "Not on your account", "What you make appears here"} {
+		`<a href="/app/models/get?filter=speech" class="studio-card">`, "Needs a model", "Not on your account", "What you make stays here"} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -133,5 +134,67 @@ func TestWelcomeGetTurnsAnInstalledModelOn(t *testing.T) {
 		if got := w.Header().Get("HX-Redirect"); got != "/app/chat?ready=1" {
 			t.Errorf("%s: redirect %q (%d)", c.name, got, w.Code)
 		}
+	}
+}
+
+func TestInstallPace(t *testing.T) {
+	var p installPace
+	start := time.Unix(1000, 0)
+	const unknown = "How long this takes depends on your connection."
+	if got := p.left("m", start, 0, 3_000_000_000); got != unknown {
+		t.Errorf("first look: %q", got)
+	}
+	if got := p.left("m", start.Add(10*time.Second), 200_000_000, 3_000_000_000); got != unknown {
+		t.Errorf("too soon: %q", got)
+	}
+	// 20 MB/s, with 2.6 GB to go: 130 s.
+	if got := p.left("m", start.Add(20*time.Second), 400_000_000, 3_000_000_000); got != "About 3 minutes left." {
+		t.Errorf("measured: %q", got)
+	}
+	if got := p.left("slow", start, 0, 3_000_000_000); got != unknown {
+		t.Errorf("first look: %q", got)
+	}
+	if got := p.left("slow", start.Add(30*time.Second), 1_000_000, 3_000_000_000); got != unknown {
+		t.Errorf("too little moved to say: %q", got)
+	}
+}
+
+func TestInstallFailureSaysWhy(t *testing.T) {
+	const generic = "Installation failed. Check storage, network access, and catalog verification."
+	if got := installFailure(generic, 3_000_000_000, 1_000_000_000); !strings.Contains(got, "enough disk space") {
+		t.Errorf("disk: %q", got)
+	}
+	if got := installFailure(generic, 3_000_000_000, 9_000_000_000); !strings.Contains(got, "usually the connection") {
+		t.Errorf("connection: %q", got)
+	}
+	if got := installFailure("Interrupted when the gateway stopped. Install again to resume.", 3_000_000_000, 9_000_000_000); !strings.Contains(got, "pick up") {
+		t.Errorf("interrupted: %q", got)
+	}
+}
+
+// The first download is the smallest that fits, and "Small download" is only about size.
+func TestChooseFromPicksTheSmallest(t *testing.T) {
+	rows := []CatalogRow{
+		{ID: "big", DownloadBytes: 20_000_000_000, Fit: "fits"},
+		{ID: "huge", DownloadBytes: 1_000_000_000, Fit: "wont-fit"},
+		{ID: "small", DownloadBytes: 3_000_000_000, Fit: "tight"},
+		{ID: "mid", DownloadBytes: 8_000_000_000, Fit: "fits"},
+	}
+	picked := func(c []welcomeChoice) (id string) {
+		for _, x := range c {
+			if x.Pick {
+				id += x.ID
+			}
+			if x.Small != (x.DownloadBytes < smallDownload) {
+				t.Errorf("%s: small %v", x.ID, x.Small)
+			}
+		}
+		return id
+	}
+	if got := picked(chooseFrom(rows, 100_000_000_000)); got != "small" {
+		t.Errorf("plenty of disk: %q", got)
+	}
+	if got := picked(chooseFrom(rows, 1_000_000_000)); got != "" {
+		t.Errorf("nothing fits the disk: %q", got)
 	}
 }

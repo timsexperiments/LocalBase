@@ -286,6 +286,15 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 		filter := taskFilter(r)
 		data["Catalog"], data["Tasks"] = u.catalogRows(filter)
 		data["Filter"] = filter
+		// Nothing to chat with yet: the smallest that fits comes before anything to search.
+		if canManage && !u.hasChatModel() {
+			for _, c := range u.welcomeChoices() {
+				if c.Pick {
+					row := c.CatalogRow
+					data["Recommended"] = &row
+				}
+			}
+		}
 	}
 	for _, k := range discoveryKinds {
 		if k.Value == kind {

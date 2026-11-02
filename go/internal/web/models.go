@@ -339,3 +339,12 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
 		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend, "Placement": place})
 }
+
+// firstWords names something by how it begins.
+func firstWords(text string) string {
+	words := strings.Fields(text)
+	if len(words) <= 6 {
+		return strings.TrimRight(strings.Join(words, " "), " .,;:!?")
+	}
+	return strings.TrimRight(strings.Join(words[:6], " "), " .,;:!?") + "…"
+}
