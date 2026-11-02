@@ -4,6 +4,7 @@ const [cdpBase, base, out, baseline] = process.argv.slice(2);
 const WIDTHS: [number, number][] = [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]];
 const SCHEMES = ["light", "dark"];
 const only = process.env.UI_SHOTS_PAGES?.split(",");
+const widthsOnly = process.env.UI_SHOTS_WIDTHS?.split(",").map(Number);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const wait = (ms: number) => `await new Promise((r)=>setTimeout(r,${ms}));`;
 // [name, path, what to do first]. Actions leave the page in the state worth reviewing.
@@ -16,6 +17,11 @@ const PAGES: [string, string, string?][] = [
   ["strip-long", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="Workshop Mac Studio in Attic";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
   ["strip-cjk", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="工房のマックスタジオ工房のマックスタジオ";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
   ["strip-unknown", "/app/studio", `document.querySelector(".strip-word").textContent="Ready";document.querySelector(".strip-free").textContent="Memory unavailable";document.querySelector(".gauge").innerHTML=Array.from({length:48},(_,i)=>'<rect x="'+i*10+'" y="9" width="6" height="2" class="gauge-unknown"/>').join("");`],
+  ["chat-preparing", "/app/chat", `const f=window.fetch;window.fetch=(u,o)=>o&&o.method==="POST"?new Promise(()=>{}):f(u,o);document.querySelector("[data-strip-word]").textContent="Getting the model ready";const p=document.querySelector("textarea");p.value="Plan a three-day trip on a small budget.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(500)}`],
+  ["chat-streaming", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:slow 80";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2000)}`],
+  ["chat-stopped", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:slow 80";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(1200)}document.querySelector("[data-stop]").click();${wait(700)}`],
+  ["chat-interrupted", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:truncated";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2500)}`],
+  ["chat-keyboard", "/app/chat", `document.querySelector("#chat-input").focus();${wait(100)}document.documentElement.setAttribute("data-typing","");${wait(150)}`],
   ["studio", "/app/studio"],
   ["image", "/app/studio/image"],
   ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click();${wait(400)}`],
@@ -49,7 +55,7 @@ await send("Page.enable");
 const shots: { page: string; width: number; scheme: string; file: string }[] = [];
 for (const [name, path, action] of PAGES) {
   if (only && !only.includes(name)) continue;
-  for (const [width, height] of WIDTHS) {
+  for (const [width, height] of WIDTHS.filter(([w]) => !widthsOnly || widthsOnly.includes(w))) {
     for (const scheme of SCHEMES) {
       const mobile = width < 1024;
       await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });

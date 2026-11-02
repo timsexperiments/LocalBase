@@ -73,6 +73,8 @@ type UI struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
 
+	stripMemory memoryCache
+
 	results   resultStore
 	notes     labNotes
 	previewMu sync.Mutex
@@ -348,7 +350,8 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
-	if name == "layout" && (page == "library" || page == "studio" || page == "get" || page == "chat") {
+	// Everywhere someone is signed in. Running draws its own, with the legend under it.
+	if name == "layout" && data["Principal"] != nil && page != "running" {
 		if strip := u.memoryStrip(r); strip != nil {
 			data["Strip"] = strip
 		}

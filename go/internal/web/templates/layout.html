@@ -30,6 +30,7 @@
   <div class="min-w-0 flex-1">
     <div id="session-notice" role="alert" aria-live="assertive" class="mx-auto max-w-5xl px-4 lg:px-10"></div>
     <main id="main" class="page">
+      {{with .Strip}}<div class="page-strip">{{template "memory-strip" .}}</div>{{end}}
       {{block "main" .}}{{end}}
     </main>
   </div>
@@ -43,16 +44,16 @@
 {{define "sidebar"}}
 {{$s := section .Page}}
 <aside class="sidebar" aria-label="LocalBase">
-  <a href="/app" hx-boost="false" class="brand"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span>LocalBase</a>
+  <a href="/app" hx-boost="false" class="brand"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span><span class="rail-label">LocalBase</span></a>
   <nav aria-label="Primary" class="mt-2">
     <ul class="grid gap-0.5">
-      <li><a class="nav-item" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}}>{{template "icon-chat"}}Chat</a></li>
-      <li><a class="nav-item" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}}>{{template "icon-models"}}Models</a></li>
-      <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}}>{{template "icon-studio"}}Studio</a></li>
-      <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}}>{{template "icon-running"}}Running</a></li>
-      <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}}>{{template "icon-voices"}}My voices</a></li>
-      <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>{{template "icon-settings"}}Settings</a></li>
-      {{if canAdmin .Principal}}<li><a class="nav-item" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}}>{{template "icon-admin"}}Admin</a></li>{{end}}
+      <li><a class="nav-item" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} title="Chat">{{template "icon-chat"}}<span class="rail-label">Chat</span></a></li>
+      <li><a class="nav-item" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}} title="Models">{{template "icon-models"}}<span class="rail-label">Models</span></a></li>
+      <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}} title="Studio">{{template "icon-studio"}}<span class="rail-label">Studio</span></a></li>
+      <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} title="Running">{{template "icon-running"}}<span class="rail-label">Running</span></a></li>
+      <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}} title="My voices">{{template "icon-voices"}}<span class="rail-label">My voices</span></a></li>
+      <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}} title="Settings">{{template "icon-settings"}}<span class="rail-label">Settings</span></a></li>
+      {{if canAdmin .Principal}}<li><a class="nav-item" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}} title="Admin">{{template "icon-admin"}}<span class="rail-label">Admin</span></a></li>{{end}}
     </ul>
   </nav>
   {{template "run-pill" "sidebar"}}
@@ -60,8 +61,8 @@
   <div class="border-t border-line pt-3">
     <button type="button" class="account-button" popovertarget="account-menu" aria-haspopup="menu">
       <span aria-hidden="true" class="avatar">{{template "initial" .}}</span>
-      <span class="min-w-0 flex-1 truncate font-semibold">{{template "account-name" .}}</span>
-      <svg aria-hidden="true" viewBox="0 0 24 24" class="size-4 text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5-5 5 5"/></svg>
+      <span class="rail-label min-w-0 flex-1 truncate font-semibold">{{template "account-name" .}}</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="rail-hide size-4 text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5-5 5 5"/></svg>
     </button>
     <div id="account-menu" popover class="menu" role="menu" aria-label="Account">
       <p class="px-3 py-2 text-sm text-muted">{{if .NoAuth}}Local access without sign-in{{else}}Signed in{{with .Principal.Name}} as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span>{{end}}{{end}}</p>
@@ -117,7 +118,7 @@
      (filled in by shell.js; hidden until there is one). */}}
 {{define "run-pill"}}
 <a href="/app/chat" hx-boost="false" class="run-pill" data-run-pill="{{.}}" hidden>
-  <span aria-hidden="true" class="run-dot"></span><span class="min-w-0 truncate" data-run-label>Generating…</span>
+  <span aria-hidden="true" class="run-dot"></span><span class="rail-label min-w-0 truncate" data-run-label>Generating…</span>
 </a>
 {{end}}
 

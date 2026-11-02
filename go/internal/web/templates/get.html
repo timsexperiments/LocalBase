@@ -2,7 +2,6 @@
 {{define "main"}}
 <section aria-labelledby="models-title">
   {{template "models-header" .}}
-  {{with .Strip}}<div class="mt-2">{{template "memory-strip" .}}</div>{{end}}
 
   {{if not .CanManage}}
   <p class="card mt-4 p-4 text-sm" role="status">Read-only access. Sign in with an account authorized to manage models to search and add them.</p>

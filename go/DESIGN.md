@@ -3910,11 +3910,13 @@ From the review: first-run, Models, Running, desktop layouts, keyboard-open stat
 ### §25 after the first review
 
 - **The gauge draws only what is known.** Below 0.05 GiB a figure prints "<0.1 GiB" and draws no segment. Without a reading the gauge is a dashed rule and the strip says "Memory unavailable"; no figures are drawn.
-- **The state comes from real state:** Ready, Busy, Getting the model ready, Finishing, Not enough memory, Memory is tight, Can't reach this computer. It covers the text model and memory pressure until `host.memory.localbase` reports the other runtimes.
-- **Source in words.** Running's legend says "Text model, measured" or "planned". The strip keeps to the plan, because Footprint runs a process per call, and says so to screen readers.
-- **One strip.** Running keeps the compact strip above its legend, going nowhere. A long name truncates with a tooltip; the state wraps and is never cut.
-- **Boundaries.** Controls use `--lb-edge`. Rounded containers use `--lb-bound`: 3:1 or better at night, faint on paper, where the fill shows them. Checked from rendered colors by chat-runs-check.
-- **Sidebar from 768 px,** 14.5rem wide. `lg:` means 48rem here, so tablets aren't stretched phones.
+- **One source.** The gauge shows the computer's own reading, in use and free, and draws no share for LocalBase, because the only figure there is covers the text model alone. Running labels that figure "Text model only, measured" or "planned". The amber share returns with `host.memory.localbase`.
+- **The state comes from real state:** Ready, Text model busy, Getting the model ready, Finishing, Not enough memory, Memory is tight, Can't reach this computer. "Busy" for the whole computer waits for a `host.activity` that covers every modality. After a refusal the strip says "Not enough memory for this model" until the person moves on.
+- **The poll.** `/app/strip` refreshes every 3 s from a visible tab, pauses when hidden, backs off to 60 s when it can't reach the computer, and answers 204 when nothing changed. The state word is the runtime's own state. Memory runs `vm_stat` on macOS, so one reading is shared for 15 s.
+- **One strip, everywhere.** At the head of every signed-in page. Running keeps it above its legend, going nowhere, and shows a long name whole. Elsewhere a long name truncates with a tooltip, and the state wraps and is never cut. While composing it is one line.
+- **Boundaries.** Controls use `--lb-edge`, and being selected is a mark at 3:1 or better, not only a tint. Decorative card edges use `--lb-bound`: 3:1 at night, faint on paper. Checked from rendered colors in both schemes by chat-runs-check.
+- **Tablets get a rail** (768 to 1099 px, 4.5rem), with chats in the drawer, as on a phone. From 1100 px the sidebar is 14.5rem. `lg:` means 48rem here; `min-[1100px]:` is where a page goes wide.
+- **Two ambers:** `--lb-brand` for the mark, `--lb-lamp` for live status. They start equal and may part.
 - **The mark is a frame and a lit doorway with no gap,** because the gap closed up at favicon sizes and read as a padlock.
 
 ## 24. Backend facts and small additions for the studios (2026-11-01)

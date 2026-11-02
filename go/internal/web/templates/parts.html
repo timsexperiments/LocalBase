@@ -70,18 +70,18 @@
 {{define "gauge"}}
 {{/* This computer's memory, in equal places. The words nearby say the same, so it is never
      shape or color alone, and the picture itself is hidden from assistive technology. */}}
-<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Other .Models .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
+<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Used 0 .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
 {{end}}
 
-{{/* What the strip's picture is made of, on Running. No reading, no figures. The two labels
-     stay until host.memory.localbase can say LocalBase and other apps. */}}
+{{/* What the strip's picture is made of, on Running: the computer's own reading. The text
+     model's figure is labelled as exactly that, because it is not all of LocalBase. */}}
 {{define "memory-legend"}}
 {{if .Known}}
 <dl class="gauge-legend">
-  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>Text model{{if .Models}}, {{.Source}}{{end}}</dt><dd>{{gib .Models}}</dd></div>
-  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Everything else</dt><dd>{{gib .Other}}</dd></div>
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>In use on this computer</dt><dd>{{gib .Used}}</dd></div>
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
+  {{if .TextModel}}<div class="gauge-legend-part"><dt>Text model only, {{.Source}}</dt><dd>{{gib .TextModel}}</dd></div>{{end}}
 </dl>
 {{end}}
 {{end}}
@@ -90,9 +90,9 @@
      opens Running. It refreshes itself, and shell.js marks it when the computer can't be
      reached. */}}
 {{define "memory-strip"}}
-<div id="memory-strip" hx-get="/app/strip" hx-trigger="every 15s" hx-swap="outerHTML" data-poll data-strip>
+<div id="memory-strip" hx-get="/app/strip" hx-trigger="every 3s" hx-swap="outerHTML" hx-headers='{"X-Strip-Key": "{{.Key}}"}' data-poll data-strip>
   <a class="strip strip-{{.State}}" href="/app/models/running">
-    {{template "strip-body" .}}<span class="sr-only">{{if and .Known .Models}} The model's share is {{.Source}}.{{end}} Open Running.</span>
+    {{template "strip-body" .}}<span class="sr-only">. Open Running.</span>
   </a>
 </div>
 {{end}}

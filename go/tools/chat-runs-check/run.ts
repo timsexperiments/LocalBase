@@ -672,7 +672,13 @@ await ev(`(() => {
 })()`);
 await sleep(800);
 const refused = await ev(`(() => { const box = document.querySelector("[data-error-box]"); return { text: box.textContent, buttons: [...box.querySelectorAll("button")].map((b) => b.textContent) }; })()`);
-check(refused.text.includes(tooLarge) && refused.buttons.join() === "Dismiss", `a model too large for this computer says so and offers no retry: ${JSON.stringify(refused.buttons)}`);
+check(refused.text.includes("too big for this computer") && refused.text.includes(tooLarge) && refused.buttons.join() === "Choose a model,Dismiss", `a model too large for this computer says so, keeps the gateway's sentence a tap away, and offers no retry: ${JSON.stringify(refused.buttons)}`);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip says the same as the refusal");
+await sleep(3500);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip still says so after a refresh");
+await ev(`[...document.querySelectorAll("[data-error-box] button")].find((b) => b.textContent === "Dismiss").click()`);
+await sleep(3500);
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "dismissing the refusal gives the strip back to real state");
 
 // --- Decisions' prompt never covers what is above it (review of #410) --------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
@@ -694,12 +700,18 @@ await nav("/app/chat");
 await ev(`document.getElementById("chat-input").focus()`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
 await sleep(700);
-const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".chat-strip"); return { flag: document.documentElement.hasAttribute("data-typing"), strip: getComputedStyle(strip).display, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
-check(typing.flag && typing.strip === "none" && typing.fits && !typing.over, `keyboard up: the strip steps aside and the composer stays in view: ${JSON.stringify(typing)}`);
+const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+check(typing.flag && typing.h >= 44 && typing.h < 60 && typing.gauge === "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, as one line, and the composer stays in view: ${JSON.stringify(typing)}`);
 if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
 
 await send("Emulation.setTouchEmulationEnabled", { enabled: false });
 await send("Emulation.setEmitTouchEventsForMouse", { enabled: false });
+
+// --- The smallest phone, empty: the heading is under the strip, not behind it -----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
+check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
@@ -713,27 +725,45 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
-// --- Dark boundaries, measured from what is rendered (DESIGN §25) -----------------------------
+// --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
-for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings"]) {
-  await nav(path);
-  const low = await ev(`(() => {
-    const rgb = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return m; };
-    const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-    const L = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-    const behind = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length < 4 || c[3] > 0) return c; } return [255, 255, 255]; };
-    const out = [];
-    for (const el of document.querySelectorAll(".card, .composer-box, .strip, .input, .chip, .btn-quiet, .list-group, .studio-card")) {
-      const st = getComputedStyle(el), r = el.getBoundingClientRect();
-      if (!r.width || parseFloat(st.borderTopWidth) === 0) continue;
-      const a = L(rgb(st.borderTopColor)), b = L(behind(el));
-      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-      if (ratio < 3) out.push(el.className.split(" ")[0] + " " + ratio.toFixed(2));
+const measure = `(() => {
+  const rgb = (c) => c.match(/[\\d.]+/g).map(Number);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  const behind = (el) => { for (let e = el; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length < 4 || c[3] > 0) return c; } return [255, 255, 255]; };
+  const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const out = [];
+  const seen = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  for (const el of document.querySelectorAll(".composer-box, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
+    if (!seen(el) || parseFloat(getComputedStyle(el).borderTopWidth) === 0) continue;
+    const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
+    if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));
+  }
+  for (const [sel, side] of [[".tab[aria-current=page]", "Top"], [".segmented > a[aria-current=page]", "Top"], [".nav-item[aria-current=page]", "Left"]]) {
+    for (const el of document.querySelectorAll(sel)) {
+      if (!seen(el)) continue;
+      const n = ratio(rgb(getComputedStyle(el)["border" + side + "Color"]), behind(el));
+      if (n < 3) out.push(sel + " " + n.toFixed(2));
     }
-    return out;
-  })()`);
-  check(low.length === 0, `dark: every boundary on ${path} is at least 3:1${low.length ? ": " + low.join(", ") : ""}`);
+  }
+  for (const el of document.querySelectorAll(".chip[aria-current=true]")) {
+    if (!seen(el)) continue;
+    const n = ratio(rgb(getComputedStyle(el).backgroundColor), behind(el.parentElement));
+    if (n < 3) out.push("chip selected " + n.toFixed(2));
+  }
+  return out;
+})()`;
+for (const scheme of ["light", "dark"]) {
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }] });
+  for (const [w, h] of [[390, 844], [1280, 800]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: h, deviceScaleFactor: 1, mobile: w < 768 });
+    for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings", "/app/studio/image"]) {
+      await nav(path);
+      const low = await ev(measure);
+      check(low.length === 0, `${scheme} ${w}: boundaries and selection marks on ${path} are at least 3:1${low.length ? ": " + low.join(", ") : ""}`);
+    }
+  }
 }
 await send("Emulation.setEmulatedMedia", { features: [] });
 

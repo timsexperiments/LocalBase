@@ -108,6 +108,13 @@
   }
 }
 
+/* A line of a model's words stays readable at any width. */
+@layer components {
+  .reply :is(p, li, h1, h2, h3, h4, blockquote) {
+    max-width: var(--lb-measure);
+  }
+}
+
 /* Chat replies (markdown) and their code blocks. */
 @layer components {
   .reply {
@@ -254,6 +261,33 @@
   .brand {
     @apply flex min-h-11 items-center gap-2.5 rounded-xl px-2 text-lg font-bold;
   }
+  @media (min-width: 768px) and (max-width: 1099px) {
+    .sidebar {
+      @apply items-center px-2;
+    }
+    .sidebar .rail-label {
+      @apply sr-only;
+    }
+    .sidebar .rail-hide,
+    .sidebar .sidebar-history {
+      @apply hidden;
+    }
+    .sidebar nav {
+      @apply w-full;
+    }
+    .sidebar .nav-item {
+      @apply justify-center pr-0 pl-0;
+    }
+    .sidebar .account-button {
+      @apply justify-center border-0 px-0;
+    }
+    .sidebar .brand {
+      @apply px-0;
+    }
+    .page {
+      @apply px-6;
+    }
+  }
   .brand-mark {
     @apply inline-grid size-7 place-items-center text-accent;
   }
@@ -261,10 +295,11 @@
     @apply size-7;
   }
   .nav-item {
-    @apply flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-muted transition-colors hover:bg-hover hover:text-ink;
+    @apply flex min-h-11 items-center gap-3 rounded-xl border-l-[3px] border-transparent pr-3 pl-[calc(0.75rem-3px)] text-base font-semibold text-muted transition-colors hover:bg-hover hover:text-ink;
   }
+  /* Being here is a mark at 3:1 or better, and not only a tint. */
   .nav-item[aria-current="page"] {
-    @apply bg-accent-soft text-accent;
+    @apply border-accent bg-accent-soft text-accent;
   }
   .account-button {
     @apply flex min-h-12 w-full items-center gap-3 rounded-xl border border-bound px-2 text-left text-base hover:bg-hover;
@@ -291,7 +326,7 @@
     min-height: var(--lb-tabbar-h);
   }
   .tab {
-    @apply flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 text-base font-semibold text-muted transition-colors hover:text-ink;
+    @apply flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 border-t-2 border-transparent text-base font-semibold text-muted transition-colors hover:text-ink;
   }
   .tab-label {
     font-size: 0.75rem;
@@ -299,7 +334,7 @@
   }
   .tab[aria-current="page"],
   .tab[data-active] {
-    @apply text-accent;
+    @apply border-accent text-accent;
   }
   .tab > svg {
     @apply size-6;
@@ -325,16 +360,21 @@
   }
   /* Items share the row by their label width (four labels fit at 360px). */
   .segmented > a {
-    @apply flex min-h-11 flex-auto items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+    @apply flex min-h-11 flex-auto items-center justify-center rounded-lg border border-transparent px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
   }
   .segmented > a[aria-current="page"] {
-    @apply bg-surface text-ink shadow-sm ring-1 ring-line;
+    @apply border-[var(--lb-edge)] bg-surface text-ink;
   }
 
   /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */
   .sheet {
     @apply mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-b-0 border-bound bg-surface p-0 text-ink shadow-sheet;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  @media (min-width: 768px) {
+    .sheet {
+      inset-inline-start: var(--lb-sidebar-w);
+    }
   }
   .sheet::backdrop {
     background: var(--lb-scrim);
@@ -400,19 +440,49 @@
 /* Chat: the tab bar sits under the composer in the page's column. */
 @layer components {
   .chat-head {
-    @apply flex min-h-11 items-center gap-1 bg-canvas px-[max(0.25rem,env(safe-area-inset-left))] pt-[max(0.25rem,env(safe-area-inset-top))] lg:mx-auto lg:w-full lg:max-w-3xl lg:px-5;
+    @apply flex min-h-11 items-center gap-1 bg-canvas px-[max(0.25rem,env(safe-area-inset-left))] pt-[max(0.25rem,env(safe-area-inset-top))] min-[1100px]:mx-auto min-[1100px]:w-full min-[1100px]:max-w-3xl min-[1100px]:px-5;
   }
   .chat-title {
-    @apply min-w-0 flex-1 truncate text-center text-base font-semibold lg:text-left;
+    @apply min-w-0 flex-1 text-center text-base font-semibold min-[1100px]:text-left;
+  }
+  .chat-rename {
+    @apply inline-flex max-w-full min-h-11 items-center rounded-lg px-2 font-semibold enabled:hover:bg-hover;
   }
   .chat-strip {
     @apply mx-auto w-full max-w-3xl px-[max(0.75rem,env(safe-area-inset-left))] pb-1;
   }
-  /* With the keyboard up on a short phone, the words come first. */
+  /* The words reach a clean edge under the strip, not a cut line of text. */
+  .chat-col #main::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 z-10 h-3;
+    background: linear-gradient(var(--lb-canvas), transparent);
+  }
+  /* While composing the strip is one line, and it stays: this is still your computer. */
+  html[data-typing] .strip .gauge {
+    @apply hidden;
+  }
+  html[data-typing] .strip {
+    @apply flex items-center py-1;
+  }
+  html[data-typing] .strip-row {
+    @apply mb-0 w-full;
+  }
+  /* A short screen: the words and the error come first, and the page never outgrows it. */
   @media (max-height: 620px) {
-    html[data-typing] .chat-strip {
+    .chat-strip .strip .gauge {
       @apply hidden;
     }
+    .chat-strip .strip-row {
+      @apply mb-0;
+    }
+  }
+  [data-error-box] {
+    @apply max-h-[50dvh] overflow-y-auto;
+  }
+  /* In Chat the chat's own Stop says it, and the pill would sit on the words or the composer.
+     A run in another chat shows in the list of chats and on every other page. */
+  .chat-col .run-pill-dock {
+    display: none !important; /* over the dock's own flex utility */
   }
   .chat-hello {
     font-family: var(--lb-font-display);
@@ -421,11 +491,37 @@
     letter-spacing: var(--lb-tracking-display);
     line-height: 1.1;
   }
+  /* Near the composer on a phone, where the thumb is. Taller than the room, it starts at
+     the top and scrolls: an automatic margin never cuts the heading off. */
+  .chat-landing:not([hidden]) {
+    @apply mx-auto flex min-h-full max-w-3xl flex-col px-4 pt-3 pb-4;
+  }
+  .chat-landing > * {
+    @apply mt-auto min-[1100px]:mb-auto;
+  }
   .chat-empty {
-    @apply flex min-h-[46dvh] flex-col justify-center px-1;
+    @apply px-1;
   }
   .chat-suggest {
-    @apply mt-4 grid gap-1.5 sm:grid-cols-3;
+    @apply mt-4 grid gap-1.5 min-[1100px]:grid-cols-3;
+  }
+  /* Too narrow for all of it, the model's name comes first; this one is in the picker too. */
+  @media (max-width: 359px) {
+    .composer-spare {
+      @apply hidden;
+    }
+  }
+  .picker-more {
+    @apply flex flex-wrap gap-x-4 border-t border-line px-4 pt-1;
+  }
+  .list-link {
+    @apply inline-flex min-h-11 items-center font-medium text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-50;
+  }
+  /* A short screen shows two: a third would only be cut by the composer. */
+  @media (max-height: 620px) {
+    .chat-suggestion:nth-child(n + 3) {
+      @apply hidden;
+    }
   }
   .chat-suggestion {
     @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
@@ -497,7 +593,7 @@
 /* Lab (DESIGN §22.10): results first, the prompt docked at the bottom. */
 @layer components {
   .lab-items {
-    @apply mt-3 grid grid-cols-1 gap-3 min-[600px]:grid-cols-2 xl:grid-cols-3;
+    @apply mt-3 grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2 xl:grid-cols-3;
   }
   .lab-empty {
     @apply mt-3 rounded-2xl border border-dashed border-bound px-5 py-8 text-center text-muted;
@@ -614,15 +710,42 @@
     height: 0.75rem;
     background: var(--lb-gauge-models);
   }
+  .page-strip {
+    @apply mb-3;
+  }
+  .gauge-legend-part {
+    display: contents;
+  }
+  .gauge-legend-part > * {
+    @apply mt-2;
+  }
   .running-legend {
     @apply mt-3 px-1;
+  }
+  @media (min-width: 1100px) {
+    .strip:not(.strip-here) {
+      @apply flex items-center gap-4 pb-2;
+    }
+    .strip:not(.strip-here) .strip-row {
+      display: contents;
+    }
+    .strip:not(.strip-here) .gauge {
+      @apply order-1 min-w-0 flex-1;
+    }
+    .strip:not(.strip-here) .strip-free {
+      @apply order-2 ml-0;
+    }
+  }
+  /* The whole name, wherever it was cut: the strip leads here. */
+  .strip-here .strip-host b {
+    @apply whitespace-normal wrap-anywhere;
   }
   /* Running is one column, with the strip at its head. */
   #running-live {
     @apply max-w-3xl;
   }
   .strip {
-    @apply block max-w-3xl rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
+    @apply block rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
     border-color: var(--lb-edge);
     min-height: 2.75rem;
   }
@@ -675,7 +798,7 @@
     color: inherit;
   }
   .mark-light {
-    fill: var(--lb-lamp);
+    fill: var(--lb-brand);
   }
 }
 
@@ -984,7 +1107,7 @@
   }
   .studio-cards {
     /* minmax(0, 1fr): a long one-line caption must not widen the column. */
-    @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[700px]:grid-cols-[repeat(2,minmax(0,1fr))];
+    @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[1100px]:grid-cols-[repeat(2,minmax(0,1fr))];
   }
   .studio-card {
     @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-bound bg-surface p-3 text-ink;

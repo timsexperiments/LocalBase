@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"compress/gzip"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"io"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -90,8 +92,8 @@ func TestGaugeSegments(t *testing.T) {
 	}{
 		{runtime.Snapshot{State: "idle"}, "normal", "Ready"},
 		{runtime.Snapshot{State: "running"}, "normal", "Ready"},
-		{runtime.Snapshot{State: "running", Active: 1}, "normal", "Busy"},
-		{runtime.Snapshot{State: "running", Waiting: 2}, "normal", "Busy"},
+		{runtime.Snapshot{State: "running", Active: 1}, "normal", "Text model busy"},
+		{runtime.Snapshot{State: "running", Waiting: 2}, "normal", "Text model busy"},
 		{runtime.Snapshot{State: "starting"}, "normal", "Getting the model ready"},
 		{runtime.Snapshot{State: "running"}, "critical", "Not enough memory"},
 		{runtime.Snapshot{State: "running"}, "constrained", "Memory is tight"},
@@ -206,3 +208,19 @@ func TestSizeBudgets(t *testing.T) {
 }
 
 const budgetChatAssets = 86 << 10
+
+func TestStripMemoryIsShared(t *testing.T) {
+	var c memoryCache
+	reads := 0
+	fresh := func() memory.Snapshot { reads++; return memory.Snapshot{Available: int64(reads)} }
+	start := time.Unix(1000, 0)
+	for i := 0; i < 5; i++ {
+		c.read(start.Add(time.Duration(i)*3*time.Second), fresh)
+	}
+	if reads != 1 {
+		t.Errorf("five refreshes across 12 s read memory %d times", reads)
+	}
+	if got := c.read(start.Add(30*time.Second), fresh); got.Available != 2 {
+		t.Errorf("an old reading stayed: %+v", got)
+	}
+}

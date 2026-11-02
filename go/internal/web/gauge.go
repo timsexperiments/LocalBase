@@ -1,11 +1,17 @@
 package web
 
 import (
+	"context"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -100,27 +106,57 @@ func stripWord(st runtime.Snapshot, pressure string) (word, state string) {
 	case pressure == "critical":
 		return "Not enough memory", "short"
 	case st.Active+st.Waiting > 0:
-		return "Busy", "load"
+		return "Text model busy", "load"
 	case pressure == "constrained":
 		return "Memory is tight", "short"
 	}
 	return "Ready", "ready"
 }
 
-// memoryView is what the strip and Running share. models is whatever the caller knows of
-// the models' share, and source says how it knows, in words.
-func (u *UI) memoryView(r *http.Request, models int64, source string) map[string]any {
-	snap := u.d.Memory.Snapshot(r.Context())
+// stripMemoryEvery is how old the strip's memory reading may be. Reading memory runs vm_stat
+// on macOS, and the strip's state word refreshes every 3 s from every open tab: that word
+// comes from the runtime's own state, and this reading is shared.
+const stripMemoryEvery = 15 * time.Second
+
+// memoryCache keeps one memory reading for everyone who asks within stripMemoryEvery.
+type memoryCache struct {
+	mu   sync.Mutex
+	at   time.Time
+	snap memory.Snapshot
+}
+
+func (c *memoryCache) read(now time.Time, fresh func() memory.Snapshot) memory.Snapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.at.IsZero() || now.Sub(c.at) >= stripMemoryEvery {
+		c.snap, c.at = fresh(), now
+	}
+	return c.snap
+}
+
+// memoryView is what the strip and Running share: the computer's own reading, in use and
+// free, from one source. It draws no share for LocalBase, because the only figure there is
+// covers the text model alone and would pass for all of LocalBase. textModel is that figure,
+// and Running labels it for what it is, until host.memory.localbase can say the whole.
+func (u *UI) memoryView(snap memory.Snapshot, textModel int64, source string) map[string]any {
 	capacity := u.d.Memory.Topology().SystemCapacity
 	known := capacity > 0 && snap.Available >= 0
-	other, free := int64(-1), "Memory unavailable"
+	used, free := int64(-1), "Memory unavailable"
 	if known {
-		other = max(capacity-snap.Available-models, 0)
+		used = max(capacity-snap.Available, 0)
 		free = fmt.Sprintf("%.0f GiB free", float64(snap.Available)/(1<<30))
 	}
 	word, state := stripWord(u.d.LLM.Snapshot(), snap.Pressure)
-	return map[string]any{"Host": computerName(), "Word": word, "State": state, "Free": free, "Known": known,
-		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": other, "Source": source}
+	// What a refresh must see change to redraw anything: the words, and a place on the gauge.
+	places := int64(0)
+	if capacity > 0 {
+		places = used * gaugeSegmentCount / capacity
+	}
+	sum := fnv.New32a()
+	sum.Write([]byte(word + "|" + free + "|" + computerName() + "|" + strconv.FormatInt(places, 10)))
+	key := strconv.FormatUint(uint64(sum.Sum32()), 16)
+	return map[string]any{"Host": computerName(), "Word": word, "State": state, "Free": free, "Known": known, "Key": key,
+		"Capacity": capacity, "Available": snap.Available, "Used": used, "TextModel": textModel, "Source": source}
 }
 
 // memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state
@@ -129,16 +165,19 @@ func (u *UI) memoryStrip(r *http.Request) map[string]any {
 	if u.d.Memory == nil || u.d.LLM == nil {
 		return nil
 	}
-	var models int64
-	// The plan, not LLM.Footprint: that runs a process per call, and this refreshes on a
-	// timer. It covers the text model only until host.memory.localbase exists.
-	if id, plan, _ := u.d.LLM.Running(); id != "" {
-		models = plan.Demand.UnifiedBytes
-	}
-	return u.memoryView(r, models, "planned")
+	// Its own context: this reading is shared, and one request ending must not spoil it.
+	snap := u.stripMemory.read(time.Now(), func() memory.Snapshot { return u.d.Memory.Snapshot(context.WithoutCancel(r.Context())) })
+	return u.memoryView(snap, 0, "")
 }
 
 // stripFragment is the strip's refresh.
+// nothing changed since the page drew it, it answers 204 and nothing is swapped.
 func (u *UI) stripFragment(w http.ResponseWriter, r *http.Request) {
-	u.fragment(w, r, "running", "memory-strip", u.memoryStrip(r))
+	strip := u.memoryStrip(r)
+	if strip != nil && r.Header.Get("X-Strip-Key") == strip["Key"] {
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	u.fragment(w, r, "running", "memory-strip", strip)
 }

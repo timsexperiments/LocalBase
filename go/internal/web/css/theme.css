@@ -35,7 +35,8 @@
   --lb-accent-text: #fcfbf8;
   --lb-accent-soft: #e9e6dd;
   --lb-accent-border: #85888d;
-  --lb-lamp: #b56b00; /* live on this machine: fills and marks */
+  --lb-brand: #b56b00; /* the mark, and nothing else */
+  --lb-lamp: #b56b00; /* live status: something is happening on this machine */
   --lb-lamp-text: #8a5200;
   --lb-other: #6b7280; /* other apps on the gauge */
   --lb-warn: #8a5200;
@@ -50,6 +51,8 @@
      (set by shell.js; 0 without a keyboard). */
   --lb-tabbar-h: 3.5rem;
   --lb-sidebar-w: 14.5rem;
+  --lb-rail-w: 4.5rem;
+  --lb-measure: 34rem; /* about 70 characters of a model's words: ch measures a wide zero */
   --lb-kb: 0px;
   --lb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -70,6 +73,7 @@
     --lb-accent-text: #10141b;
     --lb-accent-soft: #232934;
     --lb-accent-border: #7a828f;
+    --lb-brand: #f2b23e;
     --lb-lamp: #f2b23e;
     --lb-lamp-text: #f2b23e;
     --lb-other: #8e96a3;
@@ -81,6 +85,13 @@
     --lb-scrim: rgb(0 0 0 / 0.55);
     --lb-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
     --lb-shadow-sheet: 0 -6px 32px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Tablets get a rail of icons, so the page keeps the room. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  :root {
+    --lb-sidebar-w: var(--lb-rail-w);
   }
 }
 

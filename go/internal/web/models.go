@@ -259,7 +259,7 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 	case item != nil:
 		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
 	}
-	data := u.memoryView(r, models, source)
+	data := u.memoryView(u.d.Memory.Snapshot(r.Context()), models, source)
 	for k, v := range map[string]any{"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
 		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed} {
 		data[k] = v

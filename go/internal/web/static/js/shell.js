@@ -139,13 +139,48 @@ document.addEventListener("htmx:beforeRequest", (event) => {
   const elt = event.detail.elt;
   if (elt?.hasAttribute?.("data-poll") && elt.querySelector("dialog[open]")) event.preventDefault();
   // The strip has nothing to say to a page nobody is looking at.
-  if (elt?.hasAttribute?.("data-strip") && document.hidden) event.preventDefault();
+  if (elt?.hasAttribute?.("data-strip") && (document.hidden || Date.now() < stripNextTry)) event.preventDefault();
 });
+// The strip refreshes every 3 s while it can reach the computer, and backs off to a minute
+// while it can't.
+let stripNextTry = 0;
+let stripWait = 3000;
+document.addEventListener("htmx:afterOnLoad", (event) => {
+  if (!event.detail.elt?.hasAttribute?.("data-strip")) return;
+  stripNextTry = 0;
+  stripWait = 3000;
+  showRefused();
+});
+// A request this computer just refused says more than "Ready" does (chat.js). It lasts until
+// the person moves on, through refreshes.
+let refusedWord = null;
+function showRefused() {
+  if (!refusedWord) return;
+  const strip = document.querySelector("[data-strip] .strip");
+  const word = strip?.querySelector("[data-strip-word]");
+  if (!word) return;
+  word.textContent = refusedWord;
+  strip.classList.add("strip-short");
+}
+document.addEventListener("localbase:refused", (event) => {
+  const cleared = refusedWord && !event.detail;
+  refusedWord = event.detail;
+  showRefused();
+  if (cleared) {
+    stripNextTry = 0;
+    document.querySelector("[data-strip]")?.removeAttribute("hx-headers");
+  }
+});
+document.addEventListener("htmx:afterSettle", showRefused);
 // The strip when the computer can't be reached: same place, same shape, and it says so.
 // The next refresh that works redraws it.
 document.addEventListener("htmx:sendError", (event) => {
   const elt = event.detail.elt;
   if (!elt?.hasAttribute?.("data-strip")) return;
+  stripNextTry = Date.now() + stripWait;
+  stripWait = Math.min(stripWait * 2, 60000);
+  // It is about to say something else: the next answer has to redraw it.
+  elt.removeAttribute("hx-headers");
   const strip = elt.querySelector(".strip");
   strip?.classList.add("strip-off");
   const word = elt.querySelector("[data-strip-word]");

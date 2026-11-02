@@ -29,6 +29,8 @@ const stopButton = $("[data-stop]");
 const jump = $("[data-jump]");
 const status = $("#chat-status");
 const errorBox = $("[data-error-box]");
+// What the strip should say about the last request; shell.js keeps it through refreshes.
+const strip = { refused: (word) => document.dispatchEvent(new CustomEvent("localbase:refused", { detail: word })) };
 const drawer = $("#chat-drawer");
 const picker = $("#model-picker");
 const attachButton = $("[data-attach]");
@@ -177,18 +179,65 @@ function announce(text) {
   announceTimer = setTimeout(() => (status.textContent = text), 100);
 }
 
-function showError(message, retry, label = "Retry") {
+function dismissErrors() {
+  errorBox.replaceChildren();
+  strip.refused(null);
+}
+
+function errorCard() {
   errorBox.replaceChildren();
   const card = document.createElement("div");
-  card.className = "card mb-2 flex flex-wrap items-center justify-between gap-2 border-danger-line bg-danger-soft px-4 py-2";
-  const text = document.createElement("p");
-  text.className = "min-w-0 flex-1 text-sm font-semibold text-danger";
-  text.textContent = message;
-  card.append(text);
-  if (retry) card.append(button(label, "btn btn-quiet", retry));
-  card.append(button("Dismiss", "btn btn-quiet", () => errorBox.replaceChildren()));
+  card.className = "card mb-2 grid gap-2 border-danger-line bg-danger-soft px-4 py-3";
   errorBox.append(card);
+  return card;
+}
+
+function showError(message, retry, label = "Retry") {
+  const card = errorCard();
+  const text = document.createElement("p");
+  text.className = "min-w-0 text-sm font-semibold text-danger";
+  text.textContent = message;
+  const actions = document.createElement("div");
+  actions.className = "flex flex-wrap gap-2";
+  if (retry) actions.append(button(label, "btn btn-quiet", retry));
+  actions.append(button("Dismiss", "btn btn-quiet", dismissErrors));
+  card.append(text, actions);
   announce(message);
+}
+
+// The memory refusals (a model that can never fit; one that doesn't fit right now): a short
+// sentence and what to do next. The gateway's own sentence, with its figures, is one tap away.
+const refusals = {
+  model_too_large: { title: "This model is too big for this computer", line: "It won’t fit even with everything else closed. A smaller one will." },
+  insufficient_memory: { title: "Not enough free memory for this model", line: "Unload a model or close another app, then try again." },
+};
+
+function showFailure(e, retry) {
+  const refusal = refusals[e.code];
+  if (!refusal) return showError(e.message, retry);
+  strip.refused("Not enough memory for this model");
+  const card = errorCard();
+  const title = document.createElement("p");
+  title.className = "font-semibold text-danger";
+  title.textContent = refusal.title;
+  const line = document.createElement("p");
+  line.className = "text-sm";
+  line.textContent = refusal.line;
+  const why = document.createElement("details");
+  why.className = "text-sm text-muted";
+  const summary = document.createElement("summary");
+  summary.className = "cursor-pointer py-1";
+  summary.textContent = "Why";
+  const detail = document.createElement("p");
+  detail.textContent = e.message;
+  why.append(summary, detail);
+  const actions = document.createElement("div");
+  actions.className = "grid gap-2";
+  actions.append(button("Choose a model", "btn btn-primary w-full", openPicker));
+  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet w-full", retry));
+  actions.append(button("Dismiss", "btn btn-quiet w-full", dismissErrors));
+  card.append(title, line, why, actions);
+  announce(`${refusal.title}. ${refusal.line}`);
 }
 
 // warn adds a notice that doesn't stop the conversation (it stays until
@@ -433,7 +482,7 @@ function messageNode(m) {
       article.append(place);
     }
     const working = document.createElement("p");
-    working.className = "working text-sm text-muted";
+    working.className = "working text-sm text-muted empty:hidden";
     working.dataset.working = "";
     working.textContent = m.pendingText ?? "Getting a reply…";
     article.append(working);
@@ -503,6 +552,7 @@ function compactingNode() {
 
 function render() {
   $("#chat-title").textContent = active.title;
+  $("[data-rename]").disabled = !active.messages.length;
   document.title = `${active.messages.length ? active.title : "Chat"} · LocalBase`;
   renderModel();
   renderDraft();
@@ -583,6 +633,7 @@ function renderPicker() {
     radio.disabled = !m.ready;
     radio.addEventListener("change", () => {
       active.model = m.id;
+      strip.refused(null);
       picked.add(active.id);
       dropRead();
       save();
@@ -597,7 +648,7 @@ function renderPicker() {
     name.textContent = m.name;
     const facts = document.createElement("span");
     facts.className = "text-muted";
-    facts.textContent = [m.ready ? "Ready" : "Not installed", m.default ? "Default" : "", m.context ? `${m.context.toLocaleString()} tokens of context` : ""]
+    facts.textContent = [m.ready ? "Ready" : "Not installed", m.default ? "Default" : ""]
       .filter(Boolean).join(" · ");
     text.append(name, facts);
     label.append(radio, text);
@@ -699,6 +750,7 @@ function send(text) {
     delete old.pendingText;
     abort.abort(steerAbortReason);
   }
+  strip.refused(null);
   if (!conversation.messages.length) conversation.title = text ? titleFrom(text) : "Attachments";
   conversation.messages.push(user);
   draft = [];
@@ -860,7 +912,8 @@ async function reply(conversation, model) {
   running = { conversation, answer };
   let phase = { name: "waiting", since: Date.now() };
   const paintPhase = () => {
-    answer.pendingText = phaseLabel(phase.name, (Date.now() - phase.since) / 1000);
+    // Once words are arriving there is nothing to wait for, and saying so would be wrong.
+    answer.pendingText = phase.name === "waiting" && answer.text ? "" : phaseLabel(phase.name, (Date.now() - phase.since) / 1000);
     const w = list.querySelector(`article[data-id="${CSS.escape(answer.id)}"] [data-working]`);
     if (w) w.textContent = answer.pendingText;
   };
@@ -974,7 +1027,10 @@ async function reply(conversation, model) {
         ? showError(message, () => location.reload(), "Reload")
         : ended?.status === "interrupted" && answer.text
           ? showError(message, () => continueReply(conversation), "Continue")
-          : showError(message, e.code === "model_too_large" ? null : () => retry(conversation)));
+          : answer.text
+            // The reply is still there, with its own Try again; this only says what happened.
+            ? showError("The reply stopped before it finished.")
+            : showFailure(e, () => retry(conversation)));
     }
   } finally {
     clearInterval(tick);
@@ -1056,7 +1112,7 @@ async function reattach() {
     } else {
       answer.interrupted = true;
       if (ended?.status === "interrupted" && answer.text) showError(e.message, () => continueReply(conversation), "Continue");
-      else showError(e.message, e.code === "model_too_large" ? null : () => retry(conversation));
+      else showFailure(e, () => retry(conversation));
     }
   } finally {
     if (frame) cancelAnimationFrame(frame);
@@ -1176,6 +1232,27 @@ drawer.addEventListener("click", (e) => {
   if (e.target === drawer) drawer.close(); // the backdrop
 });
 $("[data-open-picker]").addEventListener("click", openPicker);
+// A chat's name is the person's to change.
+const renameSheet = $("#rename-chat");
+$("[data-rename]").addEventListener("click", () => {
+  $("#rename-input").value = active.title;
+  renameSheet.showModal();
+  $("#rename-input").select();
+});
+$("[data-close-rename]").addEventListener("click", () => renameSheet.close());
+renameSheet.addEventListener("click", (e) => {
+  if (e.target === renameSheet) renameSheet.close();
+});
+$("[data-rename-form]").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("#rename-input").value.trim();
+  if (name) {
+    active.title = name.slice(0, 60);
+    save();
+    render();
+  }
+  renameSheet.close();
+});
 // A suggestion starts the message; it never sends it.
 document.addEventListener("click", (event) => {
   const suggestion = event.target.closest?.("[data-suggest]");
@@ -1264,7 +1341,9 @@ function renderGeneration() {
   body.replaceChildren(...parts);
 }
 
-$("[data-open-generation]").addEventListener("click", () => {
+// In the composer, and in the picker for screens too narrow for it there.
+for (const opener of $$("[data-open-generation]")) opener.addEventListener("click", () => {
+  if (picker.open) picker.close();
   renderGeneration();
   generation.showModal();
 });

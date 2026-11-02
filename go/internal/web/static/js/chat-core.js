@@ -322,8 +322,10 @@ export async function streamText(response, append, reasoning) {
 }
 
 /** A conversation title from its first message (TS: 60 characters). */
+/** A chat's name: the first few words, without the punctuation around them. */
 export function titleFrom(text) {
-  return (text || "Attachments").slice(0, 60);
+  const words = (text || "").trim().split(/\s+/).slice(0, 5).join(" ").replace(/[\s\p{P}]+$/u, "");
+  return (words || (text ? text.trim() : "") || "Attachments").slice(0, 60);
 }
 
 // --- compaction (TS compaction.ts) ------------------------------------------------
