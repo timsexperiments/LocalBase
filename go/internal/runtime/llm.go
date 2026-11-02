@@ -103,6 +103,10 @@ type backend struct {
 	res     *memory.Reservation
 	baseURL string
 	stop    chan struct{}
+	// stopOnce covers the whole end of the backend, once whoever gets there
+	// first: a switch and an eviction can capture the same backend, and a
+	// caller that comes second waits here until the memory is released.
+	stopOnce sync.Once
 	// emergency: stopped because memory turned critical.
 	emergency atomic.Bool
 }
@@ -662,10 +666,12 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 		m.cur = nil
 	}
 	m.mu.Unlock()
-	close(b.stop)
-	b.proc.Stop(stopGrace)
-	logStopped(m.d.Log, "llm", b.modelID, reason, b.res.Bytes(), b.proc.PID())
-	b.res.Release()
+	b.stopOnce.Do(func() {
+		close(b.stop)
+		b.proc.Stop(stopGrace)
+		logStopped(m.d.Log, "llm", b.modelID, reason, b.res.Bytes(), b.proc.PID())
+		b.res.Release()
+	})
 }
 
 // watch samples the observed peak and handles an unexpected exit: the slot
@@ -704,8 +710,10 @@ func (m *LLM) watch(b *backend) {
 			if crashed {
 				m.d.Log.Error("llama-server exited unexpectedly.", "event", "runtime.exited", "runtime", "llm",
 					"model_id", b.modelID, "error", fmt.Sprint(b.proc.ExitErr()))
-				logStopped(m.d.Log, "llm", b.modelID, StopCrash, b.res.Bytes(), b.proc.PID())
-				b.res.Release()
+				b.stopOnce.Do(func() {
+					logStopped(m.d.Log, "llm", b.modelID, StopCrash, b.res.Bytes(), b.proc.PID())
+					b.res.Release()
+				})
 				m.mu.Lock()
 				m.pump()
 				m.mu.Unlock()
