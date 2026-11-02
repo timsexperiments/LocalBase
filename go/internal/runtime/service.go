@@ -40,6 +40,7 @@ type Service struct {
 	claimed   bool   // idle recovery is stopping the backend; hold requests
 	unloading string // the model draining for an explicit unload (DESIGN §23)
 	switchW   sync.WaitGroup
+	watches   sync.WaitGroup // backend watchers; each can end in a store write
 }
 
 // ServiceDeps are a Service's collaborators.
@@ -356,7 +357,11 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	}
 	s.cur = b
 	s.mu.Unlock()
-	go s.watch(b)
+	s.watches.Add(1)
+	go func() {
+		defer s.watches.Done()
+		s.watch(b)
+	}()
 	return demand, nil
 }
 
@@ -521,7 +526,7 @@ func (s *Service) watch(b *svcBackend) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		bytes, ok := memory.Footprint(ctx, b.proc.PID())
+		bytes, ok := sampleFootprint(ctx, b.proc.PID())
 		cancel()
 		if ok && bytes > peak {
 			peak = bytes
@@ -614,6 +619,7 @@ func (s *Service) Close() {
 	if b != nil {
 		s.stop(b, StopShutdown)
 	}
+	s.watches.Wait()
 }
 
 // --- adapters --------------------------------------------------------------------------

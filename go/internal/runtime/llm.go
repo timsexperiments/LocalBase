@@ -135,6 +135,7 @@ type LLM struct {
 	closed    bool
 	geometry  map[string]geometryEntry
 	probes    sync.WaitGroup
+	watches   sync.WaitGroup // backend watchers; each can end in a store write
 	switches  sync.WaitGroup // in-flight model switches; Close waits for them
 	failed    bool           // the last start failed and nothing runs
 	claimed   bool           // idle recovery is stopping the backend; hold requests
@@ -534,7 +535,11 @@ func (m *LLM) install(b *backend) {
 	}
 	m.cur = b
 	m.mu.Unlock()
-	go m.watch(b)
+	m.watches.Add(1)
+	go func() {
+		defer m.watches.Done()
+		m.watch(b)
+	}()
 	if b.spec != nil && m.d.Store != nil && (b.target == nil || b.target.Backend.Adapter == "llama-server/v1") {
 		m.probes.Add(1)
 		go func() {
@@ -680,7 +685,7 @@ func (m *LLM) watch(b *backend) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		bytes, ok := memory.Footprint(ctx, b.proc.PID())
+		bytes, ok := sampleFootprint(ctx, b.proc.PID())
 		cancel()
 		if ok && bytes > peak {
 			peak = bytes
@@ -751,6 +756,7 @@ func (m *LLM) Close() {
 	if b != nil {
 		m.stopBackend(b, StopShutdown)
 	}
+	m.watches.Wait()
 	m.probes.Wait()
 }
 
