@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func perm(t *testing.T, path string) os.FileMode {
+func fileMode(t *testing.T, path string) os.FileMode {
 	t.Helper()
 	info, err := os.Stat(path)
 	if err != nil {
@@ -45,7 +45,7 @@ func victimUntouched(t *testing.T, path string, content []byte) {
 	if err != nil || string(got) != string(content) {
 		t.Errorf("the victim changed: %q %v", got, err)
 	}
-	if m := perm(t, path); m != 0o644 {
+	if m := fileMode(t, path); m != 0o644 {
 		t.Errorf("the victim's mode changed: %o", m)
 	}
 }
@@ -59,7 +59,7 @@ func TestOpenOwnedRegular(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
-	if m := perm(t, path); m != 0o600 {
+	if m := fileMode(t, path); m != 0o600 {
 		t.Errorf("new: %o", m)
 	}
 	os.Chmod(path, 0o644)
@@ -68,7 +68,7 @@ func TestOpenOwnedRegular(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
-	if m := perm(t, path); m != 0o600 {
+	if m := fileMode(t, path); m != 0o600 {
 		t.Errorf("tightened: %o", m)
 	}
 	// Missing, without create.
@@ -197,7 +197,7 @@ func TestRotatedFilesStayPrivate(t *testing.T) {
 	s.size = rotateBytes
 	s.Write([]byte("second\n"))
 	for _, name := range []string{"events.jsonl", "events.1.jsonl"} {
-		if m := perm(t, filepath.Join(dir, name)); m != 0o600 {
+		if m := fileMode(t, filepath.Join(dir, name)); m != 0o600 {
 			t.Errorf("%s: %o", name, m)
 		}
 	}
@@ -242,7 +242,7 @@ func TestWritePrivateAtomic(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != "one" {
 		t.Errorf("%q", got)
 	}
-	if m := perm(t, path); m != 0o600 {
+	if m := fileMode(t, path); m != 0o600 {
 		t.Errorf("mode: %o", m)
 	}
 	// A planted fixed temporary name, or a link at the path, redirects nothing.
