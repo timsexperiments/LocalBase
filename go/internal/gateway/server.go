@@ -157,10 +157,6 @@ func PrincipalFrom(ctx context.Context) *auth.Principal {
 // browser sessions arrive with the auth milestone.
 func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			next(w, r)
-			return
-		}
 		if s.NoAuth {
 			next(w, r)
 			return
@@ -365,6 +361,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Log.Log(r.Context(), level, msg, attrs...)
 	}()
+	// No method is exempt from authentication. This gateway sends no CORS
+	// headers, so OPTIONS has no use outside the browser layer's own paths: it
+	// is refused before any handler or body read, as TS does.
+	if r.Method == http.MethodOptions && !IsUIAccessPath(r.URL.Path) {
+		r.Pattern = probe.Pattern
+		forbidden(rec, r)
+		return
+	}
 	s.mux.ServeHTTP(rec, r)
 }
 
