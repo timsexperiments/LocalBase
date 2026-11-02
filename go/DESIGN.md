@@ -4385,7 +4385,6 @@ secrets.
 of the disk. Only `serve` runs the sweep, so a loose copy stays loose until the next
 start.
 ## 28. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
-## 25. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
 
 Operator request, from the OSS-readiness audit. On a fresh root the browser has
 no way in: `/app/login` answers raw JSON `ui_access_denied`, and the only paths
@@ -4549,76 +4548,3 @@ drill was run; this rests on the tables being additive, as with `model_placement
   `TestServiceServeNeverPrintsLink`.
 - `TestLoginHelpPage`: HTML for navigations, JSON for API clients.
 - `TestLoginLinkAudit`: the planted-token scan over logs and the diagnostics bundle.
-## 26. The host block and the admission preview (2026-11-02)
-
-The memory strip and Running must tell the truth about the machine across every
-modality. Both routes are read-only, start and stop nothing, and read one shared
-sample a second (`memory.Controller.reading`), so polling never spawns a process per
-call. Admission and the pressure monitor keep reading the host themselves, always
-fresh. **An unknown figure is `null`, never 0.**
-
-**`GET /_localbase/host`** (`models:read`):
-
-```json
-{"host": {
-  "name": "Kitchen Mac", "nameSource": "setting",
-  "memory": {
-    "total": {"bytes": 68719476736, "source": "system"},
-    "available": {"bytes": 42949672960, "source": "system"},
-    "pressure": "healthy",
-    "localBase": {"bytes": 5368709120, "source": "mixed", "runtimes": [
-      {"runtime": "llm", "modelId": "…", "bytes": 3221225472, "source": "measured",
-       "plannedBytes": 4294967296, "measuredBytes": 3221225472}]},
-    "other": {"bytes": 20401094656, "source": "derived"}
-  },
-  "activity": {
-    "llm": {"configured": true, "inFlight": 1, "queued": 0},
-    "stt": {"…": "…"}, "tts": {"…": "…"}, "image": {"…": "…"}, "video": {"…": "…"},
-    "runs": {"active": 0}, "busy": true
-  }
-}, "capturedAt": 1793000000000}
-```
-
-- `source` for `total` and `available` is `system` or `unavailable`. For a runtime it is
-  `measured`, or `planned` when it is starting or the platform cannot sample it (Linux
-  today). `localBase.source` is `measured`, `planned`, `mixed` or `none`.
-- `other` is `total - available - localBase`, clamped at 0, `derived`, and `null` when
-  `total` or `available` is unknown. It includes what the system itself holds.
-- `pressure` is the state admission refuses on (`healthy`, `constrained`, `critical`), or
-  `null` with no reading. It comes from available memory against the reserve, with
-  hysteresis. It is not a macOS pressure API.
-- `host.memory` covers the system pool. On a discrete GPU the VRAM is not in it.
-- `activity.busy` is true when any modality has a request in flight or queued, or a
-  detached run has not finished. `video.inFlight` counts a generating job.
-
-**The computer name** is the `go_settings` key `host.name`: the owner's, else
-`os.Hostname()` without `.local`. `PUT /_localbase/computer-name` with `{"name": "…"}`
-(`models:manage`) sets it, at most 64 characters; an empty name goes back to the
-machine's. It stays out of logs and diagnostics.
-
-**`GET /_localbase/models/{id}/admission`** (`models:read`) says what a request would
-meet now: `modelId`, `runtime`, `admitted`, `requestedBytes`, `reserveBytes`,
-`availableBytes`, `pool`, `demandSource` and `refusal`. **It is the real path:** the
-demand comes from what a switch computes, the verdict from the same
-`Controller.evaluate`, and `refusal` is `runtimeError`'s own status, code, message and
-`Retry-After`, plus `permanent`. `TestAdmissionPreviewMatchesRefusal` compares them with
-a real request. A refused preview's figures are the refusal's, so a GPU refusal shows
-accelerator bytes against the GPU limit.
-
-- It credits this runtime and every idle one recovery could stop, as a request finally
-  would, without stopping anything. So `availableBytes` can exceed what is free now.
-- A model not on disk answers `admitted: false` with
-  `model_install_consent_required`. For an LLM its figures are then `null`, because the
-  real path checks the install first. Image and STT report memory first, as they do.
-- **`?assumeInstalled=1` answers the memory question alone,** for a model not yet on
-  disk: `admitted`, the figures, and `refusal` only for memory (`model_too_large` with
-  `permanent: true`, or `insufficient_memory`). The verdict is the real `evaluate` on
-  what the model is expected to need. That figure is an estimate: `demandSource` says
-  which (`estimated`, `measured`, `feed`, `observed` or `derived`), and it can change
-  once the file's real geometry can be read.
-- A video refusal has `jobFailure: true` and `status: null`, because the request is accepted
-  and the job then fails (§13.6).
-- Readiness is not promised: a model can pass and still fail to start.
-
-`/app/strip`, which every visible page polls, is not traced and logs only on failure,
-like `/health`.
