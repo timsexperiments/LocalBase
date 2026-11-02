@@ -69,11 +69,11 @@ type UI struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
 
-	results   resultStore
-	notes     labNotes
-	previewMu sync.Mutex
+	results     resultStore
+	notes       labNotes
+	previewMu   sync.Mutex
 	localSignIn *template.Template
-	previews  map[string][]byte // voice samples, by model and voice
+	previews    map[string][]byte // voice samples, by model and voice
 }
 
 func New(d Deps) *UI {
