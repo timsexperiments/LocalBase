@@ -53,7 +53,7 @@ go build -o local-base ./cmd/localbase
 | Platform | LocalBase runs | Runtimes it can download | Status |
 | --- | --- | --- | --- |
 | macOS, Apple Silicon | yes | all | **First-class.** The development and daily-use platform |
-| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | CI runs the tests and a fake backend. **Not qualified as an end-user install** |
+| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | CI runs the tests, the installer and a fake backend. **Not qualified as an end-user install** |
 | macOS Intel | yes | ffmpeg only | CLI only: bring your own backend executables |
 | Linux ARM64 | yes | ffmpeg only | CLI only: bring your own backend executables |
 | Windows | no | | Not planned |
@@ -61,7 +61,7 @@ go build -o local-base ./cmd/localbase
 **Not verified yet:**
 
 - **NVIDIA on Linux.** Placement and GPU admission exist, tested with synthetic fixtures only. No real NVIDIA hardware has run them, and CUDA runtimes aren't managed for you. A custom CUDA backend can be registered with `local-base backends`.
-- **Linux installs.** The service flow last passed in a disposable container, not on a real host.
+- **Linux services and real inference.** The installer and `serve` pass in CI on Ubuntu, but `local-base start` has only run in a disposable container, and real models on Linux are unqualified.
 - **Real phones and microphones.** Phone layouts and recording were checked in simulators and test browsers only.
 - **Video through the web page.** The video API has generated real clips on a Mac, but the page has never had enough free memory for a real run.
 
@@ -99,6 +99,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 - [Authentication](docs/authentication.md) and [user catalog entries](docs/user-catalog.md)
 - [Privacy](docs/privacy.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
 - [Design notes](go/DESIGN.md) and [changelog](CHANGELOG.md)
+- [Versioning and deprecation](docs/versioning.md), [release checklist](docs/release-checklist.md) and [TypeScript retirement](docs/typescript-retirement.md)
 
 ## Contributing
 

@@ -22,7 +22,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Settings | `local-base.db` | **Your Hugging Face token and OTLP headers, if you set them, are stored here unencrypted.** On a fresh install this file is readable by others on the machine except that the 0700 data directory blocks them, so keep those directory permissions |
+| Settings | `local-base.db` | **Your Hugging Face token and OTLP headers, if you set them, are stored here unencrypted.** The file itself is currently 0644, so the 0700 data directory is what keeps other users out. Keep those permissions |
 | API keys | `local-base.db` | Stored as hashes. The secret is shown once |
 | Browser sign-in secrets | `ui-access.json` (0600) | Provider secrets |
 | Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives |

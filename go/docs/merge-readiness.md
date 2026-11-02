@@ -242,9 +242,7 @@ repo and the TS binary stays on disk.
 
 **After merging, before tagging**
 
-- [ ] **Do not push a `v*` tag yet.** `release.yml` builds and publishes the TS binary
-      only, and there is no Go release job.
-- [ ] Add a Go release job.
+- [ ] **Do not push a `v*` tag yet.** Follow `docs/release-checklist.md`, which needs the Go release job in `release-go.yml`.
 - [ ] Separate later PR: retire TS sources and bun CI, and move `drizzle/` (§17.3).
 
 ## 6. Evidence and limits

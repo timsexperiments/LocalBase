@@ -218,4 +218,4 @@ jobs:
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md > notes.md
-          gh release create "$TAG" dist/* --draft --verify-tag --title "LocalBase $VERSION" --notes-file notes.md
+          gh release create "$TAG" dist/* --draft --verify-tag --latest --title "LocalBase $VERSION" --notes-file notes.md
