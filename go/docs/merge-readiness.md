@@ -244,8 +244,7 @@ repo and the TS binary stays on disk.
 
 - [ ] **Do not push a `v*` tag yet.** `release.yml` builds and publishes the TS binary
       only, and there is no Go release job.
-- [ ] Add a Go release job. Also make `go.yml` run on pushes to main; today it runs only
-      on PRs, so Go tests don't run on main itself.
+- [ ] Add a Go release job.
 - [ ] Separate later PR: retire TS sources and bun CI, and move `drizzle/` (§17.3).
 
 ## 6. Evidence and limits
