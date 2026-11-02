@@ -1,0 +1,41 @@
+name: Contributor setup
+
+# What CONTRIBUTING promises, from a fresh checkout on Linux. Unit tests already run
+# in go.yml, so this runs only when the setup itself changes.
+on:
+  pull_request:
+    paths:
+      - "Makefile"
+      - "CONTRIBUTING.md"
+      - "scripts/bootstrap.sh"
+      - "scripts/tools.pins"
+      - "scripts/check-repo-hygiene*.sh"
+      - ".github/workflows/contributor-setup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: make bootstrap
+        run: make bootstrap
+      - name: Bootstrap is safe to repeat
+        run: make bootstrap
+      - name: make check
+        run: make check
+      - name: make ui
+        run: make ui
+      - name: make lint
+        run: make lint
+      - name: make build
+        run: make build
