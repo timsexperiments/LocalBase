@@ -121,6 +121,8 @@ func New(d Deps) *UI {
 		"initial":    initial,
 		"firstWords": firstWords,
 		"studioName": func(tool string) string { return studioNames[tool] },
+		"uses":       usesText,
+		"aboutGib":   aboutGib,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"

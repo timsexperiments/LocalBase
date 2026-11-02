@@ -292,7 +292,7 @@ func (u *UI) videoItems(r *http.Request) []labItemView {
 func videoFailure(code, message string) string {
 	switch code {
 	case "insufficient_memory":
-		return "There isn’t enough free memory to make this. Unload other models or close apps, then try again."
+		return "There isn’t enough free memory to make this. Free memory on Running or close apps, then try again."
 	case "model_install_consent_required":
 		return "This model isn’t fully installed. Finish installing it, then try again."
 	}

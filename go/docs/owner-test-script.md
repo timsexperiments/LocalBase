@@ -69,5 +69,5 @@ Speech has been checked by analysis, not by listening.
 The keyboard has only been simulated by shrinking the page.
 
 1. In Chat, tap the message box. The composer should sit on top of the keyboard, with the strip
-   as one line above.
+   and its thin gauge above.
 2. Do the same in Studio's Image and Decisions.

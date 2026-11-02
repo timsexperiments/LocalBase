@@ -270,7 +270,7 @@
     }
     .sidebar .rail-hide,
     .sidebar .sidebar-history {
-      @apply hidden;
+      display: none !important; /* over the flex utility on the element */
     }
     .sidebar nav {
       @apply w-full;
@@ -459,32 +459,32 @@
   }
   /* While composing the strip is one line, and it stays: this is still your computer. */
   html[data-typing] .strip .gauge {
-    @apply hidden;
+    height: 0.375rem;
   }
   html[data-typing] .strip {
-    @apply flex items-center py-1;
+    @apply py-1.5;
   }
   html[data-typing] .strip-row {
-    @apply mb-0 w-full;
+    @apply mb-1;
   }
   @media (max-width: 1099px) {
     .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip .gauge {
-      @apply hidden;
+      height: 0.375rem;
     }
     .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip-row {
-      @apply mb-0;
+      @apply mb-1;
     }
     .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip {
-      @apply flex items-center py-1;
+      @apply py-1.5;
     }
   }
   /* A short screen: the words and the error come first, and the page never outgrows it. */
   @media (max-height: 620px) {
     .chat-strip .strip .gauge {
-      @apply hidden;
+      height: 0.375rem;
     }
     .chat-strip .strip-row {
-      @apply mb-0;
+      @apply mb-1;
     }
   }
   [data-error-box] {
@@ -690,6 +690,9 @@
   .gauge-other {
     fill: var(--lb-gauge-other);
   }
+  .gauge-sliver {
+    fill: var(--lb-gauge-models);
+  }
   .gauge-unknown {
     fill: var(--lb-gauge-free);
   }
@@ -844,10 +847,10 @@
   /* A short screen: the words matter more than the picture of memory. */
   @media (max-height: 620px) {
     .welcome .gauge {
-      @apply hidden;
+      height: 0.375rem;
     }
     .welcome .strip-row {
-      @apply mb-0;
+      @apply mb-1;
     }
   }
   .welcome-actions {
@@ -863,26 +866,24 @@
   .calm-banner-still {
     @apply border-bound hover:bg-surface;
   }
+  /* The state and the action share a line, however narrow, so a row stays two lines tall. */
   .running-row {
     @apply flex flex-wrap items-center gap-x-1 pr-3;
   }
   .running-row > a {
     flex: 1 1 15rem;
   }
-  /* Narrow: the state goes under the name, so the name keeps the row. */
-  @media (max-width: 399px) {
-    .running-row > a {
-      @apply flex-wrap;
-    }
-    .running-row > a > span:nth-child(2) {
-      flex: 1 1 calc(100% - 3.5rem) !important; /* over the row's own flex-1 utility */
-    }
-    .running-row > a > .pill {
-      @apply ml-[3.25rem];
-    }
+  .running-actions {
+    @apply flex items-center gap-2 pb-2 min-[400px]:pb-0;
+    flex: 1 1 auto;
+    justify-content: space-between;
+    padding-left: 0.75rem;
   }
-  .running-row > button {
-    @apply mb-2 ml-auto min-[400px]:mb-0;
+  @media (min-width: 400px) {
+    .running-actions {
+      flex: 0 0 auto;
+      padding-left: 0;
+    }
   }
   .welcome-skip {
     @apply inline-flex min-h-11 items-center justify-center font-medium text-muted hover:text-ink;

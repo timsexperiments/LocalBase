@@ -205,19 +205,19 @@ const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-
 check(nameAt320.lines === 1 && !nameAt320.over, `Running at 320: the model's name stays on one line: ${JSON.stringify(nameAt320)}`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
-await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
+await ev(`document.querySelector("#running-live [data-open-sheet='unload-sheet']").click()`);
 await sleep(300);
 const asked = await ev(`({ open: document.getElementById("unload-sheet")?.open, text: document.getElementById("unload-sheet")?.textContent.replace(/\\s+/g, " ") })`);
-check(asked.open && /This frees about .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
+check(asked.open && /This frees .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
 await sleep(10500); // a poll would have replaced the sheet; it waits while it is open
 check(await ev(`document.getElementById("unload-sheet")?.open === true`), "the sheet survives polling");
 await ev(`document.querySelector("#unload-sheet button.btn-primary").click()`);
 await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
-check(/^Unloading…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
-for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Unloaded")`)); i++) await sleep(250);
-const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Unloaded"), said: document.getElementById("running-status").textContent, empty: document.getElementById("running-live").textContent.includes("Nothing loaded") })`);
-check(unloaded.shown && /^Unloaded/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
+check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
+for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
+const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
+check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
 // then Play shows as pressed. Needs any 3 to 30 second audio file in
 // LBGO_VOICE_FILE.
@@ -715,7 +715,7 @@ await ev(`document.getElementById("chat-input").focus()`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
 await sleep(700);
 const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
-check(typing.flag && typing.h >= 44 && typing.h < 60 && typing.gauge === "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, as one line, and the composer stays in view: ${JSON.stringify(typing)}`);
+check(typing.flag && typing.h >= 44 && typing.h < 64 && typing.gauge !== "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, with its gauge as a thin rule, and the composer stays in view: ${JSON.stringify(typing)}`);
 if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
 
 await send("Emulation.setTouchEmulationEnabled", { enabled: false });
@@ -739,6 +739,27 @@ for (const [w, h] of [[390, 844], [1280, 800]]) {
     return { last: Math.round(items.at(-1).getBoundingClientRect().bottom), dock: Math.round(dock.getBoundingClientRect().top), small };
   })()`);
   check(cleared.none || (cleared.last <= cleared.dock && cleared.small.length === 0), `Transcribe at ${w}: the prompt clears the last card and dismiss is at least 44 px: ${JSON.stringify(cleared)}`);
+}
+
+// --- Running agrees with its own legend: a row for every runtime holding memory ----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/models/running");
+const shown = await ev(`(() => { const rows = [...document.querySelectorAll("#running-live .running-row")].map((r) => r.textContent.replace(/\\s+/g, " ").trim()); return { rows, buttons: document.querySelectorAll("#running-live [aria-label^='Free memory']").length, sheets: document.querySelectorAll("#running-live dialog[id^=unload-sheet]").length }; })()`);
+check(shown.buttons === shown.rows.length && shown.sheets === shown.rows.length, `every row on Running has its own Free memory: ${JSON.stringify(shown.rows).slice(0, 300)}`);
+
+// --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get", "/app/models/running", "/app/settings", "/app/welcome", "/app/welcome/choose", "/app/studio/image", "/app/studio/decisions"]) {
+  await nav(path);
+  const sizes = await ev(`(() => {
+    const seen = (el) => { const r = el.getBoundingClientRect(), st = getComputedStyle(el); return r.width > 1 && r.height > 1 && st.visibility !== "hidden" && !el.closest(".sr-only, dialog:not([open]), [hidden]"); };
+    const small = [...document.querySelectorAll("a.btn, button, input:not([type=hidden]):not([type=radio]):not([type=checkbox]), select, .chip, .tab, .list-row, .strip")].filter(seen).filter((el) => el.getBoundingClientRect().height < 43.5).map((el) => (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 30) + " " + Math.round(el.getBoundingClientRect().height));
+    const tiny = new Set();
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) { const n = walk.currentNode, el = n.parentElement; if (n.textContent.trim() && el && !["SCRIPT", "STYLE", "NOSCRIPT"].includes(el.tagName) && seen(el) && parseFloat(getComputedStyle(el).fontSize) < 11.99) tiny.add(n.textContent.trim().slice(0, 24) + " " + getComputedStyle(el).fontSize); }
+    return { small, tiny: [...tiny] };
+  })()`);
+  check(sizes.small.length === 0 && sizes.tiny.length === 0, `at 320, ${path}: targets at least 44 px and text at least 12 px${sizes.small.length || sizes.tiny.length ? ": " + JSON.stringify(sizes).slice(0, 320) : ""}`);
 }
 
 // --- The strip's words, under long names (review of #410) ---------------------------------

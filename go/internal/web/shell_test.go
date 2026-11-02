@@ -207,10 +207,10 @@ func TestUnload(t *testing.T) {
 		body   string
 		want   string
 	}{
-		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Unloaded. Freed 4.2 GB."},
+		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Freed 4.2 GB. Its files stay installed."},
 		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "It’s busy with 2 requests. Try again when they finish."},
-		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already unloaded."},
-		{404, `404 page not found`, "This LocalBase can’t unload models yet."},
+		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already out of memory."},
+		{404, `404 page not found`, "This LocalBase can’t free a model’s memory yet."},
 		{403, `{"error":{"code":"forbidden","message":"Missing models:manage."}}`, "Missing models:manage."},
 	} {
 		u := shellUI(t, nil, "")

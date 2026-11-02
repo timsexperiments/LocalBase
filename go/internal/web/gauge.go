@@ -17,7 +17,7 @@ const (
 	gaugeHeight       = 20
 	// gibFloor is the least that prints as a figure. Less prints "<0.1 GiB" and draws no
 	// segment, so a block never stands beside a number that says nothing is there.
-	gibFloor = int64(1<<30) / 20
+	gibFloor = int64(1<<30)/20 + 1
 )
 
 // gibText prints bytes for people.
@@ -31,7 +31,7 @@ func gibText(b int64) string {
 // gaugeSegment is one piece of the memory gauge (DESIGN §22.22).
 type gaugeSegment struct {
 	X, Y, W, H int
-	Kind       string // other | models | free | unknown
+	Kind       string // other | models | sliver | free | unknown
 }
 
 // gaugeSegments lays out memory in use across the gauge: other apps, then models, then
@@ -53,6 +53,12 @@ func gaugeSegments(other, models, capacity int64) []gaugeSegment {
 		return max(1, int((n*gaugeSegmentCount+capacity/2)/capacity))
 	}
 	o, m := count(other), count(models)
+	// Less than half a place would be exaggerated by a whole block: it gets a thin mark that
+	// says "something is here", and the figure beside it says how little.
+	sliver := models > 0 && models*gaugeSegmentCount < capacity/2
+	if sliver {
+		m = 1
+	}
 	for o+m > gaugeSegmentCount || (o+m == gaugeSegmentCount && other+models < capacity) {
 		if o >= m {
 			o--
@@ -67,6 +73,8 @@ func gaugeSegments(other, models, capacity int64) []gaugeSegment {
 		switch x := i * 10; {
 		case i < o:
 			out[i] = gaugeSegment{X: x, Y: gaugeHeight - 11, W: 8, H: 11, Kind: "other"}
+		case i < o+m && sliver:
+			out[i] = gaugeSegment{X: x + 3, W: 2, H: gaugeHeight, Kind: "sliver"}
 		case i < o+m:
 			out[i] = gaugeSegment{X: x, W: 8, H: gaugeHeight, Kind: "models"}
 		case i%4 == 0:
@@ -114,6 +122,12 @@ type hostFigure struct {
 	Bytes *int64 `json:"bytes"`
 }
 
+// hostActivity is what one runtime is doing.
+type hostActivity struct {
+	InFlight int `json:"inFlight"`
+	Queued   int `json:"queued"`
+}
+
 // hostReading is GET /_localbase/host (DESIGN §26).
 type hostReading struct {
 	Host struct {
@@ -136,6 +150,14 @@ type hostReading struct {
 		} `json:"memory"`
 		Activity struct {
 			Busy bool `json:"busy"`
+			Runs struct {
+				Active int `json:"active"`
+			} `json:"runs"`
+			LLM   hostActivity `json:"llm"`
+			STT   hostActivity `json:"stt"`
+			TTS   hostActivity `json:"tts"`
+			Image hostActivity `json:"image"`
+			Video hostActivity `json:"video"`
 		} `json:"activity"`
 	} `json:"host"`
 }
@@ -159,8 +181,31 @@ func (u *UI) hostName(r *http.Request, h *hostReading) string {
 	return computerName()
 }
 
+// activity is what the named runtime is doing.
+func (h *hostReading) activity(runtime string) hostActivity {
+	a := h.Host.Activity
+	return map[string]hostActivity{"llm": a.LLM, "stt": a.STT, "tts": a.TTS, "image": a.Image, "video": a.Video}[runtime]
+}
+
+// busyWith says what "Busy" means right now.
+func (h *hostReading) busyWith() string {
+	var doing []string
+	for _, rt := range []string{"llm", "image", "video", "tts", "stt"} {
+		if a := h.activity(rt); a.InFlight+a.Queued > 0 {
+			doing = append(doing, runtimeTasks[rt])
+		}
+	}
+	switch {
+	case len(doing) > 0:
+		return "Working on: " + strings.Join(doing, ", ") + "."
+	case h.Host.Activity.Runs.Active > 0:
+		return "Finishing work you started earlier."
+	}
+	return ""
+}
+
 // sourceWords says how LocalBase's share was arrived at.
-var sourceWords = map[string]string{"measured": "measured", "planned": "planned", "mixed": "measured and planned"}
+var sourceWords = map[string]string{"measured": "measured", "planned": "estimated", "mixed": "part measured, part estimated"}
 
 // memoryView is what the strip and Running share. Every figure is the gateway's, from one reading.
 func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
