@@ -202,13 +202,16 @@ func (u *UI) readInstall(r *http.Request, id string) (welcomeInstall, string) {
 
 // finishInstall makes the finished model the one new chats use, and says where to go.
 func (u *UI) finishInstall(r *http.Request, id string) string {
-	// The gateway selects a model before it can be the default. A failure here leaves it
+	// The person chose this one, so it's the default. Activate also enables, and is safe to
+	// repeat if the gateway already made it the default. A gateway from before that (DESIGN
+	// §13.6) refuses until it's enabled, so that's the one retry. A failure here leaves it
 	// installed, and the Library can still turn it on.
-	for _, action := range []string{"enable", "activate"} {
+	send := func(action string) string {
 		var ignored json.RawMessage
-		if msg := u.apiCall(r, "POST", "/_localbase/model-management", map[string]any{"modelId": id, "action": action}, &ignored); msg != "" {
-			return "/app/models"
-		}
+		return u.apiCall(r, "POST", "/_localbase/model-management", map[string]any{"modelId": id, "action": action}, &ignored)
+	}
+	if send("activate") != "" && (send("enable") != "" || send("activate") != "") {
+		return "/app/models"
 	}
 	return "/app/chat?ready=1"
 }

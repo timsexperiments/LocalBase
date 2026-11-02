@@ -89,8 +89,8 @@ func TestNotFoundPage(t *testing.T) {
 	}
 }
 
-// A model already on disk is turned on, in the order the gateway needs, and Chat gets a real page
-// load: a swapped-in body would not start its scripts.
+// A model already on disk is made the default with one call, and an older gateway that wants it
+// enabled first still works. Chat gets a real page load: a swapped-in body would not start its scripts.
 func TestWelcomeGetTurnsAnInstalledModelOn(t *testing.T) {
 	cat, _ := catalog.Load("")
 	var chat string
@@ -100,27 +100,38 @@ func TestWelcomeGetTurnsAnInstalledModelOn(t *testing.T) {
 			break
 		}
 	}
-	var actions []string
-	u := New(Deps{NoAuth: true, Catalog: cat, RootDir: installedRoot(t, cat, chat),
-		Call: func(_ context.Context, _ *auth.Principal, method, path, _ string, body []byte) APIResult {
-			var in struct{ Action string }
-			json.Unmarshal(body, &in)
-			actions = append(actions, method+" "+path+" "+in.Action)
-			return APIResult{Status: 200, Body: []byte(`{"state":"complete"}`)}
-		}})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/app/welcome/get", strings.NewReader(url.Values{"modelId": {chat}}.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
-	req.Header.Set("X-Localbase-UI", "1")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	withCSRF(u, req)
-	u.ServeHTTP(w, req)
-	want := []string{"POST /_localbase/model-management enable", "POST /_localbase/model-management activate"}
-	if !slices.Equal(actions, want) {
-		t.Errorf("actions %v, want %v", actions, want)
-	}
-	if got := w.Header().Get("HX-Redirect"); got != "/app/chat?ready=1" {
-		t.Errorf("redirect %q (%d)", got, w.Code)
+	for _, c := range []struct {
+		name  string
+		older bool
+		want  []string
+	}{
+		{"today", false, []string{"activate"}},
+		{"older gateway", true, []string{"activate", "enable", "activate"}},
+	} {
+		var actions []string
+		u := New(Deps{NoAuth: true, Catalog: cat, RootDir: installedRoot(t, cat, chat),
+			Call: func(_ context.Context, _ *auth.Principal, _, _, _ string, body []byte) APIResult {
+				var in struct{ Action string }
+				json.Unmarshal(body, &in)
+				actions = append(actions, in.Action)
+				if c.older && in.Action == "activate" && len(actions) == 1 {
+					return APIResult{Status: 409, Body: []byte(`{"error":{"code":"conflict","message":"Enable the model before activating it."}}`)}
+				}
+				return APIResult{Status: 200, Body: []byte(`{"state":"complete"}`)}
+			}})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/app/welcome/get", strings.NewReader(url.Values{"modelId": {chat}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("X-Localbase-UI", "1")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		withCSRF(u, req)
+		u.ServeHTTP(w, req)
+		if !slices.Equal(actions, c.want) {
+			t.Errorf("%s: actions %v, want %v", c.name, actions, c.want)
+		}
+		if got := w.Header().Get("HX-Redirect"); got != "/app/chat?ready=1" {
+			t.Errorf("%s: redirect %q (%d)", c.name, got, w.Code)
+		}
 	}
 }
