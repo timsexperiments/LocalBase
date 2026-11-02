@@ -11,6 +11,21 @@
 - [ ] The first-run story is accepted: **a fresh install has no browser sign-in** until a provider is set up.
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
 
+## Merge order
+
+Docs merge after what they describe. Arrows are stacks; each PR merges after the one before it.
+
+| Order | PRs |
+| --- | --- |
+| 1 | #403, then #411 and #421, as `go/docs/merge-readiness.md` says |
+| 2 | #404, #408, #444 |
+| 3 | #413 → #414 → #415 → #416 → #417 → #418. #414's commit and date stamping needs #406 |
+| 4 | Go features: #405 → #409 → #424, #423, #425, #426, #427, #430, #406, #422, #432 |
+| 5 | Feature docs, each after its feature: #436 (#409), #437 (#424), #438 (#426), #439 (#411), #440 (#423), #441 (#430), #442 (#425), #443 (#427) |
+| 6 | The wiring PR, last, because it links to all of the feature docs |
+
+The Go order within step 4 belongs to the Go thread. If it changes, keep the doc PRs after their features.
+
 ## What's verified, and what isn't
 
 | Area | State |
