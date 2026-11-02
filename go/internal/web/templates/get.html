@@ -2,7 +2,7 @@
 {{define "main"}}
 <section aria-labelledby="models-title">
   {{template "models-header" .}}
-  {{with .Strip}}<div class="mt-3">{{template "memory-strip" .}}</div>{{end}}
+  {{with .Strip}}<div class="mt-2">{{template "memory-strip" .}}</div>{{end}}
 
   {{if not .CanManage}}
   <p class="card mt-4 p-4 text-sm" role="status">Read-only access. Sign in with an account authorized to manage models to search and add them.</p>
@@ -98,7 +98,7 @@
   {{if .Recipes}}
   <ul class="grid gap-2" aria-label="LocalBase recipes">
     {{range .Recipes}}
-    <li class="grid gap-2 rounded-xl border border-line p-3">
+    <li class="grid gap-2 rounded-xl border border-bound p-3">
       <div class="min-w-0"><span class="font-semibold">{{.Label}}</span> <span class="text-sm text-muted">· {{.Facts}}</span>{{with .File}}<code class="mt-1 block text-xs wrap-anywhere">{{.}}</code>{{end}}</div>
       <form hx-post="/app/models/get/recipe" hx-target="next .recipe-result" hx-swap="innerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="modelId" value="{{.ModelID}}">
@@ -130,7 +130,7 @@
     <input type="hidden" name="repo" value="{{.Repo}}">
     <p class="text-sm text-muted" data-no-choice {{if .Selected}}hidden{{end}}>No balanced download fits the available estimate. Choose a file below, or try a smaller model.</p>
     {{range .Choices}}
-    <div class="grid gap-2 rounded-xl border border-line bg-surface p-3" data-choice-panel="{{.Key}}" role="group" aria-label="Chosen download" {{if not .Selected}}hidden{{end}}>
+    <div class="grid gap-2 rounded-xl border border-bound bg-surface p-3" data-choice-panel="{{.Key}}" role="group" aria-label="Chosen download" {{if not .Selected}}hidden{{end}}>
       <p class="font-semibold">{{if and .Recommended .Quant}}Suggested download{{else}}Selected download{{end}} · {{.QuantLabel}}</p>
       <p class="text-sm">{{.Advice}}</p>
       {{if not .Fit}}<p class="text-sm">Memory fit is unknown. Check your available memory before installing.</p>{{end}}
@@ -159,7 +159,7 @@
       <fieldset class="grid gap-2">
         <legend class="sr-only">Download file</legend>
         {{range .Choices}}
-        <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+        <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-bound p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
           <input type="radio" class="mt-1 accent-[var(--lb-accent)]" name="selector" value="{{.Path}}" data-choice="{{.Key}}" data-fit="{{.Badge}}" data-fit-hint="{{with .Fit}}{{.Message}}{{end}}" {{if .Selected}}checked{{end}} {{if not $.CanManage}}disabled{{end}}>
           <span class="grid min-w-0 gap-0.5">
             <span class="font-semibold">{{.QuantLabel}} · {{.Size}}{{if gt .PartCount 1}} · {{.PartCount}} parts, total{{end}}{{if .Recommended}} · Suggested{{end}}</span>

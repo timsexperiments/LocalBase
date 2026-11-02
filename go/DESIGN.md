@@ -3907,6 +3907,16 @@ The owner's bar: "The UI is still trash and needs real work." What shipped was s
 
 From the review: first-run, Models, Running, desktop layouts, keyboard-open states, long replies, failures, enlarged text at 320 px, and a real device. Each is shown as built screens in the PR that builds it, or listed as open.
 
+### §25 after the first review
+
+- **The gauge draws only what is known.** Below 0.05 GiB a figure prints "<0.1 GiB" and draws no segment. Without a reading the gauge is a dashed rule and the strip says "Memory unavailable"; no figures are drawn.
+- **The state comes from real state:** Ready, Busy, Getting the model ready, Finishing, Not enough memory, Memory is tight, Can't reach this computer. It covers the text model and memory pressure until `host.memory.localbase` reports the other runtimes.
+- **Source in words.** Running's legend says "Text model, measured" or "planned". The strip keeps to the plan, because Footprint runs a process per call, and says so to screen readers.
+- **One strip.** Running keeps the compact strip above its legend, going nowhere. A long name truncates with a tooltip; the state wraps and is never cut.
+- **Boundaries.** Controls use `--lb-edge`. Rounded containers use `--lb-bound`: 3:1 or better at night, faint on paper, where the fill shows them. Checked from rendered colors by chat-runs-check.
+- **Sidebar from 768 px,** 14.5rem wide. `lg:` means 48rem here, so tablets aren't stretched phones.
+- **The mark is a frame and a lit doorway with no gap,** because the gap closed up at favicon sizes and read as a padlock.
+
 ## 24. Backend facts and small additions for the studios (2026-11-01)
 
 Asked by the FE thread for the per-modality studios. Each behavior below

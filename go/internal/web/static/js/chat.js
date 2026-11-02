@@ -55,7 +55,7 @@ async function refreshDefault() {
 }
 // Conversations whose model the person chose in the picker (not saved).
 const picked = new Set();
-const fresh = () => ({ id: uuid(), title: "New conversation", workspace: "chat", mode: "llm", model: defaultModelId(), messages: [] });
+const fresh = () => ({ id: uuid(), title: "New chat", workspace: "chat", mode: "llm", model: defaultModelId(), messages: [] });
 
 // --- state ----------------------------------------------------------------------
 
@@ -227,7 +227,7 @@ function renderConversations() {
       const a = document.createElement("a");
       a.href = `?conversation=${encodeURIComponent(c.id)}`;
       a.className = "flex min-h-11 items-center rounded-xl px-3 wrap-anywhere hover:bg-hover";
-      a.textContent = c.title || "New conversation";
+      a.textContent = c.title || "New chat";
       if (c === active) {
         a.setAttribute("aria-current", "page");
         a.classList.add("bg-accent-soft", "font-semibold", "text-accent");
@@ -301,7 +301,7 @@ function chips(attachments, remove) {
   ul.setAttribute("aria-label", "Attachments");
   for (const a of attachments) {
     const li = document.createElement("li");
-    li.className = `flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-line bg-surface py-1 pl-1 ${remove ? "pr-1" : "pr-3"} text-sm`;
+    li.className = `flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-bound bg-surface py-1 pl-1 ${remove ? "pr-1" : "pr-3"} text-sm`;
     if (a.kind === "image") {
       const img = document.createElement("img");
       img.src = a.url;
@@ -392,7 +392,7 @@ function messageNode(m) {
     article.append(heading("You"));
     if (m.text) {
       const bubble = document.createElement("div");
-      bubble.className = "max-w-[85%] whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5";
+      bubble.className = "max-w-[85%] whitespace-pre-wrap wrap-anywhere rounded-2xl rounded-br-md bg-surface-muted px-4 py-2.5";
       bubble.textContent = m.text;
       article.append(bubble);
     }
@@ -424,10 +424,18 @@ function messageNode(m) {
   article.append(body);
   for (const a of m.artifacts ?? []) article.append(artifactNode(a));
   if (m.pending) {
+    // Before the first word arrives, its place.
+    if (!m.text) {
+      const place = document.createElement("div");
+      place.className = "reply-place";
+      place.setAttribute("aria-hidden", "true");
+      place.innerHTML = '<i class="skeleton"></i><i class="skeleton"></i><i class="skeleton"></i>';
+      article.append(place);
+    }
     const working = document.createElement("p");
     working.className = "working text-sm text-muted";
     working.dataset.working = "";
-    working.textContent = m.pendingText ?? "Waiting for a reply…";
+    working.textContent = m.pendingText ?? "Getting a reply…";
     article.append(working);
   } else {
     const actions = document.createElement("div");
@@ -441,7 +449,7 @@ function messageNode(m) {
     if (m.text) actions.append(copyButton(() => m.text, "Copy"));
     // Another answer to the same message, on the newest reply only.
     if (!abort && m === active.messages.at(-1) && (m.text || m.interrupted))
-      actions.append(button("Retry", "md-copy", () => retry(active), { "aria-label": "Retry this reply" }));
+      actions.append(button("Try again", "md-copy", () => retry(active), { "aria-label": "Try this reply again" }));
     if (!m.text && !m.interrupted && !m.reasoning) {
       const none = document.createElement("span");
       none.className = "text-sm text-muted";
@@ -565,7 +573,7 @@ function renderPicker() {
   const body = $("[data-picker-list]");
   const row = (m) => {
     const label = document.createElement("label");
-    label.className = "flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:disabled]:cursor-default has-[:disabled]:opacity-70";
+    label.className = "flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-bound p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:disabled]:cursor-default has-[:disabled]:opacity-70";
     const radio = document.createElement("input");
     radio.type = "radio";
     radio.name = "model";
@@ -966,7 +974,7 @@ async function reply(conversation, model) {
         ? showError(message, () => location.reload(), "Reload")
         : ended?.status === "interrupted" && answer.text
           ? showError(message, () => continueReply(conversation), "Continue")
-          : showError(message, () => retry(conversation)));
+          : showError(message, e.code === "model_too_large" ? null : () => retry(conversation)));
     }
   } finally {
     clearInterval(tick);
@@ -1048,7 +1056,7 @@ async function reattach() {
     } else {
       answer.interrupted = true;
       if (ended?.status === "interrupted" && answer.text) showError(e.message, () => continueReply(conversation), "Continue");
-      else showError(e.message, () => retry(conversation));
+      else showError(e.message, e.code === "model_too_large" ? null : () => retry(conversation));
     }
   } finally {
     if (frame) cancelAnimationFrame(frame);
@@ -1168,6 +1176,15 @@ drawer.addEventListener("click", (e) => {
   if (e.target === drawer) drawer.close(); // the backdrop
 });
 $("[data-open-picker]").addEventListener("click", openPicker);
+// A suggestion starts the message; it never sends it.
+document.addEventListener("click", (event) => {
+  const suggestion = event.target.closest?.("[data-suggest]");
+  if (!suggestion) return;
+  const input = $("#chat-input");
+  input.value = suggestion.dataset.suggest;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+});
 $("[data-close-picker]").addEventListener("click", () => picker.close());
 picker.addEventListener("click", (e) => {
   if (e.target === picker) picker.close();

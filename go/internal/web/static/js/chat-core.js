@@ -262,7 +262,7 @@ export async function streamText(response, append, reasoning) {
       return;
     }
     const value = JSON.parse(data);
-    if (isObject(value?.error) && isString(value.error.message)) throw new Error(value.error.message);
+    if (isObject(value?.error) && isString(value.error.message)) throw Object.assign(new Error(value.error.message), { code: value.error.code });
     for (const choice of value.choices ?? []) {
       if (choice.index !== undefined && choice.index !== 0) continue;
       if (choice.finish_reason) finished = true;

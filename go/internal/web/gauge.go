@@ -5,26 +5,47 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
 // gaugeSegmentCount is how many equal segments the memory gauge has.
 const (
 	gaugeSegmentCount = 48
 	gaugeHeight       = 20
+	// gibFloor is the least that prints as a figure. Less prints "<0.1 GiB" and draws no
+	// segment, so a block never stands beside a number that says nothing is there.
+	gibFloor = int64(1<<30) / 20
 )
+
+// gibText prints bytes for people.
+func gibText(b int64) string {
+	if b > 0 && b < gibFloor {
+		return "<0.1 GiB"
+	}
+	return fmt.Sprintf("%.1f GiB", float64(b)/(1<<30))
+}
 
 // gaugeSegment is one piece of the memory gauge (DESIGN §22.22).
 type gaugeSegment struct {
 	X, Y, W, H int
-	Kind       string // other | models | free
+	Kind       string // other | models | free | unknown
 }
 
 // gaugeSegments lays out memory in use across the gauge: other apps, then models, then
-// free. Anything in use shows at least one segment, and the two together never fill the
-// gauge unless memory really is full.
+// free. Anything that prints as more than nothing shows at least one segment, and the two
+// together never fill the gauge unless memory really is full. Without a reading (a negative
+// other, or no capacity) it is a dashed rule: never an empty gauge, never a full one.
 func gaugeSegments(other, models, capacity int64) []gaugeSegment {
+	if other < 0 || capacity <= 0 {
+		out := make([]gaugeSegment, gaugeSegmentCount)
+		for i := range out {
+			out[i] = gaugeSegment{X: i * 10, Y: gaugeHeight/2 - 1, W: 6, H: 2, Kind: "unknown"}
+		}
+		return out
+	}
 	count := func(n int64) int {
-		if n <= 0 || capacity <= 0 {
+		if n < gibFloor {
 			return 0
 		}
 		return max(1, int((n*gaugeSegmentCount+capacity/2)/capacity))
@@ -68,35 +89,53 @@ func computerName() string {
 	return strings.TrimSuffix(host, ".local")
 }
 
+// stripWord says what this computer is doing, from what it is really doing. Its words cover
+// the text model and memory pressure until host.memory.localbase reports the other runtimes.
+func stripWord(st runtime.Snapshot, pressure string) (word, state string) {
+	switch {
+	case st.State == "starting":
+		return "Getting the model ready", "load"
+	case st.State == "draining":
+		return "Finishing", "load"
+	case pressure == "critical":
+		return "Not enough memory", "short"
+	case st.Active+st.Waiting > 0:
+		return "Busy", "load"
+	case pressure == "constrained":
+		return "Memory is tight", "short"
+	}
+	return "Ready", "ready"
+}
+
+// memoryView is what the strip and Running share. models is whatever the caller knows of
+// the models' share, and source says how it knows, in words.
+func (u *UI) memoryView(r *http.Request, models int64, source string) map[string]any {
+	snap := u.d.Memory.Snapshot(r.Context())
+	capacity := u.d.Memory.Topology().SystemCapacity
+	known := capacity > 0 && snap.Available >= 0
+	other, free := int64(-1), "Memory unavailable"
+	if known {
+		other = max(capacity-snap.Available-models, 0)
+		free = fmt.Sprintf("%.0f GiB free", float64(snap.Available)/(1<<30))
+	}
+	word, state := stripWord(u.d.LLM.Snapshot(), snap.Pressure)
+	return map[string]any{"Host": computerName(), "Word": word, "State": state, "Free": free, "Known": known,
+		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": other, "Source": source}
+}
+
 // memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state
 // in words, and its memory. Nil where the gateway has no memory reading.
 func (u *UI) memoryStrip(r *http.Request) map[string]any {
 	if u.d.Memory == nil || u.d.LLM == nil {
 		return nil
 	}
-	snap := u.d.Memory.Snapshot(r.Context())
-	capacity := u.d.Memory.Topology().SystemCapacity
 	var models int64
 	// The plan, not LLM.Footprint: that runs a process per call, and this refreshes on a
 	// timer. It covers the text model only until host.memory.localbase exists.
 	if id, plan, _ := u.d.LLM.Running(); id != "" {
 		models = plan.Demand.UnifiedBytes
 	}
-	word, state := "Ready", "ready"
-	switch st := u.d.LLM.Snapshot(); {
-	case st.State == "starting":
-		word, state = "Getting the model ready", "load"
-	case st.State == "draining":
-		word, state = "Finishing", "load"
-	case snap.Pressure == "critical" || snap.Pressure == "constrained":
-		word, state = "Memory is tight", "short"
-	}
-	free := "Free memory unknown"
-	if snap.Available >= 0 {
-		free = fmt.Sprintf("%.0f GB free", float64(snap.Available)/(1<<30))
-	}
-	return map[string]any{"Host": computerName(), "Word": word, "State": state, "Free": free, "Capacity": capacity,
-		"Available": snap.Available, "Models": models, "Other": max(capacity-max(snap.Available, 0)-models, 0)}
+	return u.memoryView(r, models, "planned")
 }
 
 // stripFragment is the strip's refresh.

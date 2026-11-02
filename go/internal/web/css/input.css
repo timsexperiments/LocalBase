@@ -13,6 +13,9 @@
   --color-ink: var(--lb-text);
   --color-muted: var(--lb-muted);
   --color-line: var(--lb-border);
+  --color-bound: var(--lb-bound);
+  /* From tablet up there is room for the sidebar: no stretched phones. */
+  --breakpoint-lg: 48rem;
   --color-accent: var(--lb-accent);
   --color-accent-hover: var(--lb-accent-hover);
   --color-on-accent: var(--lb-accent-text);
@@ -45,7 +48,7 @@
     /* Focus and find-in-page scroll targets clear the tab bar and keyboard. */
     scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + 1rem);
   }
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     html {
       scroll-padding-bottom: 1rem;
     }
@@ -95,7 +98,7 @@
     @apply bg-warn-soft text-warn;
   }
   .card {
-    @apply rounded-2xl border border-line bg-surface;
+    @apply rounded-2xl border border-bound bg-surface;
   }
   .eyebrow {
     @apply text-base font-semibold text-accent;
@@ -109,6 +112,9 @@
 @layer components {
   .reply {
     @apply min-w-0 wrap-anywhere leading-7;
+    font-family: var(--lb-font-reading);
+    font-size: 1.125rem;
+    line-height: 1.5;
   }
   .reply > * + * {
     @apply mt-3;
@@ -150,7 +156,7 @@
     @apply rounded-md bg-surface-muted px-1.5 py-0.5 text-[0.9em];
   }
   .md-code {
-    @apply overflow-hidden rounded-xl border border-line bg-surface;
+    @apply overflow-hidden rounded-xl border border-bound bg-surface;
   }
   .md-code-bar {
     @apply flex items-center justify-between gap-2 border-b border-line bg-surface-muted pl-3 text-xs font-semibold text-muted;
@@ -159,7 +165,7 @@
     @apply overflow-x-auto p-3 text-sm leading-6;
   }
   .md-copy {
-    @apply inline-flex min-h-11 items-center rounded-lg px-3 text-xs font-semibold text-muted hover:bg-hover hover:text-ink;
+    @apply inline-flex min-h-11 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 text-[0.9375rem] font-medium text-ink hover:bg-hover;
   }
   .md-table {
     @apply overflow-x-auto;
@@ -175,7 +181,7 @@
     @apply bg-surface-muted font-semibold;
   }
   .reasoning {
-    @apply mb-2 rounded-xl border border-line bg-surface px-3;
+    @apply mb-2 rounded-xl border border-bound bg-surface px-3;
   }
   .reasoning summary {
     @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
@@ -184,17 +190,17 @@
     @apply pb-3;
   }
   .artifact {
-    @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-line bg-surface p-3;
+    @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-bound bg-surface p-3;
   }
   .composer-box {
-    @apply rounded-3xl border border-line bg-surface shadow-sm focus-within:outline-2 focus-within:outline-accent;
+    @apply rounded-3xl border border-[var(--lb-edge)] bg-surface focus-within:outline-2 focus-within:outline-accent;
   }
   /* A borderless round icon button (chat header and composer). */
   .icon-btn {
     @apply inline-flex size-11 shrink-0 items-center justify-center rounded-full text-base text-muted transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
   }
   .compaction {
-    @apply rounded-xl border border-dashed border-line px-3;
+    @apply rounded-xl border border-dashed border-bound px-3;
   }
   .compaction summary {
     @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
@@ -228,7 +234,7 @@
 }
 
 /* App shell (DESIGN §22): phones get a bottom tab bar and a "More" sheet,
-   desktops (≥1024px) a sidebar. Page titles replace the old header row. */
+   tablets and desktops (≥768px) a sidebar. Page titles replace the old header row. */
 @layer components {
   .page-title {
     font-family: var(--lb-font-display);
@@ -261,14 +267,14 @@
     @apply bg-accent-soft text-accent;
   }
   .account-button {
-    @apply flex min-h-12 w-full items-center gap-3 rounded-xl border border-line px-2 text-left text-base hover:bg-hover;
+    @apply flex min-h-12 w-full items-center gap-3 rounded-xl border border-bound px-2 text-left text-base hover:bg-hover;
   }
   .avatar {
     @apply grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft font-bold text-accent;
   }
   /* A popover menu (the Popover API: no script, light dismiss, Escape). */
   .menu {
-    @apply m-0 w-56 rounded-xl border border-line bg-surface p-1 text-ink shadow-pop;
+    @apply m-0 w-56 rounded-xl border border-bound bg-surface p-1 text-ink shadow-pop;
     position: fixed;
     inset: auto auto 4.25rem 0.75rem;
   }
@@ -307,7 +313,7 @@
     @apply mx-auto w-full max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pt-[max(1rem,env(safe-area-inset-top))] lg:px-10 lg:pt-8;
     padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 2rem);
   }
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .page {
       padding-bottom: 3rem;
     }
@@ -327,7 +333,7 @@
 
   /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */
   .sheet {
-    @apply mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-b-0 border-line bg-surface p-0 text-ink shadow-sheet;
+    @apply mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-b-0 border-bound bg-surface p-0 text-ink shadow-sheet;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
   .sheet::backdrop {
@@ -341,7 +347,7 @@
 
   /* Grouped list (iOS Settings style): rows share one rounded container. */
   .list-group {
-    @apply overflow-hidden rounded-2xl border border-line bg-surface;
+    @apply overflow-hidden rounded-2xl border border-bound bg-surface;
   }
   .list-group > li + li,
   .list-group > * + * {
@@ -393,13 +399,59 @@
 
 /* Chat: the tab bar sits under the composer in the page's column. */
 @layer components {
+  .chat-head {
+    @apply flex min-h-11 items-center gap-1 bg-canvas px-[max(0.25rem,env(safe-area-inset-left))] pt-[max(0.25rem,env(safe-area-inset-top))] lg:mx-auto lg:w-full lg:max-w-3xl lg:px-5;
+  }
+  .chat-title {
+    @apply min-w-0 flex-1 truncate text-center text-base font-semibold lg:text-left;
+  }
+  .chat-strip {
+    @apply mx-auto w-full max-w-3xl px-[max(0.75rem,env(safe-area-inset-left))] pb-1;
+  }
+  /* With the keyboard up on a short phone, the words come first. */
+  @media (max-height: 620px) {
+    html[data-typing] .chat-strip {
+      @apply hidden;
+    }
+  }
+  .chat-hello {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-hello);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
+  }
+  .chat-empty {
+    @apply flex min-h-[46dvh] flex-col justify-center px-1;
+  }
+  .chat-suggest {
+    @apply mt-4 grid gap-1.5 sm:grid-cols-3;
+  }
+  .chat-suggestion {
+    @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
+  }
+  .chat-model {
+    @apply ml-1 flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-sm font-medium text-muted hover:bg-hover hover:text-ink;
+  }
+  .reply-place {
+    @apply mb-2 grid gap-2;
+  }
+  .reply-place i {
+    @apply block h-4 rounded-md;
+  }
+  .reply-place i:nth-child(2) {
+    width: 88%;
+  }
+  .reply-place i:nth-child(3) {
+    width: 60%;
+  }
   .chat-col > .tabbar {
     position: static;
   }
   .chat-composer {
     padding-bottom: 0.75rem;
   }
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .chat-composer {
       padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     }
@@ -435,10 +487,10 @@
     @apply shrink-0;
   }
   .search-field {
-    @apply min-h-12 rounded-xl border-transparent bg-surface-muted px-4;
+    @apply min-h-12 rounded-xl px-4;
   }
   .empty-state {
-    @apply rounded-2xl border border-dashed border-line px-6 py-10 text-center;
+    @apply rounded-2xl border border-dashed border-bound px-6 py-10 text-center;
   }
 }
 
@@ -448,14 +500,14 @@
     @apply mt-3 grid grid-cols-1 gap-3 min-[600px]:grid-cols-2 xl:grid-cols-3;
   }
   .lab-empty {
-    @apply mt-3 rounded-2xl border border-dashed border-line px-5 py-8 text-center text-muted;
+    @apply mt-3 rounded-2xl border border-dashed border-bound px-5 py-8 text-center text-muted;
   }
   .lab-results:has(#lab-items > li) .lab-empty,
   .lab-results:has(#lab-result > *) .lab-empty {
     @apply hidden;
   }
   .lab-item {
-    @apply grid content-start gap-2 rounded-2xl border border-line bg-surface p-2;
+    @apply grid content-start gap-2 rounded-2xl border border-bound bg-surface p-2;
   }
   .lab-item > p,
   .lab-item > audio {
@@ -479,7 +531,7 @@
   html[data-typing] .lab-dock {
     bottom: var(--lb-kb);
   }
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .lab-dock,
     html[data-typing] .lab-dock {
       bottom: 0;
@@ -505,8 +557,10 @@
   .lab {
     @apply lg:flex lg:min-h-[calc(100dvh-5rem)] lg:flex-col;
   }
+  /* As tall as the prompt really is (shell.js), so it never covers a result's actions. */
   .lab-dock-spacer {
-    @apply h-40 lg:h-auto lg:flex-1;
+    @apply lg:h-auto lg:flex-1;
+    height: calc(var(--lb-dock-h, 10rem) + 1rem);
   }
 }
 
@@ -525,6 +579,9 @@
   }
   .gauge-other {
     fill: var(--lb-gauge-other);
+  }
+  .gauge-unknown {
+    fill: var(--lb-gauge-free);
   }
   .gauge-models {
     fill: var(--lb-gauge-models);
@@ -557,17 +614,28 @@
     height: 0.75rem;
     background: var(--lb-gauge-models);
   }
+  .running-legend {
+    @apply mt-3 px-1;
+  }
+  /* Running is one column, with the strip at its head. */
+  #running-live {
+    @apply max-w-3xl;
+  }
   .strip {
-    @apply block rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
+    @apply block max-w-3xl rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
     border-color: var(--lb-edge);
     min-height: 2.75rem;
   }
+  /* Already on Running: the same strip, going nowhere. */
+  .strip-here {
+    @apply hover:bg-surface;
+  }
   .strip-row {
-    @apply mb-1.5 flex min-h-6 items-center gap-2;
+    @apply mb-1.5 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-0.5;
     font-size: 0.8125rem;
   }
   .strip-host {
-    @apply inline-flex min-w-0 items-center gap-1.5;
+    @apply inline-flex max-w-full min-w-0 items-center gap-1.5;
   }
   .strip-host b {
     @apply truncate font-semibold;
@@ -576,7 +644,7 @@
     @apply size-[17px] shrink-0;
   }
   .strip-word {
-    @apply min-w-0 truncate text-muted;
+    @apply min-w-0 text-muted;
   }
   .strip-free {
     @apply ml-auto font-medium whitespace-nowrap tabular-nums;
@@ -770,7 +838,7 @@
     @apply mt-3 flex items-center gap-2 rounded-xl bg-surface-muted py-1.5 pr-1.5 pl-3;
   }
   .decide-card {
-    @apply rounded-2xl border border-line bg-surface p-4;
+    @apply rounded-2xl border border-bound bg-surface p-4;
   }
   .decide-word {
     @apply text-sm font-bold text-muted;
@@ -815,7 +883,7 @@
     @apply cursor-pointer py-2.5;
   }
   .decide-filter {
-    @apply inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line px-3 text-sm font-semibold text-muted;
+    @apply inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bound px-3 text-sm font-semibold text-muted;
   }
   .decide-filter:has(:checked) {
     @apply border-accent text-ink;
@@ -872,7 +940,7 @@
    outcome of an action, and destructive actions behind a confirmation. */
 @layer components {
   .group-card {
-    @apply rounded-2xl border border-line bg-surface p-4;
+    @apply rounded-2xl border border-bound bg-surface p-4;
   }
   .group-title {
     @apply text-base font-bold;
@@ -898,11 +966,15 @@
   .studio-head {
     @apply -ml-2 flex items-center gap-1;
   }
+  /* A row of small pictures: the tools are what this page is for. */
   .studio-recent {
-    @apply grid grid-cols-4 gap-2 lg:max-w-md;
+    @apply flex gap-2 overflow-x-auto;
+  }
+  .studio-recent > li {
+    @apply shrink-0;
   }
   .studio-tile {
-    @apply block aspect-square overflow-hidden rounded-xl bg-surface-muted;
+    @apply block size-14 overflow-hidden rounded-xl bg-surface-muted;
   }
   .studio-tile-img {
     @apply block size-full object-cover;
@@ -915,7 +987,7 @@
     @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[700px]:grid-cols-[repeat(2,minmax(0,1fr))];
   }
   .studio-card {
-    @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-ink;
+    @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-bound bg-surface p-3 text-ink;
   }
   a.studio-card {
     @apply transition-colors hover:bg-hover motion-reduce:transition-none;

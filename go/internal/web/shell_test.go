@@ -174,7 +174,7 @@ func TestChatSheets(t *testing.T) {
 	body := get(shellUI(t, nil, ""), "/app/chat").Body.String()
 	for _, want := range []string{`<dialog id="model-picker" aria-labelledby="picker-title" class="sheet`,
 		`<dialog id="generation" aria-labelledby="generation-title" class="sheet`,
-		`class="icon-btn lg:hidden" data-open-drawer`, `aria-label="Open conversations"`, `data-stop hidden aria-label="Stop generation"`} {
+		`class="icon-btn lg:hidden" data-open-drawer`, `aria-label="Open chats"`, `data-stop hidden aria-label="Stop generation"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}

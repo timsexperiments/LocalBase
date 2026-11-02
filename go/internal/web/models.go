@@ -222,10 +222,9 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 
 // renderRunning draws Running now; notice is the outcome of an unload.
 func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string, failed bool) {
-	snap := u.d.Memory.Snapshot(r.Context())
-	capacity := u.d.Memory.Topology().SystemCapacity
 	id, plan, active := u.d.LLM.Running()
 	var models int64
+	source := "planned"
 	var item map[string]any
 	if id != "" {
 		used, measured := u.d.LLM.Footprint(r.Context())
@@ -233,6 +232,9 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 			used = plan.Demand.UnifiedBytes
 		}
 		models = used
+		if measured {
+			source = "measured"
+		}
 		name := id
 		if s := u.d.Catalog.ByID(id); s != nil {
 			name = s.Name()
@@ -240,7 +242,6 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 		item = map[string]any{"ID": id, "Name": name, "Bytes": used, "Measured": measured, "Active": active,
 			"Slots": plan.Parallel.Slots, "Context": plan.Budget.EffectiveContext}
 	}
-	other := capacity - max(snap.Available, 0) - models
 	state := u.d.LLM.Snapshot()
 	if item != nil {
 		item["Waiting"] = state.Waiting
@@ -258,11 +259,12 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 	case item != nil:
 		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
 	}
-	u.render(w, r, "running", map[string]any{
-		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0), "Host": computerName(),
-		"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
-		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed,
-	})
+	data := u.memoryView(r, models, source)
+	for k, v := range map[string]any{"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
+		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed} {
+		data[k] = v
+	}
+	u.render(w, r, "running", data)
 }
 
 // unload asks the gateway to unload a model, waiting up to 30 s for its

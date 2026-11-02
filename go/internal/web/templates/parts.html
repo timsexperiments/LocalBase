@@ -73,16 +73,17 @@
 <svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Other .Models .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
 {{end}}
 
-{{define "memory-gauge"}}
-<div>
-  {{template "gauge" .}}
-  <dl class="gauge-legend">
-    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>Text model</dt><dd>{{gib .Models}}</dd></div>
-    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Everything else</dt><dd>{{gib .Other}}</dd></div>
-    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
-    <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
-  </dl>
-</div>
+{{/* What the strip's picture is made of, on Running. No reading, no figures. The two labels
+     stay until host.memory.localbase can say LocalBase and other apps. */}}
+{{define "memory-legend"}}
+{{if .Known}}
+<dl class="gauge-legend">
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>Text model{{if .Models}}, {{.Source}}{{end}}</dt><dd>{{gib .Models}}</dd></div>
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Everything else</dt><dd>{{gib .Other}}</dd></div>
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
+  <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
+</dl>
+{{end}}
 {{end}}
 
 {{/* The strip: which computer does the work, in what state, with how much room. All of it
@@ -91,11 +92,14 @@
 {{define "memory-strip"}}
 <div id="memory-strip" hx-get="/app/strip" hx-trigger="every 15s" hx-swap="outerHTML" data-poll data-strip>
   <a class="strip strip-{{.State}}" href="/app/models/running">
-    <span class="strip-row"><span class="strip-host">{{template "mark"}}<b>{{.Host}}</b></span><span class="strip-word" data-strip-word>{{.Word}}</span><span class="strip-free" data-strip-free>{{.Free}}</span><span class="sr-only">. Open Running.</span></span>
-    {{template "gauge" .}}
+    {{template "strip-body" .}}<span class="sr-only">{{if and .Known .Models}} The model's share is {{.Source}}.{{end}} Open Running.</span>
   </a>
 </div>
 {{end}}
+
+{{/* A long name gives way before the state does: the name truncates, with the whole of it
+     as a tooltip, and the state wraps. */}}
+{{define "strip-body"}}<span class="strip-row"><span class="strip-host">{{template "mark"}}<b title="{{.Host}}">{{.Host}}</b></span><span class="strip-word" data-strip-word>{{.Word}}</span><span class="strip-free" data-strip-free>{{.Free}}</span></span>{{template "gauge" .}}{{end}}
 
 {{define "backend-panel"}}
 {{/* Model settings: the backend that runs this model on this device. Every

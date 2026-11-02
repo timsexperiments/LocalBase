@@ -219,3 +219,19 @@ document.addEventListener("htmx:afterSettle", syncRuns);
 document.addEventListener("localbase:runs", syncRuns); // a page started or ended one
 syncKeyboard();
 syncRuns();
+
+// The prompt's real height, for the space kept under a page's results. It grows with what
+// it holds (a template chip, a long question), and a fixed space would let it cover them.
+let dockSeen = null;
+const dockSize = new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty("--lb-dock-h", `${Math.ceil(entry.target.getBoundingClientRect().height)}px`);
+});
+function watchDock() {
+  const dock = document.querySelector("[data-docked]");
+  if (dock === dockSeen) return;
+  if (dockSeen) dockSize.unobserve(dockSeen);
+  dockSeen = dock;
+  if (dock) dockSize.observe(dock);
+}
+watchDock();
+document.addEventListener("htmx:afterSettle", watchDock);

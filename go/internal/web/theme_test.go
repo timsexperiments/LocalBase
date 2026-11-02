@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"compress/gzip"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -14,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -72,8 +72,33 @@ func TestGaugeSegments(t *testing.T) {
 	if s[0].H >= s[28].H {
 		t.Error("other apps and LocalBase are the same shape")
 	}
-	if got := gaugeSegments(0, 1<<20, 64*gb); count(got, "models") != 1 {
+	if got := gaugeSegments(0, gb/5, 64*gb); count(got, "models") != 1 {
 		t.Error("a sliver vanished")
+	}
+	if got := gaugeSegments(0, 1<<20, 64*gb); count(got, "models") != 0 || gibText(1<<20) != "<0.1 GiB" {
+		t.Error("a figure that prints as nothing drew a block, or printed 0.0")
+	}
+	for _, none := range [][3]int64{{-1, 0, 64 * gb}, {0, 0, 0}, {-1, 3 * gb, 0}} {
+		if got := gaugeSegments(none[0], none[1], none[2]); count(got, "unknown") != gaugeSegmentCount {
+			t.Errorf("no reading %v drew a picture: %+v", none, got[0])
+		}
+	}
+	for _, c := range []struct {
+		st       runtime.Snapshot
+		pressure string
+		word     string
+	}{
+		{runtime.Snapshot{State: "idle"}, "normal", "Ready"},
+		{runtime.Snapshot{State: "running"}, "normal", "Ready"},
+		{runtime.Snapshot{State: "running", Active: 1}, "normal", "Busy"},
+		{runtime.Snapshot{State: "running", Waiting: 2}, "normal", "Busy"},
+		{runtime.Snapshot{State: "starting"}, "normal", "Getting the model ready"},
+		{runtime.Snapshot{State: "running"}, "critical", "Not enough memory"},
+		{runtime.Snapshot{State: "running"}, "constrained", "Memory is tight"},
+	} {
+		if word, _ := stripWord(c.st, c.pressure); word != c.word {
+			t.Errorf("%+v, %s: %q, want %q", c.st, c.pressure, word, c.word)
+		}
 	}
 	// Nearly full, but not full: a place stays free.
 	if got := gaugeSegments(63*gb, 1<<29, 64*gb); count(got, "free") < 1 {
@@ -82,7 +107,7 @@ func TestGaugeSegments(t *testing.T) {
 	if got := gaugeSegments(64*gb, 0, 64*gb); count(got, "free") != 0 {
 		t.Error("the gauge says free when it is full")
 	}
-	if got := gaugeSegments(0, 0, 0); count(got, "free") != gaugeSegmentCount {
+	if got := gaugeSegments(0, 0, 0); count(got, "unknown") != gaugeSegmentCount {
 		t.Error("no capacity")
 	}
 }

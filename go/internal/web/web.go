@@ -107,7 +107,7 @@ func New(d Deps) *UI {
 			}
 			return s
 		},
-		"gib":     func(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/float64(memory.GiB)) },
+		"gib":     gibText,
 		"seconds": func(ms int64) float64 { return float64(ms) / 1000 },
 		"list":    func(v ...string) []string { return v },
 		"dict": func(kv ...any) map[string]any {
@@ -348,7 +348,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
-	if name == "layout" && (page == "library" || page == "studio" || page == "get") {
+	if name == "layout" && (page == "library" || page == "studio" || page == "get" || page == "chat") {
 		if strip := u.memoryStrip(r); strip != nil {
 			data["Strip"] = strip
 		}

@@ -654,6 +654,89 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   check(/site settings, or choose a file/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)) && (await ev(`!document.querySelector("[data-transcribe-start]").hidden`)), "a refused microphone says how to fix it and leaves the file");
 }
 
+// --- Chat's strip and chip (DESIGN §25) -----------------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const stripNow = await ev(`(() => { const s = document.querySelector(".strip"); if (!s) return null; const r = s.getBoundingClientRect(); return { h: r.height, href: s.getAttribute("href"), font: parseFloat(getComputedStyle(s.querySelector(".strip-row")).fontSize), chip: !!document.querySelector("[data-open-picker] [data-model-name]") }; })()`);
+check(stripNow && stripNow.h >= 44 && stripNow.font >= 12 && stripNow.href === "/app/models/running" && stripNow.chip, `the strip is at least 44 px tall, its words at least 12 px, it opens Running, and the model shows: ${JSON.stringify(stripNow)}`);
+await ev(`document.querySelector("[data-suggest]")?.click()`);
+check((await ev(`document.getElementById("chat-input").value.length > 0 && document.querySelectorAll("[data-messages] article").length === 0`)), "a suggestion starts a message and does not send it");
+
+// --- A model that can never fit: its sentence stands, and nothing offers a retry --------------
+await nav("/app/chat");
+const tooLarge = "This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host.";
+await ev(`(() => {
+  window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: ${JSON.stringify(tooLarge)} } }), { status: 422, headers: { "content-type": "application/json" } });
+  const p = document.getElementById("chat-input"); p.value = "Hello"; p.dispatchEvent(new Event("input", { bubbles: true }));
+  document.querySelector("#composer [data-send]").click();
+})()`);
+await sleep(800);
+const refused = await ev(`(() => { const box = document.querySelector("[data-error-box]"); return { text: box.textContent, buttons: [...box.querySelectorAll("button")].map((b) => b.textContent) }; })()`);
+check(refused.text.includes(tooLarge) && refused.buttons.join() === "Dismiss", `a model too large for this computer says so and offers no retry: ${JSON.stringify(refused.buttons)}`);
+
+// --- Decisions' prompt never covers what is above it (review of #410) --------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 360, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/decisions");
+const dockClear = await ev(`(() => {
+  const dock = document.querySelector("[data-docked]"), space = document.querySelector(".lab-dock-spacer");
+  scrollTo(0, document.documentElement.scrollHeight);
+  const before = space.previousElementSibling; let last = before;
+  while (last && !last.getBoundingClientRect().height) last = last.previousElementSibling;
+  return { dock: dock.getBoundingClientRect().height, space: space.getBoundingClientRect().height, lastBottom: last.getBoundingClientRect().bottom, dockTop: dock.getBoundingClientRect().top };
+})()`);
+check(dockClear.space >= dockClear.dock && dockClear.lastBottom <= dockClear.dockTop, `at 360 px the page scrolls clear of the Decisions prompt: ${JSON.stringify(dockClear)}`);
+
+// --- With the keyboard up on a short phone, the words come first ------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+await send("Emulation.setEmitTouchEventsForMouse", { enabled: true });
+await nav("/app/chat");
+await ev(`document.getElementById("chat-input").focus()`);
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
+await sleep(700);
+const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".chat-strip"); return { flag: document.documentElement.hasAttribute("data-typing"), strip: getComputedStyle(strip).display, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+check(typing.flag && typing.strip === "none" && typing.fits && !typing.over, `keyboard up: the strip steps aside and the composer stays in view: ${JSON.stringify(typing)}`);
+if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
+
+await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+await send("Emulation.setEmitTouchEventsForMouse", { enabled: false });
+
+// --- The strip's words, under long names (review of #410) ---------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio");
+for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタジオ工房のマックスタジオ工房のマックスタジオ"]) {
+  const fits = await ev(`(() => {
+    const b = document.querySelector(".strip-host b"), w = document.querySelector(".strip-word"), s = document.querySelector(".strip");
+    b.textContent = ${JSON.stringify(name)}; w.textContent = "Getting the model ready";
+    return { over: document.documentElement.scrollWidth > innerWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
+  })()`);
+  check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
+}
+
+// --- Dark boundaries, measured from what is rendered (DESIGN §25) -----------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/running", "/app/settings"]) {
+  await nav(path);
+  const low = await ev(`(() => {
+    const rgb = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return m; };
+    const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const L = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    const behind = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const c = rgb(getComputedStyle(e).backgroundColor); if (c.length < 4 || c[3] > 0) return c; } return [255, 255, 255]; };
+    const out = [];
+    for (const el of document.querySelectorAll(".card, .composer-box, .strip, .input, .chip, .btn-quiet, .list-group, .studio-card")) {
+      const st = getComputedStyle(el), r = el.getBoundingClientRect();
+      if (!r.width || parseFloat(st.borderTopWidth) === 0) continue;
+      const a = L(rgb(st.borderTopColor)), b = L(behind(el));
+      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      if (ratio < 3) out.push(el.className.split(" ")[0] + " " + ratio.toFixed(2));
+    }
+    return out;
+  })()`);
+  check(low.length === 0, `dark: every boundary on ${path} is at least 3:1${low.length ? ": " + low.join(", ") : ""}`);
+}
+await send("Emulation.setEmulatedMedia", { features: [] });
+
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);

@@ -1,7 +1,7 @@
 // Drives headless Chrome for tools/ui-shots.sh: every page at every width in both color
 // schemes, a contact sheet per scheme, and, with a baseline folder, a pixel comparison.
 const [cdpBase, base, out, baseline] = process.argv.slice(2);
-const WIDTHS: [number, number][] = [[360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]];
+const WIDTHS: [number, number][] = [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]];
 const SCHEMES = ["light", "dark"];
 const only = process.env.UI_SHOTS_PAGES?.split(",");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -10,6 +10,12 @@ const wait = (ms: number) => `await new Promise((r)=>setTimeout(r,${ms}));`;
 const PAGES: [string, string, string?][] = [
   ["chat", "/app/chat"],
   ["chat-reply", "/app/chat", `const p=document.querySelector("textarea");p.value="Plan a three day trip with kids. Keep it cheap.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2500)}`],
+  ["chat-picker", "/app/chat", `document.querySelector("[data-open-picker]").click();${wait(450)}`],
+  ["chat-long", "/app/chat", `const p=document.querySelector("textarea");p.value="Plan a three day trip with kids. Keep it cheap.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2500)}const r=document.querySelector(".reply");r.innerHTML="<p>Three days is enough if you keep the distances short and let the mornings do the work. Children tire by mid afternoon, so the plan puts the big thing first and leaves the rest of the day loose.</p><h3>Day one</h3><ul><li>Arrive early and walk the old town while it is still cool.</li><li>A long lunch somewhere with a courtyard.</li><li>The playground by the river, then an early dinner.</li></ul><h3>Day two</h3><p>Take the morning train out to the lake. Tickets are cheaper before nine, and children under six ride free on most lines, which you should check before you buy.</p><pre><code>08:10 train\\n09:05 lake\\n13:30 back</code></pre><p>Pack lunch the night before. It saves more than any other choice on this list, and nobody has to decide anything when everyone is hungry.</p>";window.scrollTo(0,0);document.querySelector("#chat-log")?.scrollTo(0,99999);${wait(200)}`],
+  ["chat-failed", "/app/chat", `window.fetch=async()=>new Response(JSON.stringify({error:{code:"model_too_large",param:"model",message:"This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host (4.7 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."}}),{status:422,headers:{"content-type":"application/json"}});const p=document.querySelector("textarea");p.value="Hello there.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(1500)}`],
+  ["strip-long", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="Workshop Mac Studio in Attic";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
+  ["strip-cjk", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="工房のマックスタジオ工房のマックスタジオ";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
+  ["strip-unknown", "/app/studio", `document.querySelector(".strip-word").textContent="Ready";document.querySelector(".strip-free").textContent="Memory unavailable";document.querySelector(".gauge").innerHTML=Array.from({length:48},(_,i)=>'<rect x="'+i*10+'" y="9" width="6" height="2" class="gauge-unknown"/>').join("");`],
   ["studio", "/app/studio"],
   ["image", "/app/studio/image"],
   ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click();${wait(400)}`],
