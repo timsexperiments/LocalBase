@@ -30,8 +30,9 @@ const (
 	// frame cap a part full of digits can reach (DESIGN §24).
 	speechPartLimit = 200
 	// speechPartFrames budgets a part by how long it takes to say (partFrames),
-	// under the runtime's cap of 256 frames: 200 characters of numbers measured
-	// over it on the real model, and were cut.
+	// under the runtime's cap of 256 frames. A list of numbers comes to about 85
+	// characters. That lowers the chance of a cut and does not remove it: the model's
+	// length varies, so the API's cut flag stays the real signal.
 	speechPartFrames = 200
 	speechJobTimeout = 30 * time.Minute
 	// speechPartPause is the gap between joined parts, after each side's own
@@ -51,13 +52,14 @@ const (
 func sentenceEnd(c rune) bool { return strings.ContainsRune(".!?…。！？\n", c) }
 
 // partFrames estimates the frames a part takes to say. Measured on the real model
-// (2026-11-01 and 2026-11-02): prose takes about 0.7 a character, and digits and
-// their punctuation about 2.
+// (2026-11-01 and 2026-11-02, DESIGN §24): prose takes about 0.7 a character, and
+// a list of numbers up to about 2.8. Spaces in that list count as prose, so digits
+// and commas are set a little under it, to land near 85 characters a part.
 func partFrames(s string) int {
 	tenths := 0
 	for _, c := range s {
 		if unicode.IsDigit(c) || c == ',' {
-			tenths += 20
+			tenths += 27
 		} else {
 			tenths += 7
 		}
