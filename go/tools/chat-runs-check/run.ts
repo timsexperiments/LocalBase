@@ -395,6 +395,13 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
 
   await ev(`${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']").click()`);
+  // With no job running, a polled page asks about videos rarely.
+  await waitItem("fake:slow a paper boat", (g) => !g.active);
+  await nav("/app/models/running");
+  await sleep(7000);
+  const asks = await ev(`performance.getEntriesByName(location.origin + "/app/lab/video/active").length`);
+  check(asks <= 1, `a polled page does not poll for videos: ${asks} request(s) in 8 s`);
+  await nav("/app/studio/video");
   const stopped = await waitItem("fake:slow a paper boat", (g) => !g.active);
   check(/Stopped\. Nothing was saved\./.test(stopped?.text ?? "") && /Try again/.test(stopped.text), `Stop says what happened: ${stopped?.text.slice(0, 90)}`);
 

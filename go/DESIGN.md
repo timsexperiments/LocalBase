@@ -3572,10 +3572,14 @@ runs."). The 10 minutes is the model's limit, not a measurement.
   stays above the prompt on a phone.
 - **The API has no job list,** so the page keeps a note per job in memory, bound
   to its owner, and rebuilds the tray from them. A job the API has forgotten leaves
-  the tray. Finished jobs last 15 minutes (the job manager's), so this page's
+  the tray. A gateway restart clears the notes, and with them the tray; the jobs do
+  not outlive the gateway either. Finished jobs last 15 minutes (the job manager's), so this page's
   header says 15 and the landing says "for a while".
 - **Jobs are not runs (§21),** so the shell asks `GET /app/lab/video/active` too:
-  the pill leads back from other pages, and is off on this one.
+  the pill leads back from other pages, and is off on this one. Polled pages would
+  ask constantly, so it asks at most every 10 s while a job runs, every 60 s when
+  none does, and not while the page is hidden. A job started in another browser
+  can take up to a minute to show.
 - **One job at a time** is the API's rule. A second says "One video at a time. Stop
   the one that’s running, or send this when it finishes." and keeps the words.
 - **Failures** are in plain words with a next step: not enough memory links to

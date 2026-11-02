@@ -136,6 +136,30 @@ announceChanges();
 // A run started here keeps going while the person is elsewhere; the pill (in
 // the sidebar and above the tab bar) shows it and links back to it. A page
 // that shows the run itself marks <body data-run-page="href">.
+// Video jobs are not runs (DESIGN §22.18), so they are asked about apart. Polled
+// pages call this often: it asks at most every 10 s while a job runs, every 60 s
+// when none does, and not at all while the page is hidden. Their own page shows
+// them, and leaving it asks at once.
+const VIDEO_PAGE = "/app/studio/video";
+let videoLast = 0;
+let videoAskedAt = -Infinity;
+
+async function videoCount() {
+  if (location.pathname === VIDEO_PAGE) {
+    videoAskedAt = -Infinity;
+    return 0;
+  }
+  if (document.hidden || performance.now() - videoAskedAt < (videoLast ? 10_000 : 60_000)) return videoLast;
+  videoAskedAt = performance.now();
+  try {
+    const response = await fetch("/app/lab/video/active", { cache: "no-store", redirect: "manual" });
+    videoLast = response.ok ? (await response.json()).count : 0;
+  } catch {
+    // Unreachable: keep the last answer until the next ask.
+  }
+  return videoLast;
+}
+
 async function syncRuns() {
   let list = [];
   try {
@@ -143,13 +167,8 @@ async function syncRuns() {
   } catch {
     // Unreachable or signed out: session.js reports it; keep the pill hidden.
   }
-  // Video jobs are not runs (DESIGN §22.18). Their own page shows them.
-  if (location.pathname !== "/app/studio/video") {
-    const videos = await fetch("/app/lab/video/active", { cache: "no-store", redirect: "manual" })
-      .then((r) => (r.ok ? r.json() : { count: 0 }))
-      .catch(() => ({ count: 0 }));
-    for (let i = 0; i < videos.count; i++) list.push({ place: { href: "/app/studio/video", label: "Video" } });
-  }
+  const videos = await videoCount();
+  for (let i = 0; i < videos; i++) list.push({ place: { href: VIDEO_PAGE, label: "Video" } });
   const here = document.body.dataset.runPage;
   // A run started in another browser has no place here: send it to its page.
   const shown = list
