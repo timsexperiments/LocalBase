@@ -84,6 +84,7 @@ func main() {
 	addVideo(mux)
 	addImages(mux)
 	addSpeech(mux)
+	addSTT(mux)
 	mux.HandleFunc("GET /props", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"model_path": model, "build_info": "fake",
 			"chat_template": "{% if tools %}{{ tools }}{% endif %}<think>", "modalities": map[string]any{"vision": false},

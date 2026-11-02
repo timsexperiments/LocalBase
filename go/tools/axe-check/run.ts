@@ -42,6 +42,7 @@ const states: [string, string, string][] = [
   ["lab-speech", "/app/studio/speech", ""],
   ["speech-voices", "/app/studio/speech", `document.querySelector("[data-open-sheet=lab-voice]")?.click()`],
   ["lab-transcribe", "/app/studio/transcribe", ""],
+  ["transcribe-language", "/app/studio/transcribe", `document.querySelector("[data-open-sheet=lab-language]")?.click()`],
   ["decisions", "/app/studio/decisions", ""],
   ["decisions-answer", "/app/studio/decisions", `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector("[data-template=route]").click(); document.querySelector("#decide button[type=submit]").click(); await new Promise((r) => setTimeout(r, 1500)); })()`],
   ["decisions-code", "/app/studio/decisions", `document.querySelector("[data-code]").click()`],

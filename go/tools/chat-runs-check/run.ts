@@ -417,8 +417,9 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(failed?.alert && /Try again/.test(failed.text), `a failure says so in words and offers Try again: ${failed?.alert}`);
   const before = await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`);
   await ev(`[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again").click()`);
-  await sleep(800);
-  check((await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`)) === before + 1, "Try again starts another job");
+  for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`)) === before; i++) await sleep(200);
+  const again = await ev(`({ count: document.querySelectorAll("#lab-items .lab-item-video").length, said: document.querySelector("#lab-result [role=alert]")?.textContent ?? "" })`);
+  check(again.count === before + 1, `Try again starts another job: ${JSON.stringify(again)}`);
 
   const usable = await ev(`document.querySelectorAll("[data-video-use]").length`);
   if (usable) {
@@ -533,6 +534,87 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await sleep(400);
   check(!/Stopped after/.test((await itemState())?.text ?? ""), "Remove takes it out of the tray");
   check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+}
+
+// --- Transcribe (DESIGN §22.20) ---------------------------------------------------
+await nav("/app/studio/transcribe");
+if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
+  console.log("skip transcribe (no transcription model selected)");
+} else {
+  const trItem = `document.querySelector("#lab-items .lab-item-transcribe")`;
+  const trState = () => ev(`(() => { const n = ${trItem}; return n ? { text: n.textContent.replace(/\\s+/g, " ").trim(), active: n.hasAttribute("data-poll"), times: n.querySelectorAll("[data-seek]").length, audio: !!n.querySelector("audio") } : null; })()`);
+  const trUntil = async (test, ms = 20000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await trState(); if (s && test(s)) return s; await sleep(150); } return s; };
+  const mouse = async (selector) => { const b = await ev(`(() => { const r = document.querySelector(${JSON.stringify(selector)}); r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
+  const setFile = async (path) => { const doc = await send("DOM.getDocument", {}); const input = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "form[data-transcribe] input[type=file]" }); await send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [path] }); };
+  const seen = async () => (await ev(`document.querySelectorAll("#lab-items .lab-item-transcribe").length`));
+
+  const starts = await ev(`[...document.querySelectorAll("[data-transcribe-start] button")].map((b) => b.textContent.trim())`);
+  check(starts.join() === "Record,Choose a file", `two equal starts: ${starts}`);
+
+  if (voiceFile) {
+    await setFile(voiceFile);
+    const done = await trUntil((s) => !s.active && s.times > 0);
+    check(done?.times === 3 && done.audio && /harbor was quiet/.test(done.text) && /English/.test(done.text), `a file starts by itself and comes back with times: ${done?.text.slice(0, 70)}`);
+    await nav("/app/studio/transcribe");
+    check((await trState())?.times === 3, "it is still there after leaving");
+    await mouse("#lab-items .lab-item-transcribe [data-seek='1.2']");
+    await sleep(300);
+    const at = await ev(`${trItem}.querySelector("audio").currentTime`);
+    check(at >= 1.2 && at < 2.5, `a time moves the player: ${at}`);
+    check((await ev(`${trItem}.querySelector("[data-seek]").getAttribute("aria-label")`)) === "0:00, play from 0 seconds", "a time says what it does");
+    await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
+    check((await ev(`getComputedStyle(${trItem}.querySelector("[data-seek]")).display`)) === "none", "Times hides the times");
+    await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
+    const exports = await ev(`(async () => { const out = {}; for (const a of ${trItem}.querySelectorAll("a[download]")) { const r = await fetch(a.href); out[new URL(a.href).searchParams.get("format")] = [r.headers.get("content-disposition"), await r.text()]; } return out; })()`);
+    check(/^1\n00:00:00,000 --> 00:00:01,200\nThe harbor/.test(exports.srt?.[1] ?? "") && exports.vtt?.[1].startsWith("WEBVTT\n\n00:00:00.000") && /harbor/.test(exports.txt?.[1] ?? "") && /transcript\.srt/.test(exports.srt?.[0] ?? ""), `exports are real SRT, VTT and text`);
+    check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+
+    // A translation says so.
+    await ev(`(() => { document.querySelector("form[data-transcribe] [name=translate]").checked = true; })()`);
+    const before = await seen();
+    await setFile(voiceFile);
+    for (let i = 0; i < 60 && (await seen()) === before; i++) await sleep(150);
+    const tr = await trUntil((s) => !s.active && /Translation/.test(s.text));
+    check(/Translation/.test(tr?.text ?? "") && /Translated:/.test(tr?.text ?? ""), `a translation says so: ${tr?.text.slice(0, 60)}`);
+    await nav("/app/studio/transcribe");
+  } else console.log("skip transcribing a file (set LBGO_VOICE_FILE)");
+
+  // Before the browser's question is answered, the page says what it waits for.
+  await ev(`(() => { const real = navigator.mediaDevices.getUserMedia; navigator.mediaDevices.getUserMedia = () => new Promise(() => {}); document.querySelector("[data-record-start]").click(); navigator.mediaDevices.getUserMedia = real; })()`);
+  await sleep(100);
+  check(/Allow the microphone/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)), "waiting on the browser's question, it says so");
+  await nav("/app/studio/transcribe");
+
+  // Recording. This headless browser's own microphone never answers, so a generated
+  // tone goes through the real recorder, level and sending. A real microphone is not
+  // covered here.
+  await ev(`navigator.mediaDevices.getUserMedia = async () => { const c = new AudioContext(); await c.resume(); const o = c.createOscillator(); const g = c.createGain(); g.gain.value = 0.3; const d = c.createMediaStreamDestination(); o.connect(g).connect(d); o.start(); return d.stream; }`);
+  await mouse("[data-record-start]");
+  for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-record-panel]").hidden`)); i++) await sleep(100);
+  await sleep(1500);
+  const live = await ev(`({ panel: !document.querySelector("[data-record-panel]").hidden, start: document.querySelector("[data-transcribe-start]").hidden, time: document.querySelector("[data-record-time]").textContent, word: document.querySelector("[data-record-word]").textContent, level: parseFloat(document.querySelector("[data-record-level]").style.width), status: document.querySelector("[data-audio-status]").textContent })`);
+  check(live.panel && live.start && live.time !== "0:00" && live.level >= 0 && /Hearing you|Too loud|Very quiet/.test(live.word), `recording shows a time, a level and a word: ${JSON.stringify(live)}`);
+  await ev(`document.querySelector("a[href='/app/models']").click()`);
+  await sleep(400);
+  check(/Stop the recording first/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)) && (await ev(`location.pathname`)) === "/app/studio/transcribe", "a link waits while recording");
+  await ev(`document.querySelector("[data-record-pause]").click()`);
+  const held = await ev(`document.querySelector("[data-record-time]").textContent`);
+  await sleep(1300);
+  const paused = await ev(`({ time: document.querySelector("[data-record-time]").textContent, word: document.querySelector("[data-record-word]").textContent, label: document.querySelector("[data-record-pause]").textContent })`);
+  check(paused.time === held && paused.word === "Paused" && paused.label === "Resume", `Pause holds the time: ${JSON.stringify(paused)}`);
+  await ev(`document.querySelector("[data-record-pause]").click()`);
+  await sleep(300);
+  const countBefore = await seen();
+  await ev(`document.querySelector("[data-record-stop]").click()`);
+  for (let i = 0; i < 80 && (await seen()) === countBefore; i++) await sleep(150);
+  const rec = await trUntil((s) => !s.active && /Recording/.test(s.text));
+  check(/Recording/.test(rec?.text ?? "") && rec.times === 3 && (await ev(`document.querySelector("[data-record-panel]").hidden`)), `Stop sends it by itself: ${rec?.text.slice(0, 60)}`);
+
+  // No microphone: it says how to fix it, and a file still works.
+  await ev(`navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError"))`);
+  await ev(`document.querySelector("[data-record-start]").click()`);
+  await sleep(300);
+  check(/site settings, or choose a file/.test(await ev(`document.querySelector("[data-audio-status]").textContent`)) && (await ev(`!document.querySelector("[data-transcribe-start]").hidden`)), "a refused microphone says how to fix it and leaves the file");
 }
 
 ws.close();

@@ -162,6 +162,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/lab/transcribe", u.uploading("inference:transcription", 26<<20, u.labTranscribe))
 	m.HandleFunc("GET /app/lab/results/{id}", u.need("models:read", u.labResult))
 	m.HandleFunc("GET /app/lab/runs/{id}", u.need("models:read", u.labRunGet))
+	m.HandleFunc("GET /app/lab/runs/{id}/export", u.need("models:read", u.labTranscriptExport))
 	m.HandleFunc("POST /app/lab/runs/{id}/stop", u.mutating("models:read", u.labRunStop))
 	m.HandleFunc("POST /app/lab/runs/{id}/again", u.mutating("inference:image", u.labImageAgain))
 	m.HandleFunc("POST /app/lab/runs/{id}/remove", u.mutating("models:read", u.labRunRemove))

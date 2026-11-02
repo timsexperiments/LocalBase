@@ -549,6 +549,49 @@
   }
 }
 
+/* The Transcribe studio (DESIGN §22.20). */
+@layer components {
+  .transcribe-start {
+    @apply grid grid-cols-2 gap-2 px-1 pt-1;
+  }
+  .transcribe-start .btn {
+    @apply gap-2;
+  }
+  .transcribe-start[hidden],
+  .transcribe-panel[hidden] {
+    @apply hidden;
+  }
+  .transcribe-panel {
+    @apply grid gap-2 px-2 pt-1;
+  }
+  .transcribe-meter {
+    @apply block h-2 overflow-hidden rounded-full bg-surface-muted;
+  }
+  .transcribe-meter i {
+    @apply block h-full w-0 rounded-full bg-accent;
+  }
+  /* Stays in reach while the words scroll. */
+  .transcript-audio {
+    @apply sticky top-2 z-10 w-full;
+  }
+  .transcript-text {
+    @apply grid gap-0.5 px-1 wrap-anywhere;
+  }
+  .transcript-line {
+    @apply flex items-start gap-1;
+  }
+  .transcript-line span {
+    @apply min-w-0 flex-1 py-2.5;
+  }
+  /* A full-size target, with the time drawn small inside it. */
+  .transcript-time {
+    @apply inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-sm font-semibold tabular-nums text-accent hover:bg-hover;
+  }
+  .transcript-text.times-off .transcript-time {
+    @apply hidden;
+  }
+}
+
 /* The Speech studio (DESIGN §22.19). */
 @layer components {
   .speech-count {

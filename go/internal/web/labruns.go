@@ -23,6 +23,7 @@ import (
 var labTargets = map[string]string{
 	"/v1/images/generations":   "image",
 	"/v1/audio/transcriptions": "transcribe",
+	"/v1/audio/translations":   "transcribe",
 }
 
 // labRun is the part of a run object the tray uses.
@@ -60,6 +61,10 @@ type labNote struct {
 	image                                *imageRequest
 	video                                *videoRequest
 	speech                               *speechJob
+	source                               string // a transcript's audio: a result id
+	translated                           bool
+	language                             string
+	segments                             []labSegment
 	pictures                             []labPicture
 	at                                   time.Time
 }
@@ -98,6 +103,14 @@ func (n *labNotes) setImage(owner, id string, q imageRequest) {
 	defer n.mu.Unlock()
 	if v := n.items[id]; v != nil && v.owner == owner {
 		v.image = &q
+	}
+}
+
+func (n *labNotes) setTranscript(owner, id, source string, translated bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if v := n.items[id]; v != nil && v.owner == owner {
+		v.source, v.translated = source, translated
 	}
 }
 
@@ -141,7 +154,7 @@ func (u *UI) runsServed(r *http.Request) bool {
 
 // labStart starts path as a run and answers with its tray item; false means
 // runs are not served and the caller should call path directly.
-func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, prompt string, body []byte) bool {
+func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, prompt string, body []byte, started ...func(id string)) bool {
 	if !u.runsServed(r) {
 		return false
 	}
@@ -156,6 +169,9 @@ func (u *UI) labStart(w http.ResponseWriter, r *http.Request, path, ctype, promp
 		return true
 	}
 	u.notes.put(u.caller(r).OwnerID(), run.ID, prompt)
+	for _, fn := range started {
+		fn(run.ID)
+	}
 	w.Header().Set("HX-Retarget", "#lab-items")
 	w.Header().Set("HX-Reswap", "afterbegin")
 	u.fragment(w, r, "lab", "lab-item", u.labItem(r, run))
@@ -177,7 +193,10 @@ type labItemView struct {
 	At                                 time.Time
 	Video, Thumb, Announce             string // a video job: its file, starting picture, and what to say
 	Again, Slow, NeedsMemory           bool
-	VoiceName, Length                  string // a script
+	VoiceName, Length                  string       // a script
+	Segments                           []labSegment // a transcript's stretches, with times
+	Source, Language                   string
+	Translated                         bool
 	Part, Parts                        int
 	Bars                               []waveBar
 }
@@ -208,6 +227,10 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	note := u.notes.get(owner, run.ID)
 	if note != nil {
 		v.Caption, v.Prompt = note.caption, note.prompt
+		if note.source != "" {
+			v.Source = "/app/lab/results/" + note.source
+		}
+		v.Translated = note.translated
 		if q := note.image; q != nil {
 			v.Size, v.Look, v.LookName, v.Seed = q.Size, q.Look, lookByID(q.Look).Name, q.Seed
 			for shape, sizes := range imageShapes {
@@ -271,7 +294,7 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 		case tool == "image" && len(v.Pictures) > 0:
 			v.Image = v.Pictures[0].URL
 		case note.text != "" || tool == "transcribe":
-			v.Transcript = note.text
+			v.Transcript, v.Segments, v.Language = note.text, note.segments, languageName(note.language)
 		case note.result != "" && tool == "image":
 			v.Image = "/app/lab/results/" + note.result
 		case note.result != "":
@@ -315,12 +338,24 @@ func (u *UI) collect(r *http.Request, run labRun, tool string, note *labNote) {
 		}
 	case "transcribe":
 		var out struct {
-			Text string `json:"text"`
+			Text     string `json:"text"`
+			Language string `json:"language"`
+			Segments []struct {
+				Start float64 `json:"start"`
+				End   float64 `json:"end"`
+				Text  string  `json:"text"`
+			} `json:"segments"`
 		}
 		json.Unmarshal(res.Body, &out)
 		note.text = strings.TrimSpace(out.Text)
+		note.language = out.Language
 		if note.text == "" {
 			note.text = "(No speech was recognized.)"
+		}
+		for _, seg := range out.Segments {
+			if text := strings.TrimSpace(seg.Text); text != "" {
+				note.segments = append(note.segments, labSegment{Start: seg.Start, End: seg.End, Text: text})
+			}
 		}
 	}
 }

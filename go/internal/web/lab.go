@@ -280,6 +280,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 		}
 	case "transcribe":
 		data["Models"] = u.labModels("stt")
+		data["Languages"] = transcriptLanguages
 	case "decisions":
 		data["Models"] = u.decisionModels()
 	}
@@ -337,7 +338,7 @@ const transcribeLimit = 25 << 20
 
 func (u *UI) labTranscribe(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(transcribeLimit); err != nil {
-		u.labOutcome(w, r, map[string]any{"Error": "The recording is too large or could not be read."})
+		u.labOutcome(w, r, map[string]any{"Error": "This is too long or could not be read. About 13 minutes is the most that fits at a time."})
 		return
 	}
 	f, hdr, err := r.FormFile("file")
@@ -356,12 +357,19 @@ func (u *UI) labTranscribe(w http.ResponseWriter, r *http.Request) {
 			mw.WriteField(k, v)
 		}
 	}
-	mw.WriteField("response_format", "json")
+	// verbose_json: the times of each stretch, where the model gives them.
+	mw.WriteField("response_format", "verbose_json")
 	mw.Close()
 	path := "/v1/audio/transcriptions"
-	if r.FormValue("translate") == "on" {
-		path = "/v1/audio/translations" // not a run target: always direct
-	} else if u.labStart(w, r, path, mw.FormDataContentType(), hdr.Filename, b.Bytes()) {
+	translated := r.FormValue("translate") == "on"
+	if translated {
+		path = "/v1/audio/translations"
+	}
+	owner := u.caller(r).OwnerID()
+	remember := func(id string) {
+		u.notes.setTranscript(owner, id, u.results.put(owner, "audio/wav", audio), translated)
+	}
+	if u.labStart(w, r, path, mw.FormDataContentType(), transcriptCaption(hdr.Filename), b.Bytes(), remember) {
 		return
 	}
 	res := u.call(r, "POST", path, mw.FormDataContentType(), b.Bytes())

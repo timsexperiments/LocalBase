@@ -66,6 +66,11 @@ function setup(form) {
         preview.src = URL.createObjectURL(wav);
         preview.classList.remove("hidden");
       }
+      if (form.hasAttribute("data-audio-autosubmit")) {
+        say("Sending…");
+        form.requestSubmit();
+        return;
+      }
       say(`Ready: ${seconds.toFixed(1)} s, converted to WAV.`);
     } catch {
       input.value = "";

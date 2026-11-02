@@ -3675,6 +3675,43 @@ control, because the API takes only speed 1 (§24).
   `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
   part, and `fake:cut` runs a part to the cap.
 
+### 22.20 Transcribe studio (PR 14)
+
+Record or choose a file, and get the words with their times.
+
+- **Two equal starts,** Record and Choose a file (and dropping a file on a wide
+  screen). Either one starts by itself: there is nothing to confirm once you have
+  stopped or chosen. Language and Translate live in one sheet, on a chip that says
+  "Detect language". The browser converts to 16 kHz WAV, as before; the limit
+  works out at about 13 minutes, which recording stops at and the page says.
+- **Recording** is a panel in the dock: time, a level bar with a calm fall, one word
+  ("Hearing you", "Very quiet" after 3 s, "Too loud"), Pause and Stop. The level is
+  reassurance, not a measurement. "You'll get the text after you stop", since nothing
+  streams. While the browser's permission question is up, the page says "Allow the
+  microphone to start recording." A boosted link waits while recording and says why; a full navigation gets
+  the browser's own question. A refused microphone says how to fix it, and a file
+  still works.
+- **A transcript is a detached run (§21)** asking `verbose_json`, so it survives
+  leaving. A translation is a run too, now that `/v1/audio/translations` is a target,
+  and is labelled Translation. The audio stays in the result store to check the words
+  against, for the same 30 minutes.
+- **Times** are buttons at the start of each stretch, full-size targets in their own
+  column, named with what they show ("1:05, play from 1 minute 5 seconds"), that move
+  the player, which stays in reach while the words
+  scroll. Times hides them. A transcript without times shows plain text and offers
+  only text, as subtitles would be invented.
+- **Export:** Text, Subtitles (.srt) and Web subtitles (.vtt), named by what they are
+  for, built by the server from the same stretches. Copy gives the plain words.
+- **Not built:** word-level timing (`segments[].words[]` is optional), search in a
+  long transcript, and sharing code with chat's dictation, which has a 60 second
+  limit and its own path.
+- **Checks:** `TestSubtitleFormats`, `TestSegmentWords`, `TestTranscriptExport` and
+  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The microphone there is a generated
+  tone through the real recorder, level and sending, because the headless browser's
+  own never answers, so a real microphone has not been tried. The fake's whisper
+  answers a fixed transcript. Very quiet, Too loud and the 13 minute stop have not been
+  driven. No real transcription model has run through this page yet.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
