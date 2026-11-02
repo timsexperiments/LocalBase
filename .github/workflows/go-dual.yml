@@ -53,6 +53,7 @@ jobs:
         env:
           LOCALBASE_CONTRACT_MODELS: ${{ runner.temp }}/contract-models
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+          LOCALBASE_TEST_PORTS: 26000-26499
         run: tools/contract.sh -args -impl=both
       - name: Keep the failing contract run
         if: failure()
