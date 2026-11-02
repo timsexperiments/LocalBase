@@ -1,7 +1,12 @@
 # The system memory reserve: analysis and proposal
 
 **No default changes here.** Changing the default is the user's decision. This document
-gives the figures for it. `internal/memory/reserve_table_test.go` computes every table
+gives the figures for it.
+
+**The arithmetic is exact, but the proposed percent and floor are judgement, not measurements.**
+No allocation probe was run on the machine behind this document, and no small Mac was tested;
+see "What the evidence does not show".
+ `internal/memory/reserve_table_test.go` computes every table
 below through the real admission and pressure code on a fake host, and fails if a row here
 differs.
 
@@ -139,12 +144,27 @@ memory far below the live gateway's own 12 GiB and 9.6 GiB lines, which would re
 its models. A useful probe needs either a window with the live gateway stopped or, better, a real
 small Mac.
 
-Before a default changes, on a real 8 or 16 GiB Mac:
+### The check to run on a real 8 or 16 GiB Mac
 
-1. Load a small model through a fresh root, with a browser and normal apps open.
-2. Watch `kern.memorystatus_vm_pressure_level`, the compressor and responsiveness.
-3. Check that the machine stays responsive at the proposed stop line, and that running models are
-   not stopped by ordinary use.
+Do this before a default changes. `tools/reserve-check.sh` has not been run yet: it passed syntax
+checks only, because the machine here is the wrong size and runs the live gateway.
+
+```sh
+tools/reserve-check.sh sample 300     # read-only, during normal use with a browser and apps open
+tools/reserve-check.sh probe          # allocates, in steps; save your work first
+```
+
+`probe` refuses to start if LocalBase or a model runtime is running, or on more than 24 GiB. It
+stops at 4 GiB free (above Option C's 3.75 GiB line), at any macOS pressure above normal, at half
+the machine's memory, or after 5 minutes. It holds random data, so the compressor can't hide it.
+
+Things to record:
+
+1. How much is free in normal use. That decides whether the "free needed" column can be met at all.
+2. At what free figure the pressure level or compressor moves, if it does before the probe stops.
+3. Whether the machine stays responsive at the point it stopped.
+
+To test closer to a line, pass a lower floor (`probe 3`), at your own judgement.
 
 The kernel's own pressure level could also feed the monitor, which today cannot see it on a Mac.
 `kern.memorystatus_level` reads far higher than LocalBase's free figure here (about 87% against
@@ -157,11 +177,16 @@ no `Retry-After`, with a message saying it can't load even when nothing else is 
 that is low right now stays 503 `insufficient_memory` with `Retry-After`.
 `TestReserveRefusalsAreDistinct` pins both on a gateway whose reserve alone decides.
 
-**One gap remains.** When a model passes the check but needs more free memory than a running system
-can ever have, such as the 8 GiB model on 16 GiB, the answer is still a 503. The arithmetic says it
-fits an empty machine, and LocalBase has no figure for what the system always holds. Option C
-narrows this case but doesn't remove it. Treating it as a 422 would need such a figure, and it would
-also differ from TS, so it's left as is.
+### Known gap: fits on paper, can never run on a live system
+
+An 8 GiB model on 16 GiB passes the "can never fit" check, because it fits an empty machine, but it
+needs all 16 GiB free, so it can never load. It answers 503 with `Retry-After`, and the retry will
+not help. A 422 would be the honest answer.
+
+**The missing input is a figure for what the system always holds** (wired memory, the kernel and
+core services). With it, the check could become `model > total - reserve - always held`. LocalBase
+has no such figure today. It would also differ from TS. Option C narrows the cases but doesn't remove
+them. Left open on purpose.
 
 ## Changing the reserve
 
