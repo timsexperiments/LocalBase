@@ -637,6 +637,9 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	if err != nil {
 		return nil, fail(err)
 	}
+	if err := checkPortFree(plan.Host, plan.Port); err != nil {
+		return nil, fail(err)
+	}
 	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
 	if err != nil {
 		logAdmissionRejected(m.d.Log, "llm", name, err)
