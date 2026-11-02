@@ -1902,7 +1902,7 @@ recorded here.
 | Custom voices, observed memory, capabilities | 0, 3, 2 rows | Supported | |
 | Service | plist with `LOCALBASE_SERVICE_ID` and `LOCALBASE_SERVICE_TOKEN` only | Supported | Rendering is byte-identical (§16) |
 | Installs in progress | none (`runtime/` holds only `gateway.lock`) | n/a | |
-| Memory reserves | system 15% / 8 GB, accelerator 10% / 2 GB | Supported | |
+| Memory reserves | system 15% / 8 GB, accelerator 10% / 2 GB (analysis and options: `docs/memory-reserve.md`) | Supported | |
 
 **Blocking gaps: none.**
 

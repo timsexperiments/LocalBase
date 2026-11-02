@@ -136,3 +136,28 @@ func TestModelTooLargeEndToEnd(t *testing.T) {
 		t.Errorf("run: %v", m)
 	}
 }
+
+// reserveHost has no GPU limit, so the reserve alone decides.
+type reserveHost struct{ total, avail int64 }
+
+func (h reserveHost) Topology() memory.Topology {
+	return memory.Topology{Unified: true, SystemCapacity: h.total}
+}
+func (h reserveHost) Snapshot(context.Context) memory.Snapshot {
+	return memory.Snapshot{Available: h.avail, Pressure: "normal"}
+}
+
+// A reserve that makes a model impossible is a 422 with no retry, however much is
+// free; memory that is only low right now is a 503 with Retry-After.
+func TestReserveRefusalsAreDistinct(t *testing.T) {
+	ts, _, _ := newTestGateway(t, reserveHost{8 * memory.GiB, 7 * memory.GiB})
+	r := post(t, ts, "/v1/chat/completions", chatBody("hi"))
+	if r.status != 422 || r.code() != "model_too_large" || r.header.Get("Retry-After") != "" || !strings.Contains(r.body, "after the safety reserve") {
+		t.Errorf("impossible: %d %q Retry-After=%q %s", r.status, r.code(), r.header.Get("Retry-After"), r.body)
+	}
+	ts, _, _ = newTestGateway(t, reserveHost{64 * memory.GiB, 10 * memory.GiB})
+	r = post(t, ts, "/v1/chat/completions", chatBody("hi"))
+	if r.status != 503 || r.code() != "insufficient_memory" || r.header.Get("Retry-After") == "" {
+		t.Errorf("low right now: %d %q Retry-After=%q %s", r.status, r.code(), r.header.Get("Retry-After"), r.body)
+	}
+}
