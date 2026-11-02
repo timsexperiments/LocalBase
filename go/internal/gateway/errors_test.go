@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http/httptest"
@@ -56,5 +58,81 @@ func TestMemoryEmergencyResponse(t *testing.T) {
 	runtimeError(w, httptest.NewRequest("POST", "/v1/audio/transcriptions", nil), runtime.ErrMemoryEmergency, "m", "STT")
 	if w.Code != 503 || !strings.Contains(w.Body.String(), "Inference service is currently restarting or unavailable. Please try again shortly.") {
 		t.Errorf("%d %s", w.Code, w.Body.String())
+	}
+}
+
+// A model that can never fit is a permanent 422 with no Retry-After, with TS's
+// exact words: telling someone to retry would never work. This text is what TS
+// answered on a 7 GiB CI runner, where the unified GPU working set is the limit.
+func TestModelTooLarge(t *testing.T) {
+	const gib = int64(1) << 30
+	tenth := func(n int64) int64 { return n * gib / 10 }
+	for name, c := range map[string]struct {
+		err  *memory.AdmissionError
+		want string
+	}{
+		"GPU working set": {&memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set", Permanent: true,
+			RequestedBytes: tenth(145), AvailableBytes: tenth(47), CapacityBytes: tenth(47)},
+			"This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host (4.7 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."},
+		"system memory": {&memory.AdmissionError{Reason: "system-memory", PoolID: "system", Permanent: true,
+			RequestedBytes: 20 * gib, AvailableBytes: 8 * gib, CapacityBytes: 16 * gib},
+			"This model requires about 20.0 GiB of memory, but only 8.0 GiB is available for models on this host (16.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."},
+	} {
+		w := httptest.NewRecorder()
+		runtimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")
+		var body struct {
+			Error struct {
+				Message, Type, Code string
+				Param               *string
+			}
+		}
+		json.Unmarshal(w.Body.Bytes(), &body)
+		e := body.Error
+		if w.Code != 422 || e.Code != "model_too_large" || e.Type != "invalid_request_error" || e.Param == nil || *e.Param != "model" || e.Message != c.want {
+			t.Errorf("%s: %d %s", name, w.Code, w.Body)
+		}
+		if got := w.Header().Get("Retry-After"); got != "" {
+			t.Errorf("%s: Retry-After %q on something that can never succeed", name, got)
+		}
+	}
+	// The GPU pool says GPU memory. Also permanent.
+	w := httptest.NewRecorder()
+	runtimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "gpu-memory", PoolID: "gpu:0", Permanent: true,
+		RequestedBytes: 13 * gib, AvailableBytes: 11 * gib, CapacityBytes: 12 * gib}, "m", "LLM")
+	if w.Code != 422 || w.Header().Get("Retry-After") != "" || !strings.Contains(w.Body.String(), "model_too_large") || !strings.Contains(w.Body.String(), "GPU memory") {
+		t.Errorf("gpu:0: %d %s", w.Code, w.Body)
+	}
+	// A shortage that can pass stays a retryable 503.
+	w = httptest.NewRecorder()
+	runtimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "system-memory", PoolID: "system"}, "m", "LLM")
+	if w.Code != 503 || w.Header().Get("Retry-After") != "5" {
+		t.Errorf("transient: %d %q", w.Code, w.Header().Get("Retry-After"))
+	}
+}
+
+// smallHost is a unified host too small for the chat model.
+type smallHost struct{}
+
+func (smallHost) Topology() memory.Topology {
+	return memory.Topology{Unified: true, SystemCapacity: 16 * memory.GiB, GPUWorkingSetBytes: 1 * memory.GiB}
+}
+func (smallHost) Snapshot(context.Context) memory.Snapshot {
+	return memory.Snapshot{Available: 15 * memory.GiB, Pressure: "normal"}
+}
+
+// Through a real gateway and the real admission path, and through a detached run.
+func TestModelTooLargeEndToEnd(t *testing.T) {
+	ts, llm, _ := newTestGateway(t, smallHost{})
+	r := post(t, ts, "/v1/chat/completions", chatBody("hi"))
+	if r.status != 422 || r.code() != "model_too_large" || r.header.Get("Retry-After") != "" {
+		t.Errorf("/v1: %d %q %s", r.status, r.header.Get("Retry-After"), r.body)
+	}
+	if id, _, _ := llm.Running(); id != "" {
+		t.Errorf("%s started", id)
+	}
+	c := runClient{t: t, base: ts.URL}
+	m := c.waitStatus(c.start("hi"), "failed")
+	if e, _ := m["error"].(map[string]any); e["code"] != "model_too_large" {
+		t.Errorf("run: %v", m)
 	}
 }

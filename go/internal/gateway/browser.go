@@ -30,8 +30,10 @@ func allowedUIRoute(method, p string) bool {
 		return method == "GET" || method == "POST"
 	case "/_localbase/model-backend", "/_localbase/model-imports":
 		return method == "GET" || method == "POST"
-	case "/_localbase/backends", "/_localbase/auth-profiles":
+	case "/_localbase/backends", "/_localbase/auth-profiles", "/_localbase/host":
 		return method == "GET"
+	case "/_localbase/computer-name":
+		return method == "PUT"
 	case "/_localbase/model-discovery":
 		return method == "POST"
 	case "/_localbase/models":
@@ -56,6 +58,9 @@ func allowedUIRoute(method, p string) bool {
 	if rest, ok := strings.CutPrefix(p, "/_localbase/models/"); ok {
 		if id, ok := strings.CutSuffix(rest, "/unload"); ok && id != "" && !strings.Contains(id, "/") {
 			return method == "POST"
+		}
+		if id, ok := strings.CutSuffix(rest, "/admission"); ok && id != "" && !strings.Contains(id, "/") {
+			return method == "GET"
 		}
 	}
 	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
@@ -265,6 +270,8 @@ func forwardedQuery(target string, r *http.Request) string {
 		key = "after"
 	case strings.HasPrefix(target, "/_localbase/models/") && strings.HasSuffix(target, "/unload"):
 		key = "wait"
+	case strings.HasPrefix(target, "/_localbase/models/") && strings.HasSuffix(target, "/admission"):
+		key = "assumeInstalled"
 	}
 	if v := r.URL.Query().Get(key); key != "" && v != "" {
 		return url.Values{key: {v}}.Encode()

@@ -256,6 +256,16 @@ func (m *Manager) Delete(owner, id string) bool {
 	return true
 }
 
+// ActiveJobs is how many jobs are generating: at most one.
+func (m *Manager) ActiveJobs() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active != nil {
+		return 1
+	}
+	return 0
+}
+
 // Shutdown refuses new jobs and stops the active one.
 func (m *Manager) Shutdown() error {
 	m.mu.Lock()
