@@ -4427,9 +4427,13 @@ reference, a key command with the right scopes, and knowing that a client wants
   (`/app/*`, callbacks), and the routes only this machine's CLI can call, behind the
   instance token (`/_localbase/instance`, `/default-model`, `/placement-state`).
 - **Extensions on each operation:**
-  - `x-localbase-permission`: the permission the route needs. It is absent on a public route.
-    `"any"` means any authenticated caller, and `{"GET": …}`-style differences are expressed
-    by the operation itself.
+  - `x-localbase-permission`: the permission the route needs. It is absent on a public route,
+    and `"any"` means any authenticated caller. A method's own permission is on that method's
+    operation.
+  - `x-localbase-also-requires`: a second permission the route needs today. `unload` and
+    `placement` sit under the `models:read` guard of `/_localbase/models/{model_id...}`, so a
+    `models:manage`-only key gets 403, which §23 and §20.2 do not say. The document states what
+    the code does, and the test fails if it stops being true.
   - `x-localbase-stability`: `stable` for `/v1`, `unstable` for `/_localbase`, as
     `docs/versioning.md` promises.
 - **Security schemes:** `Authorization: Bearer` and `X-Api-Key`, the two `Resolver.Token`
@@ -4451,13 +4455,16 @@ No test dependency is added: the project keeps one module dependency. All of the
 | `TestOpenAPICoversEveryRoute` | a pattern registered on the mux is neither documented nor exempt by name; an exemption names a route that is gone; a documented path reaches no route |
 | `TestOpenAPISubroutes` | a wildcard route's real operations (`models/{id}/unload`, `/admission`, `/placement`, `runs/{id}/…`, `voices/{id}/audio`) differ from the document; `runTargets` differs from the documented targets; anything `allowedUIRoute` allows is undocumented |
 | `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
-| `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one does get 401 or 403 |
+| `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
 | `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
 | `TestOpenAPIServed` | the answers in 28.1 change, or the served version is not `Version` |
 
 So a route added without documentation fails CI, and so does documentation without a route.
-**What these cannot catch:** a request field the validators accept and the document omits, and
-the wording of descriptions. The syntax is also checked once by an external OpenAPI 3.1
+Each test was checked by breaking the document or the routes on purpose: a dropped path, method,
+status or field, a wrong permission, a fake path, a bad `$ref`, and an undocumented route each
+fail at least one test. **What these cannot catch:** a request field the validators accept and
+the document omits, a sub-route of a wildcard route that the code adds in a way the source scan
+does not read, the schemas of answers no test reaches, and the wording of descriptions. The syntax is also checked once by an external OpenAPI 3.1
 linter, run by hand and reported in the PR; CI does not run it, since that would add a
 dependency.
 
@@ -4500,7 +4507,8 @@ Needs `models:read`, like the pages around it; creating a key needs `keys:manage
 **The secret** appears once, in the response to the POST, as Admin does: never in a URL, no
 history entry, `Cache-Control: no-store`. The response fills the token into every snippet. `connect.js`
 keeps it in memory and re-applies it after an htmx swap, so changing the model does not lose it.
-Leaving the page does. Without JavaScript, the POST's full page still shows it filled in.
+Leaving the page does. Like every change in the UI, creating a key needs JavaScript: the CSRF and
+same-origin rules depend on htmx's headers.
 
 `--no-auth` says any key works and that this is for local development only.
 
@@ -4517,9 +4525,9 @@ local-base connect [client] [--model <id>] [--base-url <url>] [--list]
 
 - **With no client:** base URLs, whether the gateway is running, the model, how to get a key, and
   the client ids.
-- **With a client:** its snippets on stdout, and everything else on stderr, so
-  `local-base connect curl | sh` and redirecting into a file both work. An unknown client exits 2
-  and lists the ids.
+- **With a client:** the snippet that does the job on stdout, and everything else on stderr, so
+  redirecting a config into a file works. Snippets read the key from `LOCALBASE_API_KEY` wherever
+  the client allows, so setting it comes first. An unknown client exits 2 and lists the ids.
 - **`--base-url`** overrides the address, for a proxy the CLI cannot know about.
 - **`--create-key`** creates a key the way `keys create` does, and fills it into the snippets. It works
   with the gateway stopped. The defaults are the name `connect-<client>` and the chat scopes;
@@ -4541,7 +4549,9 @@ It is Go only. TS has no such command, and the differential does not compare it.
 
 Which clients appear, and each one's exact fields, come from that client's current documentation and
 are recorded in `internal/connect` with the date they were checked. A client that cannot use chat
-completions is not listed as supported.
+completions is not listed as supported. Each client says which it is, on the page and in the CLI:
+**run** (its snippet has been run against a gateway) or **follows the client's docs, not run**.
+Today that is run for curl and the two SDKs, and not run for every editor, agent and app.
 
 ### 28.7 Tests for Connect, and what is not verified
 
@@ -4554,10 +4564,11 @@ completions is not listed as supported.
   a later GET and from every URL, the no-store header.
 - `TestCLIConnect` (contract suite, real binary): text and JSON, stdout against stderr, `--create-key`
   with the gateway stopped, the secret absent without the flag, unknown client exits 2.
-- **Checked by hand and reported in the PR:** the OpenAI Python and JS SDK snippets, against a scratch
-  gateway with the fake backend.
-- **Not verifiable here:** the editors and apps themselves. Their snippets follow each client's docs;
-  they are not run against the real client unless the PR says so.
+- **Checked by hand, 2026-11-02:** curl, and the OpenAI Python (3.42.1) and JS (7.47.0) SDKs, running
+  exactly what `local-base connect` prints against a scratch gateway with the fake backend. Each got
+  the fake's own reply, and a wrong key got 401.
+- **Not run:** opencode, Continue, Cline, Aider, Zed, goose and Open WebUI. Their snippets follow each
+  client's docs. Someone who runs one can check it, and these are listed in `docs/connect.md`.
 
 **Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
 page, the command and the route. The keys it creates are ordinary keys.

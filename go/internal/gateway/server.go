@@ -73,6 +73,7 @@ type Server struct {
 	started  time.Time
 	stopping atomic.Bool
 	mux      *http.ServeMux
+	routes   []string // every registered pattern, for the OpenAPI drift test
 }
 
 func New(s *Server) *Server {
@@ -88,8 +89,9 @@ func New(s *Server) *Server {
 	}
 	s.runs = newRunManager(s, runsDir)
 	go s.runs.janitor()
-	mux := http.NewServeMux()
+	mux := newRouteMux()
 	mux.HandleFunc("/health", s.health)
+	mux.HandleFunc("/openapi.json", s.openAPI)
 	for _, p := range []string{"/app/login", auth.LocalOncePath, "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
 		"/app/logout", "/app/session", "/app/api", "/app/api/"} {
 		mux.HandleFunc(p, s.uiAccess)
@@ -137,7 +139,7 @@ func New(s *Server) *Server {
 		mux.Handle("/{$}", s.UI)
 	}
 	mux.HandleFunc("/", s.unmatched)
-	s.mux = mux
+	s.mux, s.routes = mux.ServeMux, mux.patterns
 	return s
 }
 
