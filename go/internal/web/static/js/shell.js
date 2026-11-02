@@ -270,3 +270,10 @@ function watchDock() {
 }
 watchDock();
 document.addEventListener("htmx:afterSettle", watchDock);
+
+// First run: the button says what picking this model will do.
+document.addEventListener("change", (event) => {
+  const said = event.target.dataset?.actionLabel;
+  const label = document.querySelector("[data-action-label-text]");
+  if (said && label) label.textContent = said;
+});

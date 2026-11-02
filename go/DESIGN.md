@@ -3919,6 +3919,12 @@ From the review: first-run, Models, Running, desktop layouts, keyboard-open stat
 - **Two ambers:** `--lb-brand` for the mark, `--lb-lamp` for live status. They start equal and may part.
 - **The mark is a frame and a lit doorway with no gap,** because the gap closed up at favicon sizes and read as a padlock.
 
+### §25 first run
+
+`/app` goes to `/app/welcome` when no chat model is installed and the person can add one. Hello, choose, download, first chat, with no tabs, and "Not now" always leaves. Sizes and fit are the catalog's and this machine's: "Fits this computer" compares against total memory, not what's free now, until the admission preview lands. Phones are stated plainly on the hello: they need a sign-in provider, because the first link only works in a browser on this computer. A finished download is enabled then activated, and Chat gets a real page load (`HX-Redirect`), because a swapped-in body would not start its scripts. There is no Cancel, because the management API has none.
+
+Running refreshes every 10 s with a Refresh button: it is a status page, and reading memory spawns a process on a Mac.
+
 ## 24. Backend facts and small additions for the studios (2026-11-01)
 
 Asked by the FE thread for the per-modality studios. Each behavior below

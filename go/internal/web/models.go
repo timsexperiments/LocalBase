@@ -178,6 +178,7 @@ func (u *UI) library(w http.ResponseWriter, r *http.Request) {
 type CatalogRow struct {
 	ID, Name, Initial, Task string
 	DownloadBytes           int64
+	UsesBytes               int64  // memory while running, at these launch settings
 	Fit                     string // fits | tight | wont-fit | "" (unknown)
 	Installed               bool
 }
@@ -199,7 +200,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
 			row.DownloadBytes += a.ExpectedSizeBytes
 		}
 		if f := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
-			row.Fit = f.Fit
+			row.Fit, row.UsesBytes = f.Fit, f.DemandBytes
 		}
 		rows = append(rows, row)
 	}

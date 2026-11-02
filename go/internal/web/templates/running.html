@@ -1,13 +1,16 @@
 {{define "title"}}Running · LocalBase{{end}}
 {{define "main"}}
 <section aria-labelledby="running-title">
-  <h1 id="running-title" class="page-title">Running</h1>
+  <div class="flex items-center justify-between gap-3">
+    <h1 id="running-title" class="page-title">Running</h1>
+    <button type="button" class="btn btn-quiet" hx-get="/app/models/running" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML">Refresh</button>
+  </div>
   {{/* Announced once per change (shell.js), not on every refresh. */}}
   <p id="running-status" class="sr-only" role="status" aria-live="polite"></p>
 
   <div id="running-live" class="mt-5 grid gap-5"
        hx-get="/app/models/running" hx-select="#running-live" hx-target="this" hx-swap="outerHTML"
-       hx-trigger="every 3s" hx-sync="this:drop" data-poll data-announce="{{with .Notice}}{{.}}{{else}}{{.Summary}}{{end}}" data-announce-into="running-status">
+       hx-trigger="every 10s" hx-sync="this:drop" data-poll data-announce="{{with .Notice}}{{.}}{{else}}{{.Summary}}{{end}}" data-announce-into="running-status">
     {{with .Notice}}<p class="notice {{if $.Failed}}notice-error{{end}}">{{.}}</p>{{end}}
     <section aria-labelledby="memory-title">
       <h2 id="memory-title" class="sr-only">Memory on {{.Host}}</h2>

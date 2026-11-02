@@ -37,14 +37,25 @@
           </div>
           {{else if eq .Ready 0}}
           <div class="empty-state">
+            {{if .Downloading}}
+            <h2 class="chat-hello">A model is on its way</h2>
+            <p class="mt-1 text-muted">You can chat as soon as it finishes downloading.</p>
+            <a href="/app/welcome/choose" class="btn btn-primary mt-4">See how it’s going</a>
+            {{else}}
             <h2 class="chat-hello">You need a model first</h2>
             <p class="mt-1 text-muted">A model is what answers you. It downloads to this computer, and your chats stay here.</p>
-            <a href="/app/models/get" class="btn btn-primary mt-4">Choose a model</a>
+            <a href="/app/welcome/choose" class="btn btn-primary mt-4">Choose a model</a>
+            {{end}}
           </div>
           {{else}}
           <div class="chat-empty">
+            {{if .FirstChat}}
+            <h2 class="chat-hello">Ready. Say something.</h2>
+            <p class="mt-1 text-muted">The first reply takes a moment while the model loads.</p>
+            {{else}}
             <h2 class="chat-hello">What’s on your mind?</h2>
             <p class="mt-1 text-muted">{{with .Strip}}Everything stays on {{.Host}}.{{else}}Everything stays on this computer.{{end}}</p>
+            {{end}}
             <p class="mt-2 text-muted" data-default-reason hidden></p>
             <div class="chat-suggest">
               <button type="button" class="chat-suggestion" data-suggest="Plan a three-day trip on a small budget.">Plan a three-day trip on a small budget</button>

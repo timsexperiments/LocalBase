@@ -26,17 +26,28 @@ type studioCard struct {
 
 // toolAvailable says whether a person may use a tool and whether it has a
 // model, with the Get models filter that offers one.
+// anyInstalled says whether one of these is on disk. A fresh install selects default models
+// before any of them has been downloaded, and selected isn't usable.
+func (u *UI) anyInstalled(models []labModel) bool {
+	for _, m := range models {
+		if s := u.d.Catalog.ByID(m.ID); s != nil && u.installedBytes(s) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool, filter string) {
 	p := u.caller(r)
 	switch tool {
 	case "image":
-		return p.Can("inference:image"), len(u.labModels("image")) > 0, "images"
+		return p.Can("inference:image"), u.anyInstalled(u.labModels("image")), "images"
 	case "video":
 		return p.Can("inference:video"), len(u.videoModels()) > 0, "video"
 	case "speech":
-		return p.Can("inference:speech"), len(u.labModels("tts")) > 0, "speech"
+		return p.Can("inference:speech"), u.anyInstalled(u.labModels("tts")), "speech"
 	case "transcribe":
-		return p.Can("inference:transcription"), len(u.labModels("stt")) > 0, "transcription"
+		return p.Can("inference:transcription"), u.anyInstalled(u.labModels("stt")), "transcription"
 	case "decisions":
 		return p.Can("inference:decision"), len(u.decisionModels()) > 0, "decisions"
 	}

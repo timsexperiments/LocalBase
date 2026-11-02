@@ -27,6 +27,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // [name, path, action run in the page before the scan]
 const states: [string, string, string][] = [
   ["chat", "/app/chat", ""],
+  ["welcome", "/app/welcome"],
+  ["welcome-choose", "/app/welcome/choose"],
+  ["not-found", "/app/nope"],
   ["picker", "/app/chat", `document.querySelector("[data-open-picker]").click()`],
   ["history", "/app/chat", `matchMedia("(min-width: 1024px)").matches || document.querySelector("[data-open-drawer]").click()`],
   ["generation", "/app/chat", `document.querySelector("[data-open-generation]").click()`],

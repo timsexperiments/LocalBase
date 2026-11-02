@@ -172,10 +172,12 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 		"DefaultJSON":     template.JS(db),
 		// A JSON data block: never executed, and html/template escapes it
 		// for the script context.
-		"ModelsJSON": template.JS(b),
-		"Ready":      ready,
-		"CanChat":    p.Can("inference:chat"),
-		"CanManage":  p.Can("models:manage"),
+		"ModelsJSON":  template.JS(b),
+		"Ready":       ready,
+		"FirstChat":   r.URL.Query().Get("ready") == "1",
+		"Downloading": ready == 0 && u.downloading(r) != "",
+		"CanChat":     p.Can("inference:chat"),
+		"CanManage":   p.Can("models:manage"),
 		// Dictation: the mic shows for people who may transcribe; without a
 		// model it explains what to install.
 		"CanDictate":     p.Can("inference:transcription"),

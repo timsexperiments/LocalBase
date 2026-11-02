@@ -124,7 +124,7 @@ func TestLabDock(t *testing.T) {
 	cat, _ := catalog.Load("")
 	cfg := &store.Config{Active: map[string]string{"image": "dreamshaper-8-lcm"}, Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
-	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, Call: (&fakeRuns{status: "completed"}).call})
+	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: (&fakeRuns{status: "completed"}).call})
 	main := mainRe.FindString(get(u, "/app/studio/image").Body.String())
 	for _, want := range []string{`aria-label="Back to Studio"`, `<h1 id="lab-title" class="page-title">Image</h1>`, `id="lab-items"`, `class="lab-dock" data-docked`,
 		`data-open-sheet="image-shape"`, `data-open-sheet="image-look"`, `data-open-sheet="image-count"`, `<dialog id="image-shape" class="sheet`, `aria-label="Generate"`, `class="composer-box lab-box"`, `data-fill="A paper boat`} {
@@ -163,10 +163,15 @@ func TestStudioLanding(t *testing.T) {
 	cfg := &store.Config{Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
 	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "inference:image", "inference:speech", "inference:video"}}
-	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm,
-		Call: func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
-			return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
-		}})
+	call := func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
+		return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
+	}
+	// Selected by default but not on disk is not usable: a fresh install starts like this.
+	fresh := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: t.TempDir(), Call: call})
+	if page := mainRe.FindString(get(fresh, "/app/studio").Body.String()); !strings.Contains(page, `<a href="/app/models/get?filter=images" class="studio-card">`) {
+		t.Errorf("a selected model with no files reads as ready: %s", page)
+	}
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: call})
 	main := mainRe.FindString(get(u, "/app/studio").Body.String())
 	for _, want := range []string{`<h1 id="studio-title" class="page-title">Studio</h1>`, `<a href="/app/studio/image" class="studio-card">`,
 		`<a href="/app/models/get?filter=speech" class="studio-card">`, "Needs a model", "Not on your account", "What you make appears here"} {

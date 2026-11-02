@@ -132,13 +132,18 @@ func New(d Deps) *UI {
 	}
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin"} {
+	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
 	m := http.NewServeMux()
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
-	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
+	m.HandleFunc("GET /{$}", u.home)
+	m.HandleFunc("GET /app", u.home)
+	m.HandleFunc("GET /app/welcome", u.need("models:read", u.welcome))
+	m.HandleFunc("GET /app/welcome/choose", u.need("models:read", u.welcomeChoose))
+	m.HandleFunc("POST /app/welcome/get", u.mutating("models:manage", u.welcomeGet))
+	m.HandleFunc("GET /app/welcome/getting", u.need("models:read", u.welcomeGetting))
+	m.HandleFunc("GET /app/welcome/progress", u.need("models:read", u.welcomeProgress))
 	m.HandleFunc("GET /app/chat", u.need("models:read", u.chat))
 	m.HandleFunc("GET /app/chat/default", u.need("models:read", u.chatDefault))
 	m.HandleFunc("GET /app/settings", u.need("models:read", u.settings))
@@ -197,7 +202,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/voices/{id}/rename", u.mutating("models:manage", u.voiceRename))
 	m.HandleFunc("POST /app/voices/{id}/delete", u.mutating("models:manage", u.voiceDelete))
 	m.HandleFunc("GET /app/voices/{id}/audio", u.need("models:manage", u.voiceAudio))
-	m.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	m.HandleFunc("/app/", u.notFound)
 	u.mux = m
 	return u
 }
@@ -285,6 +290,8 @@ func section(page string) string {
 		return "studio"
 	case "library", "get", "details", "import", "backends":
 		return "models"
+	case "notfound", "forbidden", "signin":
+		return "" // no tab is where you are
 	}
 	return "more" // voices, settings, admin
 }

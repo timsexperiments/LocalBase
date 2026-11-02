@@ -22,6 +22,8 @@ const PAGES: [string, string, string?][] = [
   ["chat-stopped", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:slow 80";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(1200)}document.querySelector("[data-stop]").click();${wait(700)}`],
   ["chat-interrupted", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:truncated";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2500)}`],
   ["chat-keyboard", "/app/chat", `document.querySelector("#chat-input").focus();${wait(100)}document.documentElement.setAttribute("data-typing","");${wait(150)}`],
+  ["welcome", "/app/welcome"],
+  ["welcome-choose", "/app/welcome/choose"],
   ["studio", "/app/studio"],
   ["image", "/app/studio/image"],
   ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click();${wait(400)}`],

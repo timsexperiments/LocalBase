@@ -192,13 +192,17 @@ else {
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 // Start the request from this page (navigating would cancel it).
 await nav("/app/models/running");
-await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 160" }] }) })`);
-for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) await sleep(250);
+await ev(`void fetch("/app/api/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-localbase-ui": "1" }, body: JSON.stringify({ model: "qwen3.5-4b-q4_k_m", stream: true, messages: [{ role: "user", content: "fake:slow 400" }] }) })`);
+// Running refreshes every 10 s; its Refresh button shows the state now.
+for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .pill-warn")`)); i++) {
+  await ev(`[...document.querySelectorAll("main button")].find((b) => b.textContent.trim() === "Refresh").click()`);
+  await sleep(250);
+}
 await ev(`document.querySelector("#running-live [aria-label^='Unload']").click()`);
 await sleep(300);
 const asked = await ev(`({ open: document.getElementById("unload-sheet")?.open, text: document.getElementById("unload-sheet")?.textContent.replace(/\\s+/g, " ") })`);
 check(asked.open && /This frees about .* Anything running on it finishes first/.test(asked.text), `Unload asks first: ${JSON.stringify(asked)}`);
-await sleep(3500); // a poll would have replaced the sheet; it waits while it is open
+await sleep(10500); // a poll would have replaced the sheet; it waits while it is open
 check(await ev(`document.getElementById("unload-sheet")?.open === true`), "the sheet survives polling");
 await ev(`document.querySelector("#unload-sheet button.btn-primary").click()`);
 await sleep(400);
@@ -416,7 +420,10 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   const failed = await waitItem("fake:fail a bad one", (g) => !g.active);
   check(failed?.alert && /Try again/.test(failed.text), `a failure says so in words and offers Try again: ${failed?.alert}`);
   const before = await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`);
-  await ev(`[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again").click()`);
+  // htmx wires a swapped-in button when it settles; a click sooner does nothing, and no person is that quick.
+  const retry = `[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again")`;
+  for (let i = 0; i < 50 && !(await ev(`!!${retry}["htmx-internal-data"]`)); i++) await sleep(50);
+  await ev(`${retry}.click()`);
   for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`)) === before; i++) await sleep(200);
   const again = await ev(`({ count: document.querySelectorAll("#lab-items .lab-item-video").length, said: document.querySelector("#lab-result [role=alert]")?.textContent ?? "" })`);
   check(again.count === before + 1, `Try again starts another job: ${JSON.stringify(again)}`);
