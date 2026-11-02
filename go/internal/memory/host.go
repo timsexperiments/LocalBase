@@ -34,8 +34,15 @@ type HostProvider interface {
 	Snapshot(ctx context.Context) Snapshot
 }
 
+// labHost replaces the provider in a localbase_lab build (host_lab.go); it
+// stays nil in every other build.
+var labHost func() HostProvider
+
 // NewHostProvider returns the provider for this OS.
 func NewHostProvider() HostProvider {
+	if labHost != nil {
+		return labHost()
+	}
 	if runtime.GOOS == "darwin" {
 		return newDarwinProvider()
 	}
