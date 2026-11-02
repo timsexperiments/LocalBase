@@ -18,7 +18,7 @@ guarded, but named branches aren't. **GAP** nothing automated fails if it breaks
 ## 1. The biggest gap: CI never compares Go with TS
 
 `go.yml` runs `tools/contract.sh -args -impl=go`. Every differential and most CLI tests
-need TS and are **skipped in CI**. `ci.yml`'s `bun test` runs only on PRs into main. So
+need TS and are **skipped in CI**. `ci.yml`'s `bun test` runs only on PRs into main and pushes to main. So
 "the dual suite stays green" is currently only true when someone runs it by hand, and
 nothing in CI would stop a PR breaking TS parity, including this cleanup.
 
