@@ -4111,3 +4111,122 @@ them: `TestRemoveScratch`.
 run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
+
+## 25. First-run browser access: a one-time local sign-in link (design addendum, 2026-11-02)
+
+Operator request, from the OSS-readiness audit. On a fresh root the browser has
+no way in: `/app/login` answers raw JSON `ui_access_denied`, and the only paths
+are configuring an identity provider or `--no-auth`. So "install, start, first
+chat" cannot end in the browser.
+
+**The idea.** Whoever can run the CLI on this root already has full control of
+it (the CLI is the break-glass path, §13.6). So the CLI may hand that same
+person a browser session, as long as the link can only be used from this
+computer.
+
+### 25.1 Issuing
+
+`local-base access login-link [--force] [--json]` prints:
+
+```text
+http://127.0.0.1:2273/app/login/once#<token>
+```
+
+- **Token:** 32 random bytes, base64url. Only its SHA-256 is stored, with a 10-minute
+  expiry, in a new Go table `local_login_links`. It is `CREATE TABLE IF NOT EXISTS`,
+  `go_schema` stays 1, and TS ignores it.
+- **One at a time:** issuing replaces any unused link.
+- **`--force` is needed when an identity provider is configured:** otherwise it
+  refuses and says so, since sign-in already exists.
+- **The URL uses the gateway's real port.** A wildcard host prints `127.0.0.1`. A
+  gateway with no loopback listener (a LAN IP only) refuses, because the link could
+  not be redeemed.
+- **It works with the gateway stopped:** the link is in the database, and the
+  output says to start it.
+
+**First-run output.** `start`, and foreground `serve`, issue and print one link
+**once**: when browser access is unconfigured and none has been shown on this root
+(`go_settings` key `access.first-run-link-shown`). It goes to the terminal only. A
+service-managed `serve` never prints it, so it cannot land in the captured service
+stderr. `--json` carries it as `loginLink` on the `started` event.
+
+**Deviation from the brief: a fragment, not `?token=`.** The token sits in the URL
+fragment and is redeemed by a same-origin POST from a hash-pinned script, exactly as
+magic links do (`MagicLinkPage`). A fragment never reaches a server log, and a link
+preview or a prefetching browser cannot use up a single-use token on GET.
+
+### 25.2 Redeeming, and the loopback rule
+
+`GET /app/login/once` serves the redeem page; `POST` takes the token. Both, and every
+later request on the resulting session, must pass **all** of:
+
+1. the socket: both `RemoteAddr` and the listener's local address are loopback;
+2. the `Host` header is a loopback literal or `localhost`, on the gateway's port;
+3. no proxy markers: `Forwarded`, `X-Forwarded-*`, `X-Real-Ip`, `Cf-Connecting-Ip`,
+   `Cf-Ray`, `Cf-Access-Jwt-Assertion`.
+
+**The socket alone is not enough:** a tunnel or reverse proxy on the same machine,
+such as this project's own Cloudflare deployment, connects from `127.0.0.1`, so a
+remote visitor also looks like a loopback client. Rules 2 and 3 are what exclude
+them, and rule 2 also stops DNS rebinding. A proxy configured to rewrite `Host` to
+loopback and strip every marker would pass; that is called out in the docs as
+unsupported in front of a local session.
+
+**Failures:** a wrong, used or expired token gets the same "This link has expired"
+page (no oracle). Failures are limited to 10 per minute per gateway, then 429 with
+`Retry-After`. Redeeming consumes the token in one transaction, so a double submit
+gets one session.
+
+### 25.3 The session
+
+- **Cookie:** `localbase-local-session`, `HttpOnly`, `SameSite=Strict`, host-only,
+  **not** `Secure`. The existing `__Host-` cookie requires `Secure`, which Safari
+  rejects on `http://127.0.0.1`. Plain HTTP on loopback does not leave the machine.
+- **Server side:** a hashed token with the existing session lifetime, in a new Go table
+  `local_sessions`. Keeping it apart from the TS session rows leaves rollback untouched.
+- **Permissions: all of them,** as `--no-auth` and the CLI have. It deliberately does
+  not go through the role policy, and it does not count as a manager for the lockout
+  rules (§13.6 item 5), because it is not an identity anyone else can see or manage.
+- **The same CSRF and same-origin rules** as other browser sessions, with this request's
+  loopback origin in place of the configured one.
+- **Identity:** the owner id is `local`, so runs and results (§21) belong to it.
+- **Sign out** works as usual. `local-base access login-link --revoke` removes every
+  local session and unused link.
+
+### 25.4 `/app/login` when there is no way in
+
+A navigation (`Accept` includes `text/html`) gets an HTML page, status 403, saying
+what to do. API clients keep today's JSON, so the differential and any script are
+unchanged.
+
+| Situation | Page says |
+|---|---|
+| No access configured, request passes 25.2 | Run `local-base access login-link` in a terminal on this computer, then open the link it prints |
+| No access configured, request does not pass | Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer |
+
+The FE thread styles it. The contract is `web.LoginHelp{Local bool}`: a template that
+gets this one flag and shows the command, nothing else from the server.
+
+### 25.5 Telemetry
+
+`audit.local-login-issued` and `audit.local-login-redeemed`, with `link_id` (the first
+8 characters of the token's hash), `actor_kind` and `forced`. Refusals log
+`auth.local-login-refused` with a reason (`expired`, `not-loopback`, `rate-limited`). Never
+the token, a URL with one, or a hostname.
+
+### 25.6 Rollback and tests
+
+**Rollback:** older binaries and TS ignore both tables. Local sessions stop working
+until a build that knows them returns, and the identity provider path is untouched.
+`tools/placement-rollback-check.sh` gains the two tables.
+
+**Tests, written first:**
+- `TestLoginLinkSingleUse`, `TestLoginLinkExpires`, `TestLoginLinkHashedAtRest`,
+  `TestLoginLinkReplacesUnused`, `TestLoginLinkRateLimited`.
+- `TestLocalSessionLoopbackRule`: a table over the socket, `Host` and each proxy marker,
+  on redeem and on every later request, including a tunnel-shaped request with a valid
+  cookie.
+- `TestLoginLinkRefusesWithProviderUnlessForced`, `TestFirstRunLinkPrintedOnce`,
+  `TestServiceServeNeverPrintsLink`.
+- `TestLoginHelpPage`: HTML for navigations, JSON for API clients.
+- `TestLoginLinkAudit`: the planted-token scan over logs and the diagnostics bundle.
