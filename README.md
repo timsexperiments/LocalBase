@@ -97,6 +97,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 - [API overview](docs/api.md) and [API details](docs/api-details.md)
 - [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
 - [Authentication](docs/authentication.md) and [user catalog entries](docs/user-catalog.md)
+- [Privacy](docs/privacy.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
 - [Design notes](go/DESIGN.md) and [changelog](CHANGELOG.md)
 
 ## Contributing
