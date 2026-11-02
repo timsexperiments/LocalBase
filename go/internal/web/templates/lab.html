@@ -528,8 +528,8 @@
           {{with $i.Model}}<div><dt>Model</dt><dd>{{.}}</dd></div>{{end}}
           {{with $i.Ago}}<div><dt>Made</dt><dd>{{.}}</dd></div>{{end}}
         </dl>
-        <p class="text-xs text-[#b3a8bc]">A saved copy includes its prompt. Sharing from here leaves it out.</p>
-        <p class="text-xs text-[#b3a8bc]" data-no-share hidden>This browser can’t share files. Use Save instead.</p>
+        <p class="text-xs text-[var(--lb-viewer-muted)]">A saved copy includes its prompt. Sharing from here leaves it out.</p>
+        <p class="text-xs text-[var(--lb-viewer-muted)]" data-no-share hidden>This browser can’t share files. Use Save instead.</p>
         <div class="flex flex-wrap gap-2">
           {{with $i.Prompt}}<button type="button" class="btn viewer-quiet rounded-full" data-copy-text="{{.}}">Copy prompt</button>{{end}}
           {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}
