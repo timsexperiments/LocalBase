@@ -1,21 +1,44 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// addImages answers sd-server's image routes with a tiny PNG. A prompt
-// containing "fake:slow-image" takes 1.5 s, and a client that goes away
-// first is recorded in FAKE_CANCEL_LOG.
+var fakeSeedRe = regexp.MustCompile(`<sd_cpp_extra_args>.*"seed":(\d+).*</sd_cpp_extra_args>`)
+
+// fakePNG is a PNG header and sd-server's "parameters" text, enough for the
+// gateway to read the seed.
+func fakePNG(prompt string, seed int64) string {
+	chunk := func(buf *bytes.Buffer, kind string, data []byte) {
+		binary.Write(buf, binary.BigEndian, uint32(len(data)))
+		body := append([]byte(kind), data...)
+		buf.Write(body)
+		binary.Write(buf, binary.BigEndian, crc32.ChecksumIEEE(body))
+	}
+	var b bytes.Buffer
+	b.WriteString("\x89PNG\r\n\x1a\n")
+	chunk(&b, "tEXt", []byte(fmt.Sprintf("parameters\x00%s\nSteps: 4, Seed: %d, Size: 256x256, SDCPP: {\"seed\":%d}", prompt, seed, seed)))
+	chunk(&b, "IEND", nil)
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
+// addImages answers sd-server's image routes: n images with seeds base + i,
+// where the base is the prompt's seed or 42, as the real server does. A prompt
+// containing "fake:slow-image" takes 1.5 s, and a client that goes away first
+// is recorded in FAKE_CANCEL_LOG.
 func addImages(mux *http.ServeMux) {
-	png := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\nfake-image"))
-	answer := func(w http.ResponseWriter, r *http.Request, prompt string) {
+	answer := func(w http.ResponseWriter, r *http.Request, prompt string, n int) {
 		if strings.Contains(prompt, "fake:slow-image") {
 			select {
 			case <-time.After(1500 * time.Millisecond):
@@ -29,16 +52,28 @@ func addImages(mux *http.ServeMux) {
 				return
 			}
 		}
+		base := int64(42)
+		if m := fakeSeedRe.FindStringSubmatch(prompt); m != nil {
+			base, _ = strconv.ParseInt(m[1], 10, 64)
+		}
+		data := []any{}
+		for i := range max(n, 1) {
+			data = append(data, map[string]any{"b64_json": fakePNG(prompt, base+int64(i))})
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"created": time.Now().Unix(), "data": []any{map[string]any{"b64_json": png}}})
+		json.NewEncoder(w).Encode(map[string]any{"created": time.Now().Unix(), "data": data})
 	}
 	mux.HandleFunc("POST /v1/images/generations", func(w http.ResponseWriter, r *http.Request) {
-		var body struct{ Prompt string }
+		var body struct {
+			Prompt string
+			N      int
+		}
 		json.NewDecoder(r.Body).Decode(&body)
-		answer(w, r, body.Prompt)
+		answer(w, r, body.Prompt, body.N)
 	})
 	mux.HandleFunc("POST /v1/images/edits", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseMultipartForm(32 << 20)
-		answer(w, r, r.FormValue("prompt"))
+		n, _ := strconv.Atoi(r.FormValue("n"))
+		answer(w, r, r.FormValue("prompt"), n)
 	})
 }

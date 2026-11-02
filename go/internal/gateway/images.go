@@ -335,7 +335,7 @@ func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 	req["prompt"] = promptWithTuning(req["prompt"].(string), tuning,
 		imageLoraFor(s.Catalog.ByID(lease.ModelID), lease.Target.Dir, tuning.loraStr))
 	body, _ := marshalNoEscape(req)
-	s.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted}, s.imageTelemetry(w, lease, started))
+	s.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)}, s.imageTelemetry(w, lease, started))
 }
 
 func (s *Server) activeImageModel() string {
@@ -552,7 +552,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		part("mask", *mask, "mask.png")
 	}
 	mw.Close()
-	s.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted},
+	s.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)},
 		s.imageTelemetry(w, lease, started))
 }
 
