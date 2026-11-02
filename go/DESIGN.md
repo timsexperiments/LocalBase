@@ -1218,6 +1218,26 @@ always bind loopback (`runtime.BackendHost`), and the flag is the only way to tu
 authentication off. Tests: `TestHostIsLoopback`, `TestServeRefusesNoAuthBeyondLoopback`,
 `TestNoAuthOnlyOnLoopback`.
 
+**`--no-auth` is for local development only and must never be tunneled.** Binding
+loopback does not make it private: any web page in a browser on the machine can send
+it requests, a page can rebind its own name to 127.0.0.1, and a tunnel on the machine
+connects from loopback. So a `--no-auth` gateway also answers 403
+`no_auth_request_refused` to (`gateway.noAuthRefusal`):
+
+- a `Host` that is not loopback or `localhost`, on every route (stops DNS rebinding,
+  and a tunnel that keeps the public name);
+- any proxy header: `Forwarded`, `X-Forwarded-*`, `X-Real-Ip`, `Cf-Connecting-Ip`,
+  `Cf-Ray`, `Cf-Access-Jwt-Assertion`, on every route;
+- on `/v1/`, `/_localbase/`, `/app/api/` and `/app/session`, an `Origin` other than
+  this gateway's, or a `Sec-Fetch-Site` other than `same-origin` or `none`.
+
+Clients that are not browsers send neither header and are unaffected. The gateway has
+no CORS headers, so no other origin could use it properly before. A proxy that rewrites
+`Host` and strips every marker still gets through: that is the limit of what a server
+can see. With authentication on, none of this applies. Tests:
+`TestNoAuthRefusesForeignRequests`, `TestNoAuthAllowsInProcessCalls`,
+`TestAuthenticatedGatewayIgnoresTheNoAuthRules`, `TestLoopbackHost`.
+
 **Not a status change, but clients should know:** transcription with no `language`
 treats audio as English on every model, in TS and Go alike, and `language=auto`
 detects it (§24).

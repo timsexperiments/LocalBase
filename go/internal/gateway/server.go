@@ -365,6 +365,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.Log.Log(r.Context(), level, msg, attrs...)
 	}()
+	if s.NoAuth {
+		if why := noAuthRefusal(r); why != "" {
+			writeError(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
+			return
+		}
+	}
 	s.mux.ServeHTTP(rec, r)
 }
 

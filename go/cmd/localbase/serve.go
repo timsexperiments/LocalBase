@@ -58,7 +58,7 @@ func serveCommand() *cli.Command {
 		opt("stt-model-file", "<file>", "STT model filename override"),
 		opt("tts-model-file", "<file>", "TTS backbone model filename override"),
 		opt("image-model-file", "<file>", "Image model filename override"),
-		flag("auth", "Enable API key authentication (--no-auth disables it, on loopback only)"),
+		flag("auth", "Enable API key authentication (--no-auth disables it: local development only, on loopback, never tunneled)"),
 		opt("auth-mode", "<bearer|x-api-key|either>", "Authentication header mode"),
 		flag("bypass-memory-check", "Start despite model memory warnings"),
 		opt("log-level", "<debug|info|warn|error>", "Minimum event severity (default info)"),
