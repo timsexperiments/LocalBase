@@ -120,7 +120,13 @@ rewrite.
 
 ### Exact steps (single squash)
 
-1. Update #403 if the user's checks change anything.
+1. Update #403 if the user's checks change anything. **#411 and #421 must land with
+   #403:** merge #411, then #421, into `rewrite/go-merge-readiness` before the squash,
+   and rerun CI and `-impl=both` on the result. Without #411 a model that can never
+   fit answers 503 instead of TS's 422. Without #421 a fresh root can't install its
+   default model from the API. Both are draft and green at their own heads (#411 at
+   `f9e9beb2`, #421 at `b68f9a3b`). A trial merge of the two reports no conflicts. They
+   have not yet been tested together.
 2. Mark #403 ready. Confirm all five checks at its final head.
 3. Squash-merge #403. The title should say what it is, not "DO NOT MERGE".
 4. Check the result: `git log -1 --format='%an %cn'` must show the account's profile

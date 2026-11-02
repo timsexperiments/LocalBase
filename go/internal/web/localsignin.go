@@ -13,11 +13,12 @@ import (
 // The pages of one-time local sign-in (DESIGN §25). The template gets only these
 // fields: nothing else from the server reaches a signed-out visitor.
 type localSignIn struct {
-	Mode   string // help | redeem | expired | too-many | failed | signed-out | wrong-address | unavailable
-	Origin string // wrong-address: where sign-in is
-	Local  bool   // this request passes the loopback rule
-	Action string
-	Script template.JS
+	Mode     string // help | redeem | expired | too-many | failed | signed-out | wrong-address | unavailable
+	Origin   string // wrong-address: where sign-in is
+	Provider bool   // signed-out: an identity provider is set up, so another account is possible
+	Local    bool   // this request passes the loopback rule
+	Action   string
+	Script   template.JS
 }
 
 func (u *UI) renderLocalSignIn(w http.ResponseWriter, status int, d localSignIn) {
