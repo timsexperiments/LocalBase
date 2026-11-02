@@ -1106,9 +1106,18 @@ stderr is all there is. `doctor` says how long it has been refusing (`startRefus
 **A hard link** refuses as in TS, and the message explains it: a second name for the same file,
 which a backup made with `ln` creates. A `cp` copy is fine.
 
-**Not covered:** other files in the root written through fixed `.tmp` names (`ui-access.json`,
-`catalog.d`, auth profiles, the feed cache) and model and runtime downloads. A link at those paths
-is still followed.
+**Settings, caches and downloads** do not stop the gateway. `obs.WritePrivateChecked` writes
+`ui-access.json`, `email-delivery.json`, `catalog.d`, custom backends, auth profiles, the feed and
+Hub caches, the service manifest and unit, and `.checksums.json`: a planted link at the path fails
+that write with the same clear error rather than being quietly replaced, and its target stays
+untouched. A fresh exclusive temporary name means a link at an old fixed `.tmp` name redirects
+nothing. Download partials open through `OpenOwnedRegular`, and a link at a partial is refused
+before its size or hash is read, since it could otherwise be published as the model.
+
+**Left as they are:** a symlinked final model file (weights on another disk are plausible, and
+nothing is written through it); reads of settings files other than auth profiles; `root/operation.go`
+and `.localbase-root.json`, written before or around the root's own setup. A runtime package's
+files keep their modes, so extraction uses `O_NOFOLLOW` alone.
 
 ### 13.6 Status changes for the cutover checklist
 

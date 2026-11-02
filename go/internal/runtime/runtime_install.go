@@ -21,6 +21,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Managed runtime installation (TS manager/binaries.ts ensureBinary): a
@@ -210,7 +212,7 @@ func fetchVerified(ctx context.Context, url, dest string, size int64, want strin
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
-	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := obs.OpenOwnedRegular(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
@@ -324,7 +326,9 @@ func writeEntry(target string, r io.Reader, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return err
 	}
-	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm()|0o600)
+	// Not OpenOwnedRegular: an executable keeps its mode. A package may hold its own
+	// links, so one of them must not redirect this write.
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NOFOLLOW, mode.Perm()|0o600)
 	if err != nil {
 		return err
 	}

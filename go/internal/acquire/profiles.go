@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Auth profiles are LocalBase's private credential storage for download
@@ -122,9 +124,13 @@ type Profiles struct {
 
 // LoadProfiles reads the profiles; a missing file is empty.
 func LoadProfiles(rootDir string) (*Profiles, error) {
-	b, err := os.ReadFile(profilesPath(rootDir))
+	b, err := obs.ReadOwnedRegular(profilesPath(rootDir))
 	if errors.Is(err, os.ErrNotExist) {
 		return &Profiles{}, nil
+	}
+	var unsafe *obs.UnsafeFileError
+	if errors.As(err, &unsafe) {
+		return nil, err
 	}
 	if err != nil {
 		return nil, errors.New("unable to read the auth profiles")
@@ -155,11 +161,7 @@ func saveProfiles(rootDir string, ps *Profiles) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(ps, "", "  ")
-	tmp := profilesPath(rootDir) + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, profilesPath(rootDir))
+	return obs.WritePrivateChecked(profilesPath(rootDir), b)
 }
 
 // SaveProfile adds or replaces a profile.

@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 const (
@@ -96,10 +98,7 @@ func (c *Client) writeCache(u string, body []byte, now time.Time) {
 	}
 	b, _ := json.Marshal(cacheEntry{URL: u, FetchedAt: float64(now.UnixMilli()), Body: body})
 	path := c.cachePath(u)
-	tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		os.Rename(tmp, path)
-	}
+	obs.WritePrivateChecked(path, b) // a cache: failing to save it costs a refetch
 }
 
 // getJSON fetches JSON with caching and offline-safe errors.
