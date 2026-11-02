@@ -7,8 +7,8 @@
 //	go test ./contract -args -url=http://127.0.0.1:P -key=lb_... -keyless-key=lb_...
 //	                                           # an already running gateway
 //
-// Launched gateways get a fresh scratch root in a temp dir and ports in
-// 24000-29999. LOCALBASE_CONTRACT_MODELS names a models/llm directory (read
+// Launched gateways get a fresh scratch root in a temp dir and ports from
+// LOCALBASE_TEST_PORTS (default 25000-25499). LOCALBASE_CONTRACT_MODELS names a models/llm directory (read
 // only) holding qwen2.5-coder-1.5b-instruct-q4_k_m; the TS gateway needs it
 // because it refuses to start without the active model's files. Adding
 // LOCALBASE_CONTRACT_RUNTIMES (a bin/runtimes directory, copied) runs the
@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -40,6 +39,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 var (
@@ -107,18 +107,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func freePort() int {
-	for {
-		p := 24000 + rand.IntN(6000)
-		if p == 24173 || (p >= 25611 && p <= 25613) {
-			continue
-		}
-		if ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p)); err == nil {
-			ln.Close()
-			return p
-		}
-	}
-}
+func freePort() int { return testutil.FreePort() }
 
 // fixture builds a scratch root both implementations accept: marker, a
 // migrated database with a config row and two keys, the remote feed off,
@@ -413,7 +402,7 @@ func each(t *testing.T, f func(t *testing.T, tg *Target)) {
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
 // rangeServer is httptest.NewServer (or NewTLSServer) listening on a port in
-// the test range (24000-29999) instead of an ephemeral one.
+// the test block (testutil.FreePort) instead of an ephemeral one.
 func rangeServer(t testing.TB, h http.Handler, tls bool) *httptest.Server {
 	t.Helper()
 	ts := httptest.NewUnstartedServer(h)
