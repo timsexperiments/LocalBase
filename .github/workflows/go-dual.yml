@@ -17,7 +17,7 @@ jobs:
   dual:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'dual')
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       MODEL_FILE: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
       MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/f86cb2c1fa58255f8052cc32aeede1b7482d4361/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
