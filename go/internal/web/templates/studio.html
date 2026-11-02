@@ -8,7 +8,7 @@
     {{if .Recent}}
     <ul class="studio-recent">
       {{range .Recent}}
-      <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{else}}{{with .Ago}}, {{.}}{{end}}{{end}}">
+      <li><a href="/app/studio/{{.Tool}}" class="studio-tile" aria-label="{{if eq .Tool "image"}}Image{{else if eq .Tool "video"}}Video{{else if eq .Tool "speech"}}Speech{{else}}Transcript{{end}}{{with .Caption}}: {{.}}{{end}}{{if .Active}}, in progress{{else}}{{with .Ago}}, {{.}}{{end}}{{end}}">
         {{if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
         {{else if .Active}}<span class="skeleton studio-tile-img"></span>
         {{else}}{{template "studio-art" .Tool}}{{end}}
@@ -16,7 +16,7 @@
       {{end}}
     </ul>
     {{else}}
-    <p class="px-1 text-muted">What you make appears here for 30 minutes.</p>
+    <p class="px-1 text-muted">What you make appears here for a while.</p>
     {{end}}
   </section>
 

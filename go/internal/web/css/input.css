@@ -549,6 +549,44 @@
   }
 }
 
+/* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
+@layer components {
+  .lab-item-video {
+    @apply self-start;
+  }
+  .video-frame {
+    @apply mx-auto max-h-[60dvh] max-w-full min-h-0;
+  }
+  video.video-frame {
+    @apply block;
+  }
+  .video-tall {
+    @apply aspect-[9/16];
+  }
+  .video-wide {
+    @apply aspect-video w-full;
+  }
+  .video-square {
+    @apply aspect-square w-full max-w-md;
+  }
+  video.video-tall {
+    height: 60dvh;
+  }
+  /* While it runs, Stop has to stay on screen above the prompt. */
+  .lab-progress.video-frame {
+    max-height: 36dvh;
+  }
+  .lab-progress.video-tall {
+    height: 36dvh;
+  }
+  .video-thumb {
+    @apply block size-10 shrink-0 overflow-hidden rounded-lg;
+  }
+  .video-recent {
+    @apply block size-16 overflow-hidden rounded-lg ring-1 ring-line;
+  }
+}
+
 /* Decisions (DESIGN §22.17). */
 @layer components {
   /* The same three places in every state: the type never moves. */

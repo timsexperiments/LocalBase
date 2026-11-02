@@ -38,6 +38,7 @@ const states: [string, string, string][] = [
   ["image-shape", "/app/studio/image", `document.querySelector("[data-open-sheet=image-shape]")?.click()`],
   ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click()`],
   ["lab-video", "/app/studio/video", ""],
+  ["video-sheet", "/app/studio/video", `document.querySelector("[data-video-chip]")?.click()`],
   ["lab-speech", "/app/studio/speech", ""],
   ["lab-transcribe", "/app/studio/transcribe", ""],
   ["decisions", "/app/studio/decisions", ""],

@@ -143,6 +143,13 @@ async function syncRuns() {
   } catch {
     // Unreachable or signed out: session.js reports it; keep the pill hidden.
   }
+  // Video jobs are not runs (DESIGN §22.18). Their own page shows them.
+  if (location.pathname !== "/app/studio/video") {
+    const videos = await fetch("/app/lab/video/active", { cache: "no-store", redirect: "manual" })
+      .then((r) => (r.ok ? r.json() : { count: 0 }))
+      .catch(() => ({ count: 0 }));
+    for (let i = 0; i < videos.count; i++) list.push({ place: { href: "/app/studio/video", label: "Video" } });
+  }
   const here = document.body.dataset.runPage;
   // A run started in another browser has no place here: send it to its page.
   const shown = list

@@ -359,6 +359,77 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
 }
 
+// --- Video (DESIGN §22.18) ------------------------------------------------------
+await nav("/app/studio/video");
+if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) {
+  console.log("skip video (no video model selected)");
+} else {
+  const makeVideo = (text) => `(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(text)}; document.querySelector("form[aria-label='Make a video'] button[type=submit]").click(); })()`;
+  const itemFor = (text) => `[...document.querySelectorAll("#lab-items .lab-item-video")].find((n) => n.textContent.includes(${JSON.stringify(text)}))`;
+  const waitItem = async (text, test, ms = 30000) => { const t = Date.now(); let got; while (Date.now() - t < ms) { got = await ev(`(() => { const n = ${itemFor(text)}; return n ? { text: n.textContent.replace(/\\s+/g, " "), active: n.hasAttribute("data-poll"), video: !!n.querySelector("video"), alert: n.querySelector("[role=alert]")?.textContent ?? "" } : null; })()`); if (got && test(got)) return got; await sleep(200); } return got; };
+
+  const sheet = await ev(`(() => { document.querySelector("[data-video-chip]").click(); const t = document.getElementById("lab-more").textContent.replace(/\\s+/g, " "); document.getElementById("lab-more").close(); return { t, chip: document.querySelector("[data-video-chip]").textContent.replace(/\\s+/g, " ").trim(), model: !!document.querySelector("[data-open-sheet=lab-model]") }; })()`);
+  check(/About \d+ seconds, tall/.test(sheet.t) && /up to 10 minutes/.test(sheet.t) && !/fps|frames/.test(sheet.t) && !sheet.model && sheet.chip === "Start from Words", `the profile is in words, and one model needs no chooser: ${sheet.chip}`);
+
+  await ev(makeVideo("fake:slow a paper boat"));
+  const running = await waitItem("fake:slow a paper boat", (g) => g.active);
+  check(running?.active && /Waiting for its turn|Making the video/.test(running.text) && /it keeps going/.test(running.text) && !/\d%/.test(running.text), `a job shows its stage, no percentage: ${running?.text.slice(0, 90)}`);
+  const place = await ev(`(() => { const r = document.querySelector("#lab-items .lab-item-video .video-frame").getBoundingClientRect(); return r.height / r.width; })()`);
+  check(place > 1.5 && place < 2, `its place has the final shape (${place.toFixed(2)})`);
+  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+  const stop = await ev(`(() => { const b = ${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']"); window.scrollTo(0, 0); const dock = document.querySelector(".lab-dock").getBoundingClientRect(), text = document.querySelector("#lab-items .lab-progress span").getBoundingClientRect(), frame = document.querySelector("#lab-items .lab-progress").getBoundingClientRect(); return { firstScreen: b.getBoundingClientRect().bottom <= dock.top, centered: Math.abs((text.top + text.bottom) / 2 - (frame.top + frame.bottom) / 2) < 8 }; })()`);
+  check(stop.firstScreen && stop.centered, `Stop is on the first screen above the prompt, and the stage is centered: ${JSON.stringify(stop)}`);
+  await ev(makeVideo("a second one"));
+  await sleep(700);
+  const busy = await ev(`({ said: document.querySelector("#lab-result [role=alert]")?.textContent, kept: document.getElementById("lab-prompt").value })`);
+  check(/One video at a time/.test(busy.said ?? "") && busy.kept === "a second one", `a second video says what to do and keeps its words: ${JSON.stringify(busy)}`);
+
+  await nav("/app/models");
+  await sleep(600);
+  const pill = await ev(`(() => { const p = [...document.querySelectorAll("[data-run-pill]")].find((n) => !n.hidden); return p ? { href: p.getAttribute("href"), text: p.textContent.trim() } : null; })()`);
+  check(pill?.href === "/app/studio/video" && /Video/.test(pill.text), `the pill leads back: ${JSON.stringify(pill)}`);
+  await nav("/app/studio");
+  check((await ev(`!!document.querySelector('.studio-recent a[href="/app/studio/video"]')`)), "the landing's Recent shows it");
+  await nav("/app/studio/video");
+  check((await waitItem("fake:slow a paper boat", (g) => g.active))?.active, "it is still there after leaving");
+  check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
+
+  await ev(`${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']").click()`);
+  const stopped = await waitItem("fake:slow a paper boat", (g) => !g.active);
+  check(/Stopped\. Nothing was saved\./.test(stopped?.text ?? "") && /Try again/.test(stopped.text), `Stop says what happened: ${stopped?.text.slice(0, 90)}`);
+
+  await ev(makeVideo("a quiet beach"));
+  const done = await waitItem("a quiet beach", (g) => g.video);
+  check(done?.video, "the finished video is in the tray");
+  await sleep(600);
+  const played = await ev(`(async () => { const v = ${itemFor("a quiet beach")}.querySelector("video"); if (v.readyState < 1) await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; setTimeout(r, 4000); }); return { duration: v.duration, width: v.videoWidth, save: !!${itemFor("a quiet beach")}.querySelector("a[download='video.mp4']"), again: /Make again/.test(${itemFor("a quiet beach")}.textContent) }; })()`);
+  check(played.duration > 1 && played.width > 0 && played.save && played.again, `it plays, with Save and Make again: ${JSON.stringify(played)}`);
+
+  await ev(makeVideo("fake:fail a bad one"));
+  const failed = await waitItem("fake:fail a bad one", (g) => !g.active);
+  check(failed?.alert && /Try again/.test(failed.text), `a failure says so in words and offers Try again: ${failed?.alert}`);
+  const before = await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`);
+  await ev(`[...${itemFor("fake:fail a bad one")}.querySelectorAll("button")].find((b) => b.textContent === "Try again").click()`);
+  await sleep(800);
+  check((await ev(`document.querySelectorAll("#lab-items .lab-item-video").length`)) === before + 1, "Try again starts another job");
+
+  const usable = await ev(`document.querySelectorAll("[data-video-use]").length`);
+  if (usable) {
+    await ev(`document.querySelector("[data-video-chip]").click(); document.querySelector("[data-video-use]").click()`);
+    await sleep(600);
+    const pic = await ev(`({ chip: document.querySelector("[data-video-chip-value]").textContent, files: document.querySelector("[data-video-source]").files.length, w: document.querySelector("[data-video-preview]").naturalWidth, h: document.querySelector("[data-video-preview]").naturalHeight, clear: !document.querySelector("[data-video-clear]").hidden })`);
+    check(pic.chip === "Picture" && pic.files === 1 && pic.w === 480 && pic.h === 832 && pic.clear, `a recent picture becomes the start, cropped to the frame: ${JSON.stringify(pic)}`);
+    await ev(`document.querySelector("[data-video-clear]").click()`);
+    await sleep(100);
+    check((await ev(`document.querySelector("[data-video-chip-value]").textContent === "Words" && document.querySelector("[data-video-source]").files.length === 0`)), "and can be removed");
+    await ev(`document.getElementById("lab-more").close()`);
+  } else console.log("skip recent picture (no image result to use)");
+
+  await ev(`${itemFor("a quiet beach")}.querySelector("[hx-post$='/remove']").click()`);
+  await sleep(500);
+  check(!(await ev(`!!${itemFor("a quiet beach")}`)), "Remove takes it out of the tray");
+}
+
 ws.close();
 console.log(fails ? `e2e: ${fails} failure(s)` : "e2e: all passed");
 process.exit(fails ? 1 : 0);

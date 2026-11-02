@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -131,7 +133,7 @@ func TestVoicesPage(t *testing.T) {
 	}
 }
 
-// TestLabVideo covers the Lab's video section: text and image-to-video
+// TestLabVideo covers the Video studio: text and image-to-video
 // models are offered (speech to video is not), the starting picture input
 // appears for image-to-video models only, a job is created at the model's
 // profile with the picture as input_reference, the page polls and can
@@ -154,7 +156,7 @@ func TestLabVideo(t *testing.T) {
 		strings.Contains(page, `value="wan2.2-s2v-14b-fp8"`) {
 		t.Fatalf("models: %s", page)
 	}
-	if !strings.Contains(page, "Makes 33 frames at 16 fps, 320×320") || strings.Contains(page, "data-video-source") {
+	if !strings.Contains(page, "About 2 seconds, square. It can take up to") || strings.Contains(page, "data-video-source") {
 		t.Fatalf("text-to-video options: %s", page)
 	}
 	w = httptest.NewRecorder()
@@ -181,7 +183,7 @@ func TestLabVideo(t *testing.T) {
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	withCSRF(&UI{}, r)
 	const id = "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab"
-	api.reply = APIResult{Status: 202, Body: []byte(`{"object":"localbase.video.job","id":"` + id + `","status":"queued","created_at":1}`)}
+	api.reply = APIResult{Status: 202, Body: []byte(`{"object":"localbase.video.job","id":"` + id + `","status":"queued","created_at":` + strconv.FormatInt(time.Now().Unix(), 10) + `}`)}
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, r)
 	var sent map[string]any
@@ -192,8 +194,25 @@ func TestLabVideo(t *testing.T) {
 	}
 	frag := w.Body.String()
 	if !strings.Contains(frag, `hx-get="/app/lab/video/`+id+`"`) || !strings.Contains(frag, `hx-trigger="every 2s"`) ||
-		!strings.Contains(frag, "/cancel") {
+		!strings.Contains(frag, "/cancel") || !strings.Contains(frag, "Waiting for its turn") || !strings.Contains(frag, "it keeps going") ||
+		!strings.Contains(frag, "video-tall") || !strings.Contains(frag, "a boat") || strings.Contains(frag, "%") {
 		t.Fatalf("queued fragment: %s", frag)
+	}
+	if w.Header().Get("HX-Retarget") != "#lab-items" {
+		t.Fatalf("a job joins the tray: %v", w.Header())
+	}
+	// It is still there after leaving and coming back, and the indicator counts it.
+	api.reply = APIResult{Status: 200, Body: []byte(`{"object":"localbase.video.job","id":"` + id + `","status":"in_progress","created_at":1}`)}
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/studio/video", nil))
+	// (Started long ago, so past half the model's limit: it says so.)
+	if !strings.Contains(w.Body.String(), "Making the video") || !strings.Contains(w.Body.String(), `id="run-`+id+`"`) || !strings.Contains(w.Body.String(), "taking a while") {
+		t.Fatalf("the tray lost the job: %s", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/video/active", nil))
+	if !strings.Contains(w.Body.String(), `{"count":1}`) {
+		t.Fatalf("active: %s", w.Body.String())
 	}
 
 	// Completed: the video plays, with byte ranges.
@@ -202,7 +221,7 @@ func TestLabVideo(t *testing.T) {
 	r = httptest.NewRequest("GET", "/app/lab/video/"+id, nil)
 	r.Header.Set("HX-Request", "true")
 	u.ServeHTTP(w, r)
-	if frag := w.Body.String(); !strings.Contains(frag, `<video controls playsinline src="/app/lab/video/`+id+`/content"`) ||
+	if frag := w.Body.String(); !strings.Contains(frag, `<video controls playsinline preload="metadata" src="/app/lab/video/`+id+`/content"`) ||
 		strings.Contains(frag, "every 2s") {
 		t.Fatalf("completed fragment: %s", frag)
 	}
@@ -219,8 +238,46 @@ func TestLabVideo(t *testing.T) {
 	api.reply = APIResult{Status: 200, Body: []byte(`{"object":"localbase.video.job","id":"` + id + `","status":"failed","created_at":1,"completed_at":2,"error":{"code":"insufficient_memory","message":"Not enough free memory."}}`)}
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/lab/video/"+id, nil))
-	if !strings.Contains(w.Body.String(), "Not enough free memory.") {
+	if !strings.Contains(w.Body.String(), "isn’t enough free memory") || !strings.Contains(w.Body.String(), "Try again") ||
+		!strings.Contains(w.Body.String(), "/app/models/running") {
 		t.Fatalf("failed: %s", w.Body.String())
+	}
+
+	// Try again sends the same words, model and picture.
+	api.reply = APIResult{Status: 202, Body: []byte(`{"object":"localbase.video.job","id":"7f1c2c3e-8a7b-4c1d-9e2f-0123456789ab","status":"queued","created_at":2}`)}
+	r = htmxPost("/app/lab/video/"+id+"/again", url.Values{})
+	withCSRF(&UI{}, r)
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, r)
+	sent = nil
+	json.Unmarshal(api.body, &sent)
+	if api.path != "/v1/videos" || sent["prompt"] != "a boat" || sent["model"] != "fastwan2.2-ti2v-5b-q6_k" ||
+		sent["input_reference"] != base64.StdEncoding.EncodeToString([]byte("\x89PNGfake")) {
+		t.Fatalf("again: %s %v (%s)", api.path, sent, w.Body.String())
+	}
+
+	// Only one runs at a time: it says what to do.
+	api.reply = APIResult{Status: 429, Body: []byte(`{"error":{"code":"video_job_busy","message":"A local video job is already in progress."}}`)}
+	r = htmxPost("/app/lab/video/"+id+"/again", url.Values{})
+	withCSRF(&UI{}, r)
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), "One video at a time") || strings.Contains(w.Body.String(), "already in progress") {
+		t.Fatalf("busy: %s", w.Body.String())
+	}
+
+	// Remove deletes the job; one the API has forgotten leaves the tray.
+	r = htmxPost("/app/lab/video/"+id+"/remove", url.Values{})
+	withCSRF(&UI{}, r)
+	u.ServeHTTP(httptest.NewRecorder(), r)
+	if api.method != "DELETE" || api.path != "/v1/videos/"+id {
+		t.Fatalf("remove: %s %s", api.method, api.path)
+	}
+	api.reply = APIResult{Status: 404, Body: []byte(`{"error":{"message":"gone"}}`)}
+	w = httptest.NewRecorder()
+	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/studio/video", nil))
+	if strings.Contains(w.Body.String(), "id=\"run-") {
+		t.Fatalf("a forgotten job stayed: %s", w.Body.String())
 	}
 }
 

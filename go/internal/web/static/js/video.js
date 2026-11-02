@@ -1,5 +1,5 @@
-// The Lab's starting picture for image-to-video models (TS studio
-// chooseSource and cover): the chosen image is scaled and center-cropped to
+// The Video studio's starting picture (TS studio chooseSource and cover): an
+// image from a file or a recent result is scaled and center-cropped to
 // fill exactly the model's frame (data-width × data-height), encoded as PNG,
 // and put back in the file input, so the server receives the picture the
 // model accepts.
@@ -34,23 +34,31 @@ function loadImage(file) {
   });
 }
 
-async function prepare(input) {
+function syncChip(has) {
+  const value = document.querySelector("[data-video-chip-value]");
+  if (value) value.textContent = has ? "Picture" : "Words";
+}
+
+async function prepare(input, file) {
   const box = input.parentElement;
   const status = box.querySelector("[data-video-status]");
   const preview = box.querySelector("[data-video-preview]");
+  const clear = box.querySelector("[data-video-clear]");
   const say = (text) => { if (status) status.textContent = text; };
-  const file = input.files?.[0];
-  if (!file) {
-    preview?.classList.add("hidden");
-    return;
-  }
-  if (!file.type.startsWith("image/")) {
+  const none = () => {
     input.value = "";
+    preview?.classList.add("hidden");
+    if (clear) clear.hidden = true;
+    syncChip(false);
+  };
+  if (!file) return none();
+  if (!file.type.startsWith("image/")) {
+    none();
     say("Choose a PNG, JPEG or WebP image.");
     return;
   }
   if (file.size > maxSourceBytes) {
-    input.value = "";
+    none();
     say("Choose an image smaller than 25 MiB.");
     return;
   }
@@ -67,15 +75,47 @@ async function prepare(input) {
       preview.src = URL.createObjectURL(png);
       preview.classList.remove("hidden");
     }
-    say(`Ready: cropped to ${width}×${height}.`);
+    if (clear) clear.hidden = false;
+    syncChip(true);
+    say("Ready: cropped to fill the frame.");
   } catch (cause) {
-    input.value = "";
-    preview?.classList.add("hidden");
+    none();
     say(cause instanceof Error ? cause.message : "Could not read the image.");
   }
 }
 
 document.addEventListener("change", (event) => {
   const input = event.target;
-  if (input instanceof HTMLInputElement && input.matches("[data-video-source]")) prepare(input);
+  if (input instanceof HTMLInputElement && input.matches("[data-video-source]")) prepare(input, input.files?.[0]);
+});
+
+document.addEventListener("click", async (event) => {
+  const use = event.target.closest?.("[data-video-use]");
+  const input = document.querySelector("[data-video-source]");
+  if (use && input) {
+    const status = input.parentElement.querySelector("[data-video-status]");
+    try {
+      const response = await fetch(use.dataset.videoUse);
+      if (!response.ok) throw new Error("gone");
+      const blob = await response.blob();
+      await prepare(input, new File([blob], "recent.png", { type: blob.type }));
+    } catch {
+      if (status) status.textContent = "That picture has expired. Choose another.";
+    }
+    return;
+  }
+  if (event.target.closest?.("[data-video-clear]") && input) {
+    await prepare(input, null);
+    const status = input.parentElement.querySelector("[data-video-status]");
+    if (status) status.textContent = "It is cropped to fill the frame.";
+  }
+});
+
+// A model change redraws the options: the chip follows whether it takes a picture.
+document.addEventListener("htmx:afterSettle", () => {
+  const chip = document.querySelector("[data-video-chip]");
+  if (!chip) return;
+  const input = document.querySelector("[data-video-source]");
+  chip.hidden = !input;
+  syncChip(!!input?.files?.length);
 });

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,7 @@ func (n *labNote) picture(index string) *labPicture {
 type labNote struct {
 	owner, caption, prompt, result, text string
 	image                                *imageRequest
+	video                                *videoRequest
 	pictures                             []labPicture
 	at                                   time.Time
 }
@@ -97,6 +99,35 @@ func (n *labNotes) setImage(owner, id string, q imageRequest) {
 	if v := n.items[id]; v != nil && v.owner == owner {
 		v.image = &q
 	}
+}
+
+func (n *labNotes) setVideo(owner, id string, q videoRequest) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if v := n.items[id]; v != nil && v.owner == owner {
+		v.video = &q
+	}
+}
+
+func (n *labNotes) drop(owner, id string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if v := n.items[id]; v != nil && v.owner == owner {
+		delete(n.items, id)
+	}
+}
+
+// videos are the ids of a person's video jobs.
+func (n *labNotes) videos(owner string) []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var out []string
+	for id, v := range n.items {
+		if v.owner == owner && v.video != nil && time.Since(v.at) < resultTTL+resultTTL {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // runsServed: the gateway answers GET /_localbase/runs with a list.
@@ -143,6 +174,9 @@ type labItemView struct {
 	Image, Audio, Transcript           string
 	Ago                                string // "2 min ago"
 	Active                             bool
+	At                                 time.Time
+	Video, Thumb, Announce             string // a video job: its file, starting picture, and what to say
+	Again, Slow, NeedsMemory           bool
 }
 
 // agoText is how long ago something happened, in words.
@@ -167,7 +201,7 @@ func agoText(t, now time.Time) string {
 func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 	owner := u.caller(r).OwnerID()
 	tool := labTargets[run.Target]
-	v := labItemView{ID: run.ID, Tool: tool, Status: run.Status, Active: run.Status == "queued" || run.Status == "in_progress", Ago: agoText(run.CreatedAt, time.Now())}
+	v := labItemView{ID: run.ID, Tool: tool, Status: run.Status, Active: run.Status == "queued" || run.Status == "in_progress", At: run.CreatedAt, Ago: agoText(run.CreatedAt, time.Now())}
 	note := u.notes.get(owner, run.ID)
 	if note != nil {
 		v.Caption, v.Prompt = note.caption, note.prompt
@@ -296,15 +330,18 @@ func (u *UI) labRuns(r *http.Request) []labItemView {
 	var body struct {
 		Data []labRun `json:"data"`
 	}
-	if res.Status != http.StatusOK || json.Unmarshal(res.Body, &body) != nil {
-		return nil
-	}
 	var out []labItemView
-	for _, run := range body.Data {
-		if labTargets[run.Target] != "" {
-			out = append(out, u.labItem(r, run))
+	if res.Status == http.StatusOK && json.Unmarshal(res.Body, &body) == nil {
+		for _, run := range body.Data {
+			if labTargets[run.Target] != "" {
+				out = append(out, u.labItem(r, run))
+			}
 		}
 	}
+	if p := u.caller(r); p != nil && p.Can("inference:video") {
+		out = append(out, u.videoItems(r)...)
+	}
+	slices.SortStableFunc(out, func(a, b labItemView) int { return b.At.Compare(a.At) })
 	return out
 }
 

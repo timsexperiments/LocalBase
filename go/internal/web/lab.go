@@ -219,6 +219,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 		if len(models) > 0 {
 			data["VideoModel"] = &models[0]
 		}
+		data["RecentPictures"] = u.recentPictures(r)
 	case "speech":
 		models := u.labModels("tts")
 		data["Models"] = models

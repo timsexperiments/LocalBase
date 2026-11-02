@@ -3556,6 +3556,44 @@ their own place. It asks `POST /v1/systemone`.
   the same computer, and the live gateway evicted its own idle copy of the model,
   so later real passes check the live gateway's `/health` first.
 
+### 22.18 Video studio (PR 12)
+
+Text to video, or a picture to animate where the model takes one, at the model's
+fixed profile. No length or shape presets: each model has one profile, a product
+decision recorded for the owner (§24), so the sheet says it in words ("About 5
+seconds, tall. It can take up to 10 minutes and uses a lot of memory while it
+runs."). The 10 minutes is the model's limit, not a measurement.
+
+- **A job is a tray item,** on one pattern with the other tools. Its place has
+  the video's shape and says its stage in words: "Waiting for its turn…", "Making
+  the video…", with "You can leave this page; it keeps going." The API reports no
+  steps, so there is no percentage. Past half the model's limit it says "This is
+  taking a while" beside Stop. While it runs the place is short enough that Stop
+  stays above the prompt on a phone.
+- **The API has no job list,** so the page keeps a note per job in memory, bound
+  to its owner, and rebuilds the tray from them. A job the API has forgotten leaves
+  the tray. Finished jobs last 15 minutes (the job manager's), so this page's
+  header says 15 and the landing says "for a while".
+- **Jobs are not runs (§21),** so the shell asks `GET /app/lab/video/active` too:
+  the pill leads back from other pages, and is off on this one.
+- **One job at a time** is the API's rule. A second says "One video at a time. Stop
+  the one that’s running, or send this when it finishes." and keeps the words.
+- **Failures** are in plain words with a next step: not enough memory links to
+  what is running, and leaves out the API's byte figures. Stop says "Stopped.
+  Nothing was saved." Try again repeats the words, model and starting picture; the
+  picture lives in the result store, so if it has expired it says so.
+- **Starting picture:** the "Start from" chip shows only for a model that takes
+  one. A file, or one of the last six generated pictures; it is cropped to fill
+  the frame, previewed, and can be removed.
+- **Not built:** a thumbnail of a finished video on the landing, and a fallback for
+  a player left open past the 15 minutes.
+- **Checks:** `TestLabVideo`, and `tools/chat-runs-check.sh` walks stage, shape, Stop
+  on the first screen, the busy message, the pill, leaving and returning, playback
+  of a real file, a failure, Try again, a recent picture and Remove. Its scratch
+  root needs sparse model files marked verified and an `LOCALBASE_FFMPEG` that
+  writes a real MP4 the test browser can decode (VP9: the test Chromium has no
+  H.264). No real video model has run through this page yet.
+
 ## 23. Explicit unload (2026-10-27)
 
 Operator request, for the FE's Running page (#388). There was no way to
