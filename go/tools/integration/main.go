@@ -30,6 +30,10 @@ var unionFiles = map[string]bool{
 	"go/DESIGN.md": true, "go/docs/merge-readiness.md": true, "CHANGELOG.md": true, "go/contract/fsguard_test.go": true,
 }
 
+// generatedCSS is built from the templates, so a conflict in it means nothing: take
+// either side and rebuild it when the merges are done.
+const generatedCSS = "go/internal/web/static/app.css"
+
 const trailer = "\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\n"
 
 func main() {
@@ -79,6 +83,7 @@ func main() {
 	removed, err := tidyDesign(filepath.Join(*dir, "go", "DESIGN.md"))
 	check(err)
 	check(run(filepath.Join(*dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
+	check(run(filepath.Join(*dir, "go"), "tools/tailwind.sh"))
 	if out, _ := exec.Command("git", "-C", *dir, "status", "--porcelain").Output(); len(out) > 0 {
 		check(run(*dir, "git", "add", "-A"))
 		check(run(*dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
@@ -107,6 +112,15 @@ func resolve(dir string) ([]string, error) {
 	}
 	var left []string
 	for _, f := range strings.Fields(string(out)) {
+		if f == generatedCSS {
+			if err := run(dir, "git", "checkout", "--ours", "--", f); err != nil {
+				return nil, err
+			}
+			if err := run(dir, "git", "add", f); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if !unionFiles[f] {
 			left = append(left, f)
 			continue
