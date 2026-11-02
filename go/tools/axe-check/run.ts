@@ -30,6 +30,7 @@ const states: [string, string, string][] = [
   ["welcome", "/app/welcome"],
   ["welcome-choose", "/app/welcome/choose"],
   ["not-found", "/app/nope"],
+  ["sign-in-link", "/app/login/once"],
   ["picker", "/app/chat", `document.querySelector("[data-open-picker]").click()`],
   ["history", "/app/chat", `matchMedia("(min-width: 1024px)").matches || document.querySelector("[data-open-drawer]").click()`],
   ["generation", "/app/chat", `document.querySelector("[data-open-generation]").click()`],

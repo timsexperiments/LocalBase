@@ -4,28 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="{{themeColor "light"}}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{themeColor "dark"}}" media="(prefers-color-scheme: dark)">
 <title>Sign in · LocalBase</title>
 <link rel="stylesheet" href="{{asset "app.css"}}">
 </head>
 <body>
-<main class="mx-auto max-w-md p-6">
-  <p class="brand"><span aria-hidden="true" class="brand-mark">⌘</span>LocalBase</p>
+<main class="welcome signin">
+  <span aria-hidden="true" class="welcome-mark"><svg viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg></span>
   {{if eq .Mode "redeem"}}
-  <h1 class="mt-6 text-2xl font-bold">Signing you in…</h1>
+  <h1 class="welcome-title">Signing you in…</h1>
+  <div class="skeleton mt-5 h-2 rounded-full" aria-hidden="true"></div>
   <form id="redeem" method="post" action="{{.Action}}"><input type="hidden" name="token"></form>
   <noscript><p class="mt-3 text-muted">This page needs JavaScript to finish signing in.</p></noscript>
   <script>{{.Script}}</script>
   {{else if eq .Mode "expired"}}
-  <h1 class="mt-6 text-2xl font-bold">This link has expired</h1>
+  <h1 class="welcome-title">This link has run out</h1>
+  <p class="mt-3 text-muted">A sign-in link works once, for about ten minutes.</p>
   {{template "localhelp" .}}
   {{else if eq .Mode "too-many"}}
-  <h1 class="mt-6 text-2xl font-bold">Too many tries</h1>
-  <p class="mt-3 text-muted">Too many tries. Wait a minute and try again.</p>
+  <h1 class="welcome-title">Too many tries</h1>
+  <p class="mt-3 text-muted">Wait a minute and try again.</p>
   {{else}}
-  <h1 class="mt-6 text-2xl font-bold">Sign in to LocalBase</h1>
+  <h1 class="welcome-title">Sign in to LocalBase</h1>
   {{template "localhelp" .}}
   {{end}}
 </main>
 </body>
 </html>
-{{define "localhelp"}}{{if .Local}}<p class="mt-3 text-muted">Run <code>local-base access login-link</code> in a terminal on this computer, then open the link it prints.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer.</p>{{end}}{{end}}
+{{define "localhelp"}}{{if .Local}}<p class="mt-3 text-muted">To make a new link, run this in a terminal on this computer, then open the link it prints.</p>
+<pre class="command" tabindex="0" aria-label="Command"><code>local-base access login-link</code></pre>
+<p class="mt-4 text-sm text-muted">To sign in from a phone or another computer, set up a sign-in provider first.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Whoever runs this LocalBase can set it up on that computer.</p>{{end}}{{end}}

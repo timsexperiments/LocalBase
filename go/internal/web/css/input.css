@@ -939,6 +939,14 @@
   .welcome-bar::-moz-progress-bar {
     background: var(--lb-lamp);
   }
+  /* Selects whole on a tap: this page may only run its one script, so there's no Copy. */
+  .command {
+    @apply mt-3 overflow-x-auto rounded-xl bg-surface-muted px-3.5 py-3 text-sm select-all;
+    font-family: var(--lb-font-mono);
+  }
+  .signin {
+    min-height: auto;
+  }
   .error-page {
     @apply mx-auto mt-8 max-w-md text-left;
   }
