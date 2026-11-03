@@ -4911,9 +4911,10 @@ from it, and the browser holds it in the same cookie as before. Nothing is left 
   S256 challenge and the nonce.
 - **A state belongs to one browser,** as before: it must match the `__Host-` cookie, so a stolen state fails elsewhere.
 - **A state works once.** A callback that goes ahead records it, and gives it back only if it signed nobody in. So only
-  completed sign-ins stay on record, up to 4096 until they'd have expired, and failing callbacks can't push them out. If
-  thousands of real sign-ins within ten minutes ever did, the provider's single-use code would still hold. A callback
-  with the wrong cookie no longer spends the state, so someone holding only the state can't end a person's sign-in.
+  completed sign-ins stay on record, up to 4096 until they'd have expired, and failing callbacks can't push them out.
+  Past 4096 real sign-ins within ten minutes it could forget one, and the provider's single-use code is then the only
+  guard. A callback with the wrong cookie no longer spends the state, so someone holding only the state can't end a
+  person's sign-in.
 
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
