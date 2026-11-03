@@ -1277,6 +1277,17 @@ Deliberate status changes to verify against the live clients at cutover:
     "At least one reachable role must grant access:manage.", and its API, which Admin
     shows, only "The management request is invalid." Status and code are unchanged.
     `TestPolicyLockoutMessage` pins the wording on both.
+11. **A browser session the policy grants nothing** (operator, 2026-11-02). Go refuses it
+    on every route that needs a permission, so a session whose policy grants nothing
+    grants nothing. TS answers `GET /_localbase/models` and runs inference for it, and
+    a listed user whose role lacks `inference:chat` can chat through the UI in TS too.
+    Both still create the session, and `/app/session` answers 200 with `permissions: []`.
+    **Why TS does this:** it declares these permissions, but picks the route from the
+    original path `/app/api/…` before forwarding, which maps to `notFound` and requires
+    only being signed in. Admin routes pass because they check again themselves. API
+    keys on `/v1` are not affected. This is from reading the code; TS is not changed.
+    `TestDifferentialUnlistedUser` pins it, with fake backends. **Rolling back to TS
+    reopens the gap** (`docs/merge-readiness.md` §4).
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
