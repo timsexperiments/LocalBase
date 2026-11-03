@@ -121,7 +121,11 @@ else {
   await nav("/app/studio");
   check(await ev(`!!document.querySelector(".studio-recent a[href^='/app/studio/image']")`), "the landing's Recent shows it");
   check(await ev(`document.querySelector(".studio-recent img")?.naturalWidth > 0`), "a real picture decodes");
-  // A file that is gone shows the drawing and "Expired", never a broken icon.
+  // Recent says what each result is, in words, and leads to that result (DESIGN §27).
+  const tile = await ev(`(() => { const a = document.querySelector(".studio-recent a"), cap = a.querySelector(".studio-tile-cap"), meta = a.querySelector(".studio-tile-meta"); return { cap: cap.textContent, meta: meta.textContent, seen: cap.getBoundingClientRect().height > 0 && meta.getBoundingClientRect().height > 0, tall: a.getBoundingClientRect().height, href: a.getAttribute("href"), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check(/paper boat/.test(tile.cap) && /^Image · /.test(tile.meta) && tile.seen && tile.tall >= 44 && /^\/app\/studio\/image#run-/.test(tile.href) && !tile.over, `a result on the landing has its words and goes to itself: ${JSON.stringify(tile)}`);
+  check((await ev(`!document.querySelector(".studio-keep") && /Kept 30 minutes/.test(document.querySelector(".studio-recent-head").textContent)`)), "how long results stay is said once, beside them");
+  // A file that is gone shows the tool's icon and "Expired", never a broken icon.
   await ev(`new Promise((done) => { const img = document.querySelector(".studio-recent img"); img.addEventListener("error", () => setTimeout(done, 50), { once: true }); img.src = "/app/lab/results/gone"; })`);
   const gone = await ev(`(() => { const box = document.querySelector(".studio-recent .result-img"); return { img: box.querySelector("img").hidden, shown: !box.querySelector("[data-result-gone]").hidden, text: box.textContent.trim() }; })()`);
   check(gone.img && gone.shown && gone.text === "Expired", `an expired result falls back: ${JSON.stringify(gone)}`);
@@ -760,6 +764,25 @@ for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get"
     return { small, tiny: [...tiny] };
   })()`);
   check(sizes.small.length === 0 && sizes.tiny.length === 0, `at 320, ${path}: targets at least 44 px and text at least 12 px${sizes.small.length || sizes.tiny.length ? ": " + JSON.stringify(sizes).slice(0, 320) : ""}`);
+}
+
+// --- The landing while a result is being made (DESIGN §27) ------------------------------------
+// At 320, with several results, so the strip really scrolls: otherwise "keeps its place" proves nothing.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+if (await ev(`!!document.querySelector("#lab-prompt")`)) {
+  for (const word of ["first", "second", "third"]) {
+    const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
+    await ev(`(() => { document.querySelector("#lab-prompt").value = "a slow lighthouse, ${word}, fake:slow-image"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+    for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items > li").length`)) <= before; i++) await sleep(100);
+  }
+  await nav("/app/studio");
+  const live = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); s.scrollLeft = 124; return { word: li.querySelector(".studio-tile-live")?.textContent.trim() ?? "", polls: li.hasAttribute("hx-get"), asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, words: document.querySelectorAll(".studio-recent .studio-tile-live").length, left: s.scrollLeft, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check(live.polls && live.left > 0 && live.asking === live.words && /…$/.test(live.word) && !live.over, `a result being made says how it stands, and asks for itself: ${JSON.stringify(live)}`);
+  for (let i = 0; i < 100 && (await ev(`!!document.querySelector(".studio-recent > li[hx-get]")`)); i++) await sleep(150);
+  await sleep(200);
+  const settled = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); return { asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, img: li.querySelector("img")?.naturalWidth > 0, left: s.scrollLeft }; })()`);
+  check(settled.asking === 0 && settled.img && settled.left === live.left, `they settle by themselves and the strip keeps its place: ${JSON.stringify(settled)}`);
 }
 
 // --- The strip's words, under long names (review of #410) ---------------------------------

@@ -4401,3 +4401,42 @@ accelerator bytes against the GPU limit.
 
 `/app/strip`, which every visible page polls, is not traced and logs only on failure,
 like `/health`.
+
+## 27. UI v2: the Studio surfaces (2026-11-02)
+
+The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
+own notes are in §22.15 to §22.20, and this says what v2 changed about them.
+
+### 27.1 The landing
+
+- **Tools** are one list, led by the tool's name in the reading face, with one line of purpose.
+  A tool's latest result moved out of its row, because Recent already shows it.
+- **Recent** holds up to six results, newest first, and is left out until there is one. Each has
+  what it is (a picture, a video's first frame, a transcript's first words, speech's real
+  waveform), the words it was asked for, and its tool and age. It leads to that result, not only
+  to the tool. Decisions are not in it, because a question stays in the browser (§22.17).
+- **While a result is made** its tile shows the state in words beside a still lamp, and asks after
+  itself every 3 s until it settles. Only that tile changes, so the strip keeps its scroll
+  position, and nothing replays. A failure says "Didn’t finish" and a stop says "Stopped".
+- **Width.** Phones have Recent first and then the tools, with a strip that runs to the screen's
+  edge so the next result shows. From 1100 px the tools are on the left and three across of results
+  on the right.
+
+### 27.2 Honest states
+
+- **A selected model that isn't on disk isn't usable,** on the landing and now on the tool's own
+  page. On a fresh install Image and Transcribe had shown a working prompt that could only fail,
+  because their defaults are selected before they are downloaded. Video and Decisions could do the
+  same. Tools offer only what `installedOnly` keeps, so a model that is half installed or removed
+  is not a choice.
+- **One banner.** When no tool can run, one calm line says so, and the rows don't repeat it (they
+  keep it for screen readers). When only some can, each that can't says "Needs a model".
+- **Someone who can't add models** is told to ask whoever runs the computer, and is not sent to a
+  page they can't use.
+- **The purple was never ours.** The review's "purple placeholders" were the fake image server's
+  test pictures, so it now draws warm, quiet ones. No product style changed for this, and real
+  pictures are as colorful as they are.
+
+**Checks:** `TestStudioLanding`, `TestStudioTile`, and `tools/chat-runs-check.sh` (words on a
+result, a tile that settles and keeps the strip's place).
+

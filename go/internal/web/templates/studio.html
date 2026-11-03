@@ -63,7 +63,7 @@
       {{else}}<span class="studio-tile-word">Stopped</span>{{end}}
     </span>
     <span class="studio-tile-cap">{{or .Caption (studioName .Tool)}}</span>
-    <span class="studio-tile-meta">{{studioName .Tool}}{{if and (not .Active) .Ago}} · {{.Ago}}{{end}}</span>
+    <span class="studio-tile-meta">{{if and (not .Active) .Ago}}<span class="sr-only">{{studioName .Tool}} · </span>{{.Ago}}{{else}}{{studioName .Tool}}{{end}}</span>
   </a>
 </li>
 {{end}}
