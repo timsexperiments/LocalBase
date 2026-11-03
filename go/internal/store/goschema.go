@@ -72,6 +72,21 @@ var goSchema = []string{
 		updated_at TEXT NOT NULL,
 		PRIMARY KEY (model_id, device_id)
 	)`,
+	// Which sign-in provider vouches for an email or domain binding (DESIGN §13.6, item
+	// 5b). The binding itself stays in its own table, which a rollback reads as it always
+	// did. value is the address or the domain.
+	`CREATE TABLE IF NOT EXISTS go_binding_issuers (
+		kind TEXT NOT NULL,
+		role_id TEXT NOT NULL,
+		value TEXT NOT NULL,
+		issuer TEXT NOT NULL,
+		PRIMARY KEY (kind, role_id, value, issuer)
+	)`,
+	// Which sign-in provider a person was invited through.
+	`CREATE TABLE IF NOT EXISTS go_invitation_issuers (
+		user_id TEXT PRIMARY KEY,
+		issuer TEXT NOT NULL
+	)`,
 }
 
 func applyGoSchema(ctx context.Context, tx *sql.Tx) error {

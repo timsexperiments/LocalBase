@@ -223,7 +223,8 @@ func TestMagicLinkSignIn(t *testing.T) {
 	st := testStore(t)
 	ctx := context.Background()
 	b := browserFor(t, st, Registration{Kind: "magic-link", ID: "email", Name: "Email"})
-	if _, err := InviteUser(ctx, st, "friend@example.com", []string{}); err == nil {
+	magic := MagicIssuer(testOrigin)
+	if _, err := InviteUser(ctx, st, "friend@example.com", []string{}, magic); err == nil {
 		t.Fatal("invite without a policy role should fail")
 	}
 	none := ""
@@ -237,7 +238,7 @@ func TestMagicLinkSignIn(t *testing.T) {
 		Bindings: []Binding{owner}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InviteUser(ctx, st, "Friend@Example.com", []string{"chat"}); err != nil {
+	if _, err := InviteUser(ctx, st, "Friend@Example.com", []string{"chat"}, magic); err != nil {
 		t.Fatal(err)
 	}
 

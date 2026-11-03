@@ -217,6 +217,30 @@ func maskKeys(v any) {
 		}
 	}
 	mask(m["key"])
+	// Go records which sign-in provider vouches for an address (DESIGN §13.6, item 5b), so
+	// these are its own, and they change what the policy revision hashes.
+	delete(m, "unboundBindings")
+	if _, ok := m["policyRevision"].(string); ok {
+		m["policyRevision"] = "<revision>"
+	}
+	dropIssuer := func(v any) {
+		if km, ok := v.(map[string]any); ok && km["kind"] != "subject" {
+			delete(km, "issuer")
+		}
+	}
+	dropIssuer(m["user"])
+	if users, ok := m["users"].([]any); ok {
+		for _, u := range users {
+			dropIssuer(u)
+		}
+	}
+	if policy, ok := m["policy"].(map[string]any); ok {
+		if bindings, ok := policy["bindings"].([]any); ok {
+			for _, b := range bindings {
+				dropIssuer(b)
+			}
+		}
+	}
 	if keys, ok := m["keys"].([]any); ok {
 		for _, k := range keys {
 			mask(k)
