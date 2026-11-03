@@ -18,8 +18,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
@@ -52,6 +54,23 @@ func (c *Client) endpoint() string {
 		return strings.TrimSuffix(e, "/")
 	}
 	return PublicEndpoint
+}
+
+// defaultClients are the guarded clients, one per Hub host, kept for their connections.
+var defaultClients sync.Map
+
+// defaultClient reaches public addresses, and the Hub endpoint itself, which may be
+// a private mirror named by the person running LocalBase.
+func (c *Client) defaultClient() *http.Client {
+	host := ""
+	if u, err := url.Parse(c.endpoint()); err == nil {
+		host = u.Hostname()
+	}
+	if v, ok := defaultClients.Load(host); ok {
+		return v.(*http.Client)
+	}
+	v, _ := defaultClients.LoadOrStore(host, netguard.Policy{AllowHosts: []string{host}}.Client())
+	return v.(*http.Client)
 }
 
 func (c *Client) now() time.Time {
@@ -121,7 +140,7 @@ func (c *Client) getJSON(ctx context.Context, u, what string) (json.RawMessage, 
 	}
 	client := c.HTTP
 	if client == nil {
-		client = http.DefaultClient
+		client = c.defaultClient()
 	}
 	resp, err := client.Do(req)
 	if err != nil {

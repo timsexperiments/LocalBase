@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ type Job struct {
 	State     string              `json:"state"` // running | done | failed
 	Progress  acquire.Progress    `json:"progress"`
 	Error     string              `json:"error,omitempty"`
+	ErrorCode string              `json:"errorCode,omitempty"` // a stable code when there is one
 	Model     *models.Model       `json:"model,omitempty"`
 	Selection *backends.Selection `json:"selection,omitempty"`
 	Started   time.Time           `json:"started"`
@@ -64,6 +66,10 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 		defer l.jobs.mu.Unlock()
 		if err != nil {
 			job.State, job.Error = "failed", obs.BoundedText(err.Error(), 1024)
+			var refused *acquire.RefusedError
+			if errors.As(err, &refused) {
+				job.ErrorCode = refused.Code
+			}
 			if log != nil {
 				log.Warn("Model import failed.", "event", "model.import-failed", "error", job.Error)
 			}

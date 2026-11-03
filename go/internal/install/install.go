@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 
 	_ "modernc.org/sqlite"
@@ -49,6 +50,9 @@ type Options struct {
 	HFToken string
 	Report  func(Event)
 	Client  *http.Client
+	// AllowPrivate lets a catalog entry's source be at a private address. Without
+	// it a download reaches public addresses only (a nil Client).
+	AllowPrivate bool
 	// Available overrides the free-disk probe (tests).
 	Available func(dir string) (int64, error)
 	// wrapWriter wraps the file a download writes to (tests: a full disk).
@@ -132,6 +136,10 @@ func Model(ctx context.Context, s *catalog.Spec, dir string, o Options) (string,
 	report := o.Report
 	if report == nil {
 		report = func(Event) {}
+	}
+	if o.Client == nil {
+		o.Client = netguard.Policy{AllowPrivate: o.AllowPrivate}.Client()
+		defer o.Client.CloseIdleConnections()
 	}
 	phase := "preparing"
 	fail := func(err error) (string, error) {
