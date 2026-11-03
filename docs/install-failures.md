@@ -12,3 +12,7 @@ A failed install says why. `local-base models install` prints `Reason: …` afte
 | `not_found` | HTTP 404 or 410 | The file moved. Update your catalog, or report it for a built-in model |
 | `interrupted` | Cancelled, or the gateway stopped | Install again |
 | `unknown` | Anything else, including other local file errors and failures from before reasons existed | Check `local-base logs --level error` |
+
+## Stopping an install
+
+`local-base models cancel <modelId>` stops an install the running gateway is doing. The downloaded part is kept, so installing again continues from it. An install started with `local-base models install` stops with Ctrl-C in its terminal.

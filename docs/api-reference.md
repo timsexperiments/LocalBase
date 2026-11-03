@@ -768,7 +768,7 @@ Install state of each catalog model.
 
 Install, uninstall, enable, disable or activate a model, or cancel its install.
 
-One install runs at a time, in the background. `GET` reports its progress.
+One install runs at a time, in the background. `GET` reports its progress. `models:manage`, or the instance token, cancel only: this machine's CLI can use the token from the root's lock file, on a request from loopback, for `action: cancel` and nothing else.
 
 **Needs:** `models:manage`.
 

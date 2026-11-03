@@ -1,11 +1,13 @@
 package contract
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -133,5 +135,81 @@ func TestInstallCancel(t *testing.T) {
 	}
 	if o := op(freshTiny); o["state"] != "complete" {
 		t.Errorf("that cancel changed the outcome: %v", o)
+	}
+}
+
+// The command, on a real binary, against a real gateway with auth on: the same result as the route,
+// and it needs nothing but being on this machine with the instance token.
+func TestInstallCancelCommand(t *testing.T) {
+	if *implFlag != "go" && *implFlag != "both" {
+		t.Skip("runs the Go gateway")
+	}
+	tmp := scratchDir(t)
+	big := ggufFile(t, "qwen3", nil, 64*1024)
+	half := len(big) / 2
+	release := make(chan struct{})
+	defer close(release)
+	src := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", fmt.Sprint(len(big)))
+		w.WriteHeader(http.StatusOK)
+		w.Write(big[:half])
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}), false)
+	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
+	freshRootInit(t, e, tmp)
+	freshRootModel(t, e.root, freshTiny, src.URL, big)
+	allowPrivateImports(t, e.root)
+	if r := e.cli(nil, "models", "cancel", freshTiny); r.code != 1 || !strings.Contains(r.stderr, "No gateway is running") {
+		t.Errorf("with no gateway: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	e.key = e.json("keys", "create", "--name", "manager", "--scopes", "models:manage,models:read")["secret"].(string)
+	e.serve()
+	defer e.stop()
+	if r := e.cli(nil, "models", "cancel", freshTiny); r.code != 1 || !strings.Contains(r.stderr, "No installation of this model is running") {
+		t.Errorf("with nothing running: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	if r := e.do("POST", freshPath, `{"modelId":"`+freshTiny+`","action":"install"}`); r.Status != 202 {
+		t.Fatalf("install: %d %s", r.Status, r.Body)
+	}
+	partial := filepath.Join(e.root, "models", "llm", freshTiny+".gguf.partial")
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if info, err := os.Stat(partial); err == nil && info.Size() == int64(half) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the partial never reached the stall")
+		}
+	}
+	// What lets the command through is only readable by whoever owns the root.
+	owner, err := os.Stat(filepath.Join(e.root, "runtime", "gateway.lock", "owner.json"))
+	if err != nil || owner.Mode().Perm() != 0o600 {
+		t.Errorf("the instance token's file: %v %v", owner, err)
+	}
+	r := e.cli(nil, "models", "cancel", freshTiny)
+	if r.code != 0 || !strings.Contains(r.stdout, "Installation cancelled. The downloaded part is kept") {
+		t.Errorf("cancel: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	if info, err := os.Stat(partial); err != nil || info.Size() != int64(half) {
+		t.Errorf("the partial should stay: %v %v", info, err)
+	}
+	// Again is safe, and --json has the route's operation.
+	var out struct {
+		OK   bool           `json:"ok"`
+		Data map[string]any `json:"data"`
+	}
+	again := e.cli(nil, "--json", "models", "cancel", freshTiny)
+	if err := json.Unmarshal([]byte(again.stdout), &out); err != nil || again.code != 0 || !out.OK || out.Data["state"] != "cancelled" || out.Data["action"] != "install" {
+		t.Errorf("again: %d %s %v", again.code, again.stdout, err)
+	}
+	logged, err := os.ReadFile(filepath.Join(e.root, "logs", "events.jsonl"))
+	if err != nil || !strings.Contains(string(logged), `"audit.models-changed"`) || !strings.Contains(string(logged), `"actor_kind":"local-cli"`) {
+		t.Errorf("no audit of the cancel: %v", err)
+	}
+	if help := e.cli(nil, "models", "cancel", "--help"); help.code != 0 || !strings.Contains(help.stdout, "Stop an install") {
+		t.Errorf("--help: %d %s", help.code, help.stdout)
 	}
 }
