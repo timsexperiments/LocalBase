@@ -249,3 +249,20 @@ func TestRestoreThatTurnsBusyPartWayRefuses(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 }
+
+// An older database has no models to list, and that is the one failure that means "none".
+func TestSelectedModelsOfAnOlderDatabaseAreNone(t *testing.T) {
+	path := filepath.Join(dir(t), "older.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE unrelated (x)`); err != nil {
+		t.Fatal(err)
+	}
+	models, err := selectedModels(context.Background(), path)
+	if err != nil || len(models) != 0 {
+		t.Errorf("models %v, err %v", models, err)
+	}
+}

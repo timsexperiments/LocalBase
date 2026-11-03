@@ -511,7 +511,11 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if level > known {
 		return refuse("A newer LocalBase wrote this backup: its database has %d migrations, and this version knows %d. Upgrade LocalBase to restore it.", level, known)
 	}
-	if hasTable(ctx, db, "go_schema") {
+	schema, err := tableExists(ctx, db, "go_schema")
+	if err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	if schema {
 		var v int
 		if err := db.QueryRowContext(ctx, `SELECT version FROM go_schema WHERE id = 1`).Scan(&v); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return refuse("The database can't be read: %v", err)
@@ -763,8 +767,9 @@ func fillCounts(ctx context.Context, st *store.Store, rep *Report) error {
 			rep.Keys.Expired++
 		}
 	}
-	if !hasTable(ctx, st.DB, "auth_users") {
-		return nil
+	present, err := tableExists(ctx, st.DB, "auth_users")
+	if err != nil || !present {
+		return err
 	}
 	return st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_users`).Scan(&rep.Users)
 }
@@ -780,8 +785,9 @@ func reach(host string) string {
 
 // exposureSettings are stored settings that change who can reach this root, or where it reaches.
 func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
-	if !hasTable(ctx, db, "go_settings") {
-		return nil, nil
+	present, err := tableExists(ctx, db, "go_settings")
+	if err != nil || !present {
+		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `SELECT key, value FROM go_settings WHERE key LIKE 'imports.%' OR key LIKE 'gateway.%' ORDER BY key`)
 	if err != nil {
