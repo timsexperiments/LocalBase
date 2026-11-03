@@ -93,11 +93,6 @@ rel-lease-release
 # FE, on ui-v2-host
 ui-v2b-studio
 
-# Features, on ui-v2-host
-feat-openapi
-feat-connect
-feat-usage
-
 # Linux, from real-runner rounds
 fix-cpu-placement
 fix-backend-supported
@@ -109,6 +104,21 @@ fix-embeddings-refusal
 # Installs
 fix-download-stall
 install-cancel
+
+# Features, on ui-v2-host, after install cancel: #459's last commit documents it
+feat-openapi
+feat-connect
+feat-usage
+feat-upgrade
+
+# OSS, docs and CI on top
+oss-tooling
+oss-docs-site
+oss-soak-ci
+oss-soak-targets
+oss-docs-connect
+oss-chaos-ci
+oss-bench-ci
 
 # Built on an earlier tree at the operator's request: its own commits are replayed.
 pick fix-orphan-backends 91462a35
