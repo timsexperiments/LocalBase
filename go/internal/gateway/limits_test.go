@@ -32,7 +32,8 @@ type limitsGateway struct {
 	ts       *httptest.Server
 	srv      *Server
 	store    *store.Store
-	key      string
+	key      string // inference:chat
+	all      string // every permission
 	noScopes string
 	bodyRead *atomic.Int64
 }
@@ -75,6 +76,10 @@ func newLimitsGateway(t *testing.T, limits Limits, configure func(*Server)) *lim
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, all, err := st.CreateAPIKey(context.Background(), "all", auth.Permissions)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
 		Active: map[string]string{"llm": chatModel}, Selected: map[string][]string{"llm": {chatModel}}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
@@ -103,7 +108,7 @@ func newLimitsGateway(t *testing.T, limits Limits, configure func(*Server)) *lim
 	limits.Apply(ts.Config)
 	ts.Start()
 	t.Cleanup(ts.Close)
-	return &limitsGateway{ts: ts, srv: srv, store: st, key: key, noScopes: noScopes, bodyRead: bodyRead}
+	return &limitsGateway{ts: ts, srv: srv, store: st, key: key, all: all, noScopes: noScopes, bodyRead: bodyRead}
 }
 
 func (g *limitsGateway) dial(t *testing.T) net.Conn {
@@ -147,15 +152,16 @@ func TestUnsentBodyCannotHoldAConnection(t *testing.T) {
 	for _, c := range []struct {
 		name, request string
 		status        int
+		also          int // another answer that is fine
 	}{
-		{"guarded route, large body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\n", 401},
-		{"guarded route, small body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401},
-		{"public route", "POST /health HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 405},
-		{"browser layer", "POST /app/logout HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401},
-		{"admin route", "POST /_localbase/api-keys HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401},
-		{"chunked body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n", 401},
-		{"partial headers", "GET /health HTTP/1.1\r\nHost: x\r\n", 0},
-		{"idle after a request", "GET /health HTTP/1.1\r\nHost: x\r\n\r\n", 200},
+		{"guarded route, large body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 1000000\r\n\r\n", 401, 0},
+		{"guarded route, small body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401, 0},
+		{"public route", "POST /health HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 405, 0},
+		{"browser layer", "POST /app/logout HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401, 0},
+		{"admin route", "POST /_localbase/api-keys HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n", 401, 408},
+		{"chunked body", "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n", 401, 0},
+		{"partial headers", "GET /health HTTP/1.1\r\nHost: x\r\n", 0, 0},
+		{"idle after a request", "GET /health HTTP/1.1\r\nHost: x\r\n\r\n", 200, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			conn := g.dial(t)
@@ -164,7 +170,7 @@ func TestUnsentBodyCannotHoldAConnection(t *testing.T) {
 			}
 			start := time.Now()
 			status, closed := served(conn, 5*time.Second)
-			if status != c.status || !closed {
+			if (status != c.status && (c.also == 0 || status != c.also)) || !closed {
 				t.Errorf("status %d, closed %v after %v; want %d, closed", status, closed, time.Since(start).Round(time.Millisecond), c.status)
 			}
 		})
@@ -325,13 +331,59 @@ func TestStalledUploadIsCut(t *testing.T) {
 	start := time.Now()
 	status, closed := served(conn, 5*time.Second)
 	elapsed := time.Since(start)
-	// The server cancels a request whose read deadline passes: 499, as for a client
-	// that went away.
-	if status != 499 || !closed {
-		t.Errorf("status %d, closed %v; want 499, closed", status, closed)
+	if status != 408 || !closed {
+		t.Errorf("status %d, closed %v; want 408, closed", status, closed)
 	}
 	if elapsed < 250*time.Millisecond {
 		t.Errorf("cut after %v, before the stall limit", elapsed)
+	}
+}
+
+// The 408 is the same on every route that reads a body, whatever the handler made
+// of the failed read, and it says what happened.
+func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
+	logs := &syncBuffer{}
+	limits := Limits{PreAuthBody: 300 * time.Millisecond, UploadStall: 200 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}
+	g := newLimitsGateway(t, limits, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+	for _, path := range []string{"/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"} {
+		key := g.key
+		if path != "/v1/chat/completions" {
+			key = g.all
+		}
+		conn := g.dial(t)
+		fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", path, key)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		var out struct {
+			Error struct{ Code, Message string } `json:"error"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if err != nil || resp.StatusCode != 408 || out.Error.Code != "request_timeout" || !resp.Close {
+			t.Errorf("%s: %d %+v %v, close %v", path, resp.StatusCode, out, err, resp.Close)
+		}
+	}
+	if !waitFor(2*time.Second, func() bool { return strings.Contains(logs.String(), `"error_code":"request_timeout"`) }) {
+		t.Errorf("no request_timeout in the request log:\n%s", logs.String())
+	}
+}
+
+// Only a deadline is a timeout: a client that goes away mid-upload stays a 499.
+func TestClientThatLeavesIsNotATimeout(t *testing.T) {
+	logs := &syncBuffer{}
+	g := newLimitsGateway(t, Limits{}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+	conn := g.dial(t)
+	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", g.key)
+	time.Sleep(100 * time.Millisecond)
+	conn.Close()
+	if !waitFor(5*time.Second, func() bool { return strings.Contains(logs.String(), `"status":499`) }) {
+		t.Errorf("want a 499 in the request log:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "request_timeout") {
+		t.Errorf("a client that left was logged as a timeout:\n%s", logs.String())
 	}
 }
 
@@ -349,8 +401,8 @@ func TestUploadTotalIsBounded(t *testing.T) {
 		}
 	}()
 	start := time.Now()
-	if status, _ := served(conn, 3*time.Second); status != 499 {
-		t.Errorf("status %d after %v, want 499", status, time.Since(start).Round(time.Millisecond))
+	if status, _ := served(conn, 3*time.Second); status != 408 {
+		t.Errorf("status %d after %v, want 408", status, time.Since(start).Round(time.Millisecond))
 	}
 }
 

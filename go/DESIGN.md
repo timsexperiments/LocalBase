@@ -1110,6 +1110,9 @@ Deliberate status changes to verify against the live clients at cutover:
    TS 500 `gateway_error`; Go 400 `validation_failed`.
 3. **The wrong method on a JSON inference route** (for example `GET
    /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
+3a. **A request body that stops arriving** (§31.1): Go answers 408
+   `request_timeout`, and a stalled upload counts as an error in usage and logs. TS has no
+   such deadline; how Bun behaves is unverified.
 4. **Model management while a runtime is up** (M5): TS reconciles a running
    runtime eagerly when the active model changes, so the model it switched to
    stays referenced and `uninstall` answers 409 `conflict` until
@@ -4084,12 +4087,12 @@ run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
 
-## 30. Security hardening (2026-11-02)
+## 31. Security hardening (2026-11-02)
 
 The threat model is `docs/threat-model.md`. This section records decisions that change
 behaviour.
 
-### 30.1 Request and connection limits
+### 31.1 Request and connection limits
 
 **The problem.** With only a header timeout, a request that did not finish could hold its
 handler and connection with no time limit, and so could an idle keep-alive connection. This
@@ -4099,7 +4102,7 @@ tested, and TS on Bun is unverified.
 | Limit | Default | Applies to |
 | --- | --- | --- |
 | Headers | 30 s, 64 KiB | every connection |
-| Idle keep-alive | 2 min | every connection |
+| Idle keep-alive | 2 min (keep above 90 s, below) | every connection |
 | Body before authenticating | 30 s in total | a request that has not authenticated |
 | Authenticated upload | 2 min without progress, 1 h in total | a key, a browser session, or `--no-auth` |
 | Draining a refused body | 2 s, 1 MiB | every refusal through `writeError` |
@@ -4115,8 +4118,11 @@ tested, and TS on Bun is unverified.
   read the body. If the body did not end, it answers with `Connection: close`. A client
   waiting on `Expect: 100-continue` is refused without being asked to send. TS discards
   1 MiB past the limit too. A small body is read whole, so its client keeps its connection.
-- **A stalled upload is answered 499**, as for a client that went away: net/http cancels
-  the request when its read deadline passes. Nobody is usually there to read it.
+- **A stalled upload is answered 408 `request_timeout`**, on every route, whatever the
+  handler made of the failed read. It is best effort, since the connection may already be
+  dead. A client that goes away is still a 499, which is not an error of the gateway's.
+- **Idle stays above 90 s.** cloudflared keeps its connections to the origin alive for 90 s
+  by default. Below that, the gateway closes connections the tunnel expects to reuse.
 - **Connection caps.** A connection over a cap gets a 503 `too_busy` and is closed, instead
   of waiting in the kernel's queue. Loopback does not count against the per-address cap,
   because a tunnel connects from loopback for everyone behind it; the global cap still

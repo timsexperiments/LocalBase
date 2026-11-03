@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// ConnLimits caps open connections (DESIGN §30.1). Zero means no cap. Connections
+// ConnLimits caps open connections (DESIGN §31.1). Zero means no cap. Connections
 // from loopback do not count against PerIP: a tunnel or reverse proxy on this
 // machine connects from loopback on behalf of everyone behind it.
 type ConnLimits struct {

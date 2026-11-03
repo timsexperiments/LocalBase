@@ -4,19 +4,22 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
-// Limits bounds what one request can cost the gateway (DESIGN §30.1). A caller
+// Limits bounds what one request can cost the gateway (DESIGN §31.1). A caller
 // who has not authenticated gets a short deadline for its whole body. Once it has
 // authenticated, an upload only has to keep moving, so a phone on a slow link can
 // finish. Zero values take the defaults.
 type Limits struct {
 	// ReadHeader is how long a request may take to send its headers.
 	ReadHeader time.Duration
-	// Idle is how long a keep-alive connection may wait for its next request.
+	// Idle is how long a keep-alive connection may wait for its next request. Keep it
+	// above 90 s, cloudflared's default keep-alive to its origin: below that, the
+	// gateway closes connections the tunnel still expects to reuse.
 	Idle time.Duration
 	// MaxHeaderBytes bounds a request's headers.
 	MaxHeaderBytes int
@@ -94,6 +97,7 @@ type bodyGuard struct {
 	draining atomic.Bool
 	touched  atomic.Bool // something has read from the body
 	done     atomic.Bool // the body has ended
+	expired  atomic.Bool // its deadline passed while a handler was reading it
 }
 
 // guardBody starts a request's deadline. It returns nil when there is no body, or no
@@ -116,6 +120,8 @@ func (b *bodyGuard) Read(p []byte) (int, error) {
 	switch {
 	case errors.Is(err, io.EOF):
 		b.done.Store(true)
+	case errors.Is(err, os.ErrDeadlineExceeded) && !b.draining.Load():
+		b.expired.Store(true)
 	case n > 0 && b.authed.Load() && !b.draining.Load():
 		b.extend()
 	}
@@ -176,4 +182,12 @@ func drainRefused(w http.ResponseWriter, r *http.Request) {
 	if err != nil || n > limits.RefusedDrainBytes {
 		w.Header().Set("Connection", "close")
 	}
+}
+
+// requestTimedOut answers a request whose body stopped arriving. It is best effort:
+// the connection may already be dead. A client that went away is a 499 instead, from
+// the handler that noticed.
+func requestTimedOut(w http.ResponseWriter) {
+	writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": apiError{Message: "The request body did not arrive in time.",
+		Type: "invalid_request_error", Code: "request_timeout"}})
 }
