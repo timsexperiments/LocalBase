@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -64,7 +65,13 @@ func TestHugeBodies(t *testing.T) {
 		}
 	}
 	last := settledStats(t, ctx, g, c)
-	if last.RSS-first.RSS > 128<<20 {
+	// A race-detector gateway's memory is several times larger.
+	budget := int64(128 << 20)
+	if os.Getenv("LOCALBASE_CHAOS_RACE") != "" {
+		budget *= 4
+	}
+	t.Logf("RSS across two 200 MiB bodies: %d > %d MiB (budget +%d)", first.RSS>>20, last.RSS>>20, budget>>20)
+	if last.RSS-first.RSS > budget {
 		t.Errorf("RSS followed a refused body: %d > %d MiB", first.RSS>>20, last.RSS>>20)
 	}
 	if r := c.Do(ctx, "GET", "/health", "", "", nil); r.Status != 200 {
