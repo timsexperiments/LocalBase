@@ -47,12 +47,12 @@ func (s *Service) SpeakerFiles(ctx context.Context, t *Target) map[string]string
 	return out
 }
 
-func (s *Service) ttsServerCommand(t *Target, host string, port int, weights string) (*serviceCommand, error) {
+func (s *Service) ttsServerCommand(life context.Context, t *Target, host string, port int, weights string) (*serviceCommand, error) {
 	projector := t.artifact(models.RoleProjector)
 	if projector == "" {
 		return nil, fmt.Errorf("%s needs the model's projector file", t.Backend.Name)
 	}
-	bin, err := s.binary("tts-server", t)
+	bin, err := s.binary(life, "tts-server", t)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not installed on this device: %v", t.Backend.Name, err)
 	}
@@ -82,7 +82,7 @@ const misakiDict = "misaki-merged.json"
 //
 // CrispASR's AI-content marking stays on unless the speech.provenance-marking
 // setting is "off" (SpeechMarking).
-func (s *Service) crispasrCommand(t *Target, host string, port int, weights string) (*serviceCommand, error) {
+func (s *Service) crispasrCommand(life context.Context, t *Target, host string, port int, weights string) (*serviceCommand, error) {
 	arch := t.Variant.Architecture
 	if !arch.Known() {
 		return nil, fmt.Errorf("%s needs the model's architecture (kokoro or qwen3-tts), which is unknown", t.Backend.Name)
@@ -90,7 +90,7 @@ func (s *Service) crispasrCommand(t *Target, host string, port int, weights stri
 	if arch.Value != "kokoro" {
 		return nil, fmt.Errorf("%s runs %s only with a reference voice and consent attestation, which LocalBase does not pass yet", t.Backend.Name, arch.Value)
 	}
-	bin, err := s.binary("crispasr", t)
+	bin, err := s.binary(life, "crispasr", t)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not installed on this device: %v", t.Backend.Name, err)
 	}
