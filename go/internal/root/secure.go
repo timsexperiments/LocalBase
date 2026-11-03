@@ -201,7 +201,7 @@ func accountsAreLocal() bool {
 // that others can write did not come from here. The database is not checked for that:
 // older versions created it under the umask, and it is tightened where it opens.
 var (
-	trustedFiles = []string{markerName, "ui-access.json", "email-delivery.json", "catalog-feed.json",
+	trustedFiles = []string{markerName, RestoreJournalName, "ui-access.json", "email-delivery.json", "catalog-feed.json",
 		filepath.Join("credentials", "auth-profiles.json"), filepath.Join("runtime", "ui-csrf.key"), filepath.Join("service", "manifest.json")}
 	databaseFiles = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm"}
 	trustedDirs   = []string{"credentials", "runtime", "service", "bin", "backends.d", "catalog.d"}
