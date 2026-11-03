@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 // smoke checks that the running gateway serves real inference (#356, #360):
@@ -126,8 +126,8 @@ func (s *smoker) health() (string, error) {
 		v = "unknown"
 	}
 	mismatch := ""
-	if v != gateway.Version {
-		mismatch = " (this CLI is " + gateway.Version + ")"
+	if v != version.Version {
+		mismatch = " (this CLI is " + version.Version + ")"
 	}
 	return fmt.Sprintf("ok, version %s%s, llm %s", v, mismatch, h.Modalities.LLM.State), nil
 }

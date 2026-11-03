@@ -5,6 +5,7 @@ The Go rewrite of LocalBase. Start with [DESIGN.md](DESIGN.md).
 ```sh
 cd go
 go build -o local-base ./cmd/localbase       # one static binary, UI included
+tools/build.sh dist/local-base              # the reproducible release build, stamped
 ./local-base --root /path/to/root serve --port 26410
 go test ./internal/...                        # unit tests (no models needed)
 go test ./contract -args -impl=go             # HTTP contract suite against Go
@@ -21,3 +22,22 @@ scratch root) to run real inference. Golden plans come from the TS code:
 ```sh
 bun run go/tools/golden/llm-plans.ts <models/llm dir> > go/internal/runtime/testdata/llm-plans.json
 ```
+
+## Build identity
+
+`local-base --version` prints the number alone, for scripts. `local-base version`,
+`--json --version`, `doctor` and the `gateway.started` log event also give the commit
+and date; the first three give the Go version too. `/health` stays the number alone.
+
+A release stamps these with `-ldflags` (`tools/build.sh` is the exact command):
+
+```sh
+-X github.com/timsexperiments/LocalBase/go/internal/version.Version=<version>
+-X github.com/timsexperiments/LocalBase/go/internal/version.Commit=<full sha>
+-X github.com/timsexperiments/LocalBase/go/internal/version.Date=<RFC 3339>
+```
+
+The Go version comes from the toolchain. With `-trimpath -buildvcs=false`,
+`CGO_ENABLED=0`, a commit-derived date and the same Go version, two builds are
+byte-identical (`TestBuildIsReproducible`). A plain `go build` in a clone reports the
+commit from version control instead; from a git worktree it says `unknown`.
