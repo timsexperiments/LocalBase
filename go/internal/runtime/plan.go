@@ -5,7 +5,6 @@ import (
 
 	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
-	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -394,7 +393,7 @@ func BackendHost(host string) string {
 func ApplyObserved(d memory.Demand, peaks []store.ObservedPeak, shape string) memory.Demand {
 	for _, pk := range peaks {
 		if pk.Method == "footprint" && pk.PeakBytes > 0 && pk.LaunchShape == shape {
-			b := int64(math.Ceil(float64(pk.PeakBytes + memory.ObservedMargin(pk.PeakBytes))))
+			b := pk.PeakBytes + memory.ObservedMargin(pk.PeakBytes)
 			return memory.Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "observed"}
 		}
 	}
