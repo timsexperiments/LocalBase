@@ -1,6 +1,7 @@
 package models
 
 import (
+	"archive/zip"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,6 +52,7 @@ var shardNameRe = regexp.MustCompile(`^(.*)-(\d{5})-of-(\d{5})\.gguf$`)
 const (
 	ggufMagic        = 0x46554747 // "GGUF"
 	ggmlMagic        = 0x67676d6c // whisper.cpp "ggml"
+	zipMagic         = 0x04034b50 // "PK\x03\x04"
 	maxSafetensorsHd = 100 << 20
 	maxSidecarBytes  = 4 << 20
 	// maxSplitCount is far beyond any real split set. A shard count comes from a
@@ -58,6 +61,25 @@ const (
 	// maxVariantArtifacts bounds what inspecting one variant can list.
 	maxVariantArtifacts = 16384
 )
+
+// isPickled says whether a file is a pickle, or a checkpoint holding one. Names are checked before a
+// download, but weights in this form usually arrive as pytorch_model.bin. The header of a pickle from
+// protocol 2 on is 0x80 and its version, and a PyTorch checkpoint is a ZIP with one inside. Older
+// protocols have no header, and PyTorch doesn't write them.
+func isPickled(path string, magic uint32) bool {
+	if version := byte(magic >> 8); byte(magic) == 0x80 && version >= 2 && version <= 5 {
+		return true
+	}
+	if magic != zipMagic {
+		return false
+	}
+	z, err := zip.OpenReader(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = z.Close() }()
+	return slices.ContainsFunc(z.File, func(f *zip.File) bool { return strings.EqualFold(filepath.Ext(f.Name), ".pkl") })
+}
 
 func readMagic(path string) (uint32, int64, error) {
 	f, err := os.Open(path)
@@ -88,6 +110,9 @@ func InspectFile(path string) FileFacts {
 		return inspectGGUF(path)
 	case magic == ggmlMagic:
 		return FileFacts{Format: Of("ggml", SourceInspect), Architecture: Of("whisper", SourceInspect)}
+	}
+	if isPickled(path, magic) {
+		return FileFacts{Refused: true, Problem: "it is a pickle, which runs code when something loads it"}
 	}
 	if ff, ok := inspectSafetensors(path, size); ok {
 		return ff
