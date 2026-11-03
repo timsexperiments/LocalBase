@@ -309,7 +309,7 @@ func (m *Manager) create(owner string, stop func() error) (*job, error) {
 	if err := os.MkdirAll(m.root, 0o700); err != nil {
 		return nil, err
 	}
-	os.Chmod(m.root, 0o700)
+	os.Chmod(m.root, 0o700) //nolint:gosec // a directory needs its execute bit
 	dir := filepath.Join(m.root, id)
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return nil, err
