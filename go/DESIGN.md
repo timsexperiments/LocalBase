@@ -1180,8 +1180,9 @@ Deliberate status changes to verify against the live clients at cutover:
    503 with `Retry-After` on every attempt, as in TS.
 2. **An unparseable multipart body** (voices, image edits, transcription):
    TS 500 `gateway_error`; Go 400 `validation_failed`.
-3. **The wrong method on a JSON inference route** (for example `GET
-   /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
+3. **The wrong method on an inference route** (for example `GET
+   /v1/chat/completions`, `GET /v1/audio/transcriptions`): TS 400; Go 405 with
+   `Allow: POST`.
 4. **Model management while a runtime is up** (M5): TS reconciles a running
    runtime eagerly when the active model changes, so the model it switched to
    stays referenced and `uninstall` answers 409 `conflict` until
