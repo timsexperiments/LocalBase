@@ -176,3 +176,19 @@ func TestLocalRequestRule(t *testing.T) {
 		}
 	}
 }
+
+// A failed sign-out is reported: the session stays valid until it expires.
+func TestDeleteLocalSessionReportsFailure(t *testing.T) {
+	st := testStore(t)
+	token, _, err := CreateLocalSession(context.Background(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteLocalSession(context.Background(), st, token); err != nil {
+		t.Errorf("delete: %v", err)
+	}
+	st.Close()
+	if err := DeleteLocalSession(context.Background(), st, token); err == nil {
+		t.Error("a failed delete reported nothing")
+	}
+}
