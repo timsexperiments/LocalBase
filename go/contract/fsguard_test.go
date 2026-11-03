@@ -158,6 +158,13 @@ func guardedMkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
+func guardedChmod(path string, perm os.FileMode) error {
+	if err := checkWrite(path); err != nil {
+		return err
+	}
+	return os.Chmod(path, perm)
+}
+
 func guardedRemoveAll(path string) error {
 	if err := checkWrite(path); err != nil {
 		return err
@@ -416,6 +423,8 @@ func mustAppend(path string) (*os.File, error) {
 }
 
 func mustMkdirAll(path string, perm os.FileMode) error { return mustGuard(guardedMkdirAll(path, perm)) }
+
+func mustChmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
 
 func mustRemoveAll(path string) error { return mustGuard(guardedRemoveAll(path)) }
 
