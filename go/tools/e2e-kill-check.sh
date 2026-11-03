@@ -7,6 +7,8 @@
 # stays. A stopped run leaves its scratch and results behind, and this prints where.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+. tools/disk-guard.sh
+disk_guard e2e-kill-check
 cases=${*:-sigterm sigkill deadline}
 base=$(mktemp -d "${TMPDIR:-/tmp}/lbe2e-kill-XXXXXX") || exit 2
 echo "results under $base"

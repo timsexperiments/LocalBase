@@ -229,8 +229,9 @@ same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
 ports from the lab's block. Results and captures go to a new directory under
 `$TMPDIR/localbase-e2e`, or `-out <dir>`.
 
-Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), and exit 2 means
-the suite itself could not run.
+Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), exit 2 means
+the suite itself could not run, and exit 3 means it refused to start under the free-disk floor
+(`tools/disk-guard.sh`).
 
 **On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
 so it never asks the Keychain for anything and cannot put a prompt on the screen. A test requires both

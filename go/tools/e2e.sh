@@ -9,6 +9,8 @@
 # E2E_PART=journeys|matrix, E2E_PAGES, E2E_WIDTHS and E2E_THEMES narrow a run.
 set -u
 cd "$(dirname "$0")/.." || exit 2
+. tools/disk-guard.sh
+disk_guard e2e
 cache=${LOCALBASE_E2E_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase-e2e}
 mkdir -p "$cache" || exit 2
 pin() { awk -v k="$1" '$1 == k { print $2 }' "$2"; }
