@@ -54,6 +54,24 @@ var goSchema = []string{
 		idle_expires_at INTEGER NOT NULL,
 		absolute_expires_at INTEGER NOT NULL
 	)`,
+	// Usage (DESIGN §32): hourly totals, never content, and no per-request rows. Added
+	// without raising goSchemaVersion, like model_placements below.
+	`CREATE TABLE IF NOT EXISTS usage_hourly (
+		hour INTEGER NOT NULL,
+		principal_kind TEXT NOT NULL,
+		principal_id TEXT NOT NULL,
+		route TEXT NOT NULL,
+		model_id TEXT NOT NULL,
+		status INTEGER NOT NULL,
+		requests INTEGER NOT NULL,
+		with_tokens INTEGER NOT NULL,
+		input_tokens INTEGER NOT NULL,
+		output_tokens INTEGER NOT NULL,
+		duration_ms INTEGER NOT NULL,
+		queue_ms INTEGER NOT NULL,
+		latency TEXT NOT NULL,
+		PRIMARY KEY (hour, principal_kind, principal_id, route, model_id, status)
+	) WITHOUT ROWID`,
 	// Go-only settings: one row per key (for example speech.provenance-marking).
 	`CREATE TABLE IF NOT EXISTS go_settings (
 		key TEXT PRIMARY KEY,

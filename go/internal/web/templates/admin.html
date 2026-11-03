@@ -5,6 +5,7 @@
   <nav aria-label="Administration" class="segmented mt-4 max-w-md">
     {{range .Sections}}<a href="/app/admin?section={{.}}" {{if eq . $.Section}}aria-current="page"{{end}}>{{if eq . "people"}}People{{else if eq . "access"}}Access{{else}}API keys{{end}}</a>{{end}}
   </nav>
+  <a class="inline-flex min-h-11 items-center font-semibold text-accent" href="/app/usage">Usage: requests, tokens, errors and latency</a>
   {{template "admin-section" .}}
 </section>
 <script type="module" src="{{asset "js/admin.js"}}"></script>
