@@ -25,7 +25,11 @@ var openAuditSink = obs.OpenSink
 func auditCLI(e *env, msg string, attrs ...any) {
 	fail := func(err error) {
 		e.auditFailure = auditFailureClass(err)
-		fmt.Fprintf(os.Stderr, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", e.auditFailure, e.Root.LogsDir())
+		w := e.warnings
+		if w == nil {
+			w = os.Stderr
+		}
+		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", e.auditFailure, e.Root.LogsDir())
 	}
 	sink, err := openAuditSink(e.Root.LogsDir())
 	if err != nil {
@@ -39,7 +43,7 @@ func auditCLI(e *env, msg string, attrs ...any) {
 		fail(err)
 		return
 	}
-	if err := sink.WriteErr(); err != nil {
+	if err := sink.AuditErr(); err != nil {
 		fail(err)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"strconv"
 
@@ -26,6 +27,8 @@ type env struct {
 	Host    memory.HostProvider
 	// auditFailure is why an audit record of this command wasn't written, as auditFailureClass says it.
 	auditFailure string
+	// warnings is where this command says so; stderr when it isn't set.
+	warnings io.Writer
 }
 
 func (e *env) Close() {

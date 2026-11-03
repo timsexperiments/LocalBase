@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -301,25 +301,6 @@ func TestAccessCommandsAreAudited(t *testing.T) {
 	}
 }
 
-// captureStderr runs f and returns what it wrote to the process's stderr.
-func captureStderr(t *testing.T, f func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stderr := os.Stderr
-	os.Stderr = w
-	f()
-	os.Stderr = stderr
-	w.Close()
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
-}
-
 // A record that can't be written doesn't stop the command, and doesn't go unmentioned: on
 // stderr, and in the result for a program reading --json.
 func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
@@ -353,24 +334,27 @@ func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
 				t.Fatalf("configure: %s", out)
 			}
 			tc.breakIt(t, root)
-			var code int
-			var out string
-			said := captureStderr(t, func() { code, out = runApp(t, "--root", root, "--json", "keys", "create", "--name", "k") })
-			if code != 0 {
-				t.Errorf("the key was made, so the command should succeed: %d", code)
-			}
-			if want := "Warning: this change was made, but its audit record could not be written: " + tc.class + " (" + filepath.Join(root, "logs") + ")\n"; said != want {
-				t.Errorf("stderr: %q, want %q", said, want)
-			}
-			var env struct {
-				OK   bool           `json:"ok"`
-				Data map[string]any `json:"data"`
-			}
-			if err := json.Unmarshal([]byte(strings.Split(strings.TrimSpace(out), "\n")[0]), &env); err != nil {
-				t.Fatal(err)
-			}
-			if !env.OK || env.Data["auditWritten"] != false || env.Data["auditError"] != tc.class {
-				t.Errorf("auditWritten %v, auditError %v, ok %v", env.Data["auditWritten"], env.Data["auditError"], env.OK)
+			// A keys command and an access command: the result is added in one place, for all of them.
+			for _, args := range [][]string{{"keys", "create", "--name", "k"}, {"access", "cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "a", "--origin", "https://lb.example"}} {
+				var stdout, stderr bytes.Buffer
+				a := app()
+				a.Stdout, a.Stderr = &stdout, &stderr
+				if code := a.Run(append([]string{"--root", root, "--json"}, args...)); code != 0 {
+					t.Errorf("%v: the change was made, so the command should succeed: %d %s", args, code, stderr.String())
+				}
+				if want := "Warning: this change was made, but its audit record could not be written: " + tc.class + " (" + filepath.Join(root, "logs") + ")\n"; !strings.Contains(stderr.String(), want) {
+					t.Errorf("%v: stderr %q, want %q", args, stderr.String(), want)
+				}
+				var env struct {
+					OK   bool           `json:"ok"`
+					Data map[string]any `json:"data"`
+				}
+				if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+					t.Fatal(err)
+				}
+				if !env.OK || env.Data["auditWritten"] != false || env.Data["auditError"] != tc.class {
+					t.Errorf("%v: auditWritten %v, auditError %v, ok %v", args, env.Data["auditWritten"], env.Data["auditError"], env.OK)
+				}
 			}
 		})
 	}
@@ -388,16 +372,14 @@ func TestAnAuditWarningNeverRepeatsTheError(t *testing.T) {
 	openAuditSink = func(string) (*obs.Sink, error) {
 		return nil, &fs.PathError{Op: "open", Path: "/" + planted, Err: fs.ErrPermission}
 	}
-	var code int
-	var out string
-	said := captureStderr(t, func() { code, out = runApp(t, "--root", root, "--json", "keys", "create", "--name", "k") })
+	code, out := runApp(t, "--root", root, "--json", "keys", "create", "--name", "k")
 	if code != 0 {
 		t.Errorf("exit status %d", code)
 	}
-	if !strings.Contains(said, "permission-denied") || !strings.Contains(out, `"auditError":"permission-denied"`) {
-		t.Errorf("stderr %q; the result has no class", said)
+	if !strings.Contains(out, "could not be written: permission-denied") || !strings.Contains(out, `"auditError":"permission-denied"`) {
+		t.Errorf("no class in %q", out)
 	}
-	if strings.Contains(said, planted) || strings.Contains(out, planted) {
+	if strings.Contains(out, planted) {
 		t.Error("the warning repeats the error's text")
 	}
 }
