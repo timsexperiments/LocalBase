@@ -153,11 +153,18 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   askAdmission();
 });
 // A request this computer just refused says more than "Ready" does (chat.js). It lasts until the
-// person moves on, or until the gateway would admit that model. Then "try again" still waits for
-// the gateway to stop being short or settling, because a retry before then is refused too.
+// person moves on, or until the gateway's preview would admit that model. Then "try again" still
+// waits for the gateway to stop being short or settling, because a retry before then is refused too.
+// The preview is a good guess, not a promise: its reading can be a second old, and it counts running
+// models as if stopped. So the words say "looks", and a retry refused after them isn't told the same
+// thing again until the reading has really moved.
 let refusedWord = null;
 let refusedModel = null;
 let refusedAdmitted = false;
+let askingAdmission = false;
+let lookedFree = null; // { model, available }: the reading we last said "looks free" on
+let notBefore = null; // { model, available }: refused after saying so; wait for more than this
+const moreThanDrift = 2 ** 30; // A judgment, not measured: what's free moves about this much by itself.
 function showRefused() {
   if (!refusedWord) return;
   const strip = document.querySelector("[data-strip] .strip");
@@ -166,41 +173,50 @@ function showRefused() {
   if (refusedAdmitted) {
     if (strip.classList.contains("strip-settling")) return;
     if (!strip.classList.contains("strip-short")) {
-      word.textContent = "Memory freed. Try again.";
+      word.textContent = "Memory looks free. Try again.";
       return;
     }
   }
   word.textContent = refusedWord;
   strip.classList.add("strip-short");
 }
-// The gateway's own answer, not a guess from the free figure. No answer changes nothing.
+// The gateway's preview, which changes nothing. Asked once per strip refresh, only while a refusal
+// stands, one at a time. No answer changes nothing.
 async function askAdmission() {
   const model = refusedModel;
-  if (!refusedWord || !model) return;
+  if (!refusedWord || !model || askingAdmission) return;
+  askingAdmission = true;
   try {
     const res = await fetch(`/app/api/_localbase/models/${encodeURIComponent(model)}/admission`, { headers: { "x-localbase-ui": "1" } });
     if (!res.ok) return;
     const answer = await res.json();
     if (model !== refusedModel) return;
-    refusedAdmitted = answer.admitted === true;
+    const available = answer.availableBytes ?? null;
+    const held = notBefore?.model === model && (available === null || available < notBefore.available + moreThanDrift);
+    refusedAdmitted = answer.admitted === true && !held;
+    if (refusedAdmitted) lookedFree = { model, available };
     showRefused();
-  } catch {}
+  } catch {
+    // No answer: the words stand.
+  } finally {
+    askingAdmission = false;
+  }
 }
 document.addEventListener("localbase:refused", (event) => {
   const cleared = refusedWord && !event.detail;
   refusedWord = event.detail?.word ?? null;
   refusedModel = event.detail?.model ?? null;
   refusedAdmitted = false;
+  // Refused after we said it looked free: don't say so again on the same reading.
+  if (refusedWord && lookedFree?.model === refusedModel && lookedFree.available !== null) notBefore = lookedFree;
+  if (refusedWord) lookedFree = null;
   showRefused();
   if (cleared) {
     stripNextTry = 0;
     document.querySelector("[data-strip]")?.removeAttribute("hx-headers");
   }
 });
-document.addEventListener("htmx:afterSettle", () => {
-  showRefused();
-  askAdmission();
-});
+document.addEventListener("htmx:afterSettle", showRefused);
 // The strip when the computer can't be reached: same place, same shape, and it says so.
 // The next refresh that works redraws it.
 document.addEventListener("htmx:sendError", (event) => {
