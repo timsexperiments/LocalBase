@@ -594,7 +594,7 @@ func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, 
 			}
 			cat.Replace(next)
 			log.Info("Loaded a new remote catalog feed.", "event", "catalog_feed.updated", "category", "gateway",
-				"component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "url", short(res.URL)))
+				"component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL))))
 		case "failed":
 			if res.Error == lastError {
 				return
@@ -602,7 +602,7 @@ func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, 
 			lastError = res.Error
 			log.Warn("The remote catalog feed could not be refreshed; the last good copy stays in use.", "event", "catalog_feed.refresh_failed",
 				"category", "gateway", "component", "catalog-feed", "runtime", "gateway",
-				slog.Group("attributes", "url", short(res.URL), "error", short(res.Error)))
+				slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL)), "error", short(res.Error)))
 		default:
 			lastError = ""
 		}
