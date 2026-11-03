@@ -29,6 +29,9 @@ const (
 	upgradeNeedsBytes = 512 << 20
 )
 
+// upgradeReadyWait is how long a restarted gateway gets to answer ready.
+var upgradeReadyWait = 90 * time.Second
+
 func upgradeCommand() *cli.Command {
 	return &cli.Command{Name: "upgrade", Summary: "Update this binary to a newer release",
 		Options: []cli.Option{
@@ -219,20 +222,25 @@ func waitIdle(ask func() (bool, string, error), limit time.Duration, sleep func(
 }
 
 // backendPorts are where this root's backends listen, as configured. A flag can move the media
-// ones, and those are read from how the service is started.
+// ones, and those are read from how the service is started. Only a kind this root uses counts:
+// another root's backend on a default port is not one this gateway started, and could not be
+// told apart from a survivor.
 func backendPorts(e *env, arguments []string) []int {
-	ports := map[string]int{"llm-port": e.Config.Port, "stt-port": e.Config.SttPort, "image-port": 8090, "video-port": 8091, "tts-port": 8092}
-	for i, a := range arguments {
-		name := strings.TrimPrefix(a, "--")
-		if _, known := ports[name]; known && i+1 < len(arguments) {
-			if n, err := strconv.Atoi(arguments[i+1]); err == nil {
-				ports[name] = n
+	type backend struct{ kind, flag string }
+	ports := map[backend]int{{"llm", "llm-port"}: e.Config.Port, {"stt", "stt-port"}: e.Config.SttPort,
+		{"image", "image-port"}: 8090, {"video", "video-port"}: 8091, {"tts", "tts-port"}: 8092}
+	for b := range ports {
+		for i, a := range arguments {
+			if strings.TrimPrefix(a, "--") == b.flag && i+1 < len(arguments) {
+				if n, err := strconv.Atoi(arguments[i+1]); err == nil {
+					ports[b] = n
+				}
 			}
 		}
 	}
 	out := make([]int, 0, len(ports))
-	for _, p := range ports {
-		if p > 0 {
+	for b, p := range ports {
+		if p > 0 && (len(e.Config.Selected[b.kind]) > 0 || e.Config.Active[b.kind] != "") {
 			out = append(out, p)
 		}
 	}
@@ -280,7 +288,16 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 		},
 		Start: func() error {
 			c.Info("Restarting through the service manager...")
-			return runSelf(binary, e.Root.Dir, "restart")
+			if err := runSelf(binary, e.Root.Dir, "restart"); err != nil {
+				return err
+			}
+			// restart returns once the manager has taken it, which can be before the
+			// gateway listens. Smoke would then fail on a release that is fine, and a
+			// gateway that never comes up has to roll back.
+			if err := service.WaitReady(e.Root, upgradeReadyWait); err != nil {
+				return fmt.Errorf("the gateway did not become ready: %w", err)
+			}
+			return nil
 		},
 		Smoke: func() error {
 			c.Info("Running smoke...")
