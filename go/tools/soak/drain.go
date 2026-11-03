@@ -143,7 +143,7 @@ func (s *soak) drainAndRestart(ctx context.Context, stopTraffic context.CancelFu
 	s.checkRunFiles()
 
 	// The restart on the same root.
-	s.tail.Read()
+	s.readLog()
 	restartBegan := time.Now()
 	g2, err := s.w.Start(ctx, lab.Options{Name: "gw", Reuse: s.g, QueueCapacity: queueCapacity, QueueTimeoutMS: int(queueTimeout / time.Millisecond),
 		Parallel: "1", FakeDelayMS: int(fakeDelay / time.Millisecond), CtxSize: 8192})
