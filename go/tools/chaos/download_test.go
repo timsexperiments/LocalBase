@@ -330,11 +330,11 @@ func TestDownloadResumeAgainstBadServer(t *testing.T) {
 }
 
 // A peer that stays connected and stops sending: TCP keepalive cannot see it, so
-// only an idle limit can. Until one exists the install runs forever, and because
-// one install runs at a time, it blocks every other install until a restart.
+// only an idle limit can. Without one the install runs forever, and because one
+// install runs at a time, it blocks every other install until a restart.
 func TestDownloadStalled(t *testing.T) {
-	knownBug(t, noPRYet, "a stalled download has no idle limit and blocks other installs")
-	const limit = 90 * time.Second
+	knownBug(t, 497, "a stalled download has no idle limit and blocks other installs")
+	const limit = 30 * time.Second
 	data := modelBytes(4 << 20)
 	a := serveArtifact(t, data)
 	release := make(chan struct{})
@@ -353,16 +353,33 @@ func TestDownloadStalled(t *testing.T) {
 		}
 		return true
 	}
-	ctx, g, c := start(t, lab.Options{PrepareRoot: catalogEntry(a)})
+	ctx, g, c := start(t, lab.Options{PrepareRoot: catalogEntry(a), FakeEnv: []string{"LOCALBASE_DOWNLOAD_IDLE_TIMEOUT_MS=2000"}})
 	install(t, ctx, c, g)
+	var s installState
 	deadline := time.Now().Add(limit)
 	for time.Now().Before(deadline) {
-		if s := modelState(t, ctx, c, g); s.Operation != nil && s.Operation.State != "running" {
-			return
+		if s = modelState(t, ctx, c, g); s.Operation != nil && s.Operation.State != "running" {
+			break
 		}
-		time.Sleep(time.Second)
+		time.Sleep(100 * time.Millisecond)
 	}
-	t.Errorf("the install is still running after %v of silence", limit)
+	if s.Operation == nil || s.Operation.State != "failed" {
+		t.Fatalf("the install after %v of silence: %+v", limit, s.Operation)
+	}
+	if s.InstalledBytes < float64(len(data)/4) {
+		t.Errorf("the partial file was not kept: %v bytes", s.InstalledBytes)
+	}
+	// It no longer blocks anything, and an honest retry resumes and ends correct.
+	install(t, ctx, c, g)
+	s = installEnds(t, ctx, c, g)
+	if s.Operation.State != "complete" || !s.Installed {
+		t.Fatalf("the install after the stall: %+v %+v", s, s.Operation)
+	}
+	checkInstalledFile(t, g, data)
+	reqs := a.requests()
+	if last := reqs[len(reqs)-1]; !strings.HasPrefix(last, "bytes=") {
+		t.Errorf("the retry did not resume: %q", reqs)
+	}
 }
 
 // --- a full disk -------------------------------------------------------------
