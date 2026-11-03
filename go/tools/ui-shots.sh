@@ -14,10 +14,11 @@ baseline=${3:-}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
-profile=$(mktemp -d)
+profile="$here/.cache/browser-profile-ui-shots"
 port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
 . "$here/tools/browser-run.sh"
 browser_guard ui-shots
+(cd "$here" && rm -rf .cache/browser-profile-ui-shots)
 "$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
   --no-first-run --hide-scrollbars --allow-file-access-from-files about:blank >/dev/null 2>&1 &
 browser_started $!

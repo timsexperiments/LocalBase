@@ -5,6 +5,8 @@ const [cdpBase, base] = process.argv.slice(2);
 const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+// With its browser gone nothing here can finish: stop rather than wait on it.
+ws.addEventListener("close", () => process.exit(2));
 let id = 0; const waiting = new Map();
 ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
 const send = (method, params = {}) => new Promise((res, rej) => { const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });

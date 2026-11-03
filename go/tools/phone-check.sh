@@ -9,10 +9,11 @@ set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 base=${1:?usage: phone-check.sh <base-url>}
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
-profile=$(mktemp -d)
+profile="$here/.cache/browser-profile-phone-check"
 port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
 . "$here/tools/browser-run.sh"
 browser_guard phone-check
+(cd "$here" && rm -rf .cache/browser-profile-phone-check)
 "$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
 browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$port/json/version" >/dev/null && break; sleep 0.5; done
