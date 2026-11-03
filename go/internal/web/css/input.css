@@ -707,19 +707,17 @@
     display: contents;
   }
   .gauge-legend dt {
-    @apply flex items-center gap-2 text-muted;
+    @apply flex items-start gap-2 text-muted;
+  }
+  .gauge-legend dt > .gauge-key {
+    margin-top: 0.4em;
+    flex-shrink: 0;
   }
   .gauge-legend dd {
     @apply text-right font-semibold tabular-nums;
   }
   .gauge-caption {
     @apply block text-xs text-muted;
-  }
-  .gauge-sub {
-    padding-left: 1.25rem;
-  }
-  .gauge-legend dd.gauge-sub-figure {
-    @apply font-normal text-muted;
   }
   .strip-advice {
     @apply mt-2 flex items-center justify-between gap-3 px-1 text-sm;
@@ -890,8 +888,12 @@
   }
   /* Stacked, state and action share a line inside the row's own padding. */
   .running-actions {
-    @apply flex items-center justify-between gap-2 px-4 pb-3;
+    @apply flex flex-wrap items-center justify-between gap-2 px-4 pb-3;
     flex: 1 1 100%;
+  }
+  .running-actions .btn,
+  .running-actions .pill {
+    white-space: nowrap;
   }
   @media (min-width: 560px) {
     .running-row > a {

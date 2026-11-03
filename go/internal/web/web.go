@@ -121,6 +121,7 @@ func New(d Deps) *UI {
 		"initial":    initial,
 		"firstWords": firstWords,
 		"uses":       usesText,
+		"mayDetail":  mayNotFitDetail,
 		"aboutGib":   aboutGib,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {

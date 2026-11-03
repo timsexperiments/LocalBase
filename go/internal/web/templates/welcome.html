@@ -34,16 +34,20 @@
 {{with .Strip}}<div class="mt-3">{{template "memory-strip" .}}</div>{{end}}
 {{with .Failure}}<p class="notice notice-error mt-3" role="alert">{{.}}</p>{{end}}
 <form method="post" action="/app/welcome/get" class="welcome-form">
+  {{with .Confirm}}<div class="notice mt-3 grid gap-2" role="alert">
+    <p><span class="font-semibold">{{.Name}} may not fit.</span> {{mayDetail .MayNotFit}} You can download it, but it may refuse to load when you start it.</p>
+  </div>{{end}}
   <p class="mt-3 px-1 text-sm text-muted">{{if .AnyForecast}}Based on memory available now.{{else}}Running memory unknown. We can’t check fit yet.{{end}}</p>
   <fieldset class="mt-2 grid gap-2">
     <legend class="sr-only">Chat models</legend>
     {{range .Choices}}
-    <label class="choice{{if or (eq .Fit "wont-fit") .TooBigDisk}} choice-off{{end}}">
-      <input type="radio" name="modelId" value="{{.ID}}" data-action-label="{{if .Installed}}Use this model{{else}}Download {{size .DownloadBytes}}{{end}}" {{if .Pick}}checked{{end}} {{if or (eq .Fit "wont-fit") .TooBigDisk}}disabled{{end}} required>
+    <label class="choice{{if or (and (eq .Fit "wont-fit") (not .MayNotFit)) .TooBigDisk}} choice-off{{end}}">
+      <input type="radio" name="modelId" value="{{.ID}}" data-action-label="{{if .Installed}}Use this model{{else}}Download {{size .DownloadBytes}}{{end}}" {{if .Pick}}checked{{end}} {{if or (and (eq .Fit "wont-fit") (not .MayNotFit)) .TooBigDisk}}disabled{{end}} required>
       <span class="min-w-0">
         <span class="choice-name">{{.Name}}{{if .Small}} <span class="choice-tag">Small download</span>{{end}}</span>
         <span class="block text-sm text-muted">{{if .Installed}}Already on this computer.{{else}}Downloads {{size .DownloadBytes}}.{{end}}{{if and .UsesBytes (or .Forecast .Installed)}} {{uses .UsesBytes}}{{end}}</span>
         {{if .TooBigDisk}}<span class="choice-fit choice-fit-no">Not enough disk space</span>
+        {{else if .MayNotFit}}<span class="choice-fit">{{.MayNotFit}}</span>
         {{else if eq .Fit "wont-fit"}}<span class="choice-fit choice-fit-no">Too big for this computer</span>
         {{else if eq .Fit "close-others"}}<span class="choice-fit">Close other apps first{{if .FreeFirstBytes}}: free {{aboutGib .FreeFirstBytes}}{{end}}</span>
         {{else if and (eq .Fit "fits") .Forecast}}<span class="choice-fit">Fits now</span>
@@ -56,7 +60,7 @@
   </fieldset>
   <p class="mt-3 px-1 text-sm text-muted">{{if .AnyForecast}}This can change before a long download finishes. {{end}}Small download means under {{.SmallRule}}. You can add or change models any time.</p>
   <div class="welcome-actions">
-    {{if and .CanManage .Picked}}<button type="submit" class="btn btn-primary w-full"><span data-action-label-text>{{if .Picked.Installed}}Use this model{{else}}Download {{size .Picked.DownloadBytes}}{{end}}</span></button>
+    {{if and .CanManage .Picked}}<button type="submit" class="btn btn-primary w-full"{{if .Confirm}} name="anyway" value="1"{{end}}><span data-action-label-text>{{if .Confirm}}Download anyway{{else if .Picked.Installed}}Use this model{{else}}Download {{size .Picked.DownloadBytes}}{{end}}</span></button>
     {{else if and .CanManage .DiskShort}}<p class="text-muted">There isn’t enough disk space for any of these. Free some space, then come back.</p>
     <a href="/app/welcome/choose" class="btn btn-primary w-full">Check again</a>
     {{else if .CanManage}}<p class="text-muted">None of these fit this computer. You can look for a smaller model in Get models.</p>
