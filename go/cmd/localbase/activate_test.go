@@ -162,3 +162,28 @@ func TestActivatingTheActiveModelWritesNothing(t *testing.T) {
 		t.Errorf("wrote %q", after.Active["stt"])
 	}
 }
+
+// serve's on-demand install runs long after it read its configuration.
+func TestAnOnDemandInstallUsesTheTokenSavedSinceStartup(t *testing.T) {
+	_, st, running := activationRoot(t)
+	ctx := context.Background()
+	e := &env{Store: st, Config: running.Config()}
+	saved, err := st.LoadConfig(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved.HFToken = "saved-after-the-gateway-started"
+	if err := st.SaveConfig(ctx, saved); err != nil {
+		t.Fatal(err)
+	}
+	if got := currentHFToken(ctx, e); got != saved.HFToken {
+		t.Error("the install would use the token from startup")
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	e.Config = &store.Config{HFToken: "from-startup"}
+	if got := currentHFToken(ctx, e); got != "from-startup" {
+		t.Error("with the store unreadable, it should fall back to what it started with")
+	}
+}
