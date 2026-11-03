@@ -24,6 +24,7 @@ Drafted for the owner; the recommendations are proposals, not decisions.
 | **DCO** | No sign-off, inbound = outbound, as drafted; or require sign-off and enforce it in CI | No sign-off |
 | **`good first issue` issues** | Create the proposed list; change it; or none yet | Create it after 0.2.0 ships, when contributors can use a release |
 | **TypeScript retirement date** | A gate; or a fixed date. See [retirement](typescript-retirement.md) | The gate. A date adds nothing while its checks are open |
+| **Release signing key** | Create an Ed25519 key for `checksums.txt.sig`, kept as a repository secret; or ship without one, in which case `local-base upgrade` stays unusable (#492) and only `--check` works | Create it before 0.2.0 if `upgrade` ships with it. Otherwise say plainly that upgrades use the install script |
 | **Video, microphone and NVIDIA verification** | Each one can block the release, or ship as documented as unverified | Microphone and real-phone checks block, because they cover what people use first. Run video if a 25.6 GiB window comes up, otherwise ship it marked unverified. NVIDIA doesn't block, because the docs say it isn't qualified |
 
 ## Merge order
@@ -40,6 +41,7 @@ Docs merge after what they describe. Arrows are stacks; each PR merges after the
 | 6 | UI v2: #410, then #448 directly after it, then the rest of its stack. #418 must already be in, because it allowlists the fonts and icons and annotates their license |
 | 7 | #446, last, because it links to all of the feature docs |
 | 8 | #460, #461, then the soak targets. The soak CI goes with #468 |
+| 9 | #480, after #459, #478, #479, #492, #508 and #527, because it links to `docs/connect.md`, `docs/usage.md`, `docs/upgrade-command.md`, `docs/backup.md` and `docs/api-reference.md` and describes `/openapi.json` |
 
 The Go order within step 4 belongs to the Go thread. If it changes, keep the doc PRs after their features.
 
