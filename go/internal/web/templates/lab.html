@@ -564,9 +564,8 @@
     <button type="button" class="viewer-act" data-edit-picture="{{$p.URL}}" data-prompt="{{$i.Prompt}}" data-look="{{$i.Look}}" title="Start a new picture from this one">{{template "icon-edit"}}<span>Edit</span></button>
     <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"vary","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt with a new seed">{{template "icon-shuffle"}}<span>Vary</span></button>
     {{end}}
-    <details class="viewer-details">
-      <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>
-      <div class="viewer-panel">
+    <button type="button" class="viewer-act" data-view-details aria-expanded="false" aria-controls="details-{{$i.ID}}-{{$p.Index}}">{{template "icon-info"}}<span>Details</span></button>
+    <div class="viewer-panel" id="details-{{$i.ID}}-{{$p.Index}}" hidden>
         <p class="whitespace-pre-wrap wrap-anywhere">{{$i.Prompt}}</p>
         <dl class="viewer-facts">
           {{with $i.Size}}<div><dt>Size</dt><dd>{{.}}</dd></div>{{end}}
@@ -588,8 +587,7 @@
           <input type="hidden" name="picture" value="{{$p.Index}}">
           {{template "confirm" (dict "Label" "Delete" "Action" "delete" "Confirm" "Delete picture" "Text" "This picture is removed from the Studio.")}}
         </form>
-      </div>
-    </details>
+    </div>
   </div>
 </dialog>
 {{end}}

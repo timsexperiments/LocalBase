@@ -710,9 +710,14 @@
   .lab-box {
     @apply mx-auto grid max-w-3xl gap-0.5 pt-1;
   }
+  /* A chip the row cuts off fades out before the box's rounded corner, and the row can scroll
+     far enough for the last one to clear the fade. */
   .lab-chips {
-    @apply flex gap-1.5 overflow-x-auto px-1.5 pt-0.5;
+    @apply flex gap-1.5 overflow-x-auto pt-0.5 pl-1.5;
+    padding-right: 1.5rem;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
+    mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
   }
   .lab-chip {
     @apply shrink-0 px-3 whitespace-nowrap;
@@ -1687,7 +1692,7 @@
   .viewer-hint {
     @apply text-xs text-[var(--lb-viewer-muted)];
   }
-  .viewer-stage:has(~ .viewer-foot details[open]) {
+  .viewer-stage:has(~ .viewer-foot [data-view-details][aria-expanded="true"]) {
     @apply min-h-16;
   }
   .viewer-stage.viewer-zoomed ~ .viewer-foot .viewer-hint {
@@ -1704,7 +1709,7 @@
   .viewer-caption {
     @apply w-full truncate px-2 text-sm;
   }
-  .viewer-foot:has(details[open]) .viewer-caption {
+  .viewer-foot:has([data-view-details][aria-expanded="true"]) .viewer-caption {
     @apply hidden;
   }
   .viewer-btn:active,
@@ -1715,11 +1720,8 @@
   .viewer-act {
     @apply flex min-h-12 min-w-14 cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-xs font-semibold hover:bg-white/10;
   }
-  .viewer-act::-webkit-details-marker {
+  .viewer-panel[hidden] {
     display: none;
-  }
-  .viewer-details {
-    @apply contents;
   }
   .viewer-panel {
     @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[var(--lb-viewer-panel)] p-3 text-sm;

@@ -220,6 +220,14 @@ document.addEventListener("close", (event) => {
 }, true);
 
 document.addEventListener("click", (event) => {
+  // Details: a plain button and panel, so the layout is the same in every browser.
+  const details = event.target.closest?.("[data-view-details]");
+  if (details) {
+    const open = details.getAttribute("aria-expanded") !== "true";
+    details.setAttribute("aria-expanded", String(open));
+    document.getElementById(details.getAttribute("aria-controls")).hidden = !open;
+    return;
+  }
   const zoom = event.target.closest?.("[data-view-zoom]");
   if (zoom) {
     setZoom(zoom.closest("dialog"), zoom.getAttribute("aria-pressed") !== "true");

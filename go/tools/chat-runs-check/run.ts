@@ -970,6 +970,25 @@ if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
   // The close event can take a moment to arrive, so this waits for the result, up to a deadline.
   const wentBack = await ev(`(async () => { const d = document.querySelector("dialog.viewer[open]"), id = d.id; d.close(); let focus = null; for (let i = 0; i < 30 && focus !== id; i++) { await new Promise((r) => setTimeout(r, 50)); focus = document.activeElement?.getAttribute?.("data-open-sheet") ?? null; } return { id, focus }; })()`);
   check(wentBack.focus === wentBack.id, `closing goes back to that picture, even after moving between them: ${JSON.stringify(wentBack)}`);
+  // Details opens above the actions, across the bar, at every width: engines place a <details> box differently,
+  // so this compares where the panel really is, on whichever browser this runs.
+  for (const [width, height, mobile] of [[320, 568, true], [390, 844, true], [1280, 800, false]] as const) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
+    await nav("/app/studio/image");
+    await ev(`document.querySelector(".image-open").click()`);
+    await sleep(300);
+    const panelOf = `document.querySelector("dialog.viewer[open] .viewer-panel")`;
+    const closed = await ev(`${panelOf}.getClientRects().length`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
+    await sleep(200);
+    const placed = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"), foot = d.querySelector(".viewer-foot").getBoundingClientRect(), panel = ${panelOf}.getBoundingClientRect(), acts = [...d.querySelectorAll(".viewer-foot > .viewer-act")].filter((a) => a.getBoundingClientRect().width > 0).map((a) => a.getBoundingClientRect());
+      return { width: Math.round(panel.width), foot: Math.round(foot.width), panelBottom: Math.round(panel.bottom), actsTop: Math.round(Math.min(...acts.map((a) => a.top))), rows: new Set(acts.map((a) => Math.round(a.top))).size, onScreen: Math.round(panel.top) >= 0 && Math.round(Math.max(...acts.map((a) => a.bottom))) <= innerHeight }; })()`);
+    check(closed === 0 && placed.width >= placed.foot - 32 && placed.panelBottom <= placed.actsTop && placed.onScreen, `at ${width}, Details opens above the actions, across the bar: ${JSON.stringify({ closed, ...placed })}`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
+    const shut = await ev(`({ gone: ${panelOf}.getClientRects().length === 0, said: document.querySelector("dialog.viewer[open] [data-view-details]").getAttribute("aria-expanded") })`);
+    check(shut.gone && shut.said === "false", `at ${width}, Details closes again and says so: ${JSON.stringify(shut)}`);
+    await ev(`document.querySelector("dialog.viewer[open]").close()`);
+  }
   // On a small phone, with Share showing as it does on a real one, every action is on screen and big enough.
   await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
   await nav("/app/studio/image");
@@ -1045,7 +1064,7 @@ if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
     check(!after.row && after.source === "" && after.shape, `once it has started, the next picture starts fresh: ${JSON.stringify(after)}`);
     await ev(`document.querySelector("#lab-items > li .image-open").click()`);
     await sleep(250);
-    await ev(`document.querySelector("dialog.viewer[open] summary").click()`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
     await sleep(200);
     const facts = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"), img = d.querySelector(".viewer-from"); return { text: d.querySelector(".viewer-facts").textContent, from: img?.naturalWidth > 0, again: [...d.querySelectorAll(".viewer-panel button")].some((b) => b.textContent.trim() === "Regenerate") }; })()`);
     check(/A little/.test(facts.text) && /Started from/.test(facts.text) && facts.from && facts.again, `Details say how it was edited and from what: ${JSON.stringify(facts)}`);

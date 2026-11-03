@@ -4531,6 +4531,10 @@ clearing the bar, and a row's parts on one line). They run on Chrome 114 and on 
   them quietly makes a new picture instead.
 - **Regenerate moved under Details.** With Edit and Share on a phone there are too many for one row, and it is
   the rarest of them: the same seed mostly repeats the same picture.
+- **Details is a plain button and panel, not a `<details>`.** The panel has to sit above the actions, across the
+  bar, while its opener stays in the row. A `<details>` can only do that with `display: contents`, and browsers
+  that wrap its content in a `::details-content` box then lay it out differently: Chrome 156 put the panel beside
+  the actions at 1280, where Chrome 114 put it above them. A check now compares where the panel really is.
 
 **Checks:** `tools/chat-runs-check.sh`: the words above the pictures, zoom by each means, the arrows while
 zoomed, the mat, focus on closing, and all the actions at 320 with Share showing, as it does on a real phone.
