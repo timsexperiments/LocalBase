@@ -839,6 +839,66 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
+// --- The list of chats: search, and each chat's own actions ----------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+await ev(`localStorage.setItem("localbase.playground.history.v1", JSON.stringify([
+  { id: "list-a", title: "Trip to the lake", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "a1", role: "user", text: "Where should we stop for lunch on the way?" }, { id: "a2", role: "assistant", text: "A bakery by the bridge." }] },
+  { id: "list-b", title: "Soup", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "b1", role: "user", text: "How long does barley take?" }] },
+  { id: "list-c", title: "A very long chat name that keeps going past where a phone can show the whole of it", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "c1", role: "user", text: "muchtoolongtofitonasinglelineofaphonescreenwithoutbreakinganywhereatallinthislist" }] }]))`);
+await nav("/app/chat");
+await ev(`document.querySelector("[data-open-drawer]").click()`);
+await sleep(150);
+const inDrawer = "#chat-drawer";
+const rows = await ev(`[...document.querySelectorAll("${inDrawer} .chat-row")].map((r) => { const more = r.querySelector(".chat-row-more")?.getBoundingClientRect(), nav = r.closest("nav").getBoundingClientRect(); return { text: r.querySelector(".chat-row-title").textContent.slice(0, 20), line: r.querySelector(".chat-row-line")?.textContent.slice(0, 30), h: Math.round(r.querySelector(".chat-row-link").getBoundingClientRect().height), more: more ? Math.round(more.height) : null, inside: !more || (more.left >= nav.left && more.right <= nav.right + 1) }; })`);
+const saved = rows.filter((r) => r.more !== null);
+check(saved.length === 3 && rows.every((r) => r.h >= 44) && saved.every((r) => r.more >= 44 && r.inside) && saved.some((r) => r.line?.includes("A bakery by the bridge")), `each chat says how it ended, with targets of 44 px and its options in view: ${JSON.stringify(rows).slice(0, 360)}`);
+check(await ev(`(() => { const n = document.querySelector("${inDrawer} nav"); return n.scrollWidth <= n.clientWidth + 1; })()`), "a long name or word doesn't push the list sideways");
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = "BARLEY"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+const found = await ev(`(() => { const r = [...document.querySelectorAll("${inDrawer} .chat-row")]; return { n: r.length, title: r[0]?.querySelector(".chat-row-title").textContent, mark: r[0]?.querySelector("mark")?.textContent }; })()`);
+check(found.n === 1 && found.title === "Soup" && found.mark === "barley", `search finds words inside a chat and shows them: ${JSON.stringify(found)}`);
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = "nothing like this"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+check(await ev(`document.querySelector("${inDrawer} [data-no-conversations]").textContent === "No conversations match."`), "a search with no result says so");
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+const rowFor = (title) => `[...document.querySelectorAll("${inDrawer} .chat-row")].find((r) => r.querySelector(".chat-row-title").textContent === ${JSON.stringify(title)})`;
+await ev(`${rowFor("Soup")}.querySelector(".chat-row-more").click()`);
+await sleep(100);
+check(await ev(`document.getElementById("chat-options").open && document.querySelector("[data-options-title]").textContent === "Soup"`), "a chat's options open over the list");
+await ev(`document.querySelector("[data-option-rename]").click()`);
+await sleep(100);
+await ev(`(() => { document.getElementById("rename-input").value = "Barley soup"; document.querySelector("[data-rename-form]").requestSubmit(); })()`);
+await sleep(150);
+const renamedRow = await ev(`({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.title === "Barley soup") })`);
+check(renamedRow.row && renamedRow.saved, `rename from the list changes that chat, not the open one: ${JSON.stringify(renamedRow)}`);
+await ev(`${rowFor("Barley soup")}.querySelector(".chat-row-more").click()`);
+await sleep(100);
+await ev(`document.querySelector("[data-option-delete]").click()`);
+await sleep(100);
+const asking = await ev(`({ confirm: !document.querySelector("[data-options-confirm]").hidden, focus: document.activeElement?.hasAttribute("data-option-keep"), says: document.querySelector("[data-options-confirm] p").textContent })`);
+check(asking.confirm && asking.focus && /this browser/.test(asking.says), `delete asks first, says where the chat lives, with the safe answer focused: ${JSON.stringify(asking)}`);
+// With the keyboard up on the smallest phone, both answers can still be reached.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 300, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+const reach = await ev(`[...document.querySelectorAll("[data-options-confirm] button")].map((b) => { b.scrollIntoView({ block: "nearest" }); const r = b.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; })`);
+check(reach.length === 2 && reach.every((r) => r.top >= 0 && r.bottom <= 300 && r.h >= 44), `at 320 with the keyboard up, the confirm's answers can be reached: ${JSON.stringify(reach)}`);
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+await ev(`document.querySelector("[data-option-keep]").click()`);
+await sleep(100);
+check(await ev(`!!${rowFor("Barley soup")} && document.activeElement?.hasAttribute("data-option-delete")`), "Keep it keeps it");
+await ev(`document.querySelector("[data-option-delete]").click()`);
+await sleep(50);
+await ev(`document.querySelector("[data-option-confirm]").click()`);
+await sleep(150);
+const deleted = await ev(`({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") })`);
+check(!deleted.row && !deleted.saved && /^Deleted Barley soup/.test(deleted.said) && deleted.focus, `delete removes it, says so, and leaves focus in the list: ${JSON.stringify(deleted)}`);
+check(deleted.others.join() === "list-a,list-c" && deleted.other && deleted.otherText === 2, `deleting one chat leaves the others whole: ${JSON.stringify(deleted.others)}`);
+await ev(`localStorage.removeItem("localbase.playground.history.v1")`);
+await nav("/app/chat");
+
 // --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 const measure = `(() => {

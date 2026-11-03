@@ -265,6 +265,25 @@ function button(label, className, onClick, attrs = {}) {
 
 // --- conversation list ------------------------------------------------------------
 
+const oneLine = (text) => text.replace(/\s+/g, " ").trim();
+
+// What a row says under its title: where a search found it, or how the chat last ended.
+function rowLine(c, query) {
+  const line = document.createElement("span");
+  line.className = "chat-row-line";
+  const hit = query && c.messages.find((m) => m.text.toLowerCase().includes(query));
+  if (!hit) {
+    line.textContent = oneLine(c.messages.at(-1)?.text ?? "");
+    return line;
+  }
+  const text = oneLine(hit.text), at = text.toLowerCase().indexOf(query);
+  const start = Math.max(0, at - 24);
+  const mark = document.createElement("mark");
+  mark.textContent = text.slice(at, at + query.length);
+  line.append((start ? "…" : "") + text.slice(start, at), mark, text.slice(at + query.length));
+  return line;
+}
+
 function renderConversations() {
   for (const menu of $$("[data-conversations]")) {
     const root = menu.closest("nav").parentElement;
@@ -273,14 +292,17 @@ function renderConversations() {
       !query || c.title.toLowerCase().includes(query) || c.messages.some((m) => m.text.toLowerCase().includes(query)));
     menu.replaceChildren(...shown.map((c) => {
       const li = document.createElement("li");
+      li.className = "chat-row";
       const a = document.createElement("a");
       a.href = `?conversation=${encodeURIComponent(c.id)}`;
-      a.className = "flex min-h-11 items-center rounded-xl px-3 wrap-anywhere hover:bg-hover";
-      a.textContent = c.title || "New chat";
-      if (c === active) {
-        a.setAttribute("aria-current", "page");
-        a.classList.add("bg-accent-soft", "font-semibold", "text-accent");
-      }
+      a.className = "chat-row-link";
+      const title = document.createElement("span");
+      title.className = "chat-row-title";
+      title.textContent = c.title || "New chat";
+      a.append(title);
+      const line = rowLine(c, query);
+      if (line.textContent) a.append(line);
+      if (c === active) a.setAttribute("aria-current", "page");
       a.addEventListener("click", (e) => {
         e.preventDefault();
         if (abort) return;
@@ -292,6 +314,11 @@ function renderConversations() {
         reattach();
       });
       li.append(a);
+      if (c.messages.length) {
+        const more = button("", "icon-btn chat-row-more", () => openChatOptions(c), { "aria-label": `Options for ${c.title || "New chat"}`, "aria-haspopup": "dialog" });
+        more.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="currentColor"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>';
+        li.append(more);
+      }
       return li;
     }));
     const none = $("[data-no-conversations]", root);
@@ -1234,11 +1261,66 @@ drawer.addEventListener("click", (e) => {
 $("[data-open-picker]").addEventListener("click", openPicker);
 // A chat's name is the person's to change.
 const renameSheet = $("#rename-chat");
-$("[data-rename]").addEventListener("click", () => {
-  $("#rename-input").value = active.title;
+let renaming = null;
+// A row's own actions: open over the list, so the list is still there after.
+const optionsSheet = $("#chat-options");
+let optionsFor = null;
+function openChatOptions(c) {
+  optionsFor = c;
+  $("[data-options-title]").textContent = c.title || "New chat";
+  $("[data-options-confirm]").hidden = true;
+  $("[data-options-list]").hidden = false;
+  const busy = !!abort && c === active;
+  $("[data-option-delete]").disabled = busy;
+  $("[data-options-busy]").hidden = !busy;
+  optionsSheet.showModal();
+}
+function focusList() {
+  const list = drawer.open ? drawer : document;
+  $("[data-search]", list)?.focus();
+}
+function deleteChat(c) {
+  const name = c.title || "New chat";
+  conversations.splice(conversations.indexOf(c), 1);
+  if (c === active) {
+    dismissErrors();
+    select(chatsOnly().find((other) => other.messages.length)?.id);
+  }
+  save();
+  render();
+  announce(`Deleted ${name}.`);
+}
+$("[data-close-options]").addEventListener("click", () => optionsSheet.close());
+optionsSheet.addEventListener("click", (e) => {
+  if (e.target === optionsSheet) optionsSheet.close();
+});
+$("[data-option-rename]").addEventListener("click", () => {
+  optionsSheet.close();
+  openRename(optionsFor);
+});
+$("[data-option-delete]").addEventListener("click", () => {
+  $("[data-options-list]").hidden = true;
+  $("[data-options-confirm]").hidden = false;
+  $("[data-option-keep]").focus();
+});
+$("[data-option-keep]").addEventListener("click", () => {
+  $("[data-options-confirm]").hidden = true;
+  $("[data-options-list]").hidden = false;
+  $("[data-option-delete]").focus();
+});
+$("[data-option-confirm]").addEventListener("click", () => {
+  const c = optionsFor;
+  optionsSheet.close();
+  deleteChat(c);
+  focusList();
+});
+function openRename(c) {
+  renaming = c;
+  $("#rename-input").value = c.title;
   renameSheet.showModal();
   $("#rename-input").select();
-});
+}
+$("[data-rename]").addEventListener("click", () => openRename(active));
 $("[data-close-rename]").addEventListener("click", () => renameSheet.close());
 renameSheet.addEventListener("click", (e) => {
   if (e.target === renameSheet) renameSheet.close();
@@ -1247,9 +1329,10 @@ $("[data-rename-form]").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("#rename-input").value.trim();
   if (name) {
-    active.title = name.slice(0, 60);
+    (renaming ?? active).title = name.slice(0, 60);
     save();
     render();
+    renderConversations();
   }
   renameSheet.close();
 });
@@ -1278,7 +1361,17 @@ for (const b of $$("[data-new-chat]"))
     if (drawer.open) drawer.close();
     input.focus();
   });
-for (const s of $$("[data-search]")) s.addEventListener("input", renderConversations);
+// The count is said once typing pauses, not at every letter.
+let searchSaid = 0;
+for (const s of $$("[data-search]")) s.addEventListener("input", () => {
+  renderConversations();
+  clearTimeout(searchSaid);
+  const list = s.closest("nav")?.parentElement ?? s.parentElement;
+  if (s.value.trim()) searchSaid = setTimeout(() => {
+    const n = $$(".chat-row", list).length;
+    announce(n ? `${n} ${n === 1 ? "chat" : "chats"} found.` : "No conversations match.");
+  }, 500);
+});
 window.addEventListener("storage", (e) => {
   // Another tab changed saved history: pick it up when idle.
   if (e.key !== "localbase.playground.history.v1" || abort) return;
