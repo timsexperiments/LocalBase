@@ -614,6 +614,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- `POST /v1/embeddings` with a catalog chat model answers `400 unsupported_model_capability` without starting it. TS relays the backend's own error.
 
 ### M1 (done 2026-10-19)
 
