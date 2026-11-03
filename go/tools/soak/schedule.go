@@ -268,14 +268,14 @@ func (s *soak) execute(ctx context.Context) {
 			s.phaseAction(ctx, p)
 			sleepCtx(ctx, time.Until(phaseEnd))
 			s.verifyPhase(cycle, p)
-			s.tail.Read()
+			s.readLog()
 		}
 		s.resourceCheckpoint(ctx, fmt.Sprintf("after cycle %d", cycle+1))
 	}
 	s.cpu = s.measureCPU()
 	s.drainAndRestart(ctx, stopTraffic, traffic)
 	s.ended = time.Now()
-	s.tail.Read()
+	s.readLog()
 	s.finalChecks()
 }
 
@@ -310,6 +310,14 @@ func procNames(procs []lab.Proc) string {
 
 // verifyPhase checks the phase did what it is for, beyond the allow-list every
 // result already went through.
+// readLog brings the log's events up to date. The checks judge by them, so a log that
+// cannot be read fails the run rather than passing it on less evidence.
+func (s *soak) readLog() {
+	if err := s.tail.Read(); err != nil {
+		s.rec.violate("log", "", 0, "", "could not read the gateway's log: "+err.Error())
+	}
+}
+
 func (s *soak) verifyPhase(cycle int, p *phase) {
 	want := func(class, why string) {
 		if s.rec.phaseOK(class, p.name) == 0 {
@@ -682,7 +690,7 @@ type cpuUse struct {
 
 func (s *soak) measureCPU() cpuUse {
 	var ru syscall.Rusage
-	syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
+	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru) // a figure for the report; nothing is judged on it
 	harness := float64(ru.Utime.Sec+ru.Stime.Sec) + float64(ru.Utime.Usec+ru.Stime.Usec)/1e6
 	gw := lab.CPUSeconds(s.g.Cmd.Process.Pid)
 	u := cpuUse{GatewaySeconds: gw, HarnessSeconds: harness}
