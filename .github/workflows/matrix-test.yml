@@ -1,0 +1,49 @@
+name: Matrix test (throwaway)
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache: false
+      - name: Try each model type with the real binary
+        run: |
+          (cd go && CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/lb" ./cmd/localbase)
+          export LOCALBASE_ROOT="$RUNNER_TEMP/root" PATH="$RUNNER_TEMP:$PATH"
+          lb(){ "$RUNNER_TEMP/lb" --non-interactive "$@"; }
+          uname -sm; (vulkaninfo --summary 2>/dev/null | head -3) || echo "no vulkaninfo"; (nvidia-smi -L 2>/dev/null) || echo "no nvidia-smi"
+          lb init > /dev/null
+          echo "=== doctor"; lb doctor 2>&1 | grep -E 'GPU|Status|Placement' | cut -c1-130 || true
+          echo "=== backends"; lb backends list 2>&1 | cut -c1-140 || true
+          for m in qwen3.5-4b-q4_k_m whisper-base-q8_0 qwen3-tts-1.7b-base-q4_k_m dreamshaper-8-lcm kokoro-82m-v1.0-q8 fastwan2.2-ti2v-5b-q6_k; do echo "=== backend for $m"; lb models backend "$m" 2>&1 | cut -c1-150 | head -14 || true; done
+          key="$(lb keys create --name t --scopes inference:chat,inference:speech,inference:image,inference:transcription,inference:video,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
+          echo "=== install chat"; lb models install qwen3.5-4b-q4_k_m 2>&1 | tail -1 | cut -c1-120 || true
+          echo "=== install kokoro"; lb models install kokoro-82m-v1.0-q8 2>&1 | tail -1 | cut -c1-120 || true
+          lb serve --host 127.0.0.1 --port 26800 --llm-port 26801 > "$RUNNER_TEMP/serve.log" 2>&1 &
+          g=$!
+          for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health && break; sleep 1; done
+          post(){ curl -s -m "$3" -o "$RUNNER_TEMP/o" -w '%{http_code} %{size_download}B %{time_total}s' "http://127.0.0.1:26800$1" -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d "$2"; echo " code=$(jq -r '.error.code // "-"' "$RUNNER_TEMP/o" 2>/dev/null | head -1) msg=$(jq -r '.error.message // "-"' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-120 | head -1)"; }
+          echo "=== chat"; post /v1/chat/completions '{"model":"qwen3.5-4b-q4_k_m","max_tokens":48,"messages":[{"role":"user","content":"Say hello."}]}' 600
+          jq -c '{finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length)}' "$RUNNER_TEMP/o" 2>/dev/null || true
+          echo "=== chat backend now"; curl -s -m5 -H "Authorization: Bearer $key" 'http://127.0.0.1:26800/_localbase/model-backend?model=qwen3.5-4b-q4_k_m' | jq -c '{effective:(.effective//.backend//.selected),state:(.state//null)}' 2>/dev/null | cut -c1-160 || true
+          echo "=== image"; post /v1/images/generations '{"model":"dreamshaper-8-lcm","prompt":"a boat","n":1,"size":"512x512"}' 60
+          echo "=== transcription"; printf 'RIFF' > "$RUNNER_TEMP/a.wav"; curl -s -m 60 -o "$RUNNER_TEMP/o" -w '%{http_code}' http://127.0.0.1:26800/v1/audio/transcriptions -H "Authorization: Bearer $key" -F file=@"$RUNNER_TEMP/a.wav" -F model=whisper-base-q8_0; echo " code=$(jq -r '.error.code // "-"' "$RUNNER_TEMP/o" 2>/dev/null)"
+          echo "=== speech default model"; post /v1/audio/speech '{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"hello there","voice":"default"}' 60
+          echo "=== speech kokoro, as it stands"; post /v1/audio/speech '{"model":"kokoro-82m-v1.0-q8","input":"hello there","voice":"af_heart"}' 300
+          echo "=== kokoro: choose onnx-cpu"; lb models backend kokoro-82m-v1.0-q8 --set onnx-cpu 2>&1 | cut -c1-160 | head -6 || true
+          echo "=== allow experimental"; lb config --help 2>&1 | head -0 || true; curl -s -m5 -o /dev/null -w 'n/a\n' http://127.0.0.1:26800/health
+          echo "=== speech kokoro, after choosing"; post /v1/audio/speech '{"model":"kokoro-82m-v1.0-q8","input":"hello there","voice":"af_heart"}' 300
+          file "$RUNNER_TEMP/o" | cut -d: -f2 | cut -c1-70
+          echo "=== video"; post /v1/videos '{"model":"fastwan2.2-ti2v-5b-q6_k","prompt":"a boat"}' 30
+          kill "$g" 2>/dev/null || true
