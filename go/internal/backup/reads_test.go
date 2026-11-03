@@ -17,6 +17,7 @@ var failedReadExceptions = map[string]string{
 	"isDir":             "Whether --output names a directory. On a failure it goes on to create the file, and that reports the problem",
 	"exists":            "A stat of a path this command owns. A failure that isn't \"missing\" shows at the rename that follows",
 	"abandoned":         "Leftovers to mention or sweep. A directory it can't read has none it may remove",
+	"liveSignIn":        "A failure travels in its result, and the report then says that root's value can't be read, so it never reads as having none",
 	"UnfinishedWrite":   "It only answers whether a crash left this database mid-write, and any other failure means it didn't. #531 adds it",
 }
 

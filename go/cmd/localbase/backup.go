@@ -308,11 +308,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 			c.Info("  %s %s %s", s.Model, s.Kind, s.Where)
 		}
 	}
-	if len(rep.Providers) > 0 {
-		c.Info("Sign-in: %s.", strings.Join(rep.Providers, ", "))
-	} else {
-		c.Info("Sign-in: on this computer only, until a provider is added.")
-	}
+	printSignIn(c, rep.SignIn)
 	printIssuers(c, rep.Issuers)
 	if rep.UnboundNote != "" {
 		c.Info("%s", rep.UnboundNote)
@@ -328,6 +324,39 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	}
 	for _, caution := range rep.Cautions {
 		fmt.Fprintln(c.Stderr, caution)
+	}
+}
+
+// printSignIn says who could sign in and what they'd get. The line about what everyone gets is always
+// there, because a missing one would read as safe.
+func printSignIn(c *cli.Ctx, s *backup.SignIn) {
+	if s == nil {
+		return
+	}
+	if len(s.Who) > 0 {
+		c.Info("Who can sign in:")
+		for _, l := range s.Who {
+			c.Info("  %s", l.Text("has"))
+		}
+	} else {
+		c.Info("Sign-in: on this computer only, until a provider is added.")
+	}
+	for _, l := range s.Goes {
+		c.Info("No longer able to sign in: %s (this root names it %s)", l.Value, l.Named)
+	}
+	everyone := s.Everyone
+	if everyone.Value == "" {
+		everyone.Value = "nothing, unless a role gives it"
+	}
+	c.Info("Everyone who signs in gets: %s", everyone.Text("gives"))
+	if s.IfPolicyRemoved != "" {
+		c.Info("If the access policy is removed, everyone who signs in gets: %s", s.IfPolicyRemoved)
+	}
+	if s.Origin != nil {
+		c.Info("Address people sign in at: %s", s.Origin.Text("has"))
+	}
+	if s.Mail != nil {
+		c.Info("Mail server, which can read sign-in links: %s", s.Mail.Text("has"))
 	}
 }
 
