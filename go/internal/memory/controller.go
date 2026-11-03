@@ -33,6 +33,9 @@ type AdmissionError struct {
 	Confidence     string
 	// Permanent: the demand can never fit on this host, even idle.
 	Permanent bool
+	// CapacityBytes is the pool's total when Permanent; AvailableBytes is then what
+	// the pool can ever give it, after the reserve.
+	CapacityBytes int64
 	// Diagnostics are the figures behind the refusal (nil when the error was
 	// not made by admission).
 	Diagnostics *AdmissionDiagnostics
@@ -247,11 +250,13 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 	if topo.Unified && topo.GPUWorkingSetBytes > 0 && d.AcceleratorBytes > topo.GPUWorkingSetBytes {
 		e := *base
 		e.Reason, e.PoolID, e.RequestedBytes, e.AvailableBytes, e.Permanent = "accelerator-memory", "gpu-working-set", d.AcceleratorBytes, topo.GPUWorkingSetBytes, true
+		e.CapacityBytes = topo.GPUWorkingSetBytes
 		return reject(e)
 	}
 	if topo.SystemCapacity > 0 && req > max(0, topo.SystemCapacity-reserve) {
 		e := *base
 		e.Reason, e.AvailableBytes, e.Permanent = "system-memory", max(0, topo.SystemCapacity-reserve), true
+		e.CapacityBytes = topo.SystemCapacity
 		return reject(e)
 	}
 	// The GPU working-set cap applies to the sum of loaded runtimes (#283).

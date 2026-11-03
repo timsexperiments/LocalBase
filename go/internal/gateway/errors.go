@@ -118,6 +118,10 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 			writeError(w, r, 409, "invalid_request_error", pe.Code, pe.Message, strp("model"))
 		}
 	case errors.As(err, &ae):
+		if ae.Permanent {
+			modelTooLarge(w, r, ae)
+			return
+		}
 		w.Header().Set("Retry-After", "5")
 		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."
 		if ae.PoolID == "gpu:0" {
@@ -134,4 +138,18 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 		// Transient (a crash, a start timeout): clients retry after Retry-After.
 		serviceUnavailable(w, r, service)
 	}
+}
+
+// modelTooLarge answers a model that can never be admitted on this host, even
+// with everything else stopped: a 422 with no Retry-After (TS resourceUnavailable),
+// because retrying can never work.
+func modelTooLarge(w http.ResponseWriter, r *http.Request, ae *memory.AdmissionError) {
+	gib := func(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/float64(memory.GiB)) }
+	what, where := "memory", "models on this host"
+	if ae.PoolID == "gpu:0" { // Go only: placement's GPU pool (DESIGN §20)
+		what, where = "GPU memory", "models on this GPU"
+	}
+	msg := fmt.Sprintf("This model requires about %s of %s, but only %s is available for %s (%s total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model.",
+		gib(ae.RequestedBytes), what, gib(ae.AvailableBytes), where, gib(ae.CapacityBytes))
+	writeError(w, r, 422, "invalid_request_error", "model_too_large", msg, strp("model"))
 }
