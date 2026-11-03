@@ -176,28 +176,34 @@ func modelsImportCommand() *cli.Command {
 			if plan.Task == "" {
 				return nil, cli.Inputf("the source does not say what the model does; choose --task (%s)", strings.Join(models.Tasks, ", "))
 			}
-			var res *acquire.Result
-			err = root.WithOperation(e.Root.Dir, "install model", func() error {
-				last := ""
-				res, err = acquire.Import(ctx, e.Root.Dir, plan, func(p acquire.Progress) {
-					if c.Global.JSON {
-						return
-					}
-					line := p.Phase + " " + p.File
-					if p.Total > 0 {
-						line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)
-					}
-					if line != last {
-						fmt.Fprintln(c.Stderr, line)
-						last = line
-					}
-				})
-				return err
-			})
-			if err != nil {
+			parent := ctx
+			ctx, cancel := context.WithTimeout(ctx, l.ImportLimits(ctx, plan))
+			defer cancel()
+			if err := l.PrepareImport(ctx, plan); err != nil {
 				return nil, err
 			}
-			sel, err := l.SaveImport(ctx, res, backend)
+			last := ""
+			// Only publishing holds the root: a download can take hours.
+			fetched, err := acquire.Fetch(ctx, e.Root.Dir, plan, func(p acquire.Progress) {
+				if c.Global.JSON {
+					return
+				}
+				line := p.Phase + " " + p.File
+				if p.Total > 0 {
+					line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)
+				}
+				if line != last {
+					fmt.Fprintln(c.Stderr, line)
+					last = line
+				}
+			})
+			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) && parent.Err() == nil {
+					return nil, errors.New("The import took too long and was stopped. Run it again to resume it. To allow longer, run: local-base configure --import-deadline-hours <hours>")
+				}
+				return nil, err
+			}
+			res, sel, err := l.PublishImport(ctx, fetched, plan, backend)
 			if err != nil {
 				return nil, err
 			}

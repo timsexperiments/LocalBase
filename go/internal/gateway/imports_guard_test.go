@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -187,5 +188,96 @@ func TestNoRouteSetsTheImportOptIn(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A person with models:manage can cancel an import through the API.
+func TestImportCancelRoute(t *testing.T) {
+	ts, key, st, _ := importAPIGateway(t)
+	if err := st.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+		t.Fatal(err)
+	}
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// It sends a little and then holds the download open, so it can't finish before the
+		// cancel lands, and a cancel that does nothing fails the test instead of filling the disk.
+		if _, err := w.Write(make([]byte, 16<<10)); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		if r.Header.Get("Range") == "bytes=0-0" {
+			return
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(30 * time.Second):
+		}
+	}))
+	defer source.Close()
+	do := func(method, target, credential string, body any) (int, string) {
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest(method, ts.URL+target, bytes.NewReader(b))
+		req.Header.Set("Authorization", "Bearer "+credential)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		out, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(out)
+	}
+	status, out := do("POST", "/_localbase/model-imports", key, map[string]any{"action": "start", "source": source.URL + "/m.gguf", "allowHttp": true,
+		"confirmCustomSource": true, "task": "chat", "id": "x"})
+	if status != 202 {
+		t.Fatalf("start: %d %s", status, out)
+	}
+	var started struct{ Job string }
+	json.Unmarshal([]byte(out), &started)
+	_, chatOnly, err := st.CreateAPIKey(context.Background(), "chat", []string{"inference:chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, out := do("POST", "/_localbase/model-imports", chatOnly, map[string]any{"action": "cancel", "job": started.Job}); status != 403 {
+		t.Errorf("without models:manage: %d %s", status, out)
+	}
+	if status, out := do("POST", "/_localbase/model-imports", key, map[string]any{"action": "cancel", "job": "imp_none"}); status != 404 {
+		t.Errorf("unknown job: %d %s", status, out)
+	}
+	if status, out := do("POST", "/_localbase/model-imports", key, map[string]any{"action": "cancel", "job": started.Job, "source": "x"}); status != 400 {
+		t.Errorf("extra field: %d %s", status, out)
+	}
+	if status, out := do("POST", "/_localbase/model-imports", key, map[string]any{"action": "cancel", "job": started.Job}); status != 200 {
+		t.Errorf("cancel: %d %s", status, out)
+	}
+	if !waitFor(10*time.Second, func() bool {
+		_, out := do("GET", "/_localbase/model-imports?id="+started.Job, key, nil)
+		return strings.Contains(out, acquire.CodeCancelled)
+	}) {
+		t.Error("the job did not end as cancelled")
+	}
+}
+
+// A source claiming more than the disk can hold is refused before the job starts.
+func TestImportNeedingMoreThanTheDiskIsRefused(t *testing.T) {
+	ts, key, st, _ := importAPIGateway(t)
+	if err := st.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+		t.Fatal(err)
+	}
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Range", "bytes 0-0/1000000000000000")
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("G"))
+	}))
+	defer source.Close()
+	b, _ := json.Marshal(map[string]any{"action": "start", "source": source.URL + "/m.gguf", "allowHttp": true, "confirmCustomSource": true, "task": "chat", "id": "x"})
+	req, _ := http.NewRequest("POST", ts.URL+"/_localbase/model-imports", bytes.NewReader(b))
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusInsufficientStorage || !strings.Contains(string(out), acquire.CodeNoSpace) {
+		t.Errorf("%d %s", resp.StatusCode, out)
 	}
 }

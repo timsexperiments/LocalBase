@@ -37,6 +37,8 @@ func configureCommand() *cli.Command {
 			opt("parallel", "<auto|1-4>", "Parallel request slots"),
 			opt("max-connections", "<connections>", "Maximum open connections, 0 for no cap; applies on restart (Go only)"),
 			opt("max-connections-per-ip", "<connections>", "Maximum open connections from one address other than loopback, 0 for no cap; applies on restart (Go only)"),
+			opt("import-deadline-hours", "<hours>", "How long one import may run before it stops and can resume (default 48); applies to the next import (Go only)"),
+			opt("import-max-unknown-gib", "<GiB>", "Largest file an import may download when its source does not say the size (default 256). A file with a stated size is limited only by free disk; applies to the next import (Go only)"),
 			{Name: "allow-private-imports", Bool: true, Help: "Let imports and catalog installs reach private addresses, such as a LAN mirror (--no-allow-private-imports: do not). Off by default (Go only)"},
 			{Name: "allow-local-path-imports", Bool: true, Help: "Let the API and pages import files from this computer, with the size and checksum they report (--no-allow-local-path-imports: do not). Off by default; the CLI always can (Go only)"},
 			opt("otel-endpoint", "<url>", "OTLP/HTTP base endpoint; empty disables export"),
@@ -294,6 +296,17 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	for flag, key := range map[string]string{"max-connections": store.MaxConnectionsKey, "max-connections-per-ip": store.MaxConnectionsPerIPKey} {
 		if c.Has(flag) {
 			n, err := intOpt(c, flag, 0, 10_000_000)
+			if err != nil {
+				return nil, err
+			}
+			if err := e.Store.SetSetting(context.Background(), key, strconv.Itoa(n)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for flag, key := range map[string]string{"import-deadline-hours": store.ImportDeadlineKey, "import-max-unknown-gib": store.ImportMaxUnknownKey} {
+		if c.Has(flag) {
+			n, err := intOpt(c, flag, 1, 10_000_000)
 			if err != nil {
 				return nil, err
 			}

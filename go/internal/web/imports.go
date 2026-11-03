@@ -289,14 +289,37 @@ func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
 		fail("That backend is not registered.")
 		return
 	}
+	if err := acquire.CheckSpace(u.d.RootDir, plan); err != nil {
+		fail(obs.BoundedText(err.Error(), 512))
+		return
+	}
+	id, err := u.d.Library.StartImport(plan, f.Backend, nil)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
 	u.forget(token)
-	id := u.d.Library.StartImport(plan, f.Backend, nil)
 	r.Header.Set("HX-Target", "import-job")
 	u.render(w, r, "import", map[string]any{"Job": u.d.Library.Job(id)})
 }
 
 func (u *UI) importJob(w http.ResponseWriter, r *http.Request) {
-	job := u.d.Library.Job(r.PathValue("job"))
+	u.renderImportJob(w, r, r.PathValue("job"))
+}
+
+// importCancel stops an import and shows its job page again, for a plain form with a
+// `job` field. The page keeps polling until the job has stopped.
+func (u *UI) importCancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PostFormValue("job")
+	if !u.d.Library.CancelImport(id) {
+		http.NotFound(w, r)
+		return
+	}
+	u.renderImportJob(w, r, id)
+}
+
+func (u *UI) renderImportJob(w http.ResponseWriter, r *http.Request, id string) {
+	job := u.d.Library.Job(id)
 	if job == nil {
 		http.NotFound(w, r)
 		return
