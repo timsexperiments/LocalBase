@@ -60,6 +60,6 @@ A failed install prints a reason. See [install failures](install-failures.md).
 While it lasts:
 
 - **`events.jsonl`** stays under its 10 MiB limit, so new events are dropped and counted. The older events and archives are kept.
-- **`audit.jsonl`** keeps its events by going up to 4 MiB past the limit. After that, up to 4 MiB of events go to the service's stderr, whole. Only after that are they lost, and stderr says so.
+- **`audit.jsonl`** keeps its events by going up to 4 MiB past the limit. After that, up to 4 MiB of events go to the service's stderr, whole. Only after that are they lost, and stderr says so. The stderr allowance is per outage. On Linux the service's stderr goes to the journal rather than a private file, so whoever can read the journal can read those events. On macOS only the newest 1 MiB of that capture is kept when the gateway next starts, so copy out what you need first.
 
 Fix the cause and writing resumes by itself. stderr then says how many events were lost or are only on stderr.

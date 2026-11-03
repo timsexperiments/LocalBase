@@ -25,7 +25,7 @@ const (
 	rotateBytes = 10 << 20
 	archives    = 5
 	// What an audit log may do rather than lose events when it can't rotate: go this far past its
-	// limit, then put this many bytes of events on stderr. Past both they are lost, loudly.
+	// limit, then put this many bytes of events on stderr, per outage. Past both they are lost, loudly.
 	auditOverrun = 4 << 20
 )
 
@@ -49,7 +49,7 @@ type Sink struct {
 	complaints io.Writer
 	outage     *LogOutage
 	overrun    int64 // how far past the limit this log may go; 0 is not at all
-	spilled    int64 // bytes of events put on stderr in this outage
+	spilled    int64 // bytes of events put on stderr in this outage; the limit is per outage, not in total
 }
 
 // LogOutage is a log that can't rotate or can't be written, for doctor and status: its writer is
@@ -94,7 +94,7 @@ func (s *Sink) archive(i int) string {
 }
 
 // rotatingPath is the name the active file passes through, so that a file that can't be moved fails
-// before any archive has. Nothing reads it, and the next rotation replaces one a crash left behind.
+// before any archive has. Nothing reads it, and the next rotation moves along one a crash left behind.
 func (s *Sink) rotatingPath() string { return filepath.Join(s.dir, s.name+".rotating.jsonl") }
 
 func (s *Sink) open() error {
@@ -116,6 +116,10 @@ func (s *Sink) open() error {
 // limit however long that lasts.
 func (s *Sink) rotate() error {
 	rotating := s.rotatingPath()
+	// A crash between the renames left one behind: it is the newest archive, so it goes first.
+	if info, err := os.Lstat(rotating); err == nil && info.Mode().IsRegular() {
+		s.pushArchives()
+	}
 	moved := true
 	if err := os.Rename(s.path(), rotating); errors.Is(err, fs.ErrNotExist) {
 		moved = false // Someone removed it: there is nothing to keep.
@@ -124,18 +128,23 @@ func (s *Sink) rotate() error {
 	}
 	_ = s.f.Close() // Only ever written to, and each write was checked.
 	s.f = nil
+	if moved {
+		s.pushArchives()
+	}
+	s.torn = false
+	return s.open()
+}
+
+// pushArchives moves the archives along and makes the rotating file archive 1.
+func (s *Sink) pushArchives() {
 	for i := archives - 1; i >= 1; i-- {
 		if err := os.Rename(s.archive(i), s.archive(i+1)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			fmt.Fprintf(s.complaints, "local-base: could not keep an old %s log: %v\n", s.name, reason(err))
 		}
 	}
-	if moved {
-		if err := os.Rename(rotating, s.archive(1)); err != nil {
-			fmt.Fprintf(s.complaints, "local-base: could not keep the last %s log, the next rotation replaces it: %v\n", s.name, reason(err))
-		}
+	if err := os.Rename(s.rotatingPath(), s.archive(1)); err != nil {
+		fmt.Fprintf(s.complaints, "local-base: could not keep the last %s log, the next rotation tries again and may replace it: %v\n", s.name, reason(err))
 	}
-	s.torn = false
-	return s.open()
 }
 
 // rotateOrFollow rotates, unless another process already has: then this file is its archive 1, and
@@ -196,6 +205,10 @@ func reason(err error) error {
 	var path *fs.PathError
 	if errors.As(err, &path) {
 		return path.Err
+	}
+	var unsafe *UnsafeFileError
+	if errors.As(err, &unsafe) {
+		return errors.New(unsafe.Problem)
 	}
 	return err
 }

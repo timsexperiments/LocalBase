@@ -372,6 +372,55 @@ func TestAFileRotatedByAnotherProcessIsFollowed(t *testing.T) {
 	}
 }
 
+// A crash between the two renames leaves the rotating file. It is the newest archive, not something
+// to replace, in the main log and the audit log alike.
+func TestAFileLeftMidRotationBecomesAnArchive(t *testing.T) {
+	s, _ := failingSink(t)
+	if err := os.WriteFile(s.rotatingPath(), []byte("left by a crash\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.archive(1), []byte("older\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nearFull(t, s, 6)
+	s.Write([]byte("over the limit\n"))
+	if got, _ := os.ReadFile(s.archive(2)); string(got) != "left by a crash\n" {
+		t.Errorf("archive 2: %q", got)
+	}
+	if got, _ := os.ReadFile(s.archive(3)); string(got) != "older\n" {
+		t.Errorf("archive 3: %q", got)
+	}
+	if got := size(t, s.archive(1)); got != rotateBytes-6 {
+		t.Errorf("archive 1: %d bytes", got)
+	}
+	if _, err := os.Lstat(s.rotatingPath()); err == nil {
+		t.Error("the rotating file is still there")
+	}
+}
+
+// A planted link is the case most likely to name a path: it stays out of the complaint and the reason.
+func TestAPlantedLinkDoesNotPutThePathInAComplaint(t *testing.T) {
+	s, complaints := failingSink(t)
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(s.dir, "audit.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	s.writeAudit([]byte("what someone did\n"))
+	if strings.Contains(complaints.String(), s.dir) {
+		t.Errorf("the complaint names the path: %q", complaints)
+	}
+	out := s.Outages()
+	if len(out) != 1 || strings.Contains(out[0].Reason, s.dir) || out[0].Reason == "" {
+		t.Errorf("outages: %+v", out)
+	}
+	if !strings.Contains(complaints.String(), "what someone did") {
+		t.Errorf("the line was lost: %q", complaints)
+	}
+}
+
 // Writing after Close is the end of shutdown, not a failing log.
 func TestWritingAfterCloseIsQuiet(t *testing.T) {
 	s, complaints := failingSink(t)
