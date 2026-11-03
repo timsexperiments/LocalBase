@@ -22,7 +22,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
@@ -31,6 +30,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 // `diagnostics`: a redacted ZIP for bug reports (TS diagnostics.ts). The
@@ -211,7 +211,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 		}
 	}
 
-	manifest := object("schemaVersion", float64(1), "generatedAt", generatedAt, "version", gateway.Version,
+	manifest := object("schemaVersion", float64(1), "generatedAt", generatedAt, "version", version.Version,
 		"platform", object("os", goruntime.GOOS, "arch", nodeArch()), "hardware", hardware, "configuration", configuration,
 		"models", models, "service", service, "observability", observability, "logs", logs, "voices", voices)
 	entries := []zipEntry{
