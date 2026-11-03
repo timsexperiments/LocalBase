@@ -133,7 +133,7 @@ func (b *bodyGuard) extend() {
 	if end := b.started.Add(b.limits.UploadTotal); deadline.After(end) {
 		deadline = end
 	}
-	_ = b.rc.SetReadDeadline(deadline) // unsupported only by test transports; the server's own limits remain
+	_ = b.rc.SetReadDeadline(deadline) // guardBody proved deadlines work here; if this fails, the earlier, shorter deadline stays
 }
 
 // authenticated gives the caller the longer budget.
@@ -176,7 +176,7 @@ func drainRefused(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		g.draining.Store(true)
-		_ = g.rc.SetReadDeadline(time.Now().Add(limits.RefusedDrain)) // the drain below is bounded in bytes as well
+		_ = g.rc.SetReadDeadline(time.Now().Add(limits.RefusedDrain)) // if this fails, the deadline already set still bounds the read, and the drain is capped in bytes
 	}
 	n, err := io.Copy(io.Discard, io.LimitReader(r.Body, limits.RefusedDrainBytes+1))
 	if err != nil || n > limits.RefusedDrainBytes {
