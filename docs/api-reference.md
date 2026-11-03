@@ -1846,6 +1846,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `insufficient_storage`
 - `invalid_api_key`
 - `invalid_event_cursor`
+- `invalid_json_schema`
 - `invalid_request`
 - `invalid_voice_name`
 - `issuer_required`
@@ -1889,6 +1890,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `ui_access_denied`
 - `unsafe_path`
 - `unsupported_audio_format`
+- `unsupported_json_schema`
 - `unsupported_media_type`
 - `unsupported_model_capability`
 - `upstream_error`
