@@ -12,7 +12,7 @@ It's one Go binary with no other dependencies to install. Your prompts and outpu
 
 ## Quickstart
 
-**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and the one speech model we tried (Kokoro) failed to start there. See [what runs where](docs/platforms.md).
+**macOS on Apple Silicon is the tested path.** On Linux x86-64 without a GPU, chat worked in testing only with the memory reserve lowered, and slowly. A 16 GB machine is refused at the default reserve. See [what runs where](docs/platforms.md).
 
 ```sh
 # 1. Install. The script verifies checksums, never uses sudo and installs to ~/.local/bin.
@@ -57,7 +57,7 @@ See [what runs where](docs/platforms.md) for what has actually been run.
 | Platform | LocalBase runs | Runtimes it can download | Status |
 | --- | --- | --- | --- |
 | macOS, Apple Silicon | yes | all | **First-class.** The development and daily-use platform |
-| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Under investigation without a GPU:** in testing, chat and the one speech model we tried (Kokoro) failed to start. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
+| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Without a GPU:** chat worked in testing only with a lowered memory reserve, at about 7 tokens a second. Kokoro doesn't run, and image and transcription need Vulkan. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
 | macOS Intel | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
 | Linux ARM64 | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
 | Windows | no | | Not planned |
@@ -78,7 +78,7 @@ See [what runs where](docs/platforms.md) for what has actually been run.
 - **Decisions.** `POST /v1/systemone` answers structured questions about a state with classifications, scores and yes/no probabilities, using decision models.
 - **Memory-safe admission.** Before loading a model, LocalBase checks it fits, and refuses if it doesn't. Under memory pressure it evicts idle runtimes to avoid swapping, and under critical pressure it stops active ones too.
 - **Detached runs.** Generation from the web interface carries on when you leave the page, and the page picks it back up when you return. This was checked in test browsers, not yet on a real phone. API clients keep normal behaviour: disconnecting cancels.
-- **Placement.** Each model has a setting: automatic, GPU only, CPU only or custom layers. It doesn't apply on Apple Silicon, where memory is shared. On Linux it's unverified with a real GPU, and CPU chat currently fails.
+- **Placement.** Each model has a setting: automatic, GPU only, CPU only or custom layers. It doesn't apply on Apple Silicon, where memory is shared. On Linux it's unverified with a real GPU.
 - **Model management.** A curated catalog, plus imports from Hugging Face, direct URLs and local files, with licenses shown. LocalBase doesn't redistribute model weights. One model per type runs at a time.
 - **Operations.** Structured logs, a redacted diagnostics bundle, declarative TOML configuration, and optional OTLP export.
 

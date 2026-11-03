@@ -7,7 +7,7 @@ This page says what has actually been run, and on what. "Not run" doesn't mean i
 | Platform | Run on | Chat | Image | Speech | Transcription | Video |
 | --- | --- | --- | --- | --- | --- | --- |
 | **macOS, Apple Silicon** | A developer's M4 Max, 64 GB, 2026-11-02 | **Works**, with a small model | Not re-run here | Not re-run here | Not re-run here | Not re-run here |
-| **Linux x86-64, no GPU** | GitHub `ubuntu-latest`, 16 GB, no GPU, 2026-11-03 | **Fails** to start | Refused | Kokoro **fails** to start. Others not run | Refused | Not run |
+| **Linux x86-64, no GPU** | GitHub `ubuntu-latest`, 16 GB, no GPU, 2026-11-03 | **Works with a lowered memory reserve**, slowly. Refused at the default reserve | Refused | Kokoro **fails** to start. Others not run | Refused | Not run |
 | **Linux x86-64, with a GPU** | Not run | Not run | Not run | Not run | Not run | Not run |
 | **Linux ARM64** | GitHub `ubuntu-24.04-arm`, no GPU, 2026-11-03 | Refused | Refused | Not run | Refused | Not run |
 | **macOS, Intel** | GitHub `macos-15-intel`, no GPU, 2026-11-03 | Refused | Refused | Not run | Refused | Not run |
@@ -20,12 +20,14 @@ This page says what has actually been run, and on what. "Not run" doesn't mean i
 
 ## Linux x86-64 without a GPU, in detail
 
-This is under investigation. The runtime can run on it: `llama-server`, started directly with the same small model and a 2,048-token context, answered a short chat in 2.5 to 4 seconds.
+**These results are from one machine, one small model and six chats, at earlier code than the current integration tree.** Run 41560648170, on 2026-11-03. Head `d02ec1f1` wasn't itself run on a real runner.
 
-- **Chat, default memory reserve:** `503 insufficient_memory`. The model asked for 7.7 GiB, with 14.6 GiB available and 8 GiB reserved. `local-base models show` reports the same model as fitting, using 5.1 GB.
-- **Chat, reserve lowered to 5%, at least 1 GiB:** `503 placement_mismatch`, "the backend did not report how many layers it offloaded".
-- **Kokoro, chosen by hand with `onnx-cpu`:** `503 backend_startup_failed`, "does not run speech models". `local-base models backend` lists it as supported.
+- **Chat, reserve lowered to 5%, at least 1 GiB:** complete answers, on automatic, CPU-only and 0-GPU-layer placement, at about 7 tokens a second. A short reply took 28 to 73 seconds, mostly on reasoning before the answer. That setting isn't the default, and nobody has judged whether it's safe to keep on a machine in daily use.
+- **Chat, default reserve (15%, at least 8 GiB):** refused on 16 GB. The model needed 7.7 GB, with 6.5 GB available after keeping 8 GB. That run answered `503 placement_does_not_fit`. Later code answers `422 model_too_large`, which has only run in tests.
+- **Kokoro, chosen by hand with `onnx-cpu`:** `503 backend_startup_failed`. `local-base models backend` now rates it incompatible, because this version can't start it.
 - **Image and transcription:** `409 backend_not_selected`. `local-base models backend` says their built-in backends need Vulkan, which this machine doesn't have.
+
+Later code also starts smaller on CPU-only machines, which should need less memory. That hasn't run on a real runner, so none of the figures above reflect it.
 
 ## Linux ARM64 and macOS Intel
 
