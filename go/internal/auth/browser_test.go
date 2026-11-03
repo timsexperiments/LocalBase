@@ -347,3 +347,16 @@ func TestSameOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopbackHost(t *testing.T) {
+	for host, want := range map[string]bool{
+		"127.0.0.1": true, "127.0.0.1:2273": true, "127.9.9.9:1": true, "localhost": true, "LOCALHOST:2273": true,
+		"localhost.": true, "[::1]": true, "[::1]:2273": true, "::1": true,
+		"": false, "evil.example": false, "evil.example:2273": false, "localhost.evil.example": false, "127.0.0.1.evil.example": false,
+		"foo.localhost": false, "0.0.0.0": false, "192.168.1.9:2273": false, "[::]:2273": false,
+	} {
+		if got := LoopbackHost(host); got != want {
+			t.Errorf("LoopbackHost(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
