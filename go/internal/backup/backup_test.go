@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -785,8 +786,14 @@ func TestBackupRefusesPlaces(t *testing.T) {
 		if err := os.Chmod(open, mode); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Create(ctx, Options{Root: r, Output: filepath.Join(open, "b"+Extension)}); err == nil || !strings.Contains(err.Error(), "can change") {
-			t.Errorf("a %o directory: %v", mode, err)
+		// Whether a group counts is Security's rule: a group provably private to its owner doesn't.
+		info, err := os.Lstat(open)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = Create(ctx, Options{Root: r, Output: filepath.Join(open, "b"+Extension)})
+		if refused := err != nil && strings.Contains(err.Error(), "can change"); refused != root.WritableByOthers(info) {
+			t.Errorf("a %o directory: %v, and the rule says %v", mode, err, root.WritableByOthers(info))
 		}
 		os.Chmod(open, 0o700)
 	}
@@ -1131,8 +1138,16 @@ func TestRestoreRefusesBadFiles(t *testing.T) {
 		}
 		for _, mode := range []fs.FileMode{0o666, 0o620, 0o602} {
 			os.Chmod(loose, mode)
-			if _, err := Stage(context.Background(), loose, filepath.Join(dir(t), "target"), false); err == nil || !strings.Contains(err.Error(), "can change") {
-				t.Errorf("%o: %v", mode, err)
+			info, err := os.Lstat(loose)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := Stage(context.Background(), loose, filepath.Join(dir(t), "target"), false)
+			if refused := err != nil && strings.Contains(err.Error(), "can change"); refused != root.WritableByOthers(info) {
+				t.Errorf("%o: %v, and the rule says %v", mode, err, root.WritableByOthers(info))
+			}
+			if err == nil {
+				s.Discard()
 			}
 		}
 	})
@@ -1494,6 +1509,183 @@ func TestRestoreCountsKeysByState(t *testing.T) {
 		if k != nil && k.Active(time.Now()) {
 			t.Errorf("a key that was not active works after a restore: %s", k.Name)
 		}
+	}
+}
+
+// plantBindings gives a root a role with bindings for two providers and one naming none.
+func plantBindings(t *testing.T, r *root.Root) {
+	t.Helper()
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for _, stmt := range []string{
+		`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('role-1', 'staff', '', 'x', 'x')`,
+		`INSERT INTO auth_role_permissions (role_id, permission) VALUES ('role-1', 'access:manage')`,
+		`INSERT OR REPLACE INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', NULL, 'x')`,
+		`INSERT INTO auth_email_role_bindings (id, role_id, email) VALUES ('b1', 'role-1', 'google@example.com')`,
+		`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('email', 'role-1', 'google@example.com', 'https://accounts.example.com')`,
+		`INSERT INTO auth_domain_role_bindings (id, role_id, domain) VALUES ('b2', 'role-1', 'public.example.com')`,
+		`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('email-domain', 'role-1', 'public.example.com', 'https://public.example.com')`,
+		`INSERT INTO auth_email_role_bindings (id, role_id, email) VALUES ('b3', 'role-1', 'nobody-vouches@example.com')`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('invited', 'pending', 'x', 'x')`,
+		`INSERT INTO auth_user_emails (user_id, email) VALUES ('invited', 'invited@example.com')`,
+		`INSERT INTO go_invitation_issuers (user_id, issuer) VALUES ('invited', 'https://accounts.example.com')`,
+	} {
+		if _, err := st.DB.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+}
+
+func lineFor(lines []IssuerLine, issuer string) IssuerLine {
+	for _, l := range lines {
+		if l.Issuer == issuer {
+			return l
+		}
+	}
+	return IssuerLine{}
+}
+
+func TestBindingsAreReportedPerIssuer(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	plantBindings(t, r)
+	res := create(t, r, false)
+	if l := lineFor(res.Manifest.Issuers, "https://accounts.example.com"); l.Bindings != 1 || l.Invitations != 1 || !l.Active {
+		t.Errorf("the manifest, accounts: %+v", l)
+	}
+	s, err := Stage(context.Background(), res.Output, filepath.Join(dir(t), "target"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Discard()
+	rep := s.Report
+	if l := lineFor(rep.Issuers, "https://accounts.example.com"); l.Bindings != 1 || l.Invitations != 1 || !l.Active {
+		t.Errorf("accounts: %+v", l)
+	}
+	if l := lineFor(rep.Issuers, "https://public.example.com"); l.Bindings != 1 || !l.Active {
+		t.Errorf("public: %+v", l)
+	}
+	if rep.Unbound.Total() == 0 {
+		t.Errorf("a binding naming no provider should be counted: %+v", rep.Unbound)
+	}
+	// Two providers here, so nothing is adopted by itself.
+	if !strings.Contains(rep.UnboundNote, "bindings adopt --issuer") {
+		t.Errorf("the note: %q", rep.UnboundNote)
+	}
+}
+
+// Leaving out a provider's secret leaves out the provider, not who it vouched for.
+func TestExcludeSecretsKeepsBindingsAndInvitations(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	plantBindings(t, r)
+	res := create(t, r, true)
+	google := lineFor(res.Manifest.Issuers, "https://accounts.example.com")
+	if google.Bindings != 1 || google.Invitations != 1 || google.Active {
+		t.Errorf("the removed provider's line: %+v", google)
+	}
+	if public := lineFor(res.Manifest.Issuers, "https://public.example.com"); !public.Active {
+		t.Errorf("the provider that stayed: %+v", public)
+	}
+	target := filepath.Join(dir(t), "target")
+	rep, _ := restore(t, res.Output, target, false)
+	if l := lineFor(rep.Issuers, "https://accounts.example.com"); l.Active || l.Bindings != 1 {
+		t.Errorf("the report: %+v", l)
+	}
+	// One provider is left, so what names none goes to it at the next start.
+	if !strings.Contains(rep.UnboundNote, "adopt the only one") || !strings.Contains(rep.UnboundNote, "https://public.example.com") {
+		t.Errorf("the note: %q", rep.UnboundNote)
+	}
+	db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM auth_users WHERE id = 'invited' AND status = 'pending'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("the invitation should stay: %d %v", n, err)
+	}
+}
+
+func TestUnboundNoteDependsOnProviders(t *testing.T) {
+	u := auth.UnboundCount{Emails: 1, Domains: 1}
+	oidc := func(ids ...string) *auth.BrowserAccess {
+		a := &auth.BrowserAccess{Provider: auth.Provider{Kind: "direct"}, Origin: "https://l.example.com"}
+		for _, id := range ids {
+			a.Provider.Registrations = append(a.Provider.Registrations, auth.Registration{Kind: "oidc", ID: id, Issuer: "https://" + id + ".example.com"})
+		}
+		return a
+	}
+	for name, tc := range map[string]struct {
+		access *auth.BrowserAccess
+		want   string
+	}{
+		"no sign-in at all": {nil, "whichever provider is added next"},
+		"one provider":      {oidc("one"), "adopt the only one, https://one.example.com"},
+		"several":           {oidc("one", "two"), "grant nothing until you choose one"},
+	} {
+		if got := unboundNote(u, tc.access); !strings.Contains(got, tc.want) {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	if got := unboundNote(auth.UnboundCount{}, oidc("one")); got != "" {
+		t.Errorf("nothing unbound: %q", got)
+	}
+}
+
+func TestRestoreRefusesBadBindingRows(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	plantBindings(t, r)
+	good := create(t, r, false).Output
+	for name, tc := range map[string]struct{ stmt, want string }{
+		"a provider row for no binding": {`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('email', 'role-1', 'orphan@example.com', 'https://accounts.example.com')`, "belongs to no binding"},
+		"a provider row for no role":    {`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('email', 'no-such-role', 'google@example.com', 'https://accounts.example.com')`, "belongs to no binding"},
+		"an unknown kind":               {`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('phone', 'role-1', 'x', 'https://accounts.example.com')`, "unknown kind"},
+		"a bad issuer on a binding":     {`UPDATE go_binding_issuers SET issuer = 'http://not-https.example.com' WHERE value = 'google@example.com'`, "access policy"},
+		"an invitation for nobody":      {`INSERT INTO go_invitation_issuers (user_id, issuer) VALUES ('no-such-user', 'https://accounts.example.com')`, "doesn't exist"},
+		"a bad issuer on an invitation": {`UPDATE go_invitation_issuers SET issuer = 'https://a.example.com/?x=1' WHERE user_id = 'invited'`, "isn't an issuer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := read(t, good)
+			editDB(t, e, tc.stmt)
+			crafted := filepath.Join(dir(t), "crafted"+Extension)
+			pack(t, crafted, e)
+			if _, err := Stage(context.Background(), crafted, filepath.Join(dir(t), "target"), false); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// Nothing records a withdrawn binding, so a restore can't keep it withdrawn. It has to say so.
+func TestRestoreSaysWhichBindingsComeBack(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	plantBindings(t, r)
+	res := create(t, r, false)
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`DELETE FROM go_binding_issuers WHERE value = 'google@example.com'`,
+		`DELETE FROM auth_email_role_bindings WHERE email = 'google@example.com'`,
+		`DELETE FROM auth_email_role_bindings WHERE email = 'nobody-vouches@example.com'`,
+	} {
+		if _, err := st.DB.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st.Close()
+	rep, _ := restore(t, res.Output, r.Dir, true)
+	if l := lineFor(rep.ReturningBindings, "https://accounts.example.com"); l.Bindings != 1 {
+		t.Errorf("accounts: %+v", rep.ReturningBindings)
+	}
+	if l := lineFor(rep.ReturningBindings, "(naming no provider)"); l.Bindings != 1 {
+		t.Errorf("none: %+v", rep.ReturningBindings)
+	}
+	if l := lineFor(rep.ReturningBindings, "https://public.example.com"); l.Bindings != 0 {
+		t.Errorf("one the root still has: %+v", l)
 	}
 }
 

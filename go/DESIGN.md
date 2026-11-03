@@ -5268,19 +5268,19 @@ how a scratch root once reached the live backend, so `TestRestoreWarnsAboutBusyP
 which are in use it connects to each and closes the connection. `--no-port-probe` skips that, so what
 listens there sees nothing, and says which ports went unchecked.
 
-**Which checks a restored root must pass:** whatever #494 enforces. Today it refuses another user's files
-and anything other users can write. Security will also refuse group-writable trusted files unless the
-group is provably private to the owner, and will export that rule, which step 1 and the `--output`
-check then use. Restore writes 0600 and 0700, so it passes either way.
+**Which checks a restored root must pass:** whatever #494 enforces. It refuses another user's files and
+anything other users can write, and a group counts as other users unless it is provably private to the
+owner. Step 1 and the `--output` check use the same rule, `root.WritableByOthers`. Restore writes 0600
+and 0700, so it passes either way.
 
-**Bindings tied to an issuer, agreed with Security (2026-11-02), and built when their E2 lands.** E2 adds `go_binding_issuers(kind, role_id, value, issuer)` and `go_invitation_issuers(user_id, issuer)` as Go tables, and `(*auth.BrowserAccess).Issuers()` says which issuers are configured.
+**Bindings tied to an issuer, agreed with Security (2026-11-02).** Security's E2 (#523) adds `go_binding_issuers(kind, role_id, value, issuer)` and `go_invitation_issuers(user_id, issuer)` as Go tables, and `(*auth.BrowserAccess).Issuers()` says which issuers are configured.
 
 - **Bindings and invitations stay in a backup, with or without secrets.** They aren't secrets, and leaving them out would silently change who gets which role. An invitation holds no token: it is a `pending` user. The only token is the magic-link one, which is already left out.
-- **With `--exclude-secrets`,** a provider's bindings stay and do nothing until a provider with the same issuer is added again. The manifest and the report say so per issuer: `https://accounts.example.com: 3 role bindings, 1 invitation, inactive until this provider is added back`.
+- **With `--exclude-secrets`,** a provider's bindings stay and do nothing until a provider with the same issuer is added again. The manifest and the report say so per issuer: `https://accounts.example.com: 1 role bindings, 1 invitations, inactive until this provider is added back`.
 - **On every restore,** bindings and invitations are shown per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
-- **Rows that name no issuer get their own line,** because a root that hasn't started since E2, or a backup of one, can hold them, and they go to the only provider at the next start: `2 bindings name no provider: they adopt the only provider at next start`. This matters most with `--exclude-secrets`, where whichever provider is added next picks them up.
-- **A restore refuses a file** with a `go_binding_issuers` row that matches no binding or role, a `kind` other than `email` or `email-domain`, or a `go_invitation_issuers` row whose user doesn't exist or whose issuer fails the format check. `LoadPolicy` ignores such orphans, and one could otherwise sit unseen and bind when a matching row is added later.
-- **With `--replace`,** bindings withdrawn since the backup would come back, since E2 keeps no record of them. The report lists them per issuer.
+- **Rows that name no issuer get their own line,** because a root that hasn't started since E2, or a backup of one, can hold them. With one provider, they adopt it at the next start. With several, they grant nothing until `local-base access bindings adopt --issuer <issuer>`, and the gateway still starts. With none, whichever provider is added next takes them, which matters most with `--exclude-secrets`.
+- **A restore refuses a file** with a `go_binding_issuers` row that matches no binding or role, a `kind` other than `email` or `email-domain`, or a `go_invitation_issuers` row whose user doesn't exist or whose issuer fails the format check. `LoadPolicy` ignores such orphans, and one could otherwise sit unseen and bind when a matching row is added later. Bindings it does load get its own check.
+- **With `--replace`,** bindings withdrawn since the backup would come back, since E2 keeps no record of them. The report lists them per issuer, comparing by role name, because a role's id doesn't survive a policy being applied.
 
 **Users, built now.** A user the target has removed or disabled stays that way, the same as a revoked key, and the count is printed. A withdrawn invitation is a `removed` row, so this covers it. Users match by id, and by address if the id differs. `auth.LoadPolicy` and `Normalize` run on the staged database, so a role, permission, address or duplicate gets the gateway's own check.
 
@@ -5311,6 +5311,7 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestRestoreRefusesCraftedSchema`: a trigger, a view, an extra table, column, generated column or index. `TestRestoreAcceptsEveryMigrationLevel`: a database at each earlier level restores and migrates, so the check can't refuse a real older backup. `TestShapeOfAMigratedDatabaseIsExpected`.
 - `TestRestoreSchemaMissingTables`: a backup from before each Go table restores and gains it, and one missing a migration's table or column is refused.
 - `TestRestoreCountsKeysByState`: active, revoked and expired are counted apart, and only the active ones work afterwards.
+- `TestBindingsAreReportedPerIssuer`, `TestExcludeSecretsKeepsBindingsAndInvitations`, `TestUnboundNoteDependsOnProviders`, `TestRestoreRefusesBadBindingRows`, `TestRestoreSaysWhichBindingsComeBack`.
 - `TestRestoreDeletesLeftOutRows`, `TestRestoreReportsWhatMatters`. `TestRestoreKeepsRevocations`: a revoked key and a removed or disabled user stay that way, by id or by address.
 - `TestRestoreIntoANewRoot`: modes and owners on every path under each umask, `root.Open` and `CheckRootFiles` clean, and the key works. `TestRestoreReplace`: only 34.1 entries change, `models/` keeps its inode, and the old files are in a 0700 directory. `TestRestoreRefusesTargets`, `TestRestoreDryRunWritesNothing`.
 - `TestRestoreFailureAndCrash`: a failure and a crash at every step. Each puts the root back byte for byte, and a crash makes `root.Open` refuse with the one line first. `TestRestoreCrashOnANewRoot`, `TestRestoreVerifiesBeforeFinishing`.

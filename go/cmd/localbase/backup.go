@@ -115,6 +115,25 @@ func printManifest(c *cli.Ctx, m *backup.Manifest) {
 	if len(m.RowsLeftOut) > 0 {
 		c.Info("Rows left out: %s", strings.Join(m.RowsLeftOut, ", "))
 	}
+	printIssuers(c, m.Issuers)
+	if n := m.Unbound.Total(); n > 0 {
+		c.Info("%d email bindings and invitations name no sign-in provider.", n)
+	}
+}
+
+// printIssuers says who each sign-in provider's bindings cover. They decide who gets which role.
+func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
+	if len(lines) == 0 {
+		return
+	}
+	c.Info("Who gets a role, by sign-in provider:")
+	for _, l := range lines {
+		state := "active"
+		if !l.Active {
+			state = "inactive until this provider is added back"
+		}
+		c.Info("  %s: %d role bindings, %d invitations, %s", l.Issuer, l.Bindings, l.Invitations, state)
+	}
 }
 
 func runRestore(c *cli.Ctx) (any, error) {
@@ -253,6 +272,13 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		c.Info("Sign-in: %s.", strings.Join(rep.Providers, ", "))
 	} else {
 		c.Info("Sign-in: on this computer only, until a provider is added.")
+	}
+	printIssuers(c, rep.Issuers)
+	if rep.UnboundNote != "" {
+		c.Info("%s", rep.UnboundNote)
+	}
+	for _, l := range rep.ReturningBindings {
+		c.Info("Role bindings this root no longer has would come back: %s: %d.", l.Issuer, l.Bindings)
 	}
 	if len(rep.Settings) > 0 {
 		c.Info("Settings that change who can reach it, or where it reaches:")

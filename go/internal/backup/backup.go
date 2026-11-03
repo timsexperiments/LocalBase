@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -69,19 +70,21 @@ const (
 // Manifest is the first entry of a backup. Restore checks every file against it and believes
 // nothing else it says.
 type Manifest struct {
-	Format         string          `json:"format"`
-	CreatedAt      string          `json:"createdAt"`
-	Version        string          `json:"version"`
-	GoSchema       int             `json:"goSchema"`
-	Migrations     int             `json:"migrations"`
-	Secrets        string          `json:"secrets"` // included | excluded
-	SecretNames    []string        `json:"secretNames"`
-	SecretsRemoved []RemovedSecret `json:"secretsRemoved"`
-	Files          []File          `json:"files"`
-	NotIncluded    []NotIncluded   `json:"notIncluded"`
-	RowsLeftOut    []string        `json:"rowsLeftOut"`
-	Models         []string        `json:"modelsToInstall"`
-	RestoreRules   []string        `json:"restoreRules"`
+	Format         string            `json:"format"`
+	CreatedAt      string            `json:"createdAt"`
+	Version        string            `json:"version"`
+	GoSchema       int               `json:"goSchema"`
+	Migrations     int               `json:"migrations"`
+	Secrets        string            `json:"secrets"` // included | excluded
+	SecretNames    []string          `json:"secretNames"`
+	SecretsRemoved []RemovedSecret   `json:"secretsRemoved"`
+	Files          []File            `json:"files"`
+	NotIncluded    []NotIncluded     `json:"notIncluded"`
+	RowsLeftOut    []string          `json:"rowsLeftOut"`
+	Models         []string          `json:"modelsToInstall"`
+	Issuers        []IssuerLine      `json:"issuers"`
+	Unbound        auth.UnboundCount `json:"unbound"`
+	RestoreRules   []string          `json:"restoreRules"`
 }
 
 // File is one file in a backup, by its path in a root.
@@ -432,14 +435,11 @@ func destination(o Options) (string, []string, error) {
 	if inside(out, o.Root.Dir) {
 		return "", nil, fmt.Errorf("%s is inside the root, where the next backup and uninstall would reach it", out)
 	}
-	info, err := os.Stat(dir)
+	info, err := os.Lstat(dir)
 	if err != nil {
 		return "", nil, err
 	}
-	if !ownedByMe(info) && info.Mode().Perm()&0o022 != 0 {
-		return "", nil, fmt.Errorf("other users can change %s, and a backup holds secrets", dir)
-	}
-	if info.Mode().Perm()&0o022 != 0 {
+	if root.WritableByOthers(info) {
 		return "", nil, fmt.Errorf("other users can change %s, and a backup holds secrets. Choose another place, or run: chmod go-w '%s'", dir, dir)
 	}
 	var cautions []string
@@ -554,6 +554,9 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	}
 	if len(m.Files) > maxEntries {
 		return nil, fmt.Errorf("the backup would hold %d files, more than a restore accepts", len(m.Files))
+	}
+	if m.Issuers, m.Unbound, err = describeBindings(ctx, content); err != nil {
+		return nil, err
 	}
 	archive := filepath.Join(stage, "archive")
 	if err := writeArchive(ctx, archive, content, m); err != nil {
