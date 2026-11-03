@@ -3266,6 +3266,7 @@
         "operationId": "createChatCompletion",
         "summary": "Chat, streaming, tools and structured output",
         "tags": ["Inference"],
+        "description": "A content part carries its content: one that names an address answers 400 `remote_media_not_allowed`, with `param` naming the first such field.",
         "x-localbase-permission": "inference:chat",
         "x-localbase-stability": "stable",
         "requestBody": {
