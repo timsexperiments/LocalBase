@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -39,6 +40,10 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 	}
 	if got := s.runs.held.Load(); got == 0 || got > 3000 {
 		t.Errorf("holding %d, limit 3000", got)
+	}
+	e, _ := m["error"].(map[string]any)
+	if e == nil || e["code"] != CodeRunsMemoryFull || !strings.Contains(e["message"].(string), "wait for the running ones") {
+		t.Errorf("nothing else had finished: %v", e)
 	}
 	if code, _ := c.do("DELETE", "/_localbase/runs/"+id, ""); code != 200 {
 		t.Fatalf("dismissing: %d", code)
@@ -282,5 +287,145 @@ func TestARestoredRunCounts(t *testing.T) {
 	}
 	if got := second.held.Load(); got < 5000 {
 		t.Errorf("holding %d for a restored output of 5000", got)
+	}
+}
+
+// The refusal says what holds the memory, how much, when the oldest goes, and what to do.
+func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	c := runClient{t: t, base: ts.URL}
+	first := c.start("hello")
+	c.waitStatus(first, "completed")
+	done := c.get(first)
+	s.runs.maxHeldTotal = s.runs.held.Load() + 1 // Full, with a finished run holding it.
+	m := c.waitStatus(c.start("fake:slow 200"), "failed")
+	if m["reason"] != "memory_limit" {
+		t.Fatalf("%v", m)
+	}
+	e, _ := m["error"].(map[string]any)
+	if e == nil || e["code"] != CodeRunsMemoryFull {
+		t.Fatalf("error: %v", e)
+	}
+	expires, err := time.Parse(time.RFC3339Nano, done["expiresAt"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, _ := e["message"].(string)
+	for _, want := range []string{"Results are holding 1 MiB", "the limit is 1 MiB", "Finished results hold 1 MiB", "Dismiss finished results, or wait",
+		"expires at " + expires.UTC().Format("15:04") + " UTC"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("%q lacks %q", message, want)
+		}
+	}
+	if e["finishedBytes"].(float64) <= 0 || e["oldestExpiresAt"] != expires.UTC().Format(time.RFC3339) {
+		t.Errorf("fields: %v", e)
+	}
+}
+
+// discardWriter is a client that reads and keeps nothing, counting what it was sent, and measures the
+// heap as it goes. A recorder would keep the stream and measure itself. Each sample collects first,
+// so that it is what is still held: other tests in the package can leave garbage, and the collector
+// lets that grow with the heap.
+type discardWriter struct {
+	header   http.Header
+	sent     int64
+	writes   int
+	peakLive uint64
+	peakHeap uint64
+}
+
+func (d *discardWriter) Header() http.Header { return d.header }
+func (d *discardWriter) WriteHeader(int)     {}
+func (d *discardWriter) Write(b []byte) (int, error) {
+	d.sent += int64(len(b))
+	d.writes++
+	var ms goruntime.MemStats
+	if d.writes%64 == 0 {
+		goruntime.ReadMemStats(&ms)
+		d.peakHeap = max(d.peakHeap, ms.HeapAlloc)
+	}
+	if d.writes%4096 == 0 {
+		goruntime.GC()
+		goruntime.ReadMemStats(&ms)
+		d.peakLive = max(d.peakLive, ms.HeapAlloc)
+	}
+	return len(b), nil
+}
+
+// eventReader is a stream of n chat events, generated, so that the test itself holds none of it.
+type eventReader struct {
+	event []byte
+	left  int
+	rest  []byte
+}
+
+func (e *eventReader) Read(p []byte) (int, error) {
+	if len(e.rest) == 0 {
+		if e.left == 0 {
+			e.rest = []byte("data: [DONE]\n\n")
+			e.left = -1
+		} else if e.left < 0 {
+			return 0, io.EOF
+		} else {
+			e.rest = e.event
+			e.left--
+		}
+	}
+	n := copy(p, e.rest)
+	e.rest = e.rest[n:]
+	return n, nil
+}
+
+// The number behind "a streaming client's request doesn't accumulate": the heap during a 256 MiB
+// stream, sixteen times the 16 MiB event limit.
+func TestAStreamingRequestsHeapDoesNotGrowWithTheStream(t *testing.T) {
+	event := []byte(`data: {"choices":[{"delta":{"content":"` + strings.Repeat("x", 4<<10) + `"}}]}` + "\n\n")
+	const total = 256 << 20
+	n := total / len(event)
+	goruntime.GC()
+	var base goruntime.MemStats
+	goruntime.ReadMemStats(&base)
+	w := &discardWriter{header: http.Header{}}
+	outcome, source := relaySSE(context.Background(), w, &eventReader{event: event, left: n}, "m", &inference{}, nil)
+	if outcome != "completed" {
+		t.Fatalf("%s %s", outcome, source)
+	}
+	if w.sent < total*9/10 { // The relay rewrites each event, so not to the byte.
+		t.Fatalf("sent %d bytes", w.sent)
+	}
+	growth := int64(w.peakLive) - int64(base.HeapAlloc)
+	t.Logf("a %d MiB stream: %d KiB held at the start, at most %d KiB held during, growth %d KiB; heap with garbage at most %d KiB",
+		w.sent>>20, base.HeapAlloc>>10, w.peakLive>>10, growth>>10, w.peakHeap>>10)
+	if growth > 8<<20 {
+		t.Errorf("what is held grew %d MiB during a %d MiB stream", growth>>20, w.sent>>20)
+	}
+}
+
+// The time given is the oldest finished result's, and only finished runs are summed.
+func TestAFullTotalNamesTheOldestFinishedResult(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	m := runServer(ts).runs
+	soon, later := time.Date(2026, 11, 3, 9, 15, 0, 0, time.UTC), time.Date(2026, 11, 3, 9, 45, 0, 0, time.UTC)
+	m.mu.Lock()
+	for i, exp := range []time.Time{later, soon, later} {
+		r := &run{m: m, notify: make(chan struct{}), done: make(chan struct{}), held: 1 << 20}
+		r.ID, r.Status, r.ExpiresAt = "run_"+strconv.Itoa(i), runCompleted, &exp
+		m.runs[r.ID] = r
+	}
+	active := &run{m: m, notify: make(chan struct{}), done: make(chan struct{}), held: 5 << 20}
+	active.ID, active.Status = "run_active", runInProgress
+	m.runs[active.ID] = active
+	m.mu.Unlock()
+	m.held.Store(8 << 20)
+	e := m.memoryFullError()
+	message := e["message"].(string)
+	for _, want := range []string{"Results are holding 8 MiB", "Finished results hold 3 MiB", "expires at 09:15 UTC"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("%q lacks %q", message, want)
+		}
+	}
+	if e["finishedBytes"] != int64(3<<20) || e["oldestExpiresAt"] != soon.Format(time.RFC3339) {
+		t.Errorf("%v", e)
 	}
 }

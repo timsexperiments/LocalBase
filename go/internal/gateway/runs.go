@@ -229,6 +229,43 @@ func (m *runManager) charge(r *run, n int64) string {
 	return ""
 }
 
+// CodeRunsMemoryFull is the error code of a run stopped by the total limit. The pages show its message.
+const CodeRunsMemoryFull = "runs_memory_full"
+
+// memoryFullError says what holds the memory and what to do, for a run stopped by the total limit.
+// Finished runs keep what they hold until they expire, so that is usually what fills it.
+func (m *runManager) memoryFullError() map[string]any {
+	var finished int64
+	var oldest *time.Time
+	m.mu.Lock()
+	for _, r := range m.runs {
+		r.mu.Lock()
+		if r.terminal() {
+			finished += r.held
+			if r.ExpiresAt != nil && (oldest == nil || r.ExpiresAt.Before(*oldest)) {
+				oldest = r.ExpiresAt
+			}
+		}
+		r.mu.Unlock()
+	}
+	m.mu.Unlock()
+	message := fmt.Sprintf("Results are holding %d MiB of memory, and the limit is %d MiB, so this was stopped.", mib(m.held.Load()), mib(m.maxHeldTotal))
+	out := map[string]any{"type": "server_error", "code": CodeRunsMemoryFull, "heldBytes": m.held.Load(),
+		"limitBytes": m.maxHeldTotal, "finishedBytes": finished}
+	if oldest == nil {
+		message += " Nothing has finished yet, so wait for the running ones and try again."
+	} else {
+		at := oldest.UTC().Format("15:04") + " UTC"
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Dismiss finished results, or wait, and try again.", mib(finished), at)
+		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
+	}
+	out["message"] = message
+	return out
+}
+
+// mib rounds up, so that a small amount doesn't read as none.
+func mib(b int64) int64 { return (b + 1<<20 - 1) >> 20 }
+
 // release ends what a run holds, when it is dropped.
 func (m *runManager) release(r *run) {
 	r.mu.Lock()
@@ -824,6 +861,13 @@ func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byt
 // finish settles a run once its inner request has returned.
 func (m *runManager) finish(r *run, rw *runWriter) {
 	r.mu.Lock()
+	full := r.stopReason == "memory_limit"
+	r.mu.Unlock()
+	var fullError map[string]any
+	if full { // Before taking r.mu for the rest: this reads other runs, with m.mu first.
+		fullError = m.memoryFullError()
+	}
+	r.mu.Lock()
 	if !r.queuedSeen {
 		r.mu.Unlock()
 		return
@@ -832,6 +876,9 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 	switch {
 	case r.stopStatus != "":
 		status, reason = r.stopStatus, r.stopReason
+		if fullError != nil {
+			r.Error = fullError
+		}
 	case r.source == "memory_emergency":
 		status, reason = runInterrupted, "memory_pressure"
 	case r.Error != nil:
