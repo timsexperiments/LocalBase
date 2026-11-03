@@ -277,7 +277,8 @@ func extractTarGz(archive, dir string, strip int) error {
 				return err
 			}
 		case tar.TypeSymlink:
-			// Only links that stay inside the package.
+			// Only links that stay inside the package: this is the check gosec asks for.
+			//nolint:gosec // the prefix test on the next line is the traversal guard
 			if t := filepath.Join(filepath.Dir(target), h.Linkname); !strings.HasPrefix(t, dir+string(filepath.Separator)) || filepath.IsAbs(h.Linkname) {
 				return fmt.Errorf("archive link %s points outside the package", h.Name)
 			}

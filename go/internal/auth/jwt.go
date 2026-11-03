@@ -75,7 +75,9 @@ func (k *jwk) parse() error {
 		if err1 != nil || err2 != nil {
 			return errors.New("bad EC key")
 		}
+		//nolint:staticcheck // deprecated fields, kept until a tested move to crypto/ecdh (docs/lint-baseline.md)
 		pub := &ecdsa.PublicKey{Curve: curve, X: new(big.Int).SetBytes(x), Y: new(big.Int).SetBytes(y)}
+		//nolint:staticcheck // as above
 		if !curve.IsOnCurve(pub.X, pub.Y) {
 			return errors.New("EC point not on curve")
 		}
