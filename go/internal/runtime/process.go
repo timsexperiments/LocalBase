@@ -30,6 +30,7 @@ type Process struct {
 	err  error
 	// endGuard stops the group's guard once the backend has exited (startGuard).
 	endGuard func()
+	guardPID int
 	// ForeignListenerOK skips the listener check: a custom launch may start
 	// something outside its group that serves the port (a container, say).
 	ForeignListenerOK bool

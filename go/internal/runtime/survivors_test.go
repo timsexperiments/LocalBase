@@ -223,6 +223,8 @@ func TestBackendDiesWithItsGateway(t *testing.T) {
 		time.Sleep(time.Minute)
 		return
 	}
+	// A successor's backend is another group: nothing here may touch it.
+	successor := orphanLike(t, "exec sleep 60")
 	cmd := exec.Command(os.Args[0], "-test.run=^TestBackendDiesWithItsGateway$", "-test.v")
 	cmd.Env = append(os.Environ(), "LB_TEST_GUARD_PARENT=1")
 	out, err := cmd.StdoutPipe()
@@ -252,6 +254,80 @@ func TestBackendDiesWithItsGateway(t *testing.T) {
 	}
 	if !waitGone(pid, 3*time.Second) {
 		t.Errorf("backend %d is still running after its gateway was killed", pid)
+	}
+	// The guard's whole term ends here too: wait it out, then look.
+	for deadline := time.Now().Add(7 * time.Second); groupAlive(pid) && time.Now().Before(deadline); {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if groupAlive(pid) {
+		t.Error("the dead gateway's group is still there")
+	}
+	if !pidAlive(successor) {
+		t.Error("the dead gateway's guard killed another group's backend")
+	}
+}
+
+// No guard is left behind however the backend ends.
+func TestGuardEndsWithItsBackend(t *testing.T) {
+	for name, end := range map[string]func(p *Process){
+		"stopped": func(p *Process) { p.Stop(5 * time.Second) },
+		"exited":  func(p *Process) { _ = syscall.Kill(p.PID(), syscall.SIGKILL); <-p.Done() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.guardPID == 0 || !pidAlive(p.guardPID) {
+				t.Fatal("no guard running")
+			}
+			guard := p.guardPID
+			end(p)
+			<-p.Done()
+			if pidExists(guard) {
+				t.Errorf("guard %d outlived its backend", guard)
+			}
+		})
+	}
+}
+
+// A guard killed outright changes nothing for its backend, which keeps serving and
+// still stops normally. Only the cover for a gateway crash is lost; the sweep remains.
+func TestBackendSurvivesItsGuardBeingKilled(t *testing.T) {
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = syscall.Kill(p.guardPID, syscall.SIGKILL)
+	time.Sleep(100 * time.Millisecond)
+	if !pidAlive(p.PID()) {
+		t.Fatal("the backend died with its guard")
+	}
+	began := time.Now()
+	p.Stop(5 * time.Second)
+	<-p.Done()
+	if d := time.Since(began); d > 2*time.Second {
+		t.Errorf("stop took %v", d)
+	}
+}
+
+// A live process given the recorded pid is safe from the sweep even when it is the
+// successor's own backend, with its own group: identity comes before any signal.
+func TestSweepNeverSignalsASuccessorsBackend(t *testing.T) {
+	root := t.TempDir()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	writeRecord(t, root, backendRecord{Runtime: "llm", PID: p.PID(), StartTime: "an earlier start", Exe: "/bin/sleep"})
+	if n := SweepBackends(root, quietLog()); n != 0 {
+		t.Errorf("stopped %d", n)
+	}
+	select {
+	case <-p.Done():
+		t.Error("the sweep ended a backend that is not the recorded one")
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 
