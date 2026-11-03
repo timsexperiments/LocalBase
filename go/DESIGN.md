@@ -7,6 +7,19 @@ production, its tests encode real incidents, and its on-disk data belongs to a
 live install. This rewrite keeps what that history proved necessary and drops
 what only existed because of how the first version grew.
 
+### Section numbers
+
+Reserve a number in this table before using it. The next free number is §33.
+
+| Section | Subject | Owner | PR |
+|---|---|---|---|
+| §25 | UI v2: Hearth | FE | #410 |
+| §28 | First-run browser access | Go | #424 |
+| §29 | Who owns a backend | Go | #476 |
+| §30 | Connect an app, and the OpenAPI document | Features | #459 |
+| §31 | HTTP limits | Security | #482 |
+| §32 | Usage and activity | Features | #479 |
+
 ## 1. Goals and non-goals
 
 Goals:
