@@ -779,6 +779,21 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 		runInterrupted: "run.interrupted"}[status])
 }
 
+// activeCount is how many runs have not finished, whoever owns them.
+func (m *runManager) activeCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, o := range m.runs {
+		o.mu.Lock()
+		if !o.terminal() {
+			n++
+		}
+		o.mu.Unlock()
+	}
+	return n
+}
+
 // stop cancels an active run with a final status. The first stop wins.
 func (m *runManager) stop(r *run, status, reason string) {
 	r.mu.Lock()
