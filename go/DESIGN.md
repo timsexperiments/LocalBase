@@ -5070,7 +5070,7 @@ local-base backup [--output <file>] [--exclude-secrets] [--dry-run] [--json]
 - **Written whole or not at all:** to a private temporary name in the same directory, synced, then linked into place, which fails if the name now exists.
 - **`--dry-run`** prints the same report and writes nothing.
 - **No network, ever.** The package imports neither `net` nor `net/http`, and a test reads its imports.
-- **Logged:** `backup.created` with sizes and `secretsIncluded`, never a path outside the root or a value. The audit log does not name what is in it.
+- **Logged:** `backup.created` and `backup.restored`, with sizes, `secretsIncluded` and the revocations kept, never a path or a value.
 
 **It always says, including with `--json` (on stderr, and as `warning`):**
 
@@ -5173,35 +5173,30 @@ its bindings, and the report shows bindings per issuer. This follows when that s
 
 ### 34.6 Tests, first
 
-All of these use scratch roots, plain files and no real models. Contract tests use the guarded helpers.
+All of these use scratch roots, plain files and no real models. Contract tests use the guarded helpers, and each safety rule below was also removed on purpose, to prove that its test fails.
 
-- `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway, with every entry in one table.
-- `TestBackupRestoresIntoFreshRootAndServes`, **the operator's test:** a backup taken from a scratch root restores into a fresh root, which passes `root.Open`'s owner checks and **serves a chat request with the fake backend.**
-- `TestBackupRestoreRoundTrip`: on that restored root, keys authenticate, roles and policies hold, catalog entries and backends are listed, voices match by hash, and everyone is signed out.
-- `TestBackupHoldsSecretsOrNot`: planted secrets are found in the raw bytes of a full backup, proving the scan works, and in no byte of an `--exclude-secrets` one, gunzipped, including database free pages.
-- `TestRestoreWithoutSecretsStarts`: a gateway starts, and `secretsRemoved` matches what is gone.
-- `TestBackupNeverHoldsPrompts`: planted text in `runs/` and `logs/` appears nowhere.
-- `TestBackupModes`: the file 0600, the default directory 0700, under a 0000 and a 0077 umask. No overwrite, no output inside the root, no directory others can write to.
-- `TestBackupRefusesUnsafeRoot`: a root #494 refuses, and a planted link in `catalog.d/`, `backends.d/` and `voices/`.
-- `TestBackupWhileServing`: a consistent database while writes continue. `-race -count=20`.
-- `TestBackupNoNetwork`: the imports, read from the package.
-- `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, an extra or duplicate entry, a link, `../`, an absolute path, a device, a sparse entry, data after the tar, a newer format, a newer schema, an expanding file, a manifest over each limit, a corrupt database, an invalid `ui-access.json`, a backend that fails validation, a bad imported model, and another user's file. For each, the target is byte-identical afterwards.
-- `TestRestoreRefusesCraftedSchema`: a trigger, a view, an extra table, an altered table, and an index that the build doesn't create, each in an otherwise valid backup.
-- `TestRestoreAcceptsEveryMigrationLevel`: a database at each earlier level restores and migrates, so the schema check can't refuse a real older backup.
-- `TestRestoreDeletesLeftOutRows`: a crafted file carrying sessions, login links and magic-link tokens signs no one in.
-- `TestRestoreKeepsRevocations`: a key revoked since the backup stays revoked after `--replace`, and the counts of returning keys and users are reported.
-- `TestRestoreReportsExposure`: the whole command line of a backend, the hosts, the OTLP endpoint, and the import and connection settings.
-- `TestRestoreUndoTreatsJournalAsInput`: a journal naming `../`, an absolute path, a link, a directory that isn't 0700, or a name off the list moves nothing. A planted journal is refused by `root.Open`.
-- `TestRestoreRefusesRunningGateway`, `TestRestoreRefusesOtherOwner` (with the owner hook of #494, and in a container as a second real user), `TestRestoreRefusesRoot` (container, uid 0), `TestRestoreRefusesForeignDirectory`.
-- `TestRestoredRootPassesEveryCheck`: modes and owners on every path, and `root.Open`, `CheckRootFiles` and `doctor` clean, under each umask.
-- `TestRestoreDryRunWritesNothing`: a tree hash of the target and the parent, before and after.
-- `TestRestoreReplace`: only the 34.1 entries change, `models/` keeps its inode, and the old files are kept in a 0700 directory that the last lines of output name, with the command to delete it.
+**In `contract/`, with real binaries and the fake backend:**
+
+- `TestBackupRestoresIntoFreshRootAndServes`, **the operator's test:** a backup taken from a scratch root while it serves restores into a fresh root, which passes `root.Open`'s owner checks and **serves a chat request with the fake backend**, once its model is installed. The same key works. A restore over the running gateway is refused.
+- `TestRestoreWithoutSecretsStarts`: a gateway starts on a root restored from `--exclude-secrets`, no byte of the restored root holds a planted secret, and the output says what to put back.
+- `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway has nothing neither table names.
 - `TestBeforeRestoreIsNeverRead`: planted text in `.before-restore-*` does not reach a backup, diagnostics or any API answer, and a gateway starts with it there.
-- `TestRestoreCrash`: a failure injected at every move. Each leaves a root that refuses with the one line, and `--undo` returns it byte for byte.
-- `TestRestoreNamesPrograms`: every custom backend's program in the report, in text and JSON.
-- `TestRestoreWarnsAboutBusyPorts`.
-- `TestUninstallNamesBackups`: it leaves them, and says they hold secrets.
-- `TestBackupRestoreCLI`: the "not encrypted" line always appears, the sign-out line comes before the question, and `--json` needs `--yes`.
+- `TestRestoreWarnsAboutBusyPorts`, `TestUninstallNamesBackups`.
+- `TestBackupRestoreCLI`: the "not encrypted" line, the sign-out line before the question, `--json` needing `--yes`, an unsafe root refused, and the old files named last, with the command to delete them.
+
+**In `internal/backup/`:**
+
+- `TestBackupHoldsSecretsOrNot`: planted secrets are found in the raw bytes of a full backup, proving the scan works, and in no byte of an `--exclude-secrets` one. `TestBackupLeavesNoFreePages`: the bytes of rows left out are not in free pages.
+- `TestBackupNeverHoldsWhatStaysBehind`, `TestBackupListsWhatItDoesNotKnow`, `TestNoNetworkImports`.
+- `TestBackupModes`, under a 0000 and a 0077 umask. `TestBackupRefusesPlaces`: no overwrite, no output inside the root, no directory others can write to. `TestBackupRefusesPlantedLinks`. `TestBackupWhileWriting`.
+- `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, a wrong size, an extra, missing or duplicate entry, a link, `../`, an absolute path, a device, a sparse entry, data after the tar or after the gzip, a newer format or schema, a manifest over each limit, a corrupt database, an invalid `ui-access.json`, backend or catalog entry, a voice that doesn't match, a bad imported model, and a file others can change. The target is the same afterwards, and nothing is left beside it.
+- `TestRestoreRefusesCraftedSchema`: a trigger, a view, an extra table, column, generated column or index. `TestRestoreAcceptsEveryMigrationLevel`: a database at each earlier level restores and migrates, so the check can't refuse a real older backup. `TestShapeOfAMigratedDatabaseIsExpected`.
+- `TestRestoreDeletesLeftOutRows`, `TestRestoreKeepsRevocations`, `TestRestoreReportsWhatMatters`.
+- `TestRestoreIntoANewRoot`: modes and owners on every path under each umask, `root.Open` and `CheckRootFiles` clean, and the key works. `TestRestoreReplace`: only 34.1 entries change, `models/` keeps its inode, and the old files are in a 0700 directory. `TestRestoreRefusesTargets`, `TestRestoreDryRunWritesNothing`.
+- `TestRestoreFailureAndCrash`: a failure and a crash at every step. Each puts the root back byte for byte, and a crash makes `root.Open` refuse with the one line first. `TestRestoreCrashOnANewRoot`, `TestRestoreVerifiesBeforeFinishing`.
+- `TestRestoreUndoTreatsJournalAsInput`: a journal naming `../`, an absolute path, a link, a directory that isn't 0700, or a name off the list moves nothing, and one claiming a fresh root can't delete a root.
+
+**By hand, in a disposable container, as a second real user:** a restored root belongs to the user running it, restoring as root is refused, and so are another user's root, empty directory or backup file, and a backup to a directory others can write.
 
 **Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. That is the operator's to run.
 
