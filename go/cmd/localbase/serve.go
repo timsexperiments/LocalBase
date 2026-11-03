@@ -366,6 +366,7 @@ func serve(c *cli.Ctx) (any, error) {
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
+	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
@@ -373,7 +374,7 @@ func serve(c *cli.Ctx) (any, error) {
 			res := srv.Call(ctx, p, method, path, ct, body)
 			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}
 		},
-		Voices: voices.New(st, r.Dir).List})
+		Voices: voices.New(st, r.Dir).List, ListenAddr: func() string { return listenAddr }})
 	srv.UI, srv.LoginPages = ui, ui
 	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
@@ -398,6 +399,7 @@ func serve(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 	}
+	listenAddr = ln.Addr().String()
 	connLimits, err := connectionLimits(c, st)
 	if err != nil {
 		ln.Close()

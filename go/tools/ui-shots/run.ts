@@ -76,7 +76,8 @@ for (const [name, path, action] of sheetsOnly ? [] : PAGES) {
       await ev(`(()=>{${STEADY}})()`);
       await ev(`document.fonts.ready.then(()=>true)`);
       await sleep(120);
-      const overflow = await ev(`document.documentElement.scrollWidth-document.documentElement.clientWidth`);
+      // Against the width asked for: mobile emulation grows innerWidth to fit wide content.
+      const overflow = await ev(`Math.max(document.documentElement.scrollWidth,innerWidth)-${width}`);
       if (overflow > 0) console.log(`OVERFLOW ${name} ${width} ${scheme}: ${overflow}px`);
       const { data } = await send("Page.captureScreenshot", { format: "png" });
       const file = `${name}-${width}-${scheme}.png`;
