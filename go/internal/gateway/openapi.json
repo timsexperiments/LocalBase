@@ -72,7 +72,9 @@
                     "users": {"type": "array", "items": {"$ref": "#/components/schemas/AccessUser"}},
                     "roles": {"type": "array", "items": {"$ref": "#/components/schemas/AccessRole"}},
                     "emailDelivery": {"anyOf": [{"$ref": "#/components/schemas/EmailDelivery"}, {"type": "null"}]},
-                    "unboundBindings": {"type": "integer", "minimum": 0, "description": "Bindings and invitations that name no provider, so grant nothing. Present when a provider is configured."}
+                    "unboundBindings": {"type": "integer", "minimum": 0, "description": "Bindings and invitations that name no provider, so grant nothing. Present when a provider is configured."},
+                    "openSignIn": {"type": "string", "description": "What anyone who can sign in gets without being named anywhere. Absent when that is nothing."},
+                    "signedIn": {"type": "array", "description": "Who has a live session, the latest first.", "items": {"type": "object", "properties": {"email": {"type": "string"}, "issuer": {"type": "string"}, "lastSeen": {"type": "string"}}, "required": ["issuer", "lastSeen"]}}
                   },
                   "required": ["config", "policy", "policyRevision", "users", "roles", "emailDelivery"]
                 }
