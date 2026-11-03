@@ -42,6 +42,8 @@
 
   {{with .Defaults}}{{template "default-models" .}}{{end}}
 
+  {{with .Updates}}{{template "update-check" .}}{{end}}
+
   {{with .Token}}{{template "hf-token" .}}{{end}}
 
   {{if and .Principal (not .NoAuth)}}
@@ -59,6 +61,35 @@
   {{end}}
 </section>
 <script type="module" src="{{asset "js/settings.js"}}"></script>
+{{end}}
+
+{{define "update-check"}}
+<section id="update-check" aria-labelledby="update-check-title">
+  <h2 id="update-check-title" class="list-label">Updates</h2>
+  <div class="list-group">
+    <div class="setting-row">
+      <span class="min-w-0 flex-1"><span class="block font-semibold">Check for a newer version</span>
+        <span class="block text-sm text-muted">Asks GitHub once a day, and sends nothing about this computer. It never installs anything. <code>local-base upgrade --check</code> works any time, with this off.</span></span>
+      {{with .State}}<span class="pill {{if .Enabled}}pill-ok{{end}}">{{if .Enabled}}On{{else}}Off{{end}}</span>{{end}}
+    </div>
+    {{with .State}}{{if .UpdateAvailable}}
+    <div class="setting-row">
+      <span class="min-w-0 flex-1"><span class="block font-semibold">{{.Latest}} is available</span>
+        <span class="block text-sm text-muted">This is {{.Current}}. On the computer running LocalBase: <code>local-base upgrade</code></span>
+        {{with .URL}}<a class="inline-flex min-h-11 items-center font-semibold text-accent" href="{{.}}" rel="noreferrer" target="_blank">Release notes</a>{{end}}</span>
+    </div>
+    {{end}}{{end}}
+    {{if .CanManage}}{{with .State}}
+    <form class="px-4 py-3" hx-post="/app/settings/update-check" hx-target="#update-check" hx-swap="outerHTML">
+      <input type="hidden" name="enabled" value="{{if .Enabled}}off{{else}}on{{end}}">
+      <button type="submit" class="btn btn-quiet min-h-11">{{if .Enabled}}Turn off{{else}}Turn on{{end}}</button>
+    </form>
+    {{end}}{{else}}
+    <p class="px-4 py-3 text-sm text-muted">Changing this needs <code>system:manage</code> or <code>access:manage</code>. On the computer running LocalBase: <code>local-base upgrade check-updates on</code></p>
+    {{end}}
+  </div>
+  {{with .Error}}<p class="mt-2 notice notice-error" role="alert">{{.}}</p>{{end}}
+</section>
 {{end}}
 
 {{define "hf-token"}}

@@ -88,6 +88,9 @@ func (u *UI) settings(w http.ResponseWriter, r *http.Request) {
 	if p.Can("models:read") && u.d.LLM != nil {
 		data["Defaults"] = u.defaultsData(r, "", "")
 	}
+	if p.Can("models:read") {
+		data["Updates"] = u.updateData(r, "", "")
+	}
 	u.render(w, r, "settings", data)
 }
 
