@@ -1,46 +1,216 @@
 package gateway
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/library"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// A model list with memory figures can't go on without what was seen of them: it says which read
-// failed and to try again, in the usual error shape, and doesn't list figures with no peaks.
-func TestAFailedPeakReadIsNotAListWithoutPeaks(t *testing.T) {
+type readFailureClient struct {
+	t   *testing.T
+	url string
+}
+
+func (c readFailureClient) get(path string) (int, http.Header, string) {
+	c.t.Helper()
+	resp, err := http.Get(c.url + path)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, string(b)
+}
+
+// A client's model list isn't taken away by a failed internal read. The body is the same but for the
+// one figure that needed it, and the failure is in a header and the log.
+func TestAFailedPeakReadDoesNotTakeAwayTheClientsList(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
 	s := runServer(ts)
-	get := func(path string) (int, string, string) {
-		t.Helper()
-		resp, err := http.Get(ts.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, string(b), resp.Header.Get("Retry-After")
-	}
-	paths := []string{"/v1/models", "/v1/models/" + chatModel, "/_localbase/models", "/_localbase/models/" + chatModel}
-	for _, path := range paths {
-		if code, body, _ := get(path); code != 200 {
-			t.Fatalf("%s, before: %d %.200s", path, code, body)
-		}
+	var logs bytes.Buffer
+	s.Log = slog.New(slog.NewTextHandler(&logs, nil))
+	c := readFailureClient{t, ts.URL}
+	code, header, before := c.get("/v1/models")
+	if code != 200 || header.Get("X-Localbase-Warning") != "" {
+		t.Fatalf("before: %d %q", code, header.Get("X-Localbase-Warning"))
 	}
 	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range paths {
-		code, body, retry := get(path)
-		if code != 503 || retry != "5" {
-			t.Errorf("%s: %d, Retry-After %q: %.200s", path, code, retry, body)
+	code, header, after := c.get("/v1/models")
+	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadPeaks {
+		t.Errorf("%d, warning %q: %.200s", code, header.Get("X-Localbase-Warning"), after)
+	}
+	if !strings.Contains(logs.String(), "models.read-failed") || !strings.Contains(logs.String(), "reading the memory peaks seen for") {
+		t.Errorf("not logged: %s", logs.String())
+	}
+	shape := func(body string) map[string]map[string]any {
+		var list struct {
+			Object string           `json:"object"`
+			Data   []map[string]any `json:"data"`
 		}
-		if !strings.Contains(body, `"code":"service_unavailable"`) || !strings.Contains(body, "Could not finish reading the memory peaks seen for ") {
-			t.Errorf("%s: %s", path, body)
+		if err := json.Unmarshal([]byte(body), &list); err != nil || list.Object != "list" {
+			t.Fatalf("%v: %.200s", err, body)
+		}
+		out := map[string]map[string]any{}
+		for _, m := range list.Data {
+			out[m["id"].(string)] = m
+		}
+		return out
+	}
+	was, now := shape(before), shape(after)
+	if len(was) == 0 || len(was) != len(now) {
+		t.Fatalf("%d models, then %d", len(was), len(now))
+	}
+	missingMemory := 0
+	for id, m := range now {
+		for _, field := range []string{"id", "object", "created", "owned_by"} {
+			if m[field] != was[id][field] {
+				t.Errorf("%s: %s changed", id, field)
+			}
+		}
+		if _, has := m["memory"]; !has {
+			missingMemory++
+		}
+		delete(m, "memory")
+		w := was[id]
+		delete(w, "memory")
+		a, _ := json.Marshal(m)
+		b, _ := json.Marshal(w)
+		if !bytes.Equal(a, b) {
+			t.Errorf("%s changed beyond the figure:\n%s\n%s", id, b, a)
+		}
+	}
+	if missingMemory == 0 {
+		t.Error("a figure without what was seen was given as if it were whole")
+	}
+	if code, header, body := c.get("/v1/models/" + chatModel); code != 200 || header.Get("X-Localbase-Warning") != store.ReadPeaks {
+		t.Errorf("one model: %d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
+	}
+}
+
+// Our own routes say so in the body, and leave out only the figures that needed the read.
+func TestOurModelRoutesSayTheyAreDegraded(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := readFailureClient{t, ts.URL}
+	if code, _, body := c.get("/_localbase/models"); code != 200 || strings.Contains(body, `"degraded"`) {
+		t.Fatalf("before: %d %.200s", code, body)
+	}
+	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
+		t.Fatal(err)
+	}
+	check := func(body string, model map[string]any) {
+		t.Helper()
+		var out struct {
+			Degraded     bool                `json:"degraded"`
+			ReadProblems []map[string]string `json:"readProblems"`
+		}
+		if err := json.Unmarshal([]byte(body), &out); err != nil {
+			t.Fatal(err)
+		}
+		if !out.Degraded || len(out.ReadProblems) == 0 || !strings.HasPrefix(out.ReadProblems[0]["step"], "reading the memory peaks seen for ") || out.ReadProblems[0]["reason"] != "the read failed" {
+			t.Errorf("%+v", out)
 		}
 		if strings.Contains(body, "no such table") {
-			t.Errorf("%s shows the raw error: %s", path, body)
+			t.Errorf("shows the raw error: %.300s", body)
 		}
+		catalogPart := model["catalog"].(map[string]any)
+		memory := catalogPart["memory"].(map[string]any)
+		fit := memory["fit"].(map[string]any)
+		if fit["verdict"] != "unknown" || memory["source"] != "unavailable" || memory["demandBytes"] != float64(0) {
+			t.Errorf("figures that needed the read: %v", memory)
+		}
+		if memory["storageEstimateGb"] == float64(0) || memory["reference"] == nil {
+			t.Errorf("figures that didn't need it are gone: %v", memory)
+		}
+	}
+	code, _, body := c.get("/_localbase/models/" + chatModel)
+	if code != 200 {
+		t.Fatalf("one: %d %.200s", code, body)
+	}
+	var one map[string]any
+	if err := json.Unmarshal([]byte(body), &one); err != nil {
+		t.Fatal(err)
+	}
+	check(body, one)
+	code, _, body = c.get("/_localbase/models")
+	if code != 200 {
+		t.Fatalf("list: %d %.200s", code, body)
+	}
+	var list struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &list); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range list.Data {
+		if m["id"] == chatModel {
+			check(body, m)
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the model isn't in the list")
+	}
+}
+
+// A failed read of a stored runtime report: the list stays, with what the files say.
+func TestAFailedCapabilityReadWarnsAndKeepsTheList(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := readFailureClient{t, ts.URL}
+	if _, err := s.Store.DB.Exec(`DROP TABLE model_runtime_capabilities`); err != nil {
+		t.Fatal(err)
+	}
+	code, header, body := c.get("/v1/models")
+	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadCapabilities || !strings.Contains(body, chatModel) {
+		t.Errorf("%d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
+	}
+	code, _, body = c.get("/_localbase/models/" + chatModel)
+	if code != 200 || !strings.Contains(body, `"degraded":true`) || !strings.Contains(body, "reading what the runtime reported for "+chatModel) {
+		t.Errorf("%d %.300s", code, body)
+	}
+}
+
+// A failed read of the imported models isn't "no imported models".
+func TestAFailedLibraryReadIsNotNoImportedModels(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	var logs bytes.Buffer
+	s.Log = slog.New(slog.NewTextHandler(&logs, nil))
+	lib, err := library.Open(s.Root, s.Store, s.Catalog, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Library = lib
+	c := readFailureClient{t, ts.URL}
+	if code, header, _ := c.get("/v1/models"); code != 200 || header.Get("X-Localbase-Warning") != "" {
+		t.Fatalf("before: %d %q", code, header.Get("X-Localbase-Warning"))
+	}
+	if _, err := s.Store.DB.Exec(`DROP TABLE imported_models`); err != nil {
+		t.Fatal(err)
+	}
+	code, header, body := c.get("/v1/models")
+	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadLibrary || !strings.Contains(body, chatModel) {
+		t.Errorf("%d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
+	}
+	if !strings.Contains(logs.String(), "reading the imported models") {
+		t.Errorf("not logged: %s", logs.String())
+	}
+	// One it can't find might be one it couldn't read, so "not found" would be a guess.
+	code, header, body = c.get("/v1/models/some-imported-model")
+	if code != 503 || header.Get("Retry-After") != "5" || !strings.Contains(body, "reading the imported models") || !strings.Contains(body, "this model may exist") {
+		t.Errorf("one: %d, Retry-After %q: %.200s", code, header.Get("Retry-After"), body)
 	}
 }

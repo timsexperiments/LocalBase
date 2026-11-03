@@ -3,7 +3,6 @@ package web
 import (
 	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// A model's page, and the lists, say a read failed rather than showing no peaks.
+// A model's page, and the lists, say a read failed with a plain notice, not an error page.
 func TestPagesReportAFailedPeakRead(t *testing.T) {
 	cat, err := catalog.Load("")
 	if err != nil {
@@ -56,19 +55,20 @@ func TestPagesReportAFailedPeakRead(t *testing.T) {
 	if _, err := st.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
-	if w := get(u, "/app/models"); w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "reading the memory peaks seen for "+spec.ModelID) {
-		t.Errorf("the list: %d %.200s", w.Code, w.Body.String())
+	w := get(u, "/app/models")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "Some memory figures couldn&#39;t be read") {
+		t.Errorf("the list: %d %.300s", w.Code, w.Body.String())
 	}
 	if spec.Qualified() && !spec.ExperimentalRuntime {
-		if _, _, err := u.catalogRows("all"); err == nil {
-			t.Error("catalogRows went on without the peaks")
+		if _, _, missing := u.catalogRows("all"); !missing {
+			t.Error("catalogRows doesn't say anything is missing")
 		}
 	}
-	w := get(u, "/app/models/m/"+spec.ModelID)
-	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "reading the memory peaks seen for "+spec.ModelID) || w.Header().Get("Retry-After") != "5" {
-		t.Errorf("details: %d %.200s", w.Code, w.Body.String())
+	w = get(u, "/app/models/m/"+spec.ModelID)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "so this is its estimate") {
+		t.Errorf("details: %d %.300s", w.Code, w.Body.String())
 	}
 	if strings.Contains(w.Body.String(), "no such table") {
-		t.Errorf("shows the raw error: %s", w.Body.String())
+		t.Errorf("shows the raw error")
 	}
 }

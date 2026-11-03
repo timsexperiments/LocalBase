@@ -2,7 +2,6 @@ package meta
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -29,15 +28,18 @@ func TestProjectReportsAFailedPeakRead(t *testing.T) {
 	}
 	defer st.Close()
 	in := Input{Store: st, RootDir: dir, Catalog: cat, MemoryGB: 64, CLI: true, Config: &store.Config{Active: map[string]string{}, Selected: map[string][]string{}}}
-	if _, err := Project(context.Background(), in, spec); err != nil {
-		t.Fatalf("before: %v", err)
+	if _, problems := Project(context.Background(), in, spec); len(problems) != 0 {
+		t.Fatalf("before: %v", problems)
 	}
 	if _, err := st.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Project(context.Background(), in, spec)
-	var failed *store.ReadError
-	if !errors.As(err, &failed) {
-		t.Errorf("%v", err)
+	m, problems := Project(context.Background(), in, spec)
+	if len(problems) == 0 || problems[0].Kind != store.ReadPeaks {
+		t.Errorf("%v", problems)
+	}
+	mem := m.Catalog.Memory
+	if mem.Fit.Verdict != "unknown" || mem.DemandBytes != 0 || mem.Source != "unavailable" || mem.StorageEstimateGb != spec.StorageGB {
+		t.Errorf("%+v", mem)
 	}
 }

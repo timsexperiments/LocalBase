@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -65,7 +64,8 @@ func (u *UI) installedBytes(s *catalog.Spec) int64 {
 	return total
 }
 
-func (u *UI) rows() ([]Row, error) {
+func (u *UI) rows() ([]Row, bool) {
+	missing := false
 	cfg := u.d.LLM.Config()
 	runningID, _, active := u.d.LLM.Running()
 	var rows []Row
@@ -81,9 +81,7 @@ func (u *UI) rows() ([]Row, error) {
 			Default: cfg.Active[s.Kind] == s.ModelID, Loaded: runningID == s.ModelID}
 		r.Busy = r.Loaded && active > 0
 		f, err := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB())
-		if err != nil {
-			return nil, err
-		}
+		missing = missing || err != nil
 		if f != nil {
 			r.MemoryGB, r.MemorySource = f.MinVramGB, f.Source
 		}
@@ -102,7 +100,7 @@ func (u *UI) rows() ([]Row, error) {
 		}
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-	return rows, nil
+	return rows, missing
 }
 
 func btoi(b bool) int {
@@ -158,11 +156,7 @@ func presentTasks(tasks []string) []string {
 func (u *UI) library(w http.ResponseWriter, r *http.Request) {
 	filter := taskFilter(r)
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	all, err := u.rows()
-	if err != nil {
-		readFailed(w, err)
-		return
-	}
+	all, missing := u.rows()
 	var shown []Row
 	var disk int64
 	var tasks []string
@@ -177,7 +171,11 @@ func (u *UI) library(w http.ResponseWriter, r *http.Request) {
 		}
 		shown = append(shown, row)
 	}
-	u.render(w, r, "library", map[string]any{
+	readNotice := ""
+	if missing {
+		readNotice = missingFiguresNotice
+	}
+	u.render(w, r, "library", map[string]any{"ReadNotice": readNotice,
 		"Rows": shown, "Installed": len(all), "Filter": filter, "Query": q, "DiskBytes": disk,
 		"FreeDisk": freeDisk(u.d.RootDir), "Tasks": presentTasks(tasks),
 	})
@@ -197,7 +195,7 @@ type CatalogRow struct {
 
 // catalogRows are the qualified models LocalBase can install here, by task,
 // those that fit first. Experimental runtimes stay out of the list.
-func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, err error) {
+func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, missing bool) {
 	for _, s := range u.d.Catalog.All() {
 		if !s.Qualified() || s.ExperimentalRuntime {
 			continue
@@ -212,9 +210,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, err 
 			row.DownloadBytes += a.ExpectedSizeBytes
 		}
 		f, err := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB())
-		if err != nil {
-			return nil, nil, err
-		}
+		missing = missing || err != nil
 		if f != nil {
 			row.Fit, row.UsesBytes = f.Fit, f.DemandBytes
 		}
@@ -230,7 +226,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, err 
 		}
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-	return rows, presentTasks(tasks), nil
+	return rows, presentTasks(tasks), missing
 }
 
 func (u *UI) running(w http.ResponseWriter, r *http.Request) {
@@ -387,18 +383,18 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 		geo = memory.ReadGeometry(filepath.Join(u.d.RootDir, "models", "llm", s.Primary().Filename))
 	}
 	var peaks []store.ObservedPeak
+	readNotice := ""
 	if sha := s.Primary().SHA256; sha != "" {
 		var err error
 		if peaks, err = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha); err != nil {
-			readFailed(w, &store.ReadError{Step: "reading the memory peaks seen for " + s.ModelID, Err: err})
-			return
+			readNotice = "What this model was seen to need couldn't be read, so this is its estimate. Try again in a moment."
 		}
 	}
 	var place *placementView
 	if s.Kind == "llm" {
 		place = u.placementData(r, s.ModelID, "", "")
 	}
-	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
+	u.render(w, r, "details", map[string]any{"ReadNotice": readNotice, "Spec": s, "Task": t, "Disk": u.installedBytes(s),
 		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend, "Placement": place})
 }
 
@@ -411,14 +407,5 @@ func firstWords(text string) string {
 	return strings.TrimRight(strings.Join(words[:6], " "), " .,;:!?") + "…"
 }
 
-// readFailed answers a page that needed a read it couldn't do: which one, and to try again. Nothing
-// is shown as if there were nothing there.
-func readFailed(w http.ResponseWriter, err error) {
-	message := "A read from the database failed. Try again in a moment."
-	var failed *store.ReadError
-	if errors.As(err, &failed) {
-		message = "Could not finish " + failed.Step + ". Try again in a moment."
-	}
-	w.Header().Set("Retry-After", "5")
-	http.Error(w, message, http.StatusServiceUnavailable)
-}
+// missingFiguresNotice is what a list says when it couldn't read some memory figures.
+const missingFiguresNotice = "Some memory figures couldn't be read, so they're left out. Try again in a moment."

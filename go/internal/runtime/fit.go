@@ -112,7 +112,7 @@ func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *
 	if primary.SHA256 != "" && st != nil {
 		var err error
 		if peaks, err = st.ObservedPeaks(ctx, spec.ModelID, primary.SHA256); err != nil {
-			return nil, &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err}
+			return nil, &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err, Kind: store.ReadPeaks}
 		}
 	}
 	return FitFor(spec, systemGB, geo, peaks, feed), nil

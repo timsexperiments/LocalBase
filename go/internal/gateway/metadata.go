@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,12 +65,9 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			modelNotFound(w, r, id)
 			return
 		}
-		m, err := meta.Project(r.Context(), in, spec)
-		if err != nil {
-			readFailure(w, r, err)
-			return
-		}
-		if spec.Kind != "llm" || s.Placement == nil {
+		m, problems := meta.Project(r.Context(), in, spec)
+		s.reportReads(w, problems)
+		if len(problems) == 0 && (spec.Kind != "llm" || s.Placement == nil) {
 			writeJSON(w, 200, m)
 			return
 		}
@@ -78,7 +76,10 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(m)
 		var out map[string]any
 		json.Unmarshal(b, &out)
-		if dev, ok := out["device"].(map[string]any); ok {
+		if len(problems) > 0 {
+			out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
+		}
+		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && s.Placement != nil {
 			if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 				dev["placement"] = placementJSON(plan)
 			} else if next, err := s.LLM.PreviewPlacement(id, s.Placement.Request(id)); err == nil && next.Placement != nil {
@@ -92,12 +93,10 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var data []meta.Model
+	var problems []*store.ReadError
 	for _, spec := range s.Catalog.All() {
-		m, err := meta.Project(r.Context(), in, spec)
-		if err != nil {
-			readFailure(w, r, err)
-			return
-		}
+		m, failed := meta.Project(r.Context(), in, spec)
+		problems = append(problems, failed...)
 		data = append(data, m)
 	}
 	data = meta.Query(data, r.URL.Query())
@@ -113,7 +112,12 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		data = []meta.Model{}
 	}
-	writeJSON(w, 200, map[string]any{"object": "list", "host": map[string]any{"memory": map[string]any{
+	out := map[string]any{"object": "list", "host": map[string]any{"memory": map[string]any{
 		"kind": kind, "system": map[string]any{"capacityBytes": topo.SystemCapacity, "availableBytes": avail},
-		"accelerators": []any{}}}, "data": data})
+		"accelerators": []any{}}}, "data": data}
+	if len(problems) > 0 {
+		s.reportReads(w, problems)
+		out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
+	}
+	writeJSON(w, 200, out)
 }

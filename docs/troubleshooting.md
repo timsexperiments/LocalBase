@@ -21,6 +21,8 @@ See [why a model was refused](model-refusals.md) and [the memory reserve](memory
 
 **On hosts with an NVIDIA GPU:** memory admission and placement for NVIDIA aren't qualified on real hardware yet. Rejection logs say which pool refused.
 
+**A model list with `degraded: true`, or `X-Localbase-Warning` on `/v1/models`:** a read behind the list failed, usually because the database stayed busy. The list is still given, without the figures that needed that read, and the log has a `models.read-failed` event naming the step. Try again in a moment.
+
 ## Downloads
 
 A failed install prints a reason. See [install failures](install-failures.md).

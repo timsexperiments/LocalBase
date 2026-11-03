@@ -216,9 +216,9 @@ func modelsCatalog() *cli.Command {
 					continue
 				}
 				listed = append(listed, s)
-				m, err := meta.Project(context.Background(), in, s)
-				if err != nil {
-					return nil, err
+				m, problems := meta.Project(context.Background(), in, s)
+				if len(problems) > 0 {
+					return nil, problems[0]
 				}
 				rows = append(rows, m)
 			}
@@ -561,10 +561,10 @@ func modelsShow() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			m, err := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
+			m, problems := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
 				MemoryGB: e.memoryGB(), Voices: voices, CLI: true}, s)
-			if err != nil {
-				return nil, err
+			if len(problems) > 0 {
+				return nil, problems[0]
 			}
 			isDefault := false
 			for _, k := range kinds {

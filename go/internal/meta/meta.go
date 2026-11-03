@@ -6,6 +6,7 @@ package meta
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -254,27 +255,43 @@ type Input struct {
 }
 
 // Project builds one model's metadata.
-func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, error) {
+// A read it couldn't do comes back with the model, which leaves out only what needed that read.
+func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, []*store.ReadError) {
 	cfg := in.Config
 	dir := filepath.Join(in.RootDir, "models", spec.Kind)
 	installed, _ := spec.Installation(dir)
 	var fit *runtime.Fit
+	var problems []*store.ReadError
+	peaksFailed := func(err error) {
+		var failed *store.ReadError
+		if !errors.As(err, &failed) {
+			failed = &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err, Kind: store.ReadPeaks}
+		}
+		problems = append(problems, failed)
+		fit = runtime.FitFor(spec, in.MemoryGB, nil, nil, feedPeaks(in.Catalog, spec))
+	}
 	if in.CLI {
 		var peaks []store.ObservedPeak
+		var err error
 		if sha := spec.Primary().SHA256; sha != "" && in.Store != nil {
-			var err error
-			if peaks, err = in.Store.ObservedPeaks(ctx, spec.ModelID, sha); err != nil {
-				return Model{}, &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err}
-			}
+			peaks, err = in.Store.ObservedPeaks(ctx, spec.ModelID, sha)
 		}
-		fit = runtime.FitFor(spec, in.MemoryGB, nil, peaks, feedPeaks(in.Catalog, spec))
+		if err != nil {
+			peaksFailed(err)
+		} else {
+			fit = runtime.FitFor(spec, in.MemoryGB, nil, peaks, feedPeaks(in.Catalog, spec))
+		}
 	} else {
 		var err error
 		if fit, err = runtime.ModelFit(ctx, in.Store, in.Catalog, spec, dir, in.MemoryGB); err != nil {
-			return Model{}, err
+			peaksFailed(err)
 		}
 	}
+	figuresMissing := len(problems) > 0
 	res := runtime.CapabilitiesFor(ctx, in.Store, in.Catalog, spec, dir)
+	if res.ReadProblem != nil {
+		problems = append(problems, res.ReadProblem)
+	}
 	voices := in.Voices
 
 	m := Model{Object: "localbase.model", ID: spec.ModelID}
@@ -325,6 +342,11 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, error) {
 	}
 	mem.Fit.Verdict, mem.Fit.SystemMemoryGb = fit.Fit, fit.SystemMemoryGB
 	mem.Fit.HeadroomGb = float64(fit.SystemMemoryGB - fit.MinVramGB)
+	if figuresMissing {
+		// These all rest on what was seen of it. The reference and the storage figure don't.
+		mem.MinimumVramEstimateGb, mem.DemandBytes, mem.Source = 0, 0, "unavailable"
+		mem.Fit.Verdict, mem.Fit.HeadroomGb = "unknown", 0
+	}
 	c.Capabilities = kindCapabilities(spec, voices)
 	c.InputModalities, c.OutputModalities = spec.InputModalities, spec.OutputModalities
 	c.ContextWindowTokens = spec.ContextWindowTokens
@@ -358,7 +380,7 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, error) {
 	if in.Snapshot != nil && spec.Kind == "llm" && in.Snapshot.ModelID == spec.ModelID {
 		m.Device.Runtime = runtimeView(*in.Snapshot)
 	}
-	return m, nil
+	return m, problems
 }
 
 func runtimeView(snap runtime.Snapshot) *Runtime {
@@ -382,9 +404,10 @@ func runtimeView(snap runtime.Snapshot) *Runtime {
 }
 
 var (
-	fitRank      = map[string]int{"fits": 0, "tight": 1, "wont-fit": 2}
-	sortKeys     = []string{"name", "size", "memory", "fit", "context"}
-	licenseNames = []string{"open", "conditional", "prohibited"}
+	fitRank        = map[string]int{"fits": 0, "tight": 1, "wont-fit": 2}
+	unknownFitRank = 3
+	sortKeys       = []string{"name", "size", "memory", "fit", "context"}
+	licenseNames   = []string{"open", "conditional", "prohibited"}
 )
 
 func listParam(values []string, allowed func(string) bool) []string {
@@ -480,7 +503,7 @@ func QueryWithText(data []Model, q url.Values, text func(Model) []string) []Mode
 			case "memory":
 				cmp = float64(a.Catalog.Memory.MinimumVramEstimateGb - b.Catalog.Memory.MinimumVramEstimateGb)
 			case "fit":
-				cmp = float64(fitRank[a.Catalog.Memory.Fit.Verdict] - fitRank[b.Catalog.Memory.Fit.Verdict])
+				cmp = float64(rankOfFit(a.Catalog.Memory.Fit.Verdict) - rankOfFit(b.Catalog.Memory.Fit.Verdict))
 				if cmp == 0 {
 					cmp = float64(a.Catalog.Memory.MinimumVramEstimateGb - b.Catalog.Memory.MinimumVramEstimateGb)
 				}
@@ -507,4 +530,12 @@ func feedPeaks(cat *catalog.Catalog, spec *catalog.Spec) []catalog.MemoryPeak {
 		return nil
 	}
 	return cat.PlannableFeedPeaks(spec)
+}
+
+// rankOfFit sorts a model whose figure couldn't be read after the ones that have one.
+func rankOfFit(verdict string) int {
+	if rank, ok := fitRank[verdict]; ok {
+		return rank
+	}
+	return unknownFitRank
 }
