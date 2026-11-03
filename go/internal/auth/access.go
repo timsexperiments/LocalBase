@@ -78,6 +78,10 @@ func ValidOrigin(o string) bool {
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && "https://"+u.Host == o
 }
 
+// ValidIssuer says whether a value could be an issuer. A restored backup's rows are checked with
+// this, since they are input from someone else.
+func ValidIssuer(v string) bool { return validIssuer(v) }
+
 func validIssuer(v string) bool {
 	u, err := url.Parse(v)
 	return err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" &&
