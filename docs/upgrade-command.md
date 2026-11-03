@@ -8,7 +8,7 @@ local-base upgrade rollback     # goes back after an upgrade, so it has nothing 
 
 Nothing installs by itself, ever. **This command is not usable yet:** it needs a release signing key, and until one exists it refuses to install anything and says so. `--check` works today. To update now, re-run the installer.
 
-**Rehearsed, and not yet run on a real release.** Its stop, swap, restart and rollback passed under launchd on macOS, and under systemd in a disposable container. That was a rehearsal: a throwaway signing key and service label, a fake backend and a 1 MiB model. It has not run with a real release, a real signing key or a notarized binary, or on anyone's real install.
+**Rehearsed, and not yet run on a real release.** Its stop, swap, restart and rollback passed under launchd on macOS, most recently at commit `89edb878`, and under systemd in a disposable container. That was a rehearsal: a throwaway signing key and service label, a fake backend and a 1 MiB model. It has not run with a real release, a real signing key or a notarized binary, or on anyone's real install.
 
 ## Checking for a newer version
 
