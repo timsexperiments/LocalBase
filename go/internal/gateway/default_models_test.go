@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // The default chat models API (DESIGN §18).
@@ -66,5 +67,42 @@ func TestDefaultModelNeedsInstanceToken(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Errorf("without a token: %d", resp.StatusCode)
+	}
+}
+
+// The instance answer names a log that can't rotate only to someone with the token, and only then.
+func TestInstanceReportsALogOutageBehindTheToken(t *testing.T) {
+	ts := openAPIGateway(t)
+	s := runServer(ts)
+	release, err := s.Root.Lock("127.0.0.1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	get := func(token string) (int, map[string]any) {
+		t.Helper()
+		req, _ := http.NewRequest("GET", ts.URL+"/_localbase/instance", nil)
+		if token != "" {
+			req.Header.Set("X-Localbase-Instance-Token", token)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var got map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&got)
+		return resp.StatusCode, got
+	}
+	token := s.Root.Instance().InstanceToken
+	if code, got := get(token); code != 200 || got["logOutages"] != nil || got["instanceId"] == nil {
+		t.Errorf("healthy: %d %v", code, got)
+	}
+	s.LogOutages = func() []obs.LogOutage { return []obs.LogOutage{{Log: "events", Path: "/the/path"}} }
+	if code, got := get(token); code != 200 || got["logOutages"] == nil {
+		t.Errorf("in an outage: %d %v", code, got)
+	}
+	if code, got := get(""); code != 404 || got["logOutages"] != nil {
+		t.Errorf("without the token: %d %v", code, got)
 	}
 }

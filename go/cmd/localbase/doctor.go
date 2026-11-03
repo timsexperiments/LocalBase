@@ -75,6 +75,9 @@ func doctorCommand() *cli.Command {
 				c.Info("Browser access: %s", open)
 				data["openSignIn"] = open
 			}
+			if outages := reportLogOutages(c, e); len(outages) > 0 {
+				data["logOutages"] = outages
+			}
 			if st := obs.InspectServiceStderr(e.Root.Dir); st != nil {
 				archive := ""
 				if st.ArchiveBytes > 0 {

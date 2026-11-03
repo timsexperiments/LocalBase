@@ -98,6 +98,9 @@ type Server struct {
 	stopping atomic.Bool
 	mux      *http.ServeMux
 	routes   []string // every registered pattern, for the OpenAPI drift test
+
+	// LogOutages reports logs that can't rotate or be written, for doctor and status.
+	LogOutages func() []obs.LogOutage
 }
 
 // What requests with no credential may write to the log.
@@ -655,5 +658,11 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
 		return
 	}
-	writeJSON(w, 200, map[string]string{"instanceId": o.InstanceID, "rootHash": o.RootHash})
+	out := map[string]any{"instanceId": o.InstanceID, "rootHash": o.RootHash}
+	if s.LogOutages != nil {
+		if outages := s.LogOutages(); len(outages) > 0 {
+			out["logOutages"] = outages // Only then, so the usual answer doesn't change.
+		}
+	}
+	writeJSON(w, 200, out)
 }

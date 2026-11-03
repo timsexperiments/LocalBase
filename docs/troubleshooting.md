@@ -52,3 +52,14 @@ A failed install prints a reason. See [install failures](install-failures.md).
 - **macOS: the binary exits with code 137 right after an upgrade.** It was probably copied over in place. [Replace it by rename](upgrade.md).
 - **Linux: the service stops when you log out.** Run `loginctl enable-linger "$USER"`. See [running as a service](install.md#running-as-a-service).
 - **Logs on Linux** are in the user journal, as well as `local-base logs`.
+
+## A log that can't rotate
+
+`local-base doctor` and `local-base status` print `Log problem:` when the running gateway can't rotate or write a log, with its path, size, reason and how long it has been going on. A read-only `logs` directory or a full disk are the usual causes. With no gateway running there is nothing to report, because only the gateway knows.
+
+While it lasts:
+
+- **`events.jsonl`** stays under its 10 MiB limit, so new events are dropped and counted. The older events and archives are kept.
+- **`audit.jsonl`** keeps its events by going up to 4 MiB past the limit. After that, up to 4 MiB of events go to the service's stderr, whole. Only after that are they lost, and stderr says so.
+
+Fix the cause and writing resumes by itself. stderr then says how many events were lost or are only on stderr.

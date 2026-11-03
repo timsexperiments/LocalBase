@@ -18,11 +18,15 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	rotateBytes = 10 << 20
 	archives    = 5
+	// What an audit log may do rather than lose events when it can't rotate: go this far past its
+	// limit, then put this many bytes of events on stderr. Past both they are lost, loudly.
+	auditOverrun = 4 << 20
 )
 
 // Sink is a rotating, private JSONL file. Safe for concurrent use.
@@ -43,8 +47,34 @@ type Sink struct {
 	torn   bool // the file ends in part of a line
 	// A log that can't be written has only this to say so: stderr, once per outage.
 	complaints io.Writer
-	failing    bool
-	dropped    int
+	outage     *LogOutage
+	overrun    int64 // how far past the limit this log may go; 0 is not at all
+	spilled    int64 // bytes of events put on stderr in this outage
+}
+
+// LogOutage is a log that can't rotate or can't be written, for doctor and status: its writer is
+// the only one who knows, and the file's directory may be why it can't record that anywhere.
+type LogOutage struct {
+	Log       string `json:"log"`
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"sizeBytes"`
+	Reason    string `json:"reason"`
+	Since     string `json:"since"`
+	Dropped   int    `json:"dropped"`
+	OnStderr  int    `json:"onStderr,omitempty"`
+}
+
+// Describe is one line for a person.
+func (o LogOutage) Describe(now time.Time) string {
+	line := fmt.Sprintf("the %s log at %s (%d bytes) can't rotate or be written: %s, since %s", o.Log, o.Path, o.SizeBytes, o.Reason, o.Since)
+	if since, err := time.Parse(time.RFC3339, o.Since); err == nil {
+		line += fmt.Sprintf(" (%s ago)", now.Sub(since).Round(time.Second))
+	}
+	line += fmt.Sprintf(". %d events lost", o.Dropped)
+	if o.OnStderr > 0 {
+		line += fmt.Sprintf(", %d kept only in the service's stderr", o.OnStderr)
+	}
+	return line + "."
 }
 
 const auditPrefix = "audit."
@@ -108,16 +138,37 @@ func (s *Sink) rotate() error {
 	return s.open()
 }
 
-// add puts one line in the file, or says why not.
-func (s *Sink) add(line []byte) error {
+// rotateOrFollow rotates, unless another process already has: then this file is its archive 1, and
+// rotating again would push that along with almost nothing new.
+func (s *Sink) rotateOrFollow() error {
+	mine, errMine := s.f.Stat()
+	active, errActive := os.Stat(s.path())
+	if errMine != nil || errActive != nil || os.SameFile(mine, active) {
+		return s.rotate()
+	}
+	_ = s.f.Close() // Only ever written to, and each write was checked.
+	s.f, s.torn = nil, false
+	return s.open()
+}
+
+// add puts one line in the file, and says whether it did and what is wrong: a log allowed an overrun
+// can keep a line and still be unable to rotate.
+func (s *Sink) add(line []byte) (kept bool, problem error) {
 	if s.f == nil {
 		if err := s.open(); err != nil {
-			return err
+			return false, err
 		}
 	}
+	// The command line appends to this file too (its audit events), and may rotate it.
+	if info, err := s.f.Stat(); err == nil && info.Size() > s.size {
+		s.size = info.Size()
+	}
 	if s.size+int64(len(line)) > rotateBytes {
-		if err := s.rotate(); err != nil {
-			return err
+		if err := s.rotateOrFollow(); err != nil {
+			if s.f == nil || s.size+int64(len(line)) > rotateBytes+s.overrun {
+				return false, err
+			}
+			problem = err
 		}
 	}
 	if s.torn {
@@ -130,10 +181,10 @@ func (s *Sink) add(line []byte) error {
 	}
 	if err != nil {
 		s.torn = s.torn || n > 0
-		return err
+		return false, err
 	}
 	s.torn = false
-	return nil
+	return true, problem
 }
 
 // reason is what went wrong without the path, which holds a home directory and gets pasted into reports.
@@ -153,38 +204,85 @@ func (s *Sink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.closed {
-		s.note(s.add(line))
+		kept, problem := s.add(line)
+		s.note(line, kept, problem)
 	}
 	if s.Mirror != nil {
 		s.Mirror.Write(line)
 	}
 }
 
-// note says when the log stops being written and when it starts again, not at every line.
-func (s *Sink) note(err error) {
-	switch {
-	case err != nil:
-		s.dropped++
-		if !s.failing {
-			s.failing = true
-			fmt.Fprintf(s.complaints, "local-base: cannot write the %s log, dropping events until it can: %v\n", s.name, reason(err))
+// note says when the log stops being written and when it starts again, not at every line. The main
+// log loses the line. An audit log has already gone past its limit if it could, and puts the line on
+// stderr next, because what someone with authority did must not just disappear.
+func (s *Sink) note(line []byte, kept bool, problem error) {
+	if problem == nil {
+		if s.outage != nil {
+			fmt.Fprintf(s.complaints, "local-base: the %s log is being written again, %d events were lost and %d are only on stderr\n", s.name, s.outage.Dropped, s.outage.OnStderr)
+			s.outage, s.spilled = nil, 0
 		}
-	case s.failing:
-		fmt.Fprintf(s.complaints, "local-base: the %s log is being written again, %d events were dropped\n", s.name, s.dropped)
-		s.failing, s.dropped = false, 0
+		return
+	}
+	cause := reason(problem)
+	first := s.outage == nil
+	if first {
+		s.outage = &LogOutage{Log: s.name, Path: s.path(), Since: time.Now().UTC().Format(time.RFC3339)}
+	}
+	s.outage.Reason = cause.Error()
+	switch {
+	case kept:
+		if first {
+			fmt.Fprintf(s.complaints, "local-base: cannot rotate the %s log, writing past its limit until it can: %v\n", s.name, cause)
+		}
+	case s.overrun == 0:
+		if first {
+			fmt.Fprintf(s.complaints, "local-base: cannot write the %s log, dropping events until it can: %v\n", s.name, cause)
+		}
+		s.outage.Dropped++
+	case s.spilled+int64(len(line)) <= s.overrun:
+		if s.outage.OnStderr == 0 {
+			fmt.Fprintf(s.complaints, "local-base: cannot write the %s log, its events follow here until it can: %v\n", s.name, cause)
+		}
+		_, _ = s.complaints.Write(line) // Nowhere left to say it failed.
+		s.spilled += int64(len(line))
+		s.outage.OnStderr++
+	default:
+		if s.outage.Dropped == 0 {
+			fmt.Fprintf(s.complaints, "local-base: the %s log still cannot be written and events are now being LOST: %v\n", s.name, cause)
+		}
+		s.outage.Dropped++
 	}
 }
 
-// writeAudit keeps a line in the audit file as well.
+// Outages lists the logs that can't rotate or be written right now.
+func (s *Sink) Outages() []LogOutage {
+	s.mu.Lock()
+	out := s.current(nil)
+	a := s.audit
+	s.mu.Unlock()
+	if a != nil {
+		a.mu.Lock()
+		out = a.current(out)
+		a.mu.Unlock()
+	}
+	return out
+}
+
+func (s *Sink) current(out []LogOutage) []LogOutage {
+	if s.outage == nil {
+		return out
+	}
+	o := *s.outage
+	o.SizeBytes = s.size
+	return append(out, o)
+}
+
+// writeAudit keeps a line in the audit file as well. A file that can't be opened is an outage like
+// any other, and each line tries again.
 func (s *Sink) writeAudit(line []byte) {
 	s.mu.Lock()
 	if s.audit == nil {
-		a := &Sink{dir: s.dir, name: "audit", complaints: s.complaints}
-		if a.open() != nil {
-			s.mu.Unlock()
-			return // the line is in the main log; the next one tries again
-		}
-		s.audit = a
+		s.audit = &Sink{dir: s.dir, name: "audit", complaints: s.complaints, overrun: auditOverrun}
 	}
 	a := s.audit
 	s.mu.Unlock()
@@ -196,7 +294,7 @@ func (s *Sink) Close() error {
 	defer s.mu.Unlock()
 	if s.audit != nil {
 		if err := s.audit.Close(); err != nil {
-			s.closeFile()
+			_ = s.closeFile() // The audit file's error is the one to report.
 			return err
 		}
 	}
