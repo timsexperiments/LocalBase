@@ -345,10 +345,13 @@ const axeSource = await Bun.file(axePath).text();
 const OVERFLOW = (w: number) => `(() => {
   const W = ${w}, se = document.scrollingElement;
   const scrolls = (el) => { for (let e = el.parentElement; e; e = e.parentElement) { const o = getComputedStyle(e).overflowX; if (o !== "visible" && e !== document.body && e !== document.documentElement) return true; } return false; };
-  const r = { over: se.scrollWidth - W, client: document.documentElement.clientWidth, inner: innerWidth, wide: [] };
-  if (r.over > 0 || r.client !== W) for (const el of document.querySelectorAll("body *")) {
+  // The room is the width asked for, less a classic scrollbar where there is one (15 px on
+  // Linux). clientWidth above the width asked for is itself an overflow.
+  const client = document.documentElement.clientWidth, room = Math.min(W, client);
+  const r = { over: se.scrollWidth - room, room, client, inner: innerWidth, wide: [] };
+  if (r.over > 0 || client > W) for (const el of document.querySelectorAll("body *")) {
     const b = el.getBoundingClientRect();
-    if (b.width > 0 && b.right > W + 1 && getComputedStyle(el).visibility !== "hidden" && !scrolls(el)) {
+    if (b.width > 0 && b.right > room + 1 && getComputedStyle(el).visibility !== "hidden" && !scrolls(el)) {
       r.wide.push(el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (el.className && el.className.baseVal === undefined ? "." + String(el.className).trim().split(/\\s+/).slice(0, 2).join(".") : "") + " right=" + Math.round(b.right));
       if (r.wide.length >= 5) break;
     }
@@ -369,7 +372,22 @@ async function overflowSelfTest(t: Tab) {
   const oldWay = await t.ev(`document.documentElement.scrollWidth - innerWidth`);
   console.log(`overflow self-test: clean page ${clean.over}; planted ${planted.over} (innerWidth then ${planted.inner}, clientWidth ${planted.client}; the old comparison reads ${oldWay})`);
   if (planted.over <= 0) throw new Error(`the overflow check missed a planted 1200 px element: ${JSON.stringify(planted)}`);
-  return { plantedOver: planted.over, oldComparison: oldWay, innerWidth: planted.inner };
+  // A classic scrollbar takes room from the page, as on Linux. A page that fits must pass, and
+  // one a little too wide must fail even though it is narrower than the width asked for.
+  // The stylesheet gives this any platform a scrollbar that takes room, and the page height
+  // makes it appear.
+  await t.metrics(1280, "light", false, false);
+  await t.nav("/app/login");
+  await t.ev(ADD_CSS("html::-webkit-scrollbar{width:15px}") + `; (() => { const d = document.createElement("div"); d.id = "planted-tall"; d.style.cssText = "width:10px;height:4000px"; document.body.append(d); })()`);
+  await t.until("the scrollbar to take room", `document.documentElement.clientWidth < 1280`);
+  const fits = await t.ev(OVERFLOW(1280));
+  if (fits.over > 0) throw new Error(`the overflow check failed a page that fits beside a scrollbar: ${JSON.stringify(fits)}`);
+  await t.ev(`(() => { document.getElementById("planted-tall").style.width = (document.documentElement.clientWidth + 5) + "px"; })()`);
+  await t.until("the planted width to lay out", `document.scrollingElement.scrollWidth > document.documentElement.clientWidth`);
+  const beside = await t.ev(OVERFLOW(1280));
+  if (beside.over <= 0) throw new Error(`the overflow check missed a page 5 px too wide beside a scrollbar: ${JSON.stringify(beside)}`);
+  console.log(`overflow self-test beside a ${1280 - fits.client} px scrollbar: a page that fits ${fits.over}; planted ${beside.over}`);
+  return { plantedOver: planted.over, oldComparison: oldWay, innerWidth: planted.inner, besideScrollbar: beside.over };
 }
 
 // A check that cannot fail proves nothing, so each is shown a page that breaks it. What they
@@ -447,9 +465,9 @@ async function matrix(signedIn: Tab, signedOut: Tab) {
       const cell = { overflow: 0, axe: 0, other: 0 };
       cells.set(cellKey(name, width, theme), cell);
       const o = await t.ev(OVERFLOW(width));
-      if (o.over > 0 || o.client !== width) {
+      if (o.over > 0 || o.client > width) {
         cell.overflow = Math.max(o.over, 1);
-        findings.push({ kind: "overflow", page: name, width, theme, detail: `${o.over}px wider than ${width} (clientWidth ${o.client}, innerWidth ${o.inner}): ${o.wide.join("; ") || "no single element found"}`, capture: await t.capture(`overflow-${name}-${width}-${theme}`) });
+        findings.push({ kind: "overflow", page: name, width, theme, detail: `${o.over}px wider than the ${o.room} there is at ${width} (clientWidth ${o.client}, innerWidth ${o.inner}): ${o.wide.join("; ") || "no single element found"}`, capture: await t.capture(`overflow-${name}-${width}-${theme}`) });
       }
       const violations = await axeScan(t);
       if (violations.length) {
@@ -622,7 +640,7 @@ function report(selfTest: any, wallMs: number) {
       }).join(" / "));
       md += `| ${name} | ${row.join(" | ")} |\n`;
     }
-    md += `\nOverflow compares \`scrollWidth\` with the width asked for, and \`clientWidth\` with the same. \`innerWidth\` can grow with the content in mobile emulation; a self-test plants a 1200 px element and requires the check to see it (${selfTest ? `it did: ${selfTest.plantedOver} px, when \`scrollWidth - innerWidth\` read ${selfTest.oldComparison}` : "not run"}).\n`;
+    md += `\nOverflow compares \`scrollWidth\` with the width asked for, less a classic scrollbar where there is one, and \`clientWidth\` must not exceed the width asked for. \`innerWidth\` can grow with the content in mobile emulation; a self-test plants a 1200 px element and requires the check to see it (${selfTest ? `it did: ${selfTest.plantedOver} px, when \`scrollWidth - innerWidth\` read ${selfTest.oldComparison}` : "not run"}).\n`;
     md += `\nPer cell: overflow, axe (WCAG 2.0, 2.1 and 2.2 A/AA) and page errors. Per page at 390 and 1280: Tab reaches every control (a radio group is one stop), focus changes how the control or a box around it looks, is on screen and not covered, no trap; sheets open with Enter, hold focus, close with Escape and return focus; reduced motion stops running animation.\n`;
     if (selfTest?.proved) md += `\nEach of these was shown a page that breaks it, and caught it: ${selfTest.proved.join(", ")}.\n`;
   }
