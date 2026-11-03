@@ -5164,7 +5164,9 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
 
 **Ports travel with the settings,** so a backup restored beside a running gateway names that
 gateway's ports. It says which restored ports are in use and gives the `config apply` line. This is
-how a scratch root once reached the live backend, so `TestRestoreWarnsAboutBusyPorts` covers it.
+how a scratch root once reached the live backend, so `TestRestoreWarnsAboutBusyPorts` covers it. To see
+which are in use it connects to each and closes the connection. `--no-port-probe` skips that, so what
+listens there sees nothing, and says which ports went unchecked.
 
 **Which checks a restored root must pass:** whatever #494 enforces. Today it refuses another user's files
 and anything other users can write. Security will also refuse group-writable trusted files unless the

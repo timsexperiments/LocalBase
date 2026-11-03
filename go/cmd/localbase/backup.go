@@ -36,6 +36,7 @@ func restoreCommand() *cli.Command {
 			{Name: "replace", Bool: true, Help: "Replace the settings of a root that has data. Its models stay, and its old files are kept"},
 			{Name: "yes", Alias: "y", Bool: true, Help: "Do not ask"},
 			{Name: "undo", Bool: true, Help: "Put back a root that a restore left unfinished"},
+			{Name: "port-probe", Bool: true, Help: "Connect to the restored ports to see which are in use (on by default; --no-port-probe skips it)"},
 		},
 		Examples: []string{"local-base --root ~/restored restore --dry-run backup.lbbackup", "local-base --root ~/restored restore backup.lbbackup"},
 		Run:      runRestore}
@@ -133,9 +134,13 @@ func runRestore(c *cli.Ctx) (any, error) {
 	}
 	defer s.Discard()
 	rep := s.Report
-	for _, port := range rep.Ports {
-		if portListening(port) {
-			rep.Cautions = append(rep.Cautions, fmt.Sprintf("Something already uses port %d, which these settings name. Choose free ports before starting this root: local-base --root '%s' config apply --file <file>", port, rep.Target))
+	if probe, given := c.OptBool("port-probe"); given && !probe {
+		rep.Cautions = append(rep.Cautions, fmt.Sprintf("Ports were not checked. These settings name %v, so make sure they are free before starting this root.", rep.Ports))
+	} else {
+		for _, port := range rep.Ports {
+			if portListening(port) {
+				rep.Cautions = append(rep.Cautions, fmt.Sprintf("Something already uses port %d, which these settings name. Choose free ports before starting this root: local-base --root '%s' config apply --file <file>", port, rep.Target))
+			}
 		}
 	}
 	printRestoreReport(c, rep)

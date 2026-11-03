@@ -67,7 +67,7 @@ It refuses a root with a running gateway (stop it first), a root or directory an
 local-base restore --undo
 ```
 
-**It starts nothing.** The settings carry their ports, so a backup restored beside a running gateway names that gateway's ports. It warns about any that are in use: change them with `local-base config apply` before starting.
+**It starts nothing.** The settings carry their ports, so a backup restored beside a running gateway names that gateway's ports. It warns about any that are in use, by connecting to each and closing the connection: change them with `local-base config apply` before starting. `--no-port-probe` skips this, and says which ports it did not check.
 
 Files are created 0600 and directories 0700, owned by you, and the restored root passes the same checks a gateway runs at startup.
 

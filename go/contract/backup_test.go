@@ -14,6 +14,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -422,12 +423,41 @@ func TestRestoreWarnsAboutBusyPorts(t *testing.T) {
 		t.Fatalf("%s%s", r.stdout, r.stderr)
 	}
 	target := &e2e{t: t, root: filepath.Join(tmp, "new"), outDir: tmp}
+	connections := func() int {
+		n := 0
+		tcp := l.(*net.TCPListener)
+		for {
+			tcp.SetDeadline(time.Now().Add(300 * time.Millisecond))
+			c, err := tcp.Accept()
+			if err != nil {
+				return n
+			}
+			c.Close()
+			n++
+		}
+	}
+
+	// With the flag, what listens on that port sees nothing at all.
+	quiet := target.cli(nil, "restore", "--dry-run", "--no-port-probe", file)
+	if quiet.code != 0 {
+		t.Fatalf("%s%s", quiet.stdout, quiet.stderr)
+	}
+	if n := connections(); n != 0 {
+		t.Errorf("--no-port-probe made %d connections", n)
+	}
+	if strings.Contains(quiet.stderr, "already uses port") || !strings.Contains(quiet.stderr, "Ports were not checked") || !strings.Contains(quiet.stderr, fmt.Sprint(busy)) {
+		t.Errorf("it should say it did not check, and which ports: %s", quiet.stderr)
+	}
+
 	r := target.cli(nil, "restore", "--yes", file)
 	if r.code != 0 {
 		t.Fatalf("%s%s", r.stdout, r.stderr)
 	}
 	if !strings.Contains(r.stderr, fmt.Sprintf("already uses port %d", busy)) || !strings.Contains(r.stderr, "config apply") {
 		t.Errorf("a busy port should be named: %s", r.stderr)
+	}
+	if n := connections(); n != 1 {
+		t.Errorf("the check made %d connections, want 1", n)
 	}
 	// It starts nothing, so the port it warned about is still only the test's.
 	if st, _, _ := mustOpenRoot(t, target.root).OwnerState(); st != "missing" {
