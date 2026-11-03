@@ -4906,11 +4906,16 @@ seconds, could push out everything older, including the record of who changed wh
 - **Only someone with standing writes one.** A refused change by a caller with no valid credential is no longer an
   audit event, since anyone can send it. It's counted with other requests like it.
 - **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
-  summed in one `http.anonymous-summary` when a request arrives after that minute. A flood of 20,000 now writes
+  summed in one `http.anonymous-summary` when a request arrives after that minute, and at shutdown. A flood of 20,000 now writes
   under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or
   a signed-in API request, and from `--no-auth`. A page view from a signed-in person counts here too: the page layer
   resolves the person after this point.
-- **`auth.signin-failed`** is limited the same way, with `held_back` saying how many it skipped.
+- **There's a running count.** Each summary carries `refused_total`, the 401s and 403s for those requests since start,
+  logged or not, and `admin_refused_total`, the changes refused on an audited route. A signed-in person's refused page
+  view counts too, as above. The gateway has no metrics system, so these are fields on a log event. They start again at
+  each start, and a crash loses what hasn't been written.
+- **`auth.signin-failed`** is limited the same way, with `held_back` saying how many it skipped, and
+  `auth.signin-failed-summary` saying the rest at shutdown.
 
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 

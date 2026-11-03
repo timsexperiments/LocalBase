@@ -47,3 +47,32 @@ func TestSampler(t *testing.T) {
 		t.Errorf("flushed %d, want 1", n)
 	}
 }
+
+// At the end, what this interval held back is said too, and only once.
+func TestDrainSaysEverythingHeldBackOnce(t *testing.T) {
+	s := &Sampler{Every: time.Minute, Burst: 1}
+	t0 := time.Unix(1000, 0)
+	s.Allow(t0)
+	s.Allow(t0) // held back in an interval that will end
+	s.Allow(t0.Add(time.Hour))
+	s.Allow(t0.Add(time.Hour))
+	s.Allow(t0.Add(time.Hour)) // two held back in the one still open
+	if n := s.Drain(t0.Add(time.Hour)); n != 3 {
+		t.Errorf("drained %d, want 3", n)
+	}
+	if n := s.Drain(t0.Add(time.Hour)); n != 0 {
+		t.Errorf("drained %d twice", n)
+	}
+	if n := s.Flush(t0.Add(2 * time.Hour)); n != 0 {
+		t.Errorf("flushed %d that were already said", n)
+	}
+	// Draining doesn't give back the interval's allowance.
+	q := &Sampler{Every: time.Minute, Burst: 1}
+	q.Allow(t0)
+	if n := q.Drain(t0); n != 0 {
+		t.Errorf("drained %d", n)
+	}
+	if q.Allow(t0) {
+		t.Error("draining gave back the burst")
+	}
+}

@@ -69,7 +69,8 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			actorKind, actorID = p.Kind, p.ID
 		}
 		if refused && (actorKind == "" || actorKind == "anonymous") {
-			return // anyone can send these, so they're counted with other requests like them
+			s.anonAdminRefused.Add(1)
+			return // anyone can send these, so they're counted, not audited
 		}
 		if refused {
 			action := in.Action

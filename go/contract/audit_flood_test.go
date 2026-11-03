@@ -57,11 +57,41 @@ func TestAuditEventsSurviveAFlood(t *testing.T) {
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
+	const refusedChanges = 3
+	for range refusedChanges {
+		resp, err := http.Post(e.base+"/_localbase/api-keys", "application/json", strings.NewReader(`{"action":"create","name":"x","scopes":["keys:read"]}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 401 {
+			t.Fatalf("a change with no credential: %d", resp.StatusCode)
+		}
+	}
 	// Without the limit this is about 9 MB.
 	if grew := size("events.jsonl") - before; grew > 64<<10 {
 		t.Errorf("the main log grew %d bytes for %d requests with no credential", grew, flood)
 	}
 	e.stop()
+	// Nothing came after the flood to bring its count out, so stopping wrote it.
+	main, err := os.ReadFile(filepath.Join(logDir, "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var last map[string]any
+	for _, line := range strings.Split(string(main), "\n") {
+		var ev struct {
+			EventName  string         `json:"eventName"`
+			Attributes map[string]any `json:"attributes"`
+		}
+		if json.Unmarshal([]byte(line), &ev) == nil && ev.EventName == "http.anonymous-summary" {
+			last = ev.Attributes
+		}
+	}
+	if last == nil || last["refused_total"] != float64(flood+refusedChanges) || last["admin_refused_total"] != float64(refusedChanges) {
+		t.Errorf("the summary at shutdown: %v", last)
+	}
 	b, err := os.ReadFile(filepath.Join(logDir, "audit.jsonl"))
 	if err != nil {
 		t.Fatal(err)

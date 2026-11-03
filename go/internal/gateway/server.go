@@ -81,6 +81,10 @@ type Server struct {
 	runs *runManager
 	// anonLog keeps what requests with no credential write to the log small.
 	anonLog *obs.Sampler
+	// anonRefused counts the 401s and 403s for those requests since start, logged or not.
+	// anonAdminRefused counts the changes among them refused on an audited route, which
+	// aren't audit events. Each summary carries both.
+	anonRefused, anonAdminRefused atomic.Int64
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
@@ -178,6 +182,30 @@ func (s *Server) StopRuns(wait time.Duration) { s.runs.Shutdown(wait) }
 
 // Stopping makes health and readiness report the gateway is shutting down.
 func (s *Server) Stopping() { s.stopping.Store(true) }
+
+// LogHeldBack writes what has been counted and not yet said. It's for once requests have stopped:
+// during a run, only a later request brings a summary out.
+func (s *Server) LogHeldBack() {
+	if s.Browser != nil {
+		s.Browser.LogHeldBack()
+	}
+	held := s.anonLog.Drain(time.Now())
+	if held > 0 || s.anonRefused.Load() > 0 || s.anonAdminRefused.Load() > 0 {
+		s.anonymousSummary(held)
+	}
+}
+
+// anonymousSummary says how many requests with no credential were held back since the last one,
+// with the totals since start. Totals alone aren't a warning.
+func (s *Server) anonymousSummary(held int) {
+	level := slog.LevelWarn
+	if held == 0 {
+		level = slog.LevelInfo
+	}
+	s.Log.Log(context.Background(), level, "Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
+		"count", held, "interval_seconds", int(s.anonLog.Every.Seconds()),
+		"refused_total", s.anonRefused.Load(), "admin_refused_total", s.anonAdminRefused.Load())
+}
 
 type principalKey struct{}
 
@@ -410,13 +438,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		now := time.Now()
 		if n := s.anonLog.Flush(now); n > 0 {
-			s.Log.Warn("Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
-				"count", n, "interval_seconds", int(s.anonLog.Every.Seconds()))
+			s.anonymousSummary(n)
 		}
 		if quietRoute(label, r.URL.Path) && status < 400 {
 			return // successful probes and polls are not logged
 		}
-		if !s.NoAuth && status < 500 && (rec.auth == nil || rec.auth.Kind == "anonymous") && !s.anonLog.Allow(now) {
+		anonymous := !s.NoAuth && status < 500 && (rec.auth == nil || rec.auth.Kind == "anonymous")
+		if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+			s.anonRefused.Add(1)
+		}
+		if anonymous && !s.anonLog.Allow(now) {
 			return // anyone can send these, so a flood can't be what fills the log
 		}
 		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)

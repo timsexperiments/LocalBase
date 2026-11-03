@@ -480,6 +480,14 @@ func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 	b.establish(w, r, *id, owner)
 }
 
+// LogHeldBack says how many failed sign-ins were counted rather than logged. It's for shutdown,
+// when no later failure will say so.
+func (b *Browser) LogHeldBack() {
+	if n := b.failedLog.Drain(time.Now()); n > 0 {
+		b.Log.Warn("Failed sign-ins were counted rather than logged.", "event", "auth.signin-failed-summary", "held_back", n)
+	}
+}
+
 func (b *Browser) exchange(ctx context.Context, rt *oidcRuntime, code string, state loginState) (*Identity, string, error) {
 	m, err := b.metadata(ctx, rt)
 	if err != nil {

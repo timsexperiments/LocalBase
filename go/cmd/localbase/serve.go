@@ -515,6 +515,7 @@ func serve(c *cli.Ctx) (any, error) {
 			s.Close()
 		}
 	}
+	srv.LogHeldBack() // nothing is coming now to bring it out
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")
 	if serveErr != nil {
 		return nil, serveErr

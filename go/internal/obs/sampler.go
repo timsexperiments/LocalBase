@@ -39,6 +39,17 @@ func (s *Sampler) Allow(now time.Time) bool {
 	return false
 }
 
+// Drain returns everything held back and not yet said, the open interval's too, once. It's for
+// the end, when no later event will bring it out.
+func (s *Sampler) Drain(now time.Time) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.roll(now)
+	n := s.unsaid + s.skipped
+	s.unsaid, s.skipped = 0, 0
+	return n
+}
+
 // Flush returns how many were held back in intervals that have ended, once.
 func (s *Sampler) Flush(now time.Time) int {
 	s.mu.Lock()
