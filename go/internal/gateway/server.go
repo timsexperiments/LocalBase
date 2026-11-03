@@ -134,7 +134,9 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/runs", s.guard("", s.runsList))
 	mux.HandleFunc("/_localbase/runs/{rest...}", s.guard("", s.runRoute))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
-	mux.HandleFunc("/_localbase/models/{model_id...}", s.guard("models:read", s.modelMetadata))
+	mux.HandleFunc("/_localbase/models/{model_id...}", func(w http.ResponseWriter, r *http.Request) {
+		s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)
+	})
 	mux.HandleFunc("/_localbase/access-management", s.audited("access", s.accessManagement))
 	mux.HandleFunc("/_localbase/api-keys", s.audited("api-key", s.apiKeys))
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
