@@ -37,6 +37,7 @@ A failed install prints a reason. See [install failures](install-failures.md).
 
 - **The gateway won't start.** Something else may hold port 2273: `lsof -nP -iTCP:2273 -sTCP:LISTEN`. Change it with `local-base configure` or `--port`.
 - **A runtime won't start.** It may be a runtime port; see the [port table](configuration.md#default-ports).
+- **`Refusing to serve as root`.** A gateway runs the backends it downloads and reads model files from anywhere, so run it as an ordinary user. In a container that holds nothing else, `local-base serve --allow-root` goes ahead.
 - **Another gateway is using the data directory.** Each root allows one gateway at a time. Use a different `--root` for a second one.
 
 ## Sign-in
