@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
 
 // When a credential can't be looked up, nothing about it is known. On every route and method, a
@@ -89,16 +91,131 @@ func TestAKeyThatIsNotValidIsStill401(t *testing.T) {
 func TestAPermissionCheckAfterAFailedLookupIsNotARefusal(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
-	r = r.WithContext(context.WithValue(r.Context(), recKey{}, &recorder{ResponseWriter: rec, lookupFailed: true}))
-	forbidden(rec, r)
+	ctx := auth.WithLookupState(r.Context())
+	auth.MarkLookupFailed(ctx)
+	forbidden(rec, r.WithContext(ctx))
 	if rec.Code != 503 || rec.Header().Get("Retry-After") == "" {
 		t.Errorf("%d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
 	}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/", nil)
-	r = r.WithContext(context.WithValue(r.Context(), recKey{}, &recorder{ResponseWriter: rec}))
-	forbidden(rec, r)
+	forbidden(rec, r.WithContext(auth.WithLookupState(r.Context())))
 	if rec.Code != 403 {
 		t.Errorf("a real refusal: %d", rec.Code)
+	}
+}
+
+// A signed-in person whose session can't be read isn't signed out: not sent to sign in, not told no.
+// Every page and browser route, with each kind of session cookie.
+func TestASessionLookupFailureIsNotSignedOut(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		access *auth.BrowserAccess
+		host   string
+		cookie string
+	}{
+		{"a browser session", directAccess(), "lb.example", auth.SessionCookie + "=" + strings.Repeat("a", 43)},
+		{"a local session", nil, "", auth.LocalSessionCookie(strings.Repeat("a", 43)).String()},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			g := newMatrixGateway(t, c.access)
+			if err := g.store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			origin := "https://lb.example"
+			if c.host == "" {
+				origin = "http://" + g.ts.Listener.Addr().String()
+			}
+			headers := map[string]string{"Cookie": strings.SplitN(c.cookie, ";", 2)[0], "Origin": origin, "Sec-Fetch-Site": "same-origin", "X-Localbase-Ui": "1", "Accept": "text/html"}
+			saw503 := 0
+			paths := matrixPaths(uiPatterns(t))
+			for _, p := range []string{"/app/session", "/app/api/_localbase/host", "/app/api/_localbase/models"} {
+				paths[p] = p
+			}
+			for path := range paths {
+				switch {
+				case path == "/app/session", strings.HasPrefix(path, "/app/api/"):
+				case !strings.HasPrefix(path, "/app/") || strings.HasPrefix(path, "/app/assets/"), strings.HasPrefix(path, "/app/login"), path == "/app/logout":
+					continue // no session in it, or how one is made
+				}
+				r := g.send(t, http.MethodGet, path, c.host, headers)
+				if r.status == 401 || r.status == 403 || strings.Contains(r.location, "/app/login") || strings.Contains(r.body, `href="/app/login`) {
+					t.Errorf("GET %s: %d, location %q, %.160q", path, r.status, r.location, r.body)
+				}
+				if r.status == 503 {
+					saw503++
+				}
+				if r.status == 503 && strings.HasPrefix(path, "/app/chat") && !strings.Contains(r.body, "We can’t check your sign-in right now") {
+					t.Errorf("GET %s: %.300q", path, r.body)
+				}
+			}
+			if saw503 < 3 {
+				t.Errorf("only %d answers of 503 from %d paths: the sweep isn't reaching the check", saw503, len(paths))
+			}
+		})
+	}
+}
+
+// A page's fragment request gets no redirect either, and says when to come back.
+func TestASessionLookupFailureOnAFragment(t *testing.T) {
+	g := newMatrixGateway(t, directAccess())
+	if err := g.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, g.ts.URL+"/app/chat", nil)
+	req.Host = "lb.example"
+	req.Header.Set("Cookie", auth.SessionCookie+"="+strings.Repeat("a", 43))
+	req.Header.Set("HX-Request", "true")
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || resp.Header.Get("HX-Redirect") != "" {
+		t.Errorf("%d, Retry-After %q, HX-Redirect %q", resp.StatusCode, resp.Header.Get("Retry-After"), resp.Header.Get("HX-Redirect"))
+	}
+}
+
+// With the database working, a session that doesn't exist is sent to sign in, as before.
+func TestASessionThatDoesNotExistIsStillSignedOut(t *testing.T) {
+	g := newMatrixGateway(t, directAccess())
+	headers := map[string]string{"Cookie": auth.SessionCookie + "=" + strings.Repeat("b", 43), "Accept": "text/html"}
+	r := g.send(t, http.MethodGet, "/app/chat", "lb.example", headers)
+	if r.status != 303 || !strings.Contains(r.location, "/app/login") {
+		t.Errorf("a page: %d, location %q", r.status, r.location)
+	}
+	r = g.send(t, http.MethodGet, "/app/session", "lb.example", map[string]string{"Cookie": headers["Cookie"], "Origin": "https://lb.example", "Sec-Fetch-Site": "same-origin", "X-Localbase-Ui": "1"})
+	if r.status != 401 {
+		t.Errorf("the session route: %d", r.status)
+	}
+}
+
+// A session that reads fine and a policy that doesn't: that's not a person with no permissions.
+func TestAPolicyLookupFailureIsNotARefusal(t *testing.T) {
+	access := directAccess()
+	g := newMatrixGateway(t, access)
+	ctx := context.Background()
+	var issuer string
+	for _, reg := range access.Provider.Registrations {
+		if reg.Kind == "oidc" {
+			issuer = reg.Issuer
+		}
+	}
+	token, err := auth.CreateSession(ctx, g.store, "owner", auth.Identity{Issuer: issuer, Subject: "p", VerifiedEmail: "person@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.store.DB.ExecContext(ctx, `DROP TABLE auth_settings`); err != nil {
+		t.Fatal(err)
+	}
+	r := g.send(t, http.MethodGet, "/app/session", "lb.example", map[string]string{"Cookie": auth.SessionCookie + "=" + token,
+		"Origin": "https://lb.example", "Sec-Fetch-Site": "same-origin", "X-Localbase-Ui": "1"})
+	if r.status != 503 {
+		t.Errorf("the session route: %d %.200q", r.status, r.body)
+	}
+	r = g.send(t, http.MethodGet, "/app/chat", "lb.example", map[string]string{"Cookie": auth.SessionCookie + "=" + token, "Accept": "text/html"})
+	if r.status != 503 {
+		t.Errorf("a page: %d %.200q", r.status, r.body)
 	}
 }

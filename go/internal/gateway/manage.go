@@ -65,24 +65,26 @@ func (s *Server) principal(r *http.Request) *auth.Principal {
 }
 
 // resolveCredential is every path from an API credential to a principal. A lookup that failed says
-// nothing about the key, so the request is marked, and unauthorized and forbidden answer 503 for it:
+// nothing about the key, so the request is marked (BrowserPrincipal does the same for a session), and unauthorized and forbidden answer 503 for it:
 // a client told 401 may treat a good key as revoked and throw it away.
 func (s *Server) resolveCredential(r *http.Request) *auth.Principal {
 	p, err := s.Auth.ResolveAPI(r.Context(), r)
 	if err != nil {
-		s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
-		if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
-			rec.lookupFailed = true
-		}
+		s.lookupFailed(r, err)
 	}
 	setAuth(r, p)
 	return p
 }
 
+// lookupFailed logs a failed look at a key or session, and marks the request.
+func (s *Server) lookupFailed(r *http.Request, err error) {
+	s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
+	auth.MarkLookupFailed(r.Context())
+}
+
 // credentialLookupFailed answers for a request whose credential couldn't be looked up.
 func credentialLookupFailed(w http.ResponseWriter, r *http.Request) bool {
-	rec, ok := r.Context().Value(recKey{}).(*recorder)
-	if !ok || !rec.lookupFailed {
+	if !auth.LookupFailed(r.Context()) {
 		return false
 	}
 	serviceUnavailable(w, r, "Authentication")

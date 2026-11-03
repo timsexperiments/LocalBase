@@ -57,7 +57,11 @@ func (s *Server) localPrincipal(r *http.Request) *auth.Principal {
 		return nil
 	}
 	sess, err := auth.FindLocalSession(r.Context(), s.Store, token)
-	if err != nil || sess == nil {
+	if err != nil {
+		s.lookupFailed(r, err)
+		return nil
+	}
+	if sess == nil {
 		return nil
 	}
 	return &auth.Principal{Kind: "browser-session", ID: auth.LocalOwnerID, Permissions: auth.Permissions}

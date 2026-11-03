@@ -31,6 +31,10 @@
   <p class="mt-3 text-muted">Your chats on this computer are still here.</p>
   <a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in again</a>
   {{if .Provider}}<a class="welcome-skip mt-1 w-full" href="/app/login?switch=1">Use another account</a>{{end}}
+  {{else if eq .Mode "busy"}}
+  <h1 class="welcome-title">We can’t check your sign-in right now</h1>
+  <p class="mt-3 text-muted">LocalBase is busy. Try again in a moment.</p>
+  <a class="btn btn-primary mt-5 w-full" href="">Try again</a>
   {{else if eq .Mode "unavailable"}}
   <h1 class="welcome-title">That way of signing in isn’t here</h1>
   <p class="mt-3 text-muted">The link may be old.</p>

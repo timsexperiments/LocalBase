@@ -336,6 +336,16 @@ func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p := u.principal(r)
 		if !p.Authenticated() {
+			// Not knowing who this is isn't knowing they're signed out.
+			if auth.LookupFailed(r.Context()) {
+				w.Header().Set("Retry-After", "5")
+				if r.Header.Get("HX-Request") == "true" {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				u.renderLocalSignIn(w, http.StatusServiceUnavailable, localSignIn{Mode: "busy"})
+				return
+			}
 			if !u.d.SignInEnabled {
 				u.LoginHelp(w, r, http.StatusUnauthorized)
 				return

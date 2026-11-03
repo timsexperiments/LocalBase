@@ -265,7 +265,6 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 // --- request middleware -------------------------------------------------------
 
 type recorder struct {
-	lookupFailed bool // see resolveCredential
 	http.ResponseWriter
 	status int
 	auth   *auth.Principal
@@ -412,7 +411,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.family", family)
 		span.SetAttr("localbase.route.segments", segments)
 	}
-	r = r.WithContext(context.WithValue(ctx, recKey{}, rec))
+	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), recKey{}, rec))
 	defer func() {
 		if v := recover(); v != nil {
 			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
@@ -511,7 +510,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 	p := rec.auth
 	switch {
-	case rec.lookupFailed:
+	case auth.LookupFailed(r.Context()):
 		return []any{"auth_outcome", "unavailable"}
 	case s.NoAuth || p == nil:
 		return []any{"auth_outcome", "disabled"}
