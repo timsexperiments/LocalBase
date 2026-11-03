@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -205,12 +206,56 @@ func ExpectedShape(ctx context.Context, level int) (*Shape, error) {
 	return ReadShape(ctx, db)
 }
 
-// Unexpected lists what s holds that expected does not: a trigger or view, a table this
-// build does not make, a column or index it does not, or one that differs. A table or column
-// expected and missing is fine here, because Go tables are added without a migration, so an
-// older database lacks some. What it needs and lacks fails when it is opened.
+var goTableRe = regexp.MustCompile(`CREATE TABLE IF NOT EXISTS ([a-z_]+)`)
+
+// goTable says whether this build adds a table on open, rather than through a migration. Those
+// are added without raising a version (goSchemaVersion), so an older database at the same level
+// can lack them, and opening it creates them.
+func goTable(name string) bool {
+	if name == "__drizzle_migrations" {
+		return true
+	}
+	for _, stmt := range goSchema {
+		if m := goTableRe.FindStringSubmatch(stmt); m != nil && m[1] == name {
+			return true
+		}
+	}
+	return false
+}
+
+// GoTables lists the tables goTable covers, for tests.
+func GoTables() []string {
+	var out []string
+	for _, stmt := range goSchema {
+		if m := goTableRe.FindStringSubmatch(stmt); m != nil {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// Unexpected lists how s differs from expected: a trigger or view, a table this build does not
+// make, a column or index it does not, or one that differs. A Go table may be missing, since
+// opening the database creates it. A table or column a migration makes may not.
 func (s *Shape) Unexpected(expected *Shape) []string {
 	var out []string
+	for name, want := range expected.Tables {
+		t, here := s.Tables[name]
+		if !here {
+			if !goTable(name) {
+				out = append(out, "a table this version needs is missing: "+name)
+			}
+			continue
+		}
+		if goTable(name) {
+			continue
+		}
+		for _, c := range want.Columns {
+			if !slices.ContainsFunc(t.Columns, func(have Column) bool { return have.Name == c.Name }) {
+				out = append(out, "a column this version needs is missing: "+name+"."+c.Name)
+			}
+		}
+	}
 	for _, name := range s.Triggers {
 		out = append(out, "a trigger: "+name)
 	}

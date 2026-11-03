@@ -827,6 +827,12 @@ func TestRestoreRefusesBadFiles(t *testing.T) {
 			editDB(t, e, `INSERT INTO imported_models (id, definition, created_at, updated_at) VALUES ('a', '{"id":"a","tasks":["chat"],"name":"a","variants":[{"id":"v","artifacts":[{"filename":"../../../evil","role":"primary","required":true,"source":{"kind":"url","url":"https://example.com/x"}}]}]}', 'x', 'x')`)
 			return e
 		}, "imported model"},
+		"an invalid access policy": {func(t *testing.T, e []entry) []entry {
+			editDB(t, e,
+				`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('r', ' not a valid name ', '', 'x', 'x')`,
+				`INSERT OR REPLACE INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'r', 'x')`)
+			return e
+		}, "access policy"},
 		"a newer migration level": {func(t *testing.T, e []entry) []entry {
 			editDB(t, e, `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ('future', 99999999999999)`)
 			return e
@@ -968,6 +974,45 @@ func TestRestoreRefusesCraftedSchema(t *testing.T) {
 	}
 }
 
+// A table a migration makes must be there. A Go table may not be: those are added without raising a
+// version, so a real backup from before one lacks it, and opening the database creates it.
+func TestRestoreSchemaMissingTables(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	good := create(t, r, true).Output
+	for _, table := range store.GoTables() {
+		t.Run("a backup from before "+table, func(t *testing.T) {
+			e := read(t, good)
+			editDB(t, e, `DROP TABLE `+table)
+			crafted := filepath.Join(dir(t), "older"+Extension)
+			pack(t, crafted, e)
+			target := filepath.Join(dir(t), "target")
+			restore(t, crafted, target, false)
+			db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if !hasTable(context.Background(), db, table) {
+				t.Errorf("opening it should have made %s", table)
+			}
+		})
+	}
+	for name, stmt := range map[string]string{
+		"a table a migration makes":  `DROP TABLE auth_role_permissions`,
+		"a column a migration makes": `ALTER TABLE api_keys DROP COLUMN revoked_at`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := read(t, good)
+			editDB(t, e, stmt)
+			crafted := filepath.Join(dir(t), "crafted"+Extension)
+			pack(t, crafted, e)
+			if _, err := Stage(context.Background(), crafted, filepath.Join(dir(t), "target"), false); err == nil || !strings.Contains(err.Error(), "is missing") {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
+}
+
 // A real older backup must not be refused: the check compares with what this build makes at the
 // backup's own level, so every level has to pass, and migrate on open.
 func TestRestoreAcceptsEveryMigrationLevel(t *testing.T) {
@@ -1093,6 +1138,18 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
+	for _, stmt := range []string{
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('user-removed', 'active', 'x', 'x')`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('user-disabled', 'active', 'x', 'x')`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('user-by-mail', 'active', 'x', 'x')`,
+		`INSERT INTO auth_user_emails (user_id, email) VALUES ('user-by-mail', 'moved@example.com')`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('user-pending', 'pending', 'x', 'x')`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('user-active-now', 'pending', 'x', 'x')`,
+	} {
+		if _, err := st.DB.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
 	leaked, _, err := st.CreateAPIKey(ctx, "leaked", []string{"inference:chat"})
 	if err != nil {
 		t.Fatal(err)
@@ -1118,8 +1175,20 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if _, _, err := st.CreateAPIKey(ctx, "made since", []string{"inference:chat"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.DB.ExecContext(ctx, `DELETE FROM auth_users WHERE id = 'user-1'`); err != nil {
-		t.Fatal(err)
+	for _, stmt := range []string{
+		`DELETE FROM auth_users WHERE id = 'user-1'`,
+		`UPDATE auth_users SET status = 'removed' WHERE id = 'user-removed'`,
+		`UPDATE auth_users SET status = 'disabled' WHERE id = 'user-disabled'`,
+		// The same address under another id: a withdrawn invitation made again and withdrawn.
+		`DELETE FROM auth_user_emails WHERE user_id = 'user-by-mail'`,
+		`DELETE FROM auth_users WHERE id = 'user-by-mail'`,
+		`INSERT INTO auth_users (id, status, created_at, updated_at) VALUES ('another-id', 'removed', 'x', 'x')`,
+		`INSERT INTO auth_user_emails (user_id, email) VALUES ('another-id', 'moved@example.com')`,
+		`UPDATE auth_users SET status = 'active' WHERE id = 'user-active-now'`,
+	} {
+		if _, err := st.DB.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
 	}
 	st.Close()
 
@@ -1136,6 +1205,12 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if rep.ReturningUsers != 1 {
 		t.Errorf("returning users: %d", rep.ReturningUsers)
 	}
+	if rep.UserStatusesKept != 3 {
+		t.Errorf("user statuses kept: %d", rep.UserStatusesKept)
+	}
+	if rep.UsersChanged != 1 {
+		t.Errorf("users going back: %d", rep.UsersChanged)
+	}
 	if strings.Join(rep.Rules, " ") != SignOutLine+" "+RevokedLine {
 		t.Errorf("rules: %v", rep.Rules)
 	}
@@ -1151,6 +1226,15 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	}
 	if k == nil || k.RevokedAt == nil {
 		t.Errorf("the leaked key works again: %+v", k)
+	}
+	for id, want := range map[string]string{"user-removed": "removed", "user-disabled": "disabled", "user-by-mail": "removed", "user-pending": "pending", "user-1": "active", "user-active-now": "pending"} {
+		var got string
+		if err := st.DB.QueryRowContext(ctx, `SELECT status FROM auth_users WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if got != want {
+			t.Errorf("%s is %s, want %s", id, got, want)
+		}
 	}
 }
 

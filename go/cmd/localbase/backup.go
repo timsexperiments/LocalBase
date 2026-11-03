@@ -202,8 +202,11 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if rep.ReturningUsers > 0 {
 		c.Info("%d users this root has removed would come back.", rep.ReturningUsers)
 	}
-	if rep.DisabledUsers > 0 {
-		c.Info("%d users whose status has changed since this backup would go back to their old status.", rep.DisabledUsers)
+	if rep.UserStatusesKept > 0 {
+		c.Info("%d users removed or disabled on this root stay that way.", rep.UserStatusesKept)
+	}
+	if rep.UsersChanged > 0 {
+		c.Info("%d users would go back to the status they had when this backup was made.", rep.UsersChanged)
 	}
 	if len(rep.Programs) > 0 {
 		c.Info("These commands run as you when their model loads:")

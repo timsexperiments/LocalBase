@@ -41,7 +41,7 @@ const (
 
 	// SignOutLine and RevokedLine are said before a restore asks, and are in every manifest.
 	SignOutLine = "A restore signs everyone out. API keys keep working."
-	RevokedLine = "A key revoked on the root being replaced stays revoked, whatever this backup says."
+	RevokedLine = "A key revoked, or a user removed or disabled, on the root being replaced stays that way, whatever this backup says."
 )
 
 // These limits are constants, because a backup is input from someone else: none of them is ever

@@ -5138,7 +5138,7 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - **Each custom backend's whole command line:** program and arguments, since the program can be a shell, and it runs as you when its model loads. One whose program doesn't exist here gets a line and stays registered. Imported models that read a local path or a direct URL are named too.
    - **"A restore signs everyone out. API keys keep working."**
    - **Settings that change exposure or where data goes:** the gateway and backend hosts and ports, the OTLP endpoint and whether it has headers, the private-address and local-path import settings, and the connection caps.
-   - **With `--replace`, what comes back:** keys the target no longer has, and users it has removed or disabled. **A key the target has revoked stays revoked,** whatever the backup says, and the count is printed, so restoring an older backup can't bring a leaked key back. A fresh target has nothing to compare, and it says to check `local-base keys list`.
+   - **With `--replace`, what comes back:** keys and users the target no longer has. **A key the target has revoked stays revoked, and a user it has removed or disabled stays that way,** whatever the backup says, and the counts are printed, so restoring an older backup can't bring a leaked key back. The rule is also in every manifest. A fresh target has nothing to compare, and it says to check `local-base keys list`.
    - Sign-in providers, the number of keys and users, models to install, and secrets to re-enter.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
 5. **The target.**
@@ -5173,9 +5173,18 @@ and anything other users can write. Security will also refuse group-writable tru
 group is provably private to the owner, and will export that rule, which step 1 and the `--output`
 check then use. Restore writes 0600 and 0700, so it passes either way.
 
-**Open: bindings tied to an issuer.** Security's next change ties email bindings and invitations to the
-issuer that granted them. Then `--exclude-secrets` removing a registration needs a defined result for
-its bindings, and the report shows bindings per issuer. This follows when that shape is settled.
+**Bindings tied to an issuer, agreed with Security (2026-11-02), and built when their E2 lands.** E2 adds `go_binding_issuers(kind, role_id, value, issuer)` and `go_invitation_issuers(user_id, issuer)` as Go tables, and `(*auth.BrowserAccess).Issuers()` says which issuers are configured.
+
+- **Bindings and invitations stay in a backup, with or without secrets.** They aren't secrets, and leaving them out would silently change who gets which role. An invitation holds no token: it is a `pending` user. The only token is the magic-link one, which is already left out.
+- **With `--exclude-secrets`,** a provider's bindings stay and do nothing until a provider with the same issuer is added again. The manifest and the report say so per issuer: `https://accounts.example.com: 3 role bindings, 1 invitation, inactive until this provider is added back`.
+- **On every restore,** bindings and invitations are shown per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
+- **Rows that name no issuer get their own line,** because a root that hasn't started since E2, or a backup of one, can hold them, and they go to the only provider at the next start: `2 bindings name no provider: they adopt the only provider at next start`. This matters most with `--exclude-secrets`, where whichever provider is added next picks them up.
+- **A restore refuses a file** with a `go_binding_issuers` row that matches no binding or role, a `kind` other than `email` or `email-domain`, or a `go_invitation_issuers` row whose user doesn't exist or whose issuer fails the format check. `LoadPolicy` ignores such orphans, and one could otherwise sit unseen and bind when a matching row is added later.
+- **With `--replace`,** bindings withdrawn since the backup would come back, since E2 keeps no record of them. The report lists them per issuer.
+
+**Users, built now.** A user the target has removed or disabled stays that way, the same as a revoked key, and the count is printed. A withdrawn invitation is a `removed` row, so this covers it. Users match by id, and by address if the id differs. `auth.LoadPolicy` and `Normalize` run on the staged database, so a role, permission, address or duplicate gets the gateway's own check.
+
+**Which tables must be there.** Go tables are added on open without raising `goSchemaVersion`, so a real older backup lacks some, and that's allowed: opening it creates them. A table or column a migration makes must be present. An unknown table, a trigger, a view, or a difference in anything present is refused.
 
 ### 34.6 Tests, first
 
@@ -5197,7 +5206,8 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestBackupModes`, under a 0000 and a 0077 umask. `TestBackupRefusesPlaces`: no overwrite, no output inside the root, no directory others can write to. `TestBackupRefusesPlantedLinks`. `TestBackupWhileWriting`.
 - `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, a wrong size, an extra, missing or duplicate entry, a link, `../`, an absolute path, a device, a sparse entry, data after the tar or after the gzip, a newer format or schema, a manifest over each limit, a corrupt database, an invalid `ui-access.json`, backend or catalog entry, a voice that doesn't match, a bad imported model, and a file others can change. The target is the same afterwards, and nothing is left beside it.
 - `TestRestoreRefusesCraftedSchema`: a trigger, a view, an extra table, column, generated column or index. `TestRestoreAcceptsEveryMigrationLevel`: a database at each earlier level restores and migrates, so the check can't refuse a real older backup. `TestShapeOfAMigratedDatabaseIsExpected`.
-- `TestRestoreDeletesLeftOutRows`, `TestRestoreKeepsRevocations`, `TestRestoreReportsWhatMatters`.
+- `TestRestoreSchemaMissingTables`: a backup from before each Go table restores and gains it, and one missing a migration's table or column is refused.
+- `TestRestoreDeletesLeftOutRows`, `TestRestoreReportsWhatMatters`. `TestRestoreKeepsRevocations`: a revoked key and a removed or disabled user stay that way, by id or by address.
 - `TestRestoreIntoANewRoot`: modes and owners on every path under each umask, `root.Open` and `CheckRootFiles` clean, and the key works. `TestRestoreReplace`: only 34.1 entries change, `models/` keeps its inode, and the old files are in a 0700 directory. `TestRestoreRefusesTargets`, `TestRestoreDryRunWritesNothing`.
 - `TestRestoreFailureAndCrash`: a failure and a crash at every step. Each puts the root back byte for byte, and a crash makes `root.Open` refuse with the one line first. `TestRestoreCrashOnANewRoot`, `TestRestoreVerifiesBeforeFinishing`.
 - `TestRestoreUndoTreatsJournalAsInput`: a journal naming `../`, an absolute path, a link, a directory that isn't 0700, or a name off the list moves nothing, and one claiming a fresh root can't delete a root.

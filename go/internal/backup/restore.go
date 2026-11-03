@@ -79,8 +79,10 @@ type Report struct {
 	ReturningKeys   []string `json:"returningKeys"`
 	KeysLost        []string `json:"keysLost"`
 	ReturningUsers  int      `json:"returningUsers"`
-	DisabledUsers   int      `json:"usersDisabledSinceBackup"`
-	Cautions        []string `json:"cautions"`
+	// A user the target has removed or disabled stays that way, as a revoked key does.
+	UserStatusesKept int      `json:"userStatusesKept"`
+	UsersChanged     int      `json:"usersGoingBackToAnOlderStatus"`
+	Cautions         []string `json:"cautions"`
 }
 
 // Staged is a backup read and checked, in a private directory beside its target.
@@ -538,6 +540,16 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if err != nil && !errors.Is(err, store.ErrNotConfigured) {
 		return nil, refuse("The settings can't be read: %v", err)
 	}
+	// The gateway's own checks of roles, permissions, addresses and duplicates.
+	policy, err := auth.LoadPolicy(ctx, st.DB)
+	if err != nil {
+		return nil, refuse("The access policy in this backup can't be read: %v", err)
+	}
+	if policy != nil {
+		if err := policy.Normalize(); err != nil {
+			return nil, refuse("The access policy in this backup is not valid: %v", err)
+		}
+	}
 
 	rep := &Report{Target: target, NewRoot: state.newRoot, Manifest: m}
 	access, err := auth.LoadAccess(dir)
@@ -816,22 +828,28 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 	sort.Strings(rep.ReturningKeys)
 	sort.Strings(rep.KeysLost)
 
-	readUsers := func(db *sql.DB) (map[string]string, error) {
-		out := map[string]string{}
+	type user struct{ status, email string }
+	readUsers := func(db *sql.DB) (map[string]user, error) {
+		out := map[string]user{}
 		if !hasTable(ctx, db, "auth_users") {
 			return out, nil
 		}
-		rows, err := db.QueryContext(ctx, `SELECT id, status FROM auth_users`)
+		query := `SELECT id, status, '' FROM auth_users`
+		if hasTable(ctx, db, "auth_user_emails") {
+			query = `SELECT u.id, u.status, COALESCE(e.email, '') FROM auth_users u LEFT JOIN auth_user_emails e ON e.user_id = u.id`
+		}
+		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var id, status string
-			if err := rows.Scan(&id, &status); err != nil {
+			var id string
+			var u user
+			if err := rows.Scan(&id, &u.status, &u.email); err != nil {
 				return nil, err
 			}
-			out[id] = status
+			out[id] = u
 		}
 		return out, rows.Err()
 	}
@@ -843,13 +861,31 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 	if err != nil {
 		return err
 	}
-	for id, status := range usersBacked {
+	// An id survives within one root's lineage. The address is the fallback.
+	byEmail := map[string]user{}
+	for _, u := range usersNow {
+		if u.email != "" {
+			byEmail[u.email] = u
+		}
+	}
+	for id, u := range usersBacked {
 		was, here := usersNow[id]
+		if !here && u.email != "" {
+			was, here = byEmail[u.email]
+		}
 		switch {
 		case !here:
-			rep.ReturningUsers++
-		case was != status:
-			rep.DisabledUsers++
+			if u.status != "removed" {
+				rep.ReturningUsers++
+			}
+		case was.status == u.status:
+		case was.status == "removed" || was.status == "disabled":
+			if _, err := staged.ExecContext(ctx, `UPDATE auth_users SET status = ? WHERE id = ?`, was.status, id); err != nil {
+				return err
+			}
+			rep.UserStatusesKept++
+		default:
+			rep.UsersChanged++
 		}
 	}
 	return nil
