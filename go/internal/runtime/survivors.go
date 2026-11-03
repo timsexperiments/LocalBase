@@ -26,22 +26,40 @@ import (
 // backendRecord says what was started, in enough detail to tell it from a later
 // process that was given the same pid.
 type backendRecord struct {
-	// Root is the root that started it. A copied root carries its source's records,
-	// which would otherwise pass every check against the source's live backends.
-	Root      string `json:"root"`
-	Runtime   string `json:"runtime"`
-	PID       int    `json:"pid"`
-	StartTime string `json:"startTime"`
-	Exe       string `json:"exe"`
-	Port      int    `json:"port"`
+	// Root is the root that started it: its real path, device and inode. A copied
+	// root carries its source's records, which would otherwise pass every check
+	// against the source's live backends.
+	Root      rootIdentity `json:"root"`
+	Runtime   string       `json:"runtime"`
+	PID       int          `json:"pid"`
+	StartTime string       `json:"startTime"`
+	Exe       string       `json:"exe"`
+	Port      int          `json:"port"`
 }
 
-// canonicalRoot resolves links, so one root always compares equal to itself.
-func canonicalRoot(root string) string {
-	if p, err := filepath.EvalSymlinks(root); err == nil {
-		return p
+// rootIdentity says which directory a record belongs to. A copy differs in path and
+// inode, so an APFS clone never matches. A renamed or restored root differs in one of
+// them, and is treated the same way: its records are left alone.
+type rootIdentity struct {
+	Path  string `json:"path"`
+	Dev   uint64 `json:"dev"`
+	Inode uint64 `json:"inode"`
+}
+
+func identifyRoot(root string) (rootIdentity, bool) {
+	path, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return rootIdentity{}, false
 	}
-	return filepath.Clean(root)
+	info, err := os.Stat(path)
+	if err != nil {
+		return rootIdentity{}, false
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return rootIdentity{}, false
+	}
+	return rootIdentity{Path: path, Dev: uint64(st.Dev), Inode: st.Ino}, true
 }
 
 func backendRecordsDir(root string) string { return filepath.Join(root, "runtime", "backends") }
@@ -79,12 +97,13 @@ func recordBackend(root, runtimeName string, port int, p *Process, log *slog.Log
 		return
 	}
 	start, exe, ok := processIdentity(p.PID())
-	if !ok {
+	id, rootOK := identifyRoot(root)
+	if !ok || !rootOK {
 		log.Warn("Could not read a backend's identity, so a later start cannot clean it up.", "event", "runtime.record-failed",
 			"runtime", runtimeName, "pid", p.PID())
 		return
 	}
-	b, err := json.Marshal(backendRecord{Root: canonicalRoot(root), Runtime: runtimeName, PID: p.PID(), StartTime: start, Exe: exe, Port: port})
+	b, err := json.Marshal(backendRecord{Root: id, Runtime: runtimeName, PID: p.PID(), StartTime: start, Exe: exe, Port: port})
 	if err == nil {
 		dir := backendRecordsDir(root)
 		if err = os.MkdirAll(dir, 0o700); err == nil {
@@ -113,6 +132,11 @@ func SweepBackends(root string, log *slog.Logger) int {
 	if err != nil {
 		return 0
 	}
+	here, ok := identifyRoot(root)
+	if !ok {
+		log.Warn("Could not identify this root, so backends left by an earlier gateway were not stopped.", "event", "runtime.sweep-skipped", "root", root)
+		return 0
+	}
 	stopped := 0
 	for _, e := range entries {
 		path := filepath.Join(backendRecordsDir(root), e.Name())
@@ -121,8 +145,10 @@ func SweepBackends(root string, log *slog.Logger) int {
 			continue
 		}
 		var rec backendRecord
-		if json.Unmarshal(b, &rec) != nil || rec.PID <= 1 || rec.Root != canonicalRoot(root) {
-			_ = os.Remove(path)
+		// Not provably from this root: touch nothing, and say which file it was.
+		if json.Unmarshal(b, &rec) != nil || rec.PID <= 1 || rec.Root != here {
+			log.Warn("Left a backend record alone: it does not belong to this root, as in a copied or moved root.",
+				"event", "runtime.record-ignored", "path", path)
 			continue
 		}
 		if sweepOne(rec) {
