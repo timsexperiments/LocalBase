@@ -134,6 +134,12 @@ func (c *Controller) SetSampler(f func(ctx context.Context, pid int) (int64, boo
 
 func (c *Controller) Topology() Topology { return c.host.Topology() }
 
+// Projected is what a demand counts for against this host's pool.
+func (c *Controller) Projected(d Demand) int64 { return c.projected(d) }
+
+// ReserveBytes is the memory kept for the rest of the computer.
+func (c *Controller) ReserveBytes() int64 { return c.system.Bytes(c.host.Topology().SystemCapacity) }
+
 func (c *Controller) projected(d Demand) int64 {
 	if c.host.Topology().Unified {
 		return d.UnifiedBytes
