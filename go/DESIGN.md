@@ -4573,13 +4573,13 @@ Today that is run for curl and the two SDKs, and not run for every editor, agent
 **Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
 page, the command and the route. The keys it creates are ordinary keys.
 
-## 29. Usage and activity (design addendum, 2026-11-02, for the operator's review)
+## 32. Usage and activity (design addendum, 2026-11-02, for the operator's review)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
 key is busy, which model, how many tokens, how often it fails, and how slow it is. Today that means
 reading logs. **Nothing here is built yet.**
 
-### 29.1 What is stored, and what never is
+### 32.1 What is stored, and what never is
 
 **Hourly totals, not a log of requests.** One row per hour, principal, route, model and status. There
 is no per-request timeline, so nobody can reconstruct when a person sent any one message, and the
@@ -4593,7 +4593,7 @@ table stays small: a busy gateway writes a few thousand rows a month.
 | Model id | Only an id the gateway knows. A request naming anything else is stored with no model, so a string a client typed can never land here |
 | Status | The final HTTP status, as a number |
 | Counts and totals | Requests, input tokens, output tokens, and how many requests reported tokens, so a total is not misread as complete |
-| Durations | Sum, queue-wait sum, and a latency histogram (29.3) |
+| Durations | Sum, queue-wait sum, and a latency histogram (32.3) |
 
 **Never stored:** prompts, completions, request or response bodies, file names, key material, headers,
 IP addresses, user agents, emails, names, request ids, per-request timestamps, error messages, and the
@@ -4604,7 +4604,7 @@ has no per-token price, and a rate made up here would be a number nobody can che
 has configured it, exports what it already does, and this table is not added to it. The diagnostics
 bundle leaves this table out, and backup (feature 5) will too unless asked.
 
-### 29.2 What counts
+### 32.2 What counts
 
 Requests to the inference routes that got as far as an identified principal, once each:
 
@@ -4621,14 +4621,14 @@ Requests to the inference routes that got as far as an identified principal, onc
   time as its duration. A refused create counts as a refused request.
 - Not counted: `/v1/models`, `/_localbase`, `/app` pages, health checks.
 
-### 29.3 Percentiles are approximate, and say so
+### 32.3 Percentiles are approximate, and say so
 
 Latency is the time to the last byte, in a histogram with buckets 25% apart from 1 ms to 1 hour, about 70
 in all, stored sparsely. Merging hours gives p50, p95 and p99 over any range, within about 12%. The API marks
 them `approximate`, and the page shows them with a `~`. Exact percentiles would need a row per request, which
-29.1 rules out. Time to first token is not recorded in this version.
+32.1 rules out. Time to first token is not recorded in this version.
 
-### 29.4 Storage, retention and clearing
+### 32.4 Storage, retention and clearing
 
 - **Table:** `usage_hourly` in `local-base.db`, `CREATE TABLE IF NOT EXISTS`. `go_schema` stays 1 and TS ignores it,
   like `local_sessions`. File permissions are the root's (§27).
@@ -4643,7 +4643,7 @@ them `approximate`, and the page shows them with a `~`. Exact percentiles would 
   every row, and optionally only those before a date. The API also empties the in-memory counts. **The limit:** the CLI
   writes to the database directly, so with a gateway running, up to the last 30 s of counts can reappear after it clears.
 
-### 29.5 Who sees what
+### 32.5 Who sees what
 
 | Caller | Sees | Changes |
 |---|---|---|
@@ -4658,7 +4658,7 @@ has one principal, so `self` and `all` match.
 **Per-key against total:** `group=principal` splits by key and person, and `principal=<id>` narrows to one. With no
 `group`, the answer has totals only.
 
-### 29.6 `GET /_localbase/usage`
+### 32.6 `GET /_localbase/usage`
 
 Query: `range=24h|7d|30d` (default `7d`) or `from` and `to` as RFC 3339, `scope=self|all`,
 `group=principal|model|route` (repeatable), and the filters `principal`, `model`, `route`. `step` is `hour` up to 7 days,
@@ -4691,7 +4691,7 @@ else `day`. Times outside retention are clipped, and `range.from` says where the
 The browser gets it through `/app/api`, like the other admin reads. It goes in `openapi.json`, and the drift tests of
 §30.2 apply.
 
-### 29.7 `local-base usage`
+### 32.7 `local-base usage`
 
 ```text
 local-base usage [--range 24h|7d|30d] [--from <time>] [--to <time>] [--by key|model|route]...
@@ -4704,7 +4704,7 @@ local-base usage recording on|off
 It reads the database directly, so it works with the gateway stopped, and with one running it can be up to 30 s behind. A plain
 table, or `--json` with the same fields as the API.
 
-### 29.8 The page: data contract for the FE thread
+### 32.8 The page: data contract for the FE thread
 
 `/app/usage`: the signed-in person's own usage for anyone, and a `Everything` choice for those allowed. Admin gets a
 **Usage** section that links here, and Settings a **Your usage** row. The FE thread restyles it later; the first version
@@ -4715,13 +4715,13 @@ Template data: `Scope`, `CanSeeAll`, `CanManage`, `Range`, `Ranges`, `Group`, `U
 exists), **partial tokens** (`requestsWithTokens` below `requests`), and **a range clipped by retention**. Copy names no model
 and ranks nothing, and a model's id is data.
 
-### 29.9 Tests, first
+### 32.9 Tests, first
 
 - `TestUsageStoresNoContent`: planted values in a prompt, a completion, a file name, the `user` field, an unknown model and a key.
   None appears anywhere in the database, its WAL or the logs' usage events, read as raw bytes after a flush.
 - `TestUsageCountsOnce`: API, detached run, UI call, stream, stream failing midway, video job, each once.
 - `TestUsageCategories`: each status lands in the right count, and 499 stays out of the error rate.
-- `TestUsageScopes`: a key sees only its own, naming another gets 403, each permission in 29.5.
+- `TestUsageScopes`: a key sees only its own, naming another gets 403, each permission in 32.5.
 - `TestUsageRetention`, `TestUsageClear`, `TestUsageRecordingOff`, `TestUsageFlushFailureKeepsCounts`.
 - `TestUsagePercentiles`: the histogram is within its stated bound on known distributions, and merging hours matches one bucket.
 - `TestUsageDiagnosticsExcludes`, `TestCLIUsage`, the §30.2 drift tests, and `-race -count=20`.
