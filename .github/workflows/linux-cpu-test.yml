@@ -1,0 +1,44 @@
+name: Linux CPU check (throwaway)
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  linux-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache: false
+      - name: Complete answers, flags and the raw log, each attempt on a fresh gateway
+        run: |
+          (cd go && CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/lb" ./cmd/localbase)
+          export LOCALBASE_ROOT="$RUNNER_TEMP/root"
+          LB="$RUNNER_TEMP/lb"
+          lb(){ "$LB" --non-interactive "$@"; }
+          free -m | sed -n 1,2p
+          lb init > /dev/null
+          key="$(lb keys create --name t --scopes inference:chat,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
+          lb models install qwen3.5-4b-q4_k_m 2>&1 | tail -1 | cut -c1-90
+          start(){ "$LB" --non-interactive serve --host 127.0.0.1 --port 26800 --llm-port 26801 > "$RUNNER_TEMP/serve.log" 2>&1 & g=$!; for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null && break; sleep 1; done; echo "gateway pid $g, running: $(kill -0 $g 2>/dev/null && echo yes || echo no)"; }
+          stopit(){ kill "$g" 2>/dev/null || true; wait "$g" 2>/dev/null || true; for i in $(seq 1 30); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null || break; sleep 1; done; if curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null; then echo "STILL UP"; else echo "gateway stopped; llama-server left: $(pgrep -c -x llama-server || true)"; fi; }
+          chat(){ curl -s -m 1200 -D "$RUNNER_TEMP/h" -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s' http://127.0.0.1:26800/v1/chat/completions -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d '{"model":"qwen3.5-4b-q4_k_m","max_tokens":4096,"messages":[{"role":"user","content":"'"$1"'"}]}'; echo " retry-after=[$(grep -i '^retry-after' "$RUNNER_TEMP/h" | tr -d '\r' | cut -d' ' -f2)] $(jq -c 'if .error then {status:"error",code:.error.code,type:.error.type,msg:.error.message} else {finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length),reasoning_len:((.choices[0].message.reasoning//"")|length),content:(.choices[0].message.content|.[0:80]),usage:{p:.usage.prompt_tokens,c:.usage.completion_tokens}} end' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-420)"; }
+          flags(){ p="$(pgrep -x llama-server | head -1)"; if [ -n "$p" ]; then echo "llama-server flags: $(tr '\0' ' ' < "/proc/$p/cmdline" | sed -E "s#$RUNNER_TEMP#\$T#g; s#(-m|--model) [^ ]+/#\1 #" | cut -c1-420)"; else echo "llama-server not running"; fi; }
+          diag(){ grep -a -E '^\{' "$RUNNER_TEMP/serve.log" | jq -c 'select(.severity=="warn" or .severity=="error") | select(.eventName!="http.request") | {e:.eventName,m:(.message|.[0:90])}' 2>/dev/null | cut -c1-200 | head -3 || true; }
+          echo "=== A. default reserve, baseline"; lb models show qwen3.5-4b-q4_k_m 2>&1 | grep -E 'This machine|Next load' | cut -c1-140 || true; start; chat "Say hello."; flags; diag; stopit
+          lb config show > "$RUNNER_TEMP/c.toml"; sed -i -E '/^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/ }' "$RUNNER_TEMP/c.toml"; lb config apply --file "$RUNNER_TEMP/c.toml" --restart never 2>&1 | grep -E 'systemReserve' | cut -c1-70 || true
+          echo "=== B. lowered reserve, automatic, several requests"; start; for q in "Say hello." "What is 2 plus 2? Answer in one short sentence." "Name a colour." "Say goodbye." ; do chat "$q"; [ "$q" = "Say hello." ] && flags; echo "  llama-server pid now: $(pgrep -x llama-server | tr '\n' ' ') $(free -m | awk 'NR==2{print "available "$7" MiB"}')"; done; diag; stopit
+          echo "=== C. --mode cpu"; lb models placement qwen3.5-4b-q4_k_m --mode cpu 2>&1 | sed -n 2,3p | cut -c1-100 || true; start; chat "Say hello."; flags; diag; stopit
+          echo "=== D. --mode custom --gpu-layers 0"; lb models placement qwen3.5-4b-q4_k_m --mode custom --gpu-layers 0 2>&1 | sed -n 2,3p | cut -c1-100 || true; start; chat "Say hello."; flags; diag; stopit
+          lb models placement qwen3.5-4b-q4_k_m --reset > /dev/null 2>&1 || true
+          echo "=== E. llama-server directly, -ngl 0 -lv 4, raw"
+          exe="$(find "$LOCALBASE_ROOT/bin/runtimes/llama-server" -type f -name llama-server | head -1)"; gguf="$(find "$LOCALBASE_ROOT/models/llm" -name '*.gguf' | head -1)"
+          "$exe" --version 2>&1 | head -2 | cut -c1-90; "$exe" --list-devices 2>&1 | head -3 | cut -c1-90
+          "$exe" -m "$gguf" -ngl 0 -lv 4 --port 26805 --host 127.0.0.1 -c 2048 > "$RUNNER_TEMP/ls.log" 2>&1 & p=$!
+          for i in $(seq 1 90); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26805/health 2>/dev/null && break; sleep 1; done
+          curl -s -m 300 -o /dev/null -w 'direct chat %{http_code} %{time_total}s\n' http://127.0.0.1:26805/v1/chat/completions -H 'Content-Type: application/json' -d '{"max_tokens":16,"messages":[{"role":"user","content":"Hi"}]}' || true; kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true
+          echo "log lines: $(grep -a -c . "$RUNNER_TEMP/ls.log")"; echo "--- lines with offload, load_tensors, compute buffer or device, with 1 line of context"
+          grep -a -n -iE -B1 -A1 'offload|load_tensors|compute buffer|buffer size|device|n_gpu' "$RUNNER_TEMP/ls.log" | sed -E "s#$RUNNER_TEMP#\$T#g" | cut -c1-170 | head -70
