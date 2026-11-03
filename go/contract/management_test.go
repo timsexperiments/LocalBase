@@ -325,6 +325,9 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 				s["installed"] != false || s["installedBytes"].(float64) < float64(len(data)/2) {
 				t.Fatalf("after restart: %v", s)
 			}
+			if why, _ := op["error"].(map[string]any); why["reason"] != "interrupted" {
+				t.Errorf("after restart, the reason: %v", op)
+			}
 			close(art.release)
 			if r := e.do("POST", "/_localbase/model-management", `{"modelId":"slow-stt","action":"install"}`); r.Status != 202 {
 				t.Fatalf("install again: %d %s", r.Status, r.Body)
@@ -350,5 +353,67 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 				t.Errorf("the second install did not resume: %v", art.ranges)
 			}
 		})
+	}
+}
+
+// A failed install says why, in the operations API and on the command line, with
+// the old sentence unchanged. Go only: TS has one sentence for every cause.
+func TestInstallFailureReasonExposed(t *testing.T) {
+	if *implFlag != "go" && *implFlag != "both" {
+		t.Skip("runs the Go gateway")
+	}
+	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }), false)
+	tmp := scratchDir(t)
+	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
+	if r := e.cli(nil, "--json", "init"); r.code != 0 {
+		t.Fatalf("init: %s", r.stderr)
+	}
+	sum := sha256.Sum256([]byte("gated"))
+	b, _ := json.Marshal(map[string]any{
+		"modelId": "gated-stt", "displayName": "Gated", "kind": "stt", "provider": "LocalBase tests", "family": "Whisper",
+		"version": "test", "size": "tiny", "quant": "Q8_0", "storageGb": 0.01,
+		"source": srv.URL + "/localbase/gated", "repositoryRevision": strings.Repeat("c", 40),
+		"artifacts":       []any{map[string]any{"sourcePath": "g.bin", "filename": "g.bin", "expectedSizeBytes": 5, "sha256": hex.EncodeToString(sum[:]), "role": "primary"}},
+		"inputModalities": []string{"audio"}, "outputModalities": []string{"text"}, "capabilities": []string{"speech-to-text"},
+		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
+	})
+	mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
+	mustWriteFile(filepath.Join(e.root, "catalog.d", "gated-stt.json"), b, 0o600)
+
+	human := e.cli(nil, "--non-interactive", "models", "install", "gated-stt")
+	if human.code == 0 || !strings.Contains(human.stderr, "HTTP 403") || !strings.Contains(human.stderr, "Reason: gated_or_auth_required") {
+		t.Errorf("human: %d %s", human.code, human.stderr)
+	}
+	machine := e.cli(nil, "--json", "models", "install", "gated-stt")
+	var env struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code, Message, Reason string
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(machine.stdout), &env); err != nil || env.OK || env.Error.Reason != "gated_or_auth_required" || env.Error.Code != "operational_error" {
+		t.Errorf("--json: %v %s", err, machine.stdout)
+	}
+
+	e.serve("--no-auth", "--no-llm", "--no-stt", "--no-tts", "--no-image", "--no-video")
+	defer e.stop()
+	if r := e.do("POST", "/_localbase/model-management", `{"modelId":"gated-stt","action":"install"}`); r.Status != 202 {
+		t.Fatalf("install: %d %s", r.Status, r.Body)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		op, _ := entryOf(t, e.do("GET", "/_localbase/model-management", "").JSON(t), "gated-stt")["operation"].(map[string]any)
+		if op != nil && op["state"] != "running" {
+			detail, _ := op["detail"].(string)
+			why, _ := op["error"].(map[string]any)
+			if op["state"] != "failed" || why["reason"] != "gated_or_auth_required" || !strings.HasPrefix(detail, "Installation failed.") {
+				t.Errorf("operation: %v", op)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("still running: %v", op)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
