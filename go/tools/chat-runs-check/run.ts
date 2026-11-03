@@ -863,6 +863,19 @@ check(cleared.word === "Memory freed. Try again." && !cleared.red, `try again on
 await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
 const afterSend = await redraw("ready", "Ready", 48);
 check(afterSend.word === "Ready" && !afterSend.red, `sending again clears it: ${JSON.stringify(afterSend)}`);
+// The card's own Try again waits out the same window.
+await ev(`(async () => { const real = window.fetch; window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "Not enough free memory." } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1000)); window.fetch = real; })()`);
+const retryState = `(() => { const b = document.querySelector("[data-refusal-retry]"), w = document.querySelector("[data-refusal-wait]"); return { found: !!b, disabled: b?.disabled, line: w && !w.hidden ? w.textContent : "" }; })()`;
+const retryOpen = await ev(retryState);
+check(retryOpen.found && !retryOpen.disabled && !retryOpen.line, `outside settling, Try again can be pressed: ${JSON.stringify(retryOpen)}`);
+await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+const retryHeld = await ev(retryState);
+check(retryHeld.disabled && /ready in a few seconds/.test(retryHeld.line), `while settling, it waits and says why: ${JSON.stringify(retryHeld)}`);
+await redraw("ready", "Ready", 48);
+const retryBack = await ev(retryState);
+check(!retryBack.disabled && !retryBack.line, `when settling clears, it can be pressed again: ${JSON.stringify(retryBack)}`);
+await ev(`document.querySelector("[data-refusal-retry]").closest(".refusal-actions").querySelector("button:last-child").click()`);
+await nav("/app/chat");
 // A permanent refusal leaves the strip alone: the model is too big, whatever is free.
 await ev(`(() => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: "Too big." } }), { status: 422, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); })()`);
 await sleep(100);

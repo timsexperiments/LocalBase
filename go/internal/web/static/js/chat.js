@@ -212,6 +212,16 @@ const refusals = {
   insufficient_memory: { title: "Not enough free memory for this model", line: "Free memory from a loaded model or close other apps, then try again." },
 };
 
+// A retry while memory is settling would only be refused again, so it waits with the strip.
+function holdRetry() {
+  const retry = $("[data-refusal-retry]");
+  if (!retry) return;
+  const settling = !!$("[data-strip] .strip-settling");
+  retry.disabled = settling;
+  $("[data-refusal-wait]").hidden = !settling;
+}
+document.addEventListener("htmx:afterSettle", holdRetry);
+
 function showFailure(e, retry) {
   const refusal = refusals[e.code];
   if (!refusal) return showError(e.message, retry);
@@ -235,9 +245,18 @@ function showFailure(e, retry) {
   const actions = document.createElement("div");
   actions.className = "refusal-actions";
   actions.append(button("Choose a model", "btn btn-primary", openPicker));
-  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet", retry));
+  card.append(title, line, why);
+  if (e.code === "insufficient_memory") {
+    const wait = document.createElement("p");
+    wait.className = "text-sm font-semibold";
+    wait.dataset.refusalWait = "";
+    wait.textContent = "Memory just freed, ready in a few seconds.";
+    card.append(wait);
+    actions.append(button("Try again", "btn btn-quiet", retry, { "data-refusal-retry": "" }));
+  }
   actions.append(button("Dismiss", "btn btn-quiet", dismissErrors));
-  card.append(title, line, why, actions);
+  card.append(actions);
+  holdRetry();
   announce(`${refusal.title}. ${refusal.line}`);
 }
 
