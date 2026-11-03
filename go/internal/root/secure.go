@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -15,20 +18,54 @@ import (
 // have written to is refused: tightening a mode afterwards does not undo a file
 // planted while it was open.
 
-// UnsafeRootError names what makes a root unsafe to use.
+// UnsafeRootError names what makes a root unsafe to use, and what to run about it.
 type UnsafeRootError struct {
 	Path    string
 	Problem string
+	Fix     string
 }
 
 func (e *UnsafeRootError) Error() string {
-	return fmt.Sprintf("Refusing to use %s: %s. Remove it or correct it, and check who can write to %s.", e.Path, e.Problem, filepath.Dir(e.Path))
+	return fmt.Sprintf("Refusing to use %s: %s. %s", e.Path, e.Problem, e.Fix)
 }
 
 const (
 	otherUserOwns  = "another user owns it"
 	othersCanWrite = "other users can change it"
+	runningAsRoot  = "this command is running as root, and it belongs to another user"
 )
+
+// shellQuote makes a path safe to paste into a shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// runAs is how to name a user to sudo.
+func runAs(uid int) string {
+	if u, err := user.LookupId(strconv.Itoa(uid)); err == nil && u.Username != "" {
+		return u.Username
+	}
+	return "'#" + strconv.Itoa(uid) + "'"
+}
+
+// ownedByOther explains a path another user owns. Running as root is usually sudo out
+// of habit, and would leave files the owner cannot read, so that gets its own answer.
+func ownedByOther(path string, owner int, isDir bool) *UnsafeRootError {
+	if currentUID() == 0 {
+		who := runAs(owner)
+		return &UnsafeRootError{path, runningAsRoot, "Run local-base without sudo, as the user who owns it: sudo -u " + who + " local-base ..."}
+	}
+	chown := "sudo chown "
+	if isDir {
+		chown += "-R "
+	}
+	return &UnsafeRootError{path, otherUserOwns, "If it is yours, run: " + chown + `"$(id -un)" ` + shellQuote(path) + ". If you did not put it there, remove it."}
+}
+
+// writableByOthers explains a path other users can change.
+func writableByOthers(path string) *UnsafeRootError {
+	return &UnsafeRootError{path, othersCanWrite, "If you trust it, run: chmod o-w " + shellQuote(path) + ". If you did not put it there, remove it."}
+}
 
 var (
 	currentUID = os.Getuid
@@ -64,12 +101,16 @@ func checkEntry(path string, writableIsFine bool) error {
 	if err != nil {
 		return err
 	}
-	if uid, ok := ownerOf(info); !ok || statOwnerHook(path, uid) != currentUID() {
-		return &UnsafeRootError{path, otherUserOwns}
+	uid, ok := ownerOf(info)
+	if !ok {
+		uid = -1
+	}
+	if uid = statOwnerHook(path, uid); uid != currentUID() {
+		return ownedByOther(path, uid, info.IsDir())
 	}
 	// A symbolic link's own mode means nothing; its owner is what was checked.
 	if !writableIsFine && info.Mode()&fs.ModeSymlink == 0 && info.Mode().Perm()&0o002 != 0 {
-		return &UnsafeRootError{path, othersCanWrite}
+		return writableByOthers(path)
 	}
 	return nil
 }
@@ -80,8 +121,12 @@ func closeDirectory(dir string) error {
 	if err != nil {
 		return err
 	}
-	if uid, ok := ownerOf(info); !ok || uid != currentUID() {
-		return &UnsafeRootError{dir, otherUserOwns}
+	uid, ok := ownerOf(info)
+	if !ok {
+		uid = -1
+	}
+	if uid = statOwnerHook(dir, uid); uid != currentUID() {
+		return ownedByOther(dir, uid, true)
 	}
 	if info.Mode().Perm()&0o077 != 0 {
 		// A failure is not fatal: a read-only volume cannot be changed by anyone

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -151,16 +152,18 @@ func TestPlantedFilesAreRefused(t *testing.T) {
 	// The same, for a file another user owns.
 	t.Run("owner", func(t *testing.T) {
 		dir, path := setup(t, entries[0])
-		me := os.Getuid()
-		ownerOfPath := path
-		original := statOwnerHook
-		statOwnerHook = func(p string, uid int) int {
-			if p == ownerOfPath {
+		const me = 1000
+		currentUID = func() int { return me }
+		statOwnerHook = func(p string, _ int) int {
+			if p == path {
 				return me + 1
 			}
-			return uid
+			return me
 		}
-		defer func() { statOwnerHook = original }()
+		defer func() {
+			currentUID = os.Getuid
+			statOwnerHook = func(_ string, uid int) int { return uid }
+		}()
 		var unsafe *UnsafeRootError
 		if _, err := Open(dir); !errors.As(err, &unsafe) || unsafe.Path != path || unsafe.Problem != otherUserOwns {
 			t.Errorf("%v", err)
@@ -253,4 +256,79 @@ func tempRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return filepath.Join(dir, "root")
+}
+
+// A refusal says which path and exactly what to run: it stops every command, so the
+// person reading it needs to be able to act on it.
+func TestRefusalsSayWhatToRun(t *testing.T) {
+	dir := tempRoot(t)
+	if _, err := Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	// Owners are injected, so this reads the same whoever runs the test, root included.
+	const me = 1000
+	owned := func(other string) func(string, int) int {
+		return func(p string, _ int) int {
+			if p == other {
+				return me + 1
+			}
+			return me
+		}
+	}
+	currentUID = func() int { return me }
+	statOwnerHook = owned("")
+	defer func() {
+		currentUID = os.Getuid
+		statOwnerHook = func(_ string, uid int) int { return uid }
+	}()
+	file := filepath.Join(dir, "ui-access.json")
+	if err := os.WriteFile(file, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Others can change a file.
+	if err := os.Chmod(file, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Open(dir)
+	want := "Refusing to use " + file + ": other users can change it. If you trust it, run: chmod o-w '" + file + "'. If you did not put it there, remove it."
+	if err == nil || err.Error() != want {
+		t.Errorf("writable file:\n got %v\nwant %s", err, want)
+	}
+	os.Chmod(file, 0o600)
+
+	// Another user owns a file.
+	statOwnerHook = owned(file)
+	_, err = Open(dir)
+	want = "Refusing to use " + file + ": another user owns it. If it is yours, run: sudo chown \"$(id -un)\" '" + file + "'. If you did not put it there, remove it."
+	if err == nil || err.Error() != want {
+		t.Errorf("another user's file:\n got %v\nwant %s", err, want)
+	}
+
+	// Another user owns the whole root: every file in it needs correcting.
+	statOwnerHook = owned(dir)
+	_, err = Open(dir)
+	want = "Refusing to use " + dir + ": another user owns it. If it is yours, run: sudo chown -R \"$(id -un)\" '" + dir + "'. If you did not put it there, remove it."
+	if err == nil || err.Error() != want {
+		t.Errorf("another user's root:\n got %v\nwant %s", err, want)
+	}
+
+	// Run with sudo: chown would be the wrong advice.
+	statOwnerHook = owned("")
+	currentUID = func() int { return 0 }
+	_, err = Open(dir)
+	var unsafe *UnsafeRootError
+	if !errors.As(err, &unsafe) || unsafe.Problem != runningAsRoot ||
+		!strings.Contains(err.Error(), "Run local-base without sudo") || !strings.Contains(err.Error(), "sudo -u ") || strings.Contains(err.Error(), "chown") {
+		t.Errorf("as root: %v", err)
+	}
+
+	// A path a shell would misread is quoted.
+	if got := shellQuote("/a b/it's"); got != `'/a b/it'\''s'` {
+		t.Errorf("%s", got)
+	}
+	// A user who cannot be named is still named to sudo.
+	if got := runAs(-7); !strings.Contains(got, "#-7") {
+		t.Errorf("%s", got)
+	}
 }
