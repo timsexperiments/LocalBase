@@ -80,6 +80,24 @@ rel-crash-503
 sec-http-limits
 csp-pins
 
+# Security, on top of #482
+sec-gguf-limits
+sec-ssrf
+sec-import-limits
+sec-root-owner
+sec-key-scopes
+
+# Reliability
+rel-lease-release
+
+# FE, on ui-v2-host
+ui-v2b-studio
+
+# Features, on ui-v2-host
+feat-openapi
+feat-connect
+feat-usage
+
 # Linux, from real-runner rounds
 fix-cpu-placement
 fix-backend-supported
@@ -98,3 +116,4 @@ pick fix-eviction-starting origin/rewrite/go-fix-orphan-backends
 pick fix-backend-group origin/rewrite/go-fix-eviction-starting
 pick runtime-port-base origin/rewrite/go-fix-backend-group
 pick lint-zero 9b7224ef
+pick fix-auth-errors 1c2b1c21
