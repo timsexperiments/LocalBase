@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -26,9 +27,9 @@ func TestMemoryRefusalWords(t *testing.T) {
 		e    *memory.AdmissionError
 		want string
 	}{
-		{"not enough free", refusal("system-memory", held), "Not enough free memory to start this model: it needs 8.0 GiB, and 3.2 GiB is free after keeping 9.6 GiB for your computer. LocalBase's loaded models have 12.0 GiB reserved. Unload a model or close other apps, then try again."},
+		{"not enough free", refusal("system-memory", held), "Not enough free memory to start this model: it needs 8.0 GiB, and 3.2 GiB is free after keeping 9.6 GiB for your computer. LocalBase's loaded models have 12.0 GiB reserved. Free memory from a loaded model or close other apps, then try again."},
 		{"not enough free, nothing loaded", refusal("system-memory", 0), "Not enough free memory to start this model: it needs 8.0 GiB, and 3.2 GiB is free after keeping 9.6 GiB for your computer. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."},
-		{"pressure", refusal("memory-pressure", held), "This computer is under memory pressure, so this model wasn't started. It needs 8.0 GiB, and LocalBase's loaded models have 12.0 GiB reserved. Unload a model or close other apps, then try again."},
+		{"pressure", refusal("memory-pressure", held), "This computer is under memory pressure, so this model wasn't started. It needs 8.0 GiB, and LocalBase's loaded models have 12.0 GiB reserved. Free memory from a loaded model or close other apps, then try again."},
 		{"pressure, nothing loaded", refusal("memory-pressure", 0), "This computer is under memory pressure, so this model wasn't started. It needs 8.0 GiB. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."},
 		{"anything else keeps the general sentence", refusal("measurement-unavailable", held), "Insufficient available memory to start the requested runtime. Please try again shortly."},
 	} {
@@ -122,4 +123,52 @@ func TestAFailedInstallMentionsAPartOnlyWhenOneWasKept(t *testing.T) {
 func jsonEscaped(text string) string {
 	b, _ := json.Marshal(text)
 	return string(b)
+}
+
+// The Running page's button is "Free memory", so telling someone to unload names a control they won't
+// find. "Unload" stays where it describes the API route or a state, which are listed. This reads the
+// source, so a new message is covered without being named here.
+func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
+	allowed := []string{
+		"This model is being unloaded.", // model_unloading: a state
+		"or unload with waiting.",       // about the API call that was just made
+		"Model unload",                  // the name of that service
+		// Not reworded yet: both wait for the operator's yes, as public strings do.
+		"Unload other models and retry.",
+		"another model is idle or unloaded.",
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	sentence := regexp.MustCompile(`"[^"\n]*\b[Uu]nload[^"\n]*[ .][^"\n]*"`)
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checked++
+	next:
+		for _, m := range sentence.FindAllString(string(b), -1) {
+			for _, ok := range allowed {
+				if strings.Contains(m, ok) {
+					continue next
+				}
+			}
+			t.Errorf("%s: a sentence with unload that isn't on the allowed list: %s", f, m)
+		}
+	}
+	if checked < 10 {
+		t.Fatalf("read only %d source files", checked)
+	}
+	// What the tests above pin must be what people read.
+	for _, text := range []string{freeMemoryHint, memoryRefusal(refusal("system-memory", memory.GiB), "this model")} {
+		if !strings.Contains(text, "Free memory from a loaded model") {
+			t.Errorf("%q", text)
+		}
+	}
 }

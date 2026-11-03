@@ -1186,7 +1186,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough free accelerator (GPU) memory to start the video runtime: it needs 30.0 GiB but only 18.0 GiB is usable after the safety reserve. Free memory (unload other models or close applications) and retry."
+        "message": "Not enough free accelerator (GPU) memory to start the video runtime: it needs 30.0 GiB but only 18.0 GiB is usable after the safety reserve. Free memory from a loaded model or close other apps, then try again."
       }
     },
     "failed-gpu-working-set": {

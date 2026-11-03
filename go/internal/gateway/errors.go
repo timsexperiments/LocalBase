@@ -168,7 +168,7 @@ func memoryRefusal(e *memory.AdmissionError, subject string) string {
 		}
 	}
 	reserved := "LocalBase's loaded models have " + gibText(e.ReservedBytes) + " reserved"
-	action := "Unload a model or close other apps, then try again."
+	action := "Free memory from a loaded model or close other apps, then try again."
 	if e.ReservedBytes == 0 {
 		reserved = ""
 		action = "LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."

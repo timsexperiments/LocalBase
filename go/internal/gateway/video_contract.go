@@ -274,7 +274,7 @@ func projectVideoJob(j video.Job) map[string]any {
 	return out
 }
 
-const freeMemoryHint = "Free memory (unload other models or close applications) and retry."
+const freeMemoryHint = "Free memory from a loaded model or close other apps, then try again."
 
 // videoFailureError names a failed job's error code (TS videoFailureError).
 func videoFailureError(err error) map[string]any {
