@@ -19,11 +19,17 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxManagementBody+1))
-		if err != nil {
-			body = nil
+		// Only what the handler itself reads, once it has authenticated the caller.
+		var seen bytes.Buffer
+		r.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
+		rec := &auditRecorder{recorder: recorder{ResponseWriter: w}}
+		next(rec, r)
+		if rec.status >= 300 {
+			return
 		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
 		var in struct {
 			Action         string `json:"action"`
 			KeyID          string `json:"keyId"`
@@ -32,10 +38,8 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 				ID string `json:"id"`
 			} `json:"registration"`
 		}
-		json.Unmarshal(body, &in)
-		rec := &auditRecorder{recorder: recorder{ResponseWriter: w}}
-		next(rec, r)
-		if rec.status >= 300 || in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery" {
+		json.Unmarshal(seen.Bytes(), &in)
+		if in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery" {
 			return
 		}
 		// The principal the handler resolved (never resolved twice).
@@ -94,6 +98,20 @@ func auditTarget(action, keyID, registrationID, upsertID string, response []byte
 		return "email-delivery", "smtp"
 	}
 	return "", ""
+}
+
+// limitedWriter keeps the first n bytes written to it and accepts the rest.
+type limitedWriter struct {
+	w io.Writer
+	n int
+}
+
+func (l *limitedWriter) Write(b []byte) (int, error) {
+	if keep := min(l.n, len(b)); keep > 0 {
+		l.w.Write(b[:keep])
+		l.n -= keep
+	}
+	return len(b), nil
 }
 
 // auditRecorder keeps the start of the response to name the target.
