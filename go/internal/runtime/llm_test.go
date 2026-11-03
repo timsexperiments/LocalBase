@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 var fakeBinary string
@@ -37,23 +36,8 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// FreePort returns a free port in the test range 24000-29999, excluding
-// ports other local services use.
-func FreePort(t testing.TB) int {
-	for i := 0; i < 200; i++ {
-		p := 24000 + rand.IntN(6000)
-		if p == 24173 || (p >= 25611 && p <= 25613) {
-			continue
-		}
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			ln.Close()
-			return p
-		}
-	}
-	t.Fatal("no free port")
-	return 0
-}
+// FreePort returns a free port in the test block.
+func FreePort(t testing.TB) int { return testutil.FreePort() }
 
 type bigHost struct{ avail int64 }
 

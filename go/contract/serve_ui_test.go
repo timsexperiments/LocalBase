@@ -9,13 +9,15 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // TestServeForUI serves the contract fixture root (with whatever real models
 // the LOCALBASE_CONTRACT_* variables link) with --no-auth on loopback, for
 // checking the browser UI by hand:
 //
-//	LOCALBASE_CONTRACT_SERVE_UI=<port in 24000-29999> go test ./contract -run TestServeForUI -timeout 2h
+//	LOCALBASE_CONTRACT_SERVE_UI=<port in LOCALBASE_TEST_PORTS> go test ./contract -run TestServeForUI -timeout 2h
 //
 // It stops when the stop file it prints is deleted, or after an hour.
 func TestServeForUI(t *testing.T) {
@@ -23,8 +25,8 @@ func TestServeForUI(t *testing.T) {
 	if err != nil {
 		t.Skip("set LOCALBASE_CONTRACT_SERVE_UI to a free test port")
 	}
-	if port < 24000 || port > 29999 || port == 24173 || (port >= 25611 && port <= 25613) {
-		t.Fatalf("port %d is outside the test range", port)
+	if !testutil.PortAllowed(port) {
+		t.Fatalf("port %d is outside the test block (%s)", port, testutil.PortsEnv)
 	}
 	dir := scratchDir(t)
 	rootDir := filepath.Join(dir, "root")
