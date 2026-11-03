@@ -190,6 +190,18 @@ func existingAncestor(p string) string {
 // Stage reads a backup into a private directory and checks all of it. It changes nothing
 // else, so a dry run is Stage and Discard.
 func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
+	staged, err := stageRestore(ctx, file, targetDir, replace)
+	if isBusy(err) {
+		retry := "local-base --root '" + targetDir + "' restore"
+		if replace {
+			retry += " --replace"
+		}
+		return nil, refuse("%s", busyMessage(targetDir, retry+" '"+file+"'", err))
+	}
+	return staged, err
+}
+
+func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
 	if os.Getuid() == 0 {
 		return nil, refuse("Refusing to restore as root: the files would belong to root, and the owner could not read them. Run this as the user who will own the root.")
 	}
@@ -202,7 +214,9 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 		return nil, err
 	}
 	if !state.newRoot && state.hasData {
-		if err := readableDatabase(ctx, filepath.Join(target, "local-base.db")); isUnfinishedWrite(err) {
+		// A database that is only busy is left for the comparison, which refuses it.
+		read := func() error { return readableDatabase(ctx, filepath.Join(target, "local-base.db")) }
+		if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
 			return nil, refuse("%s", unfinishedWriteMessage(target))
 		}
 	}
@@ -497,7 +511,11 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if level > known {
 		return refuse("A newer LocalBase wrote this backup: its database has %d migrations, and this version knows %d. Upgrade LocalBase to restore it.", level, known)
 	}
-	if hasTable(ctx, db, "go_schema") {
+	schema, err := tableExists(ctx, db, "go_schema")
+	if err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	if schema {
 		var v int
 		if err := db.QueryRowContext(ctx, `SELECT version FROM go_schema WHERE id = 1`).Scan(&v); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return refuse("The database can't be read: %v", err)
@@ -749,8 +767,9 @@ func fillCounts(ctx context.Context, st *store.Store, rep *Report) error {
 			rep.Keys.Expired++
 		}
 	}
-	if !hasTable(ctx, st.DB, "auth_users") {
-		return nil
+	present, err := tableExists(ctx, st.DB, "auth_users")
+	if err != nil || !present {
+		return err
 	}
 	return st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_users`).Scan(&rep.Users)
 }
@@ -766,8 +785,9 @@ func reach(host string) string {
 
 // exposureSettings are stored settings that change who can reach this root, or where it reaches.
 func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
-	if !hasTable(ctx, db, "go_settings") {
-		return nil, nil
+	present, err := tableExists(ctx, db, "go_settings")
+	if err != nil || !present {
+		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `SELECT key, value FROM go_settings WHERE key LIKE 'imports.%' OR key LIKE 'gateway.%' ORDER BY key`)
 	if err != nil {
@@ -785,49 +805,91 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 	return out, rows.Err()
 }
 
+// comparedKey is what a restore compares of a key. These reads are of the root being replaced, where
+// a failure must not look like finding nothing, which would bring a revoked key back.
+type comparedKey struct {
+	name    string
+	revoked sql.NullString
+}
+
+func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, error) {
+	out := map[string]comparedKey{}
+	present, err := tableExists(ctx, db, "api_keys")
+	if err != nil || !present {
+		return out, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id, name, revoked_at FROM api_keys`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var k comparedKey
+		if err := rows.Scan(&id, &k.name, &k.revoked); err != nil {
+			return nil, err
+		}
+		out[id] = k
+	}
+	return out, rows.Err()
+}
+
+type comparedUser struct{ status, email string }
+
+func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser, error) {
+	out := map[string]comparedUser{}
+	present, err := tableExists(ctx, db, "auth_users")
+	if err != nil || !present {
+		return out, err
+	}
+	emails, err := tableExists(ctx, db, "auth_user_emails")
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT id, status, '' FROM auth_users`
+	if emails {
+		query = `SELECT u.id, u.status, COALESCE(e.email, '') FROM auth_users u LEFT JOIN auth_user_emails e ON e.user_id = u.id`
+	}
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var u comparedUser
+		if err := rows.Scan(&id, &u.status, &u.email); err != nil {
+			return nil, err
+		}
+		out[id] = u
+	}
+	return out, rows.Err()
+}
+
 // compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
 // backup would bring back. Restoring must not revive a key someone revoked because it leaked.
 func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
-	if err := readableDatabase(ctx, targetDB); err != nil {
+	err := retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	if isBusy(err) {
+		return fmt.Errorf("reading this root's database: %w", err)
+	}
+	if err != nil {
 		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
 		return nil
 	}
+	targetReadHook()
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
 		return err
 	}
 	defer cur.Close()
-	type key struct {
-		name    string
-		revoked sql.NullString
-	}
-	readKeys := func(db *sql.DB) (map[string]key, error) {
-		out := map[string]key{}
-		if !hasTable(ctx, db, "api_keys") {
-			return out, nil
-		}
-		rows, err := db.QueryContext(ctx, `SELECT id, name, revoked_at FROM api_keys`)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var k key
-			if err := rows.Scan(&id, &k.name, &k.revoked); err != nil {
-				return nil, err
-			}
-			out[id] = k
-		}
-		return out, rows.Err()
-	}
-	now, err := readKeys(cur)
+	now, err := readComparedKeys(ctx, cur)
 	if err != nil {
 		return err
 	}
-	backed, err := readKeys(staged)
+	backed, err := readComparedKeys(ctx, staged)
 	if err != nil {
 		return err
 	}
@@ -853,41 +915,16 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 	sort.Strings(rep.ReturningKeys)
 	sort.Strings(rep.KeysLost)
 
-	type user struct{ status, email string }
-	readUsers := func(db *sql.DB) (map[string]user, error) {
-		out := map[string]user{}
-		if !hasTable(ctx, db, "auth_users") {
-			return out, nil
-		}
-		query := `SELECT id, status, '' FROM auth_users`
-		if hasTable(ctx, db, "auth_user_emails") {
-			query = `SELECT u.id, u.status, COALESCE(e.email, '') FROM auth_users u LEFT JOIN auth_user_emails e ON e.user_id = u.id`
-		}
-		rows, err := db.QueryContext(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var u user
-			if err := rows.Scan(&id, &u.status, &u.email); err != nil {
-				return nil, err
-			}
-			out[id] = u
-		}
-		return out, rows.Err()
-	}
-	usersNow, err := readUsers(cur)
+	usersNow, err := readComparedUsers(ctx, cur)
 	if err != nil {
 		return err
 	}
-	usersBacked, err := readUsers(staged)
+	usersBacked, err := readComparedUsers(ctx, staged)
 	if err != nil {
 		return err
 	}
 	// An id survives within one root's lineage. The address is the fallback.
-	byEmail := map[string]user{}
+	byEmail := map[string]comparedUser{}
 	for _, u := range usersNow {
 		if u.email != "" {
 			byEmail[u.email] = u
@@ -932,6 +969,8 @@ var (
 	beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
 	// stepHook is for tests: an error is a failure, and a panic is a crash.
 	stepHook = func(string) error { return nil }
+	// targetReadHook is for tests: a writer that arrives just after the first read.
+	targetReadHook = func() {}
 	// dirSync is for tests: a failing disk can't be arranged any other way.
 	dirSync = func(d *os.File) error { return d.Sync() }
 )
