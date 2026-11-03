@@ -195,6 +195,18 @@ func existingAncestor(p string) string {
 // Stage reads a backup into a private directory and checks all of it. It changes nothing
 // else, so a dry run is Stage and Discard.
 func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
+	staged, err := stageRestore(ctx, file, targetDir, replace)
+	if isBusy(err) {
+		retry := "local-base --root '" + targetDir + "' restore"
+		if replace {
+			retry += " --replace"
+		}
+		return nil, refuse("%s", busyMessage(targetDir, retry+" '"+file+"'", err))
+	}
+	return staged, err
+}
+
+func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
 	if os.Getuid() == 0 {
 		return nil, refuse("Refusing to restore as root: the files would belong to root, and the owner could not read them. Run this as the user who will own the root.")
 	}
@@ -207,7 +219,9 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 		return nil, err
 	}
 	if !state.newRoot && state.hasData {
-		if err := readableDatabase(ctx, filepath.Join(target, "local-base.db")); isUnfinishedWrite(err) {
+		// A database that is only busy is left for the comparison, which refuses it.
+		read := func() error { return readableDatabase(ctx, filepath.Join(target, "local-base.db")) }
+		if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
 			return nil, refuse("%s", unfinishedWriteMessage(target))
 		}
 	}
@@ -802,7 +816,11 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
-	if err := readableDatabase(ctx, targetDB); err != nil {
+	err := retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	if isBusy(err) {
+		return fmt.Errorf("reading this root's database: %w", err)
+	}
+	if err != nil {
 		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
 		return nil
 	}
