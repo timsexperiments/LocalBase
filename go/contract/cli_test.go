@@ -115,7 +115,29 @@ func normalize(t *testing.T, s, root string) any {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(s)), &v); err != nil {
 		t.Fatalf("not one JSON envelope: %v\n%s", err, s)
 	}
+	dropGoDefaultReserve(v)
 	return v
+}
+
+var reserveInTOML = regexp.MustCompile(`\[memory\.systemReserve\]\npercent = [0-9.]+\nminimumGb = [0-9.]+\n`)
+
+// dropGoDefaultReserve removes a deliberate difference (DESIGN "Deliberate differences"):
+// a new Go root keeps 10%, at least 3 GiB, and a TS root 15%, at least 8 GiB.
+func dropGoDefaultReserve(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		delete(x, "systemReserve")
+		if doc, ok := x["document"].(string); ok { // config show's TOML
+			x["document"] = reserveInTOML.ReplaceAllString(doc, "[memory.systemReserve]\n")
+		}
+		for _, e := range x {
+			dropGoDefaultReserve(e)
+		}
+	case []any:
+		for _, e := range x {
+			dropGoDefaultReserve(e)
+		}
+	}
 }
 
 type cliCase struct {

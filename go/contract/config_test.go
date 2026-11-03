@@ -59,7 +59,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 		return p
 	}
 	basePath := edit("base")
-	change := edit("change", `^port = 2273$`, "port = 2274", `^percent = 15$`, "percent = 12.5",
+	change := edit("change", `^port = 2273$`, "port = 2274", `^percent = (15|10)$`, "percent = 12.5",
 		`^ctxSize = 131072$`, "ctxSize = 65536", `^parallel = "auto"$`, "parallel = 2")
 	hot := edit("hot", `^ctxSize = 131072$`, "ctxSize = 32768", `^selectedTtsModels = \[\]$`, `selectedTtsModels = ["qwen3-tts-1.7b-base-q4_k_m"]`)
 	invalid := map[string]string{
@@ -84,10 +84,10 @@ func TestCLIConfigDeclarative(t *testing.T) {
 		"par5":      edit("par5", `^parallel = "auto"$`, "parallel = 5"),
 		"ctxsmall":  edit("ctxsmall", `^ctxSize = 131072$`, "ctxSize = 1024"),
 		"ctxbig":    edit("ctxbig", `^ctxSize = 131072$`, "ctxSize = 3000000000"),
-		"pct":       edit("pct", `^percent = 15$`, "percent = 101"),
-		"pctinf":    edit("pctinf", `^percent = 15$`, "percent = inf"),
-		"pctnan":    edit("pctnan", `^percent = 15$`, "percent = nan"),
-		"minneg":    edit("minneg", `^minimumGb = 8$`, "minimumGb = -1"),
+		"pct":       edit("pct", `^percent = (15|10)$`, "percent = 101"),
+		"pctinf":    edit("pctinf", `^percent = (15|10)$`, "percent = inf"),
+		"pctnan":    edit("pctnan", `^percent = (15|10)$`, "percent = nan"),
+		"minneg":    edit("minneg", `^minimumGb = (8|3)$`, "minimumGb = -1"),
 		"memextra":  edit("memextra", `^\[memory\]$`, "[memory]\nfoo = 1"),
 		"missing":   edit("missing", `(?s)\[memory\.acceleratorReserve\].*`, ""),
 		"allowexp":  edit("allowexp", `^allowExperimental = false$`, `allowExperimental = "yes"`),

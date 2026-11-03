@@ -430,7 +430,7 @@ func loadOverrides(path string) (*Overrides, error) {
 					bad("memory."+rk, "Unrecognized key")
 					continue
 				}
-				res := store.MemoryReserve{Percent: 15, MinimumGB: 8}
+				res := store.MemoryReserve{Percent: 10, MinimumGB: 3}
 				if rk == "acceleratorReserve" {
 					res = store.MemoryReserve{Percent: 10, MinimumGB: 2}
 				}

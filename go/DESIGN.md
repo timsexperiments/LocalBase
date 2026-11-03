@@ -615,6 +615,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A new Go root keeps 10% of memory for the computer, at least 3 GiB (docs/memory-reserve.md, Option C). TS keeps 15%, at least 8 GiB. A root already initialized keeps what its database holds.
 
 ### M1 (done 2026-10-19)
 

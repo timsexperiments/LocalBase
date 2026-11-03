@@ -23,7 +23,7 @@ differs.
 
 ## How the reserve works
 
-`reserve = max(minimum, percent of total)`. Today that is 15% and 8 GiB. From it:
+`reserve = max(minimum, percent of total)`. The default for a new root is 10% and 3 GiB; it was 15% and 8 GiB. From it:
 
 | Check | Rule | Result |
 | --- | --- | --- |
@@ -199,5 +199,5 @@ percent = 10
 minimumGb = 3
 ```
 
-This is Option C, and it works today. There is no cap setting and no environment variable for the
+This is Option C, the default for a new root. A root already initialized keeps the values stored in its database until changed this way. There is no cap setting and no environment variable for the
 reserve. `LOCALBASE_GPU_WORKING_SET_GB` overrides only the GPU limit.
