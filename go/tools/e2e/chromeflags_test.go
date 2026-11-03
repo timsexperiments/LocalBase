@@ -11,18 +11,8 @@ import (
 	"testing/fstest"
 )
 
-// knownWithoutMockKeychain are the scripts that started Chrome without the flag when this
-// check was written. #454 adds it to them: delete each line as that lands. Nothing else may
-// join the list. LOCALBASE_CHROME_FLAGS_ALL=1 ignores it, to see what the check finds.
-var knownWithoutMockKeychain = []string{
-	"axe-check.sh",
-	"chat-runs-check.sh",
-	"mic-check.sh",
-	"phone-check.sh",
-	"ui-shots.sh",
-}
-
-var startsChrome = regexp.MustCompile(`--headless|--remote-debugging-(port|pipe)`)
+// A launch gives the port a value. A script that only looks for the flag in ps output doesn't.
+var startsChrome = regexp.MustCompile(`--headless|--remote-debugging-port=|--remote-debugging-pipe`)
 
 // launchersWithoutMockKeychain lists the scripts under fsys that start a Chrome without
 // --use-mock-keychain. A flag only in a comment does not count.
@@ -75,19 +65,8 @@ func TestEveryChromeLauncherStaysAwayFromTheKeychain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	known := knownWithoutMockKeychain
-	if os.Getenv("LOCALBASE_CHROME_FLAGS_ALL") != "" {
-		known = nil
-	}
 	for _, name := range missing {
-		if !slices.Contains(known, name) {
-			t.Errorf("tools/%s starts Chrome without --use-mock-keychain --password-store=basic; see tools/README.md", name)
-		}
-	}
-	for _, name := range known {
-		if !slices.Contains(missing, name) {
-			t.Errorf("tools/%s no longer starts Chrome without the flag: delete it from knownWithoutMockKeychain", name)
-		}
+		t.Errorf("tools/%s starts Chrome without --use-mock-keychain --password-store=basic; see tools/README.md", name)
 	}
 }
 
@@ -103,6 +82,7 @@ func TestLauncherCheckFindsWhatItShould(t *testing.T) {
 		"good.sh":          file(`"$chrome" --use-mock-keychain --headless=new` + "\n"),
 		"good.go":          file(`var a = []string{"--use-mock-keychain", "--headless=new"}` + "\n"),
 		"only-mentions.sh": file("# run with --headless\necho hi\n"),
+		"only-looks.sh":    file("ps -o command= -p \"$p\" | grep -q -- --remote-debugging-port\n"),
 		"notes.md":         file("--headless\n"),
 		"x_test.go":        file(`var a = "--headless"` + "\n"),
 		"testdata/a.sh":    file("--headless\n"),
