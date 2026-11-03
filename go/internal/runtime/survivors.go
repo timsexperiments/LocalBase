@@ -197,10 +197,16 @@ func (p *Process) startGuard(log *slog.Logger) {
 		log.Warn("Could not start a backend's guard.", "event", "runtime.guard-failed", "error", err.Error())
 		return
 	}
-	go func() { _ = guard.Wait() }()
+	done := make(chan struct{})
+	go func() {
+		_ = guard.Wait()
+		close(done)
+	}()
+	p.guardPID = guard.Process.Pid
 	p.endGuard = func() {
 		_ = guard.Process.Kill()
 		_ = w.Close()
+		<-done
 	}
 }
 
