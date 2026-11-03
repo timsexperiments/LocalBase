@@ -4868,15 +4868,15 @@ local-base upgrade [--version vX.Y.Z] [--allow-downgrade] [--yes] [--wait <secon
 
 **Only now does anything change:**
 
-9. **Stop the old gateway cleanly,** through the service manager, and confirm the lock is gone and its backend ports are free. **This cannot be left to the new version:** the sweep of §29 only knows backends recorded by a version that has it, so on the first start after upgrading from before it, a survivor has no record and only the port check would see it. If anything survives, it stops, restarts the old version, and refuses.
+9. **Stop the old gateway cleanly,** through the service manager, and confirm the lock is gone and its backend ports are free. Only a kind of model this root has selected or active counts: another root's backend on a shared default port was never this gateway's. **This cannot be left to the new version:** the sweep of §29 only knows backends recorded by a version that has it, so on the first start after upgrading from before it, a survivor has no record and only the port check would see it. If anything survives, it stops, restarts the old version, and refuses.
 10. **Keep the previous binary** as `<binary>.previous`: a hard link and a rename, so nothing is copied over the old file (or a copy and a rename, on a filesystem without links).
 11. **Check the binary's checksum again, then swap with a rename.** Never an in-place write: macOS caches a binary's code signature per inode, and an in-place copy leaves one that exits 137 on every run.
-12. **Restart through the new binary's `restart`,** which rewrites the plist or unit, and wait for readiness. **If it doesn't come up, it rolls back automatically** (33.4) and reports both.
+12. **Restart through the new binary's `restart`,** which rewrites the plist or unit, and wait for `/health/ready`, up to 90 s, because `restart` returns once the manager has taken it, which can be before the gateway listens. **If it doesn't come up, it rolls back automatically** (33.4) and reports both.
 13. **Run `smoke`.** A failure leaves the new version in place, because smoke can fail for reasons of its own, such as no model installed or memory in use. It prints the failing step and the rollback line, and exits 1.
 
 It holds the root's operation lease throughout. Another root's gateway using the same binary keeps running the old code until it is restarted, and this cannot know about it.
 
-**Not built yet:** licenses and notices are not updated by an upgrade. The archive carries them, but where the installer puts them is moving (#452), so this waits for that to settle.
+**Not built yet:** licenses and notices are not updated by an upgrade. Both installers now put them in `~/.local/share/doc/local-base`, overridable with `LOCALBASE_LICENSE_DIR` (#452, #414). Upgrade has no record of an override, so when this is built it updates that directory only if `LICENSE` is already there, and otherwise leaves it. It waits for those two to merge.
 
 ### 33.4 Rollback: one line
 
@@ -4913,7 +4913,33 @@ All of these use a fake release server through `LOCALBASE_RELEASE_URL`, which th
 - `TestUpgradeRollback`: one line, reversible, no `.previous`, a previous version that refuses the database.
 - `-race -count=20` on what is touched.
 
-**Not verifiable by tests, for the operator-run rehearsal:** a real launchd and systemd swap under a throwaway label (`tools/rehearsal.sh` is the place), the real signing key, a real GitHub release, and a real `smoke`, which loads a model.
+- `TestManagedStartWaitsForReadiness`: a restart the manager accepts and a gateway that never answers is a failed start, so it rolls back.
+
+**Not verifiable by tests:** a real service manager, for which see 33.6; the real signing key, a real GitHub release, and a real `smoke`, which loads a model.
+
+### 33.6 The rehearsal on a real service manager
+
+`tools/upgrade-rehearsal` runs the real binaries under the real manager: a scratch root under its own label, a throwaway signing key made for the run and never written down, releases served from loopback, a fake backend, and no real models or network. It starts a service on an old version, then checks `--check`, an upgrade, a rollback, and a release that won't start, which rolls back. Then it removes the service. `tools/rehearsal.sh`, the cutover drill, is not the place: it never runs `upgrade`, it needs a copy of the live root, a TS build and real models, and its ports cross everyone's blocks.
+
+```sh
+go run ./tools/upgrade-rehearsal --preflight   # the refusals only, changes nothing
+go run ./tools/upgrade-rehearsal               # exit 0 passed, 1 failed, 2 refused
+go run ./tools/upgrade-rehearsal --cleanup     # after an interrupted run
+tools/upgrade-rehearsal-systemd.sh             # the same, under systemd in a disposable container
+```
+
+| On macOS | |
+|---|---|
+| Label | `com.localbase.gateway.c3bf6ae29278dcdb4955cae169cb7df73663e3f86ea393aec798aa1725781fb8` |
+| Root | `/private/tmp/lb-upgrade-rehearsal/root`, all of it deleted at the end |
+| Ports | 29500 gateway, 29501 backend, 29502 speech (unused), 29506 releases, on loopback. Outside every thread's block, and tested to be. No media model is selected, so no media port is used |
+| Stops or disables | That label only: bootstrap, bootout, disable and enable, through `local-base`. launchd keeps one disabled row for the label after it is removed, which is its own record and harmless |
+| Writes outside the root | The label's plist, removed at the end, and its operation lock, under `~/Library/Application Support/LocalBase/runtime/`, removed on release |
+| Reads of the live service | The hash of its plist and of `~/.local/bin/local-base`, and its pid from `launchctl print`. It never runs the live binary and sends nothing to its port. If any of those change, it stops and removes its own service |
+
+**It refuses (exit 2):** a work directory or root that overlaps the live root or `LOCALBASE_ROOT`; a label equal to a live one; running as root; a busy port; a work directory it didn't make; and a left-over plist. The live identity comes from the code the binary uses, so it can't drift. `TestRefusals` and `TestIdentifyRefusesTheDefaultRoot` hold this.
+
+**Found by its first run, under systemd:** step 12 was written and not built, so smoke ran before the restarted gateway listened and a good release reported failure. Every test passed, because they fake the manager.
 
 **Depends on:** #406 (the version), #414 (the release), the signing key, and the OSS thread's workflow step.
 
