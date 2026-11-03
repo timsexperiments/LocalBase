@@ -97,6 +97,7 @@ type Report struct {
 	Settings  []Setting     `json:"settings"`
 	Providers []string      `json:"signInProviders"`
 	SignIn    *SignIn       `json:"signIn"`
+	Grants    []Grant       `json:"grants"`
 	Keys      KeyCounts     `json:"keys"`
 	Users     int           `json:"users"`
 	Ports     []int         `json:"ports"`
@@ -680,6 +681,15 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	rep.SignIn, signInChanged = signInReport(backedSignIn, liveValues)
 	if signInChanged {
 		rep.Cautions = append(rep.Cautions, signInChangedCaution)
+	}
+	if rep.Grants, err = readGrants(ctx, st.DB); err != nil {
+		return nil, refuse("The roles in this backup can't be read: %v", err)
+	}
+	if !state.newRoot && state.hasData {
+		live, liveErr := liveGrants(ctx, target)
+		if compareGrants(rep.Grants, live, liveErr) {
+			rep.Cautions = append(rep.Cautions, grantsChangedCaution)
+		}
 	}
 	if rep.Issuers, rep.Unbound, err = bindingsOf(ctx, st.DB, access); err != nil {
 		return nil, refuse("The access bindings in this backup can't be read: %v", err)

@@ -310,6 +310,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	}
 	printSignIn(c, rep.SignIn)
 	printIssuers(c, rep.Issuers)
+	printGrants(c, rep.Grants)
 	if rep.UnboundNote != "" {
 		c.Info("%s", rep.UnboundNote)
 	}
@@ -357,6 +358,35 @@ func printSignIn(c *cli.Ctx, s *backup.SignIn) {
 	}
 	if s.Mail != nil {
 		c.Info("Mail server, which can read sign-in links: %s", s.Mail.Text("has"))
+	}
+}
+
+// maxGrantLines is how many people a role lists before saying how many more. Those new to this root
+// come first, so this can't bury them, and --json has them all.
+const maxGrantLines = 50
+
+// printGrants says what each role gives and who has it, by name.
+func printGrants(c *cli.Ctx, grants []backup.Grant) {
+	if len(grants) == 0 {
+		return
+	}
+	c.Info("What each role gives, and who has it:")
+	for _, g := range grants {
+		gives := g.Gives
+		if gives.Value == "" {
+			gives.Value = "nothing"
+		}
+		c.Info("  %s: %s", g.Role, gives.Text("gives"))
+		if len(g.Who) == 0 {
+			c.Info("    nobody")
+		}
+		for i, l := range g.Who {
+			if i == maxGrantLines {
+				c.Info("    and %d more", len(g.Who)-maxGrantLines)
+				break
+			}
+			c.Info("    %s", l.Text("has"))
+		}
 	}
 }
 

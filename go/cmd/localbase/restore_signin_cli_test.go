@@ -126,3 +126,48 @@ Everyone who signs in gets: nothing, unless a role gives it
 		})
 	}
 }
+
+func grantLines(grants []backup.Grant) string {
+	var out bytes.Buffer
+	printGrants(&cli.Ctx{Stdout: &out, Stderr: &out}, grants)
+	return out.String()
+}
+
+func TestTheRoleLinesRead(t *testing.T) {
+	got := grantLines([]backup.Grant{
+		{Role: "chat", Gives: backup.Line{Value: "inference:chat"}, Who: []backup.Line{}},
+		{Role: "empty", Who: []backup.Line{{Value: "someone at https://x.example"}}},
+		{Role: "owner", Gives: backup.Line{Value: "access:manage, keys:manage", Against: backup.AgainstDiffers, ThisRoot: "access:manage"},
+			Who: []backup.Line{{Value: "added at https://x.example", Against: backup.AgainstNew}, {Value: "a@example.com, signing in through https://x.example"}}},
+	})
+	want := `What each role gives, and who has it:
+  chat: inference:chat
+    nobody
+  empty: nothing
+    someone at https://x.example
+  owner: access:manage, keys:manage (this root gives access:manage)
+    added at https://x.example (new to this root)
+    a@example.com, signing in through https://x.example
+`
+	if got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if grantLines(nil) != "" {
+		t.Error("it printed a heading with no roles")
+	}
+}
+
+// A long list says how many it didn't print, and whoever's new came first.
+func TestALongRoleSaysHowManyMore(t *testing.T) {
+	who := []backup.Line{{Value: "added", Against: backup.AgainstNew}}
+	for range maxGrantLines + 9 {
+		who = append(who, backup.Line{Value: "someone"})
+	}
+	got := grantLines([]backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"}, Who: who}})
+	if !strings.Contains(got, "    added (new to this root)\n") || !strings.HasSuffix(got, "    and 10 more\n") {
+		t.Errorf("%s", got)
+	}
+	if n := strings.Count(got, "\n    "); n != maxGrantLines+1 {
+		t.Errorf("%d lines", n)
+	}
+}
