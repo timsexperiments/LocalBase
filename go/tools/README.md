@@ -81,3 +81,18 @@ stops the script.** That applies to scripts here and to any one-off fetch:
   match a neighbour, such as the same archive's `.sbom.json`.
 - Use `set -e`, or an explicit exit, so that a failed compare stops everything after it.
   Printing a warning and carrying on is how a bad binary gets run.
+
+## Deletes
+
+`go test -count=1 ./tools/rmguard` fails on any script or command file with `rm` on a variable, a
+glob, `/dev`, `/`, `~`, or an absolute path outside an explicit scratch prefix. Run it before you
+commit. Prefer no delete at all: build to a fixed path that the next run replaces.
+
+These scripts already delete that way. They work, and none of this is urgent, so fix them when you
+are next in the file, and take the line out of `knownToDelete` in `tools/rmguard/rmguard_test.go`,
+or lower its count, when you do. A file may not gain one, and no other file may join.
+
+| Owner | File: deletes |
+|---|---|
+| FE thread | `axe-check.sh`: 3, `chat-runs-check.sh`: 1, `mic-check.sh`: 1, `phone-check.sh`: 1, `ui-shots.sh`: 1, `ui-shots/run.ts`: 1 |
+| Go thread | `contract.sh`: 1, `ios-check.sh`: 2, `otelcol-check.sh`: 1, `placement-rollback-check.sh`: 1, `rehearsal.sh`: 1, `shadow.sh`: 6, `sync-catalog.sh`: 1, `systemd-check.sh`: 1, `tailwind.sh`: 1 |
