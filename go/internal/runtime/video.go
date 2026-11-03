@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -63,7 +64,7 @@ func (s *Service) videoEligible(spec *catalog.Spec) error {
 }
 
 // sdVideoCommand builds the vid_gen sd-server command.
-func (s *Service) sdVideoCommand(t *Target, host string, port int) (*serviceCommand, error) {
+func (s *Service) sdVideoCommand(life context.Context, t *Target, host string, port int) (*serviceCommand, error) {
 	spec := s.d.Catalog.ByID(t.ModelID)
 	if spec == nil || t.Imported || spec.Kind != "video" || spec.VideoRuntime == nil {
 		return nil, fmt.Errorf("Video model %q has no runtime profile.", t.ModelID)
@@ -97,7 +98,7 @@ func (s *Service) sdVideoCommand(t *Target, host string, port int) (*serviceComm
 			return nil, err
 		}
 	}
-	bin, err := s.binary("sd-server", t)
+	bin, err := s.binary(life, "sd-server", t)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not installed on this device: %v", t.Backend.Name, err)
 	}
