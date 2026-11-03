@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Schema is the definition format version this build reads.
@@ -323,11 +324,7 @@ func Add(rootDir string, d *Definition) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(d, "", "  ")
-	tmp := filepath.Join(dir, "."+d.ID+".json.tmp")
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(dir, d.ID+".json"))
+	return obs.WritePrivateChecked(filepath.Join(dir, d.ID+".json"), append(b, '\n'))
 }
 
 // Remove unregisters a custom backend. Selections that name it keep the id

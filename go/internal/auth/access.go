@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Browser access configuration: <root>/ui-access.json, the TS
@@ -178,12 +178,7 @@ func LoadAccess(rootDir string) (*BrowserAccess, error) {
 // writePrivate atomically writes a 0600 file.
 func writePrivate(path string, v any) error {
 	b, _ := json.MarshalIndent(v, "", "  ")
-	tmp := path + "." + store.UUID() + ".tmp"
-	defer os.Remove(tmp)
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return obs.WritePrivateChecked(path, append(b, '\n'))
 }
 
 // SaveAccess validates and writes ui-access.json.
