@@ -9,7 +9,7 @@ what only existed because of how the first version grew.
 
 ### Section numbers
 
-Reserve a number in this table before using it. The next free number is §33.
+Reserve a number in this table before using it. The next free number is §37.
 
 | Section | Subject | Owner | PR |
 |---|---|---|---|
@@ -19,6 +19,10 @@ Reserve a number in this table before using it. The next free number is §33.
 | §30 | Connect an app, and the OpenAPI document | Features | #459 |
 | §31 | HTTP limits | Security | #482 |
 | §32 | Usage and activity | Features | #479 |
+| §33 | Upgrade | Features | not yet |
+| §34 | Backup and restore | Features | not yet |
+| §35 | Embeddings search contract, for the UI | Features | not yet |
+| §36 | Threat model and root permissions | Security | not yet |
 
 ## 1. Goals and non-goals
 
@@ -4582,8 +4586,11 @@ port failed the same way. One fix covers both.
 2. **Record and sweep.** `runtime/backends/<runtime>-<pid>.json` (0600) holds the root, pid,
    start time and executable from just after spawn until exit. `serve`, holding the root's lock,
    stops what the records describe before any backend starts. A process is stopped only if
-   all three match, so a reused pid is left alone, and only if the record names this root: a
-   copied root carries its source's records, which would otherwise match the live backends. If the leader is gone but its group is
+   all three match, so a reused pid is left alone, and only if the record names this root's
+   real path, device and inode. A copied root carries its source's records, so without that
+   check a gateway on a copy of a live root would stop the live models. A record that fails it,
+   as in a copied, moved or restored root, is left in place with one `runtime.record-ignored`
+   warning naming the file. If the leader is gone but its group is
    not, the group is still ours, since a pid is not reused while a group with that id exists.
 3. **Port check.** A start refuses a port something else holds, naming the port and the
    owner's pid when `lsof` can find it. It waits up to 1 s for a backend that just stopped.
@@ -4604,7 +4611,9 @@ Event: `runtime.survivor-stopped`, a warning.
   `lsof` exists and can see the owner. Without it, only the exited-child check applies, after
   a 100 ms settle.
 - Survivors from before this version have no record. The port check refuses them with a
-  clear error, and someone has to stop them by hand.
+  clear error, and someone has to stop them by hand. So an upgrade stops the old gateway
+  cleanly first; the deploy procedure already does.
+- A moved root's survivors are not swept either, for the same safety reason.
 
 **Not verified.** Only fake backends so far. For the next real-model window, away from the
 live root: does a real `llama-server` exit when its port is taken, does an orphan answer
