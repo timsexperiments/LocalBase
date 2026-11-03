@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -18,9 +19,11 @@ import (
 // whether a backend starts first time, so anything but that 503 still fails at once.
 func waitForChat(t *testing.T, base, key string) {
 	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
+	// The deadline covers a request that hangs as well as one that keeps answering 503.
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
 	for {
-		req, err := http.NewRequest("POST", base+"/v1/chat/completions", strings.NewReader(chatBody("hi")))
+		req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(chatBody("hi")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,10 +43,12 @@ func waitForChat(t *testing.T, base, key string) {
 			return
 		case resp.StatusCode != http.StatusServiceUnavailable:
 			t.Fatalf("waiting for the backend: %d %s", resp.StatusCode, body)
-		case time.Now().After(deadline):
-			t.Fatalf("the backend still answers 503 after 60 s: %s", body)
 		}
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			t.Fatalf("the backend still answers 503 after 60 s: %s", body)
+		case <-time.After(100 * time.Millisecond):
+		}
 	}
 }
 
