@@ -72,6 +72,18 @@ func doctorCommand() *cli.Command {
 					st.Bytes, st.Path, st.ModifiedAt, archive)
 				data["serviceStderr"] = st
 			}
+			if problems := obs.CheckRootFiles(e.Root.Dir); len(problems) > 0 {
+				for _, p := range problems {
+					c.Info("Unsafe file: %s", p.Error())
+				}
+				line := "The gateway will not start until these are fixed."
+				if since := obs.StartRefusal(e.Root.Dir); since != nil {
+					line = "The gateway has been refusing to start since " + since.Since + ", and a service manager keeps retrying it. It will not start until these are fixed."
+					data["startRefusedSince"] = since.Since
+				}
+				c.Info("%s", line)
+				data["unsafeFiles"] = problems
+			}
 			return data, nil
 		}}
 }
