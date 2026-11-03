@@ -1,11 +1,17 @@
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
-.PHONY: help build run test race contract ui fmt check hooks
+.PHONY: help bootstrap build run test race contract ui lint fmt check hooks rehearse
 
 PORT ?= 26400
 
+# Tools from `make bootstrap` come first.
+export PATH := $(CURDIR)/.cache/tools/bin:$(PATH)
+
 help: ## List the commands
 	@grep -E '^[a-z]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | expand -t 12
+
+bootstrap: ## Install the pinned tools into .cache/tools, verified by checksum
+	scripts/bootstrap.sh
 
 build: ## Build go/local-base
 	cd go && go build -o local-base ./cmd/localbase
@@ -29,6 +35,9 @@ ui: ## Compiled CSS is current, and the browser JavaScript tests pass (needs Bun
 	cd go && tools/tailwind.sh --check
 	bun test go/tools/jstest
 
+lint: ## golangci-lint, as CI runs it. Needs make bootstrap
+	@if [ -f go/.golangci.yml ]; then cd go && golangci-lint run --config=.golangci.yml; else echo "go/.golangci.yml isn't in this tree yet, so there's nothing to lint against."; fi
+
 fmt: ## Format Go code
 	cd go && "$$(go env GOROOT)/bin/gofmt" -w .
 
@@ -40,3 +49,6 @@ check: ## What CI checks first: format, vet, repo guards and unit tests
 
 hooks: ## Optional: format and repo guard checks before each commit
 	git config core.hooksPath .githooks
+
+rehearse: ## Rehearse a release from local artifacts; publishes nothing. Needs make bootstrap
+	scripts/release/rehearse.sh
