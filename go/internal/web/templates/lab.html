@@ -8,7 +8,7 @@
 
   {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
   <section aria-labelledby="results-title" class="lab-results mt-4">
-    <h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>
+    {{if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
     {{template "lab-result" .}}
     <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
@@ -18,7 +18,7 @@
   {{end}}
 
   {{if eq .Tab "image"}}
-  {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" "image"}}{{else}}
+  {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "picture" "Filter" "images" "CanGet" .CanManage)}}{{else}}
   <form class="lab-dock" data-docked aria-label="Make an image" hx-post="/app/lab/image" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
     <div class="composer-box lab-box">
       <div class="lab-chips">
@@ -76,7 +76,7 @@
   {{end}}
 
   {{if eq .Tab "video"}}
-  {{if not .CanVideo}}{{template "lab-denied" "video generation"}}{{else if not .Models}}{{template "lab-none" "text- or image-to-video"}}{{else}}
+  {{if not .CanVideo}}{{template "lab-denied" "video generation"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "video" "Filter" "video" "CanGet" .CanManage)}}{{else}}
   <form class="lab-dock" data-docked aria-label="Make a video" hx-post="/app/lab/video" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" data-video-form>
     <div class="composer-box lab-box">
       <div class="lab-chips">
@@ -106,7 +106,7 @@
   {{end}}
 
   {{if eq .Tab "speech"}}
-  {{if not .CanSpeech}}{{template "lab-denied" "speech"}}{{else if not .Models}}{{template "lab-none" "speech"}}{{else}}
+  {{if not .CanSpeech}}{{template "lab-denied" "speech"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "speech" "Filter" "speech" "CanGet" .CanManage)}}{{else}}
   <form class="lab-dock" data-docked aria-label="Make speech" hx-post="/app/lab/speech" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
     <div class="composer-box lab-box">
       <div class="lab-chips">
@@ -135,7 +135,7 @@
   {{with .VoiceAdd}}{{template "voice-add" (dict "List" . "Target" "#lab-voices" "Post" (printf "/app/voices?speech=%s" $.VoiceModel))}}{{end}}
 
   {{if eq .Tab "transcribe"}}
-  {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" "transcription"}}{{else}}
+  {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "transcription" "Filter" "transcription" "CanGet" .CanManage)}}{{else}}
   <form class="lab-dock" data-docked aria-label="Transcribe a recording" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" data-audio-form data-audio-rate="16000" data-audio-autosubmit data-transcribe>
     <div class="composer-box lab-box pb-1">
       <div class="lab-chips">
@@ -191,7 +191,7 @@
      the batch from what it keeps in this browser. */}}
 {{define "decisions"}}
 <div data-decisions class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
-  {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" "decision"}}{{else}}
+  {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "decision" "Filter" "decisions" "CanGet" .CanManage)}}{{else}}
   <form id="decide" hx-boost="false" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
     <fieldset class="decide-types">
       <legend class="sr-only">Question type</legend>
@@ -443,7 +443,7 @@
 {{end}}
 
 {{define "lab-denied"}}<div class="empty-state mt-5"><p class="text-muted">Your access does not include {{.}}.</p></div>{{end}}
-{{define "lab-none"}}<div class="empty-state mt-5"><h2 class="text-lg font-bold">No {{.}} model yet</h2><p class="mt-1 text-muted">Choose one, and this tool is ready.</p><a class="btn btn-primary mt-4" href="/app/models/get">Get a model</a></div>{{end}}
+{{define "lab-none"}}<div class="empty-state mt-5"><h2 class="text-lg font-bold">No {{.Word}} model yet</h2>{{if .CanGet}}<p class="mt-1 text-muted">Choose one, and this tool is ready.</p><a class="btn btn-primary mt-4" href="/app/models/get?filter={{.Filter}}">Get a model</a>{{else}}<p class="mt-1 text-muted">Ask whoever runs this computer to add one.</p>{{end}}</div>{{end}}
 
 {{define "lab-video-options"}}
 <div id="lab-video-options" class="grid gap-3">
