@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 jobs:
-  deep:
+  reserve-and-placement:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -13,36 +13,30 @@ jobs:
         with:
           go-version-file: go/go.mod
           cache: false
-      - name: Chat and speech for real on a GPU-less Linux x64 machine
+      - name: Numbers for the 16 GB refusal, then placement on a GPU-less machine
         run: |
           (cd go && CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/lb" ./cmd/localbase)
           export LOCALBASE_ROOT="$RUNNER_TEMP/root"
           lb(){ "$RUNNER_TEMP/lb" --non-interactive "$@"; }
-          free -m | head -2
           lb init > /dev/null
-          echo "=== as installed: free figures seen by LocalBase"; lb doctor 2>&1 | grep -E 'RAM|Status' | cut -c1-110 || true
-          echo "=== config show, memory"; lb config show 2>&1 | sed -n '/^\[memory/,+4p' | cut -c1-70 || true
+          key="$(lb keys create --name t --scopes inference:chat,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
+          lb models install qwen3.5-4b-q4_k_m 2>&1 | tail -1 | cut -c1-100
+          lb models show qwen3.5-4b-q4_k_m 2>&1 | grep -iE 'memory|planning|estimate|measured|fit' | cut -c1-130 || true
+          start(){ lb serve --host 127.0.0.1 --port 26800 --llm-port 26801 "$@" > "$RUNNER_TEMP/serve.log" 2>&1 & g=$!; for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null && break; sleep 1; done; }
+          stopit(){ kill "$g" 2>/dev/null || true; wait "$g" 2>/dev/null || true; sleep 2; }
+          chat(){ curl -s -m 600 -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s' http://127.0.0.1:26800/v1/chat/completions -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d '{"model":"qwen3.5-4b-q4_k_m","max_tokens":64,"messages":[{"role":"user","content":"Say hello."}]}'; echo " $(jq -c 'if .error then {code:.error.code,msg:.error.message} else {finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length),reasoning_len:(.choices[0].message.reasoning|length)} end' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-300)"; }
+          diag(){ grep -E 'admission|placement|runtime\.(exited|start)|backend\.start' "$RUNNER_TEMP/serve.log" | grep -E '"severity":"(warn|error)"' | jq -c '{e:.eventName,m:(.message|.[0:80]),a:(.attributes|del(.auth_outcome,.auth_principal_id,.auth_principal_name,.auth_source))}' 2>/dev/null | cut -c1-520 | head -5 || true; }
+          echo "=== A. default reserve, 15% / 8 GiB"; free -m | sed -n 2p; start; chat; diag; stopit
+          echo "=== B. same, chat again after a pause"; free -m | sed -n 2p; start; sleep 20; chat; stopit
           lb config show > "$RUNNER_TEMP/c.toml"
-          sed -i -E '/^allowExperimental = /d; s/^\[models\]$/[models]\nallowExperimental = true/; /^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/; s/^minGb = .*/minGb = 1/ }; s/^selectedTtsModels = .*/selectedTtsModels = ["kokoro-82m-v1.0-q8"]/; s/^activeTtsModel = .*/activeTtsModel = "kokoro-82m-v1.0-q8"/' "$RUNNER_TEMP/c.toml"
-          echo "=== config apply"; lb config apply --file "$RUNNER_TEMP/c.toml" --restart never 2>&1 | tail -3 | cut -c1-140 || true
-          lb config show 2>&1 | grep -nE 'allowExperimental|^percent|^minimum|^min|selectedTts|activeTts' | cut -c1-90 || true
-          key="$(lb keys create --name t --scopes inference:chat,inference:speech,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
-          s=$(date +%s); echo "=== install chat"; lb models install qwen3.5-4b-q4_k_m 2>&1 | tail -1 | cut -c1-110 || true; echo "$(( $(date +%s)-s ))s"
-          echo "=== backend, chat, installed"; lb models backend qwen3.5-4b-q4_k_m 2>&1 | head -5 | cut -c1-130 || true
-          s=$(date +%s); echo "=== install kokoro"; lb models install kokoro-82m-v1.0-q8 2>&1 | tail -1 | cut -c1-110 || true; echo "$(( $(date +%s)-s ))s"
-          echo "=== backend, kokoro, installed"; lb models backend kokoro-82m-v1.0-q8 2>&1 | head -8 | cut -c1-150 || true
-          lb serve --host 127.0.0.1 --port 26800 --llm-port 26801 --tts-port 26802 > "$RUNNER_TEMP/serve.log" 2>&1 &
-          g=$!
-          for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null && break; sleep 1; done
-          post(){ curl -s -m "$3" -o "$RUNNER_TEMP/o" -w '%{http_code} %{size_download}B %{time_total}s' "http://127.0.0.1:26800$1" -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d "$2"; echo " code=$(jq -r '.error.code // "-"' "$RUNNER_TEMP/o" 2>/dev/null | head -1) msg=$(jq -r '.error.message // "-"' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-130 | head -1)"; }
-          free -m | sed -n 2p
-          echo "=== chat, automatic"; post /v1/chat/completions '{"model":"qwen3.5-4b-q4_k_m","max_tokens":64,"messages":[{"role":"user","content":"Say hello."}]}' 600
-          jq -c '{finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length),reasoning_len:(.choices[0].message.reasoning|length)}' "$RUNNER_TEMP/o" 2>/dev/null || true
-          echo "=== model-backend now"; curl -s -m5 -H "Authorization: Bearer $key" 'http://127.0.0.1:26800/_localbase/model-backend?model=qwen3.5-4b-q4_k_m' | jq -c '[paths(scalars) as $p|select($p[-1]|tostring|test("id|mode|selected|effective";"i"))|[$p[-1],getpath($p)]][:6]' 2>/dev/null | cut -c1-170 || true
-          echo "=== speech kokoro, automatic"; post /v1/audio/speech '{"model":"kokoro-82m-v1.0-q8","input":"hello there","voice":"af_heart"}' 300
-          echo "=== choose onnx-cpu"; curl -s -m10 -o "$RUNNER_TEMP/o" -w '%{http_code}\n' http://127.0.0.1:26800/_localbase/model-backend -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d '{"action":"set","model":"kokoro-82m-v1.0-q8","backendId":"onnx-cpu"}'; jq -c '.error // "ok"' "$RUNNER_TEMP/o" | cut -c1-170
-          echo "=== speech kokoro, onnx-cpu"; post /v1/audio/speech '{"model":"kokoro-82m-v1.0-q8","input":"hello there","voice":"af_heart"}' 300
-          file "$RUNNER_TEMP/o" | cut -d: -f2 | cut -c1-80
-          echo "=== runtimes on disk"; ls "$LOCALBASE_ROOT/bin/runtimes" 2>/dev/null | tr '\n' ' '; echo
-          echo "=== refusals in the log"; grep -E '"severity":"(warn|error)"' "$RUNNER_TEMP/serve.log" | jq -r '[.eventName,(.message|.[0:100])]|join(" | ")' 2>/dev/null | sort | uniq -c | sort -rn | head -8 | cut -c1-150 || true
-          kill "$g" 2>/dev/null || true
+          sed -i -E '/^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/ }' "$RUNNER_TEMP/c.toml"
+          lb config apply --file "$RUNNER_TEMP/c.toml" --restart never > /dev/null 2>&1 || true
+          echo "=== C. reserve 5% / 1 GiB, automatic placement"; free -m | sed -n 2p; start; chat; diag; stopit
+          echo "=== placement commands"; lb models placement --help 2>&1 | sed -n 1,14p | cut -c1-100 || true
+          echo "=== D. placement cpu"; lb models placement qwen3.5-4b-q4_k_m --set cpu 2>&1 | head -4 | cut -c1-140 || true; lb models placement qwen3.5-4b-q4_k_m 2>&1 | head -4 | cut -c1-140 || true
+          start; chat; diag; stopit
+          echo "=== E. placement custom, gpu-layers 0"; lb models placement qwen3.5-4b-q4_k_m --set custom --gpu-layers 0 2>&1 | head -3 | cut -c1-140 || true
+          start; chat; diag; stopit
+          echo "=== F. llama-server directly, CPU, does the runtime itself work"; ls "$LOCALBASE_ROOT/bin/runtimes" | tr '\n' ' '; echo; exe="$(find "$LOCALBASE_ROOT/bin/runtimes/llama-server" -type f -name llama-server | head -1)"; "$exe" --version 2>&1 | head -3 | cut -c1-110 || true; "$exe" --list-devices 2>&1 | head -6 | cut -c1-110 || true
+          gguf="$(find "$LOCALBASE_ROOT/models/llm" -name '*.gguf' | head -1)"; "$exe" -m "$gguf" -ngl 0 --port 26805 --host 127.0.0.1 -c 2048 > "$RUNNER_TEMP/ls.log" 2>&1 & p=$!; for i in $(seq 1 90); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26805/health 2>/dev/null && break; sleep 1; done; curl -s -m 200 -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s\n' http://127.0.0.1:26805/v1/chat/completions -H 'Content-Type: application/json' -d '{"max_tokens":32,"messages":[{"role":"user","content":"Say hello."}]}'; kill "$p" 2>/dev/null || true
+          grep -iE 'offload|layers|vulkan|no usable' "$RUNNER_TEMP/ls.log" | cut -c1-120 | head -8
