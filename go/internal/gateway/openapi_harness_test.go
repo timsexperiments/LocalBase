@@ -19,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -35,6 +36,9 @@ const (
 	openAPIWait       = 20 * time.Second
 	openAPIDevice     = "test-device"
 )
+
+// testOtel, when set, is the next gateway's exporter.
+var testOtel *otlp.Runtime
 
 // openAPIHasMedia: the fake media runtimes use the Metal backend entries, as the other
 // media gateways here do, so generating is compared on macOS. Every platform has the
@@ -135,6 +139,7 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	s.Library = lib
+	s.Otel = testOtel
 	s.Usage, err = usage.New(st, log)
 	if err != nil {
 		t.Fatal(err)

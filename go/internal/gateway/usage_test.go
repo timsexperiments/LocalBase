@@ -11,10 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 )
@@ -416,9 +419,6 @@ func TestUsageOwnerCanClear(t *testing.T) {
 			t.Errorf("%s: %d, want %d", name, got, c.want)
 		}
 	}
-	if !UsageCanChange(true, auth.Anonymous) {
-		t.Error("--no-auth")
-	}
 }
 
 // The instance token is this machine's CLI: writes only, loopback only (DESIGN §32.4).
@@ -572,5 +572,56 @@ func TestUsageBrowserRoute(t *testing.T) {
 	}
 	if strings.Contains(got, "secret") {
 		t.Errorf("forwarded %q", got)
+	}
+}
+
+// With a collector attached, what is exported is what always was: this table adds nothing
+// (DESIGN §32.1). The package has no way to send anything anyway (usage.TestImports).
+func TestUsageOutOfOTLP(t *testing.T) {
+	var mu sync.Mutex
+	var bodies [][]byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, b)
+		mu.Unlock()
+	}))
+	defer srv.Close()
+	cfg, err := obs.ResolveOtel(srv.URL, "", 100, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := otlp.New(cfg, "test", func(string, string, map[string]any) {})
+	testOtel = rt
+	ts := openAPIGateway(t)
+	testOtel = nil
+	s := runServer(ts)
+	_, key := oaKey(t, s, "k", auth.DefaultKeyScopes...)
+	if status, _, b, _ := (oaClient{t, ts.URL, key}).doBody(chatBody("hi"), "POST", "/v1/chat/completions"); status != 200 {
+		t.Fatalf("chat: %d %s", status, b)
+	}
+	waitUsage(t, s, "", 1)
+	ctx := t.Context()
+	if err := s.Usage.Flush(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Usage.SetRetention(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Usage.Clear(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	rt.Shutdown()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(bodies) == 0 {
+		t.Fatal("nothing was exported, so this proves nothing")
+	}
+	for _, b := range bodies {
+		for _, marker := range []string{"usage_hourly", "with_tokens", "requestsWithTokens", "usage.retention-days", "localbase.usage"} {
+			if bytes.Contains(b, []byte(marker)) {
+				t.Errorf("the collector received %q", marker)
+			}
+		}
 	}
 }

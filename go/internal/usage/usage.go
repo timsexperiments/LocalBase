@@ -45,6 +45,13 @@ const (
 // Routes is the fixed list of what can be counted. Nothing else is stored as a route.
 var Routes = []string{"chat", "embeddings", "decision", "speech", "transcription", "translation", "image", "image-edit", "video"}
 
+// CanSeeAll says who may read everything, by a caller's permission check (DESIGN §32.5).
+func CanSeeAll(can func(string) bool) bool { return can("models:manage") || can("system:read") }
+
+// CanChange says who may clear and change settings (DESIGN §32.5). access:manage can grant
+// itself system:manage anyway, so allowing it escalates nothing.
+func CanChange(can func(string) bool) bool { return can("system:manage") || can("access:manage") }
+
 // Event is one finished request. The caller vouches that Model is an id the gateway
 // knows, or empty.
 type Event struct {

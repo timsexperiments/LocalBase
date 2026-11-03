@@ -151,17 +151,6 @@ func (s *Server) usageAPI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// usageSeesAll: who may read everything (DESIGN §32.5).
-func (s *Server) usageSeesAll(p *auth.Principal) bool {
-	return s.NoAuth || p.Can("models:manage") || p.Can("system:read")
-}
-
-// UsageCanChange: who may clear and change settings (DESIGN §32.5). access:manage can grant
-// itself system:manage anyway, so allowing it escalates nothing.
-func UsageCanChange(noAuth bool, p *auth.Principal) bool {
-	return noAuth || p.Can("system:manage") || p.Can("access:manage")
-}
-
 func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
@@ -185,7 +174,7 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	_, own, _ := s.usagePrincipal(p)
 	principal := query.Get("principal")
 	if scope == "all" || (principal != "" && principal != own) {
-		if !s.usageSeesAll(p) {
+		if !s.NoAuth && !usage.CanSeeAll(p.Can) {
 			forbidden(w, r)
 			return
 		}
@@ -248,7 +237,7 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 			unauthorized(w, r)
 			return
 		}
-		if !UsageCanChange(s.NoAuth, p) {
+		if !s.NoAuth && !usage.CanChange(p.Can) {
 			forbidden(w, r)
 			return
 		}
