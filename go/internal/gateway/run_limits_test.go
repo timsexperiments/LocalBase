@@ -312,7 +312,7 @@ func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	message, _ := e["message"].(string)
-	for _, want := range []string{"Results are holding 1 MiB", "the limit is 1 MiB", "Finished results hold 1 MiB", "Dismiss finished results, or wait",
+	for _, want := range []string{"Results are holding 1 MiB", "the limit is 1 MiB", "Finished results hold 1 MiB", "Remove finished results, or wait", "when the last one is removed",
 		"expires at " + expires.UTC().Format("15:04") + " UTC"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("%q lacks %q", message, want)

@@ -256,7 +256,7 @@ func (m *runManager) memoryFullError() map[string]any {
 		message += " Nothing has finished yet, so wait for the running ones and try again."
 	} else {
 		at := oldest.UTC().Format("15:04") + " UTC"
-		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Dismiss finished results, or wait, and try again.", mib(finished), at)
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.", mib(finished), at)
 		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
 	}
 	out["message"] = message
