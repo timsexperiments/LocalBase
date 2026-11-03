@@ -476,6 +476,15 @@ func (c *Controller) PressureState() string {
 	return c.state
 }
 
+// Settling reports memory that has recovered while admission still refuses for pressure:
+// the state is not healthy and normal samples are counting toward recovery. It ends when
+// the state does, so refusals for pressure may happen for as long as it is true.
+func (c *Controller) Settling() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.state != "healthy" && c.normalRun > 0
+}
+
 // AdmissionPreview is what admitting a demand would decide now, changing nothing.
 type AdmissionPreview struct {
 	RequestedBytes int64
