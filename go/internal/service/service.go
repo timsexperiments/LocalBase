@@ -294,12 +294,7 @@ func atomicWrite(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + "." + store.UUID() + ".tmp"
-	defer os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return obs.WritePrivateChecked(path, b)
 }
 
 func (d Definition) write(rootDir string) error {
