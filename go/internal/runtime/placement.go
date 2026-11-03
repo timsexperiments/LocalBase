@@ -42,6 +42,7 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 		return nil // an unreadable tensor table keeps today's launch
 	}
 	dev := m.d.Placement.Device(t)
+	model.HostExtraBytes = memory.HostExtraBytes(memory.ResolveShape(planSize(m, modelID, t), planQuant(m, modelID, t), plan.ArtifactBytes, plan.Geometry), plan.Launch)
 	kv := memory.KVCacheBytes(plan.Geometry, plan.Launch.CtxTokens, max(1, plan.Launch.Slots), plan.Launch.CacheTypeK, plan.Launch.CacheTypeV)
 	p, err := placement.Resolve(model, kv, dev, req)
 	if err != nil {
@@ -54,12 +55,32 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 			"runtime", "llm", "model_id", modelID, "mode", req.Mode, "code", code)
 		return err
 	}
+	// One figure: a CPU load reports what admission will ask for, the same evidence and all.
+	if p.GPULayers == 0 && m.d.Memory != nil {
+		p.HostBytes = m.d.Memory.Projected(m.demandFor(modelID, plan, t))
+		p.Note = placement.Describe(p, req.Mode)
+	}
 	plan.Placement, plan.PlacedAt, plan.PlacementRequest = &p, time.Now().UTC(), req
 	plan.LogPlacement = !dev.NoLogVerbosity && !(p.Platform == placement.Unified && len(p.Args) == 0)
 	m.d.Log.Info("Placement for "+modelID+": "+p.Note, "event", "runtime.placement", "runtime", "llm", "model_id", modelID,
 		"mode", p.Mode, "platform", p.Platform, "gpu_layers", p.GPULayers, "total_layers", p.TotalLayers,
 		"cpu_moe_layers", p.CPUMoELayers, "host_bytes", p.HostBytes, "gpu_bytes", p.GPUBytes, "free_vram_bytes", p.FreeVRAMBytes)
 	return nil
+}
+
+// planSize and planQuant name the launch for its shape; an imported model has neither.
+func planSize(m *LLM, modelID string, t *Target) string {
+	if s := m.specFor(modelID, t); s != nil {
+		return s.Size
+	}
+	return ""
+}
+
+func planQuant(m *LLM, modelID string, t *Target) string {
+	if s := m.specFor(modelID, t); s != nil {
+		return s.Quant
+	}
+	return ""
 }
 
 // placementSettle bounds the wait for llama-server's startup lines after
@@ -119,7 +140,7 @@ func (h *HostPlacement) Device(t *Target) placement.Device {
 	d := placement.Device{GPULayers: true, CPUMoE: true, HostAvailable: 1 << 62}
 	if h.Memory != nil {
 		if room := h.Memory.Headroom(context.Background(), []string{"llm"}); room >= 0 {
-			d.HostAvailable = room
+			d.HostAvailable, d.KeptBytes = room, h.Memory.ReserveBytes()
 		}
 	}
 	cpuOnly := false

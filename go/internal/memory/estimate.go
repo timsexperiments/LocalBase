@@ -144,6 +144,13 @@ func EstimateLLM(weights int64, shape LLMShape, l LLMLaunch) Demand {
 	}
 }
 
+// HostExtraBytes is what an LLM launch holds in system memory beyond the file and its
+// KV cache: the runtime, the prompt cache and the slot state.
+func HostExtraBytes(shape LLMShape, l LLMLaunch) int64 {
+	_, _, slotState := llmTerms(shape, l)
+	return RuntimeHostOverhead + l.PromptCacheBytes + slotState
+}
+
 // MeasuredDemand ports measuredDemand for LLM records.
 func MeasuredDemand(r Measurement, artifactBytes, promptCache int64) Demand {
 	return measuredDemand(r, artifactBytes, promptCache, AcceleratorOverhead, 0)
