@@ -487,9 +487,16 @@
       @apply mb-1;
     }
   }
-  /* A long refusal scrolls inside itself: it never pushes the tab bar off a short screen. */
+  /* A long refusal scrolls inside itself: it never pushes the tab bar off a short screen, and
+     what to do next stays in view while it does. */
   [data-error-box] {
     @apply max-h-[38dvh] overflow-y-auto;
+  }
+  .refusal-actions {
+    @apply sticky bottom-0 flex flex-wrap gap-2 bg-danger-soft py-1;
+  }
+  .refusal-actions > .btn {
+    flex: 1 1 auto;
   }
   /* In Chat the chat's own Stop says it, and the pill would sit on the words or the composer.
      A run in another chat shows in the list of chats and on every other page. */
