@@ -129,6 +129,11 @@ func sweepOne(rec backendRecord) bool {
 	if alive && (start != rec.StartTime || exe != rec.Exe) {
 		return false // the pid now belongs to something else, and so does its group
 	}
+	// It exists but cannot be read, such as another user's process on Linux: no
+	// proof it is ours, so it is left alone.
+	if !alive && pidExists(rec.PID) {
+		return false
+	}
 	// No process has this pid, but its group may still have members. That group is
 	// still ours: a pid is not reused while a group with that id exists.
 	if !alive && !groupAlive(rec.PID) {
@@ -145,6 +150,11 @@ func sweepOne(rec backendRecord) bool {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return true
+}
+
+func pidExists(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func groupAlive(pgid int) bool {
