@@ -232,6 +232,11 @@ ports from the lab's block. Results and captures go to a new directory under
 Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), and exit 2 means
 the suite itself could not run.
 
+**On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
+so it never asks the Keychain for anything and cannot put a prompt on the screen. A test requires both
+flags. A watcher stops Chrome if the suite is killed. See `tools/README.md` before pointing anything
+else at a current Chrome.
+
 **On Ubuntu,** `kernel.apparmor_restrict_unprivileged_userns=1` stops Chrome's sandbox, and Chrome never
 answers. On a disposable runner, set it to 0 and the suite runs with the sandbox on, as CI does
 (`ubuntu-latest`). `LOCALBASE_E2E_NO_SANDBOX=1` adds `--no-sandbox` for a machine where that setting can't

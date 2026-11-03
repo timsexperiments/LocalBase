@@ -46,6 +46,9 @@ const PAGES = ALL_PAGES.filter(([n]) => !list("E2E_PAGES") || list("E2E_PAGES")!
 const version = await (await fetch(`${cdpBase}/json/version`)).json();
 const ws = new WebSocket(version.webSocketDebuggerUrl);
 await new Promise((r, j) => { ws.addEventListener("open", r, { once: true }); ws.addEventListener("error", j, { once: true }); });
+// With no browser there is nothing left to check, and nothing here should linger.
+let finished = false;
+ws.addEventListener("close", () => { if (!finished) { console.error("the suite stopped: the connection to Chrome closed"); process.exit(2); } });
 let nextId = 0;
 const waiting = new Map<number, (m: any) => void>();
 const listeners = new Map<string, (method: string, params: any) => void>();
@@ -689,5 +692,6 @@ try {
   console.error(`the suite stopped: ${e.message ?? e}`);
   try { code = Math.max(report(selfTest, Date.now() - began), 2); } catch { code = 2; }
 }
+finished = true;
 ws.close();
 process.exit(code);
