@@ -60,6 +60,13 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		if _, _, _, _, err := fixture(rootDir, freePort()); err != nil {
 			t.Fatal(err)
 		}
+		// Small reserves, so the model fits a small CI runner and the chat reaches the fake: this
+		// test is about permissions, and a 422 for memory would say nothing about them.
+		small := filepath.Join(tmp, "small.toml")
+		mustWriteFile(small, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o600)
+		if r := runCLI(t, impl, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
+			t.Fatalf("%s configure: %s%s", impl, r.stdout, r.stderr)
+		}
 		policy := filepath.Join(tmp, "policy.json")
 		b, _ := json.Marshal(auth.Policy{Roles: []auth.Role{
 			{Name: "admin", Description: "Admin", Permissions: []string{"access:manage", "access:read", "models:read"}},
