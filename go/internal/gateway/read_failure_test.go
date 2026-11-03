@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -212,5 +213,57 @@ func TestAFailedLibraryReadIsNotNoImportedModels(t *testing.T) {
 	code, header, body = c.get("/v1/models/some-imported-model")
 	if code != 503 || header.Get("Retry-After") != "5" || !strings.Contains(body, "reading the imported models") || !strings.Contains(body, "this model may exist") {
 		t.Errorf("one: %d, Retry-After %q: %.200s", code, header.Get("Retry-After"), body)
+	}
+}
+
+// A filter on fit can't place a model with no figure, so the list says which it left out, and the
+// header says something is missing, rather than quietly being shorter.
+func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := readFailureClient{t, ts.URL}
+	ids := func(body string) (data, unknown []string, degraded bool) {
+		t.Helper()
+		var out struct {
+			Degraded bool     `json:"degraded"`
+			Unknown  []string `json:"unknown"`
+			Data     []struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(body), &out); err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range out.Data {
+			data = append(data, m.ID)
+		}
+		return data, out.Unknown, out.Degraded
+	}
+	_, _, before := c.get("/_localbase/models?fit=fits,tight,wont-fit")
+	was, _, degraded := ids(before)
+	if degraded || !slices.Contains(was, chatModel) {
+		t.Fatalf("before: %v %v", was, degraded)
+	}
+	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
+		t.Fatal(err)
+	}
+	code, header, body := c.get("/_localbase/models?fit=fits,tight,wont-fit")
+	data, unknown, degraded := ids(body)
+	if code != 200 || !degraded || header.Get("X-Localbase-Warning") != store.ReadPeaks {
+		t.Errorf("%d %v %q", code, degraded, header.Get("X-Localbase-Warning"))
+	}
+	if slices.Contains(data, chatModel) || !slices.Contains(unknown, chatModel) {
+		t.Errorf("the model is in neither place properly: data %v, unknown %v", data, unknown)
+	}
+	for _, id := range was {
+		if !slices.Contains(data, id) && !slices.Contains(unknown, id) {
+			t.Errorf("%s went missing", id)
+		}
+	}
+	// The other filters still apply to it.
+	_, _, body = c.get("/_localbase/models?fit=fits&kind=stt")
+	if _, unknown, _ := ids(body); slices.Contains(unknown, chatModel) {
+		t.Errorf("listed despite another filter: %v", unknown)
 	}
 }

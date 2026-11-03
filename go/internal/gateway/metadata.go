@@ -99,6 +99,18 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		problems = append(problems, failed...)
 		data = append(data, m)
 	}
+	// A filter on fit can't place a model whose figure couldn't be read, so a filtered list says which.
+	var unknown []string
+	if len(problems) > 0 {
+		unfiltered := r.URL.Query()
+		unfiltered.Del("fit")
+		unknown = []string{}
+		for _, m := range meta.Query(data, unfiltered) {
+			if m.Catalog.Memory.Fit.Verdict == "unknown" {
+				unknown = append(unknown, m.ID)
+			}
+		}
+	}
 	data = meta.Query(data, r.URL.Query())
 	topo := s.Memory.Topology()
 	var avail any
@@ -117,7 +129,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		"accelerators": []any{}}}, "data": data}
 	if len(problems) > 0 {
 		s.reportReads(w, problems)
-		out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
+		out["degraded"], out["readProblems"], out["unknown"] = true, readProblemsJSON(problems), unknown
 	}
 	writeJSON(w, 200, out)
 }
