@@ -716,7 +716,8 @@ func TestModelImportAcceptance(t *testing.T) {
 
 	step("AC5 an override never bypasses memory admission", func(t *testing.T) {
 		e.setBackend("mystery", "fake-hungry")
-		wantCode(t, e.chat("mystery"), 503, "insufficient_memory")
+		// It declares far more than any host holds, so the refusal is permanent.
+		wantCode(t, e.chat("mystery"), 422, "model_too_large")
 	})
 
 	step("AC4 manual selections survive reinspection and restart", func(t *testing.T) {
