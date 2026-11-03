@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -115,20 +118,77 @@ func TestALoginStateThatHasNotExpiredWorks(t *testing.T) {
 	}
 }
 
-// A state works once even after others have come and gone, and what is remembered stays small.
-func TestSpentStatesAreRememberedAndBounded(t *testing.T) {
+// A captured callback, cookie included, can't sign in again while the state is still valid.
+// Anyone failing callbacks in between changes nothing: only a completed sign-in is
+// remembered, so that record can't be pushed out by requests that sign nobody in.
+func TestACapturedCallbackCannotBeReplayed(t *testing.T) {
+	f, b := oidcBrowser(t)
+	var back url.Values
+	var state *http.Cookie
+	first := login(t, b, f, func(q url.Values, s *http.Cookie) *http.Cookie {
+		back, state = q, s
+		return s
+	})
+	if cookieNamed(first, SessionCookie) == nil {
+		t.Fatalf("the first callback: %d", first.StatusCode)
+	}
+	replay := func(name string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		b.CompleteLogin(w, get(OIDCCallbackPath+"?"+back.Encode(), state))
+		if cookieNamed(w.Result(), SessionCookie) != nil {
+			t.Errorf("%s: the callback signed someone in again", name)
+		}
+	}
+	// The fake provider takes the same code again, so what refuses this is the record.
+	replay("straight away")
+	for range 5000 {
+		s := b.newLoginState("idp", time.Now().Add(time.Minute))
+		q := url.Values{"state": {s}, "code": {"bad"}}
+		b.CompleteLogin(httptest.NewRecorder(), get(OIDCCallbackPath+"?"+q.Encode(), &http.Cookie{Name: loginStateCookie, Value: s}))
+	}
+	if len(b.spent) != 1 {
+		t.Errorf("%d states remembered after failed callbacks", len(b.spent))
+	}
+	replay("after 5000 failed callbacks")
+}
+
+// Two callbacks at once with the same state: one goes ahead.
+func TestACallbackCannotBeRacedWithItself(t *testing.T) {
 	_, b := oidcBrowser(t)
 	soon := time.Now().Add(time.Minute)
-	if !b.spendLoginState("first", soon) || b.spendLoginState("first", soon) {
-		t.Error("a state must work exactly once")
+	var wins atomic.Int64
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if b.spendLoginState("same", soon) {
+				wins.Add(1)
+			}
+		}()
 	}
-	for i := range 5000 {
+	wg.Wait()
+	if wins.Load() != 1 {
+		t.Errorf("%d went ahead", wins.Load())
+	}
+	// A failed one gives it back.
+	b.unspendLoginState("same")
+	if !b.spendLoginState("same", soon) {
+		t.Error("a state given back can't be used")
+	}
+}
+
+// What is remembered stays bounded, and an expired one goes first.
+func TestSpentStatesAreBounded(t *testing.T) {
+	_, b := oidcBrowser(t)
+	soon := time.Now().Add(time.Minute)
+	for i := range maxSpentStates + 500 {
 		b.spendLoginState(fmt.Sprint("s", i), soon)
 	}
 	if len(b.spent) > maxSpentStates {
 		t.Errorf("%d kept", len(b.spent))
 	}
-	// One that has expired is forgotten first, without pushing out anything else.
 	_, c := oidcBrowser(t)
 	c.spendLoginState("old", time.Now().Add(-time.Second))
 	c.spendLoginState("new", soon)
@@ -137,5 +197,71 @@ func TestSpentStatesAreRememberedAndBounded(t *testing.T) {
 	}
 	if _, kept := c.spent["new"]; !kept {
 		t.Error("the new state was not kept")
+	}
+}
+
+// Seeing the state is not enough: the verifier and the nonce take a key that never leaves the
+// process. Neither is in the state, the cookie or, for the verifier, the redirect. A gateway
+// with another key, such as a restored root's, accepts none of this process's states.
+func TestSecretsComeFromTheStateAndAKey(t *testing.T) {
+	_, b := oidcBrowser(t)
+	_, other := oidcBrowser(t)
+	state := b.newLoginState("idp", time.Now().Add(time.Minute))
+	mine, ok := b.loginStateOf(state)
+	if !ok {
+		t.Fatal("refused")
+	}
+	if _, ok := other.loginStateOf(state); ok {
+		t.Error("another key accepted this state")
+	}
+	raw, _ := base64.RawURLEncoding.DecodeString(state)
+	body := raw[:loginStateRandom+8]
+	// The same state, signed by a gateway with another key, gives other secrets.
+	theirs, ok := other.loginStateOf(base64.RawURLEncoding.EncodeToString(append(append([]byte{}, body...), other.loginStateMAC("state", "idp", body)...)))
+	if !ok {
+		t.Fatal("refused its own signature")
+	}
+	if theirs.verifier == mine.verifier || theirs.nonce == mine.nonce {
+		t.Error("the secrets don't depend on the key")
+	}
+	for _, secret := range []string{mine.verifier, mine.nonce} {
+		if strings.Contains(state, secret) {
+			t.Error("the state holds a secret")
+		}
+	}
+	w := httptest.NewRecorder()
+	b.StartLogin(w, get("/app/login"))
+	resp := w.Result()
+	loc := resp.Header.Get("Location")
+	u, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, ok := b.loginStateOf(u.Query().Get("state"))
+	if !ok {
+		t.Fatal("the redirect's state was refused")
+	}
+	if strings.Contains(loc, st.verifier) || u.Query().Get("code_challenge") != s256(st.verifier) || u.Query().Get("nonce") != st.nonce {
+		t.Errorf("redirect %s", loc)
+	}
+	if c := cookieNamed(resp, loginStateCookie); c == nil || c.Value != u.Query().Get("state") || !c.HttpOnly || !c.Secure {
+		t.Errorf("cookie %+v", c)
+	}
+}
+
+// A state is bound to the browser it was started in: finishing elsewhere fails, with another
+// valid state in the cookie or with none. That is login CSRF's way in, and it stays shut.
+func TestAStateOnlyFinishesInItsOwnBrowser(t *testing.T) {
+	f, b := oidcBrowser(t)
+	for name, swap := range map[string]func(*http.Cookie) *http.Cookie{
+		"no cookie": func(*http.Cookie) *http.Cookie { return &http.Cookie{Name: "other", Value: strings.Repeat("o", 43)} },
+		"another sign-in's cookie": func(s *http.Cookie) *http.Cookie {
+			return &http.Cookie{Name: s.Name, Value: b.newLoginState("idp", time.Now().Add(time.Minute))}
+		},
+	} {
+		resp := login(t, b, f, func(_ url.Values, s *http.Cookie) *http.Cookie { return swap(s) })
+		if cookieNamed(resp, SessionCookie) != nil {
+			t.Errorf("%s: signed in", name)
+		}
 	}
 }

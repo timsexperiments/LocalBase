@@ -35,7 +35,7 @@ const (
 	SessionCookie     = "__Host-localbase-session"
 	loginStateTTL     = 10 * time.Minute
 	loginStateRandom  = 24
-	maxSpentStates    = 128
+	maxSpentStates    = 4096
 	maxIdPResponse    = 64 * 1024
 	OIDCCallbackPath  = "/oidc/callback"
 	MagicCallbackPath = "/magic-link/callback"
@@ -60,10 +60,11 @@ type Browser struct {
 	cfJWKS *JWKS
 	oidc   map[string]*oidcRuntime
 	mu     sync.Mutex
-	// stateKey signs login states. It lives as long as this process, as a sign-in in
-	// progress does.
+	// stateKey signs login states. It is made at start and held only in memory, so it is
+	// in no file and no backup, and a restart ends a sign-in in progress, as it always did.
 	stateKey []byte
-	// spent holds states already used, until they would have expired anyway.
+	// spent holds the states of callbacks being worked on or finished, until they would
+	// have expired anyway.
 	spent map[string]time.Time
 }
 
@@ -362,7 +363,8 @@ func (b *Browser) metadata(ctx context.Context, rt *oidcRuntime) (*oidcMetadata,
 // A sign-in in progress keeps nothing on the server, so requests from anyone can't push
 // out someone else's. The state carries its own expiry and a MAC, the PKCE verifier and the
 // nonce are derived from it under a key that stays here, and the browser holds it in a
-// cookie. Only a state that has been used is remembered, so it works once.
+// cookie. A state that has signed someone in is remembered, so it works once. A callback
+// that fails remembers nothing, so failing them can't push that record out either.
 
 func (b *Browser) loginStateMAC(purpose, registration string, data []byte) []byte {
 	m := hmac.New(sha256.New, b.stateKey)
@@ -401,8 +403,10 @@ func (b *Browser) loginStateOf(value string) (loginState, bool) {
 	return loginState{}, false
 }
 
-// spendLoginState reports whether a state is being used for the first time. If this ever
-// forgets one, under a flood of real sign-ins, the provider's single-use code still holds.
+// spendLoginState reports whether this callback may use a state: nobody has finished with
+// it and nobody else is using it now. Only completed sign-ins stay here, so forgetting one
+// takes thousands of real sign-ins within ten minutes, and even then the provider's
+// single-use code holds.
 func (b *Browser) spendLoginState(value string, expires time.Time) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -423,6 +427,13 @@ func (b *Browser) spendLoginState(value string, expires time.Time) bool {
 	}
 	b.spent[value] = expires
 	return true
+}
+
+// unspendLoginState gives a state back after a callback that signed nobody in.
+func (b *Browser) unspendLoginState(value string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.spent, value)
 }
 
 // StartLogin serves GET /app/login: a provider choice, a magic-link form,
@@ -510,7 +521,6 @@ func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	stateValue := q.Get("state")
 	state, ok := b.loginStateOf(stateValue)
-	ok = ok && b.spendLoginState(stateValue, state.expires)
 	failed := func() { redirect(w, b.Config.Origin+"/app?signin=failed", clearCookie(loginStateCookie)) }
 	cookieState := cookie(r, loginStateCookie)
 	if !ok || !state.expires.After(time.Now()) || subtle.ConstantTimeCompare([]byte(stateValue), []byte(cookieState)) != 1 ||
@@ -524,8 +534,13 @@ func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 		failed()
 		return
 	}
+	if !b.spendLoginState(stateValue, state.expires) {
+		failed()
+		return
+	}
 	id, owner, err := b.exchange(r.Context(), rt, code, state)
 	if err != nil {
+		b.unspendLoginState(stateValue)
 		b.Log.Warn("OpenID Connect sign-in failed.", "event", "auth.signin-failed", "error", err.Error())
 		failed()
 		return

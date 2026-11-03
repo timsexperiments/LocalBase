@@ -4903,9 +4903,17 @@ Sign-in routes answer without credentials, so what they keep and what they start
 **A sign-in in progress keeps nothing on the server.** There used to be a table of 128 entries with random
 eviction, so about 1000 anonymous requests to `/app/login` made a person's sign-in in progress fail. Now the
 state carries its own expiry and a MAC under a key made at start, the PKCE verifier and the nonce are derived
-from it, and the browser holds it in the same cookie as before. Nothing is left to push out. A state still
-works once: only one that has been used is remembered, up to 128 until they'd have expired, and if a flood of
-real sign-ins forgets one, the provider's single-use code still holds. A restart still ends a sign-in in progress.
+from it, and the browser holds it in the same cookie as before. Nothing is left to push out.
+
+- **The key** is made at start and held only in memory, so it's in no file and no backup. A restart makes a new one: a
+  restored root accepts no earlier state, and a sign-in in progress ends, as it always did.
+- **Seeing a state gives nothing.** The verifier and nonce are HMACs under that key, and the redirect carries only the
+  S256 challenge and the nonce.
+- **A state belongs to one browser,** as before: it must match the `__Host-` cookie, so a stolen state fails elsewhere.
+- **A state works once.** A callback that goes ahead records it, and gives it back only if it signed nobody in. So only
+  completed sign-ins stay on record, up to 4096 until they'd have expired, and failing callbacks can't push them out. If
+  thousands of real sign-ins within ten minutes ever did, the provider's single-use code would still hold. A callback
+  with the wrong cookie no longer spends the state, so someone holding only the state can't end a person's sign-in.
 
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
