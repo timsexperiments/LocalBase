@@ -107,6 +107,13 @@ finish() {
   [ -n "$DOG" ] && kill "$DOG" 2>/dev/null
   [ -n "$WORK" ] && kill "$WORK" 2>/dev/null
   [ -n "$SAMPLER" ] && kill "$SAMPLER" 2>/dev/null
+  # On any stop that isn't a clean finish, the backend goes first and at once: that is what holds the
+  # memory. A rehearsal showed a gateway asked to stop during a load can take over 30 s to go.
+  if [ "$code" != 0 ]; then
+    ps -A -o pid=,command= | awk -v p="$W/" -v g="$W/local-base" 'index($2, p) == 1 && $2 != g { print $1 }' | while read -r pid; do
+      kill -KILL "$pid" 2>/dev/null
+    done
+  fi
   stop_gateway
   sweep
   [ -n "$STUB" ] && kill "$STUB" 2>/dev/null
