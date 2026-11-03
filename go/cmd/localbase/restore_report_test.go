@@ -4,14 +4,27 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 )
 
-const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b"
+const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"
+
+// keepLetters are the only fields that keep letters from another alphabet: names a person gave, and
+// the path they typed. Everything else in the report is judged by eye, so it shows them as escapes.
+// Adding a field to the report keeps this safe by default. Adding one here is a decision.
+var keepLetters = []string{"Report.Target", "Report.ReturningKeys", "Report.KeysLost"}
+
+// keepsLetters says whether a path from plantInto is one of those, whatever its list index.
+func keepsLetters(path string) bool {
+	return slices.Contains(keepLetters, regexp.MustCompile(`\[[0-9]+\]`).ReplaceAllString(path, ""))
+}
 
 // plantInto fills a value by its type: every string gets its own marker and the characters a report
 // mustn't print, and every list gets two entries. It knows the kinds printable knows, so a field of
@@ -95,6 +108,11 @@ func TestEveryStringInTheReportIsMadePrintable(t *testing.T) {
 	}
 	for i, s := range got {
 		want := fmt.Sprintf(`field%d\x1b[2K\x0asecond-line\u202e\x9b`, i+1)
+		if keepsLetters(leaves[i]) {
+			want += "\u0430"
+		} else {
+			want += `\u0430`
+		}
 		if s != want {
 			t.Errorf("%s: %q, want %q", leaves[i], s, want)
 		}
@@ -140,6 +158,33 @@ func TestTheReportPrintsNothingThatActsOnATerminal(t *testing.T) {
 	}
 }
 
+// With the fields allowed to keep their letters left out, nothing from another alphabet reaches the
+// terminal at all, from any line.
+func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
+	rep, _ := plantedReport(t)
+	rep.Target, rep.ReturningKeys, rep.KeysLost = "", nil, nil
+	var out bytes.Buffer
+	c := &cli.Ctx{Stdout: &out, Stderr: &out}
+	printRestoreReport(c, rep)
+	printRestoreNext(c, rep, &backup.Done{})
+	for _, r := range out.String() {
+		if r > unicode.MaxASCII {
+			t.Errorf("%U reached the terminal", r)
+		}
+	}
+}
+
+// And those fields do keep them, or a person couldn't read a name of their own.
+func TestAFieldThatKeepsItsLettersDoes(t *testing.T) {
+	rep, _ := plantedReport(t)
+	safe := printable(rep)
+	for _, got := range []string{safe.Target, safe.ReturningKeys[0], safe.KeysLost[0]} {
+		if !strings.HasSuffix(got, "\u0430") {
+			t.Errorf("%q", got)
+		}
+	}
+}
+
 // Every list and setting the report holds reaches the terminal, so this test covers the lines that print them.
 func TestTheReportPrintsWhatItHolds(t *testing.T) {
 	rep, _ := plantedReport(t)
@@ -170,7 +215,7 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
 	} {
-		if !strings.Contains(got, cli.Printable(value)) {
+		if !strings.Contains(got, cli.PrintableASCII(value)) && !strings.Contains(got, cli.Printable(value)) {
 			t.Errorf("%s isn't there", name)
 		}
 	}

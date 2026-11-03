@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bytes"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/timsexperiments/LocalBase/go/internal/backup"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
 )
 
 // signInRoot is a root with these places in its sign-in settings.
@@ -77,16 +74,54 @@ func TestALookalikeOnThisRootIsShownForWhatItIs(t *testing.T) {
 	}
 }
 
-// A place in the other lines the report prints gets the same.
-func TestOtherPlacesInTheReportAreShownForWhatTheyAre(t *testing.T) {
-	var out bytes.Buffer
-	c := &cli.Ctx{Stdout: &out, Stderr: &out}
-	printRestoreReport(c, &backup.Report{Manifest: &backup.Manifest{},
-		Sources:  []backup.ModelSource{{Model: "m", Kind: "url", Where: "https://\u0435xample.com/a"}},
-		Settings: []backup.Setting{{Name: "OTLP endpoint", Value: "https://\u0435xample.com"}},
-		SignIn:   &backup.SignIn{Goes: []backup.Line{{Value: "https://\u0435xample.com", Named: "oidc:gone"}}}})
-	got := out.String()
-	if n := strings.Count(got, `\u0435xample.com`); n != 3 {
-		t.Errorf("%d of 3 are escaped:\n%s", n, got)
+// The lines the report prints from elsewhere, through the real command: a binding's issuer is its own
+// value in the database, separate from the sign-in settings, and a program's path is where a person
+// decides what runs as them.
+func TestLookalikesInBindingsAndProgramsAreShownForWhatTheyAre(t *testing.T) {
+	const lookalike = "https://\u0430ccounts.example.com"
+	const shown = `https://\u0430ccounts.example.com`
+	theirs := signInRoot(t, "https://accounts.example.com", "https://localbase.example.com", "smtp.example.com")
+	db, err := sql.Open("sqlite", filepath.Join(theirs, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('r1', 'owner', 'x', 'x', 'x')`,
+		`INSERT INTO auth_role_permissions (role_id, permission) VALUES ('r1', 'access:manage')`,
+		`INSERT INTO auth_subject_role_bindings (id, role_id, issuer, subject) VALUES ('b1', 'r1', '` + lookalike + `', 'someone')`,
+		`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', NULL, 'x')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	db.Close()
+	backend := filepath.Join(theirs, "backends.d", "custom.json")
+	if err := os.MkdirAll(filepath.Dir(backend), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backend, []byte(strings.Replace(backendWithEscapes, `"run"`, `"/usr/bin/\u0430run"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "b.lbbackup")
+	if code, out := runApp(t, "--root", theirs, "backup", "--output", file); code != 0 {
+		t.Fatalf("backup: %s", out)
+	}
+	mine := signInRoot(t, "https://accounts.example.com", "https://localbase.example.com", "smtp.example.com")
+	code, out := runApp(t, "--root", mine, "restore", "--dry-run", "--no-port-probe", "--replace", file)
+	if code != 0 {
+		t.Fatalf("restore: %s", out)
+	}
+	for name, want := range map[string]string{
+		"a binding's issuer":                "  " + shown + ": 1 role bindings",
+		"a binding this root no longer has": "would come back: " + shown + ": 1.",
+		"a program's argument":              `/usr/bin/\u0430run`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s: no %q in:\n%s", name, want, out)
+		}
+	}
+	if strings.Contains(out, lookalike) {
+		t.Errorf("the lookalike reached the terminal:\n%s", out)
 	}
 }
