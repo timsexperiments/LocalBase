@@ -545,7 +545,13 @@ func (s *Server) stopInstall(modelID string) (*mgmtOperation, error) {
 	m := s.mgmt
 	m.mu.Lock()
 	if m.installing != modelID || m.cancelInstall == nil {
-		m.mu.Unlock()
+		defer m.mu.Unlock()
+		// A cancel sent again, or sent as the install ended, answers with how it ended, so a
+		// retry is safe.
+		if op := m.operations[modelID]; op != nil {
+			out := *op
+			return &out, nil
+		}
 		return nil, &mgmtError{"conflict", "No installation of this model is running."}
 	}
 	m.cancelInstall()

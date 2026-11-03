@@ -109,6 +109,10 @@ func TestInstallCancel(t *testing.T) {
 	if o["state"] != "cancelled" || o["error"] != nil {
 		t.Errorf("a cancelled install is not a failed one: %v", o)
 	}
+	// Cancelling again is safe: the answer is how it ended, and nothing changes.
+	if again := act(freshTiny, "cancel"); again.Status != 200 || again.JSON(t)["state"] != "cancelled" {
+		t.Errorf("cancel again: %d %s", again.Status, again.Body)
+	}
 	if info, err := os.Stat(partial); err != nil || info.Size() != int64(half) {
 		t.Errorf("the partial should stay: %v %v", info, err)
 	}
@@ -123,4 +127,10 @@ func TestInstallCancel(t *testing.T) {
 		t.Fatalf("install again: %d %s", r.Status, r.Body)
 	}
 	waitState(freshTiny, "complete")
+	if again := act(freshTiny, "cancel"); again.Status != 200 || again.JSON(t)["state"] != "complete" {
+		t.Errorf("cancel after it finished: %d %s", again.Status, again.Body)
+	}
+	if o := op(freshTiny); o["state"] != "complete" {
+		t.Errorf("that cancel changed the outcome: %v", o)
+	}
 }

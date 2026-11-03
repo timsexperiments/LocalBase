@@ -614,7 +614,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
-- `POST /_localbase/model-management` also takes `{"modelId", "action":"cancel"}` for a running install, under the same `models:manage` check. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. There is no pause. TS has no cancel and answers this action 400.
+- `POST /_localbase/model-management` also takes `{"modelId", "action":"cancel"}` for a running install, under the same `models:manage` check. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. There is no pause. Sent when no install of that model is running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded. TS has no cancel and answers this action 400.
 
 ### M1 (done 2026-10-19)
 
