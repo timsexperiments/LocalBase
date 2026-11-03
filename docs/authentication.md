@@ -24,7 +24,7 @@ local-base --non-interactive --json access cloudflare \
   --team-domain "$LOCALBASE_ACCESS_TEAM_DOMAIN" \
   --audience "$LOCALBASE_ACCESS_AUDIENCE" \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -41,7 +41,7 @@ local-base --non-interactive --json access oidc add \
   --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
   --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -50,10 +50,16 @@ environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
-The examples grant `models:manage` intentionally. Without `--permissions`, signing in
-gives nothing until a policy or an invitation says otherwise. Be careful with
-permissions for everyone: anyone who holds an account with your provider can
-sign in, which for a public provider may be anyone at all.
+`--permissions` applies to everyone the provider accepts, and for a public issuer
+such as Google or GitHub that may be anyone with an account. Without it, signing in
+gives nothing until a policy or an invitation says otherwise.
+
+Never give everyone a provider accepts `models:manage`, `access:manage`,
+`keys:manage` or `system:manage`. These are powerful permissions: `models:manage`
+decides what this computer downloads and runs, `access:manage` and `keys:manage`
+decide who gets in and what they may do, and `system:manage` changes how the
+service itself behaves. Give them to named people, with a role and a binding, as
+in the policy below.
 
 To give yourself access, name your address. It gets every permission, and nobody
 else gets anything:
@@ -289,6 +295,9 @@ local-base --non-interactive --json keys create \
   --name automation-admin \
   --scopes 'access:read,access:manage,keys:read,keys:manage,models:read,models:manage'
 ```
+
+A key like this can change who has access to LocalBase and what it runs. Give it only
+to the automation that needs it.
 
 Key creation is a bootstrap operation, not a replay-safe declaration. Names are
 labels and are not unique. Do not run `keys create` on every deployment. Create
