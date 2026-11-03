@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -228,6 +229,39 @@ func transient(t *testing.T, what string, r lab.Call) {
 	}
 }
 
+// backWithin asks again, as a client does after a transient answer, until the time that answer
+// promised. A request can still reach the dead backend in the moment before the gateway notices,
+// so a second transient answer is allowed, and each one has to be clean too. It returns what went
+// wrong, or "".
+func backWithin(first lab.Call, ask func() lab.Call) string {
+	secs, err := strconv.Atoi(first.RetryAfter)
+	if err != nil || secs <= 0 {
+		return fmt.Sprintf("Retry-After %q is not a number of seconds", first.RetryAfter)
+	}
+	deadline := time.Now().Add(time.Duration(secs) * time.Second)
+	for {
+		r := ask()
+		if r.Err == nil && r.Status == 200 {
+			return ""
+		}
+		if r.Err != nil || (r.Status != 503 && r.Status != 429) || r.Code == "" || r.RetryAfter == "" {
+			return fmt.Sprintf("on the way back: %d code %q Retry-After %q err %v: %.300s", r.Status, r.Code, r.RetryAfter, r.Err, r.Body)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Sprintf("not back within the %d s its Retry-After promised: %d %.300s", secs, r.Status, r.Body)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func chatComesBack(t *testing.T, ctx context.Context, c *lab.Client, g *lab.Gateway, what string, first lab.Call) {
+	t.Helper()
+	problem := backWithin(first, func() lab.Call { return c.PostJSON(ctx, chatPath, g.Keys.User, chatBody(lab.ChatSmall, "hello")) })
+	if problem != "" {
+		t.Fatalf("%s: %s", what, problem)
+	}
+}
+
 // knownBug skips a test that fails because of an open bug, unless
 // LOCALBASE_CHAOS_ALL is set (make chaos-all). It names the bug and the pull request
 // that fixes it; that fix removes the line, and the test guards it from then on.
@@ -286,8 +320,9 @@ func TestBackendKilledMidRequest(t *testing.T) {
 	waitFor(t, "the request to be admitted", 5*time.Second, func() bool { return active(ctx, c, g, lab.ChatSmall) == 1 })
 	time.Sleep(100 * time.Millisecond) // it has reached the backend
 	killBackend(t, "llama-server")
-	transient(t, "a request whose backend died", <-done)
-	mustChat(t, ctx, c, g, lab.ChatSmall)
+	first := <-done
+	transient(t, "a request whose backend died", first)
+	chatComesBack(t, ctx, c, g, "a request whose backend died", first)
 }
 
 // The same for the media runtimes.
@@ -303,9 +338,10 @@ func TestMediaBackendKilledMidRequest(t *testing.T) {
 	go func() { done <- image("fake:slow-image") }()
 	time.Sleep(400 * time.Millisecond) // well inside the 1.5 s the fake takes
 	killBackend(t, "sd-server")
-	transient(t, "an image whose backend died", <-done)
-	if r := image("a boat"); r.Status != 200 {
-		t.Errorf("the image runtime did not come back: %d %.300s", r.Status, r.Body)
+	first := <-done
+	transient(t, "an image whose backend died", first)
+	if problem := backWithin(first, func() lab.Call { return image("a boat") }); problem != "" {
+		t.Errorf("the image runtime: %s", problem)
 	}
 }
 
@@ -437,12 +473,12 @@ func TestCrashAfterEveryRequest(t *testing.T) {
 	for i := range rounds {
 		killBackend(t, "llama-server")
 		// A request can reach the dead backend before the gateway notices; it
-		// must still be a clean answer, and the one after it must work.
+		// must still be a clean answer, and it must be back when that answer says.
 		r := c.PostJSON(ctx, chatPath, g.Keys.User, chatBody(lab.ChatSmall, "hello"))
 		if r.Err != nil || r.Status != 200 {
 			failures++
 			transient(t, fmt.Sprintf("round %d", i), r)
-			mustChat(t, ctx, c, g, lab.ChatSmall)
+			chatComesBack(t, ctx, c, g, fmt.Sprintf("round %d", i), r)
 		}
 	}
 	t.Logf("%d of %d requests met the dead backend", failures, rounds)
