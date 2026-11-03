@@ -1141,6 +1141,15 @@ before its size or hash is read, since it could otherwise be published as the mo
 nothing is written through it); reads of settings files other than auth profiles; `root/operation.go`
 and `.localbase-root.json`, written before or around the root's own setup. A runtime package's
 files keep their modes, so extraction uses `O_NOFOLLOW` alone.
+### 13.5c The checksum cache after publishing
+
+A verified file's identity includes `ctime`, and renaming a `.partial` into place changes it. TS and
+older Go therefore hash the whole file again on the next check, which is what every video start does
+(`runtime/video.go`). Go now records the identity again right after the rename, only if the inode,
+size and mtime still match what was hashed. `ctime` stays in the identity, since it is what catches a
+rewrite that restores all of those. If the file changed in that moment, or the record can't be written,
+the next check hashes once, as before. `.checksums.json` stays valid for TS
+(`TestChecksumCacheStaysValidForTS`).
 
 ### 13.6 Status changes for the cutover checklist
 
