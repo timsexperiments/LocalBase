@@ -289,8 +289,16 @@ func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
 		fail("That backend is not registered.")
 		return
 	}
+	if err := acquire.CheckSpace(u.d.RootDir, plan); err != nil {
+		fail(obs.BoundedText(err.Error(), 512))
+		return
+	}
+	id, err := u.d.Library.StartImport(plan, f.Backend, nil)
+	if err != nil {
+		fail(err.Error())
+		return
+	}
 	u.forget(token)
-	id := u.d.Library.StartImport(plan, f.Backend, nil)
 	r.Header.Set("HX-Target", "import-job")
 	u.render(w, r, "import", map[string]any{"Job": u.d.Library.Job(id)})
 }

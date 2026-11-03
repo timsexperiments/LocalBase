@@ -4202,3 +4202,29 @@ private addresses.
 **Limits.** Through a configured proxy, the proxy resolves names, so only addresses and
 names that only exist locally can be judged. A public name pointing at a private address gets
 through there. And `models:manage` is still a powerful permission: see `docs/threat-model.md`.
+
+### 31.3 What an import can cost
+
+**The problem.** An import from a source that did not say how big a file was ran without
+limit, and a source claiming a petabyte was accepted without looking at the disk. The whole
+download held the root's operation lease, so `configure` and other imports failed after 10 s
+for as long as it ran. Nothing could cancel it, and what it had staged stayed for good.
+
+| Limit | Default | What happens |
+| --- | --- | --- |
+| Free space, before starting | what the source claims, plus 2 GiB left free | Refused: 507 `import_no_space` |
+| Free space, while running (every 64 MiB) | 2 GiB left free | Stops and removes the file: `import_no_space` |
+| A file of unknown size | 256 GiB | Stops and removes the file: `import_too_large` |
+| Files in one import | 1024 | Refused: 403 `import_too_many_files` |
+| A whole import | 48 h | Stops and keeps the file to resume: `import_timed_out` |
+| Imports at once | 4, and one per model | 429 `import_busy`, 409 `import_running` |
+| A download nothing has touched | 7 days | Removed the next time anything opens the library |
+
+- **Only publishing holds the root.** `acquire.Fetch` downloads and checks with nothing held,
+  and `Fetched.Publish` runs under the lease.
+- **Cancel:** `POST /_localbase/model-imports {"action":"cancel","job":"<id>"}` (`models:manage`)
+  stops the job and removes what it downloaded. The job then has `state: "failed"` and
+  `errorCode: "import_cancelled"`. A shutdown also stops imports, but keeps their files, so the
+  same import resumes after a restart.
+- **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
+  source that keeps sending a little at a time.

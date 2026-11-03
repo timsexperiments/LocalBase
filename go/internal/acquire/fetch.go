@@ -50,11 +50,45 @@ type Result struct {
 	Inspection models.Inspection
 }
 
-// Import downloads (or copies) the plan's files into staging, checks sizes
-// and checksums, inspects the result and publishes it under
-// models/imported/<id>. Partial downloads resume. Nothing is executed and
-// no backend is registered or installed.
+// Import fetches and publishes in one step.
 func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress)) (*Result, error) {
+	f, err := Fetch(ctx, rootDir, p, progress)
+	if err != nil {
+		return nil, err
+	}
+	return f.Publish()
+}
+
+// Fetched is an import whose files are in staging, checked and waiting to be
+// published.
+type Fetched struct {
+	staging, dest string
+	model         models.Model
+	inspection    models.Inspection
+	progress      func(Progress)
+}
+
+// Publish makes a fetched import a model. Hold the root's operation lease for this,
+// not for the download, which can take hours.
+func (f *Fetched) Publish() (*Result, error) {
+	f.progress(Progress{Phase: "publish"})
+	if _, err := os.Stat(f.dest); err == nil {
+		return nil, fmt.Errorf("a model with id %s is already imported; choose another id", f.model.ID)
+	}
+	if err := os.MkdirAll(filepath.Dir(f.dest), 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(f.staging, f.dest); err != nil {
+		return nil, fmt.Errorf("publishing the files failed: %v", err)
+	}
+	f.progress(Progress{Phase: "done"})
+	return &Result{Model: f.model, Dir: f.dest, Inspection: f.inspection}, nil
+}
+
+// Fetch downloads (or copies) the plan's files into staging, checks sizes and
+// checksums, and inspects the result. Partial downloads resume. Nothing is executed
+// and no backend is registered or installed.
+func Fetch(ctx context.Context, rootDir string, p *Plan, progress func(Progress)) (*Fetched, error) {
 	if progress == nil {
 		progress = func(Progress) {}
 	}
@@ -72,6 +106,10 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 		return nil, fmt.Errorf("a model with id %s is already imported; choose another id", p.ID)
 	}
 	staging := stagingDir(rootDir, p)
+	PruneStaging(rootDir, staging)
+	if err := CheckSpace(rootDir, p); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(staging, 0o700); err != nil {
 		return nil, err
 	}
@@ -84,12 +122,12 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 		if _, err := os.Stat(final); err != nil {
 			partial := final + ".partial"
 			if f.local != "" {
-				if err := copyFile(ctx, f.local, partial, f.SizeBytes, func(n int64) {
+				if err := copyFile(ctx, f.local, partial, newBudget(staging, f.SizeBytes), func(n int64) {
 					progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 				}); err != nil {
 					return nil, err
 				}
-			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, func(n int64) {
+			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, newBudget(staging, f.SizeBytes), func(n int64) {
 				progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 			}); err != nil {
 				return nil, refusal(err, p.onHost)
@@ -158,21 +196,13 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	progress(Progress{Phase: "publish"})
-	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return nil, err
-	}
-	if err := os.Rename(staging, dest); err != nil {
-		return nil, fmt.Errorf("publishing the files failed: %v", err)
-	}
-	progress(Progress{Phase: "done"})
-	return &Result{Model: m, Dir: dest, Inspection: in}, nil
+	return &Fetched{staging: staging, dest: dest, model: m, inspection: in, progress: progress}, nil
 }
 
 var contentRangeRe = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+|\*)$`)
 
 // download fetches url into partial, resuming from its current size.
-func download(ctx context.Context, client *http.Client, url, partial string, expected int64, red *Redactor, progress func(int64)) error {
+func download(ctx context.Context, client *http.Client, url, partial string, expected int64, red *Redactor, b *budget, progress func(int64)) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		offset := int64(0)
 		if info, err := os.Stat(partial); err == nil {
@@ -234,6 +264,10 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 					werr = fmt.Errorf("the server sent more than the expected %d bytes", expected)
 					break
 				}
+				if err := b.check(done); err != nil {
+					werr = err
+					break
+				}
 				progress(done)
 			}
 			if rerr == io.EOF {
@@ -248,12 +282,16 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 		if cerr := f.Close(); werr == nil {
 			werr = cerr
 		}
+		var refused *RefusedError
+		if errors.As(werr, &refused) {
+			os.Remove(partial) // it cannot finish, and it is what is using the space
+		}
 		return werr
 	}
 	return errors.New("the server does not resume this download consistently")
 }
 
-func copyFile(ctx context.Context, src, dst string, size int64, progress func(int64)) error {
+func copyFile(ctx context.Context, src, dst string, b *budget, progress func(int64)) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -277,6 +315,11 @@ func copyFile(ctx context.Context, src, dst string, size int64, progress func(in
 				return err
 			}
 			done += int64(n)
+			if err := b.check(done); err != nil {
+				out.Close()
+				os.Remove(dst)
+				return err
+			}
 			progress(done)
 		}
 		if rerr == io.EOF {
@@ -329,7 +372,7 @@ func FetchPinned(ctx context.Context, dir string, arts []models.Artifact, hfToke
 		}
 		url := HFEndpoint() + "/" + a.Source.Repo + "/resolve/" + a.Source.Revision + "/" + escapePath(a.Source.Path)
 		partial := filepath.Join(staging, a.Filename+".partial")
-		if err := download(ctx, client, url, partial, a.SizeBytes, redactorFor(nil), func(n int64) {
+		if err := download(ctx, client, url, partial, a.SizeBytes, redactorFor(nil), newBudget(staging, a.SizeBytes), func(n int64) {
 			progress(Progress{Phase: "download", File: a.Filename, Done: n, Total: a.SizeBytes})
 		}); err != nil {
 			return err
