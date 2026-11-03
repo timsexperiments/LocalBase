@@ -88,6 +88,7 @@ sec-root-owner
 sec-key-scopes
 sec-access-scopes
 sec-remote-media
+sec-signin-defaults
 
 # Reliability
 rel-lease-release
@@ -139,3 +140,5 @@ pick feat-docs origin/rewrite/go-feat-backup-issuers
 pick fix-model-perms bdbbaaa6a5
 pick tree-docs 3c076992b8
 pick oss-release 07f9e630^
+pick doctor-crashed 829aa83cfe
+pick tree-docs2 5ce693828e
