@@ -68,6 +68,12 @@ fix-close-waits
 fix-startup-accounting
 rel-chaos
 
+# Reliability and Security
+rel-soak
+rel-crash-503
+sec-http-limits
+csp-pins
+
 # Linux, from real-runner rounds
 fix-cpu-placement
 fix-backend-supported
@@ -85,3 +91,4 @@ pick fix-orphan-backends 91462a35
 pick fix-eviction-starting origin/rewrite/go-fix-orphan-backends
 pick fix-backend-group origin/rewrite/go-fix-eviction-starting
 pick runtime-port-base origin/rewrite/go-fix-backend-group
+pick lint-zero 9b7224ef
