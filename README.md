@@ -97,11 +97,11 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 
 ## Documentation
 
-- [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md), and [the upgrade command](docs/upgrade-command.md)
+- [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md), and [the upgrade command](docs/upgrade-command.md), and [backup and restore](docs/backup.md)
 - [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
 - [Connect an app](docs/connect.md)
 - [Usage and activity](docs/usage.md)
-- [API overview](docs/api.md) and [API details](docs/api-details.md)
+- [API overview](docs/api.md), [API reference](docs/api-reference.md) and [API details](docs/api-details.md)
 - [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
 - [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)
 - [Why a model was refused](docs/model-refusals.md), [the memory reserve](docs/memory-reserve-guide.md), [GPU memory limit](docs/gpu-memory-limit.md) and [install failures](docs/install-failures.md)

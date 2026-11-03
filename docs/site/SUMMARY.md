@@ -18,6 +18,7 @@
 - [Usage and activity](usage.md)
 - [Upgrade and rollback](upgrade.md)
 - [The upgrade command](upgrade-command.md)
+- [Backup and restore](backup.md)
 - [User catalog entries](user-catalog.md)
 - [Model licenses](model-licenses.md)
 - [Speech marking](speech-marking.md)
