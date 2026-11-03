@@ -1,8 +1,10 @@
 package acquire
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -392,5 +394,76 @@ func TestRedirectDowngradeRefused(t *testing.T) {
 	}
 	if err := redirectPolicy(mk("https://b.example.com/f"), []*http.Request{mk("http://a.example.com/f")}); err != nil {
 		t.Fatalf("http -> https is an upgrade: %v", err)
+	}
+}
+
+// hostileGGUFs are headers that must never get past inspection.
+func hostileGGUFs(t *testing.T) map[string][]byte {
+	t.Helper()
+	var hugeSplit, nested bytes.Buffer
+	put := func(b *bytes.Buffer, vs ...any) {
+		for _, v := range vs {
+			binary.Write(b, binary.LittleEndian, v)
+		}
+	}
+	put(&hugeSplit, uint32(0x46554747), uint32(3), uint64(0), uint64(1), uint64(len("split.count")))
+	hugeSplit.WriteString("split.count")
+	put(&hugeSplit, uint32(10), uint64(1_000_000_000_000))
+	put(&nested, uint32(0x46554747), uint32(3), uint64(0), uint64(1), uint64(1))
+	nested.WriteString("k")
+	put(&nested, uint32(9))
+	for range 1000 {
+		put(&nested, uint32(9), uint64(1))
+	}
+	return map[string][]byte{"split-00001-of-00002.gguf": hugeSplit.Bytes(), "nested.gguf": nested.Bytes()}
+}
+
+// Through a URL import: the file downloads, is refused at inspection, and leaves
+// nothing published.
+func TestImportRefusesHostileHeaders(t *testing.T) {
+	for name, body := range hostileGGUFs(t) {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveRange(w, r, body) }))
+			defer srv.Close()
+			ctx := context.Background()
+			p, err := Resolve(ctx, root, Request{Source: srv.URL + "/" + name, AllowHTTP: true, ID: "hostile", Task: "chat"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = Import(ctx, root, p, nil)
+			if err == nil || !strings.Contains(err.Error(), "not published") {
+				t.Fatalf("%v, want a refusal", err)
+			}
+			if _, err := os.Stat(ImportedDir(root, "hostile")); err == nil {
+				t.Error("the import was published")
+			}
+			if _, err := os.Stat(filepath.Join(stagingDir(root, p), name)); err == nil {
+				t.Error("the refused file stayed in staging")
+			}
+		})
+	}
+}
+
+// Through a local path: refused while resolving, before anything is copied.
+func TestResolveLocalRefusesHostileHeaders(t *testing.T) {
+	for name, body := range hostileGGUFs(t) {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, name)
+			if err := os.WriteFile(path, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if name == "split-00001-of-00002.gguf" {
+				// The other part is present, so only the header can refuse it.
+				if err := os.WriteFile(filepath.Join(dir, "split-00002-of-00002.gguf"), body, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := Resolve(context.Background(), t.TempDir(), Request{Source: path, ID: "hostile", Task: "chat"})
+			if err == nil || !strings.Contains(err.Error(), "cannot be imported") {
+				t.Fatalf("%v, want a refusal", err)
+			}
+		})
 	}
 }

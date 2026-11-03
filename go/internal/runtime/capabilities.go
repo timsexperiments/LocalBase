@@ -233,11 +233,19 @@ func checkpointDetect(names []string) *Detected {
 	return &d
 }
 
+// maxSidecarBytes bounds a JSON file read from a model's directory.
+const maxSidecarBytes = 4 << 20
+
 var img2imgPipeline = regexp.MustCompile(`^StableDiffusion(XL)?(Img2Img|Inpaint)?Pipeline$|Img2Img|Inpaint`)
 
 func diffusersDetect(path string) *Detected {
-	b, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxSidecarBytes+1))
+	if err != nil || len(b) > maxSidecarBytes {
 		return nil
 	}
 	var idx struct {
