@@ -65,6 +65,10 @@ The Go order within step 4 belongs to the Go thread. If it changes, keep the doc
 
 Everything marked not verified is stated in the README or docs, so shipping with it is a judgment call rather than a hidden risk. **The maintainer decides which of these block.**
 
+## Rehearsing
+
+`make bootstrap && make rehearse` runs the workflow's local steps against local artifacts and publishes nothing: version and changelog checks, notices, cross-compile, archives, SBOM, checksums, formula, notes, and the installer test on this machine. It ends by listing what only a real tag run can prove.
+
 ## Cutting the release
 
 From a clean, up-to-date `main`:
