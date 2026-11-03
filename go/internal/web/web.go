@@ -73,11 +73,13 @@ type UI struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
 
-	results     resultStore
-	notes       labNotes
-	previewMu   sync.Mutex
+	pace        installPace
 	localSignIn *template.Template
-	previews    map[string][]byte // voice samples, by model and voice
+
+	results   resultStore
+	notes     labNotes
+	previewMu sync.Mutex
+	previews  map[string][]byte // voice samples, by model and voice
 }
 
 func New(d Deps) *UI {
@@ -95,12 +97,7 @@ func New(d Deps) *UI {
 		"themeColor":    themeColor,
 		"asset":         func(name string) string { return "/app/assets/" + name + "?v=" + u.assetVer[name] },
 		"gb":            func(b int64) string { return fmt.Sprintf("%.1f GB", float64(b)/1e9) },
-		"size": func(b int64) string {
-			if b < 1e9 {
-				return fmt.Sprintf("%.0f MB", float64(b)/1e6)
-			}
-			return fmt.Sprintf("%.1f GB", float64(b)/1e9)
-		},
+		"size":          sizeText,
 		"num": func(n int) string {
 			s := fmt.Sprint(n)
 			for i := len(s) - 3; i > 0; i -= 3 {
@@ -108,7 +105,7 @@ func New(d Deps) *UI {
 			}
 			return s
 		},
-		"gib":     func(b int64) string { return fmt.Sprintf("%.1f GiB", float64(b)/float64(memory.GiB)) },
+		"gib":     gibText,
 		"seconds": func(ms int64) float64 { return float64(ms) / 1000 },
 		"list":    func(v ...string) []string { return v },
 		"dict": func(kv ...any) map[string]any {
@@ -118,10 +115,14 @@ func New(d Deps) *UI {
 			}
 			return m
 		},
-		"section":  section,
-		"lower":    strings.ToLower,
-		"canAdmin": func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
-		"initial":  initial,
+		"section":    section,
+		"lower":      strings.ToLower,
+		"canAdmin":   func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
+		"initial":    initial,
+		"firstWords": firstWords,
+		"uses":       usesText,
+		"mayDetail":  mayNotFitDetail,
+		"aboutGib":   aboutGib,
 		"pct": func(part, whole int64) string {
 			if whole <= 0 {
 				return "0"
@@ -131,18 +132,25 @@ func New(d Deps) *UI {
 	}
 	u.localSignIn = template.Must(template.New("localsignin.html").Funcs(funcs).ParseFS(templateFS, "templates/localsignin.html"))
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
+	auth.Stylesheet = "/app/assets/app.css?v=" + u.assetVer["app.css"]
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin"} {
+	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound", "noaccess"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
 	m := http.NewServeMux()
-	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
-	m.HandleFunc("GET /app", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/app/chat", http.StatusFound) })
+	m.HandleFunc("GET /{$}", u.home)
+	m.HandleFunc("GET /app", u.home)
+	m.HandleFunc("GET /app/welcome", u.need("models:read", u.welcome))
+	m.HandleFunc("GET /app/welcome/choose", u.need("models:read", u.welcomeChoose))
+	m.HandleFunc("POST /app/welcome/get", u.mutating("models:manage", u.welcomeGet))
+	m.HandleFunc("GET /app/welcome/getting", u.need("models:read", u.welcomeGetting))
+	m.HandleFunc("GET /app/welcome/progress", u.need("models:read", u.welcomeProgress))
 	m.HandleFunc("GET /app/chat", u.need("models:read", u.chat))
 	m.HandleFunc("GET /app/chat/default", u.need("models:read", u.chatDefault))
 	m.HandleFunc("GET /app/settings", u.need("models:read", u.settings))
 	m.HandleFunc("POST /app/settings/hf-token", u.mutating("models:manage", u.hfToken))
+	m.HandleFunc("POST /app/settings/computer-name", u.mutating("models:manage", u.computerNameSave))
 	m.HandleFunc("POST /app/settings/default-models", u.mutating("models:manage", u.defaultModels))
 	m.HandleFunc("GET /app/admin", u.admin)
 	m.HandleFunc("POST /app/admin/access", u.mutating("access:manage", u.adminAccess))
@@ -197,7 +205,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/voices/{id}/rename", u.mutating("models:manage", u.voiceRename))
 	m.HandleFunc("POST /app/voices/{id}/delete", u.mutating("models:manage", u.voiceDelete))
 	m.HandleFunc("GET /app/voices/{id}/audio", u.need("models:manage", u.voiceAudio))
-	m.HandleFunc("/app/", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	m.HandleFunc("/app/", u.notFound)
 	u.mux = m
 	return u
 }
@@ -285,6 +293,8 @@ func section(page string) string {
 		return "studio"
 	case "library", "get", "details", "import", "backends":
 		return "models"
+	case "notfound", "forbidden":
+		return "" // no tab is where you are
 	}
 	return "more" // voices, settings, admin
 }
@@ -328,6 +338,10 @@ func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/app/login", http.StatusSeeOther)
 			return
 		}
+		if len(p.Permissions) == 0 {
+			u.noAccess(w, r, p)
+			return
+		}
 		if !p.Can(permission) {
 			w.WriteHeader(http.StatusForbidden)
 			u.render(w, r, "forbidden", map[string]any{"Permission": permission})
@@ -349,7 +363,8 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
-	if name == "layout" && (page == "library" || page == "studio" || page == "get") {
+	// Everywhere someone is signed in. Running draws its own, with the legend under it.
+	if name == "layout" && data["Principal"] != nil && page != "running" && page != "noaccess" {
 		if strip := u.memoryStrip(r); strip != nil {
 			data["Strip"] = strip
 		}

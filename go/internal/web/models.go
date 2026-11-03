@@ -178,7 +178,11 @@ func (u *UI) library(w http.ResponseWriter, r *http.Request) {
 type CatalogRow struct {
 	ID, Name, Initial, Task string
 	DownloadBytes           int64
-	Fit                     string // fits | tight | wont-fit | "" (unknown)
+	UsesBytes               int64  // memory while running, at these launch settings
+	FreeFirstBytes          int64  // how much to free before it would start, when it wouldn't now
+	Fit                     string // fits | tight | close-others | wont-fit | "" (unknown)
+	Forecast                bool   // Fit is the gateway's answer for right now, not total memory
+	MayNotFit               string // the catalog's rough figure says no: words, and the choice stays open
 	Installed               bool
 }
 
@@ -199,7 +203,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
 			row.DownloadBytes += a.ExpectedSizeBytes
 		}
 		if f := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
-			row.Fit = f.Fit
+			row.Fit, row.UsesBytes = f.Fit, f.DemandBytes
 		}
 		rows = append(rows, row)
 	}
@@ -220,49 +224,93 @@ func (u *UI) running(w http.ResponseWriter, r *http.Request) {
 	u.renderRunning(w, r, "", false)
 }
 
+// runningRow is one runtime holding memory, as the legend counts it.
+type runningRow struct {
+	Runtime, ID, Name, Task string
+	Bytes                   int64
+	Source                  string // measured | estimated
+	Active, Waiting         int
+	State                   string
+	Sheet                   string
+}
+
+var runtimeTasks = map[string]string{"llm": "Chat", "stt": "Transcription", "tts": "Speech", "image": "Images", "video": "Video"}
+
+// runningRows is one row for every runtime in the host reading, so the screen agrees with its
+// own legend. The text model also gets a row if the reading hasn't caught up with it yet.
+func (u *UI) runningRows(h *hostReading, llmID string, llmPlanned int64, llmActive int, st runtime.Snapshot) []runningRow {
+	rows := []runningRow{}
+	seenLLM := false
+	add := func(rt, id string, bytes int64, source string, a hostActivity) {
+		row := runningRow{Runtime: rt, ID: id, Name: id, Task: runtimeTasks[rt], Bytes: bytes, Source: rowSource[source], Active: a.InFlight, Waiting: a.Queued, Sheet: "unload-sheet-" + rt}
+		if s := u.d.Catalog.ByID(id); s != nil {
+			row.Name = s.Name()
+			if t, _ := task(s); t != "" {
+				row.Task = t
+			}
+		}
+		if rt == "llm" && (llmID == "" || id == llmID) {
+			row.State, row.Active, row.Waiting, row.Sheet = st.State, llmActive, st.Waiting, "unload-sheet"
+		}
+		// Two models can share a runtime; each still needs its own sheet.
+		if slices.ContainsFunc(rows, func(o runningRow) bool { return o.Sheet == row.Sheet }) {
+			row.Sheet = fmt.Sprintf("%s-%d", row.Sheet, len(rows))
+		}
+		rows = append(rows, row)
+	}
+	for _, rt := range h.Host.Memory.LocalBase.Runtimes {
+		// A reservation with no model yet is a model on its way, which the page says apart.
+		if rt.ModelID == nil || *rt.ModelID == "" {
+			continue
+		}
+		seenLLM = seenLLM || rt.Runtime == "llm"
+		add(rt.Runtime, *rt.ModelID, rt.Bytes, rt.Source, h.activity(rt.Runtime))
+	}
+	if llmID != "" && !seenLLM {
+		add("llm", llmID, llmPlanned, "planned", hostActivity{})
+	}
+	return rows
+}
+
 // renderRunning draws Running now; notice is the outcome of an unload.
 func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string, failed bool) {
-	snap := u.d.Memory.Snapshot(r.Context())
-	capacity := u.d.Memory.Topology().SystemCapacity
 	id, plan, active := u.d.LLM.Running()
-	var models int64
-	var item map[string]any
-	if id != "" {
-		used, measured := u.d.LLM.Footprint(r.Context())
-		if !measured {
-			used = plan.Demand.UnifiedBytes
-		}
-		models = used
-		name := id
-		if s := u.d.Catalog.ByID(id); s != nil {
-			name = s.Name()
-		}
-		item = map[string]any{"ID": id, "Name": name, "Bytes": used, "Measured": measured, "Active": active,
-			"Slots": plan.Parallel.Slots, "Context": plan.Budget.EffectiveContext}
+	h, ok := u.readHost(r)
+	if !ok {
+		h = &hostReading{}
 	}
-	other := capacity - max(snap.Available, 0) - models
 	state := u.d.LLM.Snapshot()
-	if item != nil {
-		item["Waiting"] = state.Waiting
-		item["State"] = state.State
+	var planned int64
+	if id != "" {
+		planned = plan.Demand.UnifiedBytes
 	}
+	rows := u.runningRows(h, id, planned, active, state)
+	// Whatever the rows don't name: a model on its way holds memory before it has a row.
+	listed := int64(0)
+	for _, row := range rows {
+		listed += row.Bytes
+	}
+	gettingReady := h.Host.Memory.LocalBase.Bytes - listed
 	// One sentence for screen readers, announced only when it changes.
 	summary := "Nothing is loaded."
 	switch {
 	case state.State == "starting":
 		summary = "A model is starting."
-	case item != nil && state.State == "draining":
-		summary = fmt.Sprintf("%s is finishing before another model loads.", item["Name"])
-	case item != nil && active > 0:
-		summary = fmt.Sprintf("%s is busy.", item["Name"])
-	case item != nil:
-		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
+	case len(rows) > 1:
+		summary = fmt.Sprintf("%d models are loaded.", len(rows))
+	case len(rows) == 1 && rows[0].State == "draining":
+		summary = fmt.Sprintf("%s is finishing before another model loads.", rows[0].Name)
+	case len(rows) == 1 && rows[0].Active > 0:
+		summary = fmt.Sprintf("%s is busy.", rows[0].Name)
+	case len(rows) == 1:
+		summary = fmt.Sprintf("%s is loaded and idle.", rows[0].Name)
 	}
-	u.render(w, r, "running", map[string]any{
-		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0), "Host": computerName(),
-		"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
-		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed,
-	})
+	data := u.memoryView(r, h)
+	for k, v := range map[string]any{"GettingReady": max(gettingReady, 0), "BusyWith": h.busyWith(), "Rows": rows, "Starting": state.State == "starting" && len(rows) == 0, "Summary": summary,
+		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed} {
+		data[k] = v
+	}
+	u.render(w, r, "running", data)
 }
 
 // unload asks the gateway to unload a model, waiting up to 30 s for its
@@ -281,21 +329,21 @@ func (u *UI) unload(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(res.Body, &out)
 	switch {
 	case res.Status == http.StatusOK && out.Freed > 0:
-		u.renderRunning(w, r, fmt.Sprintf("Unloaded. Freed %.1f GB.", float64(out.Freed)/1e9), false)
+		u.renderRunning(w, r, fmt.Sprintf("Freed %.1f GB. Its files stay installed.", float64(out.Freed)/1e9), false)
 	case res.Status == http.StatusOK:
-		u.renderRunning(w, r, "Unloaded.", false)
+		u.renderRunning(w, r, "Done. Its files stay installed.", false)
 	case out.Error.Code == "model_busy" && out.Error.InFlight > 0:
 		u.renderRunning(w, r, fmt.Sprintf("It’s busy with %d %s. Try again when they finish.", out.Error.InFlight, map[bool]string{true: "request", false: "requests"}[out.Error.InFlight == 1]), true)
 	case out.Error.Code == "model_busy":
 		u.renderRunning(w, r, "It is busy, so it stayed loaded. Try again in a moment.", true)
 	case out.Error.Code == "model_not_loaded":
-		u.renderRunning(w, r, "It was already unloaded.", false)
+		u.renderRunning(w, r, "It was already out of memory.", false)
 	case res.Status == http.StatusNotFound && out.Error.Code == "":
-		u.renderRunning(w, r, "This LocalBase can’t unload models yet.", true)
+		u.renderRunning(w, r, "This LocalBase can’t free a model’s memory yet.", true)
 	default:
 		msg := out.Error.Message
 		if msg == "" {
-			msg = "It could not be unloaded. Try again."
+			msg = "Its memory couldn’t be freed. Try again."
 		}
 		u.renderRunning(w, r, msg, true)
 	}
@@ -335,4 +383,13 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	}
 	u.render(w, r, "details", map[string]any{"Spec": s, "Task": t, "Disk": u.installedBytes(s),
 		"Fit": runtime.FitFor(s, u.memoryGB(), geo, peaks, u.d.Catalog.PlannableFeedPeaks(s)), "Backend": backend, "Placement": place})
+}
+
+// firstWords names something by how it begins.
+func firstWords(text string) string {
+	words := strings.Fields(text)
+	if len(words) <= 6 {
+		return strings.TrimRight(strings.Join(words, " "), " .,;:!?")
+	}
+	return strings.TrimRight(strings.Join(words[:6], " "), " .,;:!?") + "…"
 }

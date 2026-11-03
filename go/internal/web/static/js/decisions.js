@@ -141,10 +141,11 @@ function showProblem(found) {
 // One question as a run: waits for the end, returns the /v1 body, deletes the run.
 async function follow(id, signal, onStatus) {
   let failure = null;
+  let code;
   let end = null;
   for await (const e of runs.events(id, { signal, after: "" })) {
     if (e.event === "status") onStatus?.(e.data?.status);
-    if (e.event === "error") failure = e.data?.error?.message ?? null;
+    if (e.event === "error") { failure = e.data?.error?.message ?? null; code = e.data?.error?.code; }
     if (e.event === "end") end = e.data;
   }
   if (end?.status === "completed") {
@@ -153,7 +154,7 @@ async function follow(id, signal, onStatus) {
     return body;
   }
   runs.dismiss(id).catch(() => {});
-  throw new Error(failure ?? end?.error?.message ?? runs.endMessage(end));
+  throw Object.assign(new Error(failure ?? end?.error?.message ?? runs.endMessage(end)), { code: code ?? end?.error?.code });
 }
 
 async function askOnce(body, onRun, onStatus, signal) {
@@ -228,7 +229,7 @@ function failOne(error, stopped) {
     state.collapsed = false;
     say("Stopped.");
   } else {
-    state.one = { ...state.one, status: "failed", error: unreachable(error) ? "Could not reach LocalBase. Check the connection and try again." : error.message, runId: "" };
+    state.one = { ...state.one, status: "failed", error: unreachable(error) ? "Could not reach LocalBase. Check the connection and try again." : error.message, tooLarge: error.code === "model_too_large", runId: "" };
     say(error.message);
   }
   update();
@@ -330,7 +331,7 @@ function renderOne() {
     box.replaceChildren(
       el("div", { class: "decide-card" },
         el("p", { role: "alert", class: "font-semibold" }, one.error),
-        el("button", { type: "submit", form: "decide", class: "btn btn-quiet mt-3" }, "Try again"),
+        one.tooLarge ? null : el("button", { type: "submit", form: "decide", class: "btn btn-quiet mt-3" }, "Try again"),
       ),
     );
     return;
