@@ -66,6 +66,30 @@ func (s *Server) principal(r *http.Request) *auth.Principal {
 	return p
 }
 
+// errCallerGone is a key that stopped working after its request was authenticated.
+var errCallerGone = errors.New("the calling key is no longer active")
+
+// adminCaller reads what the caller holds now, with adminMu held. A key or a role can
+// change between authenticating a request and acting on it, and the change that wins
+// that race may be the one taking this caller's permissions away.
+func (s *Server) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyCaller, error) {
+	switch {
+	case p.Kind == "api-key":
+		k, err := s.Store.APIKeyByID(ctx, p.ID)
+		var missing *store.ErrKeyNotFound
+		if errors.As(err, &missing) || (err == nil && !auth.ActiveKey(*k)) {
+			return auth.KeyCaller{}, errCallerGone
+		}
+		if err != nil {
+			return auth.KeyCaller{}, err
+		}
+		return auth.KeyCaller{Holds: auth.Canonical(k.Scopes), Key: k}, nil
+	case p.Kind == "browser-session" && p.Identity != nil && s.Browser.Enabled():
+		return auth.KeyCaller{Holds: s.Browser.Authorize(ctx, p.Identity).Permissions}, nil
+	}
+	return auth.KeyCaller{Holds: p.Permissions}, nil
+}
+
 const maxManagementBody = 64 * 1024
 
 func readManagement(w http.ResponseWriter, r *http.Request) (json.RawMessage, bool) {
@@ -106,18 +130,21 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	mapped := map[string][2]any{
-		"policy-not-configured":    {"policy_not_configured", 409},
-		"managed-user-not-found":   {"managed_user_not_found", 404},
-		"managed-user-exists":      {"managed_user_exists", 409},
-		"role-not-found":           {"role_not_found", 400},
-		"policy-conflict":          {"policy_conflict", 409},
-		"policy-revision-conflict": {"policy_revision_conflict", 409},
-		"would-lock-out-admins":    {"would_lock_out_admins", 409},
+		"policy-not-configured":      {"policy_not_configured", 409},
+		"managed-user-not-found":     {"managed_user_not_found", 404},
+		"managed-user-exists":        {"managed_user_exists", 409},
+		"role-not-found":             {"role_not_found", 400},
+		"policy-conflict":            {"policy_conflict", 409},
+		"policy-revision-conflict":   {"policy_revision_conflict", 409},
+		"would-lock-out-admins":      {"would_lock_out_admins", 409},
+		"exceeds-caller-permissions": {"exceeds_caller_permissions", 403},
+		"exceeds-caller-expiry":      {"exceeds_caller_expiry", 403},
 	}[ae.Code]
-	if ae.Code == "would-lock-out-admins" {
-		// Go-only lockout rules: the error carries its own explanation.
+	switch ae.Code {
+	case "would-lock-out-admins", "exceeds-caller-permissions", "exceeds-caller-expiry":
+		// Rules of this gateway: the error carries its own explanation.
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, 409, map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
+		writeJSON(w, mapped[1].(int), map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
 		return true
 	}
 	managementError(w, mapped[1].(int), mapped[0].(string))
@@ -225,15 +252,48 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		managementError(w, 400, "validation_failed")
 		return
 	}
+	// From the checks to the write, nothing else changes keys or access.
+	s.adminMu.Lock()
+	defer s.adminMu.Unlock()
+	caller, err := s.adminCaller(ctx, p)
+	switch {
+	case errors.Is(err, errCallerGone):
+		managementError(w, 401, "invalid_api_key")
+		return
+	case err != nil:
+		serviceUnavailable(w, r, "Key management")
+		return
+	case !slices.Contains(caller.Holds, "keys:manage"):
+		managementError(w, 403, "insufficient_permissions")
+		return
+	}
+	var target *store.APIKey
 	if in.Action != "create" {
-		if _, err := s.Store.APIKeyByID(ctx, keyID); err != nil {
+		if target, err = s.Store.APIKeyByID(ctx, keyID); err != nil {
 			managementError(w, 404, "key_not_found")
 			return
 		}
 	}
-	// Lockout rules (a Go addition, DESIGN §13.6): not your own key, and
-	// never the last principal with access:manage.
-	if in.Action == "revoke" || in.Action == "set-scopes" {
+	days := 0
+	if in.ExpiresDays != nil {
+		days = int(*in.ExpiresDays)
+	}
+	switch in.Action {
+	case "create":
+		err = caller.CheckCreate(scopes, days)
+	case "rotate":
+		err = caller.CheckRotate(target)
+	case "revoke":
+		err = caller.CheckRevoke(target)
+	case "set-scopes":
+		err = caller.CheckSetScopes(target, scopes)
+	}
+	if err != nil {
+		s.domainError(w, err)
+		return
+	}
+	// Lockout rules (DESIGN §13.6): never the last principal with access:manage.
+	if in.Action != "create" {
 		var perms []string
 		if cfg, err := auth.LoadAccess(s.Root.Dir); err == nil && cfg != nil {
 			perms = cfg.Permissions
@@ -243,22 +303,16 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 			serviceUnavailable(w, r, "Key management")
 			return
 		}
-		callerKey := ""
-		if p.Kind == "api-key" {
-			callerKey = p.ID
-		}
-		removes := in.Action == "revoke" || !slices.Contains(scopes, "access:manage")
-		if err := g.CheckKeyChange(callerKey, keyID, removes, in.Action == "revoke"); err != nil {
+		if err := g.CheckKeyChange(caller.KeyID(), target, in.Action, scopes); err != nil {
 			s.domainError(w, err)
 			return
 		}
 	}
+	if s.beforeAdminWrite != nil {
+		s.beforeAdminWrite()
+	}
 	switch in.Action {
 	case "create":
-		days := 0
-		if in.ExpiresDays != nil {
-			days = int(*in.ExpiresDays)
-		}
 		k, raw, err := s.Store.CreateAPIKeyExpiring(ctx, *in.Name, scopes, days)
 		if err != nil {
 			serviceUnavailable(w, r, "Key management")
