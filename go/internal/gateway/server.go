@@ -581,8 +581,7 @@ func (s *Server) Ready() bool {
 // (`status`), behind the instance token like /_localbase/instance: model
 // ids stay off the unauthenticated /health (DESIGN §18).
 func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
-	o := s.Root.Instance()
-	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken || s.LLM == nil {
+	if !instanceTokenMatches(s.Root.Instance(), r) || s.LLM == nil {
 		w.WriteHeader(404)
 		return
 	}
@@ -593,7 +592,7 @@ func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 	o := s.Root.Instance()
-	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken {
+	if !instanceTokenMatches(o, r) {
 		w.WriteHeader(404)
 		return
 	}
