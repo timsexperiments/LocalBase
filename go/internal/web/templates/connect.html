@@ -1,0 +1,155 @@
+{{define "title"}}Connect an app · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="connect-title" class="mx-auto grid max-w-2xl gap-4">
+  <div>
+    <h1 id="connect-title" class="page-title">Connect an app</h1>
+    <p class="page-lead">Point an editor, an agent or your own code at this computer. It needs an address, a key and a model.</p>
+  </div>
+  {{template "connect-body" .}}
+</section>
+<script type="module" src="{{asset "js/connect.js"}}"></script>
+{{end}}
+
+{{define "connect-body"}}
+<div id="connect-body" class="grid min-w-0 gap-4">
+  {{with .Error}}<p class="notice notice-error" role="alert">{{.}}</p>{{end}}
+  {{if .NoAuth}}<p class="notice" role="status">This gateway runs without sign-in, for local development on this computer only. Any key works, so these snippets carry a placeholder.</p>{{end}}
+
+  <section class="group-card grid gap-3" aria-labelledby="connect-address-title">
+    <h2 id="connect-address-title" class="group-title">Address</h2>
+    <ul class="grid gap-3">
+      {{range .Bases}}
+      <li class="grid gap-1" data-copy-scope>
+        <span class="text-sm font-semibold">{{.Label}}</span>
+        <span class="flex min-w-0 flex-wrap items-center gap-2">
+          <code class="min-w-0 flex-1 wrap-anywhere" data-copy-text>{{.URL}}</code>
+          <button type="button" class="btn btn-quiet min-h-11" data-copy aria-label="Copy {{.Label}}">Copy</button>
+        </span>
+        {{with .Note}}<span class="text-sm text-muted">{{.}}</span>{{end}}
+      </li>
+      {{end}}
+    </ul>
+  </section>
+
+  {{if not .NoAuth}}
+  <section class="group-card grid gap-3" aria-labelledby="connect-key-title" {{if .Secret}}hx-history="false"{{end}}>
+    <h2 id="connect-key-title" class="group-title">Key</h2>
+    {{if .Secret}}
+    <div class="grid gap-2 rounded-xl border border-accent p-3" data-copy-scope role="group" aria-label="New API key secret">
+      <p class="font-bold">Copy this secret now</p>
+      <p class="text-sm text-muted">It will not be shown again. The snippets below hold it until you leave this page.</p>
+      <code class="block rounded-lg bg-surface-muted p-3 wrap-anywhere" data-copy-text data-connect-secret>{{.Secret}}</code>
+      <button type="button" class="btn btn-primary min-h-11 justify-self-start" data-copy>Copy secret</button>
+    </div>
+    {{else if .CanCreateKey}}
+    <form class="grid gap-3" hx-post="/app/connect/key" hx-target="#connect-body" hx-swap="outerHTML" hx-include="#connect-choices">
+      <p class="text-sm text-muted">{{(index .Presets 0).Detail}}</p>
+      <button type="submit" name="preset" value="chat" class="btn btn-primary min-h-11 justify-self-start">Create a key for chat</button>
+    </form>
+    <details class="confirm">
+      <summary class="btn btn-quiet min-h-11">More choices</summary>
+      <form class="mt-3 grid gap-3" hx-post="/app/connect/key" hx-target="#connect-body" hx-swap="outerHTML" hx-include="#connect-choices">
+        <fieldset class="grid gap-1">
+          <legend class="text-sm font-semibold">What it can do</legend>
+          {{range .Presets}}
+          <label class="flex min-h-11 items-center gap-2"><input type="radio" class="size-4 shrink-0 accent-[var(--lb-accent)]" name="preset" value="{{.ID}}" {{if eq .ID "chat"}}checked{{end}}>
+            <span class="min-w-0"><span class="block font-semibold">{{.Label}}</span><span class="block text-sm text-muted">{{.Detail}}</span></span></label>
+          {{end}}
+        </fieldset>
+        <label class="grid gap-1"><span class="text-sm font-semibold">Name</span>
+          <input class="input min-h-11" name="name" maxlength="128" placeholder="The app it is for" autocomplete="off"></label>
+        <button type="submit" class="btn btn-primary min-h-11 justify-self-start">Create key</button>
+      </form>
+    </details>
+    <a class="inline-flex min-h-11 items-center font-semibold text-accent" href="/app/admin?section=keys">See and revoke keys in Admin</a>
+    {{else}}
+    <p class="text-sm text-muted">Someone who manages keys can create one in Admin. On the computer running LocalBase:</p>
+    <div class="grid gap-2" data-copy-scope>
+      <code class="block rounded-lg bg-surface-muted p-3 wrap-anywhere" data-copy-text>local-base keys create --name my-app --scopes inference:chat,models:read</code>
+      <button type="button" class="btn btn-quiet min-h-11 justify-self-start" data-copy aria-label="Copy the command">Copy</button>
+    </div>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if or (gt (len .Bases) 1) (gt (len .Models) 1)}}
+  <form id="connect-choices" class="group-card grid gap-3" method="get" action="/app/connect" hx-get="/app/connect" hx-trigger="change" hx-target="#connect-snippets" hx-swap="outerHTML" hx-push-url="false">
+    {{if gt (len .Bases) 1}}
+    <label class="grid gap-1"><span class="text-sm font-semibold">Show snippets for</span>
+      <select class="input min-h-11" name="base">{{range .Bases}}<option value="{{.URL}}" {{if eq .URL $.Base}}selected{{end}}>{{.Label}}: {{.URL}}</option>{{end}}</select></label>
+    {{end}}
+    {{if gt (len .Models) 1}}
+    <label class="grid gap-1"><span class="text-sm font-semibold">Model</span>
+      <select class="input min-h-11" name="model">{{range .Models}}<option value="{{.ID}}" {{if eq .ID $.Model}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+    {{end}}
+  </form>
+  {{else}}
+  <div id="connect-choices" hidden></div>
+  {{end}}
+  {{if not .Models}}<p class="notice" role="status">No chat model is installed yet, so the snippets say <code>{{.ModelToken}}</code>. <a class="font-semibold text-accent" href="/app/models/get">Get a model</a>, then come back.</p>{{end}}
+
+  {{template "connect-snippets" .}}
+
+  <details class="group-card">
+    <summary class="group-title min-h-11 cursor-pointer content-center">What will not work</summary>
+    <ul class="mt-2 grid list-disc gap-2 pl-5 text-sm">
+      <li>Anything that needs <code>/v1/responses</code>, <code>/v1/completions</code> or Anthropic's <code>/v1/messages</code>. LocalBase serves chat completions.</li>
+      <li>A key used from a web page. Browsers are refused on purpose, and there are no CORS headers.</li>
+      <li>A service that calls the address from its own servers. It cannot reach this computer's own address, only a public one.</li>
+      {{range .Unusable}}<li><span class="font-semibold">{{.Name}}.</span> {{.Why}}<br><a class="inline-flex min-h-11 items-center text-base font-semibold text-accent" href="{{.Docs}}" rel="noreferrer" target="_blank">{{.Name}} documentation</a></li>{{end}}
+    </ul>
+  </details>
+  <div>
+    <p class="text-sm text-muted">Building something else? The whole API is described here.</p>
+    <a class="inline-flex min-h-11 items-center font-semibold text-accent" href="/openapi.json" hx-boost="false">/openapi.json</a>
+  </div>
+  <p class="sr-only" role="status" data-copy-status></p>
+</div>
+{{end}}
+
+{{define "connect-snippets"}}
+<div id="connect-snippets" class="grid min-w-0 gap-4">
+  {{range .Groups}}
+  <section aria-label="{{.Label}}">
+    <h2 class="list-label">{{.Label}}</h2>
+    <div class="list-group">
+      {{range .Clients}}
+      <details class="min-w-0" data-client="{{.ID}}" {{if .Open}}open{{end}}>
+        <summary class="list-row cursor-pointer"><span class="min-w-0 flex-1 font-semibold">{{.Name}}</span>{{if not .Run}}<span class="pill">Not run</span>{{end}}{{template "icon-chevron"}}</summary>
+        <div class="grid min-w-0 gap-4 px-4 pt-1 pb-4">
+          {{range .Snippets}}{{template "connect-snippet" .}}{{end}}
+          {{with .Note}}<p class="text-sm text-muted">{{.}}</p>{{end}}
+          <a class="inline-flex min-h-11 items-center font-semibold text-accent" href="{{.Docs}}" hx-boost="false" rel="noreferrer" target="_blank">{{.Name}} documentation</a>
+        </div>
+      </details>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+</div>
+{{end}}
+
+{{define "connect-snippet"}}
+<div class="grid min-w-0 gap-2">
+  <h3 class="text-sm font-semibold">{{.Label}}{{with .Path}} <span class="font-normal text-muted">in <code class="wrap-anywhere">{{.}}</code></span>{{end}}</h3>
+  {{with .Status}}<p class="text-sm text-muted" data-not-run>{{.}}.</p>{{end}}
+  {{if .Fields}}
+  <ul class="grid gap-2">
+    {{range .Fields}}
+    <li class="grid gap-1" data-copy-scope>
+      <span class="text-sm text-muted">{{.Label}}</span>
+      <span class="flex min-w-0 flex-wrap items-center gap-2">
+        <code class="min-w-0 flex-1 wrap-anywhere" data-copy-text data-snippet>{{.Value}}</code>
+        <button type="button" class="btn btn-quiet min-h-11" data-copy aria-label="Copy {{.Label}}">Copy</button>
+      </span>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <div class="grid min-w-0 gap-2" data-copy-scope>
+    <pre class="overflow-x-auto rounded-lg bg-surface-muted p-3 text-sm" tabindex="0" aria-label="{{.Label}}"><code data-copy-text data-snippet>{{.Text}}</code></pre>
+    <button type="button" class="btn btn-quiet min-h-11 justify-self-start" data-copy aria-label="Copy: {{.Label}}">Copy</button>
+  </div>
+  {{end}}
+</div>
+{{end}}

@@ -29,6 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
 // to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
 let askedWidth = 0;
+const pageFits = () => `document.documentElement.scrollWidth <= document.documentElement.clientWidth`;
 const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
@@ -821,7 +822,7 @@ check(planted.id?.includes(".") && planted.requested === null, `the old target w
 
 // --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
-for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get", "/app/models/running", "/app/settings", "/app/welcome", "/app/welcome/choose", "/app/studio/image", "/app/studio/decisions"]) {
+for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get", "/app/models/running", "/app/connect", "/app/settings", "/app/welcome", "/app/welcome/choose", "/app/studio/image", "/app/studio/decisions"]) {
   await nav(path);
   const sizes = await ev(`(() => {
     const seen = (el) => { const r = el.getBoundingClientRect(), st = getComputedStyle(el); return r.width > 1 && r.height > 1 && st.visibility !== "hidden" && !el.closest(".sr-only, dialog:not([open]), [hidden]"); };
