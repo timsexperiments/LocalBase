@@ -152,6 +152,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app/settings", u.need("models:read", u.settings))
 	m.HandleFunc("POST /app/settings/hf-token", u.mutating("models:manage", u.hfToken))
 	m.HandleFunc("POST /app/settings/computer-name", u.mutating("models:manage", u.computerNameSave))
+	m.HandleFunc("POST /app/settings/update-check", u.mutating("models:read", u.updateCheck))
 	m.HandleFunc("POST /app/settings/default-models", u.mutating("models:manage", u.defaultModels))
 	m.HandleFunc("GET /app/admin", u.admin)
 	m.HandleFunc("POST /app/admin/access", u.mutating("access:manage", u.adminAccess))

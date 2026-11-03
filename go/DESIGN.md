@@ -4801,7 +4801,7 @@ without someone running `local-base upgrade`.
 - **A development build** says it isn't a release and does not compare.
 - **The answer** says the current version, the latest, whether it is newer, and the release notes' URL. `--json` gives the same. A network failure exits 1 and says so.
 
-**The periodic check is opt-in and off by default.** Turned on, `serve` makes the same request in the background, and stores the answer in `go_settings` (`update.check`, `update.latest`, `update.etag`, `update.checked-at`). `TestUpdateCheckOffByDefault` records every outgoing request from a gateway and finds none.
+**The periodic check is opt-in and off by default.** Turned on, `serve` makes the same request in the background, and stores the answer in `go_settings` (`update.check`, `update.latest`, `update.etag`, `update.checked-at`). `TestUpdateCheckOffByDefault` runs the schedule with it off, against a server that counts requests, and finds none. It is a test of the schedule, not of a whole gateway
 
 **GitHub's limit is low, so the check is built around it.** Unauthenticated, GitHub allows 60 requests an hour per IP address, shared with everything else behind that address.
 - **At most one attempt in 24 hours, success or failure, kept across restarts:** `update.checked-at` is stored, so restarting the gateway does not check again.
@@ -4876,7 +4876,7 @@ local-base upgrade [--version vX.Y.Z] [--allow-downgrade] [--yes] [--wait <secon
 
 It holds the root's operation lease throughout. Another root's gateway using the same binary keeps running the old code until it is restarted, and this cannot know about it.
 
-Licenses and notices are updated where the installer put them, if that directory exists.
+**Not built yet:** licenses and notices are not updated by an upgrade. The archive carries them, but where the installer puts them is moving (#452), so this waits for that to settle.
 
 ### 33.4 Rollback: one line
 
