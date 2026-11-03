@@ -78,6 +78,20 @@ func TestDifferentialModelManagement(t *testing.T) {
 		var first map[string]any
 		for _, tg := range targets {
 			s := state(tg)
+			// Deliberate difference (DESIGN 13.6 item 10): Go can install a
+			// configured model with files missing; TS refuses. Only that.
+			for _, m := range s["models"].([]any) {
+				e := m.(map[string]any)
+				if e["installed"] == false && (e["enabled"] == true || e["active"] == true) {
+					delete(e, "canInstall")
+					delete(e, "installUnavailableReason")
+				}
+				// Both refuse; a configured model with files missing no longer
+				// counts on Go, so which model the sentence names can differ.
+				if r, _ := e["installUnavailableReason"].(string); strings.HasPrefix(r, "Disable ") {
+					e["installUnavailableReason"] = "Disable"
+				}
+			}
 			if first == nil {
 				first = s
 				continue
@@ -126,13 +140,16 @@ func TestDifferentialModelManagement(t *testing.T) {
 		"bad action": `{"modelId":"x","action":"delete"}`, "long id": `{"modelId":"` + strings.Repeat("m", 201) + `","action":"enable"}`,
 		"too large": `{"modelId":"` + strings.Repeat("m", 1100) + `","action":"enable"}`, "unknown model": `{"modelId":"no-such","action":"enable"}`,
 		"enable missing files": `{"modelId":"flux1-schnell-q4_0","action":"activate"}`,
-		"activate unselected":  `{"modelId":"` + tinyModel + `","action":"activate"}`,
-		"disable default llm":  `{"modelId":"` + activeLLM + `","action":"disable"}`,
 		"uninstall selected":   `{"modelId":"whisper-base-en-q8_0","action":"uninstall"}`,
-		"install selected":     `{"modelId":"whisper-base-en-q8_0","action":"install"}`,
 		"experimental":         `{"modelId":"no-such","action":"install"}`,
 	} {
 		sameError(t, "management "+label, post(admin, body))
+	}
+	// Deliberate difference (DESIGN 13.6 item 10): Go's refusal names a way out.
+	for name, r := range post(admin, `{"modelId":"`+activeLLM+`","action":"disable"}`) {
+		if r.Status != 409 || r.ErrorCode(t) != "conflict" {
+			t.Errorf("disable default llm %s: %d %s", name, r.Status, r.Body)
+		}
 	}
 	sameError(t, "management as reader", post(reader, `{"modelId":"`+tinyModel+`","action":"enable"}`))
 	sameError(t, "management PUT", func() map[string]*Resp {
@@ -163,6 +180,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	}
 	same("after install")
 	sameOK("enable", post(admin, `{"modelId":"`+tinyModel+`","action":"enable"}`), 200)
+	sameError(t, "management install selected and installed", post(admin, `{"modelId":"`+tinyModel+`","action":"install"}`))
 	sameOK("activate", post(admin, `{"modelId":"`+tinyModel+`","action":"activate"}`), 200)
 	same("after activate")
 	sameOK("disable active stt", post(admin, `{"modelId":"`+tinyModel+`","action":"disable"}`), 200)

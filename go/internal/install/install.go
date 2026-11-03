@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -121,6 +122,14 @@ const gib = 1 << 30
 
 // Model installs every artifact of s into dir and returns the primary path.
 func Model(ctx context.Context, s *catalog.Spec, dir string, o Options) (string, error) {
+	// One writer per model: a management install can now overlap the
+	// --install-missing hook for the same selected model. The second waits, then
+	// verifies what the first downloaded.
+	unlock, err := lockModel(ctx, filepath.Join(dir, s.ModelID))
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
 	report := o.Report
 	if report == nil {
 		report = func(Event) {}
@@ -467,6 +476,28 @@ func SHA256File(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+var (
+	modelLocksMu sync.Mutex
+	modelLocks   = map[string]chan struct{}{}
+)
+
+// lockModel takes the in-process lock for key, giving up when ctx ends.
+func lockModel(ctx context.Context, key string) (func(), error) {
+	modelLocksMu.Lock()
+	ch, ok := modelLocks[key]
+	if !ok {
+		ch = make(chan struct{}, 1)
+		modelLocks[key] = ch
+	}
+	modelLocksMu.Unlock()
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // withCacheLock holds the same exclusive SQLite lock TS uses on
