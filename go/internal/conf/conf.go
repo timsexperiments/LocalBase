@@ -47,7 +47,7 @@ func Default(root string, memoryGB int, cat *catalog.Catalog) *store.Config {
 		Selected: map[string][]string{"llm": {defaultLLM}, "stt": {stt}, "tts": {}, "image": {defaultImage}, "video": {}},
 		Active:   map[string]string{"llm": defaultLLM, "stt": stt, "tts": "", "image": defaultImage, "video": ""},
 		Parallel: "auto", OtelSampleRatio: 100,
-		SystemReserve:      store.MemoryReserve{Percent: 15, MinimumGB: 8},
+		SystemReserve:      store.MemoryReserve{Percent: 10, MinimumGB: 3},
 		AcceleratorReserve: store.MemoryReserve{Percent: 10, MinimumGB: 2},
 	}
 }
