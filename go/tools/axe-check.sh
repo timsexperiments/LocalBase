@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/test-ports.sh"
 # axe-core in desktop Chrome (headless) against a running LocalBase UI
 # (DESIGN §17.9): chat, the model picker, the history drawer, generation
 # controls, Admin, the Lab and the other pages, at 1280 and 390 px, light
@@ -22,7 +23,7 @@ if [ ! -s "$axe" ]; then
 fi
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile=$(mktemp -d)
-port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
+port=$(test_port_pick)
 "$chrome" --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
 pid=$!
 trap 'kill $pid 2>/dev/null; sleep 1; rm -rf "$profile"' EXIT
