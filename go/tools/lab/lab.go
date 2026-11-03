@@ -521,6 +521,23 @@ func (g *Gateway) Stop(grace time.Duration) (time.Duration, error) {
 // LLMBase is the LLM backend's own address, for measuring against it directly.
 func (g *Gateway) LLMBase() string { return fmt.Sprintf("http://127.0.0.1:%d", g.ports["llm"]) }
 
+// CLI runs local-base against this gateway's root, in its environment, and returns
+// what it printed.
+func (g *Gateway) CLI(ctx context.Context, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, filepath.Join(g.W.Bin, "local-base"), append([]string{"--root", g.Root}, args...)...)
+	// Not the debug listener: that address belongs to the gateway.
+	for _, kv := range g.env() {
+		if !strings.HasPrefix(kv, "LOCALBASE_LAB_DEBUG_ADDR=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.Output()
+	if exit, ok := err.(*exec.ExitError); ok {
+		return out, fmt.Errorf("%w: %s", err, exit.Stderr)
+	}
+	return out, err
+}
+
 // Addr is the gateway's host:port.
 func (g *Gateway) Addr() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(g.Port)) }
 
