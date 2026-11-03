@@ -265,8 +265,8 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const pick = (id) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
   const situation = (text) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
   const decide = `document.querySelector("#decide button[type=submit]").click()`;
-  const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-word") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
-  const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-label")].map((n) => n.firstChild.textContent), said: document.getElementById("decide-said").textContent })`;
+  const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-verdict") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
+  const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-name")].map((n) => n.textContent), said: document.getElementById("decide-said").textContent })`;
   const decisionRuns = async () => (await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.label === "Decision").map((x) => x.status))`));
 
   const top = await ev(typeTop);
@@ -281,15 +281,17 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await finished();
   check((await ev(`location.search`)) === "", "the question stays out of the address");
   const strong = await ev(read);
-  check(strong.word === "Strongly favored" && /^billing/.test(strong.verdict) && strong.labels[0] === "billing" && /Strongly favored: billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
+  check(strong.word === "Strongly favored" && /^Billing/.test(strong.verdict) && strong.labels[0] === "Billing" && /Strongly favored: Billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
   check((await ev(`document.querySelector("[data-result]").textContent.includes("not a check that it is right")`)), "the standing line is under the answer");
-  check((await ev(`document.querySelector("[data-form-open]").hidden && !document.querySelector("[data-form-summary]").hidden`)) && (await ev(typeTop)) === top, "the form collapses to a summary, and the type did not move");
+  const led = await ev(`(() => { const q = document.querySelector("[data-summary-question]"), word = document.querySelector("[data-result] .decide-word"), bar = document.querySelector("[data-bar-answer]"); return { form: document.querySelector("[data-form-open]").hidden, summary: !document.querySelector("[data-form-summary]").hidden, tabs: document.querySelector(".decide-types").getBoundingClientRect().height, question: q.textContent, first: q.getBoundingClientRect().bottom <= word.getBoundingClientRect().top, ask: document.querySelector("[data-bar-form]").hidden, again: !bar.hidden && !bar.querySelector("[data-again]").hidden }; })()`);
+  check(led.form && led.summary && led.tabs === 0 && /team/.test(led.question) && led.first && led.ask && led.again, `the answer is led by its question, without the form or its tabs: ${JSON.stringify(led)}`);
+  check((await ev(`document.querySelector(".decide-keep").textContent.includes("stay in this browser")`)), "it says questions stay in this browser, so nobody looks for them in Recent");
   await sleep(200);
   check((await decisionRuns()).length === 0, "the run is deleted once its answer is here");
 
   await ev(`document.querySelector("[data-code]:not([data-form-open] *)").click()`);
   const code = await ev(`({ open: document.getElementById("decide-code").open, text: document.querySelector("[data-code-text]").textContent })`);
-  check(code.open && code.text.includes("$LOCALBASE_API_KEY") && code.text.includes("/v1/systemone") && code.text.includes("billing"), "View code shows the request with the key as a placeholder");
+  check(code.open && code.text.includes("$LOCALBASE_API_KEY") && code.text.includes("/v1/systemone") && code.text.includes("Billing"), "View code shows the request with the key as a placeholder");
   await ev(`document.querySelector("input[name=decide-code-lang][value=js]").click()`);
   check((await ev(`document.querySelector("[data-code-text]").textContent.includes("process.env.LOCALBASE_API_KEY")`)), "and JavaScript");
   await ev(`document.getElementById("decide-code").close()`);
@@ -299,7 +301,9 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(300); await finished();
   const close = await ev(read);
-  check(close.word === "Close call" && /^billing or shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+  check(close.word === "Close call" && /^Billing or Shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+  const tracks = await ev(`(() => { const rows = [...document.querySelectorAll("[data-result] .decide-bar")], left = (r, q) => r.querySelector(q).getBoundingClientRect(); return { widths: rows.map((r) => Math.round(left(r, ".decide-track").width)), order: rows.every((r) => left(r, ".decide-bar-name").right <= left(r, ".decide-track").left && left(r, ".decide-track").right <= left(r, ".decide-bar-odds").left), numbers: new Set(rows.map((r) => Math.round(left(r, ".decide-bar-odds").right))).size, tabular: getComputedStyle(rows[0].querySelector(".decide-bar-odds")).fontVariantNumeric, note: document.querySelector("[data-result] .decide-note")?.textContent, leads: document.querySelectorAll("[data-result] .decide-bar-top").length }; })()`);
+  check(new Set(tracks.widths).size === 1 && tracks.widths[0] > 0 && tracks.order && tracks.numbers === 1 && tracks.tabular.includes("tabular-nums") && /a person’s look/.test(tracks.note) && tracks.leads === 2, `a close result: equal tracks, then numbers after them, lined up and tabular; both lead, and it says to look: ${JSON.stringify(tracks)}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:unsure"));
@@ -311,7 +315,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(300); await finished();
   const scale = await ev(read);
-  check(scale.labels.join() === "low,medium,high" && /^low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
+  check(scale.labels.join() === "Low,Medium,High" && /^Low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(`(() => { document.querySelector("input[name=decide-type][value=choice]").click(); for (const n of document.querySelectorAll("[data-remove-option]")) document.querySelector("[data-remove-option]")?.click(); })()`);
@@ -331,9 +335,9 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(400);
   await nav("/app/studio/decisions");
-  check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-word")`)), "a reload finds the question still running");
+  check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-verdict")`)), "a reload finds the question still running");
   await sleep(1000);
-  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-word")`)); i++) await sleep(100);
+  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-verdict")`)); i++) await sleep(100);
   check((await ev(read)).word === "Strongly favored", "and then its answer");
 
   // Saved examples stay in this browser.
@@ -344,6 +348,11 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(`document.querySelector("#decide-template [data-unsave]").click()`);
   check((await ev(`document.querySelector("[data-saved-box]").hidden`)), "and can be deleted");
   await ev(`document.getElementById("decide-template").close()`);
+
+  // After an answer: the same type and options, with a new question.
+  await ev(`document.querySelector("[data-again]").click()`);
+  const again = await ev(`({ q: document.getElementById("lab-prompt").value, s: document.getElementById("decide-situation").value, focus: document.activeElement?.id, open: !document.querySelector("[data-form-open]").hidden, tabs: document.querySelector(".decide-types").getBoundingClientRect().height > 0, options: document.querySelectorAll("[data-option][data-part=name]").length, result: document.querySelector("[data-result]").hidden })`);
+  check(again.q === "" && again.s === "" && again.focus === "lab-prompt" && again.open && again.tabs && again.options >= 2 && again.result, `Ask another keeps the options and starts at the question: ${JSON.stringify(again)}`);
 
   // A batch.
   await ev(pick("route"));
@@ -380,6 +389,49 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const dropped = await ev(`({ paused: document.querySelector("[data-batch-paused]").textContent, more: !document.querySelector("[data-batch-continue]").hidden, failed: /failed/.test(document.querySelector("[data-batch-summary]").textContent) })`);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Lost the connection/.test(dropped.paused) && dropped.more && !dropped.failed, `a lost connection pauses the batch: ${JSON.stringify(dropped)}`);
+  await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
+}
+
+// --- On Decisions, what takes focus clears the bar, and a row's parts stay in a line (DESIGN §27.4) --
+// Real Tab presses, as Reliability's suite found this: focus on a control left only its top edge above
+// the dock. At each width, in the form and on an answer.
+await nav("/app/studio/decisions");
+if (await ev(`!!document.getElementById("decide")`)) {
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  const pressTab = async () => {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await sleep(70);
+  };
+  const focused = `(() => { const a = document.activeElement, dock = document.querySelector("[data-docked]"); if (!a || a === document.body) return null; const inMain = !!a.closest("#decide") && !a.closest("[data-docked]") && !a.closest("dialog"); if (!inMain) return { skip: true }; const r = a.getBoundingClientRect(), d = dock && !dock.hidden ? dock.getBoundingClientRect().top : innerHeight; return { what: (a.getAttribute("aria-label") || a.textContent || a.placeholder || a.tagName).trim().slice(0, 24), top: Math.round(r.top), bottom: Math.round(r.bottom), dockTop: Math.round(d), clear: r.bottom <= d + 0.5 && r.top >= 0 }; })()`;
+  const tabThrough = async (label) => {
+    await ev(`(document.activeElement?.blur(), scrollTo(0, 0))`);
+    const covered = []; let seen = 0;
+    for (let i = 0; i < 45; i++) {
+      await pressTab();
+      const f = await ev(focused);
+      if (!f || f.skip) continue;
+      seen++;
+      if (!f.clear) covered.push(f);
+    }
+    check(seen >= 3 && covered.length === 0, `${label}: each of ${seen} controls clears the bar when it takes focus${covered.length ? ": " + JSON.stringify(covered).slice(0, 260) : ""}`);
+  };
+  const pickRoute = `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 60)); document.querySelector('#decide-template [data-template="route"]').click(); })()`;
+  for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/decisions");
+    await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
+    await nav("/app/studio/decisions");
+    await ev(pickRoute);
+    await sleep(150);
+    await tabThrough(`at ${width}, the form`);
+    await ev(`document.querySelector("#decide .lab-dock button[type=submit]").click()`);
+    for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-word:not(:empty) ~ .decide-verdict")`)); i++) await sleep(100);
+    await tabThrough(`at ${width}, an answer`);
+    const row = await ev(`(() => { const r = document.querySelector("[data-result] .decide-bar"), name = r.querySelector(".decide-bar-name").getBoundingClientRect(), track = r.querySelector(".decide-track").getBoundingClientRect(), odds = r.querySelector(".decide-bar-odds").getBoundingClientRect(); return { oneLine: Math.abs((name.top + name.bottom) / 2 - (track.top + track.bottom) / 2) < 8 && Math.abs((odds.top + odds.bottom) / 2 - (track.top + track.bottom) / 2) < 8, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
+    check(row.oneLine && !row.over, `at ${width}, a row's name, track and number share a line, on any browser: ${JSON.stringify(row)}`);
+  }
+  await send("Emulation.setFocusEmulationEnabled", { enabled: false });
   await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
 }
 
@@ -839,7 +891,12 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
 {
   const hasResults = await ev(`fetch("/app/studio").then((r) => r.text()).then((t) => (t.match(/class="studio-tile"/g) ?? []).length)`);
   if (hasResults < 4) console.log(`skip landing width (${hasResults} results)`);
-  else for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
+  // The measure itself must be able to fail: a planted wide element has to read as overflow.
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio");
+  const planted = await ev(`(async () => { const n = document.createElement("div"); n.style.cssText = "width:1200px;height:1px"; document.querySelector("main").append(n); await new Promise((r) => requestAnimationFrame(r)); const d = document.documentElement, caught = d.scrollWidth > d.clientWidth; n.remove(); return { caught, inner: innerWidth, client: d.clientWidth }; })()`);
+  check(planted.caught, `the width measure catches a planted 1200 px element: ${JSON.stringify(planted)}`);
+  if (hasResults >= 4) for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
     await nav("/app/studio");
     const fit = await ev(`(() => { const d = document.documentElement, shelf = document.querySelector(".studio-recent"), right = (q) => Math.round(document.querySelector(q).getBoundingClientRect().right); return { scroll: d.scrollWidth, client: d.clientWidth, tiles: shelf.children.length, shelfScrolls: shelf.scrollWidth > shelf.clientWidth, strip: right(".strip"), list: right(".studio-tools .list-group") }; })()`);

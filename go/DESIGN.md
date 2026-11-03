@@ -3520,6 +3520,7 @@ A playground for typed questions: one page (`/app/studio/decisions`) with a card
 on the Studio landing. The owner asked for "Jev-style decision AIs" to have
 their own place. It asks `POST /v1/systemone`.
 
+- **(§27.4 changes this form:** the question comes first and leaves the dock, and an answer no longer shows the type.)
 - **The form** keeps one fixed control at the top, the type: Pick one (`choice`),
   Yes or no (`noul`), Rate (`score`). Below it the situation and the options,
   and in the dock the Template chip, the Batch chip and the question as a real
@@ -4465,4 +4466,40 @@ the pages before this change it failed for all five.
   between tiles, so it scrolls to a tile.
 - **Real pictures vary.** Captures use pictures a real model made and a quiet video fixture, so
   sheets are judged on the design. Real media is as colorful as it is.
+
+### 27.4 Decisions, led by the question
+
+The page should read as what it is: you ask something, and read how the odds came out. The chat-style
+dock put the question last and left it out of the answer.
+
+- **The question comes first,** at the top of the page, set like a title, and leaves the dock. Below it
+  the type, the situation and the options. Only an action bar stays fixed: Examples, Batch and Decide.
+- **An answer has no form and no type tabs,** which reverses §22.17's "the type has not moved". That
+  rule stopped the control jumping as a form changed, and it still holds while the form is open. But
+  on an answer the tabs are controls for a question already sent, and they took the space and the
+  attention from the question and its odds. Edit brings them back. Owner's call, through the operator.
+- **After an answer** the bar offers Edit, and Ask another, which keeps the type and options and clears
+  the words, since the next one is often the same question about something else. The Hearth mock drew
+  an input there, but a question needs its options, which that input had no way to change.
+- **A row reads in order:** the answer, an equal track, its number, in tabular figures. No `subgrid`:
+  the check that numbers come after tracks failed on the first version because the test browser is
+  Chrome 114 and `subgrid` needs 117, so every row fell back to one column and stacked. Older phones
+  would have done the same. Every row now has the same fixed columns. Tabular figures are written out
+  as well, because Tailwind's `tabular-nums` is built from empty `var()` fallbacks, which Chrome 114 reads
+  as `normal`: the figures looked right on a current browser and silently weren't on an older one.
+- **Focus clears the bar.** A control taking focus could end up behind the action bar, because the page's
+  scroll padding allowed for the tab bar and keyboard only. It now allows for the bar too, on any page
+  with one, and for the pill's bar when that is up.
+- **Words.** The band table is unchanged. A close call and an unsure read add one line saying the result
+  is worth a person's look. It says what the odds show, never how often they are right, and a test
+  holds that. The standing line stays under the odds.
+- **While it decides,** the answer's own shape appears, with its names and no numbers yet.
+- **Questions aren't in Recent,** because they stay in this browser. The page says so, since someone
+  could look for them there.
+- **Answers read as written,** so the examples' options are capitalized. What a person types is shown as
+  they typed it.
+
+**Checks:** `TestDecisionsPage`, `tools/jstest/decisions.test.ts`, and `tools/chat-runs-check.sh` (question
+first, no tabs on an answer, equal tracks, numbers after them and lined up, Ask another, real Tab presses
+clearing the bar, and a row's parts on one line). They run on Chrome 114 and on a current Chrome.
 
