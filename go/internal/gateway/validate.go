@@ -667,6 +667,9 @@ func validateDecision(req map[string]any) *checker {
 			continue
 		}
 		for i, f := range list {
+			if c.more {
+				break
+			}
 			s, _ := f.(string)
 			if !decisionFileRe.MatchString(s) {
 				c.fail(join(key, i), "Each file must be a base64 data URL (data:image/... or data:audio/...).")
@@ -683,6 +686,9 @@ func validateDecision(req map[string]any) *checker {
 		c.fail("questions", "questions must contain at least one question.")
 	}
 	for _, id := range sortedKeys(qs) {
+		if c.more {
+			break // nothing past the limit is listed, so nothing is built for it
+		}
 		path := join("questions", id)
 		q, ok := qs[id].(map[string]any)
 		if !ok {
@@ -705,6 +711,9 @@ func validateDecision(req map[string]any) *checker {
 				break
 			}
 			for k, v := range crit {
+				if c.more {
+					break
+				}
 				if k == "" {
 					c.fail(join(path, "criteria"), "Too small: expected string to have >=1 characters")
 				}
@@ -726,6 +735,9 @@ func validateDecision(req map[string]any) *checker {
 				break
 			}
 			for i, v := range crit {
+				if c.more {
+					break
+				}
 				if _, ok := v.(string); !ok {
 					c.fail(join(join(path, "criteria"), i), expected("string", v, true))
 				}

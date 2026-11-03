@@ -207,6 +207,47 @@ func TestTheLargestAnswer(t *testing.T) {
 	}
 }
 
+// Nothing is built for problems past the limit, on the decision route, where no later part of the
+// request can change the answer.
+func TestADecisionStopsAtTheLimit(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	const many = 400_000
+	id := strings.Repeat("a", 64)
+	for name, body := range map[string]func(int) string{
+		"score":  func(n int) string { return scoreRefusal(id, n) },
+		"choice": func(n int) string { return choiceRefusal("o", n) },
+		"files": func(n int) string {
+			return `{"model":"` + decisionModel + `","questions":{},"files":[` + repeated("1", n) + `]}`
+		},
+		"question": func(n int) string { return `{"model":"` + decisionModel + `","questions":{` + questions(n) + `}}` },
+	} {
+		decodeOnly := func(s string) uint64 {
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			var v any
+			dec := json.NewDecoder(strings.NewReader(s))
+			dec.UseNumber()
+			if err := dec.Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+			runtime.ReadMemStats(&after)
+			return after.TotalAlloc - before.TotalAlloc
+		}
+		large := body(many)
+		status, answer, allocated := refusalCost(t, ts.URL+"/v1/systemone", large)
+		if status != 400 || !strings.HasSuffix(refusalMessage(t, answer), ", and more") {
+			t.Errorf("%s: %d %.200s", name, status, answer)
+		}
+		read := decodeOnly(large)
+		// Reading it and answering take this. Text for every element past the limit takes several
+		// times that, under the race detector or not.
+		if bound := read + 7*uint64(len(large)) + 2<<20; allocated > bound {
+			t.Errorf("%s: %d MiB allocated, over %d MiB, where reading it takes %d MiB", name, allocated>>20, bound>>20, read>>20)
+		}
+	}
+}
+
 // A request with a few problems reads as it always did.
 func TestAFewProblemsReadAsBefore(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})

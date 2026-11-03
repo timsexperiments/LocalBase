@@ -4912,6 +4912,9 @@ A request at the 25 MiB body limit allocates at most 4 GiB, which `TestARefusalA
 and 3.6 GiB under the race detector, which turns `sync.Pool` off. An answer is at most 1 MiB, and about 14 KiB for the
 requests measured at that limit.
 
+On the decision route nothing past the limit can change the answer, so validating stops there, and it builds no text for
+what it won't list. Chat goes through everything, because content naming an address must still win.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
