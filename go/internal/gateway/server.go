@@ -65,6 +65,9 @@ type Server struct {
 	runs *runManager
 	// UI handles /app and / when set.
 	UI http.Handler
+	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
+	LoginPages LoginPages
+	localFails localLimit
 
 	started  time.Time
 	stopping atomic.Bool
@@ -86,7 +89,7 @@ func New(s *Server) *Server {
 	go s.runs.janitor()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.health)
-	for _, p := range []string{"/app/login", "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
+	for _, p := range []string{"/app/login", auth.LocalOncePath, "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
 		"/app/logout", "/app/session", "/app/api", "/app/api/"} {
 		mux.HandleFunc(p, s.uiAccess)
 	}
@@ -124,6 +127,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
+	mux.HandleFunc("/_localbase/local-sessions", s.localSessionsAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
 	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
 	if s.UI != nil {
