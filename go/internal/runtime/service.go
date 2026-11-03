@@ -40,7 +40,9 @@ type Service struct {
 	claimed   bool   // idle recovery is stopping the backend; hold requests
 	unloading string // the model draining for an explicit unload (DESIGN §23)
 	switchW   sync.WaitGroup
-	watches   sync.WaitGroup // backend watchers; each can end in a store write
+	// cancelSwitch ends the switch in flight, as on the LLM.
+	cancelSwitch context.CancelCauseFunc
+	watches      sync.WaitGroup // backend watchers; each can end in a store write
 }
 
 // ServiceDeps are a Service's collaborators.
@@ -267,14 +269,18 @@ func (s *Service) pump() {
 		head.dispatched = time.Now()
 		s.switching = true
 		s.switchW.Add(1)
+		ctx, cancel := context.WithCancelCause(context.Background())
+		s.cancelSwitch = cancel
 		go func(model, key string, parent *otlp.Span) {
 			defer s.switchW.Done()
+			defer cancel(nil)
 			err := s.d.Recovery.retryAfterRecovery(s.d.Modality, func() (memory.Demand, error) {
-				return s.doSwitch(model, key, parent)
+				return s.doSwitch(ctx, model, key, parent)
 			})
 			s.mu.Lock()
 			s.busy, s.switching = false, false
-			s.failed = err != nil && s.cur == nil
+			s.cancelSwitch = nil
+			s.failed = err != nil && s.cur == nil && ctx.Err() == nil // an eviction is not a failed start
 			if err != nil {
 				for len(s.queue) > 0 && s.queue[0].model == model && s.queue[0].key == key {
 					w := s.queue[0]
@@ -290,7 +296,7 @@ func (s *Service) pump() {
 	}
 }
 
-func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
+func (s *Service) doSwitch(ctx context.Context, modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
 	if s.d.Gate == nil {
 		return demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
@@ -306,7 +312,7 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	spec := s.d.Catalog.ByID(modelID)
 	var installErr error
 	if spec != nil && !t.Imported && t.Variant.ID == "default" {
-		installErr = s.ensureInstalled(modelID)
+		installErr = s.ensureInstalled(ctx, modelID)
 	}
 	previous := ""
 	if s.d.Config != nil {
@@ -341,14 +347,20 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 	s.mu.Unlock()
 	if prev != nil {
 		s.stop(prev, StopSwitch)
-		if preflight && switching && previous != "" {
+		if preflight && switching && previous != "" && ctx.Err() == nil {
 			if err := settleAfterStop(s.d.Memory, demand); err != nil && s.rollBack(previous, modelID, err) {
 				return demand, err
 			}
 		}
 	}
-	b, err := s.start(t, demand, parent)
+	if ctx.Err() != nil {
+		return demand, context.Cause(ctx)
+	}
+	b, err := s.start(ctx, t, demand, parent)
 	if err != nil {
+		if ctx.Err() != nil {
+			return demand, context.Cause(ctx)
+		}
 		return demand, err
 	}
 	b.key = key
@@ -357,6 +369,12 @@ func (s *Service) doSwitch(modelID, key string, parent *otlp.Span) (demand memor
 		s.mu.Unlock()
 		s.stop(b, StopShutdown)
 		return demand, ErrUnavailable
+	}
+	if ctx.Err() != nil {
+		s.mu.Unlock()
+		b.emergency.Store(true)
+		s.stop(b, StopMemory)
+		return demand, context.Cause(ctx)
 	}
 	s.cur = b
 	s.mu.Unlock()
@@ -427,14 +445,14 @@ func preflightsFromCatalog(modality string, spec *catalog.Spec, t *Target) bool 
 	return spec != nil && !t.Imported && (modality == "image" || modality == "stt")
 }
 
-func (s *Service) ensureInstalled(modelID string) error {
+func (s *Service) ensureInstalled(ctx context.Context, modelID string) error {
 	if ok, _ := s.d.Catalog.ByID(modelID).Installation(s.d.ModelsDir); ok {
 		return nil
 	}
 	if s.d.Install == nil {
 		return &NotInstalledError{ModelID: modelID}
 	}
-	return s.d.Install(context.Background(), modelID)
+	return s.d.Install(ctx, modelID)
 }
 
 // demand is the memory the backend is admitted with: the catalog estimate
@@ -456,7 +474,7 @@ func (s *Service) demand(t *Target) memory.Demand {
 	return memory.Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "estimated"}
 }
 
-func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*svcBackend, error) {
+func (s *Service) start(life context.Context, t *Target, demand memory.Demand, parent *otlp.Span) (*svcBackend, error) {
 	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
 		logStartFailed(s.d.Log, s.d.Modality, err)
@@ -469,7 +487,7 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		return nil, fail(fmt.Errorf("%s has no build for %s/%s", t.Backend.Name, goruntime.GOOS, goruntime.GOARCH))
 	}
 	host, port := BackendHost(s.d.Host), s.d.Port
-	cmd, err := s.command(t, host, port)
+	cmd, err := s.command(life, t, host, port)
 	if err != nil {
 		var launch *LaunchError
 		if errors.As(err, &launch) {
@@ -504,7 +522,7 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		budget = cmd.startup
 	}
 	if err := spanned(s.d.Otel, ctx, "localbase.backend.model_load", cmd.name, func() error {
-		return proc.WaitHealthy(context.Background(), base+cmd.health, budget)
+		return proc.WaitHealthy(life, base+cmd.health, budget)
 	}); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
@@ -648,6 +666,9 @@ func (s *Service) EmergencyStop(reason error) {
 		w.ready <- reason
 	}
 	s.queue = nil
+	if s.cancelSwitch != nil {
+		s.cancelSwitch(reason)
+	}
 	b := s.cur
 	s.cur = nil
 	s.mu.Unlock()
@@ -666,6 +687,9 @@ func (s *Service) Close() {
 		w.ready <- ErrUnavailable
 	}
 	s.queue = nil
+	if s.cancelSwitch != nil {
+		s.cancelSwitch(ErrUnavailable)
+	}
 	s.mu.Unlock()
 	s.switchW.Wait()
 	s.mu.Lock()
@@ -687,14 +711,14 @@ type serviceCommand struct {
 	startup        time.Duration // 0: the service default
 }
 
-func (s *Service) binary(name string, t *Target) (string, error) {
+func (s *Service) binary(life context.Context, name string, t *Target) (string, error) {
 	if t.Backend.Launch != nil && t.Backend.Launch.Command != "" {
 		return t.Backend.Launch.Command, nil
 	}
 	if b := s.d.Binaries[name]; b != "" {
 		return b, nil
 	}
-	return EnsureBinary(context.Background(), s.d.RuntimesDir, name)
+	return EnsureBinary(life, s.d.RuntimesDir, name)
 }
 
 func (t *Target) artifact(role string) string {
@@ -717,7 +741,7 @@ func (t *Target) weightsBytes() int64 {
 }
 
 // command builds the backend command for the target's adapter.
-func (s *Service) command(t *Target, host string, port int) (*serviceCommand, error) {
+func (s *Service) command(life context.Context, t *Target, host string, port int) (*serviceCommand, error) {
 	d := t.Backend
 	weights := ""
 	if w, err := t.weights(); err == nil {
@@ -728,7 +752,7 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		if s.d.Modality != "stt" {
 			break
 		}
-		bin, err := s.binary("whisper-server", t)
+		bin, err := s.binary(life, "whisper-server", t)
 		if err != nil {
 			return nil, fmt.Errorf("%s is not installed on this device: %v", d.Name, err)
 		}
@@ -738,20 +762,20 @@ func (s *Service) command(t *Target, host string, port int) (*serviceCommand, er
 		if s.d.Modality != "tts" {
 			break
 		}
-		return s.crispasrCommand(t, host, port, weights)
+		return s.crispasrCommand(life, t, host, port, weights)
 	case "tts-server/v1":
 		if s.d.Modality != "tts" {
 			break
 		}
-		return s.ttsServerCommand(t, host, port, weights)
+		return s.ttsServerCommand(life, t, host, port, weights)
 	case "sd-server/v1":
 		if s.d.Modality == "video" {
-			return s.sdVideoCommand(t, host, port)
+			return s.sdVideoCommand(life, t, host, port)
 		}
 		if s.d.Modality != "image" {
 			break
 		}
-		return s.sdServerCommand(t, host, port, weights)
+		return s.sdServerCommand(life, t, host, port, weights)
 	case "process-openai/v1":
 		l := d.Launch
 		repl := strings.NewReplacer("{model}", weights, "{model_dir}", t.Dir, "{host}", host, "{port}", strconv.Itoa(port), "{ctx}", "0", "{projector}", "")
