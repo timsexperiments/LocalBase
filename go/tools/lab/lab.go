@@ -188,6 +188,8 @@ type Options struct {
 	FakeDelayMS    int
 	// CtxSize is --ctx-size (0: automatic).
 	CtxSize int
+	// LogLevel is --log-level (empty: the default, info).
+	LogLevel string
 	// FakeEnv adds environment entries, for the fake backends' behaviors.
 	FakeEnv []string
 	// Dir places this gateway's directory somewhere other than the workspace, for
@@ -393,6 +395,9 @@ func (g *Gateway) launch(ctx context.Context) error {
 	}
 	if g.Opts.CtxSize > 0 {
 		args = append(args, "--ctx-size", strconv.Itoa(g.Opts.CtxSize))
+	}
+	if g.Opts.LogLevel != "" {
+		args = append(args, "--log-level", g.Opts.LogLevel)
 	}
 	cmd := exec.Command(filepath.Join(g.W.Bin, "local-base"), args...)
 	cmd.Env = g.env()

@@ -580,7 +580,7 @@ wait:
 	if s.cur == b {
 		s.cur = nil
 		s.d.Log.Warn("The "+s.d.Modality+" backend exited; the next request starts it again.", "event", "runtime.exited",
-			"runtime", s.d.Modality, "model_id", b.modelID)
+			"runtime", s.d.Modality, "model_id", b.modelID, "error", fmt.Sprint(b.proc.ExitErr()))
 		logStopped(s.d.Log, s.d.Modality, b.modelID, StopCrash, b.res.Bytes(), b.proc.PID())
 		b.res.Release()
 	}
