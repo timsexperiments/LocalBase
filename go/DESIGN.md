@@ -5831,6 +5831,7 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 
 **Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. That is the operator's to run.
 **Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. The operator ran that at `f05052cb`, with secrets excluded: all five commands passed, with no false schema refusal on a database the TS build first wrote. A backup with its secrets has not had that run.
+**Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. The operator ran that at `d4dcfa34`, with secrets excluded: all five commands passed, with no false schema refusal on a database the TS build first wrote. A backup with its secrets has not had that run. That clone had no journal, so the journal paths have run only in tests, on real SQLite files with no process actually killed.
 
 ### 34.7 Residual risks, accepted in the threat model (§36, reserved for the threat model, Security)
 
