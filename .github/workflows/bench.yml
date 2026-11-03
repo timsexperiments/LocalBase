@@ -4,6 +4,7 @@ name: Bench
 # CI has its own baselines, because a runner isn't a developer's machine even with the
 # same platform label. Dispatch with write_baseline to get one to commit.
 on:
+  pull_request:
   schedule:
     - cron: "23 7 * * *"
   workflow_dispatch:
@@ -40,7 +41,7 @@ jobs:
       - name: Measure
         working-directory: go
         env:
-          WRITE_BASELINE: ${{ inputs.write_baseline }}
+          WRITE_BASELINE: "true"
         # A regression is a warning for now, because runner noise is unknown. A tool
         # failure still fails the job.
         run: |
