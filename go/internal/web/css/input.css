@@ -642,11 +642,36 @@
   .lab-items {
     @apply mt-3 grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2;
   }
+  /* A first visit: a question in the reading face, then something to start from. */
+  .lab-hello {
+    @apply mt-5 max-w-xl;
+  }
+  .lab-hello-title {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-display);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.15;
+  }
+  .lab-examples {
+    @apply mt-3 grid gap-2;
+  }
+  .lab-example {
+    @apply min-h-11 w-full rounded-xl border border-bound bg-surface px-3.5 py-2.5 text-left text-ink hover:bg-hover;
+  }
+  .lab-example:active {
+    opacity: var(--lb-press-opacity);
+  }
+  .lab-lost {
+    @apply mt-3 flex items-center gap-3 rounded-xl border border-bound bg-surface px-3 py-1.5 text-sm text-muted;
+  }
   .lab-empty {
     @apply mt-3 rounded-2xl border border-dashed border-bound px-5 py-8 text-center text-muted;
   }
   .lab-results:has(#lab-items > li) .lab-empty,
-  .lab-results:has(#lab-result > *) .lab-empty {
+  .lab-results:has(#lab-result > *) .lab-empty,
+  .lab-results:has(#lab-items > li) .lab-hello,
+  .lab-results:has(#lab-result > *) .lab-hello {
     @apply hidden;
   }
   .lab-item {
@@ -685,12 +710,34 @@
   .lab-box {
     @apply mx-auto grid max-w-3xl gap-0.5 pt-1;
   }
+  /* A chip the row cuts off fades out before the box's rounded corner, and the row can scroll
+     far enough for the last one to clear the fade. */
   .lab-chips {
-    @apply flex gap-1.5 overflow-x-auto px-1.5 pt-0.5;
+    @apply flex gap-1.5 overflow-x-auto pt-0.5 pl-1.5;
+    padding-right: 1.5rem;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
+    mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
   }
   .lab-chip {
     @apply shrink-0 px-3 whitespace-nowrap;
+  }
+  /* Editing a picture: it sits at the top of the box, and its shape decides the new one's. */
+  .image-source {
+    @apply flex items-center gap-2.5 px-1.5 pt-0.5 pb-1;
+  }
+  .image-source[hidden] {
+    display: none;
+  }
+  .image-source-thumb {
+    @apply size-11 shrink-0 rounded-lg object-cover;
+  }
+  .lab-dock:not([data-editing]) .lab-chip:has([data-chip-label="change"]),
+  .lab-dock[data-editing] .lab-chip:has([data-chip-label="shape"]) {
+    display: none;
+  }
+  .viewer-from {
+    @apply mt-0.5 size-12 rounded-lg object-cover;
   }
   .lab-prompt {
     @apply block max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
@@ -1325,6 +1372,12 @@
   }
 }
 
+@keyframes lb-viewer-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Settings (DESIGN §22.12): one setting per row in grouped lists. */
 @layer components {
   .setting-row {
@@ -1531,12 +1584,26 @@
   .image-run {
     @apply min-w-0;
   }
+  /* The words first: this is what you asked for. A long prompt stops at three lines here, and
+     the viewer's Details has all of it. */
+  .image-title {
+    @apply line-clamp-3 wrap-anywhere;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
+    line-height: 1.3;
+  }
+  .image-facts {
+    @apply text-sm text-muted;
+  }
+  .image-state {
+    @apply mb-1.5 flex min-h-11 items-center gap-2;
+  }
   .image-grid {
     @apply grid grid-cols-2 gap-1.5;
   }
-  /* One picture takes the row; a batch shares it. */
+  /* One picture takes the row, up to a size that still fits a wide screen; a batch shares it. */
   .image-grid:has(> .image-tile:only-of-type) {
-    @apply grid-cols-1;
+    @apply grid-cols-1 min-[768px]:max-w-md;
   }
   .image-tile {
     @apply relative grid min-w-0 place-items-center overflow-hidden rounded-xl bg-surface-muted;
@@ -1555,12 +1622,6 @@
   }
   .image-thumb {
     @apply block size-full object-cover;
-  }
-  .image-stage {
-    @apply p-3 text-center text-sm font-semibold text-muted;
-  }
-  .image-cap {
-    @apply mt-1 flex min-h-11 items-center gap-2 px-1;
   }
   .shape-glyph {
     @apply block shrink-0 rounded-sm border-2 border-muted;
@@ -1593,9 +1654,54 @@
   }
   .viewer-stage {
     @apply min-h-0 flex-1 p-2;
+    touch-action: pinch-zoom;
   }
   .viewer-img {
-    @apply block size-full object-contain;
+    @apply block size-full cursor-zoom-in object-contain;
+  }
+  /* Inspect: twice the size, moved by scrolling. */
+  .viewer-zoomed {
+    @apply overflow-auto p-0;
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+  .viewer-zoomed .result-img {
+    @apply block;
+    width: 200%;
+    height: 200%;
+  }
+  .viewer-zoomed .viewer-img {
+    @apply cursor-zoom-out;
+  }
+  /* The picture on paper, for looking at rather than checking. */
+  .viewer-matted:not(.viewer-zoomed) .result-img {
+    @apply grid place-items-center;
+  }
+  .viewer-matted:not(.viewer-zoomed) .viewer-img {
+    @apply size-auto max-h-full max-w-full rounded-xs;
+    padding: clamp(0.75rem, 6vmin, 3rem);
+    background: var(--lb-viewer-mat);
+  }
+  [data-view-mat][aria-pressed="true"],
+  [data-view-zoom][aria-pressed="true"] {
+    @apply bg-white/15;
+  }
+  .viewer-words {
+    font-family: var(--lb-font-reading);
+    font-size: 1.0625rem;
+  }
+  .viewer-hint {
+    @apply text-xs text-[var(--lb-viewer-muted)];
+  }
+  .viewer-stage:has(~ .viewer-foot [data-view-details][aria-expanded="true"]) {
+    @apply min-h-16;
+  }
+  .viewer-stage.viewer-zoomed ~ .viewer-foot .viewer-hint {
+    @apply hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .viewer[open] {
+      animation: lb-viewer-in var(--lb-dur-move) var(--lb-ease);
+    }
   }
   .viewer-foot {
     @apply flex flex-wrap items-stretch justify-around gap-1 bg-[var(--lb-viewer-bar)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
@@ -1603,17 +1709,19 @@
   .viewer-caption {
     @apply w-full truncate px-2 text-sm;
   }
-  .viewer-foot:has(details[open]) .viewer-caption {
+  .viewer-foot:has([data-view-details][aria-expanded="true"]) .viewer-caption {
     @apply hidden;
+  }
+  .viewer-btn:active,
+  .viewer-act:active,
+  .image-open:active {
+    opacity: var(--lb-press-opacity);
   }
   .viewer-act {
     @apply flex min-h-12 min-w-14 cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-xs font-semibold hover:bg-white/10;
   }
-  .viewer-act::-webkit-details-marker {
+  .viewer-panel[hidden] {
     display: none;
-  }
-  .viewer-details {
-    @apply contents;
   }
   .viewer-panel {
     @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[var(--lb-viewer-panel)] p-3 text-sm;

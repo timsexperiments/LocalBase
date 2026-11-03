@@ -8,11 +8,14 @@
 
   {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
   <section aria-labelledby="results-title" class="lab-results mt-4">
-    {{if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
+    {{if eq .Tab "image"}}<h2 id="results-title" class="sr-only">Pictures</h2>
+    {{else if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
     {{template "lab-result" .}}
+    {{if .Lost}}<p id="lab-lost" class="lab-lost"><span class="min-w-0 flex-1">{{if eq .Lost 1}}An earlier result didn’t finish, and can’t be recovered.{{else}}{{.Lost}} earlier results didn’t finish, and can’t be recovered.{{end}}</span><button type="button" class="btn btn-quiet shrink-0" hx-post="/app/lab/runs/clear-lost" hx-vals='{"tool":"{{.Tab}}"}' hx-target="#lab-lost" hx-swap="outerHTML">Clear</button></p>{{end}}
     <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
     {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
+    {{if and (eq .Tab "image") .Items}}<p class="studio-keep">Pictures stay here for 30 minutes.</p>{{end}}
   </section>
   {{if .Ready}}<div class="lab-dock-spacer" aria-hidden="true"></div>{{end}}
   {{end}}
@@ -21,8 +24,16 @@
   {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "picture" "Filter" "images" "CanGet" .CanManage)}}{{else}}
   <form class="lab-dock" data-docked aria-label="Make an image" hx-post="/app/lab/image" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
     <div class="composer-box lab-box">
+      <div class="image-source" data-image-source hidden>
+        <img class="image-source-thumb" alt="">
+        <p class="min-w-0 flex-1 text-sm"><span class="block font-semibold">Editing this picture</span><span class="block text-muted">Change the words below.</span></p>
+        <button type="button" class="icon-btn" data-source-clear aria-label="Stop editing this picture">{{template "icon-x"}}</button>
+      </div>
+      <p class="sr-only" role="status" data-source-status></p>
+      <input type="hidden" name="source">
       <div class="lab-chips">
         {{template "lab-chip" (dict "Sheet" "image-shape" "Name" "shape" "Label" "Shape" "Value" "Square")}}
+        {{template "lab-chip" (dict "Sheet" "image-change" "Name" "change" "Label" "How much to change" "Value" "Change some")}}
         {{template "lab-chip" (dict "Sheet" "image-look" "Name" "look" "Label" "Look" "Value" "Plain")}}
         {{template "lab-chip" (dict "Sheet" "image-count" "Name" "count" "Label" "Number" "Value" "1 picture")}}
         {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
@@ -30,7 +41,14 @@
       </div>
       {{template "lab-field" (dict "Name" "prompt" "Label" "Prompt" "Max" 16384 "Placeholder" "Describe the picture" "Action" "Generate")}}
     </div>
-    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}"{{if (index .Models 0).Edits}} data-edits{{end}}>{{end}}
+    <dialog id="image-change" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-change-title">
+      {{template "sheet-head" (dict "ID" "image-change-title" "Title" "How much to change")}}
+      <p class="px-5 pb-2 text-sm text-muted">Results depend on the model. The new picture keeps this one’s shape.</p>
+      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">How much to change</legend>
+        {{range .Changes}}<label class="list-row cursor-pointer"><input type="radio" name="change" value="{{.ID}}" data-label="{{.Label}}" {{if eq .ID "some"}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{.Name}}<span class="block text-sm font-normal text-muted">{{.Note}}</span></span></label>{{end}}
+      </fieldset>
+    </dialog>
     <dialog id="image-shape" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-shape-title">
       {{template "sheet-head" (dict "ID" "image-shape-title" "Title" "Shape")}}
       <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Shape</legend>
@@ -72,6 +90,15 @@
       </div>
     </dialog>
   </form>
+  {{end}}
+  {{if not .CanEdit}}
+  <dialog id="image-needs-edit" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-needs-edit-title">
+    {{template "sheet-head" (dict "ID" "image-needs-edit-title" "Title" "Editing needs another model")}}
+    <div class="grid gap-3 px-5 pb-3">
+      <p class="text-sm text-muted">None of the picture models on this computer can edit a picture.{{if .CanManage}} Get one that can. This picture stays here for 30 minutes from when it was made.{{else}} Ask whoever runs this computer to add one.{{end}}</p>
+      {{if .CanManage}}<a class="btn btn-primary rounded-full" href="/app/models/get?filter=images">Get a model</a>{{end}}
+    </div>
+  </dialog>
   {{end}}
   {{end}}
 
@@ -294,7 +321,7 @@
 <dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
   {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
   <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Model</legend>
-    {{range $i, $m := .}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if $m.EnglishOnly}}data-english-only{{end}} {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}</span></label>{{end}}
+    {{range $i, $m := .}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if $m.EnglishOnly}}data-english-only{{end}} {{if $m.Edits}}data-edits{{end}} {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}<span class="block text-sm font-normal text-muted" data-cant-edit hidden>Can’t edit pictures</span></span></label>{{end}}
   </fieldset>
 </dialog>
 {{end}}
@@ -425,14 +452,17 @@
 {{/* Before the first result: what the tool does and examples that fill the
      prompt. Never names a model. */}}
 {{define "lab-empty"}}
-<div class="lab-empty" data-lab-empty>
-  {{if eq . "image"}}<p>Describe a picture, and it appears here.</p>
-  <div class="mt-3 flex flex-wrap justify-center gap-2">
-    <button type="button" class="chip" data-fill="A paper boat on a rainy street, watercolor">A paper boat on a rainy street</button>
-    <button type="button" class="chip" data-fill="A cozy reading nook with morning light, soft colors">A cozy reading nook</button>
-    <button type="button" class="chip" data-fill="A lighthouse on a cliff at dusk, oil painting">A lighthouse at dusk</button>
-  </div>
-  {{else if eq . "video"}}<p>Describe a short scene. A video takes a few minutes and a lot of memory, and keeps going if you leave.</p>
+{{if eq . "image"}}<div class="lab-hello" data-lab-empty>
+  <p class="lab-hello-title">What would you like to see?</p>
+  <ul class="lab-examples">
+    <li><button type="button" class="lab-example" data-fill="A paper boat on a rainy street, watercolor">A paper boat on a rainy street</button></li>
+    <li><button type="button" class="lab-example" data-fill="A cozy reading nook with morning light, soft colors">A cozy reading nook in morning light</button></li>
+    <li><button type="button" class="lab-example" data-fill="A lighthouse on a cliff at dusk, oil painting">A lighthouse on a cliff at dusk</button></li>
+  </ul>
+  <p class="mt-3 text-sm text-muted">Pictures keep going if you leave the page, and stay here for 30 minutes.</p>
+</div>
+{{else}}<div class="lab-empty" data-lab-empty>
+  {{if eq . "video"}}<p>Describe a short scene. A video takes a few minutes and a lot of memory, and keeps going if you leave.</p>
   <div class="mt-3 flex flex-wrap justify-center gap-2">
     <button type="button" class="chip" data-fill="Waves rolling onto a quiet beach at sunset">Waves at sunset</button>
     <button type="button" class="chip" data-fill="A paper boat drifting down a rainy street">A drifting paper boat</button>
@@ -444,7 +474,7 @@
   </div>
   {{else}}<p>Record, or choose a recording, and the words appear here with their times. It starts as soon as you stop or choose, and up to about 13 minutes fits at a time.</p>{{end}}
   <p class="mt-3 text-sm">Results keep going if you leave the page.</p>
-</div>
+</div>{{end}}
 {{end}}
 
 {{define "lab-denied"}}<div class="empty-state mt-5"><p class="text-muted">Your access does not include {{.}}.</p></div>{{end}}
@@ -482,13 +512,15 @@
 {{define "image-item"}}
 <li id="run-{{.ID}}" class="image-run"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
   {{$item := .}}{{$shape := or .Shape "square"}}
+  {{with .Caption}}<h3 class="image-title">{{.}}</h3>{{end}}
   {{if .Active}}
-  <div class="image-grid">{{range .Tiles}}<div class="image-tile image-{{$shape}} {{if $item.Fresh}}skeleton{{end}}"></div>{{end}}</div>
-  <div class="image-cap">
-    <p class="min-w-0 flex-1"><span class="block font-semibold text-muted">{{.Message}}</span>{{with .Caption}}<span class="block truncate text-sm text-muted">{{.}}</span>{{end}}</p>
+  <div class="image-state">
+    <p class="min-w-0 flex-1 image-facts">{{.Message}}</p>
     <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Stop {{if gt (len .Tiles) 1}}these pictures{{else}}this picture{{end}}">Stop</button>
   </div>
+  <div class="image-grid">{{range .Tiles}}<div class="image-tile image-{{$shape}} {{if $item.Fresh}}skeleton{{end}}"></div>{{end}}</div>
   {{else if .Pictures}}
+  <p class="image-facts mb-1.5">{{if .Edited}}Edited · {{end}}{{if .Look}}{{.LookName}} · {{end}}{{.Ago}}</p>
   <div class="image-grid">
     {{range $p := .Pictures}}
     <div class="image-tile image-{{$shape}}">
@@ -497,19 +529,19 @@
     {{template "image-viewer" (dict "Item" $item "Picture" $p)}}
     {{end}}
   </div>
-  <div class="image-cap"><p class="min-w-0 flex-1 truncate text-sm text-muted">{{with .Ago}}{{.}} · {{end}}{{.Caption}}</p></div>
   {{else}}
-  <div class="image-tile image-{{$shape}}"><p class="image-stage {{if eq .Status "failed"}}text-danger{{end}}">{{or .Message "This picture is no longer available."}}</p></div>
-  <div class="image-cap">
-    <p class="min-w-0 flex-1 truncate text-sm text-muted">{{.Caption}}</p>
-    {{if .Prompt}}<button type="button" class="btn btn-quiet shrink-0 rounded-full" data-fill="{{.Prompt}}" data-fill-tab="image">Try again</button>{{end}}
-    <button type="button" class="icon-btn" hx-post="/app/lab/runs/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this result">{{template "icon-x"}}</button>
+  <p class="image-facts {{if eq .Status "failed"}}text-danger{{end}}">{{or .Message "This picture is no longer available."}}</p>
+  <div class="image-state">
+    {{if .From}}<button type="button" class="btn btn-quiet rounded-full" data-edit-picture="{{.From}}" data-prompt="{{.Prompt}}" data-look="{{.Look}}" data-change="{{.Change}}">Try again</button>
+    {{else if and .Prompt (not .Edited)}}<button type="button" class="btn btn-quiet rounded-full" data-fill="{{.Prompt}}" data-fill-tab="image">Try again</button>{{end}}
+    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/runs/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this result">{{template "icon-x"}}</button>
   </div>
   {{end}}
 </li>
 {{end}}
 
-{{/* One picture, full screen. The model's name appears only under Details. */}}
+{{/* One picture, full screen: the whole picture first, to inspect. A tap, the button or Z doubles
+     it. The model's name appears only under Details. */}}
 {{define "image-viewer"}}
 {{$i := .Item}}{{$p := .Picture}}
 <dialog id="view-{{$i.ID}}-{{$p.Index}}" class="viewer" aria-label="Picture{{with $i.Caption}}: {{.}}{{end}}">
@@ -518,17 +550,27 @@
     <span class="viewer-count" data-view-count></span>
     <button type="button" class="viewer-btn" data-view-step="-1" aria-label="Previous picture">{{template "icon-back"}}</button>
     <button type="button" class="viewer-btn" data-view-step="1" aria-label="Next picture">{{template "icon-forward"}}</button>
+    <button type="button" class="viewer-btn" data-view-mat aria-pressed="false" aria-label="Show on a mat">{{template "icon-mat"}}</button>
+    <button type="button" class="viewer-btn" data-view-zoom aria-pressed="false" aria-label="Zoom in">{{template "icon-zoom"}}</button>
   </div>
   <div class="viewer-stage">{{template "result-image" (dict "Src" $p.URL "Alt" (or $i.Caption "Generated picture") "Class" "viewer-img" "Tool" "image")}}</div>
   <div class="viewer-foot">
-    {{with $i.Caption}}<p class="viewer-caption">{{.}}</p>{{end}}
+    {{with $i.Caption}}<p class="viewer-caption viewer-words">{{.}}</p>{{end}}
+    <p class="viewer-caption viewer-hint">{{with $i.LookName}}{{if $i.Look}}{{.}}. {{end}}{{end}}Tap or click the picture to zoom.</p>
     <p class="viewer-caption font-semibold" role="status" data-share-status hidden></p>
-    <details class="viewer-details">
-      <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>
-      <div class="viewer-panel">
+    <a class="viewer-act" href="{{$p.URL}}" download="image.png">{{template "icon-download"}}<span>Save</span></a>
+    <button type="button" class="viewer-act" data-share="{{$p.URL}}" data-share-name="image.png" hidden>{{template "icon-share"}}<span>Share</span></button>
+    {{if $i.Size}}
+    <button type="button" class="viewer-act" data-edit-picture="{{$p.URL}}" data-prompt="{{$i.Prompt}}" data-look="{{$i.Look}}" title="Start a new picture from this one">{{template "icon-edit"}}<span>Edit</span></button>
+    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"vary","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt with a new seed">{{template "icon-shuffle"}}<span>Vary</span></button>
+    {{end}}
+    <button type="button" class="viewer-act" data-view-details aria-expanded="false" aria-controls="details-{{$i.ID}}-{{$p.Index}}">{{template "icon-info"}}<span>Details</span></button>
+    <div class="viewer-panel" id="details-{{$i.ID}}-{{$p.Index}}" hidden>
         <p class="whitespace-pre-wrap wrap-anywhere">{{$i.Prompt}}</p>
         <dl class="viewer-facts">
           {{with $i.Size}}<div><dt>Size</dt><dd>{{.}}</dd></div>{{end}}
+          {{if $i.Edited}}<div><dt>Change</dt><dd>{{$i.ChangeName}}</dd></div>{{end}}
+          {{with $i.From}}<div><dt>Started from</dt><dd><img class="viewer-from" src="{{.}}" alt="The picture this started from"></dd></div>{{end}}
           {{if $i.Look}}<div><dt>Look</dt><dd>{{$i.LookName}}</dd></div>{{end}}
           <div><dt>Seed</dt><dd>{{$p.Seed}}</dd></div>
           {{with $i.Model}}<div><dt>Model</dt><dd>{{.}}</dd></div>{{end}}
@@ -538,24 +580,21 @@
         <p class="text-xs text-[var(--lb-viewer-muted)]" data-no-share hidden>This browser can’t share files. Use Save instead.</p>
         <div class="flex flex-wrap gap-2">
           {{with $i.Prompt}}<button type="button" class="btn viewer-quiet rounded-full" data-copy-text="{{.}}">Copy prompt</button>{{end}}
-          {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}
+          {{if and $i.Size (or (not $i.Edited) $i.From)}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-from="{{$i.From}}" data-change="{{$i.Change}}" data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}
+          {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"same","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt and seed">Regenerate</button>{{end}}
         </div>
         <form hx-post="/app/lab/runs/{{$i.ID}}/remove" hx-target="#run-{{$i.ID}}" hx-swap="outerHTML">
           <input type="hidden" name="picture" value="{{$p.Index}}">
           {{template "confirm" (dict "Label" "Delete" "Action" "delete" "Confirm" "Delete picture" "Text" "This picture is removed from the Studio.")}}
         </form>
-      </div>
-    </details>
-    <a class="viewer-act" href="{{$p.URL}}" download="image.png">{{template "icon-download"}}<span>Save</span></a>
-    <button type="button" class="viewer-act" data-share="{{$p.URL}}" data-share-name="image.png" hidden>{{template "icon-share"}}<span>Share</span></button>
-    {{if $i.Size}}
-    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"vary","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt with a new seed">{{template "icon-shuffle"}}<span>Vary</span></button>
-    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"same","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt and seed">{{template "icon-repeat"}}<span>Regenerate</span></button>
-    {{end}}
+    </div>
   </div>
 </dialog>
 {{end}}
 
+{{define "icon-edit"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>{{end}}
+{{define "icon-zoom"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m16 16 3.5 3.5M11 8.5v5M8.5 11h5"/></svg>{{end}}
+{{define "icon-mat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="1"/><rect x="8" y="9" width="8" height="6"/></svg>{{end}}
 {{define "icon-forward"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 5.5 6-5.5 6"/></svg>{{end}}
 {{define "icon-info"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg>{{end}}
 {{define "icon-shuffle"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h3.5L16.5 17H20M4 17h3.5l2.7-2.8M13.8 10l2.7-2.5H20M17.5 5 20 7.5 17.5 10M17.5 14.5 20 17l-2.5 2.5"/></svg>{{end}}

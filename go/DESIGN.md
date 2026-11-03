@@ -4503,3 +4503,42 @@ dock put the question last and left it out of the answer.
 first, no tabs on an answer, equal tracks, numbers after them and lined up, Ask another, real Tab presses
 clearing the bar, and a row's parts on one line). They run on Chrome 114 and on a current Chrome.
 
+### 27.5 Image, gallery first
+
+- **A group leads with its words,** in the reading face, then its look and age, then its pictures. A long
+  prompt stops at three lines here, and Details has all of it. Pictures are what the page is for, so the
+  "Results" heading went, and one line says they stay for 30 minutes.
+- **The viewer is for inspecting.** It opens on the whole picture. A tap or click on the picture, the button,
+  or Z doubles it around that point. Zoomed in, the arrows move around the picture rather than to the next
+  one. Moving on shows the next whole picture. Pinching is the browser's own, and is not disabled.
+- **The mat is optional, and off by default.** It puts the picture on paper, for looking at rather than
+  checking. It is a way of looking at pictures, so it stays with this browser, not with one picture.
+- **Closing goes back to the picture you were on,** even after moving between several.
+- **What a restart lost is one line.** A run outlives the in-memory note holding its words, so afterwards it
+  has no prompt, nothing to try again and no picture. A tool says how many once, with Clear, rather than a
+  row each, and the landing leaves them out.
+- **Edit makes a picture the start of a new one** (`/v1/images/edits`). It sits in the prompt box with its
+  words ready to change: these models draw what the words describe, so the whole description goes in, not an
+  instruction. The new picture keeps this one's shape, so Shape gives way to how much to change, in three
+  plain steps that make no promise about any model. The button says Edit rather than "Use as input": that is
+  the word a person would look for, and the bar has to fit a small phone.
+- **A model that can't edit is never offered for it.** The same answer the API goes by decides, and a model
+  that can't stays visible in the sheet, saying so. Editing switches to one that can; stopping goes back. With
+  none on this computer, Edit says what is needed and leaves the picture where it is. That state names no model.
+- **An edit stays an edit.** Its result says so, Details shows how much and the picture it started from while
+  that is kept, and Vary, Regenerate, Reuse settings and Try again all start from the same picture. Once the
+  starting picture has gone, Vary and Regenerate say so, and Reuse settings and Try again step aside: none of
+  them quietly makes a new picture instead.
+- **Regenerate moved under Details.** With Edit and Share on a phone there are too many for one row, and it is
+  the rarest of them: the same seed mostly repeats the same picture.
+- **Details is a plain button and panel, not a `<details>`.** The panel has to sit above the actions, across the
+  bar, while its opener stays in the row. A `<details>` can only do that with `display: contents`, and browsers
+  that wrap its content in a `::details-content` box then lay it out differently: Chrome 156 put the panel beside
+  the actions at 1280, where Chrome 114 put it above them. A check now compares where the panel really is.
+
+**Checks:** `tools/chat-runs-check.sh`: the words above the pictures, zoom by each means, the arrows while
+zoomed, the mat, focus on closing, and all the actions at 320 with Share showing, as it does on a real phone.
+Edit, by whichever state the gateway's models allow: the picture in the prompt, the route, the way back, and
+that the page doesn't move. `TestImageEdit` and `TestImageEditOnlyWithAModelThatCan` cover the request and
+both states without a browser. **A real model has not edited a picture through this page.**
+
