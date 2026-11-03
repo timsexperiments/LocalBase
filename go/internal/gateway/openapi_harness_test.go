@@ -40,8 +40,9 @@ const (
 // services themselves, so the routes answer the same way everywhere.
 var openAPIHasMedia = goruntime.GOOS == "darwin"
 
-// openAPIGateway is the whole gateway, every modality wired over the fake backend,
-// starting with authentication off: every route answers as it would in production.
+// openAPIGateway is the whole gateway, every modality wired over the fake backend, with
+// authentication on from the start: every route answers as it would in production, and
+// nothing changes under a running server.
 func openAPIGateway(t *testing.T) *httptest.Server {
 	t.Helper()
 	r, err := root.Init(filepath.Join(scratchDir(t), "root"))
@@ -73,7 +74,7 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, NoAuth: true, MemoryGB: 64,
+	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, MemoryGB: 64,
 		Root: r, Memory: mem, Voices: voices.New(st, r.Dir)}
 
 	service := func(modality, modelID, backendID, binary string) *runtime.Service {

@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// The API described for tools: DESIGN §28. The document is edited by hand, and
+// The API described for tools: DESIGN §30. The document is edited by hand, and
 // openapi_test.go fails when it and the registered routes disagree.
 
 //go:embed openapi.json

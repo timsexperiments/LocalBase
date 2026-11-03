@@ -10,16 +10,17 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 )
 
-// What Connect hands out works (DESIGN §28.7): the curl snippet, run by a real shell
+// What Connect hands out works (DESIGN §30.7): the curl snippet, run by a real shell
 // with a real curl, gets a real answer from a real gateway, using the scopes the page's
 // one tap grants. The fields every other client is given reach the same routes.
 func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 	if _, err := exec.LookPath("curl"); err != nil {
 		t.Skip("no curl here")
 	}
-	ts := newTestServer(t)
+	// Authentication is on from the start: curl is another process, so nothing here could
+	// order a change made under a running server with what the server reads.
+	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	_, key, err := s.Store.CreateAPIKey(t.Context(), "connect-curl", []string{"inference:chat", "models:read"})
 	if err != nil {
 		t.Fatal(err)

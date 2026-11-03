@@ -104,7 +104,7 @@ func allText(c Client) []string {
 	return out
 }
 
-// Copy never names a model: the id is data, chosen by the person (DESIGN §28.3).
+// Copy never names a model: the id is data, chosen by the person (DESIGN §30.3).
 func TestNoModelNamedInFixedCopy(t *testing.T) {
 	cat, err := catalog.LoadWithFormer()
 	if err != nil {

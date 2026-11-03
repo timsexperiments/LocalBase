@@ -1,6 +1,6 @@
 // Package connect says how to point an app at this gateway: its base URLs, and
 // each client's snippets. The page and the CLI both render from here, so they
-// cannot disagree (DESIGN §28.3). It knows nothing about the gateway.
+// cannot disagree (DESIGN §30.3). It knows nothing about the gateway.
 package connect
 
 import (

@@ -1,4 +1,4 @@
-// Connect an app (DESIGN §28.4). Copy buttons, and keeping a new key in the snippets when
+// Connect an app (DESIGN §30.4). Copy buttons, and keeping a new key in the snippets when
 // htmx re-renders them for another model or address. The secret stays in this variable
 // only, never in a URL or storage, and is dropped when the page is left.
 
