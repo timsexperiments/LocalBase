@@ -248,9 +248,7 @@ repo and the TS binary stays on disk.
 
 **After merging, before tagging**
 
-- [ ] **Do not push a `v*` tag yet.** `release.yml` builds and publishes the TS binary
-      only, and there is no Go release job.
-- [ ] Add a Go release job.
+- [ ] **Do not push a `v*` tag yet.** Follow `docs/release-checklist.md`, which needs the Go release job in `release-go.yml`.
 - [ ] Separate later PR: retire TS sources and bun CI, and move `drizzle/` (§17.3).
 
 ## 6. Evidence and limits
@@ -264,7 +262,7 @@ repo and the TS binary stays on disk.
 - **Reviewed, no change:** the gzip asset change in `web.go` compresses text assets once
   under a lock, sends `Vary` on both variants, and has a round-trip test.
 - **Worth a look, not blocking:** `go/internal/gateway/testdata/video.json` is 6.3 MB of
-  text, and it stays in the squash. `.design/` is excluded only by a local
-  `.git/info/exclude`, so a fresh clone won't ignore it.
+  text, and it stays in the squash. `.design/` was tracked on main despite a local
+  `.git/info/exclude`; it is now untracked and in `.gitignore`.
 - **Not checked:** PR-by-PR code review of the 586 files (this pass is about merging, not
   a re-review), and anything on a real phone or NVIDIA hardware.
