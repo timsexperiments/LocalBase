@@ -74,16 +74,19 @@ func TestNewProviderCannotClaimABoundAddress(t *testing.T) {
 		ClientAuthentication: &ClientAuth{Kind: "client-secret-basic", ClientSecret: "shh"}}
 	b := browserFor(t, st, reg)
 	b.Client = f.srv.Client()
-	session := cookieNamed(login(t, b, f, nil), SessionCookie)
-	if session == nil {
-		t.Fatal("no session")
+	if resp := login(t, b, f, nil); cookieNamed(resp, SessionCookie) != nil {
+		t.Fatalf("a provider that claims a bound address got a session: %d", resp.StatusCode)
 	}
-	id, _ := b.Authenticate(get("/app/session", session))
-	if d := b.Authorize(ctx, id); len(d.Permissions) != 0 || len(d.MatchedRoles) != 0 {
+	if d := b.Authorize(ctx, &Identity{Issuer: f.srv.URL, Subject: "someone-else", VerifiedEmail: "owner@example.com"}); len(d.Permissions) != 0 || len(d.MatchedRoles) != 0 {
 		t.Fatalf("a provider that claims a bound address got %v %v", d.MatchedRoles, d.Permissions)
 	}
 	// The same sign-in, when that provider is the one the binding trusts, is the owner.
 	bind(f.srv.URL)
+	session := cookieNamed(login(t, b, f, nil), SessionCookie)
+	if session == nil {
+		t.Fatal("no session for the trusted provider")
+	}
+	id, _ := b.Authenticate(get("/app/session", session))
 	if d := b.Authorize(ctx, id); len(d.Permissions) != len(Permissions) {
 		t.Errorf("the trusted provider got %v", d.Permissions)
 	}
