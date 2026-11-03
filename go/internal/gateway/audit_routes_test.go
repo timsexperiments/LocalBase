@@ -384,41 +384,76 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	}
 }
 
-// The limit is one budget, and what it holds back is said, by area, once a minute and at the end.
+// The limit is one budget, and what it holds back is said, by area and by actor, once a minute
+// and at the end.
 func TestChangeLimiter(t *testing.T) {
 	l := newChangeLimiter()
 	now := time.Unix(1000, 0)
 	allowed := 0
 	for i := 0; i < 50; i++ {
-		area := "placement"
+		area, actor := "placement", "key_a"
 		if i%2 == 0 {
-			area = "unload"
+			area, actor = "unload", "key_b"
 		}
-		if l.allow(now, area) {
+		if l.allow(now, area, actor) {
 			allowed++
 		}
 	}
 	if allowed != changeAuditBurst {
 		t.Errorf("%d allowed, want %d", allowed, changeAuditBurst)
 	}
-	if n, _ := l.flush(now); n != 0 {
-		t.Errorf("said %d before the minute ended", n)
+	if got := l.flush(now); got.count != 0 {
+		t.Errorf("said %d before the minute ended", got.count)
 	}
 	later := now.Add(changeAuditEvery)
-	if !l.allow(later, "placement") {
+	if !l.allow(later, "placement", "key_a") {
 		t.Error("the next minute's budget")
 	}
-	if n, areas := l.flush(later); n != 30 || areas != "placement=15,unload=15" {
-		t.Errorf("%d %q", n, areas)
+	want := heldChanges{count: 30, areas: "placement=15,unload=15", actors: "key_a=15,key_b=15"}
+	if got := l.flush(later); got != want {
+		t.Errorf("%+v, want %+v", got, want)
 	}
-	if n, _ := l.flush(later); n != 0 {
-		t.Errorf("said twice: %d", n)
+	if got := l.flush(later); got.count != 0 {
+		t.Errorf("said twice: %+v", got)
 	}
 	for i := 0; i < 25; i++ {
-		l.allow(later, "voices")
+		l.allow(later, "voices", "cli")
 	}
-	if n, areas := l.drain(later); n != 6 || areas != "voices=6" {
-		t.Errorf("drain: %d %q", n, areas)
+	if got := l.drain(later); got != (heldChanges{count: 6, areas: "voices=6", actors: "cli=6"}) {
+		t.Errorf("drain: %+v", got)
+	}
+}
+
+// Who a summary names is bounded however many there are, each actor it has room for stays counted,
+// and a value not of an id's shape is never one.
+func TestChangeLimiterNamesAFewActors(t *testing.T) {
+	l := newChangeLimiter()
+	now := time.Unix(1000, 0)
+	for i := 0; i < changeAuditBurst; i++ {
+		l.allow(now, "placement", "key_spent")
+	}
+	const people = 100_000
+	for i := 0; i < people; i++ {
+		l.allow(now, "placement", "key_"+strconv.Itoa(i%(people/2)))
+	}
+	if n := len(l.actors); n != changeAuditActors {
+		t.Errorf("%d actors held after %d different ones", n, people/2)
+	}
+	if n := len(l.held); n != 1 {
+		t.Errorf("%d areas", n)
+	}
+	got := l.drain(now)
+	if got.count != people || got.others != people-changeAuditActors*2 {
+		t.Errorf("%+v", got)
+	}
+	if strings.Count(got.actors, "=") != changeAuditActors || !strings.Contains(got.actors, "key_0=2") {
+		t.Errorf("%q", got.actors)
+	}
+	if len(l.actors) != 0 || l.others != 0 {
+		t.Errorf("not emptied: %d, %d", len(l.actors), l.others)
+	}
+	if auditActorLabel("api-key", "x\ny") != "" || auditActorLabel("cli", "") != "cli" {
+		t.Error("a label")
 	}
 }
 
@@ -444,10 +479,10 @@ func TestChangeLimiterDoesNotGrowWithCallerChosenIDs(t *testing.T) {
 		}
 	}
 	f.srv.changeAudit.mu.Lock()
-	entries := len(f.srv.changeAudit.held)
+	entries, actors := len(f.srv.changeAudit.held), len(f.srv.changeAudit.actors)
 	f.srv.changeAudit.mu.Unlock()
-	if entries > 1 {
-		t.Errorf("%d entries after %d distinct ids: %v", entries, n, f.srv.changeAudit.held)
+	if entries > 1 || actors > 1 {
+		t.Errorf("%d areas and %d actors after %d distinct ids", entries, actors, n)
 	}
 	http.DefaultClient.CloseIdleConnections()
 	f.logs.mu.Lock()
@@ -474,24 +509,29 @@ func TestAFloodDoesNotHideKeyChanges(t *testing.T) {
 	if status, out := f.send(f.key, "POST", "/_localbase/api-keys", "application/json", []byte(`{"action":"create","name":"later","scopes":["keys:read"]}`)); status != 200 && status != 201 {
 		t.Fatalf("%d %s", status, out)
 	}
+	if status, out := f.send(f.key, "POST", "/_localbase/access-management", "application/json", []byte(`{"action":"disable"}`)); status != 200 {
+		t.Fatalf("%d %s", status, out)
+	}
 	f.srv.LogHeldBack()
 	events := f.auditEvents(0)
-	changed, keys, summary := 0, 0, 0
+	changed, keys, access, summary := 0, 0, 0, 0
 	for _, ev := range events {
 		switch ev["event"] {
 		case "audit.computer-name-changed":
 			changed++
 		case "audit.api-key-changed":
 			keys++
+		case "audit.access-changed":
+			access++
 		case "audit.changes-summary":
 			summary++
-			if ev["areas"] != "computer-name=80" || ev["count"].(float64) != 80 {
+			if ev["areas"] != "computer-name=80" || ev["count"].(float64) != 80 || ev["actors"] != f.id+"=80" || ev["other_actors_count"].(float64) != 0 {
 				t.Errorf("%v", ev)
 			}
 		}
 	}
-	if changed != changeAuditBurst || keys != 1 || summary != 1 {
-		t.Errorf("%d lines of the limited route, %d key lines, %d summaries", changed, keys, summary)
+	if changed != changeAuditBurst || keys != 1 || access != 1 || summary != 1 {
+		t.Errorf("%d lines of the limited route, %d key lines, %d access lines, %d summaries", changed, keys, access, summary)
 	}
 }
 
@@ -499,13 +539,23 @@ func TestAFloodDoesNotHideKeyChanges(t *testing.T) {
 func TestAChangeWithAnOddTargetLogsNoTarget(t *testing.T) {
 	f := newAuditFixture(t)
 	const odd = "x\n{\"event\":\"audit.changes-summary\"}"
-	h := f.srv.auditedRoute("voices", func(*http.Request, []byte, []byte) (auditedChange, bool) {
+	h := f.srv.auditedRoute("voices", func(r *http.Request, _, _ []byte) (auditedChange, bool) {
+		if r.Header.Get("X-Odd-Action") != "" {
+			return auditedChange{odd, "voice", "ok"}, true
+		}
 		return auditedChange{"rename", "voice", odd}, true
 	}, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	req := httptest.NewRequest("PATCH", "/_localbase/voices/x", strings.NewReader("{}"))
 	h(httptest.NewRecorder(), req)
 	events := f.auditEvents(0)
 	if len(events) != 1 || events[0]["target_id"] != "" || events[0]["action"] != "rename" {
+		t.Errorf("%v", events)
+	}
+	req = httptest.NewRequest("PATCH", "/_localbase/voices/x", strings.NewReader("{}"))
+	req.Header.Set("X-Odd-Action", "1")
+	h(httptest.NewRecorder(), req)
+	events = f.auditEvents(0)
+	if len(events) != 2 || events[1]["action"] != "" || events[1]["target_id"] != "ok" {
 		t.Errorf("%v", events)
 	}
 }

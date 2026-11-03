@@ -63,6 +63,9 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 		if !auditTargetRe.MatchString(change.targetID) {
 			change.targetID = ""
 		}
+		if !auditActionRe.MatchString(change.action) {
+			change.action = ""
+		}
 		actorKind, actorID := s.auditActor(r)
 		if refused {
 			if change.targetKind != "model" || s.Catalog == nil || s.Catalog.ByID(change.targetID) == nil {
@@ -72,7 +75,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 			return
 		}
 		now := time.Now()
-		if !s.changeAudit.allow(now, area) {
+		if !s.changeAudit.allow(now, area, auditActorLabel(actorKind, actorID)) {
 			return
 		}
 		s.changeSummary(s.changeAudit.flush(now))
@@ -81,62 +84,100 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 	}
 }
 
-// changeSummary says what was counted rather than logged. Nothing is dropped unmentioned.
-func (s *Server) changeSummary(count int, areas string) {
-	if count > 0 {
-		s.Log.Warn("Changes were counted rather than logged.", "event", "audit.changes-summary", "count", count, "areas", areas,
-			"interval_seconds", int(changeAuditEvery.Seconds()))
+// changeSummary says what was counted rather than logged, and whose. Nothing is dropped unmentioned.
+func (s *Server) changeSummary(held heldChanges) {
+	if held.count > 0 {
+		s.Log.Warn("Changes were counted rather than logged.", "event", "audit.changes-summary", "count", held.count, "areas", held.areas,
+			"actors", held.actors, "other_actors_count", held.others, "interval_seconds", int(changeAuditEvery.Seconds()))
 	}
 }
 
-// changeLimiter is one budget for every limited area, with a count of what was held back in each.
-// Its size can't depend on a request: its keys are the area names written in New, and a target id,
-// which a caller chooses, is never one.
+// auditActorLabel is how a summary names who made a change: the principal's id, or its kind when
+// it has none, as for the command line. Anything of another shape is counted among the others.
+func auditActorLabel(kind, id string) string {
+	if id == "" {
+		id = kind
+	}
+	if !auditTargetRe.MatchString(id) {
+		return ""
+	}
+	return id
+}
+
+// heldChanges is what a summary says.
+type heldChanges struct {
+	count, others int
+	areas, actors string
+}
+
+// changeAuditActors is how many actors a summary names. A change by anyone after those is in
+// other_actors_count, a count of changes and not of people.
+const changeAuditActors = 5
+
+// changeLimiter is one budget for every limited area, with a count of what was held back in each
+// and by whom. Its size can't depend on a request: its area keys are the names written in New, a
+// target id is never one, and it names at most changeAuditActors actors between summaries.
 type changeLimiter struct {
 	sampler *obs.Sampler
 	mu      sync.Mutex
 	held    map[string]int
+	actors  map[string]int
+	others  int
 }
 
 func newChangeLimiter() *changeLimiter {
-	return &changeLimiter{sampler: &obs.Sampler{Every: changeAuditEvery, Burst: changeAuditBurst}, held: map[string]int{}}
+	return &changeLimiter{sampler: &obs.Sampler{Every: changeAuditEvery, Burst: changeAuditBurst}, held: map[string]int{}, actors: map[string]int{}}
 }
 
-func (l *changeLimiter) allow(now time.Time, area string) bool {
+func (l *changeLimiter) allow(now time.Time, area, actor string) bool {
 	if l.sampler.Allow(now) {
 		return true
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.held[area]++
+	if _, known := l.actors[actor]; actor != "" && (known || len(l.actors) < changeAuditActors) {
+		l.actors[actor]++
+	} else {
+		l.others++
+	}
 	return false
 }
 
 // flush returns what has been held back, once an interval has ended.
-func (l *changeLimiter) flush(now time.Time) (int, string) {
+func (l *changeLimiter) flush(now time.Time) heldChanges {
 	if l.sampler.Flush(now) == 0 {
-		return 0, ""
+		return heldChanges{}
 	}
 	return l.take()
 }
 
 // drain returns everything held back, the open interval's too. It's for the end.
-func (l *changeLimiter) drain(now time.Time) (int, string) {
+func (l *changeLimiter) drain(now time.Time) heldChanges {
 	l.sampler.Drain(now)
 	return l.take()
 }
 
-func (l *changeLimiter) take() (int, string) {
+func (l *changeLimiter) take() heldChanges {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	total, parts := 0, make([]string, 0, len(l.held))
-	for area, n := range l.held {
-		total += n
-		parts = append(parts, fmt.Sprintf("%s=%d", area, n))
+	out := heldChanges{others: l.others}
+	list := func(m map[string]int) string {
+		parts := make([]string, 0, len(m))
+		for name, n := range m {
+			parts = append(parts, fmt.Sprintf("%s=%d", name, n))
+		}
+		slices.Sort(parts)
+		return strings.Join(parts, ",")
 	}
-	slices.Sort(parts)
+	for _, n := range l.held {
+		out.count += n
+	}
+	out.areas, out.actors = list(l.held), list(l.actors)
 	clear(l.held)
-	return total, strings.Join(parts, ",")
+	clear(l.actors)
+	l.others = 0
+	return out
 }
 
 // auditedModelRoute sends a model's unload and placement changes to their own areas.

@@ -4917,8 +4917,11 @@ seconds, could push out everything older, including the record of who changed wh
   the Hugging Face token, voices, the computer name) shares one limit of 20 lines a minute, apart from the refusals':
   otherwise a key with only `models:manage` could push out who changed keys and access. The rest are counted by area and
   said in one `audit.changes-summary`, when the next change after that minute is written and at shutdown, with the count
-  and `areas`, such as `placement=12,unload=3`. A flood's own changes are counted, not named. The count is kept by area
-  name, from a list fixed in the code, so a caller's ids can't grow it. Every command-line change is written.
+  and `areas`, such as `placement=12,unload=3`, and `actors`: the ids of the first five whose changes were held back, each with
+  its count, and `other_actors_count` for the changes of anyone after them. A flood's own changes are counted, not named.
+  The count is kept by area name, from a list fixed in the code, and at most five actors between summaries, so a caller's ids
+  can't grow it. The limit is shared, so a flood on one area means someone's change in another that minute is
+  counted and not named. The summary comes with the next line or at shutdown, so a crash loses a count not yet said, as with refusals. Every command-line change is written.
 - **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
   summed in one `http.anonymous-summary` when a request arrives after that minute, and at shutdown. A flood of 20,000 now writes
   under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or
