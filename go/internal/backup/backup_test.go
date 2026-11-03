@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -312,8 +313,8 @@ func noLeftovers(t *testing.T, parent string) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if strings.Contains(e.Name(), ".restore-") {
-			t.Errorf("a staging directory was left: %s", e.Name())
+		if strings.HasPrefix(e.Name(), temporaryPrefix) {
+			t.Errorf("a working directory was left: %s", e.Name())
 		}
 	}
 }
@@ -635,6 +636,65 @@ func TestBackupRefusesWhatItCouldNotRestore(t *testing.T) {
 		if after := tree(t, filepath.Dir(r.Dir), filepath.Base(r.Dir)); after != before {
 			t.Errorf("dry run %v left something beside the root:\n%s", dry, after)
 		}
+	}
+}
+
+// A killed run can't clean up. What it left is named by doctor, and removed by the next run.
+func TestAbandonedWorkingDirectories(t *testing.T) {
+	parent := dir(t)
+	r, _ := newRoot(t, parent)
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	gone := dead.Process.Pid
+	left := filepath.Join(parent, fmt.Sprintf("%sbackup-%d-123", temporaryPrefix, gone))
+	write(t, filepath.Join(left, "content", "ui-access.json"), secretOIDC)
+	stillWorking := filepath.Join(parent, fmt.Sprintf("%sbackup-%d-456", temporaryPrefix, os.Getpid()))
+	write(t, filepath.Join(stillWorking, "x"), "x")
+	mine := filepath.Join(parent, temporaryPrefix+"something-else")
+	write(t, filepath.Join(mine, "x"), "x")
+
+	if got := Abandoned(r.Dir); len(got) != 1 || got[0] != left {
+		t.Fatalf("abandoned: %v", got)
+	}
+	if _, err := os.Stat(left); err != nil {
+		t.Error("looking must not remove it")
+	}
+	res, err := Create(context.Background(), Options{Root: r, DryRun: true, Output: filepath.Join(dir(t), "b"+Extension)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(res.Cautions, " "), left) {
+		t.Errorf("it should say what it removed: %v", res.Cautions)
+	}
+	if _, err := os.Stat(left); !os.IsNotExist(err) {
+		t.Errorf("it should be gone: %v", err)
+	}
+	for _, kept := range []string{stillWorking, mine} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Errorf("%s isn't its to remove: %v", kept, err)
+		}
+	}
+}
+
+func TestWorkingDirectoriesArePrivate(t *testing.T) {
+	was := syscall.Umask(0)
+	defer syscall.Umask(was)
+	d := dir(t)
+	path, err := newTemporary(d, "backup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Errorf("%o", info.Mode().Perm())
+	}
+	if !temporaryRe.MatchString(filepath.Base(path)) {
+		t.Errorf("the name isn't obvious, or isn't recognised: %s", path)
 	}
 }
 

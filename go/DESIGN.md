@@ -5013,6 +5013,8 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 
 **A backup is checked before it is kept.** After writing the file, `backup` reads it back with every check restore makes before changing anything. If its own restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work, in a directory beside the root that it removes, so its answer can be believed. This came from the first run on a clone of the live root, where `backup` kept a file restore refused.
 
+**Working directories hold what a backup holds, secrets included.** Backup and restore each work in a directory named `.local-base-temporary-<backup|restore>-<pid>-<number>`, 0700 from its first moment, removed on every way out that can run anything: success, failure, an interrupt or a termination, including at restore's question. A kill can't clean up, so `doctor` names what one left, with the command to delete it, and the next backup or restore removes it and says so. A directory whose process is still running is left alone.
+
 **Included:**
 
 | What | From | Secrets in it |
@@ -5201,12 +5203,13 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway has nothing neither table names.
 - `TestBeforeRestoreIsNeverRead`: planted text in `.before-restore-*` does not reach a backup, diagnostics or any API answer, and a gateway starts with it there.
 - `TestRestoreWarnsAboutBusyPorts`, `TestUninstallNamesBackups`.
+- `TestInterruptedRunsLeaveNothing`: an interrupt and a termination during a dry run and a restore leave nothing. After a real kill, `doctor` names what was left, and the next run removes it and says so.
 - `TestBackupRestoreCLI`: the "not encrypted" line, the sign-out line before the question, `--json` needing `--yes`, an unsafe root refused, and the old files named last, with the command to delete them.
 
 **In `internal/backup/`:**
 
 - `TestBackupHoldsSecretsOrNot`: planted secrets are found in the raw bytes of a full backup, proving the scan works, and in no byte of an `--exclude-secrets` one. `TestBackupLeavesNoFreePages`: the bytes of rows left out are not in free pages.
-- `TestRealRootRoundTrip`: every kind of file the live root holds, by the list from the clone run, plus a patch of a built-in entry and files the gateway ignores, restores with its catalog intact. `TestBackupRefusesWhatItCouldNotRestore`: a backup its own restore would refuse is not kept, and a dry run says the same.
+- `TestRealRootRoundTrip`: every kind of file the live root holds, by the list from the clone run, plus a patch of a built-in entry and files the gateway ignores, restores with its catalog intact. `TestBackupRefusesWhatItCouldNotRestore`: a backup its own restore would refuse is not kept, and a dry run says the same. `TestAbandonedWorkingDirectories`, `TestWorkingDirectoriesArePrivate`.
 - `TestBackupNeverHoldsWhatStaysBehind`, `TestBackupListsWhatItDoesNotKnow`, `TestNoNetworkImports`.
 - `TestBackupModes`, under a 0000 and a 0077 umask. `TestBackupRefusesPlaces`: no overwrite, no output inside the root, no directory others can write to. `TestBackupRefusesPlantedLinks`. `TestBackupWhileWriting`.
 - `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, a wrong size, an extra, missing or duplicate entry, a link, `../`, an absolute path, a device, a sparse entry, data after the tar or after the gzip, a newer format or schema, a manifest over each limit, a corrupt database, an invalid `ui-access.json`, backend or catalog entry, a voice that doesn't match, a bad imported model, and a file others can change. The target is the same afterwards, and nothing is left beside it.

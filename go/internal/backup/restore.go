@@ -204,7 +204,9 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 		return nil, err
 	}
 	defer in.Close()
-	dir, err := os.MkdirTemp(existingAncestor(filepath.Dir(target)), "."+filepath.Base(target)+".restore-")
+	place := existingAncestor(filepath.Dir(target))
+	swept := sweep(place)
+	dir, err := newTemporary(place, "restore")
 	if err != nil {
 		return nil, err
 	}
@@ -215,9 +217,6 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 			s.Discard()
 		}
 	}()
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return nil, err
-	}
 	m, err := extract(ctx, in, dir)
 	if err != nil {
 		return nil, err
@@ -226,6 +225,7 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 	if err != nil {
 		return nil, err
 	}
+	report.Cautions = append(report.Cautions, swept...)
 	report.Rules = []string{SignOutLine}
 	if !report.NewRoot {
 		report.Rules = append(report.Rules, RevokedLine)
@@ -382,7 +382,7 @@ func extract(ctx context.Context, in io.Reader, dir string) (*Manifest, error) {
 		if h.Size != f.Size {
 			return nil, refuse("%q is not the size the manifest says.", rel)
 		}
-		if err := writeEntry(tr, filepath.Join(dir, filepath.FromSlash(rel)), f); err != nil {
+		if err := writeEntry(ctxReader{ctx, tr}, filepath.Join(dir, filepath.FromSlash(rel)), f); err != nil {
 			return nil, err
 		}
 	}
@@ -426,6 +426,9 @@ func writeEntry(r io.Reader, to string, f File) error {
 	}
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(out, h), io.LimitReader(r, f.Size+1))
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
 	if err != nil {
 		return refuse("The backup is damaged: %v", err)
 	}
@@ -887,8 +890,7 @@ type journal struct {
 }
 
 var (
-	beforeRe  = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
-	stagingRe = regexp.MustCompile(`^\.[^/\\]*\.restore-[0-9]+$`)
+	beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
 	// stepHook is for tests: an error is a failure, and a panic is a crash.
 	stepHook = func(string) error { return nil }
 )
@@ -1113,7 +1115,7 @@ func readJournal(dir string) (*journal, error) {
 	if j.Version != 1 || !beforeRe.MatchString(j.Before) {
 		return nil, refuse("The restore journal names something a restore doesn't make: %q.", j.Before)
 	}
-	if j.Staging != "" && !stagingRe.MatchString(j.Staging) {
+	if j.Staging != "" && !temporaryRe.MatchString(j.Staging) {
 		return nil, refuse("The restore journal names something a restore doesn't make: %q.", j.Staging)
 	}
 	for _, name := range j.Had {

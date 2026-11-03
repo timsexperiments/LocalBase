@@ -20,8 +20,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
@@ -41,6 +44,9 @@ const (
 	manifestEntry = "manifest.json"
 	filesPrefix   = "files/"
 	beforePrefix  = ".before-restore-"
+	// temporaryPrefix names a working directory, so one a killed run leaves is obvious. It holds
+	// what a backup holds, secrets included, for as long as it exists.
+	temporaryPrefix = ".local-base-temporary-"
 	// formerLog is the one name in those directories that isn't a JSON entry: the ids of former
 	// built-ins already kept as entries, so that removing one sticks.
 	formerLog = "catalog.d/.former-built-ins"
@@ -223,6 +229,88 @@ func survey(rootDir string) (files []string, left []NotIncluded, err error) {
 	sort.Strings(files)
 	sort.Slice(left, func(i, j int) bool { return left[i].What < left[j].What })
 	return files, left, nil
+}
+
+var temporaryRe = regexp.MustCompile(`^\.local-base-temporary-(backup|restore)-([0-9]+)-[0-9]+$`)
+
+// newTemporary makes a private working directory, named for what made it and its process.
+func newTemporary(dir, kind string) (string, error) {
+	path, err := os.MkdirTemp(dir, fmt.Sprintf("%s%s-%d-", temporaryPrefix, kind, os.Getpid()))
+	if err != nil {
+		return "", err
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		os.RemoveAll(path)
+		return "", err
+	}
+	return path, nil
+}
+
+// abandoned lists working directories in dir whose process is gone. A process that is killed can't
+// clean up, so these are found afterwards, by whoever looks next.
+func abandoned(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		m := temporaryRe.FindStringSubmatch(e.Name())
+		if m == nil {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(dir, e.Name()))
+		if err != nil || !info.IsDir() || !ownedByMe(info) {
+			continue
+		}
+		pid, err := strconv.Atoi(m[2])
+		if err != nil {
+			continue
+		}
+		if err := syscall.Kill(pid, 0); err == nil || errors.Is(err, syscall.EPERM) {
+			continue // that process is still working
+		}
+		out = append(out, filepath.Join(dir, e.Name()))
+	}
+	return out
+}
+
+// Abandoned lists what killed runs left around a root, for doctor. It removes nothing.
+func Abandoned(rootDir string) []string {
+	return append(abandoned(filepath.Dir(rootDir)), abandoned(DefaultDir(rootDir))...)
+}
+
+// sweep removes what killed runs left in these places, and says so.
+func sweep(places ...string) []string {
+	var said []string
+	seen := map[string]bool{}
+	for _, place := range places {
+		if seen[place] {
+			continue
+		}
+		seen[place] = true
+		for _, path := range abandoned(place) {
+			if err := os.RemoveAll(path); err != nil {
+				said = append(said, "An interrupted run left private files at "+path+", and they could not be removed. They may hold secrets: "+err.Error())
+				continue
+			}
+			said = append(said, "Removed private files an interrupted run left at "+path+".")
+		}
+	}
+	return said
+}
+
+// ctxReader lets a long copy stop when the run is interrupted.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }
 
 // holdable is every path a backup may hold, for writing one and for reading one. They must not
@@ -415,14 +503,12 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	if o.DryRun {
 		place = filepath.Dir(o.Root.Dir)
 	}
-	stage, err := os.MkdirTemp(place, ".lbbackup-")
+	res.Cautions = append(res.Cautions, sweep(place, filepath.Dir(o.Root.Dir))...)
+	stage, err := newTemporary(place, "backup")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(stage)
-	if err := os.Chmod(stage, 0o700); err != nil {
-		return nil, err
-	}
 	content := filepath.Join(stage, "content")
 	if err := os.Mkdir(content, 0o700); err != nil {
 		return nil, err
@@ -581,7 +667,7 @@ func writeArchive(ctx context.Context, archive, content string, m *Manifest) err
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(tw, in)
+		_, err = io.Copy(tw, ctxReader{ctx, in})
 		in.Close()
 		if err != nil {
 			return err

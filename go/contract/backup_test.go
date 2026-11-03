@@ -2,6 +2,7 @@ package contract
 
 import (
 	"archive/zip"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -568,4 +570,110 @@ func TestUninstallNamesBackups(t *testing.T) {
 	if r := other.cli(nil, "uninstall", "--yes"); r.code != 0 || strings.Contains(r.stdout, "hold secrets") {
 		t.Errorf("no backups: %d %s%s", r.code, r.stdout, r.stderr)
 	}
+}
+
+// bigBackupRoot has a recording large enough that a run is still working when a signal arrives.
+func bigBackupRoot(t *testing.T, tmp string) *e2e {
+	t.Helper()
+	e := backupRoot(t, tmp, "root")
+	clip := make([]byte, 96<<20)
+	if _, err := rand.Read(clip); err != nil {
+		t.Fatal(err)
+	}
+	if err := mustMkdirAll(filepath.Join(e.root, "voices"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mustWriteFile(filepath.Join(e.root, "voices", "voice-aaaaaaaaaaaa.wav"), clip, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// startUntilWorking runs a command until its working directory appears, and returns it.
+func startUntilWorking(t *testing.T, e *e2e, place string, args ...string) (*exec.Cmd, string) {
+	t.Helper()
+	cmd := e.command(append([]string{"--root", e.root}, args...)...)
+	cmd.Env = cleanEnv()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		if found, _ := filepath.Glob(filepath.Join(place, ".local-base-temporary-*")); len(found) > 0 {
+			return cmd, found[0]
+		}
+	}
+	cmd.Process.Kill()
+	cmd.Wait()
+	t.Fatal("no working directory appeared")
+	return nil, ""
+}
+
+func noWorkingFiles(t *testing.T, place, when string) {
+	t.Helper()
+	if found, _ := filepath.Glob(filepath.Join(place, ".local-base-temporary-*")); len(found) > 0 {
+		t.Errorf("%s left %v", when, found)
+	}
+}
+
+// The operator's condition on a dry run's working directory: it is private, gone on every way out
+// that can clean up, and named by doctor and the next run after one that can't.
+func TestInterruptedRunsLeaveNothing(t *testing.T) {
+	backupGoOnly(t)
+	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := bigBackupRoot(t, tmp)
+	file := filepath.Join(tmp, "b"+backup.Extension)
+	if r := e.cli(nil, "backup", "--exclude-secrets", "--output", file); r.code != 0 {
+		t.Fatalf("%s%s", r.stdout, r.stderr)
+	}
+
+	for name, sig := range map[string]syscall.Signal{"an interrupt": syscall.SIGINT, "a termination": syscall.SIGTERM} {
+		t.Run(name+" during a dry run", func(t *testing.T) {
+			cmd, working := startUntilWorking(t, e, tmp, "backup", "--dry-run", "--exclude-secrets")
+			info, err := os.Stat(working)
+			if err == nil && info.Mode().Perm() != 0o700 {
+				t.Errorf("the working directory is %o", info.Mode().Perm())
+			}
+			cmd.Process.Signal(sig)
+			if err := cmd.Wait(); err == nil {
+				t.Error("it should not report success")
+			}
+			noWorkingFiles(t, tmp, name)
+		})
+		t.Run(name+" during a restore", func(t *testing.T) {
+			target := &e2e{t: t, root: filepath.Join(tmp, "new"), outDir: tmp}
+			cmd, _ := startUntilWorking(t, target, tmp, "restore", "--dry-run", "--no-port-probe", file)
+			cmd.Process.Signal(sig)
+			if err := cmd.Wait(); err == nil {
+				t.Error("it should not report success")
+			}
+			noWorkingFiles(t, tmp, name)
+			if _, err := os.Stat(target.root); !os.IsNotExist(err) {
+				t.Errorf("it made the root: %v", err)
+			}
+		})
+	}
+
+	t.Run("a kill, which can't clean up", func(t *testing.T) {
+		cmd, working := startUntilWorking(t, e, tmp, "backup", "--dry-run", "--exclude-secrets")
+		cmd.Process.Kill()
+		cmd.Wait()
+		if _, err := os.Stat(working); err != nil {
+			t.Skipf("it finished before the kill: %v", err)
+		}
+		r := e.cli(nil, "doctor")
+		if !strings.Contains(r.stdout, working) || !strings.Contains(r.stdout, "may hold secrets") || !strings.Contains(r.stdout, "rm -rf") {
+			t.Errorf("doctor should name it:\n%s", r.stdout)
+		}
+		if _, err := os.Stat(working); err != nil {
+			t.Errorf("doctor should not remove it: %v", err)
+		}
+		next := e.cli(nil, "backup", "--dry-run", "--exclude-secrets")
+		if next.code != 0 {
+			t.Fatalf("%s%s", next.stdout, next.stderr)
+		}
+		if !strings.Contains(next.stderr, working) || !strings.Contains(next.stderr, "Removed") {
+			t.Errorf("the next run should say what it removed: %s", next.stderr)
+		}
+		noWorkingFiles(t, tmp, "the next run")
+	})
 }

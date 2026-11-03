@@ -22,6 +22,8 @@ Nothing is left out silently: `backup` lists everything it leaves out, with its 
 
 **A backup is checked before it is kept.** `backup` reads the file back with the same checks `restore` makes, and if restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work and keeps nothing.
 
+While it works, it uses a private directory named `.local-base-temporary-…`, beside the root or the backup, which holds what the backup holds. It is removed however the command ends, unless the process is killed outright. Then `local-base doctor` names it, and the next backup or restore removes it.
+
 | Included | Secrets in it |
 |---|---|
 | Settings, API keys, users, roles, policies, imported models, backend choices, voice records, usage totals (the database) | Hugging Face token, OTLP headers. **API keys are hashes only**, so they can't be read back, and a restored root accepts the same keys |

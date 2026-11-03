@@ -55,6 +55,9 @@ func runBackup(c *cli.Ctx) (any, error) {
 			DryRun: c.Bool("dry-run"), Version: version.Version, Now: time.Now()})
 		return err
 	}); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, errors.New("Interrupted. Nothing was kept, and its working files are gone.")
+		}
 		return nil, err
 	}
 	// On stderr, so it is seen even when the output goes somewhere else.
@@ -130,6 +133,9 @@ func runRestore(c *cli.Ctx) (any, error) {
 	defer stop()
 	s, err := backup.Stage(ctx, c.Args[0], target, c.Bool("replace"))
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, errors.New("Interrupted. Nothing was changed, and its working files are gone.")
+		}
 		return nil, err
 	}
 	defer s.Discard()
@@ -154,12 +160,27 @@ func runRestore(c *cli.Ctx) (any, error) {
 			return nil, cli.Inputf(needYes)
 		}
 		fmt.Fprint(c.Stderr, "Continue? [y/N] ")
-		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		if err != nil && line == "" {
-			return nil, cli.Inputf(needYes)
+		// In its own goroutine: an interrupt at this question must still end the run and remove
+		// the working files, and a read of the terminal can't be interrupted.
+		type answer struct {
+			line string
+			err  error
 		}
-		if a := strings.ToLower(strings.TrimSpace(line)); a != "y" && a != "yes" {
-			return nil, errors.New("Stopped. Nothing was changed.")
+		answered := make(chan answer, 1)
+		go func() {
+			line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+			answered <- answer{line, err}
+		}()
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("Interrupted. Nothing was changed, and its working files are gone.")
+		case a := <-answered:
+			if a.err != nil && a.line == "" {
+				return nil, cli.Inputf(needYes)
+			}
+			if v := strings.ToLower(strings.TrimSpace(a.line)); v != "y" && v != "yes" {
+				return nil, errors.New("Stopped. Nothing was changed.")
+			}
 		}
 	}
 	done, err := s.Commit()
