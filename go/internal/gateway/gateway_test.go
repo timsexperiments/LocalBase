@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -97,6 +98,7 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { noWriterLeft(t, st) })
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
 		Active:   map[string]string{"llm": chatModel},
 		Selected: map[string][]string{"llm": append([]string{chatModel, embeddingModel, decisionModel}, extra...)}}
@@ -333,5 +335,47 @@ func installSparse(t *testing.T, dir string, s *catalog.Spec) {
 			t.Fatal(err)
 		}
 		f.Close()
+	}
+}
+
+// noWriterLeft fails a test whose gateway, once stopped, still has something using the
+// database: what it writes lands while the scratch root is being removed, which is what
+// TestUnloadScope's "directory not empty" was. The goroutines name the writer.
+func noWriterLeft(t *testing.T, st *store.Store) {
+	t.Helper()
+	if msg := writersLeft(st); msg != "" {
+		t.Error(msg)
+	}
+}
+
+func writersLeft(st *store.Store) string {
+	n := st.DB.Stats().InUse
+	if n == 0 {
+		return ""
+	}
+	buf := make([]byte, 1<<20)
+	return fmt.Sprintf("%d database connections are still in use after the gateway stopped:\n%s", n, buf[:goruntime.Stack(buf, true)])
+}
+
+func TestWritersLeftNamesWhatHoldsTheDatabase(t *testing.T) {
+	r, err := root.Init(filepath.Join(scratchDir(t), "root"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if msg := writersLeft(st); msg != "" {
+		t.Errorf("nothing holds it: %.200s", msg)
+	}
+	conn, err := st.DB.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if msg := writersLeft(st); !strings.Contains(msg, "1 database connections") || !strings.Contains(msg, "TestWritersLeftNamesWhatHoldsTheDatabase") {
+		t.Errorf("a held connection: %.200s", msg)
 	}
 }
