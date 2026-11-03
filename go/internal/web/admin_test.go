@@ -238,3 +238,14 @@ func TestAdminKeysSheet(t *testing.T) {
 		}
 	}
 }
+
+// Admin shows the API's lockout refusal whole, in plain words.
+func TestAdminShowsPolicyLockout(t *testing.T) {
+	u, f, _ := adminUI("access:read", "access:manage")
+	f.fail["apply-policy"] = auth.PolicyLockoutMessage
+	out := adminPost(u, "/app/admin/access", url.Values{"section": {"access"}, "action": {"apply-policy"}, "revision": {"abc123"},
+		"policy": {`{"roles":[],"bindings":[],"defaultRole":null}`}}).Body.String()
+	if !strings.Contains(out, auth.PolicyLockoutMessage) {
+		t.Errorf("not shown: %.600s", out)
+	}
+}
