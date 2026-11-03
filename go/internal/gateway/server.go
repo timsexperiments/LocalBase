@@ -23,11 +23,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
-
-const Version = "0.2.0"
 
 // Server holds what handlers need. Construct with New.
 type Server struct {
@@ -439,7 +438,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
-	body := map[string]any{"status": "ok", "version": Version,
+	body := map[string]any{"status": "ok", "version": version.Version,
 		"uptimeSeconds": int(time.Since(s.started).Seconds()), "modalities": s.modalityHealth()}
 	status := 200
 	if s.stopping.Load() {
