@@ -3,6 +3,7 @@
 # in for real through a fake OIDC provider over TLS. Builds a scratch gateway with a fake model and
 # generates its own certificate; nothing here touches a real root or a real account.
 #   tools/person-check.sh [first port]   # uses 5 ports from there, default 24650
+# If a run dies, its gateway follows within a few seconds (supervise.sh).
 # LBGO_CHROME picks the browser. Check that every step ran:
 #   tools/person-check.sh > log; bun tools/check-manifest/run.ts check tools/person-check/run.ts log
 set -eu
