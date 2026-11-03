@@ -169,7 +169,7 @@ func TestCloudflarePolicy(t *testing.T) {
 	b, f := cloudflareFixture(t)
 	ctx := context.Background()
 	if err := ApplyPolicy(ctx, b.Store, &Policy{Roles: []Role{{Name: "admin", Description: "Admin", Permissions: []string{"access:manage"}}},
-		Bindings: []Binding{{Kind: "email", Role: "admin", Email: "owner@example.com"}}}); err != nil {
+		Bindings: []Binding{{Kind: "email", Role: "admin", Email: "owner@example.com", Issuer: cfIssuer}}}); err != nil {
 		t.Fatal(err)
 	}
 	id, _ := b.Authenticate(cfRequest(f.sign(cfClaims(nil))))

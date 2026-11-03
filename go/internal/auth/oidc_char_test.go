@@ -122,7 +122,7 @@ func TestOIDCUnauthorizedEmail(t *testing.T) {
 	b, f := oidcFixture(t)
 	ctx := context.Background()
 	if err := ApplyPolicy(ctx, b.Store, &Policy{Roles: []Role{{Name: "chat", Description: "Chat", Permissions: []string{"inference:chat", "access:manage"}}},
-		Bindings: []Binding{{Kind: "email", Role: "chat", Email: "owner@example.com"}}}); err != nil {
+		Bindings: []Binding{{Kind: "email", Role: "chat", Email: "owner@example.com", Issuer: f.srv.URL}}}); err != nil {
 		t.Fatal(err)
 	}
 	permissions := func(claims map[string]any) []string {
