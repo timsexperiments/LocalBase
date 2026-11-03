@@ -59,12 +59,16 @@ func CoordinationDir() string {
 	return filepath.Join(home, ".local", "state", "local-base", "runtime")
 }
 
-type opPaths struct{ dir, lock, owner, mutation string }
+type opPaths struct {
+	dir, lock, owner, mutation string
+	// mutationWait bounds the wait for the mutation lock.
+	mutationWait time.Duration
+}
 
 func operationPaths(canonicalRoot string) opPaths {
 	dir := CoordinationDir()
 	lock := filepath.Join(dir, Hash(canonicalRoot)+".operation.lock")
-	return opPaths{dir, lock, filepath.Join(lock, "owner.json"), lock + ".mutation"}
+	return opPaths{dir, lock, filepath.Join(lock, "owner.json"), lock + ".mutation", 10 * time.Second}
 }
 
 // presence: 1 present, 0 absent, -1 unknown (EPERM).
@@ -123,7 +127,7 @@ func nowISO() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z"
 
 // withMutation runs fn holding the owner-record mutation lock.
 func withMutation(p opPaths, fn func() error) error {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(p.mutationWait)
 	for time.Now().Before(deadline) {
 		token := uuid()
 		candidate := p.mutation + "." + token + ".candidate"
@@ -198,6 +202,10 @@ type Lease struct {
 	paths     opPaths
 	handedOff bool
 	claimed   bool
+	// remove and retry are how a release removes the lease and how often it tries
+	// again; tests replace them.
+	remove func(string) error
+	retry  time.Duration
 }
 
 // operationWait is how long a lease waits for another operation (tests shorten it).
@@ -230,7 +238,7 @@ func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
 				os.RemoveAll(p.lock)
 				return nil, err
 			}
-			return &Lease{id: owner.OperationID, paths: p}, nil
+			return &Lease{id: owner.OperationID, paths: p, remove: os.RemoveAll, retry: time.Second}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, err
@@ -301,13 +309,35 @@ func (l *Lease) Release() {
 	if l == nil || l.handedOff {
 		return
 	}
-	withMutation(l.paths, func() error {
-		var o operationOwner
-		if readJSON(l.paths.owner, &o) && o.OperationID == l.id {
-			os.RemoveAll(l.paths.lock)
+	// Once this lease is known to be ours, a partial removal cannot change that,
+	// though it may already have taken the owner record.
+	mine := false
+	release := func() error {
+		if !mine {
+			var o operationOwner
+			if !readJSON(l.paths.owner, &o) || o.OperationID != l.id {
+				return nil
+			}
+			mine = true
 		}
-		return nil
-	})
+		return l.remove(l.paths.lock)
+	}
+	if withMutation(l.paths, release) == nil {
+		return
+	}
+	// The mutation lock needs disk space and removing a lease does not. A lease
+	// left here would stay with this live process, nothing could reclaim it, and
+	// every operation on the root would time out until the process exited.
+	if release() == nil {
+		return
+	}
+	// Even a removal can fail on a full copy-on-write volume, so it keeps trying:
+	// the root frees itself as soon as there is room, without a restart.
+	go func() {
+		for release() != nil {
+			time.Sleep(l.retry)
+		}
+	}()
 }
 
 // WithOperation runs fn holding the root's operation lease.
@@ -375,7 +405,7 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 		if err := writeJSONAtomic(p.owner, claimed); err != nil {
 			return err
 		}
-		state, lease = "claimed", &Lease{id: claimed.OperationID, paths: p, claimed: true}
+		state, lease = "claimed", &Lease{id: claimed.OperationID, paths: p, claimed: true, remove: os.RemoveAll, retry: time.Second}
 		return nil
 	})
 	return state, lease, err
