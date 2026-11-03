@@ -1088,6 +1088,23 @@ Contract fixtures: launched gateways run offline (dead proxies, loopback
 exempt), so a missing runtime or model fails instead of downloading, and
 `bin/runtimes` fixtures merge instead of nesting.
 
+### 13.5a Why an install failed
+
+A failed install operation carries `operation.error.reason`, and `models install` adds it to
+its JSON error (`error.reason`) and prints `Reason: …` after the message. The sentences do not
+change. TS has one sentence for every cause, so this is Go only and additive.
+
+| Reason | When |
+| --- | --- |
+| `network` | Connection refused or cut off, a short body, HTTP 429 or 5xx |
+| `timeout` | A deadline or client timeout, HTTP 408 or 504 |
+| `disk_full` | The free-space check, or `ENOSPC` or `EDQUOT` while writing |
+| `checksum_mismatch` | Wrong hash or size, or a `Content-Length` that disagrees with the catalog, such as an HTML page answered with 200 |
+| `gated_or_auth_required` | HTTP 401 or 403 |
+| `not_found` | HTTP 404 or 410 |
+| `interrupted` | Cancelled, or the gateway stopped |
+| `unknown` | Anything else, including other local file errors, and failures recorded before reasons existed |
+
 ### 13.6 Status changes for the cutover checklist
 
 Live clients (a device-worker client, an editor client) retry on 503 with
