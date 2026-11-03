@@ -1,0 +1,43 @@
+name: Chaos
+
+# Breaks a real gateway on purpose, with fake backends: no models, no GPU. See
+# go/docs/reliability.md. Tests naming an open bug skip and say so.
+on:
+  pull_request:
+    paths: ["go/**", ".github/workflows/chaos.yml"]
+  push:
+    branches: [main]
+    paths: ["go/**", ".github/workflows/chaos.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Mount a small disk for the disk-full tests
+        # macOS creates its own disk image in the tests.
+        if: runner.os == 'Linux'
+        run: |
+          sudo mkdir -p /mnt/small
+          sudo mount -t tmpfs -o size=96m tmpfs /mnt/small
+          sudo chown "$(id -u):$(id -g)" /mnt/small
+          echo "LOCALBASE_CHAOS_SMALL_DISK=/mnt/small" >> "$GITHUB_ENV"
+      - name: Chaos suite
+        run: go test ./tools/chaos -count=1 -timeout 10m -v
