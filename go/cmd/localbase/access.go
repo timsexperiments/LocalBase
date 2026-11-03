@@ -574,6 +574,7 @@ func accessCommand() *cli.Command {
 					return nil, cli.Inputf("Invalid access policy: %s", err.Error())
 				}
 				warn := noManagerWarning(c, e)
+				open := ""
 				err = withOperation(e, "configure browser access", func() error {
 					cfg, err := auth.LoadAccess(e.Root.Dir)
 					if err != nil {
@@ -585,14 +586,55 @@ func accessCommand() *cli.Command {
 					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
 						return err
 					}
+					open = auth.OpenSignIn(cfg, &policy)
 					return auth.ApplyPolicy(ctx, e.Store, &policy)
 				})
 				if err != nil {
 					return nil, accessError(err)
 				}
 				c.Info("Saved browser access policy. Changes apply immediately.")
+				if open != "" {
+					c.Info("%s", open)
+				}
 				warn()
 				return map[string]any{"policy": &policy, "restartRequired": false}, nil
+			})},
+			{Name: "starter", Summary: "Give one address every permission, and nobody else anything", Options: []cli.Option{
+				{Name: "email", Value: "<person@example.com>", Help: "The verified address that gets every permission"},
+				{Name: "issuer", Value: "<https://identity.example.com>", Help: "The sign-in provider that address uses; needed when several are configured"},
+			}, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
+				email, err := emailOption(c, "email", "email")
+				if err != nil {
+					return nil, err
+				}
+				var policy *auth.Policy
+				err = withOperation(e, "configure browser access", func() error {
+					cfg, err := auth.LoadAccess(e.Root.Dir)
+					if err != nil {
+						return err
+					}
+					if cfg == nil {
+						return cli.Inputf("Configure a browser identity provider first.")
+					}
+					existing, err := auth.LoadPolicy(ctx, e.Store.DB)
+					if err != nil {
+						return err
+					}
+					if existing != nil {
+						return cli.Inputf("A browser access policy already exists. Change it with local-base access policy apply, or invite someone with local-base access users invite.")
+					}
+					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
+					if err != nil {
+						return err
+					}
+					policy = auth.StarterPolicy(email, issuer)
+					return auth.ApplyPolicy(ctx, e.Store, policy)
+				})
+				if err != nil {
+					return nil, accessError(err)
+				}
+				c.Info("Saved browser access policy: %s has every permission, and nobody else has anything. Changes apply immediately.", email)
+				return map[string]any{"policy": policy, "restartRequired": false}, nil
 			})},
 			{Name: "test", Summary: "Evaluate a browser identity against the local policy", Options: []cli.Option{
 				{Name: "issuer", Value: "<https://identity.example.com>", Help: "Verified identity issuer"},

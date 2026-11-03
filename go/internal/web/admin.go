@@ -97,6 +97,9 @@ type accessState struct {
 	Users          []auth.User  `json:"users"`
 	// UnboundBindings names no sign-in provider, and so grants nothing.
 	UnboundBindings int `json:"unboundBindings"`
+	// OpenSignIn says what anyone who can sign in gets; SignedIn is who has a session.
+	OpenSignIn string        `json:"openSignIn"`
+	SignedIn   []auth.SignIn `json:"signedIn"`
 }
 
 type apiKey struct {
@@ -338,18 +341,6 @@ func editRegistration(st *accessState, edit, posted string) editView {
 	return v
 }
 
-// starterPolicy is TS starterAccessPolicy.
-func starterPolicy(email string) map[string]any {
-	return map[string]any{
-		"roles": []map[string]any{
-			{"name": "admin", "description": "Full LocalBase administration", "permissions": auth.Permissions},
-			{"name": "member", "description": "Chat and model discovery", "permissions": []string{"inference:chat", "models:read"}},
-		},
-		"bindings":    []map[string]any{{"kind": "email", "role": "admin", "email": email}},
-		"defaultRole": "member",
-	}
-}
-
 // adminFragment redraws a section after a change.
 func (u *UI) adminFragment(w http.ResponseWriter, r *http.Request, section string, extra map[string]any) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -459,7 +450,7 @@ func (u *UI) adminAccess(w http.ResponseWriter, r *http.Request) {
 			done("", "Your identity provider did not supply a verified email. Configure the policy with Advanced JSON or the CLI.")
 			return
 		}
-		done("Access policy created. Your verified email has the admin role.", post(map[string]any{"action": "apply-policy", "policy": starterPolicy(email), "expectedPolicyRevision": nil}, nil))
+		done("Access policy created. Your verified email has the admin role.", post(map[string]any{"action": "apply-policy", "policy": auth.StarterPolicy(email, ""), "expectedPolicyRevision": nil}, nil))
 	case "invite-user":
 		var st accessState
 		u.apiCall(r, "GET", "/_localbase/access-management", nil, &st)

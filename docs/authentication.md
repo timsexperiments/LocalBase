@@ -28,7 +28,7 @@ local-base --non-interactive --json access cloudflare \
   --team-domain "$LOCALBASE_ACCESS_TEAM_DOMAIN" \
   --audience "$LOCALBASE_ACCESS_AUDIENCE" \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -45,7 +45,7 @@ local-base --non-interactive --json access oidc add \
   --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
   --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -54,8 +54,23 @@ environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
-The examples grant `models:manage` intentionally. Omit `--permissions` to use
-the safer defaults, which allow chat and model discovery only.
+`--permissions` applies to everyone the provider accepts, and for a public issuer
+such as Google or GitHub that may be anyone with an account. Without it, signing in
+gives nothing until a policy or an invitation says otherwise.
+
+Never give everyone a provider accepts `models:manage`, `access:manage`,
+`keys:manage` or `system:manage`. These are powerful permissions: `models:manage`
+decides what this computer downloads and runs, `access:manage` and `keys:manage`
+decide who gets in and what they may do, and `system:manage` changes how the
+service itself behaves. Give them to named people, with a role and a binding, as
+in the policy below.
+
+To give yourself access, name your address. It gets every permission, and nobody
+else gets anything:
+
+```bash
+local-base --non-interactive --json access policy starter --email you@example.com
+```
 
 Each registration has a stable ID and display name. Repeat the command with a
 different ID to add another provider; using an existing ID updates it. With
@@ -141,6 +156,11 @@ Email delivery cannot be disabled while the registration exists.
 Provider permissions apply to every verified browser user unless a local access
 policy is configured. A policy maps verified identities to named roles. Email
 bindings only match provider-verified email claims.
+
+A default role gives its permissions to everyone who signs in, whoever they are.
+It is a deliberate choice, and `local-base doctor`, `local-base status` and the
+access page say what it means. Someone with no permissions gets no session, and
+a page telling them so.
 
 Email and domain bindings trust one sign-in provider, so a provider you add
 later can't claim someone's address and take their role. With one provider
@@ -272,7 +292,19 @@ the scope, and keys created with explicit scopes, do not receive it; add it with
 `keys scopes`.
 
 Keys that administer LocalBase need explicit management scopes. Ordinary
-inference keys do not receive them.
+inference keys do not receive them. Give a key only what its job needs. A key that
+installs models for a deployment needs only this:
+
+```bash
+local-base --non-interactive --json keys create \
+  --name model-installer \
+  --scopes 'models:read,models:manage'
+```
+
+A key holding `access:manage`, `keys:manage` and `models:manage` together is an
+admin key: it can change who has access to LocalBase, make other keys, and decide
+what this computer downloads and runs. Create one only if a piece of automation
+does all three, and keep it with that automation:
 
 ```bash
 local-base --non-interactive --json keys create \

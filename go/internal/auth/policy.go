@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -71,6 +72,18 @@ type Policy struct {
 	Roles       []Role    `json:"roles"`
 	Bindings    []Binding `json:"bindings"`
 	DefaultRole *string   `json:"defaultRole"`
+}
+
+// StarterPolicy gives one address every permission, through one provider, and nobody else
+// anything. It has a member role for people added later, bound to nobody.
+func StarterPolicy(email, issuer string) *Policy {
+	return &Policy{
+		Roles: []Role{
+			{Name: "admin", Description: "Full LocalBase administration", Permissions: slices.Clone(Permissions)},
+			{Name: "member", Description: "Chat and model discovery", Permissions: []string{"inference:chat", "models:read"}},
+		},
+		Bindings: []Binding{{Kind: "email", Role: "admin", Email: email, Issuer: issuer}},
+	}
 }
 
 // AccessError is a domain error with a TS code.
