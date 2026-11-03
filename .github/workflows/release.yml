@@ -33,9 +33,195 @@ jobs:
       - name: Validate release tag and version
         run: bun run scripts/release-preflight.ts "$GITHUB_REF_NAME"
 
+  build-macos:
+    name: Build ${{ matrix.target }}
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-14
+            host-architecture: arm64
+          # Rosetta on macOS 14 runners kills Bun x64 binaries with SIGILL, so build the Intel CLI
+          # on real Intel hardware.
+          - target: macos-x64
+            runner: macos-15-intel
+            host-architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.host-architecture }}"
+
+      - name: Build CLI
+        run: |
+          bun run scripts/release-artifacts.ts build \
+            --target ${{ matrix.target }} \
+            --output release-artifacts/${{ matrix.target }}
+
+      - name: Keep the unsigned CLI and its entitlements for signing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-${{ matrix.target }}
+          path: |
+            release-artifacts/${{ matrix.target }}
+            scripts/macos-entitlements.plist
+          if-no-files-found: error
+
+  sign-macos:
+    name: Sign ${{ matrix.target }}
+    # This job holds the signing key, so it runs nothing from the repository or the build: only
+    # Apple's tools on what the build left. scripts/check-signing-jobs.sh keeps it that way.
+    needs: build-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-arm64, macos-x64]
+    runs-on: macos-14
+
+    steps:
+      - name: Fetch the unsigned CLI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-${{ matrix.target }}
+          path: unsigned
+
+      - name: Import the signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+        run: |
+          set -euo pipefail
+          certificate="$RUNNER_TEMP/certificate.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          rm -f "$certificate"
+      - name: Sign the CLI
+        env:
+          CLI: unsigned/release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
+        run: |
+          # Bun's JavaScriptCore JIT needs these entitlements under the hardened
+          # runtime; without them newer macOS kills the CLI at startup.
+          chmod 755 "$CLI"
+          codesign --force --options runtime --timestamp \
+            --entitlements unsigned/scripts/macos-entitlements.plist \
+            --sign "Developer ID Application:" \
+            "$CLI"
+
+      - name: Keep the signed CLI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-${{ matrix.target }}
+          path: unsigned/release-artifacts/${{ matrix.target }}
+          if-no-files-found: error
+
+      - name: Remove the temporary keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+  package-macos:
+    name: Package ${{ matrix.target }}
+    needs: sign-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-14
+            host-architecture: arm64
+          # Rosetta on macOS 14 runners kills Bun x64 binaries with SIGILL, so build the Intel CLI
+          # on real Intel hardware.
+          - target: macos-x64
+            runner: macos-15-intel
+            host-architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify runner architecture
+        run: test "$(uname -m)" = "${{ matrix.host-architecture }}"
+
+      - name: Fetch the signed CLI
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-${{ matrix.target }}
+          path: release-artifacts/${{ matrix.target }}
+
+      - name: Package CLI, license, and notices
+        run: |
+          chmod 755 release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
+          bun run scripts/release-artifacts.ts package \
+            --target ${{ matrix.target }} \
+            --output release-artifacts/${{ matrix.target }}
+
+      - name: Keep the package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaged-${{ matrix.target }}
+          path: release-artifacts/${{ matrix.target }}
+          if-no-files-found: error
+
+  notarize-macos:
+    name: Notarize ${{ matrix.target }}
+    # This job holds the notarizing password, so it runs nothing from the repository or the build.
+    needs: package-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-arm64, macos-x64]
+    runs-on: macos-14
+
+    steps:
+      - name: Fetch the package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packaged-${{ matrix.target }}
+
+      - name: Notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PACKAGE: local-base-${{ matrix.target }}.zip
+        run: |
+          xcrun notarytool submit "$PACKAGE" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$TEAM_ID" \
+            --wait
+
   qualify:
     name: Build and qualify ${{ matrix.target }}
-    needs: preflight
+    needs: [preflight, notarize-macos]
     strategy:
       fail-fast: false
       matrix:
@@ -81,57 +267,26 @@ jobs:
       - name: Verify runner architecture
         run: test "$(uname -m)" = "${{ matrix.host-architecture }}"
 
-      - name: Import Apple Certificate
-        if: matrix.platform == 'macos'
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
-          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
-          KEYCHAIN_PASSWORD: "temporary-keychain-pass"
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -k $KEYCHAIN_PATH -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -A
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security list-keychains -d user -s $KEYCHAIN_PATH
-
       - name: Build CLI
+        if: matrix.platform != 'macos'
         run: |
           bun run scripts/release-artifacts.ts build \
             --target ${{ matrix.target }} \
             --output release-artifacts/${{ matrix.target }}
 
-      - name: Sign macOS CLI
-        if: matrix.platform == 'macos'
-        run: |
-          # Bun's JavaScriptCore JIT needs these entitlements under the hardened
-          # runtime; without them newer macOS kills the CLI at startup.
-          codesign --force --options runtime --timestamp \
-            --entitlements scripts/macos-entitlements.plist \
-            --sign "Developer ID Application:" \
-            release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}
-
       - name: Package CLI, license, and notices
+        if: matrix.platform != 'macos'
         run: |
           bun run scripts/release-artifacts.ts package \
             --target ${{ matrix.target }} \
             --output release-artifacts/${{ matrix.target }}
 
-      - name: Notarize macOS CLI
+      - name: Fetch the signed and notarized macOS package
         if: matrix.platform == 'macos'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool submit release-artifacts/${{ matrix.target }}/local-base-${{ matrix.target }}.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$TEAM_ID" \
-            --wait
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packaged-${{ matrix.target }}
+          path: release-artifacts/${{ matrix.target }}
 
       - name: Write and verify artifact manifest
         run: |
@@ -247,10 +402,6 @@ jobs:
         with:
           name: qualified-${{ matrix.target }}
           path: release-artifacts/${{ matrix.target }}
-
-      - name: Clean up temporary keychain
-        if: always() && matrix.platform == 'macos'
-        run: security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
   release:
     name: Package and Release Qualified Artifacts
