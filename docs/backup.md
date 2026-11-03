@@ -86,7 +86,7 @@ Files are created 0600 and directories 0700, owned by you, and the restored root
 
 ## What has been tested
 
-Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `09b7d106`.** Its schema check gave no false refusal, and `doctor` read the restored settings correctly. Later commits have not been through that run.
+Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `f05052cb`.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Later commits have not been through that run.
 
 **Not tested:**
 
