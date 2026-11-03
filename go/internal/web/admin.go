@@ -161,6 +161,10 @@ func (u *UI) admin(w http.ResponseWriter, r *http.Request) {
 		u.need("access:read", nil)(w, r) // the sign-in flow
 		return
 	}
+	if len(p.Permissions) == 0 {
+		u.noAccess(w, r, p)
+		return
+	}
 	sections := adminSections(p)
 	if len(sections) == 0 {
 		w.WriteHeader(http.StatusForbidden)
