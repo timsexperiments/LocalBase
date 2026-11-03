@@ -105,7 +105,7 @@ linters:
         text: "json\\.Unmarshal"
       - path: ^cmd/localbase/serve\.go$
         linters: [errcheck]
-        text: "httpServer\\.Shutdown|level\\.UnmarshalText|obs\\.BoundServiceStderr|sink\\.Close|videoJobs\\.FailActiveForMemoryPressure|videoJobs\\.Shutdown"
+        text: "httpServer\\.Shutdown|level\\.UnmarshalText|sink\\.Close|videoJobs\\.FailActiveForMemoryPressure|videoJobs\\.Shutdown"
       - path: ^cmd/localbase/smoke\.go$
         linters: [errcheck]
         text: "e\\.Store\\.DeleteAPIKey|json\\.Unmarshal"
@@ -115,15 +115,9 @@ linters:
       - path: ^internal/auth/email\.go$
         linters: [errcheck]
         text: "client\\.Close|conn\\.SetDeadline|qp\\.Close|qp\\.Write"
-      - path: ^internal/auth/guard\.go$
-        linters: [errcheck]
-        text: "rows\\.Scan"
       - path: ^internal/auth/policy\.go$
         linters: [errcheck]
         text: "rows\\.Scan"
-      - path: ^internal/auth/users\.go$
-        linters: [errcheck]
-        text: "rows\\.Scan|st\\.DB\\.ExecContext|tx\\.ExecContext"
       - path: ^internal/catalog/catalog\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
@@ -132,7 +126,7 @@ linters:
         text: "json\\.Unmarshal|is not checked|os\\.MkdirAll"
       - path: ^internal/catalog/former\.go$
         linters: [errcheck]
-        text: "json\\.Unmarshal|os\\.WriteFile"
+        text: "json\\.Unmarshal"
       - path: ^internal/cli/cli\.go$
         linters: [errcheck]
         text: "a\\.Stdout\\.Write|c\\.Stdout\\.Write"
@@ -147,16 +141,13 @@ linters:
         text: "json\\.Unmarshal"
       - path: ^internal/gateway/errors\.go$
         linters: [errcheck]
-        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode|io\\.Copy"
+        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"
       - path: ^internal/gateway/images\.go$
         linters: [errcheck]
         text: "pw\\.Write"
       - path: ^internal/gateway/manage\.go$
         linters: [errcheck]
-        text: "auth\\.DisableAccess|json\\.Unmarshal"
-      - path: ^internal/gateway/management\.go$
-        linters: [errcheck]
-        text: "os\\.Rename"
+        text: "json\\.Unmarshal"
       - path: ^internal/gateway/metadata\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
@@ -165,13 +156,13 @@ linters:
         text: "json\\.Unmarshal"
       - path: ^internal/gateway/runs\.go$
         linters: [errcheck]
-        text: "json\\.Unmarshal|os\\.Rename"
+        text: "json\\.Unmarshal"
       - path: ^internal/gateway/videos\.go$
         linters: [errcheck]
         text: "io\\.Copy"
       - path: ^internal/hub/client\.go$
         linters: [errcheck]
-        text: "json\\.Unmarshal|os\\.Rename"
+        text: "json\\.Unmarshal"
       - path: ^internal/install/install\.go$
         linters: [errcheck]
         text: "conn\\.Close|conn\\.ExecContext|os\\.Chmod|os\\.Rename"
@@ -181,9 +172,6 @@ linters:
       - path: ^internal/obs/read\.go$
         linters: [errcheck]
         text: "s\\.f\\.Seek"
-      - path: ^internal/root/operation\.go$
-        linters: [errcheck]
-        text: "is not checked"
       - path: ^internal/runtime/fakebackend/images\.go$
         linters: [errcheck]
         text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|\\(\\*encoding/json\\.Encoder\\)\\.Encode|png\\.Encode|r\\.ParseMultipartForm"

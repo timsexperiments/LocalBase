@@ -36,7 +36,7 @@ Ignoring these is the right call, in every use:
 
 ## `errcheck`: the per-file baseline
 
-The 54 path rules in `.golangci.yml` cover 138 calls. **They are a list of what has not been reviewed
+The 50 path rules in `.golangci.yml` cover 111 calls. **They are a list of what has not been reviewed
 as correct, not a claim that it is.** They exist so the job can start green and catch new problems.
 A function not listed for a file still fails, but a new call to a listed function in that file does
 not. Remove a rule when its calls are handled.
@@ -46,12 +46,12 @@ they are not in this change.
 
 | Where | What is ignored | Why it matters |
 | --- | --- | --- |
-| `internal/auth/users.go` | `tx.ExecContext`, 6 calls inside transactions; `st.DB.ExecContext`, 6 | A failed write to a user's roles, or a session or link delete, is not seen. A revoke could report success. |
-| `internal/auth/policy.go`, `users.go`, `guard.go` | `rows.Scan`, 9 calls | A failed scan yields an empty value in an access decision. |
-| `internal/gateway/manage.go:497` | `auth.DisableAccess` | Disabling access could fail silently. |
-| `internal/gateway/management.go`, `runs.go`, `obs/jsonl.go`, `install/install.go` | `os.Rename` | A failed publish or rotation is not seen. |
+| `internal/auth/policy.go` | `rows.Scan`, 1 call | A failed scan yields an empty value in an access decision. |
+| `obs/jsonl.go`, `install/install.go` | `os.Rename`, those not handled yet | A failed publish or rotation is not seen. |
 | `internal/video/jobs.go`, `convert.go`, `install/install.go`, `runtime_install.go` | `os.Chmod` | A private file could stay loose. |
 | `internal/catalog/feed.go`, `runtime_install.go`, `web/csrf.go` | `os.MkdirAll` | Usually surfaces at the next write. |
+
+Four files carry `is not checked`, which excuses any call there rather than named ones: `cmd/localbase/config.go`, `internal/catalog/feed.go`, `internal/runtime/service.go` and `internal/video/convert.go`. A new unchecked call in those isn't caught.
 
 The rest I have not gone through one by one. By name they are mostly `json.Unmarshal` (24), JSON
 encoding and decoding (19), `Close` on stores at exit (7), and `io.Copy` (5).
