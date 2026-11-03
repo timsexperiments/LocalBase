@@ -16,6 +16,10 @@
 //
 // Image admission tests need free memory: do not run them alongside other
 // model loads, or memory refusals can change which error a gateway reaches.
+//
+// LOCALBASE_CONTRACT_COVERDIR builds the Go binaries with -cover and collects
+// their coverage there, which is the only coverage of what this suite exercises
+// (go/docs/production-inventory.md).
 package contract
 
 import (
@@ -280,7 +284,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 	switch impl {
 	case "go":
 		bin := filepath.Join(dir, "local-base")
-		if out, err := exec.Command("go", "build", "-o", bin, "../cmd/localbase").CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", goBuildArgs(bin)...).CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("build: %v %s", err, out)
 		}
 		cmd = exec.Command(bin, args...)
@@ -299,6 +303,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
 		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
 	cmd.Env = append(cmd.Env, extra...)
+	cmd.Env = append(cmd.Env, coverEnv()...)
 	logf, _ := mustCreate(filepath.Join(dir, "serve.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -444,4 +449,22 @@ func watchGateway(pid int) {
 	if w.Start() == nil {
 		go w.Wait()
 	}
+}
+
+// goBuildArgs builds cmd/localbase to out, with coverage when
+// LOCALBASE_CONTRACT_COVERDIR is set.
+func goBuildArgs(out string) []string {
+	args := []string{"build", "-o", out}
+	if os.Getenv("LOCALBASE_CONTRACT_COVERDIR") != "" {
+		args = append(args, "-cover", "-coverpkg=github.com/timsexperiments/LocalBase/go/...")
+	}
+	return append(args, "../cmd/localbase")
+}
+
+// coverEnv is what a covered binary needs to write its coverage.
+func coverEnv() []string {
+	if d := os.Getenv("LOCALBASE_CONTRACT_COVERDIR"); d != "" {
+		return []string{"GOCOVERDIR=" + d}
+	}
+	return nil
 }
