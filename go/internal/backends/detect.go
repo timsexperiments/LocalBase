@@ -56,6 +56,7 @@ const (
 	CodeArchWeakEvidence   = "architecture-evidence-insufficient"
 	CodeTaskUnknown        = "task-unknown"
 	CodeTaskUnsupported    = "task-unsupported"
+	CodeNoRunner           = "no-runner"
 	CodeCapabilityMissing  = "capability-not-declared"
 	CodeNoPlatformBuild    = "no-build-for-platform"
 	CodeNoAccelerator      = "accelerator-not-present"
@@ -86,6 +87,11 @@ func Assess(m *models.Model, v *models.Variant, d *Definition, h Host, missing [
 	var supportedBy *Reason
 	r := func(code, format string, a ...any) Reason { return Reason{code, fmt.Sprintf(format, a...)} }
 	warn := func(code, format string, a ...any) { f.Warnings = append(f.Warnings, r(code, format, a...)) }
+	if !Startable(d.Adapter) {
+		f.Rating = Incompatible
+		f.Reasons = []Reason{r(CodeNoRunner, "This version of LocalBase cannot start %s yet.", d.Name)}
+		return f
+	}
 
 	// Tasks and capabilities the model needs.
 	for _, need := range m.Required() {
