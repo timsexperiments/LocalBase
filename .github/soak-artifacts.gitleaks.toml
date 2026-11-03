@@ -1,0 +1,19 @@
+# Used only on soak artifacts, by .github/scripts/soak-artifacts.sh. Logs and run files
+# name the API key behind a request by its public ID (key_<uuid>), which isn't a secret
+# and dies with the run. Only that shape is excused, in those two fields, so anything
+# else there, or any other kind of secret, still fails the scan. The length is a range
+# because gitleaks can report an ID cut short, apparently at a chunk boundary in a large file.
+#
+# Don't add `paths` here. In gitleaks 8.30.1 an allowlist with paths and regexes,
+# even with condition = "AND", excused every finding in the matching files, including
+# a real token. The soak-artifacts test proved this with planted secrets.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Key IDs in soak logs and run owners"
+regexTarget = "match"
+regexes = [
+  '''^auth_principal_id\W+key_[0-9a-f-]{1,36}\W*$''',
+  '''^api-key:key_[0-9a-f-]{1,36}\W*$''',
+]
