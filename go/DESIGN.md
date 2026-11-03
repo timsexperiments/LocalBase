@@ -4579,10 +4579,11 @@ port failed the same way. One fix covers both.
    group, so it cannot reach a successor's backend, and the gateway ends it when the backend
    exits. A guard killed outright changes nothing for its backend, which keeps serving and
    stops normally; that backend only loses this cover, and a later crash leaves it to the sweep.
-2. **Record and sweep.** `runtime/backends/<runtime>-<pid>.json` (0600) holds the pid, start
-   time and executable from just after spawn until exit. `serve`, holding the root's lock,
+2. **Record and sweep.** `runtime/backends/<runtime>-<pid>.json` (0600) holds the root, pid,
+   start time and executable from just after spawn until exit. `serve`, holding the root's lock,
    stops what the records describe before any backend starts. A process is stopped only if
-   all three match, so a reused pid is left alone. If the leader is gone but its group is
+   all three match, so a reused pid is left alone, and only if the record names this root: a
+   copied root carries its source's records, which would otherwise match the live backends. If the leader is gone but its group is
    not, the group is still ours, since a pid is not reused while a group with that id exists.
 3. **Port check.** A start refuses a port something else holds, naming the port and the
    owner's pid when `lsof` can find it. It waits up to 1 s for a backend that just stopped.
