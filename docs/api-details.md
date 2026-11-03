@@ -100,9 +100,9 @@ A chat content part carries its content. `image_url.url` must be a `data:` URL, 
 
 ### Cancelling an install or an import
 
-`POST /_localbase/model-management` with `{"modelId": "<id>", "action": "cancel"}` stops a running install. It needs `models:manage`. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. With no install of that model running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded. Arrives with PR #498.
+`POST /_localbase/model-management` with `{"modelId": "<id>", "action": "cancel"}` stops a running install. It needs `models:manage`. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. With no install of that model running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded.
 
-`POST /_localbase/model-imports` with `{"action": "cancel", "job": "<id>"}` stops an import, using the id `start` answered with. It needs `models:manage`. It answers with the job, usually still `running` for a moment, or 404 `import_not_found` if there is no such import. The job ends in state `cancelled`, with the code `import_cancelled`. Arrives with PR #503.
+`POST /_localbase/model-imports` with `{"action": "cancel", "job": "<id>"}` stops an import, using the id `start` answered with. It needs `models:manage`. It answers with the job, usually still `running` for a moment, or 404 `import_not_found` if there is no such import. The job ends in state `cancelled`, with the code `import_cancelled`.
 
 ### Decision models
 
