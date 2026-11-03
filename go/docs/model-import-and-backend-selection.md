@@ -138,8 +138,9 @@ management, downloads and runtime launch planning.
 
 ## Acceptance checks
 
-- The same logical model chooses a supported Metal/MLX variant on Apple Silicon
-  and a supported CUDA/Vulkan variant on Linux using explicit rules.
+- The same logical model chooses a supported Metal variant on Apple Silicon and a
+  supported CUDA/Vulkan variant on Linux using explicit rules. A custom backend,
+  such as one for MLX, runs only for a model someone set it on.
 - A GGUF extension does not establish architecture support. An incomplete
   multi-file model identifies its missing assets.
 - Unknown metadata leaves automatic selection blank if there is no plausible
