@@ -343,7 +343,7 @@ func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 					w.WriteHeader(http.StatusServiceUnavailable)
 					return
 				}
-				u.renderLocalSignIn(w, http.StatusServiceUnavailable, localSignIn{Mode: "busy"})
+				u.LoginBusy(w, r)
 				return
 			}
 			if !u.d.SignInEnabled {

@@ -219,3 +219,65 @@ func TestAPolicyLookupFailureIsNotARefusal(t *testing.T) {
 		t.Errorf("a page: %d %.200q", r.status, r.body)
 	}
 }
+
+// Signing out when the session can't be ended: it is still good, so the person isn't told it's gone
+// and keeps the cookie.
+func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
+	t.Run("a browser session", func(t *testing.T) {
+		g := newMatrixGateway(t, directAccess())
+		if err := g.store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/app/logout", nil)
+		req.Host = "lb.example"
+		req.Header.Set("Cookie", auth.SessionCookie+"="+strings.Repeat("a", 43))
+		req.Header.Set("Origin", "https://lb.example")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("X-Localbase-Ui", "1")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || len(resp.Cookies()) != 0 {
+			t.Errorf("%d, Retry-After %q, cookies %v", resp.StatusCode, resp.Header.Get("Retry-After"), resp.Cookies())
+		}
+	})
+	t.Run("a local session", func(t *testing.T) {
+		c, s := newLocalGateway(t)
+		cookie := sessionCookie(t, c, s)
+		if err := s.Store.Close(); err != nil {
+			t.Fatal(err)
+		}
+		resp, _ := c.send("POST", "/app/logout", "", localUI(cookie, c.base))
+		if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || len(resp.Cookies()) != 0 {
+			t.Errorf("%d, Retry-After %q, cookies %v", resp.StatusCode, resp.Header.Get("Retry-After"), resp.Cookies())
+		}
+	})
+	t.Run("with the database working, it's gone", func(t *testing.T) {
+		c, s := newLocalGateway(t)
+		cookie := sessionCookie(t, c, s)
+		resp, _ := c.send("POST", "/app/logout", "", localUI(cookie, c.base))
+		if resp.StatusCode != 204 || len(resp.Cookies()) != 1 || resp.Cookies()[0].MaxAge >= 0 {
+			t.Errorf("%d, cookies %v", resp.StatusCode, resp.Cookies())
+		}
+	})
+}
+
+// A local sign-in link that can't be read isn't called expired, and isn't a bad try.
+func TestALocalLinkThatCannotBeReadIsNotExpired(t *testing.T) {
+	c, s := newLocalGateway(t)
+	token, err := auth.IssueLocalLink(context.Background(), s.Store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ { // more than the limit on bad tries
+		resp, body := c.redeem(token, nil)
+		if resp.StatusCode != 503 || body != "busy page" || resp.Header.Get("Retry-After") != "5" || len(resp.Cookies()) != 0 {
+			t.Fatalf("try %d: %d %q, Retry-After %q, cookies %v", i, resp.StatusCode, body, resp.Header.Get("Retry-After"), resp.Cookies())
+		}
+	}
+}

@@ -69,11 +69,20 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("[data-logout]");
   if (!button) return;
   button.disabled = true;
+  let done = false;
   try {
-    await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
-  } finally {
-    // Not to /app/login: with one provider that goes straight back to it, and a provider that
-    // remembers you signs you right back in.
-    location.assign(button.dataset.logoutUrl || "/app?signedout=1");
+    const answer = await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
+    // Only a real answer ends it. A 503 means the session is still good, so saying "signed out" would be false.
+    done = answer.ok;
+  } catch {
+    // Nothing came back, so nothing is known: the same as above.
   }
+  if (!done) {
+    button.disabled = false;
+    show("We couldn’t sign you out. Try again in a moment.");
+    return;
+  }
+  // Not to /app/login: with one provider that goes straight back to it, and a provider that
+  // remembers you signs you right back in.
+  location.assign(button.dataset.logoutUrl || "/app?signedout=1");
 });
