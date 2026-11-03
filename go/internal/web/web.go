@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -29,6 +30,9 @@ import (
 )
 
 //go:generate ../../tools/tailwind.sh
+
+//go:embed css/theme.css
+var themeCSS []byte
 
 //go:embed templates/*.html
 var templateFS embed.FS
@@ -86,8 +90,10 @@ func New(d Deps) *UI {
 		return nil
 	})
 	funcs := template.FuncMap{
-		"asset": func(name string) string { return "/app/assets/" + name + "?v=" + u.assetVer[name] },
-		"gb":    func(b int64) string { return fmt.Sprintf("%.1f GB", float64(b)/1e9) },
+		"gaugeSegments": gaugeSegments,
+		"themeColor":    themeColor,
+		"asset":         func(name string) string { return "/app/assets/" + name + "?v=" + u.assetVer[name] },
+		"gb":            func(b int64) string { return fmt.Sprintf("%.1f GB", float64(b)/1e9) },
 		"size": func(b int64) string {
 			if b < 1e9 {
 				return fmt.Sprintf("%.0f MB", float64(b)/1e6)
@@ -146,6 +152,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/models/get/add", u.mutating("models:manage", u.discoverAdd))
 	m.HandleFunc("POST /app/models/get/recipe", u.mutating("models:manage", u.discoverRecipe))
 	m.HandleFunc("GET /app/models/running", u.need("models:read", u.running))
+	m.HandleFunc("GET /app/strip", u.need("models:read", u.stripFragment))
 	m.HandleFunc("POST /app/models/unload/{id...}", u.mutating("models:manage", u.unload))
 	m.HandleFunc("GET /app/models/m/{id...}", u.need("models:read", u.details))
 	m.HandleFunc("POST /app/models/placement/{id...}", u.mutating("models:manage", u.placementPost))
@@ -212,15 +219,24 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	case ".js":
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	case ".svg":
+		w.Header().Set("Content-Type", "image/svg+xml")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
+	case ".woff2":
+		w.Header().Set("Content-Type", "font/woff2")
+	case ".webmanifest":
+		w.Header().Set("Content-Type", "application/manifest+json")
 	default:
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
-	if r.URL.Query().Get("v") == u.assetVer[name] {
+	// A font's name carries its version.
+	if r.URL.Query().Get("v") == u.assetVer[name] || strings.HasPrefix(name, "fonts/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
 	}
-	if strings.HasPrefix(w.Header().Get("Content-Type"), "text/") {
+	if t := w.Header().Get("Content-Type"); strings.HasPrefix(t, "text/") || t == "image/svg+xml" {
 		w.Header().Set("Vary", "Accept-Encoding")
 		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			w.Header().Set("Content-Encoding", "gzip")
@@ -228,6 +244,15 @@ func (u *UI) asset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Write(b)
+}
+
+// themeColor reads the browser bar's color from the theme file, so a direction is one file.
+func themeColor(scheme string) string {
+	m := regexp.MustCompile(`theme-color ` + regexp.QuoteMeta(scheme) + `: (#[0-9a-fA-F]{6})`).FindSubmatch(themeCSS)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
 }
 
 // zipped compresses an embedded asset once.
@@ -323,6 +348,11 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 		data["Principal"] = p
 	}
 	data["Page"] = page
+	if name == "layout" && (page == "library" || page == "studio" || page == "get") {
+		if strip := u.memoryStrip(r); strip != nil {
+			data["Strip"] = strip
+		}
+	}
 	data["CSRF"] = u.csrfToken(w, r)
 	data["LogoutURL"] = u.d.LogoutURL
 	data["NoAuth"] = u.d.NoAuth
