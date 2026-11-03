@@ -11,7 +11,7 @@ import (
 // Grant is one role: what it gives, and who has it. A count of bindings wouldn't show a file adding
 // someone to a strong role, so this names them.
 type Grant struct {
-	Role string `json:"role"`
+	Role string `json:"role" report:"letters"`
 	// Gives is the role's permissions, set against what this root's role of that name gives.
 	Gives Line `json:"gives"`
 	// Default says everyone who signs in through a provider has this role.

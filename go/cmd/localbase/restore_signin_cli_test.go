@@ -186,11 +186,14 @@ func TestALongRoleSaysHowManyMore(t *testing.T) {
 	}
 }
 
-// Who has a role is judged by eye too, so a lookalike in it is shown for what it is.
+// Who has a role is judged by eye too, so a lookalike in it is shown for what it is, and this goes
+// through the same copy as the rest of the report.
 func TestALookalikeInWhoHasARoleIsShownForWhatItIs(t *testing.T) {
-	got := grantLines([]backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"},
-		Who: []backup.Line{{Value: "subject 1 at https://\u0430ccounts.example.com"}}}})
-	if !strings.Contains(got, `subject 1 at https://\u0430ccounts.example.com`) {
+	var out bytes.Buffer
+	printRestoreReport(&cli.Ctx{Stdout: &out, Stderr: &out}, &backup.Report{Manifest: &backup.Manifest{},
+		Grants: []backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"},
+			Who: []backup.Line{{Value: "subject 1 at https://\u0430ccounts.example.com"}}}}})
+	if got := out.String(); !strings.Contains(got, `subject 1 at https://\u0430ccounts.example.com`) {
 		t.Errorf("%s", got)
 	}
 }

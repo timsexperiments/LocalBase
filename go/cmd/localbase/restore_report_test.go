@@ -19,7 +19,7 @@ const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"
 // keepLetters are the only fields that keep letters from another alphabet: names a person gave, and
 // the path they typed. Everything else in the report is judged by eye, so it shows them as escapes.
 // Adding a field to the report keeps this safe by default. Adding one here is a decision.
-var keepLetters = []string{"Report.Target", "Report.ReturningKeys", "Report.KeysLost"}
+var keepLetters = []string{"Report.Target", "Report.ReturningKeys", "Report.KeysLost", "Report.Grants.Role"}
 
 // keepsLetters says whether a path from plantInto is one of those, whatever its list index.
 func keepsLetters(path string) bool {
@@ -163,6 +163,9 @@ func TestTheReportPrintsNothingThatActsOnATerminal(t *testing.T) {
 func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 	rep, _ := plantedReport(t)
 	rep.Target, rep.ReturningKeys, rep.KeysLost = "", nil, nil
+	for i := range rep.Grants {
+		rep.Grants[i].Role = "role"
+	}
 	var out bytes.Buffer
 	c := &cli.Ctx{Stdout: &out, Stderr: &out}
 	printRestoreReport(c, rep)
@@ -178,7 +181,7 @@ func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 func TestAFieldThatKeepsItsLettersDoes(t *testing.T) {
 	rep, _ := plantedReport(t)
 	safe := printable(rep)
-	for _, got := range []string{safe.Target, safe.ReturningKeys[0], safe.KeysLost[0]} {
+	for _, got := range []string{safe.Target, safe.ReturningKeys[0], safe.KeysLost[0], safe.Grants[0].Role} {
 		if !strings.HasSuffix(got, "\u0430") {
 			t.Errorf("%q", got)
 		}

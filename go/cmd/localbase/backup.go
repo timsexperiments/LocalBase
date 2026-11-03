@@ -395,7 +395,7 @@ func printGrants(c *cli.Ctx, grants []backup.Grant) {
 			c.Info("    nobody")
 		}
 		for _, l := range g.Who[:min(len(g.Who), maxGrantLines)] {
-			c.Info("    %s", place(l).Text("has"))
+			c.Info("    %s", l.Text("has"))
 		}
 		if hidden := g.Who[min(len(g.Who), maxGrantLines):]; len(hidden) > 0 {
 			newOnes := 0
