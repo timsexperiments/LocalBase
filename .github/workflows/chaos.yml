@@ -8,12 +8,15 @@ on:
   push:
     branches: [main]
     paths: ["go/**", ".github/workflows/chaos.yml"]
+  schedule:
+    - cron: "53 6 * * *"
 
 permissions:
   contents: read
 
 jobs:
   chaos:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -41,3 +44,21 @@ jobs:
           echo "LOCALBASE_CHAOS_SMALL_DISK=/mnt/small" >> "$GITHUB_ENV"
       - name: Chaos suite
         run: go test ./tools/chaos -count=1 -timeout 10m -v
+
+  known-bugs:
+    # Skips must name an open PR. This goes red when a named PR merges, until its skip
+    # is removed. It runs nightly too, so that can't surprise anyone for long.
+    if: github.event_name != 'schedule' || github.repository == 'timsexperiments/LocalBase'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every skip names an open PR
+        working-directory: go
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/known-bugs-check.sh
