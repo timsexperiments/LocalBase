@@ -165,7 +165,7 @@ func TestLabVideo(t *testing.T) {
 		Selected: map[string][]string{"video": {"wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k", "wan2.2-s2v-14b-fp8"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
 	api := &fakeAPI{}
-	u := New(Deps{NoAuth: true, Call: api.call, Catalog: cat, LLM: llm})
+	u := New(Deps{NoAuth: true, Call: api.call, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k", "wan2.2-s2v-14b-fp8")})
 
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, httptest.NewRequest("GET", "/app/studio/video", nil))
@@ -199,7 +199,7 @@ func TestLabVideo(t *testing.T) {
 	r.Header.Set("HX-Request", "true")
 	r.Header.Set("X-Localbase-UI", "1")
 	r.Header.Set("Sec-Fetch-Site", "same-origin")
-	withCSRF(&UI{}, r)
+	withCSRF(u, r)
 	const id = "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab"
 	api.reply = APIResult{Status: 202, Body: []byte(`{"object":"localbase.video.job","id":"` + id + `","status":"queued","created_at":` + strconv.FormatInt(time.Now().Unix(), 10) + `}`)}
 	w = httptest.NewRecorder()
@@ -264,7 +264,7 @@ func TestLabVideo(t *testing.T) {
 	// Try again sends the same words, model and picture.
 	api.reply = APIResult{Status: 202, Body: []byte(`{"object":"localbase.video.job","id":"7f1c2c3e-8a7b-4c1d-9e2f-0123456789ab","status":"queued","created_at":2}`)}
 	r = htmxPost("/app/lab/video/"+id+"/again", url.Values{})
-	withCSRF(&UI{}, r)
+	withCSRF(u, r)
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, r)
 	sent = nil
@@ -277,7 +277,7 @@ func TestLabVideo(t *testing.T) {
 	// Only one runs at a time: it says what to do.
 	api.reply = APIResult{Status: 429, Body: []byte(`{"error":{"code":"video_job_busy","message":"A local video job is already in progress."}}`)}
 	r = htmxPost("/app/lab/video/"+id+"/again", url.Values{})
-	withCSRF(&UI{}, r)
+	withCSRF(u, r)
 	w = httptest.NewRecorder()
 	u.ServeHTTP(w, r)
 	if !strings.Contains(w.Body.String(), "One video at a time") || strings.Contains(w.Body.String(), "already in progress") {
@@ -286,7 +286,7 @@ func TestLabVideo(t *testing.T) {
 
 	// Remove deletes the job; one the API has forgotten leaves the tray.
 	r = htmxPost("/app/lab/video/"+id+"/remove", url.Values{})
-	withCSRF(&UI{}, r)
+	withCSRF(u, r)
 	u.ServeHTTP(httptest.NewRecorder(), r)
 	if api.method != "DELETE" || api.path != "/v1/videos/"+id {
 		t.Fatalf("remove: %s %s", api.method, api.path)
