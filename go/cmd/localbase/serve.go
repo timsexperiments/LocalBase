@@ -55,6 +55,8 @@ func serveCommand() *cli.Command {
 		opt("ctx-size", "<tokens>", "LLM context limit"),
 		opt("inference-queue-capacity", "<requests>", "Maximum waiting requests per inference type"),
 		opt("inference-queue-timeout-ms", "<milliseconds>", "Maximum inference queue wait"),
+		opt("max-connections", "<connections>", "Maximum open connections, 0 for no cap (default: the configured value, or 4096)"),
+		opt("max-connections-per-ip", "<connections>", "Maximum open connections from one address other than loopback, 0 for no cap (default: the configured value, or 256)"),
 		opt("stt-path", "<path>", "Whisper endpoint path"),
 		opt("llm-model-file", "<file>", "LLM model filename override"),
 		opt("stt-model-file", "<file>", "STT model filename override"),
@@ -366,7 +368,14 @@ func serve(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 	}
-	httpServer := &http.Server{Handler: srv, ReadHeaderTimeout: 30 * time.Second}
+	connLimits, err := connectionLimits(c, st)
+	if err != nil {
+		ln.Close()
+		return nil, err
+	}
+	ln = gateway.LimitConnections(ln, connLimits, log)
+	httpServer := &http.Server{Handler: srv}
+	srv.Limits.Apply(httpServer)
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
@@ -441,6 +450,40 @@ func serve(c *cli.Ctx) (any, error) {
 		c.Line(map[string]any{"event": "stopped", "exitCode": 0})
 	}
 	return nil, nil
+}
+
+// connectionLimits resolves the connection caps: a flag, else the configured
+// value, else the default, fitted under the open file limit.
+func connectionLimits(c *cli.Ctx, st *store.Store) (gateway.ConnLimits, error) {
+	resolve := func(flag, key string, fallback int) (int, error) {
+		if c.Has(flag) {
+			return intOpt(c, flag, 0, 10_000_000)
+		}
+		return savedConnLimit(st, key, fallback), nil
+	}
+	global, err := resolve("max-connections", store.MaxConnectionsKey, gateway.DefaultConnLimits.Global)
+	if err != nil {
+		return gateway.ConnLimits{}, err
+	}
+	perIP, err := resolve("max-connections-per-ip", store.MaxConnectionsPerIPKey, gateway.DefaultConnLimits.PerIP)
+	if err != nil {
+		return gateway.ConnLimits{}, err
+	}
+	var files syscall.Rlimit
+	if syscall.Getrlimit(syscall.RLIMIT_NOFILE, &files) == nil {
+		global = gateway.CapForFileLimit(global, files.Cur)
+	}
+	return gateway.ConnLimits{Global: global, PerIP: perIP}, nil
+}
+
+// savedConnLimit is a configured connection cap, or fallback when none is usable.
+func savedConnLimit(st *store.Store, key string, fallback int) int {
+	if v, ok, err := st.Setting(context.Background(), key); err == nil && ok {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 // voiceStamp identifies the stored custom voice set; the warm speech server
