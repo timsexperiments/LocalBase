@@ -1,6 +1,6 @@
 # Recommended repository settings
 
-For the repository owner. **Nothing here has been applied.**
+For the repository owner. These are recommendations, and most aren't applied yet. A ruleset on `main` already does what's ticked below, with no one able to bypass it. Check a box against the settings page rather than this page, since nothing keeps the two in step.
 
 ## Description and topics
 
@@ -10,25 +10,32 @@ For the repository owner. **Nothing here has been applied.**
 
 ## Branch protection for `main`
 
-- [ ] Require a pull request before merging.
-- [ ] Require status checks: `hygiene`, `secrets`, `licensing`, `test`, `test-linux`, `binaries`, `package`, and `smoke` for each runner. `release-go.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so use path-independent checks or a ruleset that handles skipping.
+- [x] Require a pull request before merging.
+- [ ] Require more status checks. Only `validate` is required today, and it goes when TypeScript does. Add `hygiene`, `secrets`, `licensing`, `test`, `test-linux`, `binaries`, `package`, and `smoke` for each runner. `release-go.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so use path-independent checks or a ruleset that handles skipping.
 - [ ] Require branches to be up to date.
-- [ ] Block force pushes and deletions. Any history rewrite means lifting this deliberately.
+- [x] Block force pushes and deletions. Any history rewrite means lifting this deliberately.
 - [ ] Require linear history, with squash-only merging. A rebase merge stamps your profile name as committer, and a merge commit keeps history you may not want on `main`.
-- [ ] Add a tag ruleset limiting `v*` to maintainers, because a tag starts a release.
+- [ ] Add a tag ruleset limiting `v*`, `whisper-v*`, `sd-server-v*`, `tts-server-v*` and `kokoro-v*` to maintainers, and blocking their deletion and any move. A `v*` tag starts a release, and a moved tag changes what a published release means.
 
 ## Security
 
 - [ ] Enable private vulnerability reporting, which `SECURITY.md` relies on.
 - [ ] Enable secret scanning and push protection, on top of the gitleaks job.
-- [ ] Enable Dependabot alerts. Version updates are already configured.
+- [ ] Enable Dependabot alerts and the dependency graph. Version updates are already configured for Go modules, Actions, Bun and Docker.
 
 ## Actions
 
 - [ ] Default workflow permissions: read-only. Workflows ask for more per job.
 - [ ] Require approval to run workflows for first-time contributors.
 - [ ] Don't let Actions create or approve pull requests, unless a sync workflow turns out to need it. The manifest sync workflows should be checked before you change this.
-- [ ] Consider a `release` environment with a required reviewer for the Apple secrets. `release-go.yml` would need `environment: release` added to `sign-macos`.
+- [ ] Allow only actions pinned to a full commit SHA, and only the actions this repository uses. The repo guard checks pins on pull requests, and this setting holds for every run.
+
+## Release credentials
+
+- [ ] Put the Apple secrets in a `release` environment with a required reviewer, and add `environment: release` to each job that reads them. `sign-macos` in `release-go.yml` is one. The runtime workflows have others, and `scripts/check-signing-jobs.sh` shows which jobs may hold them.
+- [ ] Put `RELEASE_AUTOMATION_PRIVATE_KEY` in the same environment, and give that GitHub App only what the manifest sync needs, on this repository alone.
+- [ ] Use an app-specific password for notarizing, as [install](install.md#signing-setup-for-maintainers) says, not the account's password.
+- [ ] Replace the certificate and that password when a maintainer leaves, or if a job holding them ever ran something it shouldn't have.
 
 ## General
 

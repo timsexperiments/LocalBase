@@ -16,3 +16,19 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: bun
+    directories: [/, /runtimes/kokoro]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      bun:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: [/, /go/tools/systemd-check]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      docker:
+        patterns: ["*"]
