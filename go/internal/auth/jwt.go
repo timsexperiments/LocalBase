@@ -26,6 +26,14 @@ import (
 // ES256/384/512 and EdDSA (Ed25519), with issuer, audience, expiry and
 // required-claim checks.
 
+const (
+	// jwksRetryWait is how long after a failed fetch the next one waits. Every caller waits behind
+	// a fetch, and anyone can send a token, so without it an outage holds them all up in turn.
+	jwksRetryWait = 30 * time.Second
+	// jwksFetchLimit is the longest a fetch can hold up the callers behind it.
+	jwksFetchLimit = 5 * time.Second
+)
+
 // JWKS is a cached remote key set (cooldown 30 s between refetches, cache
 // 10 min), like jose's createRemoteJWKSet.
 type JWKS struct {
@@ -35,6 +43,10 @@ type JWKS struct {
 	mu      sync.Mutex
 	keys    map[string][]jwk // kid -> keys
 	fetched time.Time
+	failed  time.Time // when a fetch last failed
+	err     error     // why
+
+	fetchLimit time.Duration // tests shorten jwksFetchLimit
 }
 
 type jwk struct {
@@ -95,6 +107,12 @@ func (k *jwk) parse() error {
 }
 
 func (s *JWKS) fetch(ctx context.Context) error {
+	limit := s.fetchLimit
+	if limit == 0 {
+		limit = jwksFetchLimit
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	client := s.Client
 	if client == nil {
 		client = &http.Client{Timeout: 5 * time.Second}
@@ -145,10 +163,15 @@ func (s *JWKS) candidates(ctx context.Context, kid string) ([]jwk, error) {
 	defer s.mu.Unlock()
 	stale := s.keys == nil || time.Since(s.fetched) > 10*time.Minute
 	_, known := s.keys[kid]
-	if stale || (!known && time.Since(s.fetched) > 30*time.Second) {
-		if err := s.fetch(ctx); err != nil && s.keys == nil {
-			return nil, err
+	if (stale || (!known && time.Since(s.fetched) > 30*time.Second)) && time.Since(s.failed) >= jwksRetryWait {
+		// Not on the caller's context: others are waiting on this, and one who hangs up
+		// shouldn't make it a failure they then have to wait out.
+		if err := s.fetch(context.WithoutCancel(ctx)); err != nil {
+			s.failed, s.err = time.Now(), err
 		}
+	}
+	if s.keys == nil {
+		return nil, s.err
 	}
 	if kid != "" {
 		return s.keys[kid], nil
