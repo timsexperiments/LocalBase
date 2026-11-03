@@ -29,7 +29,8 @@
 # in 29000-29499. The gateway planner's exact plan is printed BEFORE any real load, from a
 # separate scratch root with a fake backend (so no peak recorded there can skew the real
 # root), and the pass aborts if it is over the limit below. At least 48% free to start, 40% floor
-# throughout (free + speculative + inactive pages). 200 sequential requests, short outputs.
+# throughout (free + speculative + inactive pages). 200 sequential requests, short outputs. At
+# least 90 GiB of disk free, throughout, and a debug log of at most 2 GiB.
 # One pass only: a second is a new ask of the operator.
 #
 # This script deletes nothing. It prints the paths to delete afterwards.
@@ -66,6 +67,10 @@ GW=29410 LLM=29411
 CTX=8192
 PLAN_LIMIT_MIB=4864 # 4.75 GiB
 START_PCT=48
+# The shared disk rule: refuse under the floor, and cap what this writes. The clones are APFS
+# clones, so the debug log is what can grow. Use tools/disk-guard.sh once it is in the tree.
+DISK_FLOOR_GIB=90
+LOG_CAP_MIB=2048
 FLOOR_PCT=40
 REQUESTS=200
 HARD_SECONDS=1500
@@ -79,12 +84,16 @@ if [ "$DRY" = 1 ]; then
   FLOOR_PCT=${DRY_FLOOR_PCT:-0}
   REQUESTS=${DRY_REQUESTS:-30}
   PLAN_LIMIT_MIB=${DRY_PLAN_LIMIT_MIB:-$PLAN_LIMIT_MIB}
+  DISK_FLOOR_GIB=${DRY_DISK_FLOOR_GIB:-$DISK_FLOOR_GIB}
+  LOG_CAP_MIB=${DRY_LOG_CAP_MIB:-$LOG_CAP_MIB}
 fi
 
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$EV"; }
 pages_mib() {
   vm_stat | awk '/page size of/ { page = $8 } /Pages (free|speculative|inactive)/ { gsub(/\./, "", $NF); n += $NF } END { printf "%d\n", n * page / 1048576 }'
 }
+disk_free_gib() { df -k "$W" | awk 'NR == 2 { printf "%d\n", $4 / 1048576 }'; }
+log_mib() { [ -f "$W/gw.log" ] && echo $(( $(wc -c < "$W/gw.log") / 1048576 )) || echo 0; }
 free_pct() { echo $(( $(pages_mib) * 1048576 * 100 / $(sysctl -n hw.memsize) )); }
 live_state() { curl -s -m 3 "$LIVE" | jq -c '.modalities // "unreachable"' 2>/dev/null || echo unreachable; }
 SCRATCH_ENV=(env -i PATH=/usr/bin:/bin:/usr/sbin "HOME=$W/home" LOCALBASE_CATALOG_FEED_URL=off
@@ -172,6 +181,12 @@ case "$BASE" in
   *'"llm":{"configured":true,"state":"running"}'* | *'"llm":{"configured":true,"state":"idle"}'*) ;;
   *) log "PREFLIGHT FAILED: live llm is not idle or running"; exit 4 ;;
 esac
+DISK=$(disk_free_gib)
+log "PREFLIGHT: disk free $DISK GiB (floor $DISK_FLOOR_GIB GiB)"
+if [ "$DISK" -lt "$DISK_FLOOR_GIB" ]; then
+  log "PREFLIGHT FAILED: disk free $DISK GiB is under the floor of $DISK_FLOOR_GIB GiB"
+  exit 4
+fi
 if [ "$PCT" -lt "$START_PCT" ]; then
   log "PREFLIGHT FAILED: free memory $PCT% is under the $START_PCT% this pass needs to start"
   exit 4
@@ -189,6 +204,11 @@ fi
     pct=$(free_pct)
     if [ "$pct" -lt "$FLOOR_PCT" ]; then
       echo "[$(date +%H:%M:%S)] FREE MEMORY UNDER THE FLOOR: $pct% < $FLOOR_PCT%" >> "$EV"
+      kill -TERM $$
+      exit 0
+    fi
+    if [ "$(disk_free_gib)" -lt "$DISK_FLOOR_GIB" ] || [ "$(log_mib)" -gt "$LOG_CAP_MIB" ]; then
+      echo "[$(date +%H:%M:%S)] DISK: $(disk_free_gib) GiB free (floor $DISK_FLOOR_GIB), the log is $(log_mib) MiB (cap $LOG_CAP_MIB)" >> "$EV"
       kill -TERM $$
       exit 0
     fi
