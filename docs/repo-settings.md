@@ -36,3 +36,13 @@ For the repository owner. **Nothing here has been applied.**
 - [ ] Turn on Discussions if you want a place for questions, and link it from `SUPPORT.md`. It's off today.
 - [ ] Turn off the Wiki and Projects if unused, so documentation stays in the repo.
 - [ ] Create the labels proposed in [labels](labels.md).
+
+## Documentation site
+
+The site builds on every docs change, but nothing is published. To turn it on:
+
+- [ ] Settings → Pages: set the source to **GitHub Actions**.
+- [ ] Settings → Secrets and variables → Actions → Variables: set `DOCS_PAGES_ENABLED` to `true`.
+- [ ] Run the **Docs site** workflow from `main`, or push a docs change.
+
+It publishes to `https://timsexperiments.github.io/LocalBase/`. Only the publish job can write to Pages.

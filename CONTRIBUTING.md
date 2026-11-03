@@ -33,6 +33,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 | `make fmt` | Format Go code |
 | `make check` | Format, vet, repo guards and unit tests |
 | `make rehearse` | Rehearse a release from local artifacts. Publishes nothing |
+| `make docs` | Build the documentation site into `.cache/docs-site/book` |
 
 `make hooks` optionally runs the fast checks before each commit.
 
