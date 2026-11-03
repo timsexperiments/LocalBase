@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -23,6 +24,14 @@ import (
 )
 
 const sttModel = "whisper-base-en-q8_0"
+
+// sttBackend is the speech-to-text backend that has a build on this platform.
+func sttBackend(reg *backends.Registry) *backends.Definition {
+	if goruntime.GOOS == "linux" {
+		return reg.Get("whisper.cpp-vulkan")
+	}
+	return reg.Get("whisper.cpp-metal")
+}
 
 // newAuthSTTGateway is a gateway with authentication on, whose transcription
 // runtime is the fake whisper-server, and a key that may use it.
@@ -58,7 +67,7 @@ func newAuthSTTGateway(t *testing.T) (*httptest.Server, *runtime.Service, string
 		if id != sttModel {
 			return nil, runtime.ErrModelNotFound
 		}
-		return &runtime.Target{ModelID: id, Model: &m, Variant: &m.Variants[0], Backend: reg.Get("whisper.cpp-metal"), Dir: modelsDir}, nil
+		return &runtime.Target{ModelID: id, Model: &m, Variant: &m.Variants[0], Backend: sttBackend(reg), Dir: modelsDir}, nil
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := runtime.NewService(runtime.ServiceDeps{Modality: "stt", Kind: "stt", Catalog: cat, Store: st, Memory: mem, Log: log,

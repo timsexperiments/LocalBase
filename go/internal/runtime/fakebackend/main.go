@@ -49,6 +49,10 @@ func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--localbase-capabilities":
+			// What Linux asks of an sd-server before running it (requireSdGPUContract).
+			fmt.Println("localbase-sd-gpu-pci-v1")
+			return
 		case "--host", "--listen-ip":
 			i++
 			host = args[i]

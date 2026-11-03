@@ -66,48 +66,11 @@ func (g *Gateway) GoroutineDump(ctx context.Context, path string) error {
 	return err
 }
 
-func rssOf(pid int) int64 {
-	out, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return -1
-	}
-	kb, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
-	if err != nil {
-		return -1
-	}
-	return kb * 1024
-}
-
 // Proc is one row of the process table.
 type Proc struct {
 	PID, PPID int
 	State     string
 	Command   string
-}
-
-// procs lists every process with a command under dir.
-func procsUnder(dir string) ([]Proc, error) {
-	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,state=,command=").Output()
-	if err != nil {
-		return nil, err
-	}
-	var procs []Proc
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 4 {
-			continue
-		}
-		if !strings.HasPrefix(f[3], dir+string(filepath.Separator)) {
-			continue
-		}
-		pid, err1 := strconv.Atoi(f[0])
-		ppid, err2 := strconv.Atoi(f[1])
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		procs = append(procs, Proc{PID: pid, PPID: ppid, State: f[2], Command: filepath.Base(f[3])})
-	}
-	return procs, nil
 }
 
 // Backends lists the fake backends running from this workspace, whoever their
@@ -147,8 +110,11 @@ if kill -0 %d 2>/dev/null; then exit 0; fi
 kill -TERM -%d 2>/dev/null
 sleep 5
 kill -KILL -%d 2>/dev/null
-ps -A -o pid=,command= | awk -v p=%q 'index($2, p) == 1 { print $1 }' | while read -r stray; do kill -KILL "$stray" 2>/dev/null; done`,
-		os.Getpid(), pid, os.Getpid(), pid, pid, bin+string(filepath.Separator))
+for exe in /proc/[0-9]*/exe; do
+  case "$(readlink "$exe" 2>/dev/null)" in %s*) stray=${exe#/proc/}; kill -KILL "${stray%%/exe}" 2>/dev/null;; esac
+done
+if command -v ps >/dev/null; then ps -A -o pid=,command= | awk -v p=%q 'index($2, p) == 1 { print $1 }' | while read -r stray; do kill -KILL "$stray" 2>/dev/null; done; fi`,
+		os.Getpid(), pid, os.Getpid(), pid, pid, bin+string(filepath.Separator), bin+string(filepath.Separator))
 	w := exec.Command("sh", "-c", script)
 	w.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if w.Start() == nil {
@@ -180,31 +146,6 @@ func (g *Gateway) Settled(ctx context.Context) (Stats, error) {
 		}
 	}
 	return last, nil
-}
-
-// Zombies counts pid's children that have exited and not been waited for.
-func Zombies(pid int) int {
-	out, err := exec.Command("ps", "-A", "-o", "ppid=,state=").Output()
-	if err != nil {
-		return 0
-	}
-	n := 0
-	for _, line := range strings.Split(string(out), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 2 && f[0] == strconv.Itoa(pid) && strings.HasPrefix(f[1], "Z") {
-			n++
-		}
-	}
-	return n
-}
-
-// CPUSeconds is a process's total CPU time so far, from ps.
-func CPUSeconds(pid int) float64 {
-	out, err := exec.Command("ps", "-o", "time=", "-p", strconv.Itoa(pid)).Output()
-	if err != nil {
-		return 0
-	}
-	return parseCPUTime(strings.TrimSpace(string(out)))
 }
 
 // parseCPUTime reads ps time: [[dd-]hh:]mm:ss[.xx].
