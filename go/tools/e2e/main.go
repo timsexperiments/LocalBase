@@ -264,6 +264,21 @@ func lastLines(path string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
+// chromeArgs is how Chrome starts. The first two flags keep it away from the machine's
+// keychain: without them a current Chrome on macOS asks the Keychain for its cookie key,
+// which can stall navigation for good and put a prompt on the screen of whoever owns the
+// machine. They apply to any Chrome, including one named by LBGO_CHROME.
+func chromeArgs(port int, profile string, noSandbox bool) []string {
+	args := []string{"--use-mock-keychain", "--password-store=basic",
+		"--headless=new", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + strconv.Itoa(port),
+		"--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
+		"--disable-sync", "--disable-extensions", "--metrics-recording-only", "--mute-audio"}
+	if noSandbox {
+		args = append(args, "--no-sandbox")
+	}
+	return append(args, "about:blank")
+}
+
 // startChrome runs headless Chrome with a scratch profile and returns its DevTools
 // address once it answers.
 func startChrome(ctx context.Context, w *lab.Workspace, chrome string) (func(), string, error) {
@@ -275,13 +290,7 @@ func startChrome(ctx context.Context, w *lab.Workspace, chrome string) (func(), 
 	if err := os.MkdirAll(profile, 0o700); err != nil {
 		return nil, "", err
 	}
-	args := []string{"--headless=new", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + strconv.Itoa(port),
-		"--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
-		"--disable-sync", "--disable-extensions", "--metrics-recording-only", "--mute-audio", "about:blank"}
-	if os.Getenv("LOCALBASE_E2E_NO_SANDBOX") != "" {
-		args = append(args, "--no-sandbox")
-	}
-	cmd := exec.Command(chrome, args...)
+	cmd := exec.Command(chrome, chromeArgs(port, profile, os.Getenv("LOCALBASE_E2E_NO_SANDBOX") != "")...)
 	// Its own process group, so its helpers go with it.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	log, err := os.Create(filepath.Join(w.Dir, "chrome.log"))
@@ -292,6 +301,8 @@ func startChrome(ctx context.Context, w *lab.Workspace, chrome string) (func(), 
 	if err := cmd.Start(); err != nil {
 		return nil, "", fmt.Errorf("starting Chrome: %w", err)
 	}
+	// A SIGKILL or the hard deadline skips every deferred stop.
+	w.StopIfThisProcessDies(cmd.Process.Pid)
 	stop := func() {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) // it may have gone already
 		done := make(chan struct{})
