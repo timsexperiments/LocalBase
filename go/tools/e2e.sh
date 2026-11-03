@@ -46,15 +46,21 @@ if [ -z "$chrome" ]; then
   dir=$cache/chrome-$version-$platform
   chrome=$dir/$(pin "chrome-$platform-path" tools/e2e/pins | tr '+' ' ')
   if [ ! -x "$chrome" ]; then
-    mkdir -p "$dir" || exit 2
+    if [ -e "$dir" ]; then
+      echo "e2e.sh: $dir has no Chrome in it; remove it and run again" >&2
+      exit 2
+    fi
     echo "e2e.sh: fetching Chrome for Testing $version into $dir" >&2
-    curl -fsSL -o "$dir/chrome.zip" "$url" || { echo "e2e.sh: could not fetch Chrome" >&2; exit 2; }
-    got=$(shasum -a 256 "$dir/chrome.zip" | cut -d' ' -f1)
+    # Nothing is unpacked until the checksum matches, and it only gets its final name whole.
+    tmp=$(mktemp -d "$cache/chrome-XXXXXX") || exit 2
+    curl -fsSL -o "$tmp/chrome.zip" "$url" || { echo "e2e.sh: could not fetch Chrome" >&2; exit 2; }
+    got=$(shasum -a 256 "$tmp/chrome.zip" | cut -d' ' -f1)
     if [ "$got" != "$sum" ]; then
       echo "e2e.sh: Chrome checksum mismatch ($got)" >&2
       exit 2
     fi
-    (cd "$dir" && unzip -q chrome.zip) || exit 2
+    (cd "$tmp" && unzip -q chrome.zip) || exit 2
+    mv "$tmp" "$dir" || exit 2
   fi
 fi
 command -v bun >/dev/null 2>&1 || { echo "e2e.sh: needs bun" >&2; exit 2; }

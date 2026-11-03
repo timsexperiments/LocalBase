@@ -367,7 +367,7 @@ async function overflowSelfTest(t: Tab) {
   await t.until("the planted element to lay out", `document.scrollingElement.scrollWidth > 390`);
   const planted = await t.ev(OVERFLOW(390));
   const oldWay = await t.ev(`document.documentElement.scrollWidth - innerWidth`);
-  console.log(`overflow self-test: clean page ${clean.over}; planted ${planted.over} (innerWidth then ${planted.inner}; the old comparison reads ${oldWay})`);
+  console.log(`overflow self-test: clean page ${clean.over}; planted ${planted.over} (innerWidth then ${planted.inner}, clientWidth ${planted.client}; the old comparison reads ${oldWay})`);
   if (planted.over <= 0) throw new Error(`the overflow check missed a planted 1200 px element: ${JSON.stringify(planted)}`);
   return { plantedOver: planted.over, oldComparison: oldWay, innerWidth: planted.inner };
 }
