@@ -1154,23 +1154,38 @@
 /* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
 @layer components {
   .lab-item-video {
-    @apply self-start;
+    @apply grid content-start gap-2 self-start;
   }
-  /* On a phone the player leaves room for what's around it: the strip, the title and heading above,
-     the caption and actions below, then the prompt and the tab bar. Fixed parts are in rem, so this
-     follows the screen, and the whole result is on one screen without scrolling. */
+  /* On a phone the player leaves room for what's around it: the strip and heading, the words (two
+     lines at most here) and facts above, the actions below, then the prompt and the tab bar, and a
+     pill's bar when one shows. Fixed parts are in rem, so this follows the screen, and the whole
+     result is on one screen without scrolling. */
   .video-frame {
     @apply mx-auto max-w-full min-h-0 object-contain;
-    max-height: max(9rem, calc(100dvh - 29rem));
+    max-height: max(9rem, calc(100dvh - 31rem));
   }
   @media (max-width: 767px) {
     body:has(.run-pill-dock [data-run-pill]:not([hidden])) .video-frame {
-      max-height: max(9rem, calc(100dvh - 32.5rem));
+      max-height: max(9rem, calc(100dvh - 34.5rem));
     }
+    .image-title.video-title {
+      -webkit-line-clamp: 2;
+    }
+  }
+  .video-facts {
+    @apply flex items-center gap-2;
+  }
+  /* One row down to 360 with Share showing, as it does on a real phone. */
+  .video-actions {
+    @apply gap-0.5;
+  }
+  /* Without a card round each result, space is what separates them. */
+  .lab-items:has(.lab-item-video) {
+    row-gap: 1.75rem;
   }
   @media (min-width: 768px) {
     .video-frame {
-      max-height: 60dvh;
+      max-height: max(16rem, calc(100dvh - 26rem));
     }
   }
   video.video-frame {
@@ -1186,17 +1201,17 @@
     @apply aspect-square w-full max-w-md;
   }
   video.video-tall {
-    height: 60dvh;
+    height: 100dvh;
   }
   /* While it runs, Stop has to stay on screen above the prompt. */
   .lab-progress.video-frame {
-    max-height: 36dvh;
+    max-height: 40dvh;
   }
   .lab-progress.video-tall {
-    height: 36dvh;
+    height: 40dvh;
   }
   .video-thumb {
-    @apply block size-10 shrink-0 overflow-hidden rounded-lg;
+    @apply block size-8 shrink-0 overflow-hidden rounded-md;
   }
   .video-recent {
     @apply block size-16 overflow-hidden rounded-lg ring-1 ring-line;

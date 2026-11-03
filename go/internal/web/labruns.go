@@ -196,6 +196,7 @@ type labItemView struct {
 	At                                 time.Time
 	Video, Thumb, Announce             string // a video job: its file, starting picture, and what to say
 	Again, Slow, NeedsMemory           bool
+	Elapsed, Limit                     string       // a running video: how long so far, in words, and the model's limit
 	VoiceName, Length                  string       // a script
 	Segments                           []labSegment // a transcript's stretches, with times
 	Source, Language                   string

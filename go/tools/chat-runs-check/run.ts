@@ -1181,9 +1181,30 @@ if (await ev(`!!document.querySelector("#lab-items video")`)) {
   for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     await nav("/app/studio/video");
-    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = document.getElementById("results-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = item.querySelector(".image-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
     check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
   }
+  // A long title and a pill together are the tightest case: two lines of words, and another tool's run showing.
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  const long = "A long slow pan across a quiet harbour at first light, with gulls overhead and small boats rocking on the water";
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(long)}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 80 && !(await ev(`!!document.querySelector("#lab-items > li video") && document.querySelector("#lab-items > li .image-title")?.textContent.startsWith("A long slow pan")`)); i++) await sleep(150);
+  const slowPictures = `(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a slow lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: "dreamshaper-8-lcm" }) }); })()`;
+  for (const [width, height] of [[360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/video");
+    await ev(slowPictures);
+    const pillOn = `(() => { const p = document.querySelector("[data-run-pill=dock]"); return !!p && !p.hidden && p.getBoundingClientRect().height > 0; })()`;
+    for (let i = 0; i < 100 && !(await ev(pillOn)); i++) await sleep(150);
+    const tight = await ev(`(() => { scrollTo(0, 0); const item = document.querySelector("#lab-items > li"), title = item.querySelector(".image-title"), share = item.querySelector("[data-share]"), bar = document.querySelector(".run-pill-dock").getBoundingClientRect(), line = parseFloat(getComputedStyle(title).lineHeight); share.hidden = false;
+      const acts = [...item.querySelectorAll(".lab-item-foot a, .lab-item-foot button")].filter((a) => a.getBoundingClientRect().width > 0), reach = (a) => { const r = a.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && (at === a || a.contains(at)); };
+      return { lines: Math.round(title.getBoundingClientRect().height / line), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, bottom: Math.round(Math.max(...acts.map((a) => a.getBoundingClientRect().bottom))), barTop: Math.round(bar.top), reached: acts.every(reach), pill: ${pillOn}, player: Math.round(item.querySelector("video").getBoundingClientRect().height) }; })()`);
+    check(tight.pill && tight.lines === 2 && tight.acts >= 5 && tight.rows === 1 && tight.bottom <= tight.barTop && tight.reached && tight.player >= 100, `at ${width}, with a two-line title, a pill and Share showing, every action is in one row and none is covered: ${JSON.stringify(tight)}`);
+    const left = await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.status === "queued" || x.status === "in_progress").map((x) => x.id))`);
+    for (const id of left ?? []) await ev(`fetch("/app/api/_localbase/runs/${id}/cancel", { method: "POST", headers: { "x-localbase-ui": "1" } }).then((r) => r.status)`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 }
 
 // A hidden tab would have made the checks above mean something else, so say if it happened.

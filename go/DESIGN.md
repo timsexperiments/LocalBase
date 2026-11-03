@@ -4454,6 +4454,22 @@ the pages before this change it failed for all five.
   parts rather than taking a share of the screen: a share of 60% left no room at 740 px tall. Below
   about 660 px the player stops at 9rem, so the end of the card can need a scroll.
 
+### 27.2b Video, led by your words
+
+- **A result reads like a picture's:** the words in the reading face, then its length and age, then the player.
+  There is no card round it, and space separates results. On a phone the words stop at two lines.
+- **While it runs,** the stage and Stop sit together above its place, which has the video's shape. The place says
+  how long so far, in words. That is what has happened, and it promises nothing about what is left, because the
+  API reports no steps. "It can take up to 10 minutes" is the model's limit, not a measurement, and past half of
+  it the line says this is taking a while.
+- **Make again leads,** with Save, Share, Edit prompt and Remove as icons, so all of them stay in one row down to
+  360 with Share showing. The first version let Remove wrap onto a second row, behind a pill.
+- **A first visit** asks what you'd like to see move, like Image, and says plainly that a video can take a while
+  and uses a lot of memory. It names no model.
+
+**Checks:** `tools/chat-runs-check.sh`: with a two-line title, a pill and Share showing, at 360 and 390, every
+action is in one row and none is covered. **No real video model has run through this page.**
+
 ### 27.3 What the landing's overflow taught
 
 - **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and
