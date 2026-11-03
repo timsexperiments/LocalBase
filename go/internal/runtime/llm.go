@@ -110,6 +110,9 @@ type backend struct {
 	// first: a switch and an eviction can capture the same backend, and a
 	// caller that comes second waits here until the memory is released.
 	stopOnce sync.Once
+	// sampling ends with the backend: a stop does not wait out a memory sample.
+	sampling     context.Context
+	stopSampling context.CancelFunc
 	// emergency: stopped because memory turned critical.
 	emergency atomic.Bool
 }
@@ -142,6 +145,7 @@ type LLM struct {
 	closed    bool
 	geometry  map[string]geometryEntry
 	probes    sync.WaitGroup
+	watches   sync.WaitGroup // backend watchers; each can end in a store write
 	switches  sync.WaitGroup // in-flight model switches; Close waits for them
 	failed    bool           // the last start failed and nothing runs
 	claimed   bool           // idle recovery is stopping the backend; hold requests
@@ -544,7 +548,11 @@ func (m *LLM) install(b *backend) {
 	}
 	m.cur = b
 	m.mu.Unlock()
-	go m.watch(b)
+	m.watches.Add(1)
+	go func() {
+		defer m.watches.Done()
+		m.watch(b)
+	}()
 	if b.spec != nil && m.d.Store != nil && (b.target == nil || b.target.Backend.Adapter == "llama-server/v1") {
 		m.probes.Add(1)
 		go func() {
@@ -663,7 +671,9 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		return nil, err
 	}
 	m.d.Log.InfoContext(ctx, name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
-	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base, stop: make(chan struct{})}, nil
+	sampling, stopSampling := context.WithCancel(context.Background())
+	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base,
+		stop: make(chan struct{}), sampling: sampling, stopSampling: stopSampling}, nil
 }
 
 func (m *LLM) stopBackend(b *backend, reason string) {
@@ -673,6 +683,7 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 	}
 	m.mu.Unlock()
 	b.stopOnce.Do(func() {
+		b.stopSampling()
 		close(b.stop)
 		b.proc.Stop(stopGrace)
 		logStopped(m.d.Log, "llm", b.modelID, reason, b.res.Bytes(), b.proc.PID())
@@ -683,6 +694,7 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 // watch samples the observed peak and handles an unexpected exit: the slot
 // is cleared and the next request starts the model again.
 func (m *LLM) watch(b *backend) {
+	defer b.stopSampling()
 	tick := time.NewTicker(samplePeriod)
 	defer tick.Stop()
 	var peak int64
@@ -691,10 +703,11 @@ func (m *LLM) watch(b *backend) {
 		if !record {
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		bytes, ok := memory.Footprint(ctx, b.proc.PID())
+		ctx, cancel := context.WithTimeout(b.sampling, 4*time.Second)
+		bytes, ok := sampleFootprint(ctx, b.proc.PID())
 		cancel()
-		if ok && bytes > peak {
+		// Stopped meanwhile: leave the store alone. A write already begun finishes.
+		if ok && bytes > peak && b.sampling.Err() == nil {
 			peak = bytes
 			_ = m.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
 				ArtifactSHA256: b.spec.Primary().SHA256, LaunchShape: b.plan.Launch.LaunchShape(),
@@ -765,6 +778,7 @@ func (m *LLM) Close() {
 	if b != nil {
 		m.stopBackend(b, StopShutdown)
 	}
+	m.watches.Wait()
 	m.probes.Wait()
 }
 
