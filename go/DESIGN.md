@@ -615,6 +615,7 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A health answer counts only from the spawned child's process group, and the port check runs before every backend start (§29). TS checks ports in its startup preflight (`startup-preflight.ts`).
 - A tool-call delta with an index outside 0-127, or a fractional one, stays out of a run's accumulated `output`. The stream still carries it. Runs are Go-only (§21), so TS has no matching route.
 - `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
 - A backend that crashes under a request answers 503 `service_unavailable` with
@@ -4702,3 +4703,42 @@ tested, and TS on Bun is unverified.
 cap, because everything arrives from one address. The caps keep the process healthy; they do
 not keep a flooded gateway available. Slow reads by an authenticated client are not bounded
 here: a stalled reader can hold a generation until it ends.
+
+## 29. Who owns a backend (2026-11-02)
+
+Backends run in their own process groups, so they outlive a gateway that dies without
+stopping them, and launchd or systemd restarts that gateway with nobody involved. The
+restarted gateway's backend could not bind the port and exited, but the survivor answered
+its health probe, so the gateway accepted it and relayed to it. A request for one model got
+a 200 from another, and the rewritten `model` field hid it. A scratch gateway given a live
+port failed the same way. One fix covers both.
+
+1. **Guard.** Each backend's group holds a small shell reading a pipe whose write end only
+   the gateway has. The kernel closes it however the gateway dies, and the guard then ends
+   the group: TERM, then KILL after up to 5 s. This replaces `Pdeathsig`: it works on macOS
+   too, and cannot fire because one OS thread of the gateway ended.
+2. **Record and sweep.** `runtime/backends/<runtime>-<pid>.json` (0600) holds the pid, start
+   time and executable from just after spawn until exit. `serve`, holding the root's lock,
+   stops what the records describe before any backend starts. A process is stopped only if
+   all three match, so a reused pid is left alone. If the leader is gone but its group is
+   not, the group is still ours, since a pid is not reused while a group with that id exists.
+3. **Port check.** A start refuses a port something else holds, naming the port and the
+   owner's pid when `lsof` can find it. It waits up to 1 s for a backend that just stopped.
+4. **Readiness comes from the child.** A health answer doesn't count if the child has exited,
+   or if `lsof` shows a listener outside its process group. A custom launch skips only the
+   listener check, because it may serve from a container.
+
+Event: `runtime.survivor-stopped`, a warning.
+
+**Limits.**
+- A gateway that dies between spawn and record leaves no record; the guard still ends that
+  backend.
+- A port taken between the check and the child's bind is caught by the listener check when
+  `lsof` exists and can see the owner. Without it, only the exited-child check applies, after
+  a 100 ms settle.
+- Survivors from before this version have no record. The port check refuses them with a
+  clear error, and someone has to stop them by hand.
+
+**Not verified.** Only fake backends so far. For the next real-model window, away from the
+live root: does a real `llama-server` exit when its port is taken, does an orphan answer
+`/health`, and does the guard end one in time?
