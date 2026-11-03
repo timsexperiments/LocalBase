@@ -29,6 +29,9 @@ func TestMain(m *testing.M) {
 	// Below the machine's other work; every process here inherits it.
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10)
 	code := func() int {
+		if os.Getenv(stalePlant) != "" {
+			return m.Run() // the plant starts no gateway
+		}
 		w, err := lab.NewWorkspace("")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -44,6 +47,9 @@ func TestMain(m *testing.M) {
 		workspace = w
 		return m.Run()
 	}()
+	if code == 0 {
+		code = reportStaleSkips()
+	}
 	os.Exit(code)
 }
 
@@ -227,10 +233,11 @@ func transient(t *testing.T, what string, r lab.Call) {
 // that fixes it; that fix removes the line, and the test guards it from then on.
 // tools/known-bugs-check.sh fails once a named pull request has merged, so a skip
 // cannot outlive its bug unnoticed. noPRYet says there is no fix yet, and fails that
-// check too.
+// check too. And a skip has to be true: see reportStaleSkips.
 func knownBug(t *testing.T, pr int, bug string) {
 	t.Helper()
 	if os.Getenv("LOCALBASE_CHAOS_ALL") == "" {
+		noteSkip(t.Name(), pr)
 		t.Skipf("known bug, fixed by #%d: %s", pr, bug)
 	}
 }
@@ -272,7 +279,6 @@ func TestBackendKilledMidStream(t *testing.T) {
 // A request waiting on a backend that is killed gets the transient-failure
 // answer, and the next one works.
 func TestBackendKilledMidRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{FakeDelayMS: 1500})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	done := make(chan lab.Call, 1)
@@ -286,7 +292,6 @@ func TestBackendKilledMidRequest(t *testing.T) {
 
 // The same for the media runtimes.
 func TestMediaBackendKilledMidRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{})
 	image := func(prompt string) lab.Call {
 		return c.PostJSON(ctx, "/v1/images/generations", g.Keys.User, map[string]any{"model": lab.Image, "prompt": prompt, "n": 1, "size": "512x512"})
@@ -424,7 +429,6 @@ func TestStartupCrashLoop(t *testing.T) {
 // A backend that dies after each request: the next request brings it back every
 // time, with no hang and no growth.
 func TestCrashAfterEveryRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	first := settledStats(t, ctx, g, c)
@@ -490,7 +494,10 @@ func TestGatewayKilledOutright(t *testing.T) {
 	if r.Err != nil || r.Status != 200 {
 		t.Errorf("first request after the restart: %d %v %.300s", r.Status, r.Err, r.Body)
 	}
-	procs, _ := workspace.Backends()
+	procs, err := workspace.Backends()
+	if err != nil {
+		t.Errorf("listing backends after the restart: %v", err)
+	}
 	for _, p := range procs {
 		if p.PID == before.PID {
 			t.Errorf("the dead gateway's backend (pid %d) is still running; parent now %d", p.PID, p.PPID)
