@@ -150,25 +150,20 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   stripNextTry = 0;
   stripWait = 3000;
   showRefused();
+  askAdmission();
 });
 // A request this computer just refused says more than "Ready" does (chat.js). It lasts until the
-// person moves on, or until memory comes back: then the gateway says when it's settling, and "try
-// again" waits for that to clear, because a retry before then is refused too.
+// person moves on, or until the gateway would admit that model. Then "try again" still waits for
+// the gateway to stop being short or settling, because a retry before then is refused too.
 let refusedWord = null;
-let refusedFree = null;
-// What's free moves by a gigabyte or so by itself. Only more than that is memory coming back.
-const memoryBack = 2;
-const stripFree = (strip) => {
-  const n = parseInt(strip?.querySelector("[data-strip-free]")?.textContent ?? "", 10);
-  return Number.isNaN(n) ? null : n;
-};
+let refusedModel = null;
+let refusedAdmitted = false;
 function showRefused() {
   if (!refusedWord) return;
   const strip = document.querySelector("[data-strip] .strip");
   const word = strip?.querySelector("[data-strip-word]");
   if (!word) return;
-  const free = stripFree(strip);
-  if (refusedFree !== null && free !== null && free >= refusedFree + memoryBack) {
+  if (refusedAdmitted) {
     if (strip.classList.contains("strip-settling")) return;
     if (!strip.classList.contains("strip-short")) {
       word.textContent = "Memory freed. Try again.";
@@ -178,17 +173,34 @@ function showRefused() {
   word.textContent = refusedWord;
   strip.classList.add("strip-short");
 }
+// The gateway's own answer, not a guess from the free figure. No answer changes nothing.
+async function askAdmission() {
+  const model = refusedModel;
+  if (!refusedWord || !model) return;
+  try {
+    const res = await fetch(`/app/api/_localbase/models/${encodeURIComponent(model)}/admission`, { headers: { "x-localbase-ui": "1" } });
+    if (!res.ok) return;
+    const answer = await res.json();
+    if (model !== refusedModel) return;
+    refusedAdmitted = answer.admitted === true;
+    showRefused();
+  } catch {}
+}
 document.addEventListener("localbase:refused", (event) => {
   const cleared = refusedWord && !event.detail;
-  refusedWord = event.detail;
-  refusedFree = stripFree(document.querySelector("[data-strip] .strip"));
+  refusedWord = event.detail?.word ?? null;
+  refusedModel = event.detail?.model ?? null;
+  refusedAdmitted = false;
   showRefused();
   if (cleared) {
     stripNextTry = 0;
     document.querySelector("[data-strip]")?.removeAttribute("hx-headers");
   }
 });
-document.addEventListener("htmx:afterSettle", showRefused);
+document.addEventListener("htmx:afterSettle", () => {
+  showRefused();
+  askAdmission();
+});
 // The strip when the computer can't be reached: same place, same shape, and it says so.
 // The next refresh that works redraws it.
 document.addEventListener("htmx:sendError", (event) => {

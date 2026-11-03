@@ -839,30 +839,32 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
-// --- After a refusal the strip tells the truth as memory comes back. Each step redraws the strip
-// as a refresh would: the gateway's own class and figure, then the same event a swap fires.
+// --- After a refusal the strip tells the truth as memory comes back. "Freed" is the gateway's
+// admission answer for that model, stubbed here, not a guess from the free figure. Each step redraws
+// the strip as a refresh would, then the same event a swap fires.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/chat");
+await ev(`(() => { const real = window.fetch; window.__admission = { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 3 }; window.fetch = (u, o) => String(u).endsWith("/admission") ? Promise.resolve(new Response(JSON.stringify(window.__admission), { status: 200 })) : real(u, o); })()`);
 const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
-const redraw = (state, word, free) => ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); return ${stripSays}; })()`);
-// From the figure on screen, so that a real refresh in the middle agrees with it.
-const freeAtRefusal = await ev(`parseInt(document.querySelector("[data-strip-free]").textContent, 10)`);
-await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: "Not enough memory for this model" }))`);
+const redraw = async (state, word, free, admission) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
 const refusedNow = await ev(stripSays);
 check(refusedNow.word === "Not enough memory for this model" && refusedNow.red, `a refusal for memory says so: ${JSON.stringify(refusedNow)}`);
 await sleep(3500);
-const refreshed = await ev(`({ ...${stripSays}, free: parseInt(document.querySelector("[data-strip-free]").textContent, 10) })`);
-check(refreshed.free >= freeAtRefusal + 2 || (refreshed.word === "Not enough memory for this model" && refreshed.red), `and still does after a real refresh: ${JSON.stringify(refreshed)}, was ${freeAtRefusal} free`);
-const notRisen = await redraw("ready", "Ready", freeAtRefusal + 1);
-check(notRisen.word === "Not enough memory for this model" && notRisen.red, `a gigabyte of drift isn't memory coming back: ${JSON.stringify(notRisen)}`);
-const stillShort = await redraw("short", "Memory is tight", freeAtRefusal + 38);
-check(stillShort.word === "Not enough memory for this model" && stillShort.red, `risen but not recovered, no try again yet: ${JSON.stringify(stillShort)}`);
-const settling = await redraw("settling", "Memory just freed, ready in a few seconds", freeAtRefusal + 38);
+const refreshed = await ev(stripSays);
+check(refreshed.word === "Not enough memory for this model" && refreshed.red, `and still does after a real refresh: ${JSON.stringify(refreshed)}`);
+const drift = await redraw("ready", "Ready", 11, { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 4 });
+check(drift.word === "Not enough memory for this model" && drift.red, `a gigabyte of drift isn't memory coming back: ${JSON.stringify(drift)}`);
+const bigRise = await redraw("ready", "Ready", 40, { admitted: false, requestedBytes: 90, reserveBytes: 2, availableBytes: 40 });
+check(bigRise.word === "Not enough memory for this model" && bigRise.red, `nor is a big rise that still isn't enough for this model: ${JSON.stringify(bigRise)}`);
+const stillShort = await redraw("short", "Memory is tight", 48, { admitted: true, requestedBytes: 8, reserveBytes: 2, availableBytes: 10 });
+check(stillShort.word === "Not enough memory for this model" && stillShort.red, `enough, but the computer is still short: no try again yet: ${JSON.stringify(stillShort)}`);
+const settling = await redraw("settling", "Memory just freed, ready in a few seconds", 48);
 check(settling.word === "Memory just freed, ready in a few seconds" && !settling.red, `settling: calm, and the gateway's words: ${JSON.stringify(settling)}`);
-const cleared = await redraw("ready", "Ready", freeAtRefusal + 38);
-check(cleared.word === "Memory freed. Try again." && !cleared.red, `try again only once settling clears: ${JSON.stringify(cleared)}`);
+const cleared = await redraw("ready", "Ready", 48);
+check(cleared.word === "Memory freed. Try again." && !cleared.red, `exactly enough, and settled: try again: ${JSON.stringify(cleared)}`);
 await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
-const afterSend = await redraw("ready", "Ready", freeAtRefusal + 38);
+const afterSend = await redraw("ready", "Ready", 48);
 check(afterSend.word === "Ready" && !afterSend.red, `sending again clears it: ${JSON.stringify(afterSend)}`);
 // The card's own Try again waits out the same window.
 await ev(`(async () => { const real = window.fetch; window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "Not enough free memory." } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1000)); window.fetch = real; })()`);

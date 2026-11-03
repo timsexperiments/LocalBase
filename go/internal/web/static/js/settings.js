@@ -1,6 +1,8 @@
 // Settings that live in this browser: chat history (TS semantics: saving
 // is on when the history key exists; turning it off removes it).
-import { historyKey, readHistory, writeHistory } from "./chat-core.js";
+import { draftKeyFor, historyKey as sharedKey, historyKeyFor, personKey, readHistory, writeHistory } from "./chat-core.js";
+
+const historyKey = historyKeyFor(personKey());
 
 const box = document.querySelector("[data-history-settings]");
 if (box) {
@@ -19,9 +21,9 @@ if (box) {
       if (toggle.checked) {
         let saved = [];
         try {
-          saved = readHistory(localStorage) ?? [];
+          saved = readHistory(localStorage, historyKey) ?? [];
         } catch {}
-        writeHistory(localStorage, saved);
+        writeHistory(localStorage, saved, historyKey);
         say("History will be saved on this device.");
       } else {
         localStorage.removeItem(historyKey);
@@ -36,12 +38,15 @@ if (box) {
     try {
       localStorage.removeItem(historyKey);
       // This tab's conversations and unsent message go too (Chat keeps them
-      // in sessionStorage when history is off).
+      // in sessionStorage when history is off), and the older shared key, which nothing reads.
       sessionStorage.removeItem(historyKey);
+      sessionStorage.removeItem(draftKeyFor(personKey()));
+      localStorage.removeItem(sharedKey);
+      sessionStorage.removeItem(sharedKey);
       sessionStorage.removeItem("localbase.chat.draft.v1");
       toggle.checked = false;
       clear.closest("details")?.removeAttribute("open");
-      say("History cleared.");
+      say("Saved chats cleared from this device.");
     } catch {
       say("Saved device history could not be removed; clear this site’s browser data to remove it.");
     }
