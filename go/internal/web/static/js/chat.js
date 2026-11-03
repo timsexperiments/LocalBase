@@ -601,7 +601,8 @@ function compactingNode() {
 function render() {
   $("#chat-title").textContent = active.title;
   $("[data-rename]").disabled = !active.messages.length;
-  document.title = `${active.messages.length ? active.title : "Chat"} · LocalBase`;
+  // A chat's name reaches the browser's history, so only for someone who chose to keep chats here.
+  document.title = `${persistent && active.messages.length ? active.title : "Chat"} · LocalBase`;
   renderModel();
   renderDraft();
   const nodes = [];
