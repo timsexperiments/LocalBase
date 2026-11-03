@@ -182,14 +182,15 @@ func TestFlushFailureKeepsCounts(t *testing.T) {
 
 func TestOutcomes(t *testing.T) {
 	r, _ := newRecorder(t, nil)
-	for _, s := range []int{200, 200, 202, 400, 403, 404, 422, 429, 499, 500, 502, 503} {
+	// 408 is the gateway's own body deadline (DESIGN §31.1): an error. 499 is the client going away: not one.
+	for _, s := range []int{200, 200, 202, 400, 403, 404, 408, 422, 429, 499, 500, 502, 503} {
 		r.Add(event(s, time.Millisecond))
 	}
 	got := report(t, r, Query{}).Totals
-	if got.Requests != 12 || got.Refused != 5 || got.Failed != 3 || got.Cancelled != 1 {
+	if got.Requests != 13 || got.Refused != 6 || got.Failed != 3 || got.Cancelled != 1 {
 		t.Errorf("%+v", got)
 	}
-	if want := 8.0 / 12.0; math.Abs(got.ErrorRate-want) > 1e-9 {
+	if want := 9.0 / 13.0; math.Abs(got.ErrorRate-want) > 1e-9 {
 		t.Errorf("error rate %v, want %v: a client going away is not an error", got.ErrorRate, want)
 	}
 }

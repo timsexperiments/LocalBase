@@ -168,6 +168,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 	}
 	t.finished = true
 	t.hooks.finish(source)
+	t.noteUsage(outcome, status)
 	attrs := []any{"model_id", t.modelID}
 	if t.spec != nil {
 		attrs = append(attrs, "artifact_revision", t.revision(), "quantization", t.spec.Quant)
@@ -220,6 +221,29 @@ func (t *inference) finish(outcome string, status int, source string) {
 }
 
 // finishSpan records the outcome on the inference span (TS finish).
+// noteUsage tells the request's hourly totals what only the inference knows (DESIGN §32).
+// The model came from a lease, so the gateway resolved it.
+func (t *inference) noteUsage(outcome string, status int) {
+	if t.ctx == nil {
+		return
+	}
+	rec, ok := t.ctx.Value(recKey{}).(*recorder)
+	if !ok {
+		return
+	}
+	n := &rec.usage
+	n.model, n.trusted, n.outcome, n.status, n.queue = t.modelID, true, outcome, status, t.queueWait
+	if t.promptTokens != nil || t.completionTokens != nil {
+		n.hasTokens = true
+		if t.promptTokens != nil {
+			n.in = int64(*t.promptTokens)
+		}
+		if t.completionTokens != nil {
+			n.out = int64(*t.completionTokens)
+		}
+	}
+}
+
 func (t *inference) finishSpan(outcome string, status int, source string) {
 	sp := t.span
 	sp.SetAttr("localbase.inference.total.duration_ms", ms(time.Since(t.started)))

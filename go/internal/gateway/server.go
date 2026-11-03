@@ -23,6 +23,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -60,6 +61,8 @@ type Server struct {
 	OnReady func()
 	// Otel exports traces (nil: disabled).
 	Otel *otlp.Runtime
+	// Usage keeps hourly totals (DESIGN §32; nil: not recorded, and the route is disabled).
+	Usage *usage.Recorder
 
 	mgmt *management
 	// runs are the UI's detached runs (DESIGN §21).
@@ -131,6 +134,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/local-sessions", s.localSessionsAPI)
+	mux.HandleFunc("/_localbase/usage", s.usageAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
 	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
 	if s.UI != nil {
@@ -210,6 +214,8 @@ type recorder struct {
 	// errBody is the start of an error response, read only for the error
 	// envelope's type and code (never its message).
 	errBody []byte
+	// usage is what the handler knew, for the hourly totals (DESIGN §32).
+	usage usageNote
 }
 
 const errSniffBytes = 8 << 10
@@ -331,6 +337,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			status = 200
 		}
 		duration := time.Since(start)
+		s.recordUsage(rec, label, status, duration)
 		auth := s.authTelemetry(r, rec)
 		span.SetAttr("http.response.status_code", status)
 		span.SetAttr("localbase.http.response.duration_ms", float64(duration.Nanoseconds())/1e6)

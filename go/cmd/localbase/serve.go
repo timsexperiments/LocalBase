@@ -30,6 +30,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 	"github.com/timsexperiments/LocalBase/go/internal/web"
 )
@@ -304,6 +305,14 @@ func serve(c *cli.Ctx) (any, error) {
 		},
 		Voices: voices.New(st, r.Dir).List, ListenAddr: func() string { return listenAddr }})
 	srv.UI, srv.LoginPages = ui, ui
+	// Usage never stops the gateway: without it, nothing is counted.
+	stopUsage := func() {}
+	if rec, err := usage.New(st, log); err != nil {
+		log.Warn("Usage totals are off: could not read their settings.", "event", "usage.start-failed", "error", err.Error())
+	} else {
+		srv.Usage = rec
+		stopUsage = rec.Start()
+	}
 	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
 	// started with, clearing a matching pending restart (TS serve).
@@ -386,6 +395,7 @@ func serve(c *cli.Ctx) (any, error) {
 	if videoJobs != nil {
 		videoJobs.Shutdown() // the active job stops before its runtime closes
 	}
+	defer stopUsage()                   // after the requests and the jobs that it counts
 	srv.StopManagement(3 * time.Second) // an accepted install gets a moment, then is interrupted and recorded
 	llm.Close()
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")

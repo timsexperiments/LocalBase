@@ -24,6 +24,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -74,6 +75,9 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if testLog != nil {
+		log = slog.New(slog.NewJSONHandler(testLog, nil))
+	}
 	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, MemoryGB: 64,
 		Root: r, Memory: mem, Voices: voices.New(st, r.Dir)}
 
@@ -131,6 +135,10 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	s.Library = lib
+	s.Usage, err = usage.New(st, log)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ts := httptest.NewServer(New(s))
 	t.Cleanup(ts.Close)
 	return ts

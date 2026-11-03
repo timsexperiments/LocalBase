@@ -4616,6 +4616,7 @@ Requests to the inference routes that got as far as an identified principal, onc
 |---|---|---|
 | 2xx | `requests` only | No |
 | 4xx other than 499: refused for its body, its scope, a full queue, a model that cannot fit | `refused` | Yes |
+| 408 `request_timeout` (§31.1): the gateway's deadline expired while a body was arriving | `refused`, if the principal was resolved by then. One that expired before authentication has no principal, and only the request log has it | Yes |
 | 499: the client went away | `cancelled` | **No**, so people closing a tab do not look like an outage |
 | 5xx, including a backend that failed or memory pressure | `failed` | Yes |
 | **A stream that fails after it started** | `failed`, recorded as 502, though its HTTP status was 200 | Yes |
@@ -4666,23 +4667,24 @@ them `approximate`, and the page shows them with a `~`. Exact percentiles would 
 |---|---|---|
 | Any authenticated principal | Its own usage only. `scope=self`, the default. A key cannot name another principal | Nothing |
 | `models:manage` or `system:read` | Everything: `scope=all`, totals and by key, person, model or route | Nothing |
-| `system:manage` | The same with `system:read` | Retention, recording, clearing |
+| `system:manage` or `access:manage` | Their own usage, or everything if they also hold a permission above | Retention, recording, clearing. `access:manage` can grant itself `system:manage` anyway, so this escalates nothing |
 | The CLI on this computer | Everything, as with `keys` | Everything |
 
 A caller asking for `scope=all` or another principal without the permission gets 403, not an empty answer. `--no-auth`
 has one principal, so `self` and `all` match.
 
-**Who holds `system:manage` today, checked in the code and held by `TestUsageOwnerCanClear`:**
+**Who can clear today, checked in the code and held by `TestUsageOwnerCanClear`:**
 
-| Caller | Has it | So the owner |
+| Caller | Can clear | So the owner |
 |---|---|---|
 | The CLI on this computer | Always | Can always clear |
 | A local session, from the first-run link (§28) | Yes: it has every permission | Can clear in the page |
 | `--no-auth` | Yes | Can clear in the page |
-| A provider session (OIDC, Cloudflare Access, magic link) | **Only if granted.** The default is chat and listing models, and the documented examples add `models:manage`, not this | Needs it added to their role or `--permissions`, or uses the CLI |
+| A provider session (OIDC, Cloudflare Access, magic link) holding `access:manage` | Yes. The owner's role on the live gateway holds `access:manage` but no `system:*` (operator, 2026-11-02), so this is what lets them clear from a phone | Can clear in the page |
+| A provider session without `access:manage` or `system:manage`, the default | **No.** The default is chat and listing models, and the documented examples add `models:manage` | Is told on the page what works |
 | The first-run key, from `configure`, and any key from Connect | **No, on purpose.** They hold inference and `models:read`; a key handed to an editor must not be able to erase records or change settings | Uses the CLI, or a key made with `--scopes system:manage` |
 
-A person who cannot clear is told so on the page, and told what works: `local-base usage clear` on the computer running LocalBase.
+**The page tells a caller who cannot clear what to do:** that it needs `system:manage` or `access:manage`, and that `local-base usage clear` works on the computer running LocalBase.
 
 **Per-key against total:** `group=principal` splits by key and person, and `principal=<id>` narrows to one. With no
 `group`, the answer has totals only.
@@ -4715,8 +4717,8 @@ else `day`. Times outside retention are clipped, and `range.from` says where the
 - The answer includes counts not yet written to the database, so the API is never behind.
 
 **Changes:** `POST /_localbase/usage` with `{"action":"clear","before":"<RFC 3339, optional>"}`,
-`{"action":"set-retention","days":30}` or `{"action":"set-recording","enabled":false}`, and `system:manage`. Each writes
-`audit.usage-changed` with ids only.
+`{"action":"set-retention","days":30}` or `{"action":"set-recording","enabled":false}`, and `system:manage` or `access:manage`.
+The document states the alternative as `x-localbase-or-permission`. Each writes `audit.usage-changed` with ids only.
 
 The browser gets it through `/app/api`, like the other admin reads. It goes in `openapi.json`, and the drift tests of
 §30.2 apply.
@@ -4742,8 +4744,9 @@ uses existing components.
 
 Template data: `Scope`, `CanSeeAll`, `CanManage`, `Range`, `Ranges`, `Group`, `Usage` (the JSON above, decoded), `Recording`,
 `RetentionDays`, `Notice`, `Error`. States to design: **empty** (no requests yet), **recording off** (says so, with what still
-exists), **partial tokens** (`requestsWithTokens` below `requests`), **a range clipped by retention**, and **cannot clear** (no
-`system:manage`: says so, with `local-base usage clear`). Copy names no model and ranks nothing, and a model's id is data.
+exists), **partial tokens** (`requestsWithTokens` below `requests`), **a range clipped by retention**, and **cannot clear** (neither
+`system:manage` nor `access:manage`: says so, with `local-base usage clear`). Copy names no model and ranks nothing, and a model's
+id is data.
 
 **Required, verbatim, on one line:** "Counts only, stored on this computer, never prompts or replies; turn off or clear any time".
 
@@ -4753,7 +4756,8 @@ exists), **partial tokens** (`requestsWithTokens` below `requests`), **a range c
   None appears anywhere in the database or its WAL, read as raw bytes after a flush.
 - `TestUsageNoIdentity`: a browser identity with a planted email and name. Neither appears in the table, the API's answers (any
   scope or group) or the CLI's. Only the opaque owner hash does.
-- `TestUsageOwnerCanClear`: the table in 32.5, each row.
+- `TestUsageOwnerCanClear`: the table in 32.5, each row, including a key with only inference and `models:read` refused, and an
+  `access:manage`-only provider session allowed.
 - `TestUsageCLIGoesThroughGateway`: with a gateway running, `clear`, `retention` and `recording` reach it, and the counts it holds in memory
   are gone too. It refuses when the gateway does not answer or the lock cannot be read, and changes nothing. It writes directly only with no gateway.
 - `TestUsageInstanceToken`: the token works only on the write route, only from loopback, and a wrong token is refused.

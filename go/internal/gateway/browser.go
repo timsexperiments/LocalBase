@@ -26,7 +26,7 @@ func IsUIAccessPath(p string) bool {
 // allowedUIRoute lists what the browser may call through /app/api.
 func allowedUIRoute(method, p string) bool {
 	switch p {
-	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions":
+	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions", "/_localbase/usage":
 		return method == "GET" || method == "POST"
 	case "/_localbase/model-backend", "/_localbase/model-imports":
 		return method == "GET" || method == "POST"
@@ -260,10 +260,19 @@ func isRunEvents(target string) bool {
 	return ok && id != "" && !strings.HasPrefix(rest, "v1/") && action == "events"
 }
 
-// forwardedQuery keeps the one query parameter a route reads: `after` on a
-// run's event stream and `wait` on a model unload. Forwarding drops every
-// other query.
+// forwardedQuery keeps the query parameters a route reads: `after` on a run's
+// event stream, `wait` on a model unload, and usage's filters. Forwarding drops
+// every other query.
 func forwardedQuery(target string, r *http.Request) string {
+	if target == "/_localbase/usage" {
+		kept := url.Values{}
+		for _, name := range []string{"range", "from", "to", "scope", "group", "principal", "model", "route"} {
+			if v, ok := r.URL.Query()[name]; ok {
+				kept[name] = v
+			}
+		}
+		return kept.Encode()
+	}
 	key := ""
 	switch {
 	case isRunEvents(target):

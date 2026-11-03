@@ -270,10 +270,22 @@ func (r *Recorder) Clear(ctx context.Context, before *time.Time) error {
 	return err
 }
 
+// InvalidRetention is a retention outside what is allowed.
+type InvalidRetention struct{ Days int }
+
+func (e *InvalidRetention) Error() string {
+	return fmt.Sprintf("retention must be from %d to %d days", minRetentionDays, maxRetentionDays)
+}
+
+// Settings says whether counting is on, and for how many days totals are kept.
+func (r *Recorder) Settings() (recording bool, retentionDays int) {
+	return r.recording.Load(), int(r.retention.Load())
+}
+
 // SetRetention keeps totals for this many days.
 func (r *Recorder) SetRetention(ctx context.Context, days int) error {
 	if days < minRetentionDays || days > maxRetentionDays {
-		return fmt.Errorf("retention must be from %d to %d days", minRetentionDays, maxRetentionDays)
+		return &InvalidRetention{days}
 	}
 	if err := r.st.SetSetting(ctx, retentionKey, strconv.Itoa(days)); err != nil {
 		return err

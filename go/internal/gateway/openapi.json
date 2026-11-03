@@ -2628,6 +2628,148 @@
         }
       }
     },
+    "/_localbase/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "summary": "Requests, tokens, errors and latency, as hourly totals",
+        "tags": ["Host"],
+        "description": "Any authenticated caller sees its own usage. Asking for `scope=all`, or naming another principal, needs `models:manage` or `system:read`, and answers 403 otherwise, not an empty result.",
+        "x-localbase-permission": "any",
+        "x-localbase-stability": "unstable",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "description": "How far back. Defaults to `7d`.",
+            "schema": {"type": "string", "enum": ["24h", "7d", "30d"]}
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Start, RFC 3339, instead of `range`.",
+            "schema": {"type": "string", "format": "date-time"}
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "End, RFC 3339, instead of `range`.",
+            "schema": {"type": "string", "format": "date-time"}
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "`self` is your own usage, the default. `all` needs `models:manage` or `system:read`.",
+            "schema": {"type": "string", "enum": ["self", "all"]}
+          },
+          {
+            "name": "group",
+            "in": "query",
+            "description": "Break down by these. Repeatable.",
+            "schema": {"type": "array", "items": {"type": "string", "enum": ["principal", "model", "route"]}}
+          },
+          {
+            "name": "principal",
+            "in": "query",
+            "description": "One principal's id. Naming another needs `scope=all`.",
+            "schema": {"type": "string"}
+          },
+          {"name": "model", "in": "query", "description": "One model's id.", "schema": {"type": "string"}},
+          {
+            "name": "route",
+            "in": "query",
+            "description": "One route.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "chat",
+                "embeddings",
+                "decision",
+                "speech",
+                "transcription",
+                "translation",
+                "image",
+                "image-edit",
+                "video"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The totals, including counts not yet written.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageReport"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "405": {"$ref": "#/components/responses/MethodNotAllowed"},
+          "501": {"$ref": "#/components/responses/NotConfigured"},
+          "503": {"$ref": "#/components/responses/Unavailable"}
+        }
+      },
+      "post": {
+        "operationId": "changeUsage",
+        "summary": "Clear the totals, or change retention or recording",
+        "tags": ["Host"],
+        "description": "`access:manage` also works, since it can grant itself `system:manage` anyway. This machine's CLI can use the instance token from the root's lock file, on a request from loopback. Clearing removes the counts in memory too.",
+        "x-localbase-permission": "system:manage",
+        "x-localbase-stability": "unstable",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {"const": "clear"},
+                      "before": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Only what is older than this."
+                      }
+                    },
+                    "required": ["action"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {"const": "set-retention"},
+                      "days": {"type": "integer", "minimum": 1, "maximum": 365}
+                    },
+                    "required": ["action", "days"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {"action": {"const": "set-recording"}, "enabled": {"type": "boolean"}},
+                    "required": ["action", "enabled"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "description": "At most 4 KiB."
+        },
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageSettings"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "405": {"$ref": "#/components/responses/MethodNotAllowed"},
+          "413": {"$ref": "#/components/responses/TooLarge"},
+          "501": {"$ref": "#/components/responses/NotConfigured"},
+          "503": {"$ref": "#/components/responses/Unavailable"}
+        },
+        "x-localbase-or-permission": ["access:manage"]
+      }
+    },
     "/_localbase/voices": {
       "get": {
         "operationId": "listVoices",
@@ -5549,6 +5691,180 @@
         },
         "required": ["file"],
         "additionalProperties": true
+      },
+      "UsageReport": {
+        "type": "object",
+        "description": "Hourly totals. Counts, tokens and durations only: never prompts, replies, bodies, file names or key material.",
+        "properties": {
+          "object": {"const": "localbase.usage"},
+          "scope": {"type": "string", "enum": ["self", "all"]},
+          "range": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Where the answer really starts, after retention."
+              },
+              "to": {"type": "string", "format": "date-time"},
+              "step": {"type": "string", "enum": ["hour", "day"]}
+            },
+            "required": ["from", "to", "step"]
+          },
+          "recording": {"type": "boolean"},
+          "retentionDays": {"type": "integer"},
+          "totals": {"$ref": "#/components/schemas/UsageStats"},
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "requests": {"type": "integer"},
+                "failed": {"type": "integer"},
+                "refused": {"type": "integer"},
+                "cancelled": {"type": "integer"},
+                "errorRate": {
+                  "type": "number",
+                  "description": "(failed + refused) / requests. A client going away (499) is not an error."
+                },
+                "inputTokens": {"type": "integer"},
+                "outputTokens": {"type": "integer"},
+                "requestsWithTokens": {
+                  "type": "integer",
+                  "description": "How many requests reported tokens, so a total is not misread as complete."
+                },
+                "latencyMs": {
+                  "type": "object",
+                  "properties": {
+                    "p50": {"type": ["number", "null"]},
+                    "p95": {"type": ["number", "null"]},
+                    "p99": {"type": ["number", "null"]},
+                    "approximate": {
+                      "const": true,
+                      "description": "Within about 12%: totals are hourly, with no per-request rows."
+                    }
+                  },
+                  "required": ["p50", "p95", "p99", "approximate"]
+                },
+                "queueWaitMsAvg": {"type": "number"},
+                "principal": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {"type": "string", "enum": ["api-key", "browser", "local", "environment", "no-auth"]},
+                    "id": {
+                      "type": "string",
+                      "description": "A key's id, or a browser identity's opaque owner hash. Never an email or a name."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "A key's label, read when usage is read. Only for a key that still exists."
+                    }
+                  },
+                  "required": ["kind", "id"]
+                },
+                "model": {"type": "string", "description": "A model id the gateway knows, or empty."},
+                "route": {
+                  "type": "string",
+                  "enum": [
+                    "chat",
+                    "embeddings",
+                    "decision",
+                    "speech",
+                    "transcription",
+                    "translation",
+                    "image",
+                    "image-edit",
+                    "video"
+                  ]
+                }
+              },
+              "required": [
+                "requests",
+                "failed",
+                "refused",
+                "cancelled",
+                "errorRate",
+                "inputTokens",
+                "outputTokens",
+                "requestsWithTokens",
+                "latencyMs",
+                "queueWaitMsAvg"
+              ]
+            },
+            "description": "By request count, most first. It is a count, not a ranking of anything's quality."
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "t": {"type": "string", "format": "date-time"},
+                "requests": {"type": "integer"},
+                "failed": {"type": "integer"},
+                "refused": {"type": "integer"},
+                "cancelled": {"type": "integer"},
+                "inputTokens": {"type": "integer"},
+                "outputTokens": {"type": "integer"},
+                "p95Ms": {"type": ["number", "null"]}
+              },
+              "required": ["t", "requests", "failed", "refused", "cancelled", "inputTokens", "outputTokens", "p95Ms"]
+            },
+            "description": "A step with no requests is left out."
+          }
+        },
+        "required": ["object", "scope", "range", "recording", "retentionDays", "totals", "groups", "series"]
+      },
+      "UsageSettings": {
+        "type": "object",
+        "properties": {
+          "object": {"const": "localbase.usage.settings"},
+          "recording": {"type": "boolean"},
+          "retentionDays": {"type": "integer"},
+          "cleared": {"type": "boolean"}
+        },
+        "required": ["object", "recording", "retentionDays", "cleared"]
+      },
+      "UsageStats": {
+        "type": "object",
+        "properties": {
+          "requests": {"type": "integer"},
+          "failed": {"type": "integer"},
+          "refused": {"type": "integer"},
+          "cancelled": {"type": "integer"},
+          "errorRate": {
+            "type": "number",
+            "description": "(failed + refused) / requests. A client going away (499) is not an error."
+          },
+          "inputTokens": {"type": "integer"},
+          "outputTokens": {"type": "integer"},
+          "requestsWithTokens": {
+            "type": "integer",
+            "description": "How many requests reported tokens, so a total is not misread as complete."
+          },
+          "latencyMs": {
+            "type": "object",
+            "properties": {
+              "p50": {"type": ["number", "null"]},
+              "p95": {"type": ["number", "null"]},
+              "p99": {"type": ["number", "null"]},
+              "approximate": {"const": true, "description": "Within about 12%: totals are hourly, with no per-request rows."}
+            },
+            "required": ["p50", "p95", "p99", "approximate"]
+          },
+          "queueWaitMsAvg": {"type": "number"}
+        },
+        "required": [
+          "requests",
+          "failed",
+          "refused",
+          "cancelled",
+          "errorRate",
+          "inputTokens",
+          "outputTokens",
+          "requestsWithTokens",
+          "latencyMs",
+          "queueWaitMsAvg"
+        ]
       },
       "VideoCreate": {
         "type": "object",
