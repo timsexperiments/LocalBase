@@ -147,6 +147,28 @@ func TestEveryOperationIsOnThePage(t *testing.T) {
 	}
 }
 
+func TestEveryErrorCodeIsOnThePage(t *testing.T) {
+	raw := theDocument(t)
+	page := string(theRender(t, raw))
+	var root object
+	if err := json.Unmarshal(raw, &root); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := asObject(asObject(asObject(root["components"])["schemas"])["ErrorCode"])["enum"].([]any)
+	if len(list) == 0 {
+		t.Fatal("the document has no ErrorCode list, so this proved nothing")
+	}
+	_, section, ok := strings.Cut(page, "## Error codes\n")
+	if !ok {
+		t.Fatal("the page has no error codes")
+	}
+	for _, c := range list {
+		if !strings.Contains(section, fmt.Sprintf("- `%v`\n", c)) {
+			t.Errorf("%v isn't on the page", c)
+		}
+	}
+}
+
 // Generic copy names no models, so a page generated from a document can't either.
 func TestPageNamesNoCatalogModel(t *testing.T) {
 	page := string(theRender(t, theDocument(t)))

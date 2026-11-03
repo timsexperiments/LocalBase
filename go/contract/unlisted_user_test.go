@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -23,10 +24,13 @@ import (
 // Sessions are written to the database, because neither binary can be made to trust
 // a fake HTTPS provider here. Neither implementation's sign-in consults the policy:
 // that part is from reading the code and, for Go, TestOIDCUnauthorizedEmail.
+const unlistedModel = "contract-unlisted-llm"
+
 func TestDifferentialUnlistedUser(t *testing.T) {
 	if *implFlag != "both" {
 		t.Skip("needs -impl=both")
 	}
+	logFreeMemoryOnFailure(t)
 	if _, err := exec.LookPath("bun"); err != nil {
 		t.Skip("needs bun")
 	}
@@ -67,6 +71,21 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		if r := runCLI(t, impl, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
 			t.Fatalf("%s configure: %s%s", impl, r.stdout, r.stderr)
 		}
+		// A tiny model on the fake backend, because its chat must really reach the fake: it fits on
+		// any runner, where a catalog model's size would have the chat refused for memory, and that
+		// refusal would pass the permission checks here without showing anything.
+		tiny := ggufFile(t, "qwen3", nil, 64*1024)
+		freshRootModel(t, rootDir, unlistedModel, "http://127.0.0.1:9", tiny)
+		// TS's catalog schema has no "chat" capability; both gateways chat with this model anyway.
+		entry := filepath.Join(rootDir, "catalog.d", unlistedModel+".json")
+		written, err := os.ReadFile(entry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mustWriteFile(entry, bytes.Replace(written, []byte(`"capabilities":["chat"]`), []byte(`"capabilities":[]`), 1), 0o600)
+		models := filepath.Join(rootDir, "models", "llm")
+		mustMkdirAll(models, 0o700)
+		mustWriteFile(filepath.Join(models, unlistedModel+".gguf"), tiny, 0o600)
 		policy := filepath.Join(tmp, "policy.json")
 		b, _ := json.Marshal(auth.Policy{Roles: []auth.Role{
 			{Name: "admin", Description: "Admin", Permissions: []string{"access:manage", "access:read", "models:read"}},
@@ -86,6 +105,10 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		}
 		st, err := store.Open(filepath.Join(rootDir, "local-base.db"))
 		if err != nil {
+			t.Fatal(err)
+		}
+		selected, _ := json.Marshal([]string{chatModel, decisionModel, embeddingModel, unlistedModel})
+		if _, err := st.DB.Exec(`UPDATE config SET selected_llm_models = ?`, string(selected)); err != nil {
 			t.Fatal(err)
 		}
 		session := func(subject, email string) string {
@@ -123,7 +146,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			out, _ := io.ReadAll(resp.Body)
 			return answer{resp.StatusCode, strings.TrimSpace(string(out))}
 		}
-		chat := `{"model":"` + chatModel + `","messages":[{"role":"user","content":"hi"}]}`
+		chat := `{"model":"` + unlistedModel + `","messages":[{"role":"user","content":"hi"}]}`
 		return map[string]answer{
 			"session":         send("GET", "/app/session", unlisted, ""),
 			"access":          send("GET", "/app/api/_localbase/access-management", unlisted, ""),

@@ -1202,7 +1202,7 @@ gateways with a real sd-server.
 | The same, for a video job | job `failed` with `insufficient_memory` | n/a | same: TS's job error codes have no `model_too_large`, and in both its message says to retry although that cannot help |
 | Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
 | Files not installed | 409 `model_install_consent_required` | none | same on the first request |
-| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
+| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing` | none | no equivalent (M3.5) |
 
 Deliberate status changes to verify against the live clients at cutover:
 
@@ -5036,6 +5036,8 @@ No test dependency is added: the project keeps one module dependency. All of the
 | `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
 | `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
 | `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
+| `TestOpenAPIListsEveryErrorCode` | a code the source can send, or the notes and pages name beside a status, isn't in the `ErrorCode` list; or the list holds a code nothing sends. `TestOpenAPIResponses` also checks each real answer's code against the list, which catches a code the scan can't see |
+| `TestOpenAPIRoutesNameOnlyListedCodes` | a route's answer names a code that isn't on the list |
 | `TestOpenAPIServed` | the answers in 30.1 change, or the served version is not `Version` |
 
 So a route added without documentation fails CI, and so does documentation without a route.
@@ -5556,6 +5558,8 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 
 **A write that never finished stops both commands, and its journal travels with its database.** This database uses a rollback journal, so `local-base.db-journal` exists during any write, and stays if a process is killed mid-write. A live writer holds a lock, so a backup reads straight past it and holds only finished writes. A journal left by a crash can't be read past: until SQLite plays it back the database's pages can't be trusted, and that takes opening it for writing, which `backup` and `restore --dry-run` must not do. So both refuse, change nothing, and name `status`, which opens the database for writing. `doctor` opens it read-only, so it can't. The journal is on `restore`'s list of what it moves. Left behind beside the restored database, SQLite would play it into that database and use it up, leaving both damaged. A target whose database can't be read for any other reason can still be replaced, since that may be why it's being replaced, but the report says nothing could be compared with it, instead of reading as if nothing were revoked.
 
+**A busy database is retried, then named, and never read as empty.** `backup` runs beside a live gateway, and a rollback journal lets a writer keep readers out while it commits, which can outlast SQLite's own 5 s wait. Each read of the live database is tried again for up to 60 s. If it stays busy, the command says the database is busy, gives the exact command to run again, changes nothing, leaves nothing behind, and names the step. A read that fails is an error: answering "no such table" would write a manifest with no migrations and no models to install, or read a root's revocations as none. `restore` refuses a busy target the same way, rather than reporting it as unreadable.
+
 **Working directories hold what a backup holds, secrets included.** Backup and restore each work in a directory named `.local-base-temporary-<backup|restore>-<pid>-<number>`, 0700 from its first moment, removed on every way out that can run anything: success, failure, an interrupt or a termination, including at restore's question. A kill can't clean up, so `doctor` names what one left, with the command to delete it, and the next backup or restore removes it and says so. A directory whose process is still running is left alone.
 
 **Included:**
@@ -5771,6 +5775,7 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 
 **By hand, in a disposable container, as a second real user:** a restored root belongs to the user running it, restoring as root is refused, and so are another user's root, empty directory or backup file, and a backup to a directory others can write.
 
+- `TestABusyDatabaseIsNeverReadAsEmpty`, `TestBackupWaitsOutABusyDatabase`, `TestBackupOfADatabaseThatStaysBusySaysSo`, `TestRestoreOverABusyDatabaseRefuses`, `TestRestoreWaitsOutABusyDatabase`, `TestCopyWaitsOutABusyDatabase`, `TestCopyOfADatabaseThatStaysBusySaysWhere`, `TestRestoreThatTurnsBusyPartWayRefuses`, `TestNoFailedReadLooksLikeAbsent`, which fails on any read in this package that can answer "absent" for a failure, with its exceptions named, and `TestBackupWhileWriting`, whose writer has no pause on purpose and whose manifests are compared with a quiet one.
 - `TestBackupDuringAWriteHoldsOnlyWhatIsFinished`, `TestBackupOfACrashedRootSaysWhatToDo`, `TestRestoreOverACrashedRootSaysWhatToDo`, `TestRestoreKeepsAJournalWithItsDatabase`, `TestRestoreFailureAndCrashBringBackDatabaseAndJournal`, `TestRestoreOverAnUnreadableDatabaseSaysSo`, and with the real binary `TestCrashedRootIsRefusedUntilStatusRecoversIt`. The crash is real SQLite state: a copy's files, taken while a large transaction is open.
 
 **Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. The operator ran that at `d4dcfa34`, with secrets excluded: all five commands passed, with no false schema refusal on a database the TS build first wrote. A backup with its secrets has not had that run. That clone had no journal, so the journal paths have run only in tests, on real SQLite files with no process actually killed.

@@ -98,6 +98,12 @@ A chat content part carries its content. `image_url.url` must be a `data:` URL, 
 
 `POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](video-qualification.md).
 
+### Cancelling an install or an import
+
+`POST /_localbase/model-management` with `{"modelId": "<id>", "action": "cancel"}` stops a running install. It needs `models:manage`. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. With no install of that model running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded.
+
+`POST /_localbase/model-imports` with `{"action": "cancel", "job": "<id>"}` stops an import, using the id `start` answered with. It needs `models:manage`. It answers with the job, usually still `running` for a moment, or 404 `import_not_found` if there is no such import. The job ends in state `cancelled`, with the code `import_cancelled`.
+
 ### Decision models
 
 Decision models answer structured questions about a state instead of generating text. `POST /v1/systemone` follows the llama.cpp System One contract:
