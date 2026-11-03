@@ -1,4 +1,4 @@
-# Upgrading
+# The upgrade command
 
 ```bash
 local-base upgrade --check      # is there a newer version? Changes nothing
@@ -7,6 +7,8 @@ local-base upgrade rollback     # go back
 ```
 
 Nothing installs by itself, ever. **This command is not usable yet:** it needs a release signing key, and until one exists it refuses to install anything and says so. `--check` works today. To update now, re-run the installer.
+
+**Not run on a real installed service yet.** Its stop, swap, restart and rollback have run under systemd in a disposable container, and not under launchd on a Mac or on anyone's real install.
 
 ## Checking for a newer version
 
