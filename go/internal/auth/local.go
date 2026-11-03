@@ -150,7 +150,8 @@ type LocalSession struct {
 // the least recently used beyond MaxLocalSessions.
 func CreateLocalSession(ctx context.Context, st *store.Store) (token, id string, err error) {
 	t := time.Now()
-	token, id = RandomToken(32), RandomToken(9)
+	// The prefix keeps a leading '-' out of an id someone will type or paste.
+	token, id = RandomToken(32), "ls_"+RandomToken(9)
 	st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
 	_, err = st.DB.ExecContext(ctx, `INSERT INTO local_sessions (id, token_hash, created_at, last_seen_at, idle_expires_at, absolute_expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)`, id, hashToken(token), ms(t), ms(t), ms(t.Add(LocalIdleTTL)), ms(t.Add(LocalAbsoluteTTL)))
