@@ -227,6 +227,49 @@ func TestStudioTile(t *testing.T) {
 	}
 }
 
+// After a restart a run has lost the note that held its words, so it has nothing to show. The tool
+// says so once, with one way to clear them, and the landing leaves them out. A run that kept its
+// words stays a row of its own, with its Try again.
+func TestLostRuns(t *testing.T) {
+	calls := []string{}
+	lost := func(id string) string {
+		return `{"id":"` + id + `","target":"/v1/images/generations","status":"interrupted","reason":"gateway_restart"}`
+	}
+	cat, _ := catalog.Load("")
+	cfg := &store.Config{Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
+	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
+	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: func(_ context.Context, _ *auth.Principal, method, path, _ string, _ []byte) APIResult {
+		if method == "DELETE" {
+			calls = append(calls, path)
+		}
+		return APIResult{Status: 200, Body: []byte(`{"data":[` + lost("run_a") + `,` + lost("run_b") + `]}`)}
+	}})
+	page := mainRe.FindString(get(u, "/app/studio/image").Body.String())
+	if !strings.Contains(page, "2 earlier results didn’t finish") || strings.Contains(page, `id="run-run_a"`) || strings.Contains(page, "Generate it again") {
+		t.Errorf("lost runs should be one line, not a row each: %s", page)
+	}
+	if other := mainRe.FindString(get(u, "/app/studio/speech").Body.String()); strings.Contains(other, "earlier result") {
+		t.Errorf("another tool's page shouldn't mention them: %s", other)
+	}
+	if landing := mainRe.FindString(get(u, "/app/studio").Body.String()); strings.Contains(landing, "tile-run_a") || strings.Contains(landing, `id="recent-title"`) {
+		t.Errorf("the landing has nothing to show for them: %s", landing)
+	}
+	r := htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"image"}})
+	withCSRF(u, r)
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "" || strings.Join(calls, ",") != "/_localbase/runs/run_a,/_localbase/runs/run_b" {
+		t.Errorf("clear: %d %q %v", w.Code, w.Body.String(), calls)
+	}
+	calls = nil
+	r = htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"speech"}})
+	withCSRF(u, r)
+	u.ServeHTTP(httptest.NewRecorder(), r)
+	if len(calls) != 0 {
+		t.Errorf("clearing one tool removed another's: %v", calls)
+	}
+}
+
 // Old Lab links land on the new pages; an unknown tool is not found.
 func TestLabRedirects(t *testing.T) {
 	u := New(Deps{NoAuth: true})

@@ -4503,3 +4503,21 @@ dock put the question last and left it out of the answer.
 first, no tabs on an answer, equal tracks, numbers after them and lined up, Ask another, real Tab presses
 clearing the bar, and a row's parts on one line). They run on Chrome 114 and on a current Chrome.
 
+### 27.5 Image, gallery first
+
+- **A group leads with its words,** in the reading face, then its look and age, then its pictures. A long
+  prompt stops at three lines here, and Details has all of it. Pictures are what the page is for, so the
+  "Results" heading went, and one line says they stay for 30 minutes.
+- **The viewer is for inspecting.** It opens on the whole picture. A tap or click on the picture, the button,
+  or Z doubles it around that point. Zoomed in, the arrows move around the picture rather than to the next
+  one. Moving on shows the next whole picture. Pinching is the browser's own, and is not disabled.
+- **The mat is optional, and off by default.** It puts the picture on paper, for looking at rather than
+  checking. It is a way of looking at pictures, so it stays with this browser, not with one picture.
+- **Closing goes back to the picture you were on,** even after moving between several.
+- **What a restart lost is one line.** A run outlives the in-memory note holding its words, so afterwards it
+  has no prompt, nothing to try again and no picture. A tool says how many once, with Clear, rather than a
+  row each, and the landing leaves them out.
+
+**Checks:** `tools/chat-runs-check.sh`: the words above the pictures, zoom by each means, the arrows while
+zoomed, the mat, focus on closing, and all the actions at 320 with Share showing, as it does on a real phone.
+

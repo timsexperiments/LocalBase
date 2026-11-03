@@ -250,13 +250,21 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	data := map[string]any{"Tab": tab, "ToolName": studioNames[tab], "Ready": allowed && hasModel, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
 		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video"), "CanDecide": p.Can("inference:decision")}
+	kept, lost := splitLost(u.labRuns(r))
 	var items []labItemView
-	for _, it := range u.labRuns(r) {
+	for _, it := range kept {
 		if it.Tool == tab {
 			items = append(items, it)
 		}
 	}
 	data["Items"] = items
+	lostHere := 0
+	for _, it := range lost {
+		if it.Tool == tab {
+			lostHere++
+		}
+	}
+	data["Lost"] = lostHere
 	switch tab {
 	case "image":
 		data["Models"] = u.installedOnly(u.labModels("image"))

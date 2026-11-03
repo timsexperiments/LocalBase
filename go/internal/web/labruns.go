@@ -384,6 +384,31 @@ func (u *UI) labRuns(r *http.Request) []labItemView {
 	return out
 }
 
+// splitLost separates runs that didn't finish and have nothing left to show. A run outlives the
+// in-memory note that held its words, so after a restart it has no prompt, nothing to try again and
+// no picture. One line says so, rather than one identical row per run.
+func splitLost(items []labItemView) (kept, lost []labItemView) {
+	for _, it := range items {
+		if it.Status == "interrupted" && it.Caption == "" {
+			lost = append(lost, it)
+		} else {
+			kept = append(kept, it)
+		}
+	}
+	return kept, lost
+}
+
+// labRunsClearLost dismisses one tool's lost runs.
+func (u *UI) labRunsClearLost(w http.ResponseWriter, r *http.Request) {
+	_, lost := splitLost(u.labRuns(r))
+	for _, it := range lost {
+		if it.Tool == r.PostFormValue("tool") {
+			u.call(r, "DELETE", "/_localbase/runs/"+it.ID, "", nil)
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+}
+
 // labRunGet re-renders one tray item (it polls while the run is active).
 func (u *UI) labRunGet(w http.ResponseWriter, r *http.Request) {
 	u.labRunRender(w, r, r.PathValue("id"))

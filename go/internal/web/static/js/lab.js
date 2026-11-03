@@ -146,8 +146,43 @@ revealShare();
 // --- the picture viewer ---------------------------------------------------------------
 // One <dialog> per picture; previous and next move between them.
 const viewers = () => [...document.querySelectorAll("#lab-items dialog.viewer")];
+const MAT = "localbase.viewer.mat.v1";
+
+// Inspect: a tap, the button or Z doubles the picture, centered where it was tapped. Pinching is
+// the browser's own. It's always the whole picture again when you move on.
+function setZoom(dialog, on, x = 0.5, y = 0.5) {
+  const stage = dialog.querySelector(".viewer-stage");
+  const button = dialog.querySelector("[data-view-zoom]");
+  if (!stage || !button) return;
+  stage.classList.toggle("viewer-zoomed", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.setAttribute("aria-label", on ? "Zoom out" : "Zoom in");
+  if (on) {
+    stage.scrollLeft = stage.scrollWidth * x - stage.clientWidth / 2;
+    stage.scrollTop = stage.scrollHeight * y - stage.clientHeight / 2;
+  }
+}
+
+// The mat is a way of looking at pictures, so it stays with this browser, not one picture.
+function matOn() {
+  try {
+    return localStorage.getItem(MAT) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function paintMat(dialog, on) {
+  dialog.querySelector(".viewer-stage")?.classList.toggle("viewer-matted", on);
+  const button = dialog.querySelector("[data-view-mat]");
+  if (!button) return;
+  button.setAttribute("aria-pressed", String(on));
+  button.setAttribute("aria-label", on ? "Show without a mat" : "Show on a mat");
+}
 
 function paintViewer(dialog) {
+  setZoom(dialog, false);
+  paintMat(dialog, matOn());
   const all = viewers();
   const at = all.indexOf(dialog);
   const count = dialog.querySelector("[data-view-count]");
@@ -159,12 +194,47 @@ function stepViewer(dialog, by) {
   const all = viewers();
   if (all.length < 2) return;
   const next = all[(all.indexOf(dialog) + by + all.length) % all.length];
+  dialog.dataset.stepping = "1";
   dialog.close();
   next.showModal();
   paintViewer(next);
 }
 
+// Closing goes back to the picture you were on, even after moving between them.
+document.addEventListener("close", (event) => {
+  const dialog = event.target;
+  if (!dialog.matches?.("dialog.viewer")) return;
+  setZoom(dialog, false);
+  if (dialog.dataset.stepping) {
+    delete dialog.dataset.stepping;
+    return;
+  }
+  document.querySelector(`.image-open[data-open-sheet="${dialog.id}"]`)?.focus();
+}, true);
+
 document.addEventListener("click", (event) => {
+  const zoom = event.target.closest?.("[data-view-zoom]");
+  if (zoom) {
+    setZoom(zoom.closest("dialog"), zoom.getAttribute("aria-pressed") !== "true");
+    return;
+  }
+  const mat = event.target.closest?.("[data-view-mat]");
+  if (mat) {
+    const on = mat.getAttribute("aria-pressed") !== "true";
+    try {
+      localStorage.setItem(MAT, on ? "1" : "0");
+    } catch {
+      // Blocked storage: it still works until the page is left.
+    }
+    paintMat(mat.closest("dialog"), on);
+    return;
+  }
+  if (event.target.matches?.(".viewer-img")) {
+    const dialog = event.target.closest("dialog");
+    const box = event.target.getBoundingClientRect();
+    setZoom(dialog, !dialog.querySelector(".viewer-zoomed"), (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
+    return;
+  }
   const step = event.target.closest?.("[data-view-step]");
   if (step) {
     stepViewer(step.closest("dialog"), Number(step.dataset.viewStep));
@@ -204,6 +274,15 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   const dialog = document.querySelector("dialog.viewer[open]");
   if (!dialog || event.target.closest?.("input, textarea")) return;
+  const zoomed = dialog.querySelector(".viewer-zoomed");
+  if (event.key === "z") setZoom(dialog, !zoomed);
+  // Zoomed in, the arrows move around the picture; otherwise between pictures.
+  if (zoomed && event.key.startsWith("Arrow")) {
+    event.preventDefault();
+    const by = { ArrowLeft: [-80, 0], ArrowRight: [80, 0], ArrowUp: [0, -80], ArrowDown: [0, 80] }[event.key];
+    if (by) zoomed.scrollBy(by[0], by[1]);
+    return;
+  }
   if (event.key === "ArrowLeft") stepViewer(dialog, -1);
   if (event.key === "ArrowRight") stepViewer(dialog, 1);
 });
