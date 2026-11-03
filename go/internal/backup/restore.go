@@ -799,6 +799,67 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 	return out, rows.Err()
 }
 
+// comparedKey is what a restore compares of a key. These reads are of the root being replaced, where
+// a failure must not look like finding nothing, which would bring a revoked key back.
+type comparedKey struct {
+	name    string
+	revoked sql.NullString
+}
+
+func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, error) {
+	out := map[string]comparedKey{}
+	present, err := tableExists(ctx, db, "api_keys")
+	if err != nil || !present {
+		return out, err
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id, name, revoked_at FROM api_keys`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var k comparedKey
+		if err := rows.Scan(&id, &k.name, &k.revoked); err != nil {
+			return nil, err
+		}
+		out[id] = k
+	}
+	return out, rows.Err()
+}
+
+type comparedUser struct{ status, email string }
+
+func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser, error) {
+	out := map[string]comparedUser{}
+	present, err := tableExists(ctx, db, "auth_users")
+	if err != nil || !present {
+		return out, err
+	}
+	emails, err := tableExists(ctx, db, "auth_user_emails")
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT id, status, '' FROM auth_users`
+	if emails {
+		query = `SELECT u.id, u.status, COALESCE(e.email, '') FROM auth_users u LEFT JOIN auth_user_emails e ON e.user_id = u.id`
+	}
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var u comparedUser
+		if err := rows.Scan(&id, &u.status, &u.email); err != nil {
+			return nil, err
+		}
+		out[id] = u
+	}
+	return out, rows.Err()
+}
+
 // compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
 // backup would bring back. Restoring must not revive a key someone revoked because it leaked.
 func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
@@ -812,40 +873,17 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
 		return nil
 	}
+	targetReadHook()
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
 		return err
 	}
 	defer cur.Close()
-	type key struct {
-		name    string
-		revoked sql.NullString
-	}
-	readKeys := func(db *sql.DB) (map[string]key, error) {
-		out := map[string]key{}
-		if !hasTable(ctx, db, "api_keys") {
-			return out, nil
-		}
-		rows, err := db.QueryContext(ctx, `SELECT id, name, revoked_at FROM api_keys`)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var k key
-			if err := rows.Scan(&id, &k.name, &k.revoked); err != nil {
-				return nil, err
-			}
-			out[id] = k
-		}
-		return out, rows.Err()
-	}
-	now, err := readKeys(cur)
+	now, err := readComparedKeys(ctx, cur)
 	if err != nil {
 		return err
 	}
-	backed, err := readKeys(staged)
+	backed, err := readComparedKeys(ctx, staged)
 	if err != nil {
 		return err
 	}
@@ -871,41 +909,16 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 	sort.Strings(rep.ReturningKeys)
 	sort.Strings(rep.KeysLost)
 
-	type user struct{ status, email string }
-	readUsers := func(db *sql.DB) (map[string]user, error) {
-		out := map[string]user{}
-		if !hasTable(ctx, db, "auth_users") {
-			return out, nil
-		}
-		query := `SELECT id, status, '' FROM auth_users`
-		if hasTable(ctx, db, "auth_user_emails") {
-			query = `SELECT u.id, u.status, COALESCE(e.email, '') FROM auth_users u LEFT JOIN auth_user_emails e ON e.user_id = u.id`
-		}
-		rows, err := db.QueryContext(ctx, query)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var u user
-			if err := rows.Scan(&id, &u.status, &u.email); err != nil {
-				return nil, err
-			}
-			out[id] = u
-		}
-		return out, rows.Err()
-	}
-	usersNow, err := readUsers(cur)
+	usersNow, err := readComparedUsers(ctx, cur)
 	if err != nil {
 		return err
 	}
-	usersBacked, err := readUsers(staged)
+	usersBacked, err := readComparedUsers(ctx, staged)
 	if err != nil {
 		return err
 	}
 	// An id survives within one root's lineage. The address is the fallback.
-	byEmail := map[string]user{}
+	byEmail := map[string]comparedUser{}
 	for _, u := range usersNow {
 		if u.email != "" {
 			byEmail[u.email] = u
@@ -950,6 +963,8 @@ var (
 	beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
 	// stepHook is for tests: an error is a failure, and a panic is a crash.
 	stepHook = func(string) error { return nil }
+	// targetReadHook is for tests: a writer that arrives just after the first read.
+	targetReadHook = func() {}
 	// dirSync is for tests: a failing disk can't be arranged any other way.
 	dirSync = func(d *os.File) error { return d.Sync() }
 )
