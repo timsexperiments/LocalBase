@@ -1,0 +1,129 @@
+# What rebuilds rewrite/go-integration-2, in order. One branch per line, without the
+# rewrite/go- prefix. A branch brings its ancestors, so list leaves; a branch the tree
+# already has is skipped. Add a new thread's PRs at the end of their group.
+
+# OSS
+oss-neutralize-names
+oss-docs-wiring
+oss-dual-ci
+oss-lint
+oss-fonts-license
+
+# Foundations
+integration-tool
+version-stamp
+clean-inventory
+golangci
+test-ports
+
+# Admission and memory
+reserve-analysis
+host-block
+oss-docs-memory-reserve
+oss-docs-host-api
+oss-docs-model-refusals
+metal-limit
+oss-docs-gpu-memory-limit
+
+# Roots, files and installs
+fresh-root-install
+file-perms
+oss-docs-secrets
+install-reasons
+oss-docs-install-failures
+secure-log-open
+secure-root-writes
+init-licenses
+char-downloads
+install-identity
+
+# Sign-in and access
+login-switch
+policy-lockout-wording
+char-oidc
+diff-unlisted-user
+char-cloudflare
+char-browser-edges
+noauth-origin
+oss-docs-no-auth
+first-run-login
+oss-docs-first-run-sign-in
+
+# Characterization
+char-admission-order
+char-logs
+
+# UI
+ui-v2-host
+
+# Live hotfixes: carried here before they merge
+sec-options-auth
+
+# Correctness review fixes
+fix-backend-stop
+fix-run-toolcalls
+fix-run-shutdown
+fix-run-cursor
+fix-close-waits
+fix-startup-accounting
+rel-chaos
+
+# Sign-in
+fix-cli-dash-args
+
+# Reliability and Security
+rel-soak
+rel-bench
+rel-flake-runcancel
+memory-settling
+rel-crash-503
+sec-http-limits
+csp-pins
+
+# Security, on top of #482
+sec-gguf-limits
+sec-ssrf
+sec-import-limits
+sec-root-owner
+sec-key-scopes
+
+# Reliability
+rel-lease-release
+
+# FE, on ui-v2-host
+ui-v2b-studio
+
+# Linux, from real-runner rounds
+fix-cpu-placement
+fix-backend-supported
+fix-one-memory-figure
+fix-refusals
+host-scaled-defaults
+fix-embeddings-refusal
+
+# Installs
+fix-download-stall
+install-cancel
+
+# Features, on ui-v2-host, after install cancel: #459's last commit documents it
+feat-openapi
+feat-connect
+feat-usage
+feat-upgrade
+
+# OSS, docs and CI on top
+oss-tooling
+oss-docs-site
+oss-soak-ci
+oss-soak-targets
+oss-docs-connect
+oss-chaos-ci
+oss-bench-ci
+
+# Built on an earlier tree at the operator's request: its own commits are replayed.
+pick fix-orphan-backends 91462a35
+pick fix-eviction-starting origin/rewrite/go-fix-orphan-backends
+pick fix-backend-group origin/rewrite/go-fix-eviction-starting
+pick runtime-port-base origin/rewrite/go-fix-backend-group
+pick lint-zero 9b7224ef
+pick fix-auth-errors 1c2b1c21
