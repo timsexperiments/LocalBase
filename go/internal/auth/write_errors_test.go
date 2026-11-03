@@ -96,3 +96,34 @@ func TestRevokeAndClearMagicLinksReportFailure(t *testing.T) {
 		t.Error("clear: not reported")
 	}
 }
+
+// Ending every session reaches browser and local ones alike, and a failure is reported.
+func TestRevokeAllSessions(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	token, err := CreateSession(ctx, st, "owner", Identity{Issuer: "https://i", Subject: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, _, err := CreateLocalSession(ctx, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := RevokeAllSessions(ctx, st)
+	if err != nil || n != 2 {
+		t.Errorf("%d %v", n, err)
+	}
+	if s, _ := FindSession(ctx, st, token, map[string]bool{"https://i": true}); s != nil {
+		t.Error("a browser session survived")
+	}
+	if s, _ := FindLocalSession(ctx, st, local); s != nil {
+		t.Error("a local session survived")
+	}
+	if _, err := CreateSession(ctx, st, "owner", Identity{Issuer: "https://i", Subject: "s"}); err != nil { // a trigger needs a row
+		t.Fatal(err)
+	}
+	failWrites(t, st, "auth_browser_sessions", "DELETE")
+	if _, err := RevokeAllSessions(ctx, st); err == nil {
+		t.Error("a failure was not reported")
+	}
+}
