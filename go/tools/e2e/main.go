@@ -11,7 +11,8 @@
 // run.ts. See docs/reliability.md.
 //
 // Exit 0: everything passed. Exit 1: findings, in result.md with captures. Exit 2: the
-// suite itself could not run.
+// suite itself could not run. Exit 4: it ran, and something it should have checked has no
+// record of running, which result.md lists under "What ran".
 package main
 
 import (
@@ -32,6 +33,11 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/tools/lab"
 )
+
+// exitIncomplete is run.ts's status for a run that finished and left something unchecked. Its
+// scratch explains nothing that result.md does not, and tools/e2e-manifest-check.sh ends this
+// way every time, so it is not kept.
+const exitIncomplete = 4
 
 func main() {
 	out := flag.String("out", "", "result directory (default: a new directory under $TMPDIR/localbase-e2e)")
@@ -69,7 +75,7 @@ func run(out, chrome, axe string, keep bool) (code int) {
 	// Findings are in the result with their captures. Only a suite that could not finish
 	// needs what is in the scratch root to work out why, however early it stopped.
 	defer func() {
-		if code > 1 {
+		if code > 1 && code != exitIncomplete {
 			w.Keep = true
 			fmt.Fprintf(os.Stderr, "e2e: scratch kept at %s\n", w.Dir)
 		}
