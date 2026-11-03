@@ -52,6 +52,7 @@
       <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}} title="Studio">{{template "icon-studio"}}<span class="rail-label">Studio</span></a></li>
       <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} title="Running">{{template "icon-running"}}<span class="rail-label">Running</span></a></li>
       <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}} title="My voices">{{template "icon-voices"}}<span class="rail-label">My voices</span></a></li>
+      <li><a class="nav-item" href="/app/connect" {{if eq .Page "connect"}}aria-current="page"{{end}} title="Connect an app">{{template "icon-connect"}}<span class="rail-label">Connect an app</span></a></li>
       <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}} title="Settings">{{template "icon-settings"}}<span class="rail-label">Settings</span></a></li>
       {{if canAdmin .Principal}}<li><a class="nav-item" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}} title="Admin">{{template "icon-admin"}}<span class="rail-label">Admin</span></a></li>{{end}}
     </ul>
@@ -105,6 +106,7 @@
     <nav aria-label="More">
       <ul class="list-group">
         <li><a class="list-row" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}}>{{template "icon-voices"}}<span class="flex-1">My voices</span>{{template "icon-chevron"}}</a></li>
+        <li><a class="list-row" href="/app/connect" {{if eq .Page "connect"}}aria-current="page"{{end}}>{{template "icon-connect"}}<span class="flex-1">Connect an app</span>{{template "icon-chevron"}}</a></li>
         <li><a class="list-row" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>{{template "icon-settings"}}<span class="flex-1">Settings</span>{{template "icon-chevron"}}</a></li>
         {{if canAdmin .Principal}}<li><a class="list-row" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}}>{{template "icon-admin"}}<span class="flex-1">Admin</span>{{template "icon-chevron"}}</a></li>{{end}}
       </ul>
@@ -132,6 +134,7 @@
 {{define "icon-back"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6 9 12l5.5 6"/></svg>{{end}}
 {{define "icon-running"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5h3.5l2.3-6.5 4 12 2.7-8 1.2 2.5h3.3"/></svg>{{end}}
 {{define "icon-voices"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h1M8 8.5v7M12 5v14M16 8.5v7M20 12h-1"/></svg>{{end}}
+{{define "icon-connect"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5 14.5 9.5M8 11l-2.2 2.2a3.8 3.8 0 0 0 5.4 5.4L13 16.5M16 13l2.2-2.2a3.8 3.8 0 0 0-5.4-5.4L11 7.5"/></svg>{{end}}
 {{define "icon-settings"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h8M17 8h2.5M4.5 16H7M11.5 16h8"/><circle cx="14.7" cy="8" r="2.2"/><circle cx="9.2" cy="16" r="2.2"/></svg>{{end}}
 {{define "icon-admin"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 5.5 6.5V12c0 3.8 2.7 6.7 6.5 8 3.8-1.3 6.5-4.2 6.5-8V6.5Z"/></svg>{{end}}
 {{define "icon-more"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="currentColor"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>{{end}}
