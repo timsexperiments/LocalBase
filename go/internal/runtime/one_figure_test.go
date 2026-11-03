@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -76,4 +77,42 @@ func TestCPUPlanCountsWhatAdmissionCounts(t *testing.T) {
 	if _, err := m.PreviewPlacement(modelB, placement.Request{Mode: placement.Auto}); err == nil {
 		t.Error("the plan fits without the prompt cache, runtime and slot state")
 	}
+}
+
+func TestNextLoadBytesIsAdmissionsFigure(t *testing.T) {
+	m := cpuLLM(t, 60*memory.GiB)
+	need, ok := m.NextLoadBytes(modelB)
+	if !ok {
+		t.Fatal("no figure")
+	}
+	plan, err := m.PreviewPlacement(modelB, placement.Request{Mode: placement.Auto})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := m.admissionDemand(m.d.Catalog.ByID(modelB), plan).HostBytes; need != want {
+		t.Errorf("%d, admission asks for %d", need, want)
+	}
+}
+
+// A small computer: the refusal is the permanent kind, whatever is free right now.
+func TestCPUPlanOnASmallComputerIsTooLarge(t *testing.T) {
+	mem := memory.NewController(smallHost{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem.SetSampler(nil)
+	m := newTestLLMWith(t, mem)
+	spec := m.d.Catalog.ByID(modelB)
+	placementtest.WriteMoEGGUF(t, filepath.Join(m.d.ModelsDir, spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)
+	m.SetPlacementSource(&HostPlacement{Store: m.d.Store, DeviceID: "test", Platform: placement.CPUOnly, Memory: mem,
+		GPUs: func() []memory.GPUMemory { return nil }})
+	_, err := m.PreviewPlacement(modelB, placement.Request{Mode: placement.Auto})
+	var pe *placement.Error
+	if !errors.As(err, &pe) || pe.Code != "model_too_large" {
+		t.Fatalf("%v", err)
+	}
+}
+
+type smallHost struct{}
+
+func (smallHost) Topology() memory.Topology { return memory.Topology{SystemCapacity: 10 * memory.GiB} }
+func (smallHost) Snapshot(context.Context) memory.Snapshot {
+	return memory.Snapshot{Available: 9 * memory.GiB, Pressure: "normal"}
 }
