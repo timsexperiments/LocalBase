@@ -84,8 +84,13 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 	}
 	// Method and permission.
 	each(t, func(t *testing.T, tg *Target) {
-		if r := do(t, "GET", tg.BaseURL+"/v1/audio/transcriptions", bearer(tg.Key), ""); r.Status != 400 {
-			t.Errorf("GET: %d", r.Status)
+		// TS reads any method's body as a form; Go takes POST only (DESIGN §13.6).
+		wantGET := 405
+		if tg.Name == "ts" {
+			wantGET = 400
+		}
+		if r := do(t, "GET", tg.BaseURL+"/v1/audio/transcriptions", bearer(tg.Key), ""); r.Status != wantGET {
+			t.Errorf("GET: %d, want %d", r.Status, wantGET)
 		}
 		body, ct := multipartBody([][2]string{{"file", "@file"}})
 		h := bearer(tg.ChatOnly)
