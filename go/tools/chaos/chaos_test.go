@@ -368,10 +368,10 @@ func settledStats(t *testing.T, ctx context.Context, g *lab.Gateway, c *lab.Clie
 func checkGrowth(t *testing.T, first, last lab.Stats, goroutines, fds int) {
 	t.Helper()
 	if last.Goroutines-first.Goroutines > goroutines {
-		t.Errorf("goroutines grew %d > %d", first.Goroutines, last.Goroutines)
+		t.Errorf("goroutines went from %d to %d, more than the %d allowed", first.Goroutines, last.Goroutines, goroutines)
 	}
 	if last.FDs-first.FDs > fds {
-		t.Errorf("descriptors grew %d > %d", first.FDs, last.FDs)
+		t.Errorf("descriptors went from %d to %d, more than the %d allowed", first.FDs, last.FDs, fds)
 	}
 }
 
