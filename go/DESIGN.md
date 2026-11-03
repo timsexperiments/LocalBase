@@ -614,6 +614,8 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A chat content part that names an address answers 400
+  `remote_media_not_allowed` (§13.6, item 13).
 
 ### M1 (done 2026-10-19)
 
@@ -1176,6 +1178,20 @@ Deliberate status changes to verify against the live clients at cutover:
    request, the model-management state therefore shows a different active
    model on each gateway. `TestDifferentialModelManagement` first activates
    the same chat model on both.
+13. **A chat content part that names an address** (operator decision). A content
+   part carries its content. `image_url.url` must be a `data:` URL, and
+   `input_audio.data`, `file.file_data` and `file.file_id` must hold base64, an
+   id or a `data:` URL. Anything else answers 400 `remote_media_not_allowed`, with
+   `param` naming the first such field, before a model is looked up or loaded. The
+   code wins over anything else wrong with the request. It holds on every route
+   that takes chat: `/v1/chat/completions`, `/app/api` and detached runs, whose
+   request gets the same answer at creation and leaves no run. An address in an
+   earlier message refuses the whole request, so a client that replays its history
+   has to replace it. The chat page sends attachments as `data:` URLs
+   (`tools/jstest/remote-media.test.ts`), and `/v1/systemone` already takes only
+   those. Part types the gateway has never accepted stay `validation_failed`. If
+   fetching is ever wanted, it belongs behind an opt-in and the download guard
+   (§31.2), not in this check.
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
