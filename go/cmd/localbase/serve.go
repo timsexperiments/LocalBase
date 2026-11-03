@@ -443,7 +443,7 @@ func serve(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	ln = gateway.LimitConnections(ln, connLimits, log)
-	httpServer := &http.Server{Handler: srv}
+	httpServer := &http.Server{Handler: srv} //nolint:gosec // Limits.Apply sets ReadHeaderTimeout on the next line
 	srv.Limits.Apply(httpServer)
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.

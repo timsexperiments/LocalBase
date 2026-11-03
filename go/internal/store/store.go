@@ -93,7 +93,7 @@ func makePrivate(path string) {
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		p := path + suffix
 		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 != 0 {
-			os.Chmod(p, info.Mode().Perm()&^0o077)
+			_ = os.Chmod(p, info.Mode().Perm()&^0o077) // serve's TightenPermissions reports what stays loose
 		}
 	}
 }

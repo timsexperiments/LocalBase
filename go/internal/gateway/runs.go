@@ -222,7 +222,7 @@ func (m *runManager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	obs.WritePrivateAtomic(m.path(r.ID), b)
+	obs.WarnRefusedWrite(m.s.Log, obs.WritePrivateAtomic(m.path(r.ID), b))
 	r.saved = m.now()
 }
 

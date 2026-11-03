@@ -281,7 +281,7 @@ var beforeRecord = func() {}
 // same inode, size and mtime as when it was verified. Anything else, including failing
 // to write, leaves the old record, which costs one extra hash and nothing more.
 func recordPublished(out string, a catalog.Artifact, dir string) {
-	withCacheLock(dir, func() error {
+	_ = withCacheLock(dir, func() error { // see above: failing costs one extra hash
 		c := readCache(dir)
 		e, ok := c.Entries[a.Filename]
 		if !ok || !strings.EqualFold(e.AuthoritativeSha256, a.SHA256) || e.ExpectedSizeBytes != a.ExpectedSizeBytes {
