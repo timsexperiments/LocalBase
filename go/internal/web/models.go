@@ -179,6 +179,7 @@ type CatalogRow struct {
 	ID, Name, Initial, Task string
 	DownloadBytes           int64
 	UsesBytes               int64  // memory while running, at these launch settings
+	FreeFirstBytes          int64  // how much to free before it would start, when it wouldn't now
 	Fit                     string // fits | tight | close-others | wont-fit | "" (unknown)
 	Forecast                bool   // Fit is the gateway's answer for right now, not total memory
 	Installed               bool
@@ -240,15 +241,19 @@ func (u *UI) runningRows(h *hostReading, llmID string, llmPlanned int64, llmActi
 	rows := []runningRow{}
 	seenLLM := false
 	add := func(rt, id string, bytes int64, source string, a hostActivity) {
-		row := runningRow{Runtime: rt, ID: id, Name: id, Task: runtimeTasks[rt], Bytes: bytes, Source: sourceWords[source], Active: a.InFlight, Waiting: a.Queued, Sheet: "unload-sheet-" + rt}
+		row := runningRow{Runtime: rt, ID: id, Name: id, Task: runtimeTasks[rt], Bytes: bytes, Source: rowSource[source], Active: a.InFlight, Waiting: a.Queued, Sheet: "unload-sheet-" + rt}
 		if s := u.d.Catalog.ByID(id); s != nil {
 			row.Name = s.Name()
 			if t, _ := task(s); t != "" {
 				row.Task = t
 			}
 		}
-		if rt == "llm" {
+		if rt == "llm" && (llmID == "" || id == llmID) {
 			row.State, row.Active, row.Waiting, row.Sheet = st.State, llmActive, st.Waiting, "unload-sheet"
+		}
+		// Two models can share a runtime; each still needs its own sheet.
+		if slices.ContainsFunc(rows, func(o runningRow) bool { return o.Sheet == row.Sheet }) {
+			row.Sheet = fmt.Sprintf("%s-%d", row.Sheet, len(rows))
 		}
 		rows = append(rows, row)
 	}

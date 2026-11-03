@@ -21,7 +21,9 @@
   <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
   <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
-    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if .Forecast}}{{if eq .Fit "fits"}} · fits now{{else if eq .Fit "close-others"}} · close other apps first{{else if eq .Fit "wont-fit"}} · too big for this computer{{end}}{{else if eq .Fit "wont-fit"}} · needs more memory{{else if .Installed}}{{if eq .Fit "fits"}} · fits this computer{{else if eq .Fit "tight"}} · tight fit{{end}}{{end}}</span>
+    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if not .Installed}} download{{end}}{{if and .Installed (eq .Fit "fits")}} · fits this computer{{else if and .Installed (eq .Fit "tight")}} · tight fit{{end}}</span>
+    {{if .Forecast}}<span class="block text-sm text-muted">{{if eq .Fit "fits"}}Fits now.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{else if eq .Fit "close-others"}}Close other apps first.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{if .FreeFirstBytes}} Free {{aboutGib .FreeFirstBytes}} first.{{end}}{{else if eq .Fit "wont-fit"}}Too big for this computer.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{end}}</span>
+    {{else if eq .Fit "wont-fit"}}<span class="block text-sm text-muted">Needs more memory than this computer has.</span>{{end}}
   </a>
   <span class="shrink-0" id="cat-{{.ID}}-action">
   {{if .Installed}}<span class="pill pill-ok">Installed</span>
@@ -77,8 +79,9 @@
 {{define "memory-legend"}}
 {{if .Known}}
 <dl class="gauge-legend">
-  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>LocalBase{{with .Source}}, {{.}}{{end}}</dt><dd>{{gib .Models}}</dd></div>{{end}}
-  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps</dt><dd>{{gib .Other}}</dd></div>
+  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>
+  {{if .GettingReady}}<div><dt class="gauge-sub"><span>Getting ready<span class="gauge-caption">Estimated, and included in LocalBase</span></span></dt><dd class="gauge-sub-figure">{{gib .GettingReady}}</dd></div>{{end}}{{end}}
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps and system</dt><dd>{{gib .Other}}</dd></div>
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Free memory</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
 </dl>
@@ -93,6 +96,7 @@
   <a class="strip strip-{{.State}}" href="/app/models/running">
     {{template "strip-body" .}}<span class="sr-only">. Open Running.</span>
   </a>
+  {{with .Advice}}<p class="strip-advice"><span>{{.}}</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
 </div>
 {{end}}
 

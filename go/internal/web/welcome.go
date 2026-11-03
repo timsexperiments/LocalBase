@@ -88,6 +88,8 @@ func (u *UI) withForecast(r *http.Request, rows []CatalogRow) []CatalogRow {
 			Admitted       bool   `json:"admitted"`
 			RequestedBytes *int64 `json:"requestedBytes"`
 			DemandSource   string `json:"demandSource"`
+			ReserveBytes   int64  `json:"reserveBytes"`
+			AvailableBytes int64  `json:"availableBytes"`
 			Refusal        *struct {
 				Permanent bool   `json:"permanent"`
 				Code      string `json:"code"`
@@ -113,6 +115,9 @@ func (u *UI) withForecast(r *http.Request, rows []CatalogRow) []CatalogRow {
 		}
 		if a.RequestedBytes != nil {
 			rows[i].UsesBytes = *a.RequestedBytes
+			if rows[i].Fit == "close-others" {
+				rows[i].FreeFirstBytes = max(*a.RequestedBytes+a.ReserveBytes-a.AvailableBytes, 0)
+			}
 		}
 	}
 	return rows

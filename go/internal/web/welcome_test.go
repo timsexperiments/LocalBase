@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -266,7 +267,7 @@ func TestStripReadsTheHost(t *testing.T) {
 	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, RootDir: t.TempDir(), Call: api})
 	r := httptest.NewRequest("GET", "/app/strip", nil).WithContext(context.WithValue(context.Background(), ctxKey{}, p))
 	strip := u.memoryStrip(r)
-	if strip["Host"] != "Attic Mac" || strip["Word"] != "Busy" || strip["Free"] != "30 GiB free" || strip["Source"] != "part measured, part estimated" || strip["Known"] != true {
+	if strip["Host"] != "Attic Mac" || strip["Word"] != "Busy" || strip["Free"] != "30 GiB free" || strip["Source"] != "Includes estimates" || strip["Known"] != true {
 		t.Errorf("%+v", strip)
 	}
 	if got := gaugeSegments(strip["Other"].(int64), strip["Models"].(int64), strip["Capacity"].(int64)); got[0].Kind != "other" || got[20].Kind != "models" {
@@ -274,7 +275,7 @@ func TestStripReadsTheHost(t *testing.T) {
 	}
 	reply = `{"host":{"name":null,"memory":{"total":{"bytes":null,"source":"unavailable"},"available":{"bytes":null,"source":"unavailable"},"pressure":null,"other":{"bytes":null,"source":"unavailable"},"localBase":{"bytes":0,"source":"none","runtimes":[]}},"activity":{"busy":false}}}`
 	strip = u.memoryStrip(r)
-	if strip["Known"] != false || strip["Free"] != "Memory unavailable" || strip["Word"] != "Ready" {
+	if strip["Known"] != false || strip["Free"] != "Memory reading unavailable" || strip["Word"] != "Ready" {
 		t.Errorf("no reading: %+v", strip)
 	}
 	if got := gaugeSegments(strip["Other"].(int64), strip["Models"].(int64), strip["Capacity"].(int64)); got[0].Kind != "unknown" {
@@ -345,7 +346,7 @@ func TestRunningListsEveryRuntime(t *testing.T) {
 			"activity":{"busy":true,"image":{"inFlight":1,"queued":0},"tts":{"inFlight":0,"queued":0}}}}`)}
 	}
 	body := get(u, "/app/models/running").Body.String()
-	for _, want := range []string{"DreamShaper 8 LCM", "Images · 2.0 GiB, measured", "Busy · 1 request", "Speech · 1.0 GiB, estimated", `id="unload-sheet-image"`, `id="unload-sheet-tts"`, `hx-post="/app/models/unload/dreamshaper-8-lcm"`, "LocalBase, part measured, part estimated", "3.0 GiB", "2 models are loaded.", "Working on: Images."} {
+	for _, want := range []string{"DreamShaper 8 LCM", "Images · 2.0 GiB, measured", "Busy · 1 request", "Speech · 1.0 GiB, estimated", `id="unload-sheet-image"`, `id="unload-sheet-tts"`, `hx-post="/app/models/unload/dreamshaper-8-lcm"`, "Includes estimates", "3.0 GiB", "2 models are loaded.", "Working on: Images."} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -374,5 +375,49 @@ func TestForecastIgnoresAGuess(t *testing.T) {
 				t.Errorf("%s says %q on a guess", path, not)
 			}
 		}
+	}
+}
+
+// Whatever the gateway reports, the list adds up to Total: printed, within rounding.
+func TestMemoryRowsSumToTotal(t *testing.T) {
+	const gb = int64(1) << 30
+	for _, c := range []struct{ total, available, models int64 }{
+		{64 * gb, 30 * gb, 4*gb + gb/2},
+		{64 * gb, 42 * gb, gb / 20},
+		{64 * gb, 60 * gb, 12 * gb}, // estimates ahead of what's reported as used
+		{64 * gb, 0, 0},
+		{64 * gb, 64 * gb, 0},
+		{16 * gb, 4 * gb, 80 * gb}, // an estimate larger than the computer
+		{64*gb + 12345, 30*gb + 777, 3*gb + 999},
+	} {
+		m, o, f := memoryRows(c.total, c.available, c.models)
+		if m < 0 || o < 0 || f < 0 || m+o+f != c.total {
+			t.Errorf("%+v: %d + %d + %d != %d", c, m, o, f, c.total)
+		}
+		parsed := func(b int64) float64 {
+			var v float64
+			fmt.Sscanf(strings.TrimPrefix(gibText(b), "<"), "%f", &v)
+			return v
+		}
+		if diff := parsed(m) + parsed(o) + parsed(f) - parsed(c.total); diff > 0.21 || diff < -0.21 {
+			t.Errorf("%+v: printed rows are %.1f off", c, diff)
+		}
+		// The gauge shows the same three.
+		s := gaugeSegments(o, m, c.total)
+		if len(s) != gaugeSegmentCount {
+			t.Errorf("%+v: %d segments", c, len(s))
+		}
+	}
+}
+
+// Short of memory, the strip says what to do and that sending still works.
+func TestStripAdvice(t *testing.T) {
+	for _, p := range []string{"critical", "constrained"} {
+		if a := stripAdvice(p); !strings.Contains(a, "free a loaded model") && !strings.Contains(a, "Free a loaded model") || !strings.Contains(a, "You can still send") {
+			t.Errorf("%s: %q", p, a)
+		}
+	}
+	if stripAdvice("healthy") != "" || stripAdvice("") != "" {
+		t.Error("advice with nothing wrong")
 	}
 }
