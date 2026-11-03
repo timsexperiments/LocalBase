@@ -83,11 +83,16 @@ type Report struct {
 	Keys      KeyCounts     `json:"keys"`
 	Users     int           `json:"users"`
 	Ports     []int         `json:"ports"`
+	// Who a provider's bindings cover, by issuer, and those that name no provider.
+	Issuers     []IssuerLine      `json:"issuers"`
+	Unbound     auth.UnboundCount `json:"unbound"`
+	UnboundNote string            `json:"unboundNote,omitempty"`
 	// With a root being replaced, what the backup would bring back, and what stays as it is.
-	RevocationsKept int      `json:"revocationsKept"`
-	ReturningKeys   []string `json:"returningKeys"`
-	KeysLost        []string `json:"keysLost"`
-	ReturningUsers  int      `json:"returningUsers"`
+	ReturningBindings []IssuerLine `json:"returningBindings,omitempty"`
+	RevocationsKept   int          `json:"revocationsKept"`
+	ReturningKeys     []string     `json:"returningKeys"`
+	KeysLost          []string     `json:"keysLost"`
+	ReturningUsers    int          `json:"returningUsers"`
 	// A user the target has removed or disabled stays that way, as a revoked key does.
 	UserStatusesKept int      `json:"userStatusesKept"`
 	UsersChanged     int      `json:"usersGoingBackToAnOlderStatus"`
@@ -221,7 +226,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*S
 		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
-	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o022 != 0 {
+	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() && root.WritableByOthers(info) {
 		return nil, refuse("Refusing to use %s: other users can change it, and restoring it decides who can sign in and what runs as you. If you trust it, run: chmod go-w '%s'", file, file)
 	}
 	in, err := obs.OpenOwnedRegular(file, os.O_RDONLY)
@@ -608,6 +613,13 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if err := fillCounts(ctx, st, rep); err != nil {
 		return nil, err
 	}
+	if err := checkBindingRows(ctx, st.DB); err != nil {
+		return nil, err
+	}
+	if rep.Issuers, rep.Unbound, err = bindingsOf(ctx, st.DB, access); err != nil {
+		return nil, refuse("The access bindings in this backup can't be read: %v", err)
+	}
+	rep.UnboundNote = unboundNote(rep.Unbound, access)
 	if cfg != nil {
 		rep.Ports = []int{cfg.GatewayPort, cfg.Port, cfg.SttPort}
 		// A backend has no authentication, so it only ever listens on loopback, whatever its stored
@@ -914,6 +926,9 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 	}
 	sort.Strings(rep.ReturningKeys)
 	sort.Strings(rep.KeysLost)
+	if rep.ReturningBindings, err = returningBindings(ctx, staged, cur); err != nil {
+		return err
+	}
 
 	usersNow, err := readComparedUsers(ctx, cur)
 	if err != nil {

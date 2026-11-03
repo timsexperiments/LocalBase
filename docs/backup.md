@@ -59,7 +59,8 @@ Restore checks the whole file before changing anything, treating it as input fro
 - **Every custom backend's whole command line.** These run as you when their model loads.
 - **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
 - **Settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
-- **With `--replace`, what comes back:** keys and users the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, so check `local-base keys list` afterwards.
+- **Who gets a role, by sign-in provider,** and what names no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
+- **With `--replace`, what comes back:** keys, users and role bindings the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, so check `local-base keys list` afterwards.
 
 It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, and running as root. A root with data needs `--replace`.
 
