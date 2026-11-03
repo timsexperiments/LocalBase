@@ -15,6 +15,7 @@ go/local-base
 # Local research, scratch data and model files
 .design/
 .scratch/
+.cache/
 *.gguf
 *.safetensors
 
