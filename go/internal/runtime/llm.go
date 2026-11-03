@@ -468,10 +468,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	if err := m.place(modelID, plan, t); err != nil {
 		return demand, err
 	}
-	demand = m.admissionDemand(spec, plan)
-	if t != nil && t.Backend.Adapter == "process-openai/v1" {
-		demand = customDemand(t, plan)
-	}
+	demand = m.demandFor(modelID, plan, t)
 	m.mu.Lock()
 	prev := m.cur
 	m.mu.Unlock()
@@ -546,6 +543,22 @@ func (m *LLM) install(b *backend) {
 			}
 		}()
 	}
+}
+
+// specFor is a model's catalog entry, unless it runs as an import.
+func (m *LLM) specFor(modelID string, t *Target) *catalog.Spec {
+	if t != nil && t.Imported {
+		return nil
+	}
+	return m.d.Catalog.ByID(modelID)
+}
+
+// demandFor is the demand this launch is admitted with.
+func (m *LLM) demandFor(modelID string, plan *LLMPlan, t *Target) memory.Demand {
+	if t != nil && t.Backend.Adapter == "process-openai/v1" {
+		return customDemand(t, plan)
+	}
+	return m.admissionDemand(m.specFor(modelID, t), plan)
 }
 
 // admissionDemand applies observed > measured > estimate (feed: milestone 5).
