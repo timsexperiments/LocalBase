@@ -46,7 +46,8 @@ func TestImportCancelRoute(t *testing.T) {
 	t.Cleanup(func() { lib.StopImports(5 * time.Second) })
 	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		chunk := make([]byte, 16<<10)
-		for {
+		// Bounded, so a cancel that does nothing fails the test instead of filling the disk.
+		for sent := 0; sent < 64<<20; sent += len(chunk) {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}

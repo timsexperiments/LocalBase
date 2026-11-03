@@ -198,7 +198,8 @@ func TestImportCancelRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for {
+		// Bounded, so a cancel that does nothing fails the test instead of filling the disk.
+		for sent := 0; sent < 64<<20; sent += 16 << 10 {
 			if _, err := w.Write(make([]byte, 16<<10)); err != nil {
 				return
 			}

@@ -49,7 +49,8 @@ func slowSource(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chunk := make([]byte, 16<<10)
-		for {
+		// Bounded, so a test that never stops it fails instead of filling the disk.
+		for sent := 0; sent < 64<<20; sent += len(chunk) {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}
