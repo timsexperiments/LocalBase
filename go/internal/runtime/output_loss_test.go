@@ -13,16 +13,6 @@ import (
 	"time"
 )
 
-// knownBug skips a test of an open bug unless LOCALBASE_CHAOS_ALL is set, and names the pull
-// request that fixes it. That fix removes the line. tools/known-bugs-check.sh fails once the
-// named pull request has merged, or if there is none.
-func knownBug(t *testing.T, pr int, bug string) {
-	t.Helper()
-	if os.Getenv("LOCALBASE_CHAOS_ALL") == "" {
-		t.Skipf("known bug, fixed by #%d: %s", pr, bug)
-	}
-}
-
 // countLines counts the output lines that reach the log, taking a while over each.
 type countLines struct {
 	n     *atomic.Int64
@@ -44,7 +34,6 @@ func (c countLines) Handle(_ context.Context, r slog.Record) error {
 // it may be the reason for a crash. It writes more than a pipe holds, so it exits with some
 // still in the pipe.
 func TestProcessOutputSurvivesItsExit(t *testing.T) {
-	knownBug(t, 522, "a backend's last output is lost when it exits: cmd.Wait closes the pipes while they are being read")
 	const lines = 40000 // about 230 KB
 	var n atomic.Int64
 	p, err := StartProcess("child", "/bin/sh", []string{"-c", "seq 1 " + strconv.Itoa(lines)}, nil, slog.New(countLines{&n, 30 * time.Microsecond}))
@@ -87,5 +76,45 @@ echo started`
 	}
 	if _, err := os.Stat(pidFile); err != nil {
 		t.Fatalf("the descendant never started, so this proved nothing: %v", err)
+	}
+}
+
+// With nothing holding its output, a process does not wait for the limit: stopping a backend
+// costs nothing extra.
+func TestProcessEndWaitsOnlyForItsOutput(t *testing.T) {
+	limit := outputDrainLimit
+	outputDrainLimit = time.Minute
+	defer func() { outputDrainLimit = limit }()
+	var n atomic.Int64
+	p, err := StartProcess("child", "/bin/sh", []string{"-c", "echo 1"}, nil, slog.New(countLines{&n, 0}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Done():
+	case <-time.After(30 * time.Second):
+		t.Fatal("the process waited for the drain limit with nothing holding its output")
+	}
+	if n.Load() != 1 {
+		t.Errorf("%d lines reached the log, want 1", n.Load())
+	}
+}
+
+// A line longer than any buffer costs only itself: the lines after it still arrive, and the
+// child is not left blocked on a full pipe. The crash reason usually comes last.
+func TestProcessOutputSurvivesALongLine(t *testing.T) {
+	var n atomic.Int64
+	script := `head -c 3000000 /dev/zero | tr '\0' x; echo; echo 1; echo 2`
+	p, err := StartProcess("child", "/bin/sh", []string{"-c", script}, nil, slog.New(countLines{&n, 0}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatal("a long line left the child blocked")
+	}
+	if n.Load() != 2 {
+		t.Errorf("%d of the 2 lines after the long one reached the log", n.Load())
 	}
 }
