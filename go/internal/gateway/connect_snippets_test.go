@@ -17,9 +17,10 @@ func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 	if _, err := exec.LookPath("curl"); err != nil {
 		t.Skip("no curl here")
 	}
-	ts := newTestServer(t)
+	// Authentication is on from the start: curl is another process, so nothing here could
+	// order a change made under a running server with what the server reads.
+	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	_, key, err := s.Store.CreateAPIKey(t.Context(), "connect-curl", []string{"inference:chat", "models:read"})
 	if err != nil {
 		t.Fatal(err)
