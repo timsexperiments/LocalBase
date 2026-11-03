@@ -163,8 +163,16 @@ func (p *Policy) Normalize() error {
 			return nil
 		}
 	}
-	return errors.New("At least one reachable role must grant access:manage.")
+	return ErrPolicyLockout
 }
+
+// PolicyLockoutMessage refuses a policy no one could manage access under. It is
+// plainer than TS's "At least one reachable role must grant access:manage."
+// (DESIGN §13.6 item 12).
+const PolicyLockoutMessage = "This policy would lock everyone out: at least one person it names must be able to manage access."
+
+// ErrPolicyLockout is the refusal itself, so a caller can show why.
+var ErrPolicyLockout = errors.New(PolicyLockoutMessage)
 
 // Revision is the sha256 of the canonical policy (accessControlRevision).
 func Revision(p *Policy) *string {
