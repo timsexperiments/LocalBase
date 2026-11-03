@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 jobs:
-  reserve-and-placement:
+  placement:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -13,7 +13,7 @@ jobs:
         with:
           go-version-file: go/go.mod
           cache: false
-      - name: Numbers for the 16 GB refusal, then placement on a GPU-less machine
+      - name: Lowered reserve and placement, with diagnostics shown
         run: |
           (cd go && CGO_ENABLED=0 go build -buildvcs=false -o "$RUNNER_TEMP/lb" ./cmd/localbase)
           export LOCALBASE_ROOT="$RUNNER_TEMP/root"
@@ -21,22 +21,22 @@ jobs:
           lb init > /dev/null
           key="$(lb keys create --name t --scopes inference:chat,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
           lb models install qwen3.5-4b-q4_k_m 2>&1 | tail -1 | cut -c1-100
-          lb models show qwen3.5-4b-q4_k_m 2>&1 | grep -iE 'memory|planning|estimate|measured|fit' | cut -c1-130 || true
-          start(){ lb serve --host 127.0.0.1 --port 26800 --llm-port 26801 "$@" > "$RUNNER_TEMP/serve.log" 2>&1 & g=$!; for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null && break; sleep 1; done; }
+          start(){ lb serve --host 127.0.0.1 --port 26800 --llm-port 26801 > "$RUNNER_TEMP/serve.log" 2>&1 & g=$!; for i in $(seq 1 60); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26800/health 2>/dev/null && break; sleep 1; done; }
           stopit(){ kill "$g" 2>/dev/null || true; wait "$g" 2>/dev/null || true; sleep 2; }
-          chat(){ curl -s -m 600 -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s' http://127.0.0.1:26800/v1/chat/completions -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d '{"model":"qwen3.5-4b-q4_k_m","max_tokens":64,"messages":[{"role":"user","content":"Say hello."}]}'; echo " $(jq -c 'if .error then {code:.error.code,msg:.error.message} else {finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length),reasoning_len:(.choices[0].message.reasoning|length)} end' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-300)"; }
-          diag(){ grep -E 'admission|placement|runtime\.(exited|start)|backend\.start' "$RUNNER_TEMP/serve.log" | grep -E '"severity":"(warn|error)"' | jq -c '{e:.eventName,m:(.message|.[0:80]),a:(.attributes|del(.auth_outcome,.auth_principal_id,.auth_principal_name,.auth_source))}' 2>/dev/null | cut -c1-520 | head -5 || true; }
-          echo "=== A. default reserve, 15% / 8 GiB"; free -m | sed -n 2p; start; chat; diag; stopit
-          echo "=== B. same, chat again after a pause"; free -m | sed -n 2p; start; sleep 20; chat; stopit
+          chat(){ curl -s -m 600 -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s' http://127.0.0.1:26800/v1/chat/completions -H "Authorization: Bearer $key" -H 'Content-Type: application/json' -d '{"model":"qwen3.5-4b-q4_k_m","max_tokens":64,"messages":[{"role":"user","content":"Say hello."}]}'; echo " $(jq -c 'if .error then {code:.error.code,msg:.error.message} else {finish:.choices[0].finish_reason,content_len:(.choices[0].message.content|length),reasoning_len:(.choices[0].message.reasoning|length)} end' "$RUNNER_TEMP/o" 2>/dev/null | cut -c1-320)"; }
+          diag(){ grep -a -E '^\{' "$RUNNER_TEMP/serve.log" | jq -c 'select(.severity=="warn" or .severity=="error") | select(.eventName!="http.request") | {e:.eventName,m:(.message|.[0:90]),a:(.attributes|del(.auth_outcome,.auth_principal_id,.auth_principal_name,.auth_source))}' 2>/dev/null | cut -c1-560 | head -5 || true; }
+          raw(){ echo "--- backend output in serve.log"; grep -a -v -E '^\{' "$RUNNER_TEMP/serve.log" | grep -a -iE 'offload|layers|device|vulkan|error|fail' | cut -c1-150 | head -12 || true; }
           lb config show > "$RUNNER_TEMP/c.toml"
           sed -i -E '/^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/ }' "$RUNNER_TEMP/c.toml"
-          lb config apply --file "$RUNNER_TEMP/c.toml" --restart never > /dev/null 2>&1 || true
-          echo "=== C. reserve 5% / 1 GiB, automatic placement"; free -m | sed -n 2p; start; chat; diag; stopit
-          echo "=== placement commands"; lb models placement --help 2>&1 | sed -n 1,14p | cut -c1-100 || true
-          echo "=== D. placement cpu"; lb models placement qwen3.5-4b-q4_k_m --set cpu 2>&1 | head -4 | cut -c1-140 || true; lb models placement qwen3.5-4b-q4_k_m 2>&1 | head -4 | cut -c1-140 || true
-          start; chat; diag; stopit
-          echo "=== E. placement custom, gpu-layers 0"; lb models placement qwen3.5-4b-q4_k_m --set custom --gpu-layers 0 2>&1 | head -3 | cut -c1-140 || true
-          start; chat; diag; stopit
-          echo "=== F. llama-server directly, CPU, does the runtime itself work"; ls "$LOCALBASE_ROOT/bin/runtimes" | tr '\n' ' '; echo; exe="$(find "$LOCALBASE_ROOT/bin/runtimes/llama-server" -type f -name llama-server | head -1)"; "$exe" --version 2>&1 | head -3 | cut -c1-110 || true; "$exe" --list-devices 2>&1 | head -6 | cut -c1-110 || true
-          gguf="$(find "$LOCALBASE_ROOT/models/llm" -name '*.gguf' | head -1)"; "$exe" -m "$gguf" -ngl 0 --port 26805 --host 127.0.0.1 -c 2048 > "$RUNNER_TEMP/ls.log" 2>&1 & p=$!; for i in $(seq 1 90); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26805/health 2>/dev/null && break; sleep 1; done; curl -s -m 200 -o "$RUNNER_TEMP/o" -w '%{http_code} %{time_total}s\n' http://127.0.0.1:26805/v1/chat/completions -H 'Content-Type: application/json' -d '{"max_tokens":32,"messages":[{"role":"user","content":"Say hello."}]}'; kill "$p" 2>/dev/null || true
-          grep -iE 'offload|layers|vulkan|no usable' "$RUNNER_TEMP/ls.log" | cut -c1-120 | head -8
+          echo "=== apply lower reserve"; lb config apply --file "$RUNNER_TEMP/c.toml" --restart never 2>&1 | cut -c1-140 | head -6 || echo "apply exit $?"
+          lb config show 2>&1 | sed -n '/^\[memory.systemReserve/,+2p' | tr '\n' ' '; echo
+          echo "=== C. reserve 5%/1 GiB, auto"; free -m | sed -n 2p; start; chat; diag; raw; stopit
+          echo "=== D. --mode cpu"; lb models placement qwen3.5-4b-q4_k_m --mode cpu 2>&1 | head -5 | cut -c1-130 || true
+          start; chat; diag; raw; stopit
+          echo "=== E. --mode custom --gpu-layers 0"; lb models placement qwen3.5-4b-q4_k_m --mode custom --gpu-layers 0 2>&1 | head -5 | cut -c1-130 || true
+          start; chat; diag; raw; stopit
+          lb models placement qwen3.5-4b-q4_k_m --reset > /dev/null 2>&1 || true
+          echo "=== F. llama-server directly, the exact flags vary, raw log"
+          exe="$(find "$LOCALBASE_ROOT/bin/runtimes/llama-server" -type f -name llama-server | head -1)"; gguf="$(find "$LOCALBASE_ROOT/models/llm" -name '*.gguf' | head -1)"
+          for ngl in 0 99; do echo "--- -ngl $ngl"; "$exe" -m "$gguf" -ngl "$ngl" --port 26805 --host 127.0.0.1 -c 2048 > "$RUNNER_TEMP/ls.log" 2>&1 & p=$!; for i in $(seq 1 90); do curl -fsS -m1 -o /dev/null http://127.0.0.1:26805/health 2>/dev/null && break; sleep 1; done; curl -s -m 200 -o /dev/null -w 'chat %{http_code} %{time_total}s\n' http://127.0.0.1:26805/v1/chat/completions -H 'Content-Type: application/json' -d '{"max_tokens":16,"messages":[{"role":"user","content":"Hi"}]}' || true; kill "$p" 2>/dev/null || true; wait "$p" 2>/dev/null || true; grep -a -c . "$RUNNER_TEMP/ls.log"; grep -a -iE 'offload|n_gpu|layers.*GPU|device|vulkan|no usable|warning' "$RUNNER_TEMP/ls.log" | cut -c1-140 | head -10 || true; done
+          echo "=== how the check reads the log"; sed -n 25,50p go/internal/placement/*check*.go 2>/dev/null | cut -c1-90 | head -0 || true
