@@ -71,7 +71,8 @@
                     "policyRevision": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
                     "users": {"type": "array", "items": {"$ref": "#/components/schemas/AccessUser"}},
                     "roles": {"type": "array", "items": {"$ref": "#/components/schemas/AccessRole"}},
-                    "emailDelivery": {"anyOf": [{"$ref": "#/components/schemas/EmailDelivery"}, {"type": "null"}]}
+                    "emailDelivery": {"anyOf": [{"$ref": "#/components/schemas/EmailDelivery"}, {"type": "null"}]},
+                    "unboundBindings": {"type": "integer", "minimum": 0, "description": "Bindings and invitations that name no provider, so grant nothing. Present when a provider is configured."}
                   },
                   "required": ["config", "policy", "policyRevision", "users", "roles", "emailDelivery"]
                 }
@@ -304,6 +305,7 @@
                       "action": {"const": "invite-user"},
                       "email": {"type": "string", "minLength": 3, "maxLength": 320},
                       "roles": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                      "issuer": {"type": "string", "description": "The sign-in provider the invitation is for. Optional when one provider is configured."},
                       "sendEmail": {"type": "boolean"}
                     },
                     "required": ["action", "email", "roles"],
@@ -3786,6 +3788,7 @@
             "properties": {
               "kind": {"const": "email"},
               "role": {"type": "string"},
+              "issuer": {"type": "string", "minLength": 1, "maxLength": 2048, "description": "The sign-in provider that vouches for the address. Optional when one provider is configured; a row with none grants nothing."},
               "email": {"type": "string", "maxLength": 320}
             },
             "required": ["kind", "role", "email"],
@@ -3796,6 +3799,7 @@
             "properties": {
               "kind": {"const": "email-domain"},
               "role": {"type": "string"},
+              "issuer": {"type": "string", "minLength": 1, "maxLength": 2048, "description": "The sign-in provider that vouches for the address. Optional when one provider is configured; a row with none grants nothing."},
               "domain": {"type": "string", "maxLength": 253, "pattern": "^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$"}
             },
             "required": ["kind", "role", "domain"],
@@ -3858,6 +3862,7 @@
         "properties": {
           "id": {"type": "string"},
           "email": {"type": "string"},
+          "issuer": {"type": "string", "description": "The sign-in provider that can claim this user. Absent when none is named."},
           "status": {"type": "string"},
           "roles": {"type": ["array", "null"], "items": {"type": "string"}},
           "createdAt": {"type": "string"},

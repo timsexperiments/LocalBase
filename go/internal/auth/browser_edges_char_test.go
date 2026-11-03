@@ -89,7 +89,7 @@ func magicFixture(t *testing.T) (*Browser, context.Context) {
 		Bindings: []Binding{{Kind: "subject", Role: "chat", Issuer: "https://id.example.com", Subject: "owner"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InviteUser(ctx, st, "friend@example.com", []string{"chat"}); err != nil {
+	if _, err := InviteUser(ctx, st, "friend@example.com", []string{"chat"}, MagicIssuer(testOrigin)); err != nil {
 		t.Fatal(err)
 	}
 	return b, ctx
@@ -98,7 +98,7 @@ func magicFixture(t *testing.T) (*Browser, context.Context) {
 func TestRevokeMagicLink(t *testing.T) {
 	b, ctx := magicFixture(t)
 	issuer := MagicIssuer(testOrigin)
-	token, _, err := IssueMagicLink(ctx, b.Store, "friend@example.com")
+	token, _, err := IssueMagicLink(ctx, b.Store, "friend@example.com", MagicIssuer(testOrigin))
 	if err != nil || token == "" {
 		t.Fatalf("issue: %q %v", token, err)
 	}
@@ -115,7 +115,7 @@ func TestRevokeMagicLink(t *testing.T) {
 		t.Errorf("a revoked link: %+v %v", id, err)
 	}
 	// A revoked link does not hold the cooldown: the person can ask again at once.
-	again, _, err := IssueMagicLink(ctx, b.Store, "friend@example.com")
+	again, _, err := IssueMagicLink(ctx, b.Store, "friend@example.com", MagicIssuer(testOrigin))
 	if err != nil || again == "" {
 		t.Errorf("after a revoke: %q %v", again, err)
 	}
@@ -123,7 +123,7 @@ func TestRevokeMagicLink(t *testing.T) {
 
 func TestMagicLinkExpired(t *testing.T) {
 	b, ctx := magicFixture(t)
-	token, _, _ := IssueMagicLink(ctx, b.Store, "friend@example.com")
+	token, _, _ := IssueMagicLink(ctx, b.Store, "friend@example.com", MagicIssuer(testOrigin))
 	b.Store.DB.Exec(`UPDATE auth_magic_link_tokens SET expires_at = ?`, time.Now().UTC().Add(-time.Second).Format("2006-01-02T15:04:05.000Z"))
 	if id, err := ConsumeMagicLink(ctx, b.Store, token, MagicIssuer(testOrigin)); err != nil || id != nil {
 		t.Errorf("an expired link: %+v %v", id, err)
