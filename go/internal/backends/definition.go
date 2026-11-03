@@ -164,8 +164,10 @@ func (d *Definition) Validate() error {
 	return nil
 }
 
-// automatic reports whether routing may pick this backend.
-func (d *Definition) automatic() bool { return d.Automatic == nil || *d.Automatic }
+// automatic reports whether routing may pick this backend. Only a built-in can be picked
+// without being chosen: a custom backend runs a program someone named, so it runs only for
+// a model someone set it on, whatever its definition or the routing rules say.
+func (d *Definition) automatic() bool { return d.BuiltIn && (d.Automatic == nil || *d.Automatic) }
 
 // automaticFor reports whether routing may pick this backend for a model.
 func (d *Definition) automaticFor(m *models.Model) bool {

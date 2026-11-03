@@ -71,7 +71,7 @@ func TestPlatformVariants(t *testing.T) {
 		install        map[string]string
 		backend, varnt string
 	}{
-		{"apple silicon with mlx", "darwin", "arm64", []string{"metal", "cpu"}, map[string]string{"mlx-lm": Installed}, "mlx-lm", "mlx-4bit"},
+		{"apple silicon with a custom mlx backend", "darwin", "arm64", []string{"metal", "cpu"}, map[string]string{"mlx-lm": Installed}, "llama.cpp-metal", "gguf-q4"},
 		{"linux cuda", "linux", "x64", []string{"cuda", "vulkan", "cpu"}, map[string]string{"llama.cpp-cuda": Installed}, "llama.cpp-cuda", "gguf-q4"},
 		{"linux vulkan", "linux", "x64", []string{"vulkan", "cpu"}, nil, "llama.cpp-vulkan", "gguf-q4"},
 		{"linux cuda without a cuda build", "linux", "x64", []string{"cuda", "vulkan", "cpu"}, nil, "llama.cpp-vulkan", "gguf-q4"},
@@ -91,6 +91,55 @@ func TestPlatformVariants(t *testing.T) {
 	rec := reg2.Recommend(m, host("darwin", "arm64", []string{"metal", "cpu"}, reg2, nil), nil)
 	if rec.BackendID != "llama.cpp-metal" || rec.VariantID != "gguf-q4" {
 		t.Errorf("no mlx: got %s/%s", rec.BackendID, rec.VariantID)
+	}
+}
+
+// A custom backend runs a program someone named, so it runs only for a model someone set
+// it on, whatever the routing rules prefer and whatever its definition says.
+func TestACustomBackendIsNeverChosenAutomatically(t *testing.T) {
+	root := t.TempDir()
+	writeMLX(t, root)
+	exe := filepath.Join(t.TempDir(), "mine")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	// As good a match as any for a GGUF, on the engine the rules prefer, and asking for it.
+	if err := Add(root, &Definition{Schema: Schema, ID: "asks-for-it", Name: "Asks", Engine: "mlx", Adapter: "process-openai/v1", Automatic: &yes,
+		Tasks: []string{"chat"}, Formats: []string{"gguf"}, Architectures: Architectures{Supported: []string{"qwen3"}},
+		Platforms: []Platform{{OS: "darwin", Arch: "arm64", Accelerator: "metal"}},
+		Launch:    &Launch{Command: exe, Args: []string{"--port", "{port}"}, Memory: &Memory{WeightsFactor: 1.2, OverheadGB: 1, Assumption: "a test"}}}); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(root)
+	if err != nil || len(reg.Skipped()) > 0 {
+		t.Fatal(err, reg.Skipped())
+	}
+	for _, id := range []string{"mlx-lm", "asks-for-it"} {
+		if reg.Get(id) == nil || reg.Get(id).BuiltIn {
+			t.Fatalf("%s should be registered as custom", id)
+		}
+	}
+	h := host("darwin", "arm64", []string{"metal", "cpu"}, reg, map[string]string{"mlx-lm": Installed, "asks-for-it": Installed})
+	mlx := models.Variant{ID: "mlx-4bit", Format: models.Of("mlx", models.SourceDeclared), Architecture: models.Of("qwen3", models.SourceDeclared),
+		Artifacts: []models.Artifact{{Filename: "model.safetensors", Role: models.RoleWeights, Required: true}}}
+	offered := func(rec Recommendation, id string) bool {
+		for _, o := range rec.Options {
+			if o.BackendID == id {
+				return true
+			}
+		}
+		return false
+	}
+	// A built-in can run this one, so it gets it.
+	rec := reg.Recommend(chatModel(mlx, gguf("gguf-q4", "qwen3")), h, nil)
+	if rec.BackendID != "llama.cpp-metal" || !offered(rec, "mlx-lm") || !offered(rec, "asks-for-it") {
+		t.Errorf("got %q, options %+v", rec.BackendID, rec.Options)
+	}
+	// Nothing else can run this one, and it still takes a person to choose.
+	rec = reg.Recommend(chatModel(mlx), h, nil)
+	if rec.BackendID != "" || !offered(rec, "mlx-lm") {
+		t.Errorf("only a custom backend fits: got %q", rec.BackendID)
 	}
 }
 
