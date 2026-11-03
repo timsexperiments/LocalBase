@@ -22,6 +22,7 @@ import (
 // labTargets are the media routes a Lab run may target, by tool.
 var labTargets = map[string]string{
 	"/v1/images/generations":   "image",
+	"/v1/images/edits":         "image",
 	"/v1/audio/transcriptions": "transcribe",
 	"/v1/audio/translations":   "transcribe",
 }
@@ -185,6 +186,8 @@ type labItemView struct {
 	Fresh                              bool   // just started: its skeleton may shimmer once
 	Size, Shape, Look, LookName, Model string // how a picture was made
 	Seed                               int64
+	Edited                             bool         // started from a picture
+	From, Change, ChangeName           string       // an edit's starting picture, while it is kept, and how far it moved
 	Pictures                           []labPicture // a batch's pictures, without deleted ones
 	Tiles                              []int        // placeholders while it is made
 	Image, Audio, Transcript           string
@@ -239,6 +242,12 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 				}
 			}
 			v.Model = q.Model
+			if q.Source != "" {
+				v.Edited, v.Change, v.ChangeName = true, q.Change, changeByID(q.Change).Name
+				if u.results.get(owner, q.Source) != nil {
+					v.From = "/app/lab/results/" + q.Source
+				}
+			}
 		}
 	}
 	if v.Model == "" {

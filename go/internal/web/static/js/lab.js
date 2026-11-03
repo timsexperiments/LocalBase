@@ -38,7 +38,7 @@ function fill(text) {
   if (!prompt) return;
   prompt.value = text;
   grow(prompt);
-  prompt.focus();
+  prompt.focus({ preventScroll: true }); // the prompt is always on screen; the page stays where it was
 }
 
 document.addEventListener("click", (event) => {
@@ -200,6 +200,13 @@ function stepViewer(dialog, by) {
   paintViewer(next);
 }
 
+// Leaving for the prompt: closing must not send focus back to the picture.
+function leaveViewer(dialog) {
+  if (!dialog) return;
+  dialog.dataset.stepping = "1";
+  dialog.close();
+}
+
 // Closing goes back to the picture you were on, even after moving between them.
 document.addEventListener("close", (event) => {
   const dialog = event.target;
@@ -254,21 +261,90 @@ document.addEventListener("click", (event) => {
     setTimeout(() => (copy.textContent = before), 1500);
     return;
   }
-  // Reuse settings: the form takes this picture's prompt, shape, look and seed.
+  // Reuse settings: the form takes this picture's prompt, shape, look and seed,
+  // and what it was edited from while that is kept.
   const reuse = event.target.closest?.("[data-reuse]");
   if (reuse) {
-    const { prompt: text, shape, look, seed } = reuse.dataset;
+    const { prompt: text, shape, look, seed, from, change } = reuse.dataset;
     const form = document.querySelector("form.lab-dock");
     if (!form) return;
-    for (const [name, value] of [["shape", shape], ["look", look]]) {
-      const radio = [...form.querySelectorAll(`input[type=radio][name="${name}"]`)].find((r) => r.value === value);
-      if (radio) radio.checked = true;
-    }
+    chooseRadios(form, [["shape", shape], ["look", look], ["change", change]]);
     if (form.seed) form.seed.value = seed;
+    setSource(form, from);
     syncChips(form);
-    reuse.closest("dialog")?.close();
+    leaveViewer(reuse.closest("dialog"));
     fill(text);
+    return;
   }
+  // Edit: this picture becomes the start of a new one, with its words to change.
+  const edit = event.target.closest?.("[data-edit-picture]");
+  if (edit) {
+    const form = document.querySelector("form.lab-dock");
+    if (!canEdit(form)) {
+      document.getElementById("image-needs-edit")?.showModal();
+      return;
+    }
+    chooseRadios(form, [["look", edit.dataset.look], ["change", edit.dataset.change]]);
+    setSource(form, edit.dataset.editPicture);
+    leaveViewer(edit.closest("dialog"));
+    fill(edit.dataset.prompt ?? "");
+    return;
+  }
+  const clear = event.target.closest?.("[data-source-clear]");
+  if (clear) {
+    setSource(clear.closest("form"));
+    document.getElementById("lab-prompt")?.focus({ preventScroll: true });
+  }
+});
+
+function chooseRadios(form, pairs) {
+  for (const [name, value] of pairs) {
+    if (value === undefined) continue;
+    const radio = [...form.querySelectorAll(`input[type=radio][name="${name}"]`)].find((r) => r.value === value);
+    if (radio) radio.checked = true;
+  }
+}
+
+const canEdit = (form) => !!form?.querySelector('[name="model"][data-edits]');
+
+// The picture being edited, or none. While editing, only models that can edit
+// are on offer, and stopping goes back to the model that was chosen.
+function setSource(form, url = "") {
+  const row = form.querySelector("[data-image-source]");
+  if (!row) return;
+  const editing = !!url && canEdit(form);
+  const thumb = row.querySelector("img");
+  if (editing) thumb.src = url;
+  else thumb.removeAttribute("src");
+  row.hidden = !editing;
+  form.elements.source.value = editing ? url.split("/").pop() : "";
+  form.toggleAttribute("data-editing", editing);
+  document.getElementById("lab-prompt").placeholder = editing ? "Describe what to change" : "Describe the picture";
+  form.querySelector("[data-source-status]").textContent = editing ? "Editing this picture. Change the words below." : "";
+  const models = [...form.querySelectorAll('input[type=radio][name="model"]')];
+  const chosen = models.find((r) => r.checked);
+  if (editing && chosen && !chosen.hasAttribute("data-edits")) {
+    form.dataset.modelBefore = chosen.value;
+    models.find((r) => r.hasAttribute("data-edits")).checked = true;
+  } else if (!editing && form.dataset.modelBefore) {
+    const before = models.find((r) => r.value === form.dataset.modelBefore);
+    if (before) before.checked = true;
+    delete form.dataset.modelBefore;
+  }
+  for (const radio of models) {
+    const off = editing && !radio.hasAttribute("data-edits");
+    radio.disabled = off;
+    const note = radio.closest("label")?.querySelector("[data-cant-edit]");
+    if (note) note.hidden = !off;
+  }
+  syncChips(form);
+}
+
+// Once a run has started, the next picture starts fresh.
+document.addEventListener("htmx:afterRequest", (event) => {
+  const form = event.target;
+  if (!form.matches?.("form.lab-dock") || !form.elements.source?.value) return;
+  if (event.detail.xhr?.getResponseHeader("HX-Retarget") === "#lab-items") setSource(form);
 });
 
 document.addEventListener("keydown", (event) => {

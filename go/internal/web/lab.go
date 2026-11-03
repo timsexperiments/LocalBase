@@ -127,6 +127,7 @@ type labModel struct {
 	ID, Name    string
 	Active      bool
 	EnglishOnly bool // a transcription model that hears English only
+	Edits       bool // a picture model that can start from a picture
 }
 
 // labModels are the selected models of a kind, the active one first.
@@ -267,8 +268,14 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	data["Lost"] = lostHere
 	switch tab {
 	case "image":
-		data["Models"] = u.installedOnly(u.labModels("image"))
-		data["Looks"] = imageLooks
+		models := u.installedOnly(u.labModels("image"))
+		canEdit := false
+		for i := range models {
+			models[i].Edits = u.imageEdits(r.Context(), models[i].ID)
+			canEdit = canEdit || models[i].Edits
+		}
+		data["Models"], data["CanEdit"] = models, canEdit
+		data["Looks"], data["Changes"] = imageLooks, imageChanges
 	case "video":
 		models := u.readyVideoModels()
 		data["Models"] = models
@@ -314,6 +321,10 @@ func (u *UI) labImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u.startImages(w, r, q) {
+		return
+	}
+	if q.Source != "" {
+		u.labOutcome(w, r, map[string]any{"Error": "This LocalBase cannot edit a picture yet."})
 		return
 	}
 	// Without runs: directly, showing the first picture.

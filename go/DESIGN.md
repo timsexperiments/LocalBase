@@ -4517,7 +4517,24 @@ clearing the bar, and a row's parts on one line). They run on Chrome 114 and on 
 - **What a restart lost is one line.** A run outlives the in-memory note holding its words, so afterwards it
   has no prompt, nothing to try again and no picture. A tool says how many once, with Clear, rather than a
   row each, and the landing leaves them out.
+- **Edit makes a picture the start of a new one** (`/v1/images/edits`). It sits in the prompt box with its
+  words ready to change: these models draw what the words describe, so the whole description goes in, not an
+  instruction. The new picture keeps this one's shape, so Shape gives way to how much to change, in three
+  plain steps that make no promise about any model. The button says Edit rather than "Use as input": that is
+  the word a person would look for, and the bar has to fit a small phone.
+- **A model that can't edit is never offered for it.** The same answer the API goes by decides, and a model
+  that can't stays visible in the sheet, saying so. Editing switches to one that can; stopping goes back. With
+  none on this computer, Edit says what is needed and leaves the picture where it is. That state names no model.
+- **An edit stays an edit.** Its result says so, Details shows how much and the picture it started from while
+  that is kept, and Vary, Regenerate, Reuse settings and Try again all start from the same picture. Once the
+  starting picture has gone, Vary and Regenerate say so, and Reuse settings and Try again step aside: none of
+  them quietly makes a new picture instead.
+- **Regenerate moved under Details.** With Edit and Share on a phone there are too many for one row, and it is
+  the rarest of them: the same seed mostly repeats the same picture.
 
 **Checks:** `tools/chat-runs-check.sh`: the words above the pictures, zoom by each means, the arrows while
 zoomed, the mat, focus on closing, and all the actions at 320 with Share showing, as it does on a real phone.
+Edit, by whichever state the gateway's models allow: the picture in the prompt, the route, the way back, and
+that the page doesn't move. `TestImageEdit` and `TestImageEditOnlyWithAModelThatCan` cover the request and
+both states without a browser. **A real model has not edited a picture through this page.**
 

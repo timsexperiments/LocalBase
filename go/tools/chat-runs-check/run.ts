@@ -177,7 +177,7 @@ else {
   await sleep(250);
   const view = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"); const r = d.getBoundingClientRect(); const img = d.querySelector(".viewer-img").getBoundingClientRect(); const tile = document.querySelector(".image-tile").getBoundingClientRect();
     return { full: Math.round(r.width) === innerWidth && Math.round(r.height) === innerHeight, img: img.height > 150, count: d.querySelector("[data-view-count]").textContent, acts: [...d.querySelectorAll(".viewer-foot .viewer-act span")].map((s) => s.textContent).filter(Boolean), small: [...d.querySelectorAll("button, a, summary")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 43.5).length, tile: tile.width > 100 }; })()`);
-  check(view.full && view.img && view.tile && view.small === 0 && /of/.test(view.count) && ["Save", "Vary", "Regenerate", "Details"].every((a) => view.acts.includes(a)), `the viewer fills the screen with its actions: ${JSON.stringify(view)}`);
+  check(view.full && view.img && view.tile && view.small === 0 && /of/.test(view.count) && ["Save", "Edit", "Vary", "Details"].every((a) => view.acts.includes(a)), `the viewer fills the screen with its actions: ${JSON.stringify(view)}`);
   const first = await ev(`document.querySelector("dialog.viewer[open]").id`);
   await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
   check((await ev(`document.querySelector("dialog.viewer[open]").id`)) !== first, "Next moves to another picture");
@@ -977,6 +977,83 @@ if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
   check(small.count >= 8 && small.inside && small.big && small.picture >= 150, `at 320, every viewer action fits and is big enough, and the picture stays: ${JSON.stringify(small)}`);
   await ev(`document.querySelector("dialog.viewer[open]").close()`);
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+
+  // Edit (DESIGN §27.5): with a model that can, a picture goes into the prompt as the start of a new
+  // one; without, it says what is needed. Which of these runs depends on the gateway's models.
+  await nav("/app/studio/image");
+  const openPicture = async () => { await ev(`document.querySelector(".image-open").click()`); await sleep(250); };
+  if (!(await ev(`!!document.querySelector('form.lab-dock [name="model"][data-edits]')`))) {
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(250);
+    const needs = await ev(`(() => { const d = document.getElementById("image-needs-edit"); return { open: !!d?.open, viewer: !!document.querySelector("dialog.viewer[open]"), link: d?.querySelector("a")?.getAttribute("href") ?? "", source: document.querySelector("form.lab-dock input[name=source]").value }; })()`);
+    check(needs.open && needs.viewer && needs.link === "/app/models/get?filter=images" && needs.source === "", `with no model that can edit, Edit says what is needed: ${JSON.stringify(needs)}`);
+    await ev(`document.getElementById("image-needs-edit").close(); document.querySelector("dialog.viewer[open]").close()`);
+  } else {
+    const dock = `(() => {
+      const f = document.querySelector("form.lab-dock"), row = f.querySelector("[data-image-source]"), img = row.querySelector("img");
+      const shown = (name) => { const c = f.querySelector(\`[data-chip-label=\${name}]\`)?.closest("button"); return !!c && c.getBoundingClientRect().width > 0; };
+      const models = [...f.querySelectorAll("input[type=radio][name=model]")];
+      return { row: row.getBoundingClientRect().height > 0, picture: img.naturalWidth > 0, source: f.elements.source.value, words: f.querySelector("#lab-prompt").value, hint: f.querySelector("#lab-prompt").placeholder,
+        focus: document.activeElement?.id ?? "", viewer: !!document.querySelector("dialog.viewer[open]"), shape: shown("shape"), change: shown("change"), label: f.querySelector("[data-chip-label=change]").textContent,
+        model: models.find((m) => m.checked)?.value ?? "", capable: models.find((m) => m.checked)?.hasAttribute("data-edits") ?? false, off: models.filter((m) => m.disabled).length, fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+    })()`;
+    // Starts on a model that can't, where there is one, so the switch and the way back are real.
+    await ev(`(() => { const r = document.querySelector('form.lab-dock input[type=radio][name=model]:not([data-edits])'); if (r) { r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); } })()`);
+    const before = await ev(dock);
+    const words = await ev(`document.querySelector(".image-open").closest(".image-run").querySelector(".image-title").textContent`);
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    let on = await ev(dock);
+    for (let i = 0; i < 30 && (on.focus !== "lab-prompt" || !on.picture); i++) { await sleep(100); on = await ev(dock); }
+    check(on.row && on.picture && /^[0-9a-f]{32}$/.test(on.source) && !on.viewer, `Edit closes the viewer and puts the picture in the prompt: ${JSON.stringify(on)}`);
+    check(on.focus === "lab-prompt" && on.words === words && on.hint === "Describe what to change", `Edit leaves its words ready to change: ${JSON.stringify(on)}`);
+    await sleep(400);
+    check((await ev(`document.activeElement?.id`)) === "lab-prompt", "closing the viewer for Edit doesn't take focus back to the picture");
+    check(!on.shape && on.change && on.capable && on.fits, `while editing, the new picture keeps this one's shape, and only a model that can edit is chosen: ${JSON.stringify(on)}`);
+    await ev(`document.querySelector("[data-source-clear]").click()`);
+    await sleep(100);
+    const off = await ev(dock);
+    check(!off.row && off.source === "" && off.hint === "Describe the picture" && off.shape && !off.change && off.model === before.model && off.off === 0, `Stop editing puts everything back: ${JSON.stringify(off)}`);
+    // On a wide screen the prompt is in the page's flow, so focusing it could move the page.
+    await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+    await nav("/app/studio/image");
+    await openPicture();
+    // Before and after: a reload can restore where an earlier step left the page.
+    const was = await ev(`Math.round(document.scrollingElement.scrollTop)`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(400);
+    const wide = await ev(`({ moved: Math.round(document.scrollingElement.scrollTop) - ${was}, focus: document.activeElement?.id, can: document.scrollingElement.scrollHeight > innerHeight + 100 })`);
+    check(wide.can && wide.moved === 0 && wide.focus === "lab-prompt", `Edit doesn't move the page: ${JSON.stringify(wide)}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/image");
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(150);
+    const runsBefore = (await runsNow()).length;
+    await ev(`(() => { const f = document.querySelector("form.lab-dock"), little = f.querySelector("input[name=change][value=little]"); little.checked = true; little.dispatchEvent(new Event("change", { bubbles: true })); f.querySelector("#lab-prompt").value = "the same lighthouse in the snow"; f.querySelector("button[type=submit]").click(); })()`);
+    const newest = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => { const list = b.data ?? b; return { count: list.length, target: list[0]?.target, status: list[0]?.status }; })`;
+    let started = await ev(newest);
+    for (let i = 0; i < 40 && (started.count <= runsBefore || started.status !== "completed"); i++) { await sleep(150); started = await ev(newest); }
+    check(started.target === "/v1/images/edits" && started.status === "completed", `the edit runs on the edit route and finishes: ${JSON.stringify(started)}`);
+    let made = "";
+    for (let i = 0; i < 40 && !/^Edited/.test(made); i++) { await sleep(150); made = await ev(`document.querySelector("#lab-items > li .image-facts")?.textContent ?? ""`); }
+    check(/^Edited/.test(made), `the new picture says it was edited: "${made}"`);
+    const after = await ev(dock);
+    check(!after.row && after.source === "" && after.shape, `once it has started, the next picture starts fresh: ${JSON.stringify(after)}`);
+    await ev(`document.querySelector("#lab-items > li .image-open").click()`);
+    await sleep(250);
+    await ev(`document.querySelector("dialog.viewer[open] summary").click()`);
+    await sleep(200);
+    const facts = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"), img = d.querySelector(".viewer-from"); return { text: d.querySelector(".viewer-facts").textContent, from: img?.naturalWidth > 0, again: [...d.querySelectorAll(".viewer-panel button")].some((b) => b.textContent.trim() === "Regenerate") }; })()`);
+    check(/A little/.test(facts.text) && /Started from/.test(facts.text) && facts.from && facts.again, `Details say how it was edited and from what: ${JSON.stringify(facts)}`);
+    const count = (await ev(newest)).count;
+    await ev(`document.querySelector("dialog.viewer[open] [hx-vals*=vary]").click()`);
+    let varied = await ev(newest);
+    for (let i = 0; i < 40 && (varied.count <= count || varied.status !== "completed"); i++) { await sleep(150); varied = await ev(newest); }
+    check(varied.count > count && varied.target === "/v1/images/edits", `Vary on an edit edits the same picture again: ${JSON.stringify(varied)}`);
+    await nav("/app/studio/image");
+  }
 }
 
 // --- A pill leads somewhere useful, and is never over content (DESIGN §27) -----------------------

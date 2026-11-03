@@ -717,6 +717,23 @@
   .lab-chip {
     @apply shrink-0 px-3 whitespace-nowrap;
   }
+  /* Editing a picture: it sits at the top of the box, and its shape decides the new one's. */
+  .image-source {
+    @apply flex items-center gap-2.5 px-1.5 pt-0.5 pb-1;
+  }
+  .image-source[hidden] {
+    display: none;
+  }
+  .image-source-thumb {
+    @apply size-11 shrink-0 rounded-lg object-cover;
+  }
+  .lab-dock:not([data-editing]) .lab-chip:has([data-chip-label="change"]),
+  .lab-dock[data-editing] .lab-chip:has([data-chip-label="shape"]) {
+    display: none;
+  }
+  .viewer-from {
+    @apply mt-0.5 size-12 rounded-lg object-cover;
+  }
   .lab-prompt {
     @apply block max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
   }
