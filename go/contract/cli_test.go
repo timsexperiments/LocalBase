@@ -31,7 +31,7 @@ func goCLI(t *testing.T) string {
 			return
 		}
 		goCLIPath = filepath.Join(dir, "local-base")
-		if out, err := exec.Command("go", "build", "-o", goCLIPath, "../cmd/localbase").CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", goBuildArgs(goCLIPath)...).CombinedOutput(); err != nil {
 			goCLIErr = err
 			t.Log(string(out))
 		}
@@ -75,6 +75,7 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 		cmd = exec.Command(goCLI(t), full...)
 	}
 	cmd.Env = cleanEnv()
+	cmd.Env = append(cmd.Env, coverEnv()...)
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
 		cmd.Env = slices.DeleteFunc(cmd.Env, func(e string) bool { return strings.HasPrefix(e, name+"=") })
