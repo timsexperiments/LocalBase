@@ -6,7 +6,7 @@ The Go rewrite of LocalBase. Start with [DESIGN.md](DESIGN.md).
 cd go
 go build -o local-base ./cmd/localbase       # one static binary, UI included
 tools/build.sh dist/local-base              # the reproducible release build, stamped
-./local-base --root /path/to/root serve --port 26410
+./local-base --root /path/to/root serve --port 26410 --runtime-port-base 26411
 go test ./internal/...                        # unit tests (no models needed)
 go test ./contract -args -impl=go             # HTTP contract suite against Go
 go test ./contract -args -impl=both           # against TS and Go, plus differential checks
@@ -17,6 +17,10 @@ go generate ./internal/catalog ./internal/runtime  # re-sync catalog and runtime
 Tests and `tools/*-check.sh` take scratch ports from `LOCALBASE_TEST_PORTS` (`low-high`, default
 `25000-25499`; CI uses `24000-29999`). Set it when something else on the machine uses that block.
 24173 and 25611-25613 are never used.
+
+A second gateway on one computer needs its own backend ports as well as its own `--port`. Without
+them it uses the configured ones, such as 18000 for the LLM. `--runtime-port-base <port>` takes five
+in a row: LLM, STT, TTS, image, video. A start refuses a port another process holds (DESIGN §29).
 
 `-impl=ts` and `-impl=both` need Bun and `LOCALBASE_CONTRACT_MODELS` pointing
 at a directory that holds `qwen2.5-coder-1.5b-instruct-q4_k_m.gguf` (read only).
