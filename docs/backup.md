@@ -103,6 +103,8 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 | `A gateway is running on <root>. Stop it first…` | Run the `stop` it names, then restore |
 | `<root> already holds a LocalBase root. To replace its settings, run this again with --replace…` | Add `--replace` if you mean it, or choose an empty `--root` |
 | `a restore did not finish`, from any command | A restore was interrupted. Run the `restore --undo` it names |
+| `The database on <root> is busy: the gateway or another command is writing to it…` | Try again in a moment, using the command it gives. Nothing was changed. If it keeps happening, stop the gateway first |
+| `The database on <root> has a write that never finished…` | A process stopped mid-write. Run the `status` it names, which undoes that write, then try again. `backup` and `restore` say this and change nothing |
 | `the restore failed, and everything was put back: …` | Nothing changed. Fix what it names, then try again |
 | `the restore failed (…), and so did putting things back (…).` | Fix what it names, such as a full or failing disk, then run the `restore --undo` it names. Until then, every command refuses |
 | `Refusing to use <file>: other users can change it…` | If you trust the file, run the `chmod go-w` it names |
