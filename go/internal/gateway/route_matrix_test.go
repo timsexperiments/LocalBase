@@ -28,6 +28,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -612,6 +613,67 @@ func TestKeyWithoutPermissionsRouteMatrix(t *testing.T) {
 		}
 	}
 	g.checkNoSideEffects(t)
+}
+
+// A cancel goes through a route the matrix already covers, but with a body it never sends: its own
+// action. Stopping an install or an import changes what this computer does, so each one needs
+// models:manage, and a request refused here stops nothing.
+func TestCancellingNeedsModelsManage(t *testing.T) {
+	cancels := []struct {
+		name, path, body string
+		// What someone allowed gets, with nothing to stop.
+		allowed int
+	}{
+		{"an install", "/_localbase/model-management", `{"modelId":"` + chatModel + `","action":"cancel"}`, http.StatusConflict},
+		{"an import", "/_localbase/model-imports", `{"action":"cancel","job":"no-such-job"}`, http.StatusNotFound},
+	}
+	for _, mode := range []struct {
+		name   string
+		access *auth.BrowserAccess
+		host   string
+	}{{"no browser access", nil, ""}, {"direct browser access", directAccess(), "lb.example"}} {
+		t.Run(mode.name, func(t *testing.T) {
+			g := newMatrixGateway(t, mode.access)
+			lib, err := library.Open(g.srv.Root, g.store, g.srv.Catalog, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.srv.Library = lib
+			key := func(scopes ...string) string {
+				t.Helper()
+				_, secret, err := g.store.CreateAPIKey(context.Background(), strings.Join(scopes, "+"), scopes)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return secret
+			}
+			reader, chat, manager := key("models:read"), key("inference:chat"), key("models:manage")
+			for _, c := range cancels {
+				send := func(credential string) rawResponse {
+					t.Helper()
+					h := map[string]string{"Content-Type": "application/json"}
+					if credential != "" {
+						h["Authorization"] = "Bearer " + credential
+					}
+					return g.raw(t, http.MethodPost, c.path, mode.host, h, c.body)
+				}
+				if r := send(""); r.status != 401 {
+					t.Errorf("%s with no credential: %d %.200q", c.name, r.status, r.body)
+				}
+				for who, credential := range map[string]string{"no permissions": g.noScopes, "models:read": reader, "inference:chat": chat} {
+					if r := send(credential); r.status != 403 {
+						t.Errorf("%s with %s: %d %.200q", c.name, who, r.status, r.body)
+					}
+				}
+				if r := send(manager); r.status != c.allowed {
+					t.Errorf("%s with models:manage: %d %.200q, want %d", c.name, r.status, r.body, c.allowed)
+				}
+			}
+			if s := g.llm.Snapshot().State; s != "idle" {
+				t.Errorf("a cancel changed the LLM runtime: %q", s)
+			}
+		})
+	}
 }
 
 // Whatever a path looks like before it is cleaned, a request with no credential
