@@ -1,8 +1,13 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
+	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -164,8 +169,9 @@ func TestABusyReadNamesItsStep(t *testing.T) {
 	}
 }
 
-// Any failure, not only a busy one: a database it can't read has settings it isn't showing.
-func TestAnUnreadableDatabaseIsAnErrorNotTheDefaults(t *testing.T) {
+// doctor on a database it can't read: that first and plain, everything else it can still say, and a
+// failing exit. Exit 0 with default settings was the bug.
+func TestDoctorReportsAnUnreadableDatabaseAndCarriesOn(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "root")
 	r, err := root.Init(dir)
 	if err != nil {
@@ -174,12 +180,113 @@ func TestAnUnreadableDatabaseIsAnErrorNotTheDefaults(t *testing.T) {
 	if err := os.WriteFile(r.DB(), []byte("this is not a database, and is long enough to be read as one"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, out := runApp(t, "--root", dir, "doctor")
-	if code == 0 {
-		t.Errorf("doctor reported on the defaults: %s", out)
+	var out, errb bytes.Buffer
+	a := app()
+	a.Stdout, a.Stderr = &out, &errb
+	if code := a.Run([]string{"--root", dir, "doctor"}); code != 1 {
+		t.Errorf("exit %d", code)
 	}
-	if !strings.Contains(out, "the database") && !strings.Contains(out, "saved settings") {
-		t.Errorf("doesn't say which step: %s", out)
+	if !strings.HasPrefix(errb.String(), "Database: opening the database:") {
+		t.Errorf("stderr: %s", errb.String())
+	}
+	for _, want := range []string{"LocalBase:", "OS:", "RAM:"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q: %s", want, out.String())
+		}
+	}
+	if strings.Contains(out.String(), "Parallel Slots") {
+		t.Errorf("reports the defaults as settings: %s", out.String())
+	}
+	out.Reset()
+	errb.Reset()
+	a = app()
+	a.Stdout, a.Stderr = &out, &errb
+	if code := a.Run([]string{"--root", dir, "--json", "doctor"}); code != 1 {
+		t.Errorf("--json exit %d", code)
+	}
+	var env struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("%v: %s", err, out.String())
+	}
+	problem, _ := env.Data["databaseProblem"].(map[string]any)
+	if problem["reason"] != "database_unreadable" || env.Data["hardware"] == nil || env.Data["configuration"] != nil {
+		t.Errorf("%v", env.Data)
+	}
+	// Other commands have nothing to say without it.
+	if code, said := runApp(t, "--root", dir, "models", "catalog"); code == 0 || !strings.Contains(said, "opening the database") {
+		t.Errorf("models catalog: %d %s", code, said)
+	}
+}
+
+// diagnostics still makes the bundle, and says in it and on the console what it couldn't read.
+func TestDiagnosticsReportsWhatItCouldNotRead(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "root")
+	r, err := root.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(r.DB(), []byte("this is not a database, and is long enough to be read as one"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), "report.zip")
+	code, said := runApp(t, "--root", dir, "diagnostics", "--output", bundle)
+	if code != 0 {
+		t.Fatalf("%d: %s", code, said)
+	}
+	if !strings.Contains(said, "Could not read: opening the database:") {
+		t.Errorf("console: %s", said)
+	}
+	zr, err := zip.OpenReader(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	found := false
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		found = strings.Contains(string(b), `"readProblems"`) && strings.Contains(string(b), "opening the database")
+		if strings.Contains(string(b), dir) && strings.Contains(string(b), "not a database") {
+			t.Log("the root path appears elsewhere in the manifest, as it did")
+		}
+	}
+	if !found {
+		t.Error("the manifest doesn't list the read that failed")
+	}
+}
+
+// And a peak read that fails partway, which used to be silent.
+func TestDiagnosticModelsListsAFailedPeakRead(t *testing.T) {
+	cat, err := catalog.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec *catalog.Spec
+	for _, s := range cat.All() {
+		if s.Primary().SHA256 != "" {
+			spec = s
+			break
+		}
+	}
+	st, hold := busyRead(t)
+	hold()
+	problems := &readProblems{dir: t.TempDir()}
+	cfg := &store.Config{Active: map[string]string{spec.Kind: spec.ModelID}, Selected: map[string][]string{spec.Kind: {spec.ModelID}}}
+	diagnosticModels(context.Background(), problems.dir, st, cat, cfg, 64, problems)
+	if len(problems.text) == 0 || !strings.Contains(strings.Join(problems.text, "\n"), "reading the memory peaks seen for "+spec.ModelID+": the database is busy") {
+		t.Errorf("%v", problems.text)
 	}
 }
 
@@ -231,11 +338,9 @@ func TestNoSettingsYetIsStillTheDefaults(t *testing.T) {
 }
 
 // The same habit that has bitten three times: a store read whose error is thrown away reads as nothing
-// there. New ones fail here; the list says why each exception is one.
+// there. New ones fail here; the list would say why each exception is one, and is empty.
 func TestNoStoreReadThrowsAwayItsError(t *testing.T) {
-	exceptions := map[string]string{
-		"diagnostics.go": "a bundle gathers what it can and must still be written when the database is busy; it doesn't yet say a peak read failed",
-	}
+	exceptions := map[string]string{}
 	swallowed := regexp.MustCompile(`, _ :?= (e\.Store|st|store)\.[A-Z]\w*\(`)
 	files, err := filepath.Glob("*.go")
 	if err != nil {

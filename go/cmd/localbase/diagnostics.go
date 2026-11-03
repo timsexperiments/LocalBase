@@ -94,6 +94,22 @@ func nullable[T any](p *T) any {
 	return jsjson.FromGo(*p)
 }
 
+// readProblems are the reads a bundle had to go without: the step and the reason, with no paths.
+type readProblems struct {
+	dir  string
+	list []any
+	text []string
+}
+
+func (p *readProblems) add(step string, err error) {
+	reason := "the database is busy"
+	if !store.IsBusy(err) {
+		reason = strings.ReplaceAll(err.Error(), p.dir, "<root>")
+	}
+	p.list = append(p.list, object("step", step, "reason", reason))
+	p.text = append(p.text, step+": "+reason)
+}
+
 func runDiagnostics(c *cli.Ctx) (any, error) {
 	requested := c.String("output")
 	if c.Has("output") && (requested == "" || len(requested) > 4096) {
@@ -111,11 +127,14 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	hardware := available(object("os", specs.OSName, "arch", nodeArch(), "cpu", specs.CPUModel, "gpu", specs.GPUName,
 		"memoryGb", float64(specs.RAMGB), "vramGb", float64(specs.GPUVramGB)))
 
+	// The bundle is how a damaged root gets reported, so a read that fails doesn't stop it. It says so.
+	problems := &readProblems{dir: dir}
 	// The database, read-only: no section creates or migrates it.
 	var st *store.Store
 	if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
 		if st, err = store.OpenReadOnly(filepath.Join(dir, "local-base.db")); err != nil {
 			st = nil
+			problems.add("opening the database", err)
 		}
 	}
 	if st != nil {
@@ -125,7 +144,11 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	cat, catErr := catalog.LoadRoot(dir, nil)
 	configuration := unavailable("configuration_unavailable")
 	if st != nil && catErr == nil {
-		if loaded, err := st.LoadConfig(ctx); err == nil {
+		loaded, err := st.LoadConfig(ctx)
+		if err != nil && !errors.Is(err, store.ErrNotConfigured) {
+			problems.add("reading the saved settings", err)
+		}
+		if err == nil {
 			cfg = loaded
 			var parallel any = cfg.Parallel
 			if n, err := strconv.Atoi(cfg.Parallel); err == nil {
@@ -144,7 +167,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	models := unavailable("models_unavailable")
 	var modelData *jsjson.Object
 	if cfg != nil {
-		modelData = diagnosticModels(ctx, dir, st, cat, cfg, systemGB)
+		modelData = diagnosticModels(ctx, dir, st, cat, cfg, systemGB, problems)
 		models = available(modelData)
 	}
 
@@ -221,6 +244,9 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	if unfinished != "" {
 		manifest.Set("database", unavailable("unfinished_write"))
 	}
+	if len(problems.list) > 0 {
+		manifest.Set("readProblems", problems.list)
+	}
 	entries := []zipEntry{
 		{"manifest.json", append(jsjson.Indent(manifest), '\n')},
 		{"logs/events.jsonl", logText.Bytes()},
@@ -234,6 +260,9 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	c.Info("Created diagnostics bundle: %s", path)
+	for _, line := range problems.text {
+		c.Info("Could not read: %s", line)
+	}
 	if unfinished != "" {
 		c.Info("%s", unfinished)
 	}
@@ -287,7 +316,7 @@ func boundedDiagnosticLogs(events []*obs.Event) ([]*jsjson.Object, int, error) {
 // diagnosticModels lists selected or installed catalog models with their
 // provenance, capabilities and memory figure, plus catalog problems and
 // the feed's state.
-func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *catalog.Catalog, cfg *store.Config, systemGB int) *jsjson.Object {
+func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *catalog.Catalog, cfg *store.Config, systemGB int, problems *readProblems) *jsjson.Object {
 	selected, active := map[string]bool{}, map[string]bool{}
 	for _, k := range store.Kinds {
 		for _, id := range cfg.Selected[k] {
@@ -304,7 +333,10 @@ func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *cat
 		}
 		var observed []store.ObservedPeak
 		if sha := s.Primary().SHA256; st != nil && sha != "" {
-			observed, _ = st.ObservedPeaks(ctx, s.ModelID, sha)
+			var err error
+			if observed, err = st.ObservedPeaks(ctx, s.ModelID, sha); err != nil {
+				problems.add("reading the memory peaks seen for "+s.ModelID, err)
+			}
 		}
 		fit := runtime.FitFor(s, systemGB, nil, observed, cat.PlannableFeedPeaks(s))
 		report := runtime.CapabilitiesFor(ctx, st, cat, s, modelDir)

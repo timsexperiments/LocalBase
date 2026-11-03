@@ -28,6 +28,19 @@ import (
 // readEnv is the environment of listing commands: it never creates the root
 // or the database. Without a database the defaults stand in, as TS does.
 func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
+	e, err := readEnvKeepingProblems(c, persisted)
+	if err != nil {
+		return nil, err
+	}
+	if e.DatabaseProblem != nil {
+		return nil, e.DatabaseProblem
+	}
+	return e, nil
+}
+
+// readEnvKeepingProblems is readEnv for doctor, which still has things to say about a database it
+// can't read: the problem is in DatabaseProblem, with no Store and default settings.
+func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 	if err := checkOtelEnvironment(); err != nil {
 		return nil, err
 	}
@@ -52,14 +65,15 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		// be wrong, and exit 0.
 		st, err := store.OpenReadOnly(e.Root.DB())
 		if err != nil {
-			return nil, &failedRead{"opening the database", err}
-		}
-		e.Store = st
-		if persisted {
-			afterReadOpen()
-			if e.Config, err = persistedConfig(st); err != nil {
-				_ = st.Close() // Read-only.
-				return nil, err
+			e.DatabaseProblem = &failedRead{"opening the database", err}
+		} else {
+			e.Store = st
+			if persisted {
+				afterReadOpen()
+				if e.Config, err = persistedConfig(st); err != nil {
+					_ = st.Close() // Read-only.
+					e.Store, e.Config, e.DatabaseProblem = nil, nil, err
+				}
 			}
 		}
 	}

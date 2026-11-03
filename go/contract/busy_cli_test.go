@@ -51,15 +51,19 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 	}
 	// A script gets the same, with a reason it can branch on.
 	r := e.cli(nil, "--json", "doctor")
+	// doctor reports the database and carries on, so this is its data, with a failing exit.
 	var out struct {
-		Error struct {
-			Code, Reason string
-		} `json:"error"`
+		Data struct {
+			DatabaseProblem struct {
+				Message, Reason string
+			} `json:"databaseProblem"`
+			Hardware any `json:"hardware"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(r.stdout), &out); err != nil {
 		t.Fatalf("%s: %v", r.stdout, err)
 	}
-	if r.code == 0 || out.Error.Reason != "database_busy" {
+	if r.code == 0 || out.Data.DatabaseProblem.Reason != "database_busy" || out.Data.Hardware == nil {
 		t.Errorf("--json doctor: %d %s", r.code, r.stdout)
 	}
 	if _, err := db.Exec(`ROLLBACK`); err != nil {

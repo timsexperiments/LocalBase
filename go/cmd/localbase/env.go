@@ -19,11 +19,13 @@ import (
 // the configuration. Like TS, opening a root without a config row
 // initializes the defaults.
 type env struct {
-	Root    *root.Root
-	Store   *store.Store
-	Catalog *catalog.Catalog
-	Config  *store.Config
-	Host    memory.HostProvider
+	// DatabaseProblem is why the database could not be read (readEnvKeepingProblems).
+	DatabaseProblem error
+	Root            *root.Root
+	Store           *store.Store
+	Catalog         *catalog.Catalog
+	Config          *store.Config
+	Host            memory.HostProvider
 }
 
 func (e *env) Close() {
