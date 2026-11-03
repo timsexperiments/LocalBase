@@ -156,6 +156,8 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
 // again" waits for that to clear, because a retry before then is refused too.
 let refusedWord = null;
 let refusedFree = null;
+// What's free moves by a gigabyte or so by itself. Only more than that is memory coming back.
+const memoryBack = 2;
 const stripFree = (strip) => {
   const n = parseInt(strip?.querySelector("[data-strip-free]")?.textContent ?? "", 10);
   return Number.isNaN(n) ? null : n;
@@ -166,7 +168,7 @@ function showRefused() {
   const word = strip?.querySelector("[data-strip-word]");
   if (!word) return;
   const free = stripFree(strip);
-  if (refusedFree !== null && free !== null && free > refusedFree) {
+  if (refusedFree !== null && free !== null && free >= refusedFree + memoryBack) {
     if (strip.classList.contains("strip-settling")) return;
     if (!strip.classList.contains("strip-short")) {
       word.textContent = "Memory freed. Try again.";
