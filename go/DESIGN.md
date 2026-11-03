@@ -616,6 +616,8 @@ Deliberate differences the contract suite found and kept:
   starts it again. TS restarts in the background with bounded backoff.
 - With several sign-in providers, a binding or invitation that names none answers
   400 `issuer_required`, where TS accepts the request (§13.6, item 5b).
+- A sign-in provider added without `--permissions` gives nothing, where TS gives
+  its default permissions (§13.6, item 5c).
 
 ### M1 (done 2026-10-19)
 
