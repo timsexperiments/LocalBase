@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -307,7 +308,7 @@ func (d Definition) write(rootDir string) error {
 		if err := os.MkdirAll(filepath.Join(rootDir, "logs"), 0o700); err != nil {
 			return err
 		}
-		f, err := os.OpenFile(filepath.Join(rootDir, "logs", "service-stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		f, err := obs.OpenOwnedRegular(filepath.Join(rootDir, "logs", "service-stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND)
 		if err != nil {
 			return err
 		}
