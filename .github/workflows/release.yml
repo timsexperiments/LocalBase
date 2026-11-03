@@ -1,9 +1,9 @@
-name: Release
+name: Release (legacy TypeScript)
 
+# Legacy: builds and publishes the TypeScript binary only. Version tags now
+# trigger release-go.yml, so this runs only by hand until src/ is removed.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
