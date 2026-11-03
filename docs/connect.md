@@ -51,11 +51,35 @@ Each client marked "not run" is a good first contribution if you already use it.
 
 If it works, the change is one line: set `Run: true` for that client in `internal/connect/clients.go`, and add it to the list in `TestClientsSayWhetherTheyWereRun`. If a field is wrong, fix the snippet there too.
 
-## What will not work
+## Limits: what will not work
 
 - **Anything that needs `/v1/responses`, `/v1/completions` or Anthropic's `/v1/messages`.** LocalBase serves chat completions. As of the last check, Codex CLI only speaks the Responses API.
 - **A key used from a web page.** A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key, and there are no CORS headers. Run your code on a server or in Node.
 - **A service that calls the address from its own servers.** It cannot reach `127.0.0.1` on your computer, only a public address. Cursor works this way, and its forum also reports that Agent mode needs the Responses API.
 - **Open WebUI in Docker using `127.0.0.1`.** That is the container itself: use an address the container can reach.
+- **Anything beyond chat, with a key from `--create-key`.** It can chat and list models, and nothing else. For more, choose its permissions with `--scopes`.
 
 If you publish LocalBase through Cloudflare Access, an app also has to get past Access at the edge, with a service token or a bypass rule for `/v1/*`. LocalBase still checks the key.
+
+## Privacy
+
+- **`local-base connect` uses no network,** and changes nothing unless you pass `--create-key`. Without it, the snippets hold the placeholder `YOUR_LOCALBASE_KEY`.
+- **A new key is shown once.** LocalBase keeps only its hash, so it can't show it again. A file you send a snippet into holds the key in plain text, so keep that file private and out of version control. Unless you pass `--expires-days`, the key doesn't expire. Revoke it with `local-base keys revoke <keyId>`.
+- **Creating a key goes in the audit log,** without its secret.
+- **A chat request from an app isn't stored.** LocalBase [counts it](usage.md), and keeps no prompt or reply. What the client does with them, such as keeping a history or also using another service, is up to the client.
+
+## Troubleshooting
+
+| It says, or you see | What to do |
+| --- | --- |
+| `Unknown client "<name>". Expected one of: …` | Use a name from that list, or see them all with `local-base connect --list` |
+| `--name only applies with --create-key` | The same goes for `--scopes` and `--expires-days`: add `--create-key`, or leave them off |
+| `model: no chat model is installed yet.` | Run `local-base models install <id>` |
+| `model: "<id>" is not an installed chat model. Expected one of: …` | Use an id from that list |
+| Connection refused | Check `local-base status`. On another computer or in a container, `127.0.0.1` isn't this computer, so use an address it can reach |
+| `401` with `invalid_api_key` | The key is missing or not accepted. A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key, so this is also what a web page gets |
+| `403` with `insufficient_permissions` | The key lacks the permission. A key from `--create-key` has only `inference:chat` and `models:read`, unless you chose `--scopes` |
+| `404` with `model_not_found` | The app is asking for an id that isn't there. Check `GET /v1/models` |
+| `404` on `/v1/responses`, `/v1/completions` or `/v1/messages` | LocalBase doesn't serve these. See [Limits](#limits-what-will-not-work) |
+
+The full list of answers is in the [API reference](api-reference.md).
