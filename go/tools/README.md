@@ -24,6 +24,26 @@ themselves.
 
 Nothing is installed system-wide.
 
+## Pointing a tool at Chrome (`LBGO_CHROME`)
+
+**Start any Chrome for testing with `--use-mock-keychain --password-store=basic`.** A current
+Chrome on macOS encrypts cookies with a key from the Keychain. Without those flags it can
+stall forever on its first navigation to an `http://` page in the default profile, and it
+can put a Keychain prompt on the screen of whoever owns the machine. Measured on Chrome for
+Testing 156: `Page.navigate` still had not returned after 40 s without them, and took 2-3 ms
+with them. They are also what Puppeteer and Playwright pass.
+
+For any script that starts Chrome:
+
+- Pass both flags, whichever Chrome `LBGO_CHROME` names.
+- Give each run a new `--user-data-dir` in scratch, and a debugging port from your own block.
+- Start it in its own process group, and stop that group on every way out, including a
+  watcher for when the script itself is killed. `tools/e2e/main.go` shows all of this.
+
+A tab in its own `Target.createBrowserContext` happens not to stall, because that context
+keeps no cookies on disk. Don't rely on that: it doesn't cover anything else in the browser
+that wants the key. Use the flags.
+
 ## Anything fetched
 
 **Nothing fetched is unpacked or run until its checksum has matched, and the first mismatch
