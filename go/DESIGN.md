@@ -4911,6 +4911,14 @@ seconds, could push out everything older, including the record of who changed wh
   the rest at shutdown. A change someone made is always written. The limit is shared, so one key's refusals can crowd
   out another's: those are counted, not named. At 20 lines a minute, turning over what the file keeps would take more
   than five days of refusals without a pause.
+- **Two tiers of change.** A change of who can do what, on `/_localbase/api-keys` or `/_localbase/access-management`, is
+  always written: only `keys:manage` and `access:manage` can make one, and those holders can do worse already. A change on
+  a route `models:manage` can use (model management, unload, placement, default models, backend, imports, discovery,
+  the Hugging Face token, voices, the computer name) shares one limit of 20 lines a minute, apart from the refusals':
+  otherwise a key with only `models:manage` could push out who changed keys and access. The rest are counted by area and
+  said in one `audit.changes-summary`, when the next change after that minute is written and at shutdown, with the count
+  and `areas`, such as `placement=12,unload=3`. A flood's own changes are counted, not named. The count is kept by area
+  name, from a list fixed in the code, so a caller's ids can't grow it. Every command-line change is written.
 - **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
   summed in one `http.anonymous-summary` when a request arrives after that minute, and at shutdown. A flood of 20,000 now writes
   under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or

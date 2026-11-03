@@ -88,6 +88,9 @@ type Server struct {
 	// refusedAudit keeps refused changes small in the audit file. Any key can be refused, and the
 	// same file says who changed what.
 	refusedAudit *obs.Sampler
+	// changeAudit limits the changes on routes that keys:manage and access:manage don't guard, whose
+	// holders could otherwise push the record of who changed keys and access out of the file.
+	changeAudit *changeLimiter
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
@@ -123,6 +126,7 @@ func New(s *Server) *Server {
 	s.runs = newRunManager(s, runsDir)
 	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
 	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
+	s.changeAudit = newChangeLimiter()
 	go s.runs.janitor()
 	mux := newRouteMux()
 	mux.HandleFunc("/health", s.health)
@@ -134,7 +138,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/health/ready", s.ready)
 	mux.HandleFunc("/_localbase/instance", s.instance)
 	mux.HandleFunc("/_localbase/host", s.guard("models:read", s.hostAPI))
-	mux.HandleFunc("/_localbase/computer-name", s.computerNameAPI)
+	mux.HandleFunc("/_localbase/computer-name", s.auditedRoute("computer-name", computerNameChange, s.computerNameAPI))
 	mux.HandleFunc("/_localbase/default-model", s.defaultModel) // for the local CLI: an empty 404 without its instance token, by design
 	mux.HandleFunc("/_localbase/placement-state", s.placementRuntimeState)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
@@ -154,24 +158,24 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/runs", s.guard("", s.runsList))
 	mux.HandleFunc("/_localbase/runs/{rest...}", s.guard("", s.runRoute))
 	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
-	mux.HandleFunc("/_localbase/models/{model_id...}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/_localbase/models/{model_id...}", s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
 		s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)
-	})
+	}))
 	mux.HandleFunc("/_localbase/access-management", s.audited("access", s.accessManagement))
 	mux.HandleFunc("/_localbase/api-keys", s.audited("api-key", s.apiKeys))
-	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
+	mux.HandleFunc("/_localbase/hf-token", s.auditedRoute("hf-token", hfTokenChange, s.hfToken))
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
-	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
-	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
-	mux.HandleFunc("/_localbase/default-chat-models", s.defaultChatModelsAPI)
-	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)
-	mux.HandleFunc("/_localbase/model-imports", s.modelImportsAPI)
+	mux.HandleFunc("/_localbase/model-backend", s.auditedRoute("backend", backendChange, s.modelBackendAPI))
+	mux.HandleFunc("/_localbase/model-management", s.auditedRoute("models", modelsChange, s.modelManagementAPI))
+	mux.HandleFunc("/_localbase/default-chat-models", s.auditedRoute("default-models", defaultModelsChange, s.defaultChatModelsAPI))
+	mux.HandleFunc("/_localbase/model-discovery", s.auditedRoute("discovery", discoveryChange, s.modelDiscoveryAPI))
+	mux.HandleFunc("/_localbase/model-imports", s.auditedRoute("imports", importsChange, s.modelImportsAPI))
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/local-sessions", s.localSessionsAPI)
 	mux.HandleFunc("/_localbase/usage", s.usageAPI)
 	mux.HandleFunc("/_localbase/update", s.updateAPI)
-	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
-	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
+	mux.HandleFunc("/_localbase/voices", s.auditedRoute("voices", voicesChange, s.voicesAPI))
+	mux.HandleFunc("/_localbase/voices/", s.auditedRoute("voices", voicesChange, s.voicesAPI))
 	if s.UI != nil {
 		mux.Handle("/app", s.UI)
 		mux.Handle("/app/", s.UI)
@@ -199,6 +203,7 @@ func (s *Server) LogHeldBack() {
 	if held > 0 || s.anonRefused.Load() > 0 || s.anonAdminRefused.Load() > 0 {
 		s.anonymousSummary(held)
 	}
+	s.changeSummary(s.changeAudit.drain(time.Now()))
 	if held := s.refusedAudit.Drain(time.Now()); held > 0 {
 		s.Log.Warn("Refused changes were counted rather than logged.", "event", "audit.refused-summary", "held_back", held)
 	}

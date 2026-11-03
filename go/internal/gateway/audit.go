@@ -54,40 +54,13 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		if !refused && (in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery") {
 			return
 		}
-		// The principal the handler resolved (never resolved twice).
-		var p *auth.Principal
-		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
-			p = bp
-		} else if outer, ok := r.Context().Value(recKey{}).(*recorder); ok {
-			p = outer.auth
-		}
-		if p == nil && s.NoAuth {
-			p = &auth.Principal{Kind: "environment"}
-		}
 		kind, id := auditTarget(in.Action, in.KeyID, in.RegistrationID, in.Registration.ID, rec.body.Bytes())
-		actorKind, actorID := "", ""
-		if p != nil {
-			actorKind, actorID = p.Kind, p.ID
-		}
-		if refused && (actorKind == "" || actorKind == "anonymous") {
-			s.anonAdminRefused.Add(1)
-			return // anyone can send these, so they're counted, not audited
-		}
+		actorKind, actorID := s.auditActor(r)
 		if refused {
-			now := time.Now()
-			if !s.refusedAudit.Allow(now) {
-				return
-			}
-			action := in.Action
-			if !auditActionRe.MatchString(action) {
-				action = ""
-			}
 			if !auditKeyIDRe.MatchString(id) {
 				id = ""
 			}
-			s.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
-				"target_kind", kind, "target_id", id, "status", rec.status, "reason", auditReason(rec.body.Bytes()),
-				"held_back", s.refusedAudit.Flush(now))
+			s.auditRefused(area, in.Action, actorKind, actorID, kind, id, rec.status, rec.body.Bytes())
 			return
 		}
 		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}
@@ -96,6 +69,48 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		}
 		s.Log.Info("Administration change.", attrs...)
 	}
+}
+
+// auditActor is who made a request, from the principal the handler resolved (never resolved
+// twice), or the local command line holding the instance token.
+func (s *Server) auditActor(r *http.Request) (kind, id string) {
+	var p *auth.Principal
+	if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
+		p = bp
+	} else if outer, ok := r.Context().Value(recKey{}).(*recorder); ok {
+		p = outer.auth
+	}
+	if p == nil && s.NoAuth {
+		p = &auth.Principal{Kind: "environment"}
+	}
+	if p != nil && p.Kind != "anonymous" {
+		return p.Kind, p.ID
+	}
+	if s.localCLI(r) {
+		return "cli", ""
+	}
+	if p != nil {
+		return p.Kind, p.ID
+	}
+	return "", ""
+}
+
+// auditRefused logs a refused change, a few a minute. id is already known to be safe to log.
+func (s *Server) auditRefused(area, action, actorKind, actorID, targetKind, id string, status int, response []byte) {
+	if actorKind == "" || actorKind == "anonymous" {
+		s.anonAdminRefused.Add(1)
+		return // anyone can send these, so they're counted, not audited
+	}
+	now := time.Now()
+	if !s.refusedAudit.Allow(now) {
+		return
+	}
+	if !auditActionRe.MatchString(action) {
+		action = ""
+	}
+	s.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
+		"target_kind", targetKind, "target_id", id, "status", status, "reason", auditReason(response),
+		"held_back", s.refusedAudit.Flush(now))
 }
 
 // auditReason is the error code of a refusal: this gateway's own words.
