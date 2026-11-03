@@ -68,12 +68,11 @@ func TestOIDCStateReplayed(t *testing.T) {
 func TestOIDCStateExpired(t *testing.T) {
 	b, f := oidcFixture(t)
 	refused(t, "expired state", login(t, b, f, func(q url.Values, s *http.Cookie) *http.Cookie {
-		b.mu.Lock()
-		st := b.states[q.Get("state")]
-		st.expires = time.Now().Add(-time.Second)
-		b.states[q.Get("state")] = st
-		b.mu.Unlock()
-		return s
+		old := b.newLoginState(b.Config.Provider.Registrations[0].ID, time.Now().Add(-time.Second))
+		st, _ := b.loginStateOf(old)
+		f.challenge, f.nonce = s256(st.verifier), st.nonce // only its age is wrong
+		q.Set("state", old)
+		return &http.Cookie{Name: s.Name, Value: old}
 	}))
 }
 

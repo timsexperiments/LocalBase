@@ -4896,6 +4896,17 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+### 31.6 What anyone can cost
+
+Sign-in routes answer without credentials, so what they keep and what they start can't grow with requests.
+
+**A sign-in in progress keeps nothing on the server.** There used to be a table of 128 entries with random
+eviction, so about 1000 anonymous requests to `/app/login` made a person's sign-in in progress fail. Now the
+state carries its own expiry and a MAC under a key made at start, the PKCE verifier and the nonce are derived
+from it, and the browser holds it in the same cookie as before. Nothing is left to push out. A state still
+works once: only one that has been used is remembered, up to 128 until they'd have expired, and if a flood of
+real sign-ins forgets one, the provider's single-use code still holds. A restart still ends a sign-in in progress.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's

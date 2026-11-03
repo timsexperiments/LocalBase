@@ -2,9 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,7 +34,8 @@ const (
 	loginStateCookie  = "__Host-localbase-login-state"
 	SessionCookie     = "__Host-localbase-session"
 	loginStateTTL     = 10 * time.Minute
-	maxLoginStates    = 128
+	loginStateRandom  = 24
+	maxSpentStates    = 128
 	maxIdPResponse    = 64 * 1024
 	OIDCCallbackPath  = "/oidc/callback"
 	MagicCallbackPath = "/magic-link/callback"
@@ -56,7 +60,11 @@ type Browser struct {
 	cfJWKS *JWKS
 	oidc   map[string]*oidcRuntime
 	mu     sync.Mutex
-	states map[string]loginState
+	// stateKey signs login states. It lives as long as this process, as a sign-in in
+	// progress does.
+	stateKey []byte
+	// spent holds states already used, until they would have expired anyway.
+	spent map[string]time.Time
 }
 
 type oidcRuntime struct {
@@ -86,7 +94,10 @@ type loginState struct {
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
 	b := &Browser{Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
-		oidc: map[string]*oidcRuntime{}, states: map[string]loginState{}}
+		oidc: map[string]*oidcRuntime{}, spent: map[string]time.Time{}, stateKey: make([]byte, 32)}
+	if _, err := rand.Read(b.stateKey); err != nil {
+		panic(err) // never, since Go 1.24
+	}
 	if cfg == nil {
 		return b
 	}
@@ -348,19 +359,70 @@ func (b *Browser) metadata(ctx context.Context, rt *oidcRuntime) (*oidcMetadata,
 	return rt.meta, nil
 }
 
-func (b *Browser) pruneStates() {
-	t := time.Now()
-	for k, s := range b.states {
-		if !s.expires.After(t) {
-			delete(b.states, k)
+// A sign-in in progress keeps nothing on the server, so requests from anyone can't push
+// out someone else's. The state carries its own expiry and a MAC, the PKCE verifier and the
+// nonce are derived from it under a key that stays here, and the browser holds it in a
+// cookie. Only a state that has been used is remembered, so it works once.
+
+func (b *Browser) loginStateMAC(purpose, registration string, data []byte) []byte {
+	m := hmac.New(sha256.New, b.stateKey)
+	fmt.Fprintf(m, "%s\x00%s\x00", purpose, registration)
+	m.Write(data)
+	return m.Sum(nil)
+}
+
+// newLoginState makes the state value for a registration.
+func (b *Browser) newLoginState(registration string, expires time.Time) string {
+	body := make([]byte, loginStateRandom+8)
+	if _, err := rand.Read(body[:loginStateRandom]); err != nil {
+		panic(err) // never, since Go 1.24
+	}
+	binary.BigEndian.PutUint64(body[loginStateRandom:], uint64(expires.Unix()))
+	return base64.RawURLEncoding.EncodeToString(append(body, b.loginStateMAC("state", registration, body)...))
+}
+
+// loginStateOf gives what a state value stands for, if this process made it for a
+// registration that is still configured.
+func (b *Browser) loginStateOf(value string) (loginState, bool) {
+	raw, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(raw) != loginStateRandom+8+sha256.Size {
+		return loginState{}, false
+	}
+	body, mac := raw[:loginStateRandom+8], raw[loginStateRandom+8:]
+	for id := range b.oidc {
+		if hmac.Equal(mac, b.loginStateMAC("state", id, body)) {
+			derive := func(purpose string) string {
+				return base64.RawURLEncoding.EncodeToString(b.loginStateMAC(purpose, id, body))
+			}
+			return loginState{registration: id, verifier: derive("verifier"), nonce: derive("nonce"),
+				expires: time.Unix(int64(binary.BigEndian.Uint64(body[loginStateRandom:])), 0)}, true
 		}
 	}
-	for len(b.states) >= maxLoginStates {
-		for k := range b.states {
-			delete(b.states, k)
+	return loginState{}, false
+}
+
+// spendLoginState reports whether a state is being used for the first time. If this ever
+// forgets one, under a flood of real sign-ins, the provider's single-use code still holds.
+func (b *Browser) spendLoginState(value string, expires time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, used := b.spent[value]; used {
+		return false
+	}
+	t := time.Now()
+	for k, until := range b.spent {
+		if !until.After(t) {
+			delete(b.spent, k)
+		}
+	}
+	for len(b.spent) >= maxSpentStates {
+		for k := range b.spent {
+			delete(b.spent, k)
 			break
 		}
 	}
+	b.spent[value] = expires
+	return true
 }
 
 // StartLogin serves GET /app/login: a provider choice, a magic-link form,
@@ -423,11 +485,9 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 		Deny(w, 503)
 		return
 	}
-	state, verifier, nonce := RandomToken(32), RandomToken(64), RandomToken(32)
-	b.mu.Lock()
-	b.pruneStates()
-	b.states[state] = loginState{registration: reg.ID, verifier: verifier, nonce: nonce, expires: time.Now().Add(loginStateTTL)}
-	b.mu.Unlock()
+	state := b.newLoginState(reg.ID, time.Now().Add(loginStateTTL))
+	started, _ := b.loginStateOf(state)
+	verifier, nonce := started.verifier, started.nonce
 	authz, _ := url.Parse(m.AuthorizationEndpoint)
 	q := authz.Query()
 	for k, v := range map[string]string{"response_type": "code", "client_id": reg.ClientID,
@@ -449,10 +509,8 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	stateValue := q.Get("state")
-	b.mu.Lock()
-	state, ok := b.states[stateValue]
-	delete(b.states, stateValue)
-	b.mu.Unlock()
+	state, ok := b.loginStateOf(stateValue)
+	ok = ok && b.spendLoginState(stateValue, state.expires)
 	failed := func() { redirect(w, b.Config.Origin+"/app?signin=failed", clearCookie(loginStateCookie)) }
 	cookieState := cookie(r, loginStateCookie)
 	if !ok || !state.expires.After(time.Now()) || subtle.ConstantTimeCompare([]byte(stateValue), []byte(cookieState)) != 1 ||
