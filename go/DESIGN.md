@@ -5289,7 +5289,7 @@ Cookie, X-Localbase-Ui: 1, same origin
 The answer has one vector per input: `data[i].embedding`, a list of numbers, with `data[i].index` saying which input it is for. **Order by `index`.** `usage.prompt_tokens` is there, and nothing else is needed from it. The shape is `EmbeddingsResponse` in `/openapi.json`, which tests hold.
 
 - **Don't send `dimensions`.** Catalog models have one size, and a wrong one is a 400. Sizes differ between models, so **vectors from two models can't be compared. Switching model clears them.**
-- **Use cosine similarity, not a dot product.** Whether vectors arrive normalized is not measured (35.6), and cosine is right either way.
+- **Use cosine similarity, not a dot product.** One real model's vectors arrive normalized (35.6), but another's may not, and cosine is right either way.
 - **Which models to offer:** selected models that are embedding models, as `decisionModels()` does for decisions: `labModels("llm")` filtered by `IsEmbedding()`. Add imported models whose task is `embeddings`. **The API answers only for a selected model,** and anything else is `404 model_not_found`, so an installed model that isn't selected must not be offered.
 - **The Studio card:** add `search` to `studioTools`, with `p.Can("inference:embeddings")` in `toolAvailable`. **The default browser role does not have this permission,** so "denied" is a real state and not an edge case. The "needs a model" link is `/app/models/get?filter=embeddings`, which works today.
 
@@ -5304,7 +5304,7 @@ These are the page's own, and they fit what the gateway accepts. They exist so t
 | In total | 2,000 passages | The vectors stay in the page: 2,000 × 4,096 numbers is about 32 MiB as `Float32Array` |
 | Request size | 25 MiB | The gateway's own limit, and the limits above stay far below it |
 
-**The most one input can hold isn't known yet** (35.6), and it may be much less than the model's context, because the backend limits one input to its batch size. So the page must handle it either way: **on `400 context_length_exceeded`, split that batch in half and retry, down to a single passage. Then split that passage in half, twice at most. If it still fails, skip it, keep going, and say which were skipped.** The error's message gives the numbers when the backend does, and it's written for a person to read, so don't parse it.
+**The most one input can hold depends on the configuration** (35.6, where it was 8124 tokens). So the page must handle it either way: **on `400 context_length_exceeded`, split that batch in half and retry, down to a single passage. Then split that passage in half, twice at most. If it still fails, skip it, keep going, and say which were skipped.** The error's message gives the numbers when the backend does, and it's written for a person to read, so don't parse it.
 
 **Splitting text** is the page's: on blank lines, then sentence ends, then spaces, and never inside a word. Keep each passage's offset in its source, so a result can show where it came from.
 
@@ -5336,15 +5336,21 @@ An embedding model loads into the same slot as a chat model, so **the first sear
 
 **Scores are not percentages.** A cosine score is only useful for comparing results of one search with one model. Show the order and a relative mark, and don't call it a percent match or a confidence.
 
-### 35.6 What isn't known yet
+### 35.6 What a real model showed
 
-The fake backend can't answer these. A short pass on a real model is agreed with the operator and Reliability, and hasn't run. Nothing above depends on the answers: **the page must work whichever way they come out.** They may change the starting numbers in 35.2, and this section gets the results.
+One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `3aa2f63c`. **It ran 2 slots at context 16384, not the default.** The plan was 3261 MiB (derived). The default of 4 slots at context 32768 was not measured: computed from the plan test data it would be 5090 MiB, and that figure has not been checked against a real load. Each slot has the same 8192 tokens either way, so what one input can hold should not change, but memory and batch timing may. The page has to work whichever way these come out.
 
-- **The most text one input can hold.** Catalog entries state a large context, but the backend also limits one input to its batch size, and the plan sets no batch size for embedding models.
-- **Time per batch,** which decides whether 32 is a good batch.
-- **Whether vectors arrive normalized.**
-- **Whether a query prefix helps.** Some embedding models are trained to expect one on the question and not on the passages. **Version 1 sends text as it is.** If the pass shows a real difference, the prefix belongs in the catalog entry, and the page reads it from there, since generic copy and code name no model.
-- **Memory while embedding,** before and after.
+| Question | Answer |
+|---|---|
+| The most text one input can hold | **8124 tokens were accepted, and larger inputs got `400 context_length_exceeded`,** with the backend naming a context of 8192. So here the limit is the slot's context, with no smaller limit from a batch size. That was 2,688 words and 25,090 characters of generated test text, so real text will differ |
+| Time per batch | **58 to 65 ms per passage,** for passages of about 455 tokens: 58 ms for 1, about 2 s for 32, about 4.1 s for 64. Larger batches weren't faster per passage, so 32 stays, because it lets progress update about every 2 s |
+| Whether vectors arrive normalized | **Yes:** 1024 dimensions, norms within 0.0000001 of 1, and the same text twice gives a cosine of 1.0000. The page still computes cosine, so another model that doesn't normalize works too |
+| Whether a query prefix helps | **No difference shown:** plain and with a prefix both gave first place 1.00 and MRR 1.000, on 16 questions over 24 passages. A corpus that small can only show a large difference, and it ranks nothing. Version 1 keeps sending text as it is |
+| Memory | Peak rss **2575 MiB** against the plan's 3261 MiB, while the same process served all of this. 2541 MiB once loaded |
+
+**The limits in 35.2 stay.** 1,000 characters is far under what one input can hold, and is there to make passages useful to search, not because the backend needs it. The split-and-retry in 35.2 has met the real answer it handles, in the backend's own words.
+
+**Not measured:** the default configuration, realistic text, requests at the same time, and a chat model being swapped out.
 
 ### 35.7 Who does what
 
