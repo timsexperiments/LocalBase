@@ -2,13 +2,16 @@ package root
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
-func mode(t *testing.T, path string) os.FileMode {
+func secureMode(t *testing.T, path string) os.FileMode {
 	t.Helper()
 	info, err := os.Stat(path)
 	if err != nil {
@@ -31,7 +34,7 @@ func TestRootIsClosedToOthers(t *testing.T) {
 		if _, err := Init(dir); err != nil {
 			t.Fatal(err)
 		}
-		if got := mode(t, dir); got != 0o700 {
+		if got := secureMode(t, dir); got != 0o700 {
 			t.Errorf("after init on a %o directory: %o", loose, got)
 		}
 		if err := os.Chmod(dir, loose); err != nil {
@@ -40,7 +43,7 @@ func TestRootIsClosedToOthers(t *testing.T) {
 		if _, err := Open(dir); err != nil {
 			t.Fatal(err)
 		}
-		if got := mode(t, dir); got != 0o700 {
+		if got := secureMode(t, dir); got != 0o700 {
 			t.Errorf("after open on a %o root: %o", loose, got)
 		}
 	}
@@ -51,7 +54,7 @@ func TestNewRootIsPrivate(t *testing.T) {
 	if _, err := Init(dir); err != nil {
 		t.Fatal(err)
 	}
-	if got := mode(t, dir); got != 0o700 {
+	if got := secureMode(t, dir); got != 0o700 {
 		t.Errorf("%o", got)
 	}
 }
@@ -63,7 +66,7 @@ func TestOpenLeavesOtherDirectoriesAlone(t *testing.T) {
 	if _, err := Open(dir); err == nil {
 		t.Fatal("opened a directory with no marker")
 	}
-	if got := mode(t, dir); got != 0o755 {
+	if got := secureMode(t, dir); got != 0o755 {
 		t.Errorf("%o", got)
 	}
 }
@@ -84,7 +87,7 @@ func TestRootOwnedByAnotherUserIsRefused(t *testing.T) {
 	if _, err := Init(dir); !errors.As(err, &unsafe) {
 		t.Errorf("init on an existing root: %v", err)
 	}
-	if got := mode(t, dir); got != 0o755 {
+	if got := secureMode(t, dir); got != 0o755 {
 		t.Errorf("changed the mode of a root it refused: %o", got)
 	}
 	empty := filepath.Join(t.TempDir(), "empty")
@@ -144,8 +147,14 @@ func TestPlantedFilesAreRefused(t *testing.T) {
 			if err := os.Chmod(path, 0o660); err != nil {
 				t.Fatal(err)
 			}
+			// Group-writable: refused, unless the group is provably the owner's alone.
+			privateGroup(t, path)
 			if _, err := Open(dir); err != nil {
-				t.Errorf("group-writable is tightened at serve, not refused: %v", err)
+				t.Errorf("group-writable in a private group: %v", err)
+			}
+			accounts(t, "", "", "")
+			if _, err := Open(dir); !errors.As(err, &unsafe) || unsafe.Path != path || unsafe.Problem != othersCanWrite {
+				t.Errorf("group-writable in a group that may not be private: %v", err)
 			}
 		})
 	}
@@ -291,7 +300,7 @@ func TestRefusalsSayWhatToRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Open(dir)
-	want := "Refusing to use " + file + ": other users can change it. If you trust it, run: chmod o-w '" + file + "'. If you did not put it there, remove it."
+	want := "Refusing to use " + file + ": other users can change it. If you trust it, run: chmod go-w '" + file + "'. If you did not put it there, remove it."
 	if err == nil || err.Error() != want {
 		t.Errorf("writable file:\n got %v\nwant %s", err, want)
 	}
@@ -330,5 +339,239 @@ func TestRefusalsSayWhatToRun(t *testing.T) {
 	// A user who cannot be named is still named to sudo.
 	if got := runAs(-7); !strings.Contains(got, "#-7") {
 		t.Errorf("%s", got)
+	}
+}
+
+// accounts points the account files at these contents, for this test. An empty string
+// leaves that file out.
+func accounts(t *testing.T, passwd, group, nsswitch string) {
+	t.Helper()
+	dir := t.TempDir()
+	set := func(target *string, name, content string) {
+		old := *target
+		*target = filepath.Join(dir, name)
+		if content != "" {
+			if err := os.WriteFile(*target, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Cleanup(func() { *target = old })
+	}
+	set(&etcPasswd, "passwd", passwd)
+	set(&etcGroup, "group", group)
+	set(&etcNSSwitch, "nsswitch", nsswitch)
+}
+
+func groupOf(t *testing.T, path string) int {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(info.Sys().(*syscall.Stat_t).Gid)
+}
+
+// privateGroup makes a path's group look like this user's own private group.
+func privateGroup(t *testing.T, path string) {
+	t.Helper()
+	gid := groupOf(t, path)
+	accounts(t, fmt.Sprintf("me:x:%d:%d::/home/me:/bin/sh\n", os.Getuid(), gid), fmt.Sprintf("me:x:%d:\n", gid), "")
+}
+
+// A group counts as other people unless it is provably the owner's alone.
+func TestGroupWritableDependsOnWhoIsInTheGroup(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o664); err != nil {
+		t.Fatal(err)
+	}
+	gid, uid := groupOf(t, file), os.Getuid()
+	me := fmt.Sprintf("me:x:%d:%d::/home/me:/bin/sh\n", uid, gid)
+	mine := fmt.Sprintf("me:x:%d:\n", gid)
+	for _, tc := range []struct {
+		name                    string
+		passwd, group, nsswitch string
+		othersCanWrite          bool
+	}{
+		{"the owner's own group", me, mine, "", false},
+		{"listing only the owner", me, fmt.Sprintf("me:x:%d:me\n", gid), "", false},
+		{"among other accounts", fmt.Sprintf("daemon:x:%d:%d::/:/bin/sh\n# a comment\n\n", uid+100, gid+100) + me, fmt.Sprintf("daemon:x:%d:\n", gid+100) + mine, "", false},
+		{"another member", me, fmt.Sprintf("me:x:%d:me,other\n", gid), "", true},
+		{"only another member", me, fmt.Sprintf("me:x:%d:other\n", gid), "", true},
+		{"another name", me, fmt.Sprintf("staff:x:%d:\n", gid), "", true},
+		{"someone else's primary group", me + fmt.Sprintf("other:x:%d:%d::/home/o:/bin/sh\n", uid+1, gid), mine, "", true},
+		{"not the owner's primary group", fmt.Sprintf("me:x:%d:%d::/home/me:/bin/sh\n", uid, gid+1), mine, "", true},
+		{"the group is not listed", me, fmt.Sprintf("me:x:%d:\n", gid+1), "", true},
+		{"the same id under a second name", me, mine + fmt.Sprintf("shared:x:%d:\n", gid), "", true},
+		{"the owner is not listed", fmt.Sprintf("daemon:x:%d:%d::/:/bin/sh\n", uid+100, gid+100), mine, "", true},
+		{"the owner is not listed, and the group has no name", fmt.Sprintf("daemon:x:%d:%d::/:/bin/sh\n", uid+100, gid+100), fmt.Sprintf(":x:%d:\n", gid), "", true},
+		{"no user file", "", mine, "", true},
+		{"no group file", me, "", "", true},
+		{"a malformed user entry", me + "broken\n", mine, "", true},
+		{"a malformed group entry", me, mine + "broken\n", "", true},
+		{"users pulled in from elsewhere", me + "+::::::\n", mine, "", true},
+		{"groups pulled in from elsewhere", me, mine + "+:::\n", "", true},
+		{"local sources", me, mine, "passwd: files systemd\ngroup: compat altfiles # local\nhosts: dns\n", false},
+		{"actions between sources", me, mine, "group: files [SUCCESS=merge] systemd\n", false},
+		{"groups from a directory", me, mine, "group: files ldap\n", true},
+		{"users from a directory", me, mine, "passwd: sss files\n", true},
+		{"other maps may use anything", me, mine, "hosts: files dns\n# group: ldap\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			accounts(t, tc.passwd, tc.group, tc.nsswitch)
+			info, err := os.Lstat(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := WritableByOthers(info); got != tc.othersCanWrite {
+				t.Errorf("WritableByOthers = %v, want %v", got, tc.othersCanWrite)
+			}
+		})
+	}
+	t.Run("an unreadable name service configuration", func(t *testing.T) {
+		accounts(t, me, mine, "")
+		dir := t.TempDir() // reading a directory fails with something other than not-found
+		old := etcNSSwitch
+		etcNSSwitch = dir
+		t.Cleanup(func() { etcNSSwitch = old })
+		info, _ := os.Lstat(file)
+		if !WritableByOthers(info) {
+			t.Error("unknown must mean refuse")
+		}
+	})
+	// Others can write: no group makes that fine. Nobody else can: no group matters.
+	accounts(t, me, mine, "")
+	for perm, want := range map[os.FileMode]bool{0o666: true, 0o646: true, 0o602: true, 0o664: false, 0o644: false, 0o600: false} {
+		if err := os.Chmod(file, perm); err != nil {
+			t.Fatal(err)
+		}
+		info, _ := os.Lstat(file)
+		if got := WritableByOthers(info); got != want {
+			t.Errorf("%o in a private group: %v", perm, got)
+		}
+	}
+	accounts(t, "", "", "")
+	for perm, want := range map[os.FileMode]bool{0o664: true, 0o660: true, 0o644: false, 0o600: false, 0o640: false} {
+		if err := os.Chmod(file, perm); err != nil {
+			t.Fatal(err)
+		}
+		info, _ := os.Lstat(file)
+		if got := WritableByOthers(info); got != want {
+			t.Errorf("%o in an unknown group: %v", perm, got)
+		}
+	}
+}
+
+// On macOS, whose accounts aren't in these files and whose files are normally in the
+// staff group shared by every local account, group-writable always counts.
+func TestMacOSNeverCountsAGroupAsPrivate(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS only")
+	}
+	file := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o664); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Lstat(file)
+	if !WritableByOthers(info) {
+		t.Error("a group-writable file on macOS")
+	}
+}
+
+// A refusal for a group says what to run, as one for others does.
+func TestGroupWritableRefusalSaysWhatToRun(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "root")
+	if _, err := Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ = filepath.EvalSymlinks(dir)
+	path := filepath.Join(dir, "backends.d")
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(path, "mine.json")
+	if err := os.WriteFile(file, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o664); err != nil {
+		t.Fatal(err)
+	}
+	accounts(t, "", "", "")
+	want := "Refusing to use " + file + ": other users can change it. If you trust it, run: chmod go-w '" + file + "'. If you did not put it there, remove it."
+	if _, err := Open(dir); err == nil || err.Error() != want {
+		t.Errorf("got %v\nwant %s", err, want)
+	}
+	// Following that advice is enough.
+	if err := os.Chmod(file, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dir); err != nil {
+		t.Errorf("after the fix: %v", err)
+	}
+}
+
+// A root someone else owns gets its own answer, even when its marker can't be read.
+func TestOpenChecksOwnersBeforeReadingTheMarker(t *testing.T) {
+	setup := func(t *testing.T) (dir, marker string) {
+		t.Helper()
+		dir = filepath.Join(t.TempDir(), "root")
+		if _, err := Init(dir); err != nil {
+			t.Fatal(err)
+		}
+		dir, _ = filepath.EvalSymlinks(dir)
+		marker = filepath.Join(dir, markerName)
+		if err := os.Chmod(marker, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Chmod(marker, 0o600) })
+		return dir, marker
+	}
+	owner := func(t *testing.T, path string) {
+		old := statOwnerHook
+		statOwnerHook = func(p string, uid int) int {
+			if p == path {
+				return uid + 1
+			}
+			return uid
+		}
+		t.Cleanup(func() { statOwnerHook = old })
+	}
+	t.Run("the root", func(t *testing.T) {
+		dir, _ := setup(t)
+		owner(t, dir)
+		var unsafe *UnsafeRootError
+		if _, err := Open(dir); !errors.As(err, &unsafe) || unsafe.Path != dir || (unsafe.Problem != otherUserOwns && unsafe.Problem != runningAsRoot) {
+			t.Errorf("%v", err)
+		}
+	})
+	t.Run("the marker", func(t *testing.T) {
+		dir, marker := setup(t)
+		owner(t, marker)
+		var unsafe *UnsafeRootError
+		if _, err := Open(dir); !errors.As(err, &unsafe) || unsafe.Path != marker || (unsafe.Problem != otherUserOwns && unsafe.Problem != runningAsRoot) {
+			t.Errorf("%v", err)
+		}
+	})
+}
+
+// Asking whether a directory is a root doesn't change it.
+func TestOpenLeavesADirectoryThatIsNotARootAlone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "plain")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(dir); err == nil || !strings.Contains(err.Error(), "not an initialized LocalBase root") {
+		t.Errorf("%v", err)
+	}
+	if got := secureMode(t, dir); got != 0o755 {
+		t.Errorf("a directory that isn't a root is now %o", got)
 	}
 }

@@ -93,6 +93,9 @@ func Open(dir string) (*Root, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkBeforeReading(dir); err != nil {
+		return nil, err
+	}
 	raw, err := os.ReadFile(filepath.Join(dir, markerName))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
