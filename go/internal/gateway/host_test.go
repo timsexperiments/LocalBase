@@ -439,3 +439,35 @@ func mustGet(t *testing.T, target string) *http.Request {
 	}
 	return r
 }
+
+// settling is there only while refusals for pressure can still happen after memory
+// has recovered, and the reading never says it otherwise.
+func TestHostSettling(t *testing.T) {
+	h := &steppedHost{}
+	h.avail.Store(60 * memory.GiB)
+	ts, _, mem := newTestGateway(t, h)
+	settling := func() (bool, bool) {
+		t.Helper()
+		_, m := getJSON(t, ts.URL+"/_localbase/host")
+		v, present := hostMem(m)["settling"]
+		return v == true, present
+	}
+	if _, present := settling(); present {
+		t.Error("settling on a healthy host")
+	}
+	h.avail.Store(1 * memory.GiB)
+	mem.Poll(context.Background())
+	if _, present := settling(); present {
+		t.Error("settling while memory is still low")
+	}
+	h.avail.Store(60 * memory.GiB)
+	mem.Poll(context.Background())
+	if on, _ := settling(); !on {
+		t.Error("not settling after memory recovered")
+	}
+	mem.Poll(context.Background())
+	mem.Poll(context.Background())
+	if _, present := settling(); present {
+		t.Error("settling after the state recovered")
+	}
+}
