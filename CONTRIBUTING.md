@@ -14,20 +14,25 @@ cd LocalBase
 make check
 ```
 
+For linting, `make ui` and release rehearsal, `make bootstrap` installs the pinned tools (golangci-lint, gitleaks, syft, Bun, mdBook) into `.cache/tools`, verified by checksum. It needs no sudo and changes nothing outside this checkout.
+
 The first `make check` downloads Go modules and compiles dependencies. From an empty cache it took about a minute on an Apple Silicon Mac. On Linux, CI runs the same Go checks; `make` itself has only been run on macOS so far, so please report anything that differs.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
+| `make bootstrap` | Install the pinned tools into `.cache/tools` |
 | `make build` | Build `go/local-base` |
 | `make run` | Run a gateway on a throwaway root in `.scratch/` (`PORT=26400` by default, runtimes on 26410-26414) |
 | `make test` | Unit tests |
 | `make race` | Unit tests with the race detector, as CI runs them |
 | `make contract` | Black-box HTTP contract suite against the Go gateway |
 | `make ui` | Installs JavaScript dependencies, then checks the compiled CSS is current and runs the browser JavaScript tests |
+| `make lint` | golangci-lint, as CI runs it |
 | `make fmt` | Format Go code |
 | `make check` | Format, vet, repo guards and unit tests |
+| `make rehearse` | Rehearse a release from local artifacts. Publishes nothing |
 
 `make hooks` optionally runs the fast checks before each commit.
 
@@ -35,7 +40,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 
 ## Linting
 
-CI runs golangci-lint v2.15.0 with `go/.golangci.yml`. To run it locally, install that version and run `golangci-lint run` from `go/`.
+CI runs golangci-lint v2.15.0 with `go/.golangci.yml`. To run it locally: `make bootstrap`, then `make lint`.
 
 `go/docs/lint-baseline.md` lists findings that haven't been reviewed. **It isn't a clean bill of health:** it includes real unchecked errors, and they're excluded rather than fixed. New code is still held to the rules. The one gap is a new call to a function already listed for that file, so don't rely on the linter to catch that.
 
