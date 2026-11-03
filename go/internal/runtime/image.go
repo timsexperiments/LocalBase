@@ -69,7 +69,7 @@ func imageModelArgs(spec *catalog.Spec, dir, weights string) (args, paths []stri
 	return append(args, generationArgs(p.Generation)...), paths
 }
 
-func (s *Service) sdServerCommand(t *Target, host string, port int, weights string) (*serviceCommand, error) {
+func (s *Service) sdServerCommand(life context.Context, t *Target, host string, port int, weights string) (*serviceCommand, error) {
 	var spec *catalog.Spec
 	if s.d.Catalog != nil && !t.Imported {
 		spec = s.d.Catalog.ByID(t.ModelID)
@@ -83,7 +83,7 @@ func (s *Service) sdServerCommand(t *Target, host string, port int, weights stri
 			return nil, fmt.Errorf("Image artifact not found: %s", p)
 		}
 	}
-	bin, err := s.binary("sd-server", t)
+	bin, err := s.binary(life, "sd-server", t)
 	if err != nil {
 		return nil, fmt.Errorf("%s is not installed on this device: %v", t.Backend.Name, err)
 	}
