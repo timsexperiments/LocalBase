@@ -249,3 +249,22 @@ func TestAdminShowsPolicyLockout(t *testing.T) {
 		t.Errorf("not shown: %.600s", out)
 	}
 }
+
+// Rows that name no sign-in provider grant nothing, and the access page says what to do.
+func TestAccessPageSaysWhatIsNotBound(t *testing.T) {
+	page := func(access string) string {
+		t.Helper()
+		u, f, _ := adminUI("access:read", "access:manage")
+		f.access = access
+		return get(u, "/app/admin?section=access").Body.String()
+	}
+	if got := page(adminAccess); strings.Contains(got, "data-unbound-bindings") {
+		t.Error("the notice shows with nothing to report")
+	}
+	got := page(strings.Replace(adminAccess, `"emailDelivery":null,`, `"emailDelivery":null,"unboundBindings":3,`, 1))
+	for _, want := range []string{"3 bindings and invitations", "local-base access bindings adopt --issuer &lt;issuer&gt;", "grant nothing"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
