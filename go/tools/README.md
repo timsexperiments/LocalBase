@@ -12,10 +12,12 @@ themselves.
 | `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `tools/fetch-ci-tools.sh <dir>` | The lint and secret-scan tools at CI's versions |
 
-Run the secret scan the way CI does, from the repository root:
-`gitleaks dir . --no-banner --redact --config .gitleaks.toml`. That scans the files as they
-stand. `gitleaks detect` scans history instead and reports other things, so its result says
-nothing about whether CI will pass.
+Run the secret scan the way CI does, from the repository root. CI runs both of these, and
+one passing says nothing about the other:
+
+- `gitleaks dir . --no-banner --redact --config .gitleaks.toml` scans the files as they stand.
+- `gitleaks git . --no-banner --redact --config .gitleaks.toml --log-opts=<base>..HEAD` scans
+  every commit in the pull request, so changing a value now does not clear an older commit.
 
 ## Where things go
 

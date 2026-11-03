@@ -14,4 +14,8 @@ regexes = [
   '''token=abc''',
   '''voice-0123456789ab''',
   '''qwen3moe.expert_count''',
+  '''PLANTED_OTLP_0002''',
+  '''PLANTED_OIDC_0003''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
+  '''authProfileHeaderSecret31''',
 ]
