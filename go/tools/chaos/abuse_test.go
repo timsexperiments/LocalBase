@@ -90,6 +90,9 @@ func (zeros) Read(p []byte) (int, error) {
 // cost the others nothing, and leaving frees everything.
 func TestSlowBodies(t *testing.T) {
 	ctx, g, c := start(t, lab.Options{})
+	// The baseline has the model resident: a loaded backend holds descriptors of its own (seven
+	// on Linux: three pipes, two sockets, two pidfds), and this measures only the slow clients.
+	mustChat(t, ctx, c, g, lab.ChatSmall)
 	first := settledStats(t, ctx, g, c)
 	const clients = 100
 	conns := make([]net.Conn, 0, clients)
