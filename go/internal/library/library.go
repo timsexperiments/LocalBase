@@ -90,6 +90,7 @@ func Open(r *root.Root, st *store.Store, cat *catalog.Catalog, accelerators []st
 	l.host = backends.NewHost(accelerators, reg, InstallState(r.RuntimesDir()), Packaged)
 	l.stamp = "unset"
 	l.refresh()
+	acquire.PruneStaging(r.Dir, "")
 	return l, nil
 }
 

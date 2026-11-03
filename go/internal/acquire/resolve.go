@@ -181,6 +181,9 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 	if req.Task != "" {
 		p.Task = req.Task
 	}
+	if len(p.Files) > maxPlanFiles {
+		return nil, &RefusedError{CodeTooMany, fmt.Sprintf("This has %d files, more than one import can take (%d).", len(p.Files), maxPlanFiles)}
+	}
 	p.SizeKnown = true
 	for _, f := range p.Files {
 		if f.SizeBytes <= 0 {

@@ -176,22 +176,29 @@ func modelsImportCommand() *cli.Command {
 			if plan.Task == "" {
 				return nil, cli.Inputf("the source does not say what the model does; choose --task (%s)", strings.Join(models.Tasks, ", "))
 			}
+			ctx, cancel := context.WithTimeout(ctx, acquire.ImportDeadline)
+			defer cancel()
+			last := ""
+			// Only publishing holds the root: a download can take hours.
+			fetched, err := acquire.Fetch(ctx, e.Root.Dir, plan, func(p acquire.Progress) {
+				if c.Global.JSON {
+					return
+				}
+				line := p.Phase + " " + p.File
+				if p.Total > 0 {
+					line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)
+				}
+				if line != last {
+					fmt.Fprintln(c.Stderr, line)
+					last = line
+				}
+			})
+			if err != nil {
+				return nil, err
+			}
 			var res *acquire.Result
-			err = root.WithOperation(e.Root.Dir, "install model", func() error {
-				last := ""
-				res, err = acquire.Import(ctx, e.Root.Dir, plan, func(p acquire.Progress) {
-					if c.Global.JSON {
-						return
-					}
-					line := p.Phase + " " + p.File
-					if p.Total > 0 {
-						line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)
-					}
-					if line != last {
-						fmt.Fprintln(c.Stderr, line)
-						last = line
-					}
-				})
+			err = root.WithOperation(e.Root.Dir, "install model", func() (err error) {
+				res, err = fetched.Publish()
 				return err
 			})
 			if err != nil {
