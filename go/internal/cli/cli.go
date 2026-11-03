@@ -129,12 +129,15 @@ func (c *Ctx) Line(v any) {
 
 // Command is a leaf command or a group (Run nil, Sub set).
 type Command struct {
-	Name        string
-	Summary     string
-	Usage       string // positional usage, such as "<model-id>"
-	Options     []Option
-	MinArgs     int
-	MaxArgs     int
+	Name    string
+	Summary string
+	Usage   string // positional usage, such as "<model-id>"
+	Options []Option
+	MinArgs int
+	MaxArgs int
+	// IDArg: the one positional is an id this tool generates, which may start with '-'.
+	// A token that is no option of this command is taken as that id.
+	IDArg       bool
 	Examples    []string
 	Run         func(c *Ctx) (any, error)
 	Sub         []*Command
@@ -364,6 +367,13 @@ func parseOptions(c *Ctx, cmd *Command, args []string) error {
 		}
 		o, ok := byName[name]
 		if !ok {
+			if cmd.IDArg {
+				c.Args = append(c.Args, t)
+				continue
+			}
+			if cmd.MaxArgs > 0 {
+				return Inputf("Unknown option: %s. If it is a value that starts with '-', write -- before it.", name)
+			}
 			return Inputf("Unknown option: %s", name)
 		}
 		if o.Bool {
