@@ -807,7 +807,7 @@ func TestCrashedRootIsRefusedUntilStatusRecoversIt(t *testing.T) {
 		t.Fatalf("%s%s", r.stdout, r.stderr)
 	}
 	crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
-	commands := [][]string{{"backup", "--dry-run"}, {"restore", "--dry-run", "--replace", file}}
+	commands := [][]string{{"doctor"}, {"--json", "doctor"}, {"backup", "--dry-run"}, {"restore", "--dry-run", "--replace", file}}
 	for _, args := range commands {
 		r := e.cli(nil, args...)
 		if said := r.stdout + r.stderr; r.code == 0 || !strings.Contains(said, "never finished") || !strings.Contains(said, " status") {

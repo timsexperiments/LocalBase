@@ -229,6 +229,15 @@ func isUnfinishedWrite(err error) bool {
 	return errors.As(err, &e) && e.Code() == sqlite3.SQLITE_READONLY_ROLLBACK
 }
 
+// UnfinishedWrite says what to do about a root whose database a process left mid-write, or ""
+// when there is none. It changes nothing.
+func UnfinishedWrite(ctx context.Context, rootDir string) string {
+	if err := readableDatabase(ctx, filepath.Join(rootDir, "local-base.db")); isUnfinishedWrite(err) {
+		return unfinishedWriteMessage(rootDir)
+	}
+	return ""
+}
+
 func unfinishedWriteMessage(rootDir string) string {
 	return fmt.Sprintf("The database on %s has a write that never finished, left by a process that stopped. Nothing was changed. To undo that write, run: local-base --root '%s' status. Then try again.", rootDir, rootDir)
 }
