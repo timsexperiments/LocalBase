@@ -71,6 +71,8 @@ var (
 	currentUID = os.Getuid
 	// statOwnerHook lets a test give one file another owner.
 	statOwnerHook = func(_ string, uid int) int { return uid }
+	// chmodDirectory lets a test see what a volume that refuses or ignores a chmod does.
+	chmodDirectory = os.Chmod
 	// Where the local accounts are listed (tests point these elsewhere).
 	etcPasswd   = "/etc/passwd"
 	etcGroup    = "/etc/group"
@@ -253,6 +255,9 @@ func checkOwner(dir string, info fs.FileInfo) error {
 }
 
 // closeDirectory refuses a directory this user does not own, and closes it to others.
+// What decides is the mode it has afterwards, since some volumes accept a chmod and ignore
+// it. A directory others can still change stops the root, unless the volume is read-only,
+// where nobody can. One they can only read does not: the files in it have their own modes.
 func closeDirectory(dir string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
@@ -261,10 +266,17 @@ func closeDirectory(dir string) error {
 	if err := checkOwner(dir, info); err != nil {
 		return err
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		// A failure is not fatal: a read-only volume cannot be changed by anyone
-		// here either, and serve reports what it could not tighten.
-		os.Chmod(dir, 0o700)
+	if info.Mode().Perm()&0o077 == 0 {
+		return nil
+	}
+	if err := chmodDirectory(dir, 0o700); errors.Is(err, syscall.EROFS) {
+		return nil
+	}
+	if info, err = os.Stat(dir); err != nil {
+		return err
+	}
+	if WritableByOthers(info) {
+		return writableByOthers(dir)
 	}
 	return nil
 }

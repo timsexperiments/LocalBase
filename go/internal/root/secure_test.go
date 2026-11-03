@@ -575,3 +575,46 @@ func TestOpenLeavesADirectoryThatIsNotARootAlone(t *testing.T) {
 		t.Errorf("a directory that isn't a root is now %o", got)
 	}
 }
+
+// A directory that stays open to others stops the root, however the chmod went.
+func TestADirectoryThatCannotBeClosed(t *testing.T) {
+	failing := func(err error) func(string, os.FileMode) error {
+		return func(string, os.FileMode) error { return err }
+	}
+	cases := []struct {
+		name    string
+		mode    os.FileMode
+		chmod   func(string, os.FileMode) error
+		refused bool
+	}{
+		{"chmod refused, others can write", 0o777, failing(syscall.EPERM), true},
+		{"chmod accepted and ignored, others can write", 0o777, failing(nil), true},
+		{"chmod refused, a shared group can write", 0o770, failing(syscall.EPERM), true},
+		{"chmod refused, others can only read", 0o755, failing(syscall.EPERM), false},
+		{"chmod accepted and ignored, others can only read", 0o755, failing(nil), false},
+		{"a read-only volume", 0o777, failing(syscall.EROFS), false},
+	}
+	realGroup := etcGroup
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := tempRoot(t)
+			if _, err := Init(dir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(dir, c.mode); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { etcGroup, chmodDirectory = realGroup, os.Chmod; os.Chmod(dir, 0o700) })
+			etcGroup = filepath.Join(t.TempDir(), "no-such-file") // nothing can show the group is private
+			chmodDirectory = c.chmod
+			_, err := Open(dir)
+			var unsafe *UnsafeRootError
+			switch {
+			case c.refused && (!errors.As(err, &unsafe) || unsafe.Problem != othersCanWrite || !strings.Contains(unsafe.Fix, "chmod go-w")):
+				t.Errorf("expected a refusal naming the fix, got %v", err)
+			case !c.refused && err != nil:
+				t.Errorf("expected no refusal, got %v", err)
+			}
+		})
+	}
+}
