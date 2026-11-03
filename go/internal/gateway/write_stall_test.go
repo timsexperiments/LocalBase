@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
 )
 
 // deadlineWriter records what an answer does to its connection.
@@ -231,6 +234,80 @@ func TestOnlyAFailedPieceCountsAsFailed(t *testing.T) {
 	rec.Write(make([]byte, writePiece*2))
 	if !rec.sendFailed {
 		t.Error("an answer cut short counted as whole")
+	}
+}
+
+// Through the gateway and into usage: a client that stopped reading isn't a success and isn't an
+// error, and what it asked for still counts, since the work was done. The answer has to be larger than
+// the kernel's buffers. A small answer leaves whether or not anyone is reading, so it stays what it was.
+func TestAnAnswerCutShortCountsAsCancelled(t *testing.T) {
+	for name, c := range map[string]struct {
+		stream  bool
+		content string
+		tokens  bool
+	}{
+		"plain":     {false, "fake:reply " + strings.Repeat("x", 20<<20), true},
+		"streaming": {true, "fake:burst 500000", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ts := openAPIGateway(t)
+			s := runServer(ts)
+			s.Limits.WriteStall = 300 * time.Millisecond
+			id, key := oaKey(t, s, "k", auth.DefaultKeyScopes...)
+			body, err := json.Marshal(map[string]any{"model": chatModel, "stream": c.stream,
+				"messages": []map[string]string{{"role": "user", "content": c.content}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			u, _ := url.Parse(ts.URL)
+			conn, err := net.Dial("tcp", u.Host)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			if err := conn.(*net.TCPConn).SetReadBuffer(1024); err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+				u.Host, key, len(body), body)
+			var got usage.Stats
+			if !waitFor(60*time.Second, func() bool { got = usageOf(t, s, id).Totals; return got.Requests >= 1 }) {
+				t.Fatalf("never counted: %+v", got)
+			}
+			if got.Requests != 1 || got.Cancelled != 1 || got.Failed != 0 || got.Refused != 0 || got.ErrorRate != 0 {
+				t.Errorf("requests, cancelled, failed, refused, error rate = %d, %d, %d, %d, %v", got.Requests, got.Cancelled, got.Failed, got.Refused, got.ErrorRate)
+			}
+			if c.tokens && (got.InputTokens != 3 || got.OutputTokens != 5) {
+				t.Errorf("tokens %d in, %d out, where the backend said 3 and 5", got.InputTokens, got.OutputTokens)
+			}
+		})
+	}
+}
+
+// A video's job counts once, when it ends, so the 202 that starts it doesn't count, whether or not
+// it arrived. That answer is too small to fail on a socket, so this asks directly.
+func TestAVideoStartThatFailsToSendCountsNothing(t *testing.T) {
+	ts := openAPIGateway(t)
+	s := runServer(ts)
+	id, _ := oaKey(t, s, "k", auth.DefaultKeyScopes...)
+	who := &auth.Principal{Kind: "api-key", ID: id}
+	send := func(label string, sent int) {
+		t.Helper()
+		rec := &recorder{status: sent, sendFailed: true, auth: who}
+		s.recordUsage(rec, label, rec.finalStatus(), time.Millisecond)
+		if err := s.Usage.Flush(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send("/v1/videos", http.StatusAccepted)
+	if got := usageOf(t, s, id).Totals; got.Requests != 0 {
+		t.Errorf("a video's start counted: %+v", got)
+	}
+	// Anything else cut short does count, here and on the same route, so that isn't why it's 0.
+	send("/v1/videos", http.StatusOK)
+	send("/v1/chat/completions", http.StatusOK)
+	if got := usageOf(t, s, id).Totals; got.Requests != 2 || got.Cancelled != 2 {
+		t.Errorf("answers cut short: %+v", got)
 	}
 }
 

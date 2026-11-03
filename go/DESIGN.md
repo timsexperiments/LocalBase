@@ -5186,7 +5186,7 @@ Requests to the inference routes that got as far as an identified principal, onc
 | 2xx | `requests` only | No |
 | 4xx other than 499: refused for its body, its scope, a full queue, a model that cannot fit | `refused` | Yes |
 | 408 `request_timeout` (§31.1): the gateway's deadline expired while a body was arriving | `refused`, if the principal was resolved by then. One that expired before authentication has no principal, and only the request log has it | Yes |
-| 499: the client went away | `cancelled` | **No**, so people closing a tab do not look like an outage |
+| 499: the client went away, including partway through an answer, or stopped reading and was cut off. Its tokens and time still count, since the work was done | `cancelled` | **No**, so people closing a tab do not look like an outage |
 | 5xx, including a backend that failed or memory pressure | `failed` | Yes |
 | **A stream that fails after it started** | `failed`, recorded as 502, though its HTTP status was 200 | Yes |
 | A detached run (§21) | Once, as its inner request, by the same rows | By its outcome |

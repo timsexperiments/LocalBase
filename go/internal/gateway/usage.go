@@ -104,7 +104,7 @@ func (s *Server) recordUsage(rec *recorder, label string, status int, d time.Dur
 	if !ok {
 		return
 	}
-	if route == "video" && status == http.StatusAccepted {
+	if route == "video" && rec.status == http.StatusAccepted { // what was sent, whether or not it arrived
 		return // the job counts once, when it ends
 	}
 	n := rec.usage
