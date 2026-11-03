@@ -103,6 +103,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 		if p.endGuard != nil {
 			p.endGuard()
 		}
+		p.endGroup(log)
 		close(p.done)
 	}()
 	return p, nil
@@ -122,6 +123,7 @@ func (p *Process) ExitErr() error { return p.err }
 // how long a healthy answer waits to see the child survive.
 const (
 	portReleaseWait = time.Second
+	groupGrace      = 2 * time.Second
 	healthySettle   = 100 * time.Millisecond
 )
 
@@ -222,7 +224,35 @@ func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Durat
 	}
 }
 
-// Stop sends SIGTERM to the process group, then SIGKILL after grace.
+// endGroup ends what the leader left behind, such as the server a wrapper started,
+// before anyone is told the process is done: that server holds the memory and the
+// port. The wait is bounded, so Done always comes.
+func (p *Process) endGroup(log *slog.Logger) {
+	pgid := p.cmd.Process.Pid
+	gone := func(d time.Duration) bool {
+		for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if !groupAlive(pgid) {
+				return true
+			}
+		}
+		return !groupAlive(pgid)
+	}
+	if !groupAlive(pgid) {
+		return
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGTERM)
+	if gone(groupGrace) {
+		return
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
+	if !gone(groupGrace) {
+		log.Warn("A backend's process group is still there after SIGKILL; its memory may not be free.",
+			"event", "runtime.group-survived", "runtime", p.Name, "pgid", pgid)
+	}
+}
+
+// Stop sends SIGTERM to the process group, then SIGKILL after grace. It returns
+// with the group gone.
 func (p *Process) Stop(grace time.Duration) {
 	select {
 	case <-p.done:
