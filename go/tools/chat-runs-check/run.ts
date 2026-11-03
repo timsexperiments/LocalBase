@@ -2,6 +2,21 @@
 // end to end (leave and return, the pill, Stop, the draft, a dropped
 // connection). Exits 1 when any check fails.
 const [cdpBase, base] = process.argv.slice(2);
+// This script leaves its gateway changed, and on one it has already used it fails in ways that
+// say nothing about the page. So: once per gateway, known by when it started.
+{
+  const marker = new URL("../../.cache/chat-runs-check.gateway", import.meta.url).pathname;
+  const health = await (await fetch(base + "/health")).json();
+  if (typeof health.uptimeSeconds === "number") {
+    const started = Date.now() / 1000 - health.uptimeSeconds;
+    const last = (await Bun.file(marker).text().catch(() => "")).trim().split(" ");
+    if (last[0] === base && Math.abs(Number(last[1]) - started) < 5) {
+      console.error("this check needs a fresh gateway: restart it (this run already used the one at " + base + ")");
+      process.exit(4);
+    }
+    await Bun.write(marker, base + " " + started + "\n");
+  }
+}
 const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
