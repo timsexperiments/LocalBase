@@ -111,6 +111,7 @@ func (s *soak) checkAdmissions(events []lab.Event) {
 	state := "healthy"
 	var stateAt time.Time
 	started, refused, bad := 0, 0, []string{}
+	reasons := map[string]int{}
 	for _, e := range events {
 		switch e.Name {
 		case "runtime.memory-pressure-changed":
@@ -132,6 +133,7 @@ func (s *soak) checkAdmissions(events []lab.Event) {
 			}
 		case "runtime.memory-admission-rejected":
 			refused++
+			reasons[e.Attr("reason")]++
 			if why := refusalProblem(e, history, reserve); why != "" {
 				bad = append(bad, why)
 			}
@@ -139,6 +141,10 @@ func (s *soak) checkAdmissions(events []lab.Event) {
 	}
 	s.addCheck("memory admission matches the host", len(bad) == 0, "%d starts, %d refusals checked. %s", started, refused, strings.Join(capStrings(bad, 5), "; "))
 	s.addCheck("admission was exercised", started > 0 && refused > 0, "%d starts, %d refusals", started, refused)
+	// Each cycle must reach these two. The log says so the moment a decision is
+	// made; a client's answer can come up to a settle timeout later, in another
+	// phase. An unmeasurable host gets too short a phase to require it.
+	s.addCheck("memory refusals by reason", reasons["system-memory"] >= s.cycles && reasons["memory-pressure"] >= s.cycles, "%s", codeList(reasons))
 }
 
 func refusalProblem(e lab.Event, history []lab.HostSample, reserve int64) string {

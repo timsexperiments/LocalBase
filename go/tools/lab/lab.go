@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -43,6 +44,9 @@ const (
 	TTS       = "qwen3-tts-1.7b-base-q4_k_m"
 	Image     = "dreamshaper-8-lcm"
 )
+
+// fixtureModels are the models a fixture installs.
+var fixtureModels = []string{ChatSmall, ChatLarge, Embedding, Decision, STT, TTS, Image}
 
 // Workspace is one scratch directory: the binaries it built and the roots and
 // logs of the gateways it runs. Close removes it unless Keep is set.
@@ -108,6 +112,15 @@ func moduleDir() (string, error) {
 		return "", errors.New("lab: run from inside the go module")
 	}
 	return filepath.Dir(mod), nil
+}
+
+// TakePort reserves one port from the block, for a server a test runs itself.
+func (w *Workspace) TakePort() (int, error) {
+	ports, err := w.ports.take(1)
+	if err != nil {
+		return 0, err
+	}
+	return ports[0], nil
 }
 
 // Close stops anything still running from this workspace and removes it.
@@ -177,6 +190,11 @@ type Options struct {
 	CtxSize int
 	// FakeEnv adds environment entries, for the fake backends' behaviors.
 	FakeEnv []string
+	// Dir places this gateway's directory somewhere other than the workspace, for
+	// a root on a small volume. It must be a scratch path too.
+	Dir string
+	// PrepareRoot runs after the fixture is written, before the gateway starts.
+	PrepareRoot func(rootDir string) error
 	// Reuse restarts on another gateway's root, with its keys. SamePorts keeps
 	// its ports too, as a real restart would.
 	Reuse     *Gateway
@@ -229,6 +247,12 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 	}
 	g := &Gateway{W: w, Opts: o, waitDone: make(chan struct{})}
 	g.Dir = filepath.Join(w.Dir, o.Name)
+	if o.Dir != "" {
+		if err := refuseLive(o.Dir); err != nil {
+			return nil, err
+		}
+		g.Dir = o.Dir
+	}
 	g.Root = filepath.Join(g.Dir, "root")
 	g.Fake = &FakeHost{Path: filepath.Join(g.Dir, "host.json"), Spec: o.Host}
 	g.LogPath = filepath.Join(g.Dir, "serve.log")
@@ -254,8 +278,101 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 		if g.Keys, err = writeFixture(g.Root, o); err != nil {
 			return nil, fmt.Errorf("fixture: %w", err)
 		}
+		if err := writeLabBackends(g.Root, w.Bin); err != nil {
+			return nil, fmt.Errorf("fixture: %w", err)
+		}
+		if o.PrepareRoot != nil {
+			if err := o.PrepareRoot(g.Root); err != nil {
+				return nil, fmt.Errorf("fixture: %w", err)
+			}
+		}
 	}
-	return g, g.launch(ctx)
+	if err := g.launch(ctx); err != nil {
+		return g, err
+	}
+	if o.Reuse != nil {
+		return g, nil
+	}
+	return g, g.chooseBackends(ctx)
+}
+
+// chooseBackends gives each model that automatic selection left without a backend
+// the lab's own definition for its task. Selection differs by machine: a
+// host with no GPU rates the built-in image and speech-to-text backends too low
+// to choose, and some platforms have no build of a backend at all. The choice is the
+// API's own, as a person would make it.
+func (g *Gateway) chooseBackends(ctx context.Context) error {
+	c := NewClient(g.Base)
+	defer c.CloseIdle()
+	for _, id := range fixtureModels {
+		r := c.Do(ctx, "GET", "/_localbase/model-backend?model="+id, g.Keys.Admin, "", nil)
+		if r.Err != nil || r.Status != 200 {
+			return fmt.Errorf("reading the backend of %s: %d %v %.300s", id, r.Status, r.Err, r.Body)
+		}
+		var got struct {
+			Selection struct {
+				BackendID string `json:"backendId"`
+			} `json:"selection"`
+		}
+		if err := json.Unmarshal(r.Body, &got); err != nil {
+			return fmt.Errorf("reading the backend of %s: %w", id, err)
+		}
+		fallback, ok := labBackendFor[id]
+		if got.Selection.BackendID != "" || !ok {
+			continue
+		}
+		set := c.PostJSON(ctx, "/_localbase/model-backend", g.Keys.Admin, map[string]any{"action": "set", "model": id, "backendId": fallback})
+		if set.Err != nil || set.Status != 200 {
+			return fmt.Errorf("choosing %s for %s: %d %v %.300s", fallback, id, set.Status, set.Err, set.Body)
+		}
+	}
+	return nil
+}
+
+// labBackendFor is the lab's backend for each model, used only where automatic
+// selection found none.
+var labBackendFor = map[string]string{ChatSmall: "lab-llama", ChatLarge: "lab-llama", Embedding: "lab-llama", Decision: "lab-llama",
+	Image: "lab-sd", TTS: "lab-tts", STT: "lab-whisper"}
+
+// writeLabBackends defines the fake backends for any platform. They stay
+// out of automatic selection, so a machine that has real choices keeps them.
+func writeLabBackends(rootDir, bin string) error {
+	dir := filepath.Join(rootDir, "backends.d")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	automatic := false
+	platform := []map[string]string{{"os": goruntime.GOOS, "arch": archName(), "accelerator": "cpu"}}
+	for _, d := range []struct {
+		id, adapter, executable string
+		tasks, formats, arch    []string
+	}{
+		{"lab-llama", "llama-server/v1", "llama-server", []string{"chat", "embeddings", "decision"}, []string{"gguf"}, []string{"qwen3"}},
+		{"lab-sd", "sd-server/v1", "sd-server", []string{"image"}, []string{"gguf", "safetensors"}, []string{"sd1"}},
+		{"lab-tts", "tts-server/v1", "tts-server", []string{"speech"}, []string{"gguf"}, []string{"qwen3-tts"}},
+		{"lab-whisper", "whisper-server/v1", "whisper-server", []string{"transcription"}, []string{"ggml", "gguf"}, []string{"whisper"}},
+	} {
+		def, err := json.MarshalIndent(map[string]any{
+			"schema": "localbase.backend/v1", "id": d.id, "name": "Lab " + d.executable, "engine": "lab-fake", "adapter": d.adapter,
+			"tasks": d.tasks, "capabilities": []string{}, "formats": d.formats,
+			"architectures": map[string]any{"supported": d.arch}, "platforms": platform, "automatic": &automatic,
+			"launch": map[string]any{"command": filepath.Join(bin, d.executable), "args": []string{}}}, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, d.id+".json"), def, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// archName is a platform's architecture in the backend definitions' words.
+func archName() string {
+	if goruntime.GOARCH == "amd64" {
+		return "x64"
+	}
+	return goruntime.GOARCH
 }
 
 func (g *Gateway) launch(ctx context.Context) error {
@@ -289,6 +406,17 @@ func (g *Gateway) launch(ctx context.Context) error {
 	return g.WaitHealthy(ctx, 60*time.Second)
 }
 
+// runtimeDir holds this gateway's coordination files, so nothing lands outside
+// the scratch directory whatever the machine's XDG_RUNTIME_DIR is.
+func (g *Gateway) runtimeDir() string { return filepath.Join(g.Dir, "run") }
+
+// LeasePaths are where the gateway's root operation lease and its mutation lock
+// live, for a test that needs to get in their way.
+func (g *Gateway) LeasePaths() (lease, mutation string) {
+	lease = filepath.Join(g.runtimeDir(), "local-base", root.Hash(g.Root)+".operation.lock")
+	return lease, lease + ".mutation"
+}
+
 // env is a scrubbed environment: no LOCALBASE_ or token settings from the
 // caller, a scratch home, and no route off this machine.
 func (g *Gateway) env() []string {
@@ -304,7 +432,7 @@ func (g *Gateway) env() []string {
 		env = append(env, kv)
 	}
 	bin := g.W.Bin
-	env = append(env, "HOME="+filepath.Join(g.Dir, "home"),
+	env = append(env, "HOME="+filepath.Join(g.Dir, "home"), "XDG_RUNTIME_DIR="+g.runtimeDir(),
 		"GOMAXPROCS=2",
 		"GORACE=log_path="+filepath.Join(g.Dir, "race")+" halt_on_error=0",
 		"LOCALBASE_LAB_HOST_FILE="+g.Fake.Path, "LOCALBASE_LAB_DEBUG_ADDR="+g.Debug,
@@ -410,7 +538,7 @@ func writeFixture(dir string, o Options) (Keys, error) {
 	if err := os.MkdirAll(r.CatalogDir(), 0o700); err != nil {
 		return keys, err
 	}
-	for _, id := range []string{ChatSmall, ChatLarge, Embedding, Decision, STT, TTS, Image} {
+	for _, id := range fixtureModels {
 		spec := cat.ByID(id)
 		if spec == nil {
 			return keys, fmt.Errorf("no catalog entry %s", id)

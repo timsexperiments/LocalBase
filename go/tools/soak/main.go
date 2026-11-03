@@ -16,6 +16,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -51,6 +52,11 @@ func main() {
 	os.Exit(run(o))
 }
 
+// wholeCycles rounds up: a run is never shorter than asked.
+func wholeCycles(d time.Duration) int {
+	return max(1, int(math.Ceil(float64(d)/float64(cycleLength()))))
+}
+
 func run(o options) int {
 	if o.out == "" {
 		o.out = filepath.Join(os.TempDir(), "localbase-soak", time.Now().UTC().Format("20060102T150405Z"))
@@ -59,7 +65,7 @@ func run(o options) int {
 		fmt.Fprintln(os.Stderr, "soak:", err)
 		return 2
 	}
-	cycles := max(1, int(o.duration/cycleLength()))
+	cycles := wholeCycles(o.duration)
 	// Far beyond the planned run: whatever hangs, the machine gets its CPU back.
 	hard := time.Duration(cycles)*cycleLength() + 5*time.Minute
 	ctx, cancel := context.WithTimeout(context.Background(), hard)

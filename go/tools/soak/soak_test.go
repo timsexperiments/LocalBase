@@ -236,3 +236,46 @@ func TestCycleFitsTheSmokeBudget(t *testing.T) {
 		t.Errorf("a cycle takes %v; the smoke promises about 2 minutes", d)
 	}
 }
+
+func TestTrend(t *testing.T) {
+	if got := slope([]float64{10, 12, 14, 16}); got != 2 {
+		t.Errorf("slope of a line: %v", got)
+	}
+	if got := slope([]float64{5, 5, 5}); got != 0 {
+		t.Errorf("slope of a flat line: %v", got)
+	}
+	point := func(rss int64, threads int) checkpoint {
+		return checkpoint{Stats: lab.Stats{RSS: rss, Threads: threads, HeapInuse: 10 << 20, Goroutines: 10, FDs: 14}}
+	}
+	if fitTrend([]checkpoint{point(1, 1), point(2, 1), point(3, 1)}) != nil {
+		t.Error("a trend over too few checkpoints")
+	}
+	// The warm-up checkpoint is left out: its jump is not a slope.
+	got := fitTrend([]checkpoint{point(1<<30, 1), point(60<<20, 14), point(61<<20, 14), point(62<<20, 15), point(63<<20, 16)})
+	if got == nil || got.Checkpoints != 4 || got.RSSBytesPerCycle != 1<<20 || got.HeapBytesPerCycle != 0 || got.GoroutinesPerCycle != 0 {
+		t.Fatalf("%+v", got)
+	}
+	if got.ThreadsPerCycle < 0.6 || got.ThreadsPerCycle > 0.8 {
+		t.Errorf("threads per cycle %v", got.ThreadsPerCycle)
+	}
+	var rep report
+	rep.Trend = got
+	if md := rep.markdown(); !strings.Contains(md, "RSS +1024 KiB") {
+		t.Errorf("the report does not show the slope:\n%s", md)
+	}
+}
+
+func TestDurationRoundsUpToWholeCycles(t *testing.T) {
+	c := cycleLength()
+	for _, tc := range []struct {
+		d    time.Duration
+		want int
+	}{{0, 1}, {c, 1}, {c + time.Second, 2}, {30 * time.Minute, int((30*time.Minute + c - 1) / c)}} {
+		if got := wholeCycles(tc.d); got != tc.want {
+			t.Errorf("%v: %d cycles, expected %d", tc.d, got, tc.want)
+		}
+	}
+	if wholeCycles(30*time.Minute)*int(c/time.Second) < 30*60 {
+		t.Error("a 30-minute soak runs shorter than 30 minutes")
+	}
+}
