@@ -10,12 +10,14 @@
 // Chrome, and gives a run its own session and a hard stop. The checks themselves are in
 // run.ts. See docs/reliability.md.
 //
-// Exit 0: everything passed. Exit 1: findings, in result.md with captures. Exit 2: the
-// suite itself could not run. Exit 4: it ran, and something it should have checked has no
-// record of running, which result.md lists under "What ran".
+// Exit 0: everything passed. Exit 1: findings about the pages, in result.md with captures.
+// Exit 2: the suite itself could not run. Exit 4: it ran, and something it should have checked
+// has no record of running, which result.md lists under "What ran". Exit 5: a journey failed,
+// or the gateway panicked or logged a key.
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -26,6 +28,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -38,6 +42,11 @@ import (
 // scratch explains nothing that result.md does not, and tools/e2e-manifest-check.sh ends this
 // way every time, so it is not kept.
 const exitIncomplete = 4
+
+// exitBroken is a journey that failed, or a gateway that panicked or logged a key. It is apart
+// from exit 1 because a workflow may tolerate findings about layout while it must not tolerate
+// these. run.ts returns the same status for a failed journey.
+const exitBroken = 5
 
 func main() {
 	out := flag.String("out", "", "result directory (default: a new directory under $TMPDIR/localbase-e2e)")
@@ -75,7 +84,9 @@ func run(out, chrome, axe string, keep bool) (code int) {
 	// Findings are in the result with their captures. Only a suite that could not finish
 	// needs what is in the scratch root to work out why, however early it stopped.
 	defer func() {
-		if code > 1 && code != exitIncomplete {
+		// A planted failure explains itself, and tools/e2e-manifest-check.sh ends that way every time.
+		planted := code == exitBroken && os.Getenv("E2E_PLANT_OFF") != ""
+		if code > 1 && code != exitIncomplete && !planted {
 			w.Keep = true
 			fmt.Fprintf(os.Stderr, "e2e: scratch kept at %s\n", w.Dir)
 		}
@@ -143,10 +154,17 @@ func run(out, chrome, axe string, keep bool) (code int) {
 		}
 	}
 	// Whatever the pages did, the gateway must not have panicked or logged a key.
-	if problem := checkLog(g); problem != "" {
+	if plantOn("logged-key") {
+		if f, err := os.OpenFile(g.LogPath, os.O_APPEND|os.O_WRONLY, 0); err == nil {
+			fmt.Fprintf(f, "{\"planted\":\"%s\"}\n", plantKey())
+			f.Close()
+		}
+	}
+	if problem := checkLog(g.LogPath, append([]string{g.Keys.User, g.Keys.Admin}, g.Keys.Runs...)); problem != "" {
 		fmt.Fprintln(os.Stderr, "e2e:", problem)
-		if code == 0 {
-			code = 1
+		noteInResult(out, problem)
+		if code < 2 {
+			code = exitBroken
 		}
 	}
 	fmt.Fprintf(os.Stderr, "e2e: result %s\n", filepath.Join(out, "result.md"))
@@ -161,31 +179,75 @@ func moduleDir() (string, error) {
 	return filepath.Dir(strings.TrimSpace(string(out))), nil
 }
 
-func checkLog(g *lab.Gateway) string {
-	secrets := append([]string{g.Keys.User, g.Keys.Admin}, g.Keys.Runs...)
-	problem := ""
-	tail := &lab.LogTail{Path: g.LogPath, Keep: func(lab.Event) bool { return false },
-		Line: func(line string) {
-			for _, s := range secrets {
-				if strings.Contains(line, s) {
-					problem = "an API key is in the log"
-				}
-			}
-		},
-		Seen: func(e lab.Event) {
-			if e.Name == "http.panic" {
-				problem = "a handler panicked: " + e.Message
-			}
-		},
-		Raw: func(line string) {
-			if strings.HasPrefix(line, "panic:") || strings.HasPrefix(line, "fatal error:") {
-				problem = line
-			}
-		}}
-	if err := tail.Read(); err != nil {
+// keyShape is what an API key looks like (store.newRawKey). The check looks for the shape as
+// well as this run's keys, since no key of any kind belongs in the log.
+var keyShape = regexp.MustCompile(`lb_[A-Za-z0-9_-]{32}`)
+
+// checkLog says what is wrong with the gateway's log, or "". It goes straight to the run's output,
+// so what it says about a key is the file and the line, and never anything from that line.
+func checkLog(path string, secrets []string) string {
+	f, err := os.Open(path)
+	if err != nil {
 		return err.Error()
 	}
-	return problem
+	defer f.Close()
+	// A panic's own words help, unless they could hold a key or part of one.
+	says := func(text string) string {
+		if strings.Contains(text, "lb_") {
+			return ""
+		}
+		return ": " + text
+	}
+	problem := ""
+	r := bufio.NewReaderSize(f, 256<<10)
+	for n := 1; ; n++ {
+		line, readErr := r.ReadString('\n')
+		line = strings.TrimRight(line, "\n")
+		if keyShape.MatchString(line) {
+			return fmt.Sprintf("an API key is in the log: %s line %d", path, n)
+		}
+		for _, s := range secrets {
+			if s != "" && strings.Contains(line, s) {
+				return fmt.Sprintf("an API key is in the log: %s line %d", path, n)
+			}
+		}
+		var e lab.Event
+		switch {
+		case strings.HasPrefix(line, "panic:"), strings.HasPrefix(line, "fatal error:"):
+			problem = fmt.Sprintf("the gateway panicked: %s line %d%s", path, n, says(line))
+		case strings.HasPrefix(line, "{") && json.Unmarshal([]byte(line), &e) == nil && e.Name == "http.panic":
+			problem = fmt.Sprintf("a handler panicked: %s line %d%s", path, n, says(e.Message))
+		}
+		if readErr != nil {
+			return problem // keeps reading to the end, since a key outranks a panic
+		}
+	}
+}
+
+// plantOn says a run was asked to fail in this way, to show that it does (tools/e2e-manifest-check.sh).
+func plantOn(name string) bool {
+	return slices.Contains(strings.Split(os.Getenv("E2E_PLANT_OFF"), ","), name)
+}
+
+// plantKey is a key that was never issued. It is put together here so that it is not a key-shaped
+// string in the repository for a secret scanner to find.
+func plantKey() string { return "lb_" + strings.Repeat("Zq9x", 8) }
+
+// noteInResult makes result.md say what the exit status says, since the log is read after it is written.
+func noteInResult(out, problem string) {
+	path := filepath.Join(out, "result.md")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return // the suite did not get as far as writing one
+	}
+	text := string(b)
+	for _, title := range []string{"# Browser suite: PASS", "# Browser suite: FINDINGS"} {
+		text = strings.Replace(text, title, "# Browser suite: GATEWAY LOG FAILED", 1)
+	}
+	text += "\n## Gateway log\n\n**Failed:** " + problem + "\n"
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		fmt.Fprintln(os.Stderr, "e2e:", err)
+	}
 }
 
 // startControl serves what the page script cannot do itself: get a sign-in link, end

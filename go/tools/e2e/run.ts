@@ -109,11 +109,21 @@ class Tab {
     await this.cmd("Page.navigate", { url: path.startsWith("http") ? path : base + path });
     await this.settle();
   }
+  // A page may navigate itself while it settles, as a sign-in link does. An evaluate in flight
+  // then fails with this, which says nothing about the page, so it starts again on the new one.
   async settle() {
-    await this.until("the page to load", `document.readyState === "complete" && location.href !== "about:blank"`);
-    await this.ev(`document.fonts.ready.then(() => true)`);
-    await this.until("htmx to go quiet", `!document.querySelector(".htmx-request")`);
-    await this.ev(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      try {
+        await this.until("the page to load", `document.readyState === "complete" && location.href !== "about:blank"`);
+        await this.ev(`document.fonts.ready.then(() => true)`);
+        await this.until("htmx to go quiet", `!document.querySelector(".htmx-request")`);
+        await this.ev(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+        return;
+      } catch (e) {
+        if (!/navigated or closed/.test(String(e)) || Date.now() > deadline) throw e;
+      }
+    }
   }
   async metrics(width: number, theme: string, reduced = false, touch = width < 1024) {
     await this.cmd("Emulation.setDeviceMetricsOverride", { width, height: HEIGHT(width), deviceScaleFactor: touch ? 2 : 1, mobile: touch });
@@ -176,6 +186,7 @@ const cellKey = (p: string, w: number, t: string) => `${p}|${w}|${t}`;
 async function journey(name: string, fn: () => Promise<void>) {
   const began = Date.now();
   try {
+    if (off("fail-a-journey") && /^a page with no such route/.test(name)) throw new Error("planted: this journey fails on purpose");
     await fn();
     journeys.push({ name, ok: true, ms: Date.now() - began });
     console.log(`ok    ${name} (${Date.now() - began} ms)`);
@@ -425,6 +436,15 @@ async function checkTheChecks(t: Tab) {
   const plant = (html: string, then = "") => `(() => { document.body.insertAdjacentHTML("beforeend", ${JSON.stringify(html)}); const p = document.getElementById("planted"); ${then} })()`;
   await t.metrics(1280, "light", false, false);
 
+  // A page that navigates itself the moment settling asks for a frame. This fails the same way
+  // on the first frame every time, where a real page does only sometimes.
+  const moving = await t.cmd("Page.addScriptToEvaluateOnNewDocument", { source: `if (!sessionStorage.plantedMove) { const real = window.requestAnimationFrame; window.requestAnimationFrame = () => { sessionStorage.plantedMove = "1"; window.requestAnimationFrame = real; location.replace(location.href); return 0; }; }` });
+  await t.nav(login);
+  await t.cmd("Page.removeScriptToEvaluateOnNewDocument", { identifier: moving.identifier });
+  if ((await t.ev(`sessionStorage.plantedMove`)) !== "1") throw new Error("the plant for a page that navigates itself never moved");
+  await t.ev(`sessionStorage.removeItem("plantedMove")`);
+  proved.push("settling survives a page navigating itself");
+
   t.problems = [];
   await t.nav(login);
   await t.ev(`setTimeout(() => { throw new Error("planted"); }, 0); new Promise((r) => setTimeout(() => r(true), 20))`);
@@ -673,7 +693,7 @@ async function reducedMotion(t: Tab, name: string, path: string, width: number, 
 
 // --- the report -------------------------------------------------------------------------
 
-const PROVED = ["page errors", "axe", "focus visibility", "Tab reachability", "keyboard trap", "focus off screen", "focus covered", "sheet opens", "focus moves into a sheet", "Tab stays in a sheet", "Escape closes a sheet", "focus returns from a sheet", "something else expanded excuses nothing", "an opener's own expanded state is recorded", "an opener that went away is recorded", "a dialog already open is recorded", "reduced motion"];
+const PROVED = ["settling survives a page navigating itself", "page errors", "axe", "focus visibility", "Tab reachability", "keyboard trap", "focus off screen", "focus covered", "sheet opens", "focus moves into a sheet", "Tab stays in a sheet", "Escape closes a sheet", "focus returns from a sheet", "something else expanded excuses nothing", "an opener's own expanded state is recorded", "an opener that went away is recorded", "a dialog already open is recorded", "reduced motion"];
 
 // What should have run, from the source and the matrix, against what did.
 function manifest(selfTest: any, source: string) {
@@ -751,7 +771,8 @@ function report(selfTest: any, wallMs: number) {
   console.log(`findings ${findings.length}, failed journeys ${failed.length}, missing ${m.missing.length}`);
   for (const x of m.missing.slice(0, 40)) console.log(`missing: ${x}`);
   if (m.missing.length) return 4; // it ran, and did not check everything it says it checks
-  return failed.length || findings.length ? 1 : 0;
+  if (failed.length) return 5; // something a person does stopped working
+  return findings.length ? 1 : 0;
 }
 
 const began = Date.now();

@@ -229,9 +229,10 @@ same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
 ports from the lab's block. Results and captures go to a new directory under
 `$TMPDIR/localbase-e2e`, or `-out <dir>`.
 
-Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), exit 2 means
-the suite itself could not run, exit 4 means it ran and something it should have checked has no record
-of running, and exit 3 means it refused to start under the free-disk floor
+Exit 0 means everything passed, exit 1 means findings about the pages (in `result.md`, with captures),
+exit 2 means the suite itself could not run, exit 4 means it ran and something it should have checked has
+no record of running, exit 5 means a journey failed or the gateway panicked or logged a key, and exit 3
+means it refused to start under the free-disk floor
 (`tools/disk-guard.sh`).
 
 **On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
@@ -291,11 +292,16 @@ keyboard, sheets and motion for every page at 390 and 1280, and each page being 
 gap is exit 4. It also counts, per page, the Tab stops, the openers, and how much each one got, so a page
 where a check passes because it found nothing to look at shows as a zero. `make e2e-manifest-check` guards
 each section off and requires the table to name it, and shows a narrow run with nothing guarded off has
-no gaps; about a minute.
+no gaps. It also shows a failed journey exits 5, and that a key planted in the gateway's log exits 5 with a
+report naming the file and line and no part of the key in the run's output or results. About two minutes.
 
 **Waiting.** Everything waits on the page's state through `until`, which polls and, if the state never
 comes, fails with a screenshot, the address and the console. There are no fixed sleeps and no retries, so a
-flaky check fails loudly.
+flaky check fails loudly. A page may navigate itself while the suite waits for it to settle, as a sign-in
+link does when it submits its own form, and settling then starts again on the new page. Before that, the
+used-link journey failed once in four Linux CI runs with `Inspected target navigated or closed`. Repeated on
+its own on macOS it never failed at natural timing (0 of 500), and failed 9 of 300 at 80 ms of added latency
+and 8 of 300 at 200 ms. With only that change, it was 0 of 500, 0 of 300 and 0 of 300.
 
 **Adding to it.** A new page goes in `ALL_PAGES` in `tools/e2e/run.ts`. A new journey is an
 `await journey("what a person sees", async () => { ... })`: use `until` to wait, and `need` to assert.

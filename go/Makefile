@@ -31,7 +31,7 @@ e2e: ## The browser suite in headless Chrome, against fake backends; about a min
 	tools/e2e.sh
 
 .PHONY: e2e-manifest-check
-e2e-manifest-check: ## Show the browser suite's table of what ran fails when a section does not run; about a minute
+e2e-manifest-check: ## Show the browser suite's table of what ran fails when a section does not run, and a broken run exits 5; about two minutes
 	tools/e2e-manifest-check.sh
 
 .PHONY: e2e-kill-check
