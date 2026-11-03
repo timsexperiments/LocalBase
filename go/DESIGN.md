@@ -5267,3 +5267,92 @@ secrets.
 **Limits.** File permissions do not protect against the same account, root, or a backup
 of the disk. Only `serve` runs the sweep, so a loose copy stays loose until the next
 start.
+
+## 35. Search in Studio: the embeddings contract (design addendum, 2026-11-02)
+
+A Search tool in Studio: give it some text, ask a question, and see the passages closest in meaning. The UI thread UI-B builds the page. This is what the page can rely on, and what it must do.
+
+**No new route, and nothing stored.** The page calls the `/v1/embeddings` route that already exists, through `/app/api`, and compares the vectors itself, in the browser. A server-side search would have to hold a person's documents somewhere, and nothing here needs it. API clients already get everything the page gets.
+
+### 35.1 What the page calls
+
+```text
+POST /app/api/v1/embeddings
+Cookie, X-Localbase-Ui: 1, same origin
+{"model": "<id>", "input": ["first passage", "second passage"]}
+```
+
+The answer has one vector per input: `data[i].embedding`, a list of numbers, with `data[i].index` saying which input it is for. **Order by `index`.** `usage.prompt_tokens` is there, and nothing else is needed from it. The shape is `EmbeddingsResponse` in `/openapi.json`, which tests hold.
+
+- **Don't send `dimensions`.** Catalog models have one size, and a wrong one is a 400. Sizes differ between models, so **vectors from two models can't be compared. Switching model clears them.**
+- **Use cosine similarity, not a dot product.** Whether vectors arrive normalized is not measured (35.6), and cosine is right either way.
+- **Which models to offer:** selected models that are embedding models, as `decisionModels()` does for decisions: `labModels("llm")` filtered by `IsEmbedding()`. Add imported models whose task is `embeddings`. **The API answers only for a selected model,** and anything else is `404 model_not_found`, so an installed model that isn't selected must not be offered.
+- **The Studio card:** add `search` to `studioTools`, with `p.Can("inference:embeddings")` in `toolAvailable`. **The default browser role does not have this permission,** so "denied" is a real state and not an edge case. The "needs a model" link is `/app/models/get?filter=embeddings`, which works today.
+
+### 35.2 Limits the page keeps
+
+These are the page's own, and they fit what the gateway accepts. They exist so that a large paste fails clearly and early.
+
+| What | Limit | Why |
+|---|---|---|
+| Per request | 32 passages, one request at a time | Requests run one after another on the backend, and progress can be shown |
+| Per passage | 1,000 characters to start | See below |
+| In total | 2,000 passages | The vectors stay in the page: 2,000 × 4,096 numbers is about 32 MiB as `Float32Array` |
+| Request size | 25 MiB | The gateway's own limit, and the limits above stay far below it |
+
+**The most one input can hold isn't known yet** (35.6), and it may be much less than the model's context, because the backend limits one input to its batch size. So the page must handle it either way: **on `400 context_length_exceeded`, split that batch in half and retry, down to a single passage. Then split that passage in half, twice at most. If it still fails, skip it, keep going, and say which were skipped.** The error's message gives the numbers when the backend does, and it's written for a person to read, so don't parse it.
+
+**Splitting text** is the page's: on blank lines, then sentence ends, then spaces, and never inside a word. Keep each passage's offset in its source, so a result can show where it came from.
+
+### 35.3 What the page must handle
+
+| Answer | Means | The page says |
+|---|---|---|
+| `400 context_length_exceeded` | A passage is too long | Splits it as above |
+| `401` | Signed out | The usual sign-in path. Keep the text on the page |
+| `403` | No `inference:embeddings` | The denied state |
+| `404 model_not_found` | No longer selected | Offer the models again |
+| `409` | Not installed, or not allowed to install | A link to get it |
+| `413` | Over 25 MiB | Shouldn't happen under the limits |
+| `422 model_too_large` | Can't fit on this computer | Say so, and offer another model |
+| `429`, `503` with `Retry-After` | Busy, or not enough memory right now | Wait that long and try again, showing that it is waiting. Stop after a few tries and say so |
+| `502` | The backend failed | Say so, and offer to try again |
+
+**The first request can take a long time,** because it loads the model. Show that it's loading, not that it's stuck, and let the person cancel. A cancel aborts the `fetch`, and a passage's request that was cancelled is simply sent again if they continue.
+
+### 35.4 It shares a slot with chat
+
+An embedding model loads into the same slot as a chat model, so **the first search unloads the chat model that's loaded, and the next chat message loads it back.** Both take time, and a chat in progress finishes first. The default chat model doesn't change, because only a chat model becomes the default. The page says so once, before the first search, in plain words, naming no model: "Search uses the same memory as chat, so your next chat message may take a moment longer."
+
+### 35.5 What stays, and where
+
+**Nothing stays on the server.** The gateway doesn't log request bodies. Usage records counts and tokens, as for every route (§32). A search isn't a run, so it isn't in `runs/`, and it doesn't appear in Studio's Recent list. `TestSearchContract` scans every file in a root after real requests, for the planted text, and finds none.
+
+**Nothing stays in the browser either, by default.** Text and vectors live in the page's memory, not in `localStorage`, `sessionStorage` or IndexedDB, so leaving the page forgets them, and a shared computer keeps nothing. The page says so, in one line: "Your text stays in this page, and is sent only to this LocalBase to be read. Nothing is saved." Files are read in the browser with the File API, plain text only, and are never uploaded as files.
+
+**Scores are not percentages.** A cosine score is only useful for comparing results of one search with one model. Show the order and a relative mark, and don't call it a percent match or a confidence.
+
+### 35.6 What isn't known yet
+
+The fake backend can't answer these. A short pass on a real model is agreed with the operator and Reliability, and hasn't run. Nothing above depends on the answers: **the page must work whichever way they come out.** They may change the starting numbers in 35.2, and this section gets the results.
+
+- **The most text one input can hold.** Catalog entries state a large context, but the backend also limits one input to its batch size, and the plan sets no batch size for embedding models.
+- **Time per batch,** which decides whether 32 is a good batch.
+- **Whether vectors arrive normalized.**
+- **Whether a query prefix helps.** Some embedding models are trained to expect one on the question and not on the passages. **Version 1 sends text as it is.** If the pass shows a real difference, the prefix belongs in the catalog entry, and the page reads it from there, since generic copy and code name no model.
+- **Memory while embedding,** before and after.
+
+### 35.7 Who does what
+
+**Done here, on this PR:**
+- `TestSearchContract`, on real binaries and the fake backend: one vector per input in order, ranking by cosine, a passage too long, a key without the permission, a model not selected, a same-origin page through `/app/api` and a cross-site one refused, and no text left in the root afterwards.
+- **The fake backend's embeddings** now give one vector per input, in order, made from the input's words. So texts that share words rank higher, and a page can be tested without a model. `fake:batch` as any input gives the overflow error. Vectors aren't normalized, on purpose, so a page that assumes it is caught.
+
+**UI-B builds:** the `/app/studio/search` page, its card and copy, splitting and batching, cosine and ranking in JavaScript, and every state in 35.3. Tests the page needs:
+- Splitting never cuts a word, and offsets point back at the source.
+- Ranking matches a hand-worked example with vectors that aren't normalized.
+- The overflow path, using `fake:batch`.
+- **After a search, `localStorage`, `sessionStorage` and IndexedDB don't hold the planted text.**
+- The usual sizes, at 320 px.
+
+**Rollback:** nothing to roll back on the server. The page is one tool in Studio.
