@@ -137,6 +137,11 @@ func serve(c *cli.Ctx) (any, error) {
 	level.UnmarshalText([]byte(c.String("log-level")))
 	handler := obs.NewHandler(sink, level)
 	log := slog.New(handler)
+	if n := root.TightenPermissions(r.Dir, func(path string, err error) {
+		log.Warn("Could not make a file private.", "event", "root.permissions-failed", "path", path, "error", err.Error())
+	}); n > 0 {
+		log.Info("Made existing files private.", "event", "root.permissions-tightened", "count", n)
+	}
 	for _, d := range cat.Diagnostics {
 		log.Warn("Skipped a catalog file: "+d.Message, "event", "catalog.entry-skipped", "path", d.Path)
 	}
