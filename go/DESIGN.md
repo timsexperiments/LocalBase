@@ -4731,7 +4731,10 @@ port failed the same way. One fix covers both.
 1. **Guard.** Each backend's group holds a small shell reading a pipe whose write end only
    the gateway has. The kernel closes it however the gateway dies, and the guard then ends
    the group: TERM, then KILL after up to 5 s. This replaces `Pdeathsig`: it works on macOS
-   too, and cannot fire because one OS thread of the gateway ended.
+   too, and cannot fire because one OS thread of the gateway ended. It signals only its own
+   group, so it cannot reach a successor's backend, and the gateway ends it when the backend
+   exits. A guard killed outright changes nothing for its backend, which keeps serving and
+   stops normally; that backend only loses this cover, and a later crash leaves it to the sweep.
 2. **Record and sweep.** `runtime/backends/<runtime>-<pid>.json` (0600) holds the pid, start
    time and executable from just after spawn until exit. `serve`, holding the root's lock,
    stops what the records describe before any backend starts. A process is stopped only if
