@@ -51,7 +51,7 @@ The inventory for UI v2 (DESIGN §25). Styles are in `internal/web/css/input.css
 
 | Component | Where | v2 |
 |---|---|---|
-| Landing, `.studio-card`, `.studio-tile`, `studio-art` | Studio | tokens |
+| Landing, `.studio-card`, `.studio-tile`, `tool-icon` | Studio | done |
 | Picture gallery and viewer, `.image-*`, `.viewer` | Image | tokens |
 | Video item | Video | tokens |
 | Speech item, waveform, `.speech-*` | Speech | tokens |
