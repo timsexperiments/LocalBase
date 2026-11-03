@@ -112,9 +112,11 @@ type Report struct {
 	KeysLost          []string     `json:"keysLost" report:"letters"`
 	ReturningUsers    int          `json:"returningUsers"`
 	// A user the target has removed or disabled stays that way, as a revoked key does.
-	UserStatusesKept int      `json:"userStatusesKept"`
-	UsersChanged     int      `json:"usersGoingBackToAnOlderStatus"`
-	Cautions         []string `json:"cautions"`
+	UserStatusesKept int `json:"userStatusesKept"`
+	UsersChanged     int `json:"usersGoingBackToAnOlderStatus"`
+	// Cautions keep their letters because they hold this person's own path, often as a command to copy.
+	// So a caution mustn't quote the file: what the file says goes in a field of its own.
+	Cautions []string `json:"cautions" report:"letters"`
 }
 
 // Staged is a backup read and checked, in a private directory beside its target.
