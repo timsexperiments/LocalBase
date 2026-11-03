@@ -10,6 +10,11 @@
 # From a failing run's scratch root it takes only an explicit list of logs and run
 # files, so whatever the lab adds later stays out. It must never take bin/, which holds
 # a lab-tagged build, or models/, which are huge sparse files.
+#
+# The scan excuses one shape only, in .github/soak-artifacts.gitleaks.toml: a key ID in
+# auth_principal_id or api-key:. Known gap, accepted: a secret made only of lowercase hex
+# and dashes, 36 characters or fewer, in one of those two fields would pass. Key IDs are
+# identifiers, not credentials. Don't widen that rule.
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/../.." && pwd)"

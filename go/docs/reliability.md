@@ -98,3 +98,43 @@ replaces a model's real demand and admission decides the same on macOS and Linux
 - The tools refuse a scratch path inside the installed root.
 - `tools/soak.sh` gives a run its own session, lower priority, a stop on any
   signal and a watchdog. A watcher process stops the gateway if the harness dies.
+
+## Linux
+
+The soak runs on Linux through `make soak-smoke`; CI runs it nightly on ubuntu.
+Two things differ from macOS, and both are expected:
+
+- **Backend selection.** A machine with no GPU has no automatic choice for some
+  models, and linux/arm64 has no build of the built-in media backends at all. The
+  fixture then selects its own `lab-*` backend definitions through the API. They
+  stay out of automatic selection, so a machine with real choices keeps them.
+- **Queue timeouts in tight memory.** Linux has no footprint sampler, so a refused
+  model credits idle runtimes at their full reservation, stops them and waits up
+  to 10 s for the memory to appear, holding queues meanwhile. The fake host never
+  frees memory, so that wait always runs out and `inference_queue_timeout` shows
+  up. A real host would usually settle sooner; how much sooner has not been measured.
+
+## Real-model checks still to run
+
+The chaos tests use fake backends, so these questions about the real runtimes are
+open. **Do not run them without a window from the operator**, who first checks
+that the live gateway is idle (`/health`) and how much memory is free.
+
+**Limits:** the smallest installed model, `Qwen3-Embedding-0.6B` (0.6 GiB file),
+about 10 minutes, ports 29000-29499. Everything runs from APFS clones in a scratch
+directory (`cp -c -R`); never run anything from the live root. Stop at once if the
+live gateway becomes busy. Stop processes by exact PID, then remove the scratch
+directory and confirm nothing is running from it.
+
+| # | Question | How | Record |
+|---|---|---|---|
+| 1 | Does `llama-server` exit when its port is taken, and does it load the model first? | Hold a port with `nc -l 127.0.0.1 <port>`, then start it on that port under `/usr/bin/time -l`. | Exit code, seconds to exit, peak memory (a peak near the model's size means it loaded weights before failing) |
+| 2 | Does an orphan answer `/health`? | Run a scratch gateway on the clones, load the model with one request, `kill -9` the gateway, then `curl` the backend's `/health` and `/props`. | Status, `model_path`, parent PID |
+| 3 | Does an orphan survive its next log line? Its stdout and stderr pipes lost their reader when the gateway died, so a write may raise SIGPIPE. | After step 2, send `/v1/embeddings` straight to the backend, then check whether it is alive. Repeat a few times, and once with no requests for 60 s. | Answered or not, alive or not, exit signal |
+| 4 | What does an orphan cost in memory? | `footprint -p <pid>` and `vm_stat`: before loading, loaded, orphaned at +60 s, after killing it. | Each figure, and whether the host's available figure shows the orphan |
+| 5 | What does the successor see? | With the orphan alive, restart the scratch gateway on the same root and port, and send one request for this model and one for a second small model if the window allows. | Which process answered, whether the new backend exited, whether admission refused |
+| 6 | Do the media runtimes behave the same? | Repeat 1 to 3 for `whisper-server`, and `sd-server` or `tts-server` if the window allows. | As above |
+
+Afterward: put the results here, make the fake backend behave as the real one does
+(for example, die on a closed pipe if step 3 says so), and rerun
+`TestGatewayKilledOutright` against the fix.
