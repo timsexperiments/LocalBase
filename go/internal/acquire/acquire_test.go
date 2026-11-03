@@ -290,6 +290,7 @@ func TestResumeAndLocal(t *testing.T) {
 	st := stagingDir(root, p)
 	os.MkdirAll(st, 0o700)
 	os.WriteFile(filepath.Join(st, "m.gguf.partial"), weights[:10000], 0o600)
+	writeValidator(filepath.Join(st, "m.gguf.partial"), validator(testutil.Epoch.UTC().Format(http.TimeFormat)))
 	if _, err := Import(ctx, root, p, nil); err != nil {
 		t.Fatal(err)
 	}

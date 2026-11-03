@@ -188,6 +188,10 @@ func modelsImportCommand() *cli.Command {
 				if c.Global.JSON {
 					return
 				}
+				if p.Note != "" {
+					fmt.Fprintln(c.Stderr, p.Note)
+					return
+				}
 				line := p.Phase + " " + p.File
 				if p.Total > 0 {
 					line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)

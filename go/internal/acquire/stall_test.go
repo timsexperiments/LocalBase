@@ -28,7 +28,7 @@ func TestImportDownloadStallEnds(t *testing.T) {
 	partial := filepath.Join(t.TempDir(), "a.partial")
 	done := make(chan error, 1)
 	go func() {
-		done <- download(context.Background(), srv.Client(), srv.URL, partial, 1<<20, nil, newBudget(filepath.Dir(partial), 1<<20), func(int64) {})
+		done <- download(context.Background(), srv.Client(), srv.URL, partial, 1<<20, nil, newBudget(filepath.Dir(partial), 1<<20), resumeRule{pinned: true}, func(int64) {})
 	}()
 	select {
 	case err := <-done:

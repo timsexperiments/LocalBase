@@ -427,3 +427,70 @@ func TestInstallRefusesBeforeDownloading(t *testing.T) {
 		t.Errorf("%d requests", srv.requests())
 	}
 }
+
+// A catalog file is pinned, so a resume that joins two objects can't get through: the object
+// changes under a resume, with and without an ETag, and the install refuses at the checksum.
+// The bad partial goes, so the next try starts clean and succeeds.
+func TestResumeAcrossAChangedObjectIsRefused(t *testing.T) {
+	other := []byte(strings.Repeat("other bytes ", 1000))
+	if len(other) != len(modelBytes) {
+		t.Fatalf("%d and %d: the two objects must be the same size, or the size check would catch it", len(other), len(modelBytes))
+	}
+	half := len(modelBytes) / 2
+	for name, etags := range map[string][2]string{"with an ETag": {`"old"`, `"new"`}, "without one": {"", ""}} {
+		t.Run(name, func(t *testing.T) {
+			srv := newArtifactServer(t, map[string][]byte{"m.bin": modelBytes})
+			requests, ranged := 0, 0
+			srv.handle = func(w http.ResponseWriter, r *http.Request, data []byte) bool {
+				requests++
+				if r.Header.Get("Range") != "" {
+					ranged++
+				}
+				switch requests {
+				case 1: // a short first answer, of what the catalog pinned
+					if etags[0] != "" {
+						w.Header().Set("ETag", etags[0])
+					}
+					w.(http.Flusher).Flush()
+					w.Write(data[:half])
+				case 2, 3: // then the object has changed
+					if etags[1] != "" {
+						w.Header().Set("ETag", etags[1])
+					}
+					http.ServeContent(w, r, "", time.Time{}, strings.NewReader(string(other)))
+				default:
+					return false
+				}
+				return true
+			}
+			dir := filepath.Join(t.TempDir(), "models")
+			s := specWith(srv.URL, artifactOf("m.bin", modelBytes))
+			var err error
+			for attempt := 0; attempt < 2; attempt++ {
+				err = installTo(t, dir, s, nil)
+				if err != nil && strings.Contains(strings.ToLower(err.Error()), "checksum") {
+					break
+				}
+			}
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), "checksum") {
+				t.Fatalf("a mix of two objects: %v", err)
+			}
+			if ranged == 0 {
+				t.Error("nothing was resumed, so this proved nothing")
+			}
+			if _, statErr := os.Stat(filepath.Join(dir, "m.bin")); statErr == nil {
+				t.Error("the mix was published")
+			}
+			if _, statErr := os.Stat(filepath.Join(dir, "m.bin.partial")); statErr == nil {
+				t.Error("the bad partial stayed")
+			}
+			requests = 10
+			if err := installTo(t, dir, s, nil); err != nil {
+				t.Fatalf("the next try: %v", err)
+			}
+			if got, _ := os.ReadFile(filepath.Join(dir, "m.bin")); string(got) != string(modelBytes) {
+				t.Error("the next try did not install the pinned bytes")
+			}
+		})
+	}
+}

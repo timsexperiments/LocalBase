@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	goruntime "runtime"
 	"slices"
@@ -34,7 +35,9 @@ type Library struct {
 	// files (serve --install-missing); HFToken returns the saved token.
 	InstallMissing bool
 	HFToken        func() string
-	DeviceID       string
+	// Log hears what a launch's own download has to say; nil is quiet.
+	Log      *slog.Logger
+	DeviceID string
 
 	jobs  jobs
 	mu    sync.Mutex
@@ -274,7 +277,7 @@ func (l *Library) GateFor(tasks ...string) runtime.Gate {
 			if l.HFToken != nil {
 				token = l.HFToken()
 			}
-			if err := acquire.FetchPinned(ctx, e.Dir, t.Variant.Artifacts, token, nil); err != nil {
+			if err := acquire.FetchPinned(ctx, e.Dir, t.Variant.Artifacts, token, l.logNote(modelID)); err != nil {
 				return t, err
 			}
 		}
@@ -283,6 +286,15 @@ func (l *Library) GateFor(tasks ...string) runtime.Gate {
 				"%s is missing files: %v. Import them again or choose another variant.", modelID, s.NeedsDownload)}
 		}
 		return t, nil
+	}
+}
+
+// logNote puts what a download has to tell a person in the log, since a launch has no page.
+func (l *Library) logNote(modelID string) func(acquire.Progress) {
+	return func(p acquire.Progress) {
+		if p.Note != "" && l.Log != nil {
+			l.Log.Warn(p.Note, "event", "models.download-note", "model_id", modelID, "file", p.File)
+		}
 	}
 }
 

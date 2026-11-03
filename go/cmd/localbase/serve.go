@@ -272,6 +272,7 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	lib.Log = log
 	for _, d := range lib.Registry.Skipped() {
 		log.Warn("Skipped a custom backend definition: "+d, "event", "backend.definition-skipped")
 	}

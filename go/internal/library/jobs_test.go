@@ -101,7 +101,8 @@ func stagedFiles(t *testing.T, l *Library) int {
 	t.Helper()
 	n := 0
 	filepath.WalkDir(filepath.Join(l.Root.Dir, "models", ".staging"), func(_ string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
+		// A partial's validator goes with it, and isn't a file of the model.
+		if err == nil && !d.IsDir() && !strings.HasSuffix(d.Name(), ".validator") {
 			n++
 		}
 		return nil
@@ -292,4 +293,22 @@ func TestFinishedJobsAreForgotten(t *testing.T) {
 	if j.byID["a"] != nil {
 		t.Error("the oldest was kept")
 	}
+}
+
+// A launch has no page, so what a download has to tell a person goes in the log, and only that.
+func TestLaunchDownloadNotesReachTheLog(t *testing.T) {
+	var out bytes.Buffer
+	l := &Library{Log: slog.New(slog.NewJSONHandler(&out, nil))}
+	note := l.logNote("the-model")
+	note(acquire.Progress{Phase: "download", File: "m.gguf", Done: 5})
+	if out.Len() != 0 {
+		t.Errorf("ordinary progress was logged: %s", out.String())
+	}
+	note(acquire.Progress{Phase: "download", File: "m.gguf", Note: "It was fetched again."})
+	for _, want := range []string{"It was fetched again.", "models.download-note", "the-model", "m.gguf"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q in %s", want, out.String())
+		}
+	}
+	(&Library{}).logNote("m")(acquire.Progress{Note: "with no log, nothing happens"})
 }
