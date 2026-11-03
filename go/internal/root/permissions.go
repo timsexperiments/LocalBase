@@ -14,7 +14,7 @@ import (
 // entries it changed.
 func TightenPermissions(dir string, fail func(path string, err error)) int {
 	changed := 0
-	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			fail(path, err)
 			if d != nil && d.IsDir() {
@@ -48,5 +48,8 @@ func TightenPermissions(dir string, fail func(path string, err error)) int {
 		changed++
 		return nil
 	})
+	if walkErr != nil {
+		fail(dir, walkErr)
+	}
 	return changed
 }

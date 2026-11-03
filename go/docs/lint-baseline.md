@@ -66,3 +66,10 @@ Each has a `//nolint` with its reason:
 - `G404` in `internal/web/labimage.go`: an image seed, not a secret.
 - `SA1019` in `internal/auth/jwt.go`: `ecdsa.PublicKey.X` and `IsOnCurve` are deprecated. Moving to
   `crypto/ecdh` is a real change to token checking, so it needs its own PR and tests.
+
+## `errcheck`: handled in place
+
+Each ignored error in the lint-zero pass has a comment saying why it can be ignored. Two became real
+handling: `DeleteLocalSession` returns its error, since a failed delete leaves a session valid, and
+`TightenPermissions` reports a failed walk. Writes of run checkpoints and model operations now warn
+when refused as unsafe.
