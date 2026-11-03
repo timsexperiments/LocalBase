@@ -35,14 +35,14 @@ import (
 
 const (
 	secretHF     = "hf_PLANTED_TOKEN_0001"
-	secretOTLP   = "x-planted=PLANTED_OTLP_0002"
-	secretOIDC   = "PLANTED_OIDC_0003"
+	secretOTLP   = "x-planted=planted-otlp-0000"
+	secretOIDC   = "PLANTED_OIDC_0000"
 	secretSMTP   = "PLANTED_SMTP_0004"
 	secretHeader = "PLANTED_HEADER_0005"
 	voiceID      = "voice-0123456789ab"
 )
 
-var allSecrets = []string{secretHF, "PLANTED_OTLP_0002", secretOIDC, secretSMTP, secretHeader}
+var allSecrets = []string{secretHF, "planted-otlp-0000", secretOIDC, secretSMTP, secretHeader}
 
 func dir(t *testing.T) string {
 	t.Helper()
@@ -1249,7 +1249,6 @@ func TestRestoreAcceptsEveryMigrationLevel(t *testing.T) {
 					x.body = body
 				case strings.HasPrefix(x.header.Name, filesPrefix+"voices/"):
 					continue // this empty database has no row for it
-				case x.header.Name != manifestEntry && strings.HasPrefix(x.header.Name, filesPrefix) && !strings.HasSuffix(x.header.Name, ".db"):
 				}
 				e = append(e, x)
 			}
@@ -1829,6 +1828,117 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 				noLeftovers(t, parent)
 			})
 		}
+	}
+}
+
+// failSyncs replaces the directory sync. A restore that finishes syncs three times: after the
+// journal, after the moves, and after the journal is removed.
+func failSyncs(t *testing.T, fail func(call int) error) {
+	t.Helper()
+	was, call := dirSync, 0
+	dirSync = func(*os.File) error { call++; return fail(call) }
+	t.Cleanup(func() { dirSync = was })
+}
+
+func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
+	for _, failing := range []int{1, 2} {
+		t.Run(fmt.Sprintf("sync %d", failing), func(t *testing.T) {
+			parent := dir(t)
+			r, _ := newRoot(t, parent)
+			res := create(t, r, false)
+			before := tree(t, r.Dir, "runtime", ".before-restore")
+			s, err := Stage(context.Background(), res.Output, r.Dir, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			failSyncs(t, func(call int) error {
+				if call == failing {
+					return syscall.EIO
+				}
+				return nil
+			})
+			if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "put back") {
+				t.Fatalf("commit: %v", err)
+			}
+			if _, err := root.Open(r.Dir); err != nil {
+				t.Fatal(err)
+			}
+			if after := tree(t, r.Dir, "runtime"); after != before {
+				t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
+			}
+			noLeftovers(t, parent)
+		})
+	}
+}
+
+// Going back can hit the same disk. The journal has to survive that, or nothing can finish the job.
+func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	before := tree(t, r.Dir, "runtime", ".before-restore")
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := true
+	failSyncs(t, func(call int) error {
+		if failing && call >= 2 {
+			return syscall.EIO
+		}
+		return nil
+	})
+	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "so did putting things back") {
+		t.Fatalf("commit: %v", err)
+	}
+	if _, err := root.Open(r.Dir); err == nil || !strings.Contains(err.Error(), "a restore did not finish") {
+		t.Fatalf("a root with its undo unfinished, Open says: %v", err)
+	}
+	failing = false
+	if err := Undo(r.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Open(r.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if after := tree(t, r.Dir, "runtime"); after != before {
+		t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
+	}
+}
+
+func TestRestoreWorksWhereDirectoriesCannotSync(t *testing.T) {
+	for _, unsupported := range []error{syscall.EINVAL, syscall.ENOTSUP} {
+		r, _ := newRoot(t, dir(t))
+		res := create(t, r, false)
+		s, err := Stage(context.Background(), res.Output, r.Dir, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		failSyncs(t, func(int) error { return unsupported })
+		if _, err := s.Commit(); err != nil {
+			t.Fatalf("%v: %v", unsupported, err)
+		}
+	}
+}
+
+// After the journal is gone the restore has happened, so a failed sync must not report otherwise.
+func TestRestoreThatFinishedStaysFinished(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failSyncs(t, func(call int) error {
+		if call == 3 {
+			return syscall.EIO
+		}
+		return nil
+	})
+	if _, err := s.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if _, err := root.Open(r.Dir); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -17,6 +17,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // RemovedSecret names something --exclude-secrets took out, and how to put it back. It never
@@ -207,6 +209,29 @@ func hasTable(ctx context.Context, db *sql.DB, table string) bool {
 	return err == nil && n > 0
 }
 
+// readableDatabase says whether a database can be read without changing anything.
+func readableDatabase(ctx context.Context, path string) error {
+	db, err := openReadOnly(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }() // Read-only.
+	var n int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master`).Scan(&n)
+}
+
+// isUnfinishedWrite is a database whose journal was left by a process that stopped mid-write. Its
+// file can't be trusted until SQLite plays that journal back, which takes opening it for writing.
+// A process still writing holds a lock, so its journal doesn't count.
+func isUnfinishedWrite(err error) bool {
+	var e *sqlite.Error
+	return errors.As(err, &e) && e.Code() == sqlite3.SQLITE_READONLY_ROLLBACK
+}
+
+func unfinishedWriteMessage(rootDir string) string {
+	return fmt.Sprintf("The database on %s has a write that never finished, left by a process that stopped. Nothing was changed. To undo that write, run: local-base --root '%s' status. Then try again.", rootDir, rootDir)
+}
+
 func openReadOnly(path string) (*sql.DB, error) {
 	return sql.Open("sqlite", sqliteDSN(path, "mode=ro&_pragma=busy_timeout(5000)&_pragma=trusted_schema(OFF)"))
 }
@@ -274,7 +299,7 @@ func selectedModels(ctx context.Context, dbPath string) []string {
 	if err != nil {
 		return nil
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // Read-only.
 	cfg, err := st.LoadConfig(ctx)
 	if err != nil {
 		return nil
@@ -305,7 +330,7 @@ func dropRows(ctx context.Context, db *sql.DB) error {
 		if !hasTable(ctx, db, t) {
 			continue
 		}
-		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil {
+		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil { //nolint:gosec // G202: t is from the constant list rowsLeftOut, and a placeholder can't name a table.
 			return fmt.Errorf("%s: %w", t, err)
 		}
 	}
@@ -356,7 +381,7 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	if exclude {
 		for _, column := range []string{"hf_token", "otel_headers"} {
 			if hasColumn(ctx, db, "config", column) {
-				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil {
+				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil { //nolint:gosec // G202: column is from the constant list above, and a placeholder can't name a column.
 					return err
 				}
 			}

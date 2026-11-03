@@ -107,7 +107,7 @@ func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 
 // replaceable is all a restore moves, here and on undo. It is a constant, so a journal
 // can't name anything else.
-var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
+var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
 
 // targetState is what a restore found at its target.
 type targetState struct{ newRoot, hasData bool }
@@ -200,6 +200,11 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 	state, err := checkTarget(target, replace)
 	if err != nil {
 		return nil, err
+	}
+	if !state.newRoot && state.hasData {
+		if err := readableDatabase(ctx, filepath.Join(target, "local-base.db")); isUnfinishedWrite(err) {
+			return nil, refuse("%s", unfinishedWriteMessage(target))
+		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
 	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o022 != 0 {
@@ -342,7 +347,7 @@ func extract(ctx context.Context, in io.Reader, dir string) (*Manifest, error) {
 	if err != nil {
 		return nil, refuse("This is not a LocalBase backup: %v", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // Only read from: a failed read has already refused the file.
 	// One stream only: a second would be data after the end.
 	gz.Multistream(false)
 	tr := tar.NewReader(gz)
@@ -462,7 +467,7 @@ func mkdirPrivate(dir string) error {
 	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
-	return os.Chmod(dir, 0o700)
+	return os.Chmod(dir, 0o700) //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 }
 
 // checkDatabase judges the file before anything runs against it: read-only, with the schema's
@@ -526,7 +531,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if err != nil {
 		return nil, refuse("The database can't be used: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // Every write below has committed or returned its own error.
 	st.DB.SetMaxOpenConns(1)
 	// What a backup leaves out is removed, not trusted to be absent: a crafted file can carry
 	// sessions, and a restore has to sign everyone out regardless.
@@ -783,6 +788,12 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 // compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
 // backup would bring back. Restoring must not revive a key someone revoked because it leaked.
 func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
+	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
+	// root is often replaced because its database is broken, so this can't refuse, but it says so.
+	if err := readableDatabase(ctx, targetDB); err != nil {
+		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
+		return nil
+	}
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
 		return err
@@ -921,15 +932,24 @@ var (
 	beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
 	// stepHook is for tests: an error is a failure, and a panic is a crash.
 	stepHook = func(string) error { return nil }
+	// dirSync is for tests: a failing disk can't be arranged any other way.
+	dirSync = func(d *os.File) error { return d.Sync() }
 )
 
 func journalPath(dir string) string { return filepath.Join(dir, root.RestoreJournalName) }
 
-func syncDir(dir string) {
-	if d, err := os.Open(dir); err == nil {
-		d.Sync()
-		d.Close()
+// syncDir makes the renames in a directory last through a power cut. A file system that can't do
+// that for a directory says so with EINVAL or ENOTSUP, and there is nothing more to wait for there.
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
 	}
+	defer d.Close()
+	if err := dirSync(d); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) {
+		return err
+	}
+	return nil
 }
 
 func exists(p string) bool {
@@ -992,7 +1012,9 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, err
 	}
-	syncDir(r.Dir)
+	if err := syncDir(r.Dir); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
 
 	if err := s.apply(r.Dir, j); err != nil {
 		return nil, s.failed(r.Dir, j, err)
@@ -1006,7 +1028,9 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := os.Remove(journalPath(r.Dir)); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
-	syncDir(r.Dir)
+	// It has finished. If this removal is lost in a power cut the journal comes back, the root
+	// refuses to open, and the person is told to run the undo. Nothing is damaged.
+	_ = syncDir(r.Dir)
 	done := &Done{}
 	before := filepath.Join(r.Dir, j.Before)
 	if os.Remove(before) != nil { // it holds the old files, or removing an empty one failed
@@ -1030,7 +1054,7 @@ func (s *Staged) apply(dir string, j *journal) error {
 	if err := os.Mkdir(before, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(before, 0o700); err != nil {
+	if err := os.Chmod(before, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 		return err
 	}
 	for _, name := range j.Had {
@@ -1055,8 +1079,7 @@ func (s *Staged) apply(dir string, j *journal) error {
 			return err
 		}
 	}
-	syncDir(dir)
-	return nil
+	return syncDir(dir)
 }
 
 // verify gives the restored root the checks a gateway gets.
@@ -1071,7 +1094,7 @@ func verify(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // Only read from here.
 	cfg, err := st.LoadConfig(context.Background())
 	if errors.Is(err, store.ErrNotConfigured) {
 		return nil
@@ -1113,10 +1136,16 @@ func undo(dir string, j *journal) error {
 	if j.Staging != "" {
 		os.RemoveAll(filepath.Join(filepath.Dir(dir), j.Staging))
 	}
+	// The moves reach the disk while the journal still exists, so a failure here can be run again.
+	if err := syncDir(dir); err != nil {
+		return err
+	}
 	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	syncDir(dir)
+	// Everything is back. If this removal is lost in a power cut the journal returns, and running
+	// the undo again is safe.
+	_ = syncDir(dir)
 	if j.NewRoot {
 		// This made the root, so it goes too, if that leaves nothing. It is never removed
 		// with its contents: a journal must not be able to delete a root.

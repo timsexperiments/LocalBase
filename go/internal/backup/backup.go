@@ -116,6 +116,7 @@ var (
 		".localbase-root.json":  "Restore makes its own, since a marker names one root",
 		"local-base.db-wal":     "Part of the database, which is copied whole",
 		"local-base.db-shm":     "Part of the database, which is copied whole",
+		"local-base.db-journal": "SQLite's record of a write in progress. The copy holds only finished writes",
 		root.RestoreJournalName: "Left by a restore that did not finish",
 	}
 	// rowsLeftOut are rows that are not settings. They are dropped when a backup is written and
@@ -166,7 +167,8 @@ func survey(rootDir string) (files []string, left []NotIncluded, err error) {
 	}
 	sizeOf := func(p string) int64 {
 		var total int64
-		filepath.WalkDir(p, func(_ string, d fs.DirEntry, err error) error {
+		// An estimate for the report: what can't be read counts as nothing, and the walk never stops.
+		_ = filepath.WalkDir(p, func(_ string, d fs.DirEntry, err error) error {
 			if err == nil && d.Type().IsRegular() {
 				if info, err := d.Info(); err == nil {
 					total += info.Size()
@@ -239,7 +241,7 @@ func newTemporary(dir, kind string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.Chmod(path, 0o700); err != nil {
+	if err := os.Chmod(path, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 		os.RemoveAll(path)
 		return "", err
 	}
@@ -397,7 +399,7 @@ func destination(o Options) (string, []string, error) {
 				if err := os.Mkdir(dir, 0o700); err != nil {
 					return "", nil, err
 				}
-				if err := os.Chmod(dir, 0o700); err != nil {
+				if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 					return "", nil, err
 				}
 			}
@@ -467,6 +469,9 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	dbPath := o.Root.DB()
 	if _, err := os.Lstat(dbPath); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
+	}
+	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
 	}
 	files, left, err := survey(o.Root.Dir)
 	if err != nil {

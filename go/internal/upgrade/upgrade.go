@@ -456,7 +456,7 @@ func Prepare(ctx context.Context, s Source, o PrepareOptions) (*Candidate, error
 	if err != nil {
 		return nil, fmt.Errorf("could not write beside the binary: %w", err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 		os.RemoveAll(dir)
 		return nil, err
 	}
@@ -532,7 +532,7 @@ func archiveName(name string) string {
 }
 
 func writeBinary(out string, r io.Reader) error {
-	f, err := os.OpenFile(out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	f, err := os.OpenFile(out, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755) //nolint:gosec // G302: this is the program, the same mode install.sh gives it.
 	if err != nil {
 		return err
 	}
@@ -546,7 +546,7 @@ func writeBinary(out string, r io.Reader) error {
 	if n > maxBinaryBytes {
 		return errors.New("the binary is over the size limit")
 	}
-	return os.Chmod(out, 0o755)
+	return os.Chmod(out, 0o755) //nolint:gosec // G302: this is the program, the same mode install.sh gives it.
 }
 
 func extractTarGz(archive, name, out string) error {
@@ -559,7 +559,7 @@ func extractTarGz(archive, name, out string) error {
 	if err != nil {
 		return fmt.Errorf("the archive could not be read: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // Only read from: a failed read has already been reported.
 	tr := tar.NewReader(gz)
 	for {
 		h, err := tr.Next()
@@ -584,7 +584,7 @@ func extractZip(archive, name, out string) error {
 	if err != nil {
 		return fmt.Errorf("the archive could not be read: %w", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }() // Only read from: a failed read has already been reported.
 	for _, f := range zr.File {
 		if archiveName(f.Name) != name {
 			continue
@@ -655,7 +655,7 @@ func copyFile(from, to string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+	out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755) //nolint:gosec // G302: a copy of the program, kept to go back to, so it has to run.
 	if err != nil {
 		return err
 	}
