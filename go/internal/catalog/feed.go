@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // The remote catalog feed (TS catalog/remote-feed.ts): the project publishes
@@ -324,11 +325,7 @@ func WriteFeedSettings(rootDir, url string) error {
 }
 
 func writePrivate(path string, b []byte) error {
-	tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return obs.WritePrivateChecked(path, b)
 }
 
 // --- cache ------------------------------------------------------------------

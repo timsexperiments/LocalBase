@@ -58,6 +58,18 @@ func checkOwnedRegular(path string, info fs.FileInfo) error {
 	return nil
 }
 
+// CheckOwnedRegular reports an unsafe file at path; a missing one is fine.
+func CheckOwnedRegular(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return checkOwnedRegular(path, info)
+}
+
 // OpenOwnedRegular opens this user's own plain file without following a link, and
 // checks the path still names what it opened (TS openOwnedRegularFile). The file ends
 // up 0600. A missing file is fs.ErrNotExist unless flags create it. Keep using the
@@ -140,6 +152,37 @@ func WritePrivateAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// WritePrivateChecked is WritePrivateAtomic for settings and caches: a planted link or
+// other unsafe file at path fails the write with a clear error, instead of being quietly
+// replaced, and whatever it points at stays untouched. Only logs, stderr and checkpoints
+// stop the gateway from starting (CheckRootFiles); this stops just this one write.
+func WritePrivateChecked(path string, data []byte) error {
+	info, err := os.Lstat(path)
+	switch {
+	case err == nil:
+		if err := checkOwnedRegular(path, info); err != nil {
+			return err
+		}
+	case !errors.Is(err, fs.ErrNotExist):
+		return err
+	}
+	return WritePrivateAtomic(path, data)
+}
+
+// WarnRefusedWrite logs a refused write for a caller that otherwise ignores write
+// failures, so a planted link there can still be found. Path and reason only. Other
+// errors stay as quiet as they were.
+func WarnRefusedWrite(log *slog.Logger, err error) {
+	var unsafe *UnsafeFileError
+	if !errors.As(err, &unsafe) {
+		return
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("A write was refused: "+unsafe.Error(), "event", "root.write-refused", "path", unsafe.Path, "problem", unsafe.Problem)
 }
 
 // CheckRootFiles finds what would stop the gateway: an unsafe log, stderr capture or
