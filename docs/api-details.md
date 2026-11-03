@@ -48,15 +48,15 @@ curl http://127.0.0.1:2273/v1/audio/speech -H 'Authorization: Bearer <API_KEY>' 
 
 `consent` must be literally `true`: the creator attests that the voice is their own or that its speaker allowed it to be cloned. Names are trimmed, at most 48 characters, unique ignoring case, and cannot be a built-in voice name. Requests address a voice by its server-issued id (`voice-` and 12 hex digits), never by name or path. Custom voices appear in `/_localbase/models` speech metadata as extra `requestValues` with their names under `voice.custom`; `/v1/models` carries no voice list. A deleted or unknown id fails with HTTP 400 `voice_not_found`. The warm `tts-server` registers voices when it starts, so the first request for a new voice reloads it once in-flight generations finish (under a second with the weights cached). Logs record voice ids, never display names or audio, and diagnostics bundles record only the number of custom voices. The CLI manages the same store: `local-base voices list`, `local-base voices add clip.wav --name Narrator --consent` and `local-base voices remove <id>`.
 
-Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
+Use [`local-base config`](declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
 
-Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models, plus verified-unsupported capabilities, measured memory peaks and multi-file install recipes for Hugging Face files, also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](docs/user-catalog.md).
+Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models, plus verified-unsupported capabilities, measured memory peaks and multi-file install recipes for Hugging Face files, also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](user-catalog.md).
 
 ### Built-in catalog
 
 The built-in catalog is a small, tested set: one entry per job, with a compact chat model and two larger ones. The table lists facts from each entry's pinned files; `local-base models show <id>` has the full record.
 
-The planning minimum is LocalBase's figure for admission and fit: the accelerator demand at the reference launch (LLMs: 8,192-token context, 1 request at a time, q8_0 KV cache, or f16 for embeddings) plus a margin of 512 MiB or 10%, whichever is larger. "Measured" figures were recorded on Apple M-series 64 GiB unified memory, macOS 26 ([memory calibration](docs/memory-calibration.md)); "estimate" figures come from the formula. They are not hardware requirements: other settings and machines need different amounts, and `local-base models catalog` shows the figures this machine uses.
+The planning minimum is LocalBase's figure for admission and fit: the accelerator demand at the reference launch (LLMs: 8,192-token context, 1 request at a time, q8_0 KV cache, or f16 for embeddings) plus a margin of 512 MiB or 10%, whichever is larger. "Measured" figures were recorded on Apple M-series 64 GiB unified memory, macOS 26 ([memory calibration](memory-calibration.md)); "estimate" figures come from the formula. They are not hardware requirements: other settings and machines need different amounts, and `local-base models catalog` shows the figures this machine uses.
 
 | Kind | Band or job | Model id | Pinned build | Planning minimum |
 | --- | --- | --- | --- | --- |
@@ -94,7 +94,7 @@ Public `GET` and `HEAD /health/ready` report whether at least one configured mod
 
 `POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.
 
-`POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](docs/video-qualification.md).
+`POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](video-qualification.md).
 
 ### Decision models
 
@@ -147,7 +147,7 @@ The supported contract includes primitive and nullable types, strict object prop
 
 For non-streaming responses, LocalBase validates ordinary assistant content when `finish_reason` is `stop`. A mismatch returns HTTP 502 with code `structured_output_validation_failed`. Refusals, tool calls, and truncated choices retain their original response semantics. Streaming remains incremental and relies on the runtime grammar rather than whole-response buffering.
 
-See [Operating LocalBase](docs/operations.md) for queue limits, model-switch behavior, cancellation, telemetry, metadata, and compiled runtime qualification.
+See [Operating LocalBase](operations.md) for queue limits, model-switch behavior, cancellation, telemetry, metadata, and compiled runtime qualification.
 
 ## Logs
 
