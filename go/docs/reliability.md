@@ -157,3 +157,15 @@ before starting and throughout, and stop at once if the live state changes or fr
 memory falls under the agreed floor. Print the plan the gateway will load before
 loading it, and stop if it is over the agreed size: a model's default plan can be far
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
+
+**Waiting for the next window: does a real backend use more memory with every request?**
+Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
+on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
+from a leak. The plan is about 200 sequential requests to a small model on a scratch
+gateway on a Mac, with the same conditions as above, recording the backend's RSS and
+available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
+repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
+in recent `llama-server` builds): if it does, a run with the cache off separates the two.
+The plan must fit the agreed size, so the context will be far smaller than the one observed
+and the platform differs. A flat result here would not clear the Linux case; say so if
+that is the result.
