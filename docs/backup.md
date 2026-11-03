@@ -87,7 +87,7 @@ Files are created 0600 and directories 0700, owned by you, and the restored root
 
 ## What has been tested
 
-Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `d4dcfa34`.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Later commits have not been through that run.
+Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `ffc89a72`: a quiet root, with no journal and no writer.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Handling a busy database and a journal has run only in tests. Later commits have not been through that run.
 
 **Not tested:**
 
@@ -96,7 +96,7 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 - Restoring on a second computer.
 - Signing in with a real provider after a restore.
 - Installing a real model after a restore.
-- A database journal on real data. That clone had none, so handling a live or crash-left journal has run only in tests, on real SQLite files with no process actually killed.
+- A busy database or a journal on real data. That clone had neither, so these have run only in tests, on real SQLite files, with a held lock standing in for a writer and no process actually killed.
 
 ## Troubleshooting
 
