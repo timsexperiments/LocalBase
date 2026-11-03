@@ -537,13 +537,50 @@ func (b *Browser) exchange(ctx context.Context, rt *oidcRuntime, code string, st
 	return id, ownerID("oidc", rt.reg.Issuer, sub), nil
 }
 
+// establish starts a session for a sign-in that is allowed something. One that isn't gets
+// no session, so nothing is kept about someone this LocalBase has nothing for, and a page
+// that says so. Authorizing also claims an invitation, so a first sign-in counts.
 func (b *Browser) establish(w http.ResponseWriter, r *http.Request, id Identity, owner string) {
+	d := b.Authorize(r.Context(), &id)
+	if len(d.Permissions) == 0 {
+		b.Log.Info("A sign-in that has no permissions here was refused.", "event", "auth.signin-denied", "actor_id", owner)
+		policy, err := LoadPolicy(r.Context(), b.Store.DB)
+		http.SetCookie(w, clearCookie(loginStateCookie))
+		// With several providers, the command says which one this sign-in came through.
+		issuer := ""
+		if len(b.Config.Issuers()) > 1 {
+			issuer = id.Issuer
+		}
+		pageAt(w, http.StatusForbidden, noAccessPage(id.VerifiedEmail, issuer, err != nil || policy != nil), formCSP, "no-referrer")
+		return
+	}
 	token, err := CreateSession(r.Context(), b.Store, owner, id)
 	if err != nil {
 		redirect(w, b.Config.Origin+"/app?signin=failed", clearCookie(loginStateCookie))
 		return
 	}
+	b.Log.Info("Signed in.", "event", "auth.signin", "actor_id", owner, "roles", strings.Join(d.MatchedRoles, ","))
 	redirect(w, b.Config.Origin+"/app", clearCookie(loginStateCookie), secureCookie(SessionCookie, token, sessionCookieMaxAge))
+}
+
+// noAccessPage tells someone with no permissions so, and whoever runs this LocalBase the
+// one thing to do about it, with the command for how far it has been set up.
+func noAccessPage(email, issuer string, hasPolicy bool) string {
+	account, address := "that account", "&lt;your address&gt;"
+	if email != "" {
+		account = html.EscapeString(email)
+		address = account
+	}
+	command := "local-base access policy starter --email " + address
+	then := "If this LocalBase is yours, run this on its computer, then sign in again:"
+	if hasPolicy {
+		command = "local-base access users invite --email " + address + " --roles &lt;role&gt;"
+		then = "Whoever runs this LocalBase can give it access, by running this on its computer:"
+	}
+	if issuer != "" {
+		command += " --issuer " + html.EscapeString(issuer)
+	}
+	return "<h1>This account has no access here</h1><p>You signed in as " + account + ", but this LocalBase gives it nothing, so you were not signed in.</p><p>" + then + "</p><pre>" + command + "</pre>"
 }
 
 func formOK(r *http.Request, origin string) bool {
