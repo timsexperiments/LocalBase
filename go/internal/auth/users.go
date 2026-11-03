@@ -20,12 +20,14 @@ import (
 
 // User is a managed user.
 type User struct {
-	ID        string   `json:"id"`
-	Email     string   `json:"email"`
-	Status    string   `json:"status"`
-	Roles     []string `json:"roles"`
-	CreatedAt string   `json:"createdAt"`
-	UpdatedAt string   `json:"updatedAt"`
+	ID     string   `json:"id"`
+	Email  string   `json:"email"`
+	Status string   `json:"status"`
+	Roles  []string `json:"roles"`
+	// Issuer is the sign-in provider that can claim this record.
+	Issuer    string `json:"issuer,omitempty"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 type queryer interface {
@@ -36,8 +38,9 @@ type queryer interface {
 
 func userByEmail(ctx context.Context, q queryer, email string) (*User, error) {
 	var u User
-	err := q.QueryRowContext(ctx, `SELECT u.id, e.email, u.status, u.created_at, u.updated_at FROM auth_user_emails e
-		JOIN auth_users u ON e.user_id = u.id WHERE e.email = ?`, email).Scan(&u.ID, &u.Email, &u.Status, &u.CreatedAt, &u.UpdatedAt)
+	err := q.QueryRowContext(ctx, `SELECT u.id, e.email, u.status, COALESCE(i.issuer, ''), u.created_at, u.updated_at FROM auth_user_emails e
+		JOIN auth_users u ON e.user_id = u.id LEFT JOIN go_invitation_issuers i ON i.user_id = u.id WHERE e.email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.Status, &u.Issuer, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
@@ -52,7 +55,9 @@ func userByEmail(ctx context.Context, q queryer, email string) (*User, error) {
 	u.Roles = []string{}
 	for rows.Next() {
 		var n string
-		rows.Scan(&n)
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
 		u.Roles = append(u.Roles, n)
 	}
 	sort.Strings(u.Roles)
@@ -61,18 +66,28 @@ func userByEmail(ctx context.Context, q queryer, email string) (*User, error) {
 
 // ListUsers lists managed users that are not removed, by email.
 func ListUsers(ctx context.Context, st *store.Store) ([]User, error) {
+	return listUsers(ctx, st, false)
+}
+
+func listUsers(ctx context.Context, st *store.Store, removed bool) ([]User, error) {
 	rows, err := st.DB.QueryContext(ctx, `SELECT e.email FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id
-		WHERE u.status != 'removed' ORDER BY e.email`)
+		WHERE ? OR u.status != 'removed' ORDER BY e.email`, removed)
 	if err != nil {
 		return nil, err
 	}
 	var emails []string
 	for rows.Next() {
 		var e string
-		rows.Scan(&e)
+		if err := rows.Scan(&e); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		emails = append(emails, e)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	out := []User{}
 	for _, e := range emails {
 		u, err := userByEmail(ctx, st.DB, e)
@@ -135,8 +150,9 @@ func validRoles(roles []string) error {
 	return nil
 }
 
-// InviteUser creates (or re-invites a removed) managed user as pending.
-func InviteUser(ctx context.Context, st *store.Store, email string, roles []string) (*User, error) {
+// InviteUser creates (or re-invites a removed) managed user as pending. Only a sign-in
+// through issuer can claim the record; with none, nothing can until one is named.
+func InviteUser(ctx context.Context, st *store.Store, email string, roles []string, issuer string) (*User, error) {
 	if email = ValidEmail(email); email == "" || len(roles) == 0 || validRoles(roles) != nil {
 		return nil, errors.New("validation_failed")
 	}
@@ -161,8 +177,15 @@ func InviteUser(ctx context.Context, st *store.Store, email string, roles []stri
 	}
 	ts := now()
 	if exists {
-		tx.ExecContext(ctx, `UPDATE auth_users SET status = 'pending', updated_at = ? WHERE id = ?`, ts, userID)
-		tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, userID)
+		if _, err := tx.ExecContext(ctx, `UPDATE auth_users SET status = 'pending', updated_at = ? WHERE id = ?`, ts, userID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, userID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM go_invitation_issuers WHERE user_id = ?`, userID); err != nil {
+			return nil, err
+		}
 	} else {
 		userID = store.UUID()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO auth_users (id, status, created_at, updated_at) VALUES (?, 'pending', ?, ?)`, userID, ts, ts); err != nil {
@@ -174,6 +197,11 @@ func InviteUser(ctx context.Context, st *store.Store, email string, roles []stri
 	}
 	for _, r := range roles {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO auth_user_roles (user_id, role_id) VALUES (?, ?)`, userID, ids[r]); err != nil {
+			return nil, err
+		}
+	}
+	if issuer != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO go_invitation_issuers (user_id, issuer) VALUES (?, ?)`, userID, issuer); err != nil {
 			return nil, err
 		}
 	}
@@ -264,8 +292,11 @@ func RemoveUser(ctx context.Context, st *store.Store, email string) (*User, erro
 	if u.Status == "removed" {
 		return nil, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
-	tx.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens WHERE user_id = ?`, u.ID)
-	tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, u.ID)
+	for _, q := range []string{`DELETE FROM auth_magic_link_tokens WHERE user_id = ?`, `DELETE FROM auth_user_roles WHERE user_id = ?`, `DELETE FROM go_invitation_issuers WHERE user_id = ?`} {
+		if _, err := tx.ExecContext(ctx, q, u.ID); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `UPDATE auth_users SET status = 'removed', updated_at = ? WHERE id = ?`, now(), u.ID); err != nil {
 		return nil, err
 	}
@@ -381,9 +412,9 @@ var magicTokenRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 // MagicIssuer is the identity issuer of magic-link sign-ins.
 func MagicIssuer(origin string) string { return origin + "/magic-link" }
 
-// IssueMagicLink creates a one-time token for an invited or active user,
-// at most once a minute; nil when the address cannot sign in.
-func IssueMagicLink(ctx context.Context, st *store.Store, email string) (token, address string, err error) {
+// IssueMagicLink creates a one-time token for an invited or active user who can sign
+// in through issuer, at most once a minute; nil when the address cannot sign in.
+func IssueMagicLink(ctx context.Context, st *store.Store, email, issuer string) (token, address string, err error) {
 	if email = ValidEmail(email); email == "" {
 		return "", "", nil
 	}
@@ -393,7 +424,9 @@ func IssueMagicLink(ctx context.Context, st *store.Store, email string) (token, 
 	}
 	defer tx.Rollback()
 	var userID, status string
-	if err := tx.QueryRowContext(ctx, `SELECT u.id, u.status FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id WHERE e.email = ?`, email).
+	if err := tx.QueryRowContext(ctx, `SELECT u.id, u.status FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id WHERE e.email = ?
+		AND (EXISTS (SELECT 1 FROM go_invitation_issuers i WHERE i.user_id = u.id AND i.issuer = ?)
+			OR EXISTS (SELECT 1 FROM auth_identities a WHERE a.user_id = u.id AND a.issuer = ?))`, email, issuer, issuer).
 		Scan(&userID, &status); err != nil || (status != "pending" && status != "active") {
 		return "", "", nil
 	}

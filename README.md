@@ -285,7 +285,8 @@ Use `local-base access show --json` to inspect the active non-secret configurati
 
 An optional database-backed policy replaces provider-wide permissions with named
 roles and identity bindings. Subject bindings compare the exact issuer and opaque subject.
-Email and email-domain bindings use only provider-verified email addresses. A
+Email and email-domain bindings use only provider-verified email addresses, from
+the one provider they name in `issuer` (optional when one provider is configured). A
 policy grants no permissions when no binding matches and must retain at least
 one binding whose role grants `access:manage`.
 
@@ -336,8 +337,9 @@ the next request without restarting LocalBase.
 
 Provision users after applying a policy with `local-base access users invite
 --email person@example.com --roles user --json`. The command returns the
-configured `/app` sign-in URL. The first matching verified provider email links
-the identity and activates the user. `access users disable` denies all browser
+configured `/app` sign-in URL. The first matching verified email from the
+provider they were invited through (`--issuer`, optional when one is configured)
+links the identity and activates the user. `access users disable` denies all browser
 permissions for that linked identity, including provider-wide role matches.
 Use `access users list`, `roles`, `enable`, `disable`, and `remove` for
 automation. A policy cannot be cleared while managed users exist.
@@ -367,7 +369,7 @@ Model administration requires `models:manage`; catalog reads require `models:rea
 Authentication administration uses two exact, always-authenticated endpoints:
 
 - `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
-- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
+- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions. A caller can only grant permissions it holds and act on keys within them (`docs/authentication.md`).
 
 Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Provider changes require a restart; policy and key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
 

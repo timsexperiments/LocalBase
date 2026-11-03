@@ -32,7 +32,7 @@ func TestAccessLockout(t *testing.T) {
 	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	browser := func(email string) *auth.Principal {
 		return &auth.Principal{Kind: "browser-session", ID: "browser:" + strings.Split(email, "@")[0] + "-hash", Name: email, Permissions: auth.Permissions,
-			Identity: &auth.Identity{Issuer: "https://lb.example.com/magic-link", Subject: email, VerifiedEmail: email}}
+			Identity: &auth.Identity{Issuer: "https://team.cloudflareaccess.com", Subject: email, VerifiedEmail: email}}
 	}
 	owner, second := browser("owner@example.com"), browser("second@example.com")
 	call := func(p *auth.Principal, body string) (int, string) {
@@ -79,12 +79,16 @@ func TestAccessLockout(t *testing.T) {
 	expect(owner, `{"action":"enable-user","email":"owner@example.com"}`, 200, "")
 	// Disabling the last manager is refused for anyone, keys and the host too.
 	expect(host, `{"action":"disable-user","email":"second@example.com"}`, 409, "would_lock_out_admins")
-	expect(host, `{"action":"remove-user","email":"second@example.com"}`, 200, "") // the binding still reaches second
+	// So is removing them: a binding doesn't reach a removed person, and sign-in agrees.
+	expect(host, `{"action":"remove-user","email":"second@example.com"}`, 409, "would_lock_out_admins")
 	// A policy whose only manager role is unreachable is TS's own error first.
 	expect(host, `{"action":"apply-policy","policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[],"defaultRole":"chat"},"expectedPolicyRevision":`+revision()+`}`, 400, "")
 	// TS's refusal to clear a policy with managed users is unchanged.
 	expect(host, `{"action":"clear-policy","expectedPolicyRevision":`+revision()+`}`, 409, "policy_conflict")
 	expect(host, `{"action":"remove-user","email":"owner@example.com"}`, 200, "")
+	// With the binding on someone who has no record, second can go.
+	expect(host, `{"action":"apply-policy","policy":`+policy("third@example.com")+`,"expectedPolicyRevision":`+revision()+`}`, 200, "")
+	expect(host, `{"action":"remove-user","email":"second@example.com"}`, 200, "")
 	// With no managed users, clearing would hand everyone provider-wide
 	// permissions without access:manage: refused.
 	expect(host, `{"action":"clear-policy","expectedPolicyRevision":`+revision()+`}`, 409, "would_lock_out_admins")
@@ -96,14 +100,21 @@ func TestAccessLockout(t *testing.T) {
 	if !strings.Contains(out, `"target_kind":"user","target_id":"`) || !strings.Contains(out, `"target_kind":"policy","target_id":"`) || !strings.Contains(out, `"target_kind":"provider","target_id":"browser-access"`) {
 		t.Errorf("audit targets:\n%s", out)
 	}
-	if strings.Contains(out, "@example.com") || strings.Contains(out, `"action":"disable-user"`) {
-		t.Errorf("the audit log has an email, or a refused change:\n%s", out)
+	if strings.Contains(out, "@example.com") {
+		t.Errorf("the audit log has an email:\n%s", out)
+	}
+	// A refused change is recorded as refused, never as a change.
+	if !strings.Contains(out, `"event":"audit.access-refused","action":"disable-user"`) || !strings.Contains(out, `"reason":"would_lock_out_admins"`) {
+		t.Errorf("the audit log has no refused change:\n%s", out)
+	}
+	if strings.Contains(out, `"event":"audit.access-changed","action":"disable-user"`) {
+		t.Errorf("a refused change is logged as made:\n%s", out)
 	}
 }
 
-// API keys with access:manage are managing principals too: a key can't
-// revoke itself or drop its own access:manage, and nobody may revoke or
-// rescope the last one when no person can manage access.
+// API keys with access:manage are managing principals too: a key can't drop its own
+// access:manage, and nobody may revoke, rescope or rotate away the last one when no
+// person can manage access. A key can revoke itself while another manager remains.
 func TestKeyLockout(t *testing.T) {
 	r, err := root.Init(t.TempDir())
 	if err != nil {
@@ -117,7 +128,8 @@ func TestKeyLockout(t *testing.T) {
 	s := New(&Server{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))})
 	k1, _, _ := st.CreateAPIKey(context.Background(), "one", []string{"keys:manage", "access:manage"})
 	k2, _, _ := st.CreateAPIKey(context.Background(), "two", []string{"keys:manage", "access:manage"})
-	plain, _, _ := st.CreateAPIKey(context.Background(), "plain", []string{"inference:chat"})
+	plain, _, _ := st.CreateAPIKey(context.Background(), "plain", []string{"keys:manage"})
+	spare, _, _ := st.CreateAPIKey(context.Background(), "spare", []string{"keys:manage", "access:manage"})
 	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	asKey := func(id string) *auth.Principal {
 		return &auth.Principal{Kind: "api-key", ID: id, Permissions: auth.Permissions}
@@ -129,12 +141,14 @@ func TestKeyLockout(t *testing.T) {
 			t.Fatalf("%s: %d %s, want %d", body, res.Status, res.Body, status)
 		}
 	}
-	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409)
+	expect(asKey(spare.ID), `{"action":"revoke","keyId":"`+spare.ID+`"}`, 200) // k1 and k2 still manage
 	expect(asKey(k1.ID), `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage"]}`, 409)
 	expect(asKey(k1.ID), `{"action":"rotate","keyId":"`+k1.ID+`"}`, 200) // rotating your own key is fine
 	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+plain.ID+`"}`, 200)
 	expect(host, `{"action":"revoke","keyId":"`+k2.ID+`"}`, 200) // k1 still manages
 	expect(host, `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage"]}`, 409)
 	expect(host, `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409)
+	expect(host, `{"action":"rotate","keyId":"`+k1.ID+`"}`, 409)
+	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409) // itself, the last manager
 	expect(host, `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage","access:manage","models:read"]}`, 200)
 }

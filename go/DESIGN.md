@@ -1149,8 +1149,9 @@ Deliberate status changes to verify against the live clients at cutover:
    503 with `Retry-After` on every attempt, as in TS.
 2. **An unparseable multipart body** (voices, image edits, transcription):
    TS 500 `gateway_error`; Go 400 `validation_failed`.
-3. **The wrong method on a JSON inference route** (for example `GET
-   /v1/chat/completions`): TS 400; Go 405 with `Allow: POST`.
+3. **The wrong method on an inference route** (for example `GET
+   /v1/chat/completions`, `GET /v1/audio/transcriptions`): TS 400; Go 405 with
+   `Allow: POST`.
 4. **Model management while a runtime is up** (M5): TS reconciles a running
    runtime eagerly when the active model changes, so the model it switched to
    stays referenced and `uninstall` answers 409 `conflict` until
@@ -1162,19 +1163,106 @@ Deliberate status changes to verify against the live clients at cutover:
    `would_lock_out_admins` with a message:
    - for a change that disables or forgets the caller's own user record;
    - for a change that removes `access:manage` from the caller, including
-     an API key revoking itself or dropping `access:manage` from its own
-     scopes;
+     an API key dropping `access:manage` from its own scopes;
    - for a change that leaves no active principal with `access:manage`
      (people through roles, bindings or the default role, provider-wide
-     permissions without a policy, and active API keys).
+     permissions without a policy, and active API keys). Revoking a key
+     counts, and so does rotating someone else's: the new secret goes to the
+     caller, so whoever held the key loses it. So does removing or replacing the
+     sign-in provider a manager depends on, or turning off sign-in.
 
-   Where TS refuses for its own reason, such as clearing a policy that has
-   managed users, TS's status stays. `local-base access …` and `local-base
-   keys revoke` are the break-glass path: they apply the change and print
-   a warning when it leaves nobody able to manage access
-   (`TestCLIAccessRecovery`). Each admin change also logs
-   `audit.access-changed` or `audit.api-key-changed` with the actor and
-   target ids only (`TestAdminAuditRedaction`).
+   A key may revoke or rotate itself (item 5a). Where TS refuses for its own
+   reason, such as clearing a policy that has managed users, TS's status
+   stays. `local-base access …` and `local-base keys revoke` are the
+   break-glass path: they apply the change and print a warning when it leaves
+   nobody able to manage access (`TestCLIAccessRecovery`). Each admin change
+   also logs `audit.access-changed` or `audit.api-key-changed` with the actor
+   and target ids only, and each refused one `audit.access-refused` or
+   `audit.api-key-refused` (`TestAdminAuditRedaction`,
+   `TestKeyChangesAndRefusalsAreAudited`).
+
+5a. **Nobody hands out more than they hold** (operator decision). This applies
+   to `/_localbase/api-keys` and `/_localbase/access-management`, for every
+   caller. A signed-in person holds what their role gives them on that request,
+   and a key holds its scopes.
+   - **Granting.** `create` and `set-scopes` give only permissions the caller
+     holds. Otherwise: 403 `exceeds_caller_permissions`, naming what is missing.
+   - **Acting on a key.** `rotate`, `revoke` and `set-scopes` work only on a key
+     whose permissions the caller all holds. Otherwise: the same code, not
+     naming what that key holds.
+   - **Expiry.** A key can't give anything a longer life than it has. A `create`,
+     a `rotate`, or a `set-scopes` that adds anything, past the calling key's
+     expiry answers 403 `exceeds_caller_expiry`. A person has no such limit: a
+     session's expiry ends the session, not the authority behind it.
+   - **One at a time.** Changes to keys and access hold one lock from their checks
+     through their write, and read what the caller holds again under it. Two
+     managers revoking each other can't both pass the last-manager check, and a
+     key that was narrowed or revoked while its request waited acts as it is now
+     (`TestManagersRevokingEachOtherLeaveOneStanding`,
+     `TestKeyChangeUsesWhatTheCallerHoldsNow`).
+   - **Your own key.** Rotating it answers 200 with the new secret. The old secret
+     stops at once, and that response is the only copy: if it is lost, use another
+     manager or `local-base keys rotate` on the host. Revoking it answers 200 with
+     the key's record, which is the last answer it gets, and is how a leaked key
+     is killed with itself. It is refused with 409 if it would leave nobody able
+     to manage access. A key without `access:manage` may narrow itself freely.
+   - **Not bound by this:** `local-base keys` and `local-base connect --create-key`
+     on the host, and the first key `configure` creates. They write to the store
+     directly, because having the machine is the authority behind all of this. A
+     caller with every permission is unaffected: `--no-auth`, `LOCALBASE_API_KEY`,
+     and a first-run local session (`TestKeysStillWorkForFirstRunAndHostCallers`).
+   - **People and roles.** A holder of `access:manage` can invite with, or assign,
+     only roles within what it holds. It can disable, enable, remove or re-role
+     only someone whose whole reach is within it: their roles, the default role,
+     and any binding on their address, domain or identity. These answer the same
+     403, not naming what that person holds.
+   - **Policies.** What stays the same needs nothing: a caller may leave a wider role
+     or binding alone. Whatever changes needs what it touches, before and after, so
+     a caller can neither bind or widen past itself nor take a wider role or
+     binding away. Applying a first policy or clearing one also needs the
+     provider-wide permissions it replaces or switches on.
+   - **Sign-in.** Providers and email delivery decide who proves to be whom: with a
+     provider of your own, or a mail server that receives magic links, you can
+     become anyone. Changing them needs every permission a sign-in can grant (every
+     role, and the provider-wide permissions), plus any provider-wide permissions
+     the change sets. The starter policy grants an all-permissions role, so only a
+     caller holding every permission can use it, such as a first-run local session.
+   - **Recovery.** Callers can only hand down, so nobody regrows a permission
+     through the API once its last holder is gone. The host commands are the way
+     back.
+
+5b. **An address belongs to the provider that vouches for it** (operator decision).
+   An email address proves nothing by itself. Email and domain bindings and
+   invitations name a sign-in provider, by the issuer its identities carry, so a
+   provider added later can't sign in as someone else's people by claiming their
+   address. The names live in `go_binding_issuers` and `go_invitation_issuers`,
+   so a rollback finds the tables it knows as it left them.
+   - **Signing in.** An email or domain binding matches only through its provider,
+     and only that provider can claim an invitation. A magic link goes only to
+     someone invited for it or already linked through it. A disabled or removed
+     address stays out through every provider, and `test-policy` says what a real
+     sign-in would get. The default role is not tied to a provider, which is one
+     reason adding a provider needs every permission (item 5a).
+   - **Naming one.** The API and `local-base access` take `issuer` on a binding or
+     an invitation. Without it, a person adding their own address gets the provider
+     they signed in with, and otherwise the only provider configured is used. With
+     several it answers 400 `issuer_required`, listing them; it never guesses. A new
+     binding or invitation can't name a provider that isn't configured: 400
+     `issuer_unknown`. A binding already there may stay, and matches nobody until
+     its provider returns.
+   - **Older rows** name no provider and grant nothing until they do. At each start,
+     with one provider configured they take it. With several, nothing is guessed:
+     the gateway starts, those rows keep granting nothing, and it logs
+     `auth.bindings-unbound` once per kind of row. `local-base doctor`, `local-base status`
+     and the access page say how many, and give the command:
+     `local-base access bindings adopt --issuer <issuer>`. Someone already linked
+     through one provider keeps it, without anyone choosing. A rollback's new rows are
+     handled the same way at the next start. `--no-auth` does none of this, since
+     nothing there depends on who vouches for an address. The host commands always
+     work, so the owner can't be locked out of the host
+     (`TestServeNamesTheProviderOnOlderBindings`).
+   - `auth.Guard` models this, including that a removed person stays refused, and
+     `TestGuardAgreesWithSignIn` compares it with real sign-in.
 
 6. **A request cut off by a memory emergency** (operator decision). As in
    TS, critical memory stops every runtime, including ones serving active
@@ -1504,10 +1592,14 @@ item 5.
    `/_localbase/api-keys` applies the same rules (see §13.6, item 5). Where TS has its own refusal (for
    example, clearing a policy that has managed users), TS's error stays.
    `local-base access` is the recovery path: it applies the change and warns
-   when nobody can manage access. Each successful admin change is logged as
+   when nobody can manage access. Each admin change is logged as
    `audit.access-changed` or `audit.api-key-changed`, with the action, the
-   actor kind and id (a hash for browser sessions) and the key id; never
-   emails, names or secrets. `auth.Guard` models the resolution
+   actor kind and id (a hash for browser sessions), the key id and, for a key,
+   the permissions it now has; never emails, names or secrets. Each refused
+   one is logged as `audit.access-refused` or `audit.api-key-refused`, with
+   the status and the reason code. What a refused caller sent is logged only
+   if it can hold nothing else: an action word and a well-formed key id.
+   `auth.Guard` models the resolution
    `ResolvePolicy` uses (`TestAccessLockout`); the differential script gives
    the provider-wide permissions `access:manage` before its policy clear, so
    both gateways still run the same steps.

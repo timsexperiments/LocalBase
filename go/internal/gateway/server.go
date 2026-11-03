@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -67,6 +68,12 @@ type Server struct {
 	Updates *upgrade.Checker
 
 	mgmt *management
+	// adminMu is held from the checks on a change to keys or access through its write:
+	// each check reads state the other changes can alter.
+	adminMu sync.Mutex
+	// beforeAdminWrite runs after those checks, before the write (tests only).
+	beforeAdminWrite func()
+
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runManager
 	// UI handles /app and / when set.
@@ -172,10 +179,6 @@ func PrincipalFrom(ctx context.Context) *auth.Principal {
 // browser sessions arrive with the auth milestone.
 func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
-			next(w, r)
-			return
-		}
 		if s.NoAuth {
 			next(w, r)
 			return
@@ -391,6 +394,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
 			return
 		}
+	}
+	// No method is exempt from authentication. This gateway sends no CORS
+	// headers, so OPTIONS has no use outside the browser layer's own paths: it
+	// is refused before any handler, as TS does.
+	if r.Method == http.MethodOptions && !IsUIAccessPath(r.URL.Path) {
+		r.Pattern = probe.Pattern
+		forbidden(rec, r)
+		return
 	}
 	s.mux.ServeHTTP(rec, r)
 }

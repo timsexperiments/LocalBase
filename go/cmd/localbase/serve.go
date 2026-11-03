@@ -37,6 +37,32 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/web"
 )
 
+// nameBindingIssuers gives older email bindings and invitations their sign-in provider
+// when only one could be meant (DESIGN §13.6, item 5b), and says what is left. It never
+// stops a start: what names no provider grants nothing, and the host commands still work.
+func nameBindingIssuers(st *store.Store, access *auth.BrowserAccess, log *slog.Logger) {
+	ctx := context.Background()
+	adopted, err := auth.AdoptBindingIssuers(ctx, st, access)
+	if err != nil {
+		log.Error("Naming the sign-in provider on older bindings failed; they grant nothing until it is done.", "event", "auth.issuers-adopt-failed", "error", err.Error())
+	} else if adopted > 0 {
+		log.Info("Email bindings and invitations now name their sign-in provider.", "event", "auth.issuers-adopted", "count", adopted)
+	}
+	left, err := auth.CountUnbound(ctx, st.DB)
+	if err != nil || len(access.Issuers()) == 0 {
+		return // with no provider, nobody can sign in and there is nothing to choose
+	}
+	for _, group := range []struct {
+		kind, what string
+		count      int
+	}{{"email", "email bindings", left.Emails}, {"email-domain", "domain bindings", left.Domains}, {"invitation", "invitations", left.Invitations}} {
+		if group.count > 0 {
+			log.Warn(fmt.Sprintf("%d %s are not bound to a sign-in provider, so they grant nothing. Run: local-base access bindings adopt --issuer <issuer>", group.count, group.what),
+				"event", "auth.bindings-unbound", "kind", group.kind, "count", group.count)
+		}
+	}
+}
+
 func serveCommand() *cli.Command {
 	opt := func(name, value, help string) cli.Option { return cli.Option{Name: name, Value: value, Help: help} }
 	flag := func(name, help string) cli.Option { return cli.Option{Name: name, Bool: true, Help: help} }
@@ -299,6 +325,10 @@ func serve(c *cli.Ctx) (any, error) {
 	access, err := auth.LoadAccess(r.Dir)
 	if err != nil {
 		return nil, err
+	}
+	if !noAuth {
+		// Without sign-in, nothing yet depends on who vouches for an address.
+		nameBindingIssuers(st, access, log)
 	}
 	browser := auth.NewBrowser(st, r.Dir, access, log)
 	if browser.HasMagicLink() == nil {
