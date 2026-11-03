@@ -1,0 +1,106 @@
+// Drives headless Chrome for tools/ui-shots.sh: every page at every width in both color
+// schemes, a contact sheet per scheme, and, with a baseline folder, a pixel comparison.
+const [cdpBase, base, out, baseline] = process.argv.slice(2);
+const WIDTHS: [number, number][] = [[360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]];
+const SCHEMES = ["light", "dark"];
+const only = process.env.UI_SHOTS_PAGES?.split(",");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms: number) => `await new Promise((r)=>setTimeout(r,${ms}));`;
+// [name, path, what to do first]. Actions leave the page in the state worth reviewing.
+const PAGES: [string, string, string?][] = [
+  ["chat", "/app/chat"],
+  ["chat-reply", "/app/chat", `const p=document.querySelector("textarea");p.value="Plan a three day trip with kids. Keep it cheap.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2500)}`],
+  ["studio", "/app/studio"],
+  ["image", "/app/studio/image"],
+  ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click();${wait(400)}`],
+  ["video", "/app/studio/video"],
+  ["speech", "/app/studio/speech"],
+  ["transcribe", "/app/studio/transcribe"],
+  ["decisions", "/app/studio/decisions"],
+  ["decisions-result", "/app/studio/decisions", `document.querySelector("[data-open-sheet=decide-template]").click();${wait(120)}document.querySelector('[data-template="route"]').click();${wait(120)}document.querySelector("#decide .lab-dock button[type=submit]").click();${wait(1800)}`],
+  ["models", "/app/models"],
+  ["get", "/app/models/get"],
+  ["running", "/app/models/running"],
+  ["voices", "/app/voices"],
+  ["settings", "/app/settings"],
+  ["admin", "/app/admin?section=keys"],
+  ["more", "/app/models", `[...document.querySelectorAll("nav a, nav button, button")].find((b)=>/More/.test(b.textContent))?.click();${wait(400)}`],
+  ["not-found", "/app/nope"],
+];
+// Nothing moves. When comparing with a baseline, live figures are hidden too, as they change
+// by themselves; contact sheets keep them, because they are the point.
+const STEADY = `const s=document.createElement("style");s.textContent="*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";document.head.append(s);${baseline ? `for(const n of document.querySelectorAll("[data-strip-free],.gauge,.gauge-legend dd,#running-live .text-muted"))n.style.visibility="hidden";` : ""}`;
+
+const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+let id = 0; const waiting = new Map();
+ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
+const send = (method: string, params: any = {}) => new Promise<any>((res, rej) => { const n = ++id; waiting.set(n, (m: any) => (m.error ? rej(new Error(method + ": " + m.error.message)) : res(m.result))); ws.send(JSON.stringify({ id: n, method, params })); });
+const ev = async (expression: string) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+await send("Page.enable");
+
+const shots: { page: string; width: number; scheme: string; file: string }[] = [];
+for (const [name, path, action] of PAGES) {
+  if (only && !only.includes(name)) continue;
+  for (const [width, height] of WIDTHS) {
+    for (const scheme of SCHEMES) {
+      const mobile = width < 1024;
+      await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
+      await send("Emulation.setTouchEmulationEnabled", { enabled: mobile });
+      await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: scheme }, { name: "prefers-reduced-motion", value: "reduce" }] });
+      await send("Page.navigate", { url: base + path });
+      await sleep(900);
+      if (action) await ev(`(async()=>{${action}})()`);
+      await ev(`(()=>{${STEADY}})()`);
+      await ev(`document.fonts.ready.then(()=>true)`);
+      await sleep(120);
+      const overflow = await ev(`document.documentElement.scrollWidth-innerWidth`);
+      if (overflow > 0) console.log(`OVERFLOW ${name} ${width} ${scheme}: ${overflow}px`);
+      const { data } = await send("Page.captureScreenshot", { format: "png" });
+      const file = `${name}-${width}-${scheme}.png`;
+      await Bun.write(`${out}/${file}`, Buffer.from(data, "base64"));
+      shots.push({ page: name, width, scheme, file });
+    }
+  }
+  console.log(name);
+}
+
+// A sheet per scheme: a row per page, a column per width.
+await send("Emulation.clearDeviceMetricsOverride");
+await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
+for (const scheme of SCHEMES) {
+  const pages = [...new Set(shots.map((s) => s.page))];
+  const rows = await Promise.all(pages.map(async (p) => {
+    const cells = await Promise.all(shots.filter((s) => s.page === p && s.scheme === scheme).map(async (s) => `<figure><figcaption>${p} ${s.width}</figcaption><img src="data:image/png;base64,${Buffer.from(await Bun.file(`${out}/${s.file}`).arrayBuffer()).toString("base64")}"></figure>`));
+    return `<div class="r">${cells.join("")}</div>`;
+  }));
+  const html = `<!doctype html><meta charset="utf-8"><style>body{margin:8px;background:#555;color:#fff;font:600 12px system-ui}.r{display:flex;gap:8px;margin-bottom:10px;align-items:flex-start}figure{margin:0}img{height:440px;display:block}</style>${rows.join("")}`;
+  await Bun.write(`${out}/_sheet-${scheme}.html`, html);
+  await send("Page.navigate", { url: `file://${out}/_sheet-${scheme}.html` });
+  await sleep(2500);
+  const h = await ev(`document.documentElement.scrollHeight`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: h, deviceScaleFactor: 1, mobile: false });
+  await sleep(300);
+  const { data } = await send("Page.captureScreenshot", { format: "png" });
+  await Bun.write(`${out}/_sheet-${scheme}.png`, Buffer.from(data, "base64"));
+  await Bun.$`rm -f ${out}/_sheet-${scheme}.html`;
+  await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
+}
+
+// With a baseline: how much of each picture changed.
+let changed = 0;
+if (baseline) {
+  await send("Page.navigate", { url: "about:blank" });
+  for (const s of shots) {
+    const old = Bun.file(`${baseline}/${s.file}`);
+    if (!(await old.exists())) { console.log(`NEW ${s.file}`); continue; }
+    const a = Buffer.from(await Bun.file(`${out}/${s.file}`).arrayBuffer()).toString("base64");
+    const b = Buffer.from(await old.arrayBuffer()).toString("base64");
+    const pct = await ev(`(async()=>{const load=(d)=>new Promise((r,x)=>{const i=new Image();i.onload=()=>r(i);i.onerror=x;i.src="data:image/png;base64,"+d});const [x,y]=await Promise.all([load(${JSON.stringify(a)}),load(${JSON.stringify(b)})]);if(x.width!==y.width||x.height!==y.height)return 100;const c=(i)=>{const k=document.createElement("canvas");k.width=i.width;k.height=i.height;const g=k.getContext("2d");g.drawImage(i,0,0);return g.getImageData(0,0,i.width,i.height).data};const p=c(x),q=c(y);let n=0;for(let i=0;i<p.length;i+=4)if(Math.abs(p[i]-q[i])+Math.abs(p[i+1]-q[i+1])+Math.abs(p[i+2]-q[i+2])>30)n++;return n/(p.length/4)*100})()`);
+    if (pct > 0.5) { changed++; console.log(`CHANGED ${s.file}: ${pct.toFixed(1)}%`); }
+  }
+  console.log(changed ? `ui-shots: ${changed} picture(s) changed` : "ui-shots: no picture changed");
+}
+ws.close();
+process.exit(0);
