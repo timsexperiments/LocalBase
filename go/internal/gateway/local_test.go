@@ -332,3 +332,25 @@ func TestLoginLinkAudit(t *testing.T) {
 		t.Error("a log holds the token")
 	}
 }
+
+// The web path takes an id in JSON, so a leading '-' means nothing to it.
+func TestRevokeASessionWhoseIDStartsWithADashOverTheWeb(t *testing.T) {
+	c, s := newLocalGateway(t)
+	ck := sessionCookie(t, c, s)
+	other := sessionCookie(t, c, s)
+	var id string
+	if err := s.Store.DB.QueryRow(`SELECT id FROM local_sessions ORDER BY created_at DESC, rowid DESC LIMIT 1`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	const dashed = "-AnZqiOlvvn8"
+	if _, err := s.Store.DB.Exec(`UPDATE local_sessions SET id = ? WHERE id = ?`, dashed, id); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := c.send("POST", "/app/api/_localbase/local-sessions", `{"action":"revoke","id":"`+dashed+`"}`, localUI(ck, c.base))
+	if resp.StatusCode != 200 || !strings.Contains(body, `"revoked":1`) {
+		t.Fatalf("revoke: %d %s", resp.StatusCode, body)
+	}
+	if resp, _ := c.send("GET", "/app/session", "", localUI(other, c.base)); resp.StatusCode == 200 {
+		t.Error("the revoked session worked")
+	}
+}
