@@ -11,6 +11,7 @@ import (
 func addSTT(mux *http.ServeMux) {
 	mux.HandleFunc("POST /inference", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseMultipartForm(64 << 20)
+		dieIfAsked(w, r.FormValue("prompt"))
 		lines := []string{"The harbor was quiet this morning.", "A few gulls circled above the boats.", "Nobody seemed in a hurry."}
 		if r.FormValue("translate") == "true" {
 			lines[0] = "Translated: the harbor was quiet."

@@ -617,6 +617,8 @@ Deliberate differences the contract suite found and kept:
   starts it again. TS restarts in the background with bounded backoff.
 - A tool-call delta with an index outside 0-127, or a fractional one, stays out of a run's accumulated `output`. The stream still carries it. Runs are Go-only (§21), so TS has no matching route.
 - `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
+- A backend that crashes under a request answers 503 `service_unavailable` with
+  `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
 
 ### M1 (done 2026-10-19)
 
@@ -1251,6 +1253,18 @@ Deliberate status changes to verify against the live clients at cutover:
    request, the model-management state therefore shows a different active
    model on each gateway. `TestDifferentialModelManagement` first activates
    the same chat model on both.
+10. **A backend that crashes under a request** (operator decision, from the
+    chaos tests, go/docs/reliability.md). TS answers 502 `upstream_error`
+    without `Retry-After`, and so did Go. Go now answers 503
+    `service_unavailable` ("LLM service…", "Image…", "TTS…", "STT…") with
+    `Retry-After: 5`, the same contract as item 6: the failure is transient,
+    and the next request starts the backend again. This covers a backend that
+    cannot be reached and one that closes the connection before its answer is
+    complete. A detached run ends as `failed` with that code as its error. A
+    backend that answers with something invalid stays a 502, as does a stream
+    that has started, which still ends with an `upstream_error` event because
+    its status has been sent (`TestLLMCrashAnswers503` and its siblings in
+    `internal/gateway/crash_test.go`).
 
 10. **The first install on a fresh root** (operator, after the first-run pass).
     TS refuses to install a selected or active model and to disable the default
@@ -1863,7 +1877,7 @@ Each item is done, or waived on record by the operator.
 
    Each row is signed off as "no client relies on the TS behaviour". The
    transient-failure contract (503 or 429 with `Retry-After`) is unchanged,
-   and 6 replaces a 502 with that contract.
+   and 6 and 10 replace a 502 with that contract.
 4. **The open cutover checklist items (§13.6), on the release candidate:**
    - an image turn with a real vision model;
    - a real chat model choosing a generation tool by itself;
