@@ -246,7 +246,7 @@ func (s *Service) abandon(w *svcWaiter) {
 
 // pump dispatches the head of the queue. Called with mu held.
 func (s *Service) pump() {
-	for len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed && s.unloading == "" {
+	if len(s.queue) > 0 && !s.busy && !s.claimed && !s.closed && s.unloading == "" {
 		head := s.queue[0]
 		if s.cur != nil && s.cur.modelID == head.model && s.cur.key == head.key {
 			s.queue = s.queue[1:]

@@ -313,11 +313,11 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 	case e.Reason == "measurement-unavailable":
 		return "Available memory could not be measured reliably, so the video runtime was not started. Retry shortly."
 	case e.PoolID == "gpu-working-set" && !e.Permanent:
-		required, resident := e.RequestedBytes, e.RequestedBytes
+		required := e.RequestedBytes
 		if e.Diagnostics != nil {
 			required = e.Diagnostics.Requested
 		}
-		resident = e.RequestedBytes - required
+		resident := e.RequestedBytes - required
 		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Unload other models and retry.",
 			gibText(required), gibText(resident), gibText(e.AvailableBytes))
 	}
