@@ -196,8 +196,13 @@ func TestChooseFromPicksTheSmallest(t *testing.T) {
 	if got := picked(chooseFrom(rows, 100_000_000_000)); got != "small" {
 		t.Errorf("plenty of disk: %q", got)
 	}
-	if got := picked(chooseFrom(rows, 1_000_000_000)); got != "" {
+	if got := picked(chooseFrom(rows, 900_000_000)); got != "" {
 		t.Errorf("nothing fits the disk: %q", got)
+	}
+	// Nothing clearly fits: the smallest that may, not a dead end.
+	maybe := []CatalogRow{{ID: "a", DownloadBytes: 9, Fit: "wont-fit", MayNotFit: "May not fit"}, {ID: "b", DownloadBytes: 5, Fit: "wont-fit", MayNotFit: "May not fit"}, {ID: "c", DownloadBytes: 1, Fit: "wont-fit", Forecast: true}}
+	if got := picked(chooseFrom(maybe, 100)); got != "b" {
+		t.Errorf("may not fit: %q", got)
 	}
 	// Already here: picked, with nothing to say about a download.
 	here := append([]CatalogRow{{ID: "here", DownloadBytes: 4_000_000_000, Fit: "fits", Installed: true}}, rows...)
@@ -419,5 +424,70 @@ func TestStripAdvice(t *testing.T) {
 	}
 	if stripAdvice("healthy") != "" || stripAdvice("") != "" {
 		t.Error("advice with nothing wrong")
+	}
+}
+
+// A rough figure warns and leaves the choice open; a figure for this computer can refuse.
+func TestRoughFigureDoesNotRefuse(t *testing.T) {
+	u := shellUI(t, nil, "")
+	source := "estimated"
+	u.d.Call = func(_ context.Context, _ *auth.Principal, _, path, _ string, _ []byte) APIResult {
+		if strings.HasSuffix(path, "/host") {
+			return APIResult{Status: 200, Body: []byte(`{"host":{"memory":{"total":{"bytes":68719476736},"available":{"bytes":32212254720},"localBase":{"bytes":0}}}}`)}
+		}
+		return APIResult{Status: 200, Body: []byte(`{"admitted":false,"requestedBytes":85899345920,"demandSource":"` + source + `","refusal":{"code":"model_too_large","permanent":true}}`)}
+	}
+	r := httptest.NewRequest("GET", "/app/welcome/choose", nil)
+	row := func() CatalogRow {
+		return u.withForecast(r, []CatalogRow{{ID: "m", Name: "Big", Fit: "wont-fit", UsesBytes: 85899345920, DownloadBytes: 9}})[0]
+	}
+	draw := func(c CatalogRow) (choose, get string) {
+		var a, b strings.Builder
+		if err := u.pages["welcome"].ExecuteTemplate(&a, "welcome-choose", map[string]any{"Choices": chooseFrom([]CatalogRow{c}, 100), "CanManage": true}); err != nil {
+			t.Fatal(err)
+		}
+		if err := u.pages["get"].ExecuteTemplate(&b, "catalog-row", map[string]any{"ID": c.ID, "Name": c.Name, "Initial": "B", "Task": "Chat", "DownloadBytes": c.DownloadBytes, "Fit": c.Fit, "Forecast": c.Forecast, "MayNotFit": c.MayNotFit, "CanManage": true}); err != nil {
+			t.Fatal(err)
+		}
+		return a.String(), b.String()
+	}
+	rough := row()
+	if rough.MayNotFit != "May not fit: about 80.0 GiB needed, this computer has 30.0 GiB free" {
+		t.Fatalf("%q", rough.MayNotFit)
+	}
+	choose, getRow := draw(rough)
+	if strings.Contains(choose, "disabled") || strings.Contains(choose, "choice-off") || !strings.Contains(choose, rough.MayNotFit) {
+		t.Errorf("a rough figure refused on choose: %s", choose)
+	}
+	if got := mayNotFitDetail(rough.MayNotFit); got != "About 80.0 GiB needed, this computer has 30.0 GiB free." {
+		t.Errorf("%q", got)
+	}
+	if strings.Contains(getRow, ">Why?<") || !strings.Contains(getRow, "Download anyway") || !strings.Contains(getRow, "may refuse to load") {
+		t.Errorf("a rough figure refused on Get: %s", getRow)
+	}
+	source = "derived"
+	real := row()
+	if real.MayNotFit != "" || !real.Forecast {
+		t.Fatalf("%+v", real)
+	}
+	choose, getRow = draw(real)
+	if !strings.Contains(choose, "disabled") || !strings.Contains(choose, "Too big for this computer") || !strings.Contains(getRow, ">Why?<") {
+		t.Errorf("a real figure didn't refuse:\n%s\n%s", choose, getRow)
+	}
+}
+
+// A rough "won't fit" on a search result is words: it ranks last, but it can still be recommended.
+func TestSearchRecommendationKeepsARoughNo(t *testing.T) {
+	q := "Q4_K_M"
+	only := []downloadChoice{{Path: "big.gguf", SizeBytes: 9, Quant: &q, Verdict: "wont-fit"}}
+	if got := recommendedChoice(only); got != 0 {
+		t.Errorf("the only choice wasn't recommended: %d", got)
+	}
+	both := []downloadChoice{{Path: "big.gguf", SizeBytes: 9, Quant: &q, Verdict: "wont-fit"}, {Path: "small.gguf", SizeBytes: 5, Quant: &q, Verdict: "fits"}}
+	if got := recommendedChoice(both); got != 1 {
+		t.Errorf("one that fits should come first: %d", got)
+	}
+	if fitLabels["wont-fit"] != "May not fit" {
+		t.Error(fitLabels["wont-fit"])
 	}
 }

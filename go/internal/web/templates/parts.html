@@ -23,12 +23,21 @@
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
     <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if not .Installed}} download{{end}}{{if and .Installed (eq .Fit "fits")}} · fits this computer{{else if and .Installed (eq .Fit "tight")}} · tight fit{{end}}</span>
     {{if .Forecast}}<span class="block text-sm text-muted">{{if eq .Fit "fits"}}Fits now.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{else if eq .Fit "close-others"}}Close other apps first.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{if .FreeFirstBytes}} Free {{aboutGib .FreeFirstBytes}} first.{{end}}{{else if eq .Fit "wont-fit"}}Too big for this computer.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{end}}</span>
-    {{else if eq .Fit "wont-fit"}}<span class="block text-sm text-muted">Needs more memory than this computer has.</span>{{end}}
+    {{else if .MayNotFit}}<span class="block text-sm text-muted">{{.MayNotFit}}</span>{{end}}
   </a>
-  <span class="shrink-0" id="cat-{{.ID}}-action">
+  <span class="catalog-action shrink-0" id="cat-{{.ID}}-action">
   {{if .Installed}}<span class="pill pill-ok">Installed</span>
-  {{else if eq .Fit "wont-fit"}}<a class="btn btn-quiet rounded-full px-4" href="/app/models/m/{{.ID}}" aria-label="Why {{.Name}} doesn’t fit">Why?</a>
-  {{else if $.CanManage}}<form hx-post="/app/models/get/recipe" hx-target="#cat-{{.ID}}-action" hx-swap="innerHTML" hx-disabled-elt="find button">
+  {{else if and (eq .Fit "wont-fit") (not .MayNotFit)}}<a class="btn btn-quiet rounded-full px-4" href="/app/models/m/{{.ID}}" aria-label="Why {{.Name}} doesn’t fit">Why?</a>
+  {{else if and $.CanManage .MayNotFit}}<button type="button" class="btn btn-quiet rounded-full px-5" aria-label="Get {{.Name}}" data-open-sheet="may-{{.ID}}" aria-haspopup="dialog">Get</button>
+  <dialog id="may-{{.ID}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="may-{{.ID}}-title">
+    {{template "sheet-head" (dict "ID" (printf "may-%s-title" .ID) "Title" (printf "%s may not fit" .Name))}}
+    <form class="grid gap-3 px-4 pb-2" hx-post="/app/models/get/recipe" hx-target="closest .catalog-action" hx-swap="innerHTML">
+      <p class="text-muted">{{mayDetail .MayNotFit}} You can download it, but it may refuse to load when you start it.</p>
+      <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
+      <button type="submit" class="btn btn-primary w-full">Download anyway</button>
+    </form>
+  </dialog>
+  {{else if $.CanManage}}<form hx-post="/app/models/get/recipe" hx-target="closest .catalog-action" hx-swap="innerHTML" hx-disabled-elt="find button">
     <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
     <button type="submit" class="btn btn-quiet rounded-full px-5" aria-label="Get {{.Name}}">Get</button></form>
   {{end}}
@@ -79,8 +88,7 @@
 {{define "memory-legend"}}
 {{if .Known}}
 <dl class="gauge-legend">
-  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>
-  {{if .GettingReady}}<div><dt class="gauge-sub"><span>Getting ready<span class="gauge-caption">Estimated, and included in LocalBase</span></span></dt><dd class="gauge-sub-figure">{{gib .GettingReady}}</dd></div>{{end}}{{end}}
+  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}{{if $.GettingReady}}, {{gib $.GettingReady}} of it getting ready{{end}}.</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>{{end}}
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps and system</dt><dd>{{gib .Other}}</dd></div>
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Free memory</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>

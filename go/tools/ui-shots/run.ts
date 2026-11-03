@@ -104,7 +104,7 @@ for (const scheme of SCHEMES) {
   await Bun.write(`${out}/${name}.html`, html);
   await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url: Bun.pathToFileURL(`${out}/${name}.html`).href });
-  for (let i = 0; i < 100 && !(await ev(`[...document.images].every((i) => i.complete)`)); i++) await sleep(100);
+  for (let i = 0; i < 200 && !(await ev(`document.readyState === "complete" && location.href.endsWith(${JSON.stringify(name + ".html")}) && [...document.images].every((i) => i.complete)`)); i++) await sleep(100);
   const broken = await ev(`document.images.length ? [...document.images].filter((i) => !i.naturalWidth).length : -1`);
   if (broken) throw new Error(`${name}: ${broken} pictures did not load`);
   const h = await ev(`document.documentElement.scrollHeight`);

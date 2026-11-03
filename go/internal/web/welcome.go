@@ -120,7 +120,38 @@ func (u *UI) withForecast(r *http.Request, rows []CatalogRow) []CatalogRow {
 			}
 		}
 	}
+	// A rough figure can warn but it can't refuse: it has been measured at half the real one and
+	// at more than twice it. Only a figure for this model on this computer can (#475).
+	free := int64(-1)
+	if h, ok := u.readHost(r); ok && h.Host.Memory.Total.Bytes != nil && h.Host.Memory.Available.Bytes != nil {
+		_, _, free = memoryRows(*h.Host.Memory.Total.Bytes, *h.Host.Memory.Available.Bytes, h.Host.Memory.LocalBase.Bytes)
+	}
+	for i := range rows {
+		if rows[i].Fit == "wont-fit" && !rows[i].Forecast && !rows[i].Installed {
+			rows[i].MayNotFit = mayNotFitText(rows[i].UsesBytes, free)
+		}
+	}
 	return rows
+}
+
+// mayNotFitText says why a rough figure gives pause; a negative free is an unknown one.
+func mayNotFitText(needs, free int64) string {
+	text := "May not fit"
+	if needs > 0 {
+		text += ": " + aboutGib(needs) + " needed"
+		if free >= 0 {
+			text += ", this computer has " + gibText(free) + " free"
+		}
+	}
+	return text
+}
+
+// mayNotFitDetail is the figures alone, under a heading that already says it may not fit.
+func mayNotFitDetail(text string) string {
+	if d, ok := strings.CutPrefix(text, "May not fit: a"); ok {
+		return "A" + d + "."
+	}
+	return ""
 }
 
 // chooseFrom picks the smallest that fits both memory and disk, so the first download is small.
@@ -135,6 +166,14 @@ func chooseFrom(rows []CatalogRow, disk int64) []welcomeChoice {
 			pick = i
 		}
 		out = append(out, c)
+	}
+	// Nothing clearly fits: the smallest that can be tried at all, with its warning beside it.
+	for i := range out {
+		if pick < 0 || out[i].DownloadBytes < out[pick].DownloadBytes {
+			if out[i].MayNotFit != "" && !out[i].TooBigDisk {
+				pick = i
+			}
+		}
 	}
 	if pick >= 0 {
 		out[pick].Pick = true
@@ -173,7 +212,17 @@ func (u *UI) downloading(r *http.Request) string {
 }
 
 func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string) {
+	u.renderChooseAsking(w, r, failure, "")
+}
+
+// renderChooseAsking draws choose, asking first about a model that may not fit.
+func (u *UI) renderChooseAsking(w http.ResponseWriter, r *http.Request, failure, ask string) {
 	choices := u.welcomeChoices(r)
+	if ask != "" {
+		for i := range choices {
+			choices[i].Pick = choices[i].ID == ask
+		}
+	}
 	picked := slices.IndexFunc(choices, func(c welcomeChoice) bool { return c.Pick })
 	diskShort := len(choices) > 0 && !slices.ContainsFunc(choices, func(c welcomeChoice) bool { return !c.TooBigDisk })
 	anyForecast := slices.ContainsFunc(choices, func(c welcomeChoice) bool { return c.Forecast })
@@ -181,6 +230,9 @@ func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string
 		"SmallRule": "5 GB", "CanManage": u.caller(r).Can("models:manage")}
 	if picked >= 0 {
 		data["Picked"] = choices[picked]
+		if ask != "" {
+			data["Confirm"] = choices[picked]
+		}
 	}
 	u.render(w, r, "welcome", data)
 }
@@ -191,6 +243,11 @@ func (u *UI) welcomeGet(w http.ResponseWriter, r *http.Request) {
 	// Already on this computer: all it needs is turning on.
 	if s := u.d.Catalog.ByID(id); s != nil && u.installedBytes(s) > 0 {
 		loadPage(w, r, u.finishInstall(r, id))
+		return
+	}
+	// A long download of something that may not load is worth one question.
+	if r.PostFormValue("anyway") != "1" && slices.ContainsFunc(u.welcomeChoices(r), func(c welcomeChoice) bool { return c.ID == id && c.MayNotFit != "" }) {
+		u.renderChooseAsking(w, r, "", id)
 		return
 	}
 	var op struct{ State, Detail string }

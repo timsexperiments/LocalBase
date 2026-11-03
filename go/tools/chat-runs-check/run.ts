@@ -764,12 +764,40 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await nav("/app/models/running");
 const shown = await ev(`(() => { const rows = [...document.querySelectorAll("#running-live .running-row")].map((r) => r.textContent.replace(/\\s+/g, " ").trim()); return { rows, buttons: document.querySelectorAll("#running-live [aria-label^='Free memory']").length, sheets: document.querySelectorAll("#running-live dialog[id^=unload-sheet]").length }; })()`);
 check(shown.buttons === shown.rows.length && shown.sheets === shown.rows.length, `every row on Running has its own Free memory: ${JSON.stringify(shown.rows).slice(0, 300)}`);
-for (const w of [360, 390, 430, 480, 768]) {
+for (const w of [320, 360, 390, 430, 480, 768]) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: 844, deviceScaleFactor: 2, mobile: w < 768 });
   await sleep(120);
   const inset = await ev(`[...document.querySelectorAll("#running-live .running-row")].map((li) => { const r = li.getBoundingClientRect(); return [...li.querySelectorAll(".running-actions > *")].map((el) => { const b = el.getBoundingClientRect(); return Math.round(Math.min(b.left - r.left, r.right - b.right, r.bottom - b.bottom)); }); }).flat()`);
   check(inset.every((n) => n >= 8), `at ${w}, a row's state and action stay inside its padding: ${JSON.stringify(inset)}`);
+  const tallest = await ev(`Math.max(0, ...[...document.querySelectorAll(".running-actions .btn")].map((b) => b.getBoundingClientRect().height))`);
+  check(tallest < 50, `at ${w}, Free memory stays on one line: ${tallest}`);
 }
+
+// --- An htmx target that isn't a valid selector does nothing, silently (a dot in a model's id).
+await nav("/app/models/get");
+const badTargets = await ev(`[...document.querySelectorAll("[hx-target^='#'], [hx-target^='.']")].map((el) => el.getAttribute("hx-target")).filter((t) => { try { document.querySelector(t); return false; } catch { return true; } })`);
+check(badTargets.length === 0, `Get's targets are all valid selectors: ${JSON.stringify(badTargets).slice(0, 200)}`);
+
+// --- Get finds its row for a model with a dot in its id. Stopped before the request, so nothing
+// downloads. The second click plants the old target, to show this check would have caught it.
+const clickGet = (plant) => ev(`(async () => {
+  const form = [...document.querySelectorAll("form[hx-post='/app/models/get/recipe']")].find((f) => f.querySelector("[name=modelId]").value.includes("."));
+  if (!form) return { none: true };
+  const id = form.querySelector("[name=modelId]").value;
+  if (${plant}) form.setAttribute("hx-target", "#cat-" + id + "-action");
+  let requested = null;
+  const stop = (e) => { requested = e.detail.target?.className ?? "?"; e.preventDefault(); };
+  document.addEventListener("htmx:beforeRequest", stop, true);
+  form.querySelector("button[type=submit]").click();
+  await new Promise((r) => setTimeout(r, 400));
+  document.removeEventListener("htmx:beforeRequest", stop, true);
+  return { id, requested };
+})()`);
+const dotted = await clickGet(false);
+check(dotted.id?.includes(".") && dotted.requested?.includes("catalog-action"), `Get on a dotted model id reaches its own row: ${JSON.stringify(dotted)}`);
+await nav("/app/models/get");
+const planted = await clickGet(true);
+check(planted.id?.includes(".") && planted.requested === null, `the old target would not have sent anything: ${JSON.stringify(planted)}`);
 
 // --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
