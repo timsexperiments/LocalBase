@@ -103,9 +103,8 @@ func TestDownloadInstallsAndVerifies(t *testing.T) {
 	if want := "started,download-progress,verification-started,verification-completed,completed"; strings.Join(kinds, ",") != want {
 		t.Errorf("events: %v", kinds)
 	}
-	// Reinstalling downloads nothing. The first check hashes the file again, because
-	// the verified identity includes ctime and publishing the partial changed it;
-	// after that the identity is trusted.
+	// Reinstalling downloads nothing and hashes nothing: the identity recorded after
+	// publishing is trusted.
 	before := srv.requests()
 	how := ""
 	report = func(e Event) {
@@ -113,12 +112,12 @@ func TestDownloadInstallsAndVerifies(t *testing.T) {
 			how = e.Verification
 		}
 	}
-	for _, want := range []string{"sha256", "cached-identity", "cached-identity"} {
+	for range 3 {
 		if err := installTo(t, dir, s, report); err != nil {
 			t.Fatal(err)
 		}
-		if srv.requests() != before || how != want {
-			t.Errorf("reinstalling: %d requests, %q, want %q", srv.requests()-before, how, want)
+		if srv.requests() != before || how != "cached-identity" {
+			t.Errorf("reinstalling: %d requests, %q", srv.requests()-before, how)
 		}
 	}
 	// A change to the file, same size, is noticed.
