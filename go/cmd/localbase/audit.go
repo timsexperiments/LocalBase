@@ -13,7 +13,10 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
@@ -58,6 +61,28 @@ func auditUpgrade(e *env, event, from, to, sha256, outcome string) {
 	}
 	auditCLI(e, "Administration change.", "event", event, "action", strings.TrimPrefix(event, "audit.upgrade-"), "actor_kind", "cli", "actor_id", "",
 		"from_version", from, "to_version", to, "build", sha256, "outcome", outcome)
+}
+
+// auditService records the service being started, stopped or restarted: who, which root, which service,
+// and whether it worked. Never the error's text.
+func auditService(e *env, event string, err error, attrs ...any) {
+	result, serviceID := "ok", ""
+	if err != nil {
+		result = "failed"
+	}
+	if m, merr := service.MetadataFor(e.Root.Dir); merr == nil {
+		serviceID = m.ServiceID
+	}
+	auditCLI(e, "Administration change.", append([]any{"event", event, "action", strings.TrimPrefix(event, "audit.service-"), "actor_kind", "cli", "actor_id", "",
+		"root", e.Root.Dir, "service_id", serviceID, "result", result}, attrs...)...)
+}
+
+// sayIfInstalled says what's about to happen when it's the installed service, the one on the default
+// root, in words, before it happens. Anyone reading a script's output should be able to see it.
+func sayIfInstalled(c *cli.Ctx, dir, what string) {
+	if root.IsDefault(dir) {
+		c.Error("%s", what)
+	}
 }
 
 // versionForAudit is what a binary said its version is, if it is one: whatever else it says stays out.

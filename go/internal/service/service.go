@@ -862,6 +862,9 @@ func RestartWithin(r *root.Root, lease *root.Lease) (Inspection, error) {
 }
 
 func start(r *root.Root, lease *root.Lease, restart, installMissing bool) (Inspection, error) {
+	if err := refuseDefaultRootInTest(r.Dir); err != nil {
+		return Inspection{}, err
+	}
 	st, prev := readManifest(r.Dir)
 	current := ""
 	if st == "valid" && prev.Root == r.Dir {
@@ -923,6 +926,15 @@ func start(r *root.Root, lease *root.Lease, restart, installMissing bool) (Inspe
 	return Inspect(r, true)
 }
 
+// refuseDefaultRootInTest keeps a test binary away from the installed service: a test that forgot its
+// root would otherwise stop the real gateway on this machine.
+func refuseDefaultRootInTest(dir string) error {
+	if strings.HasSuffix(filepath.Base(os.Args[0]), ".test") && root.IsDefault(dir) {
+		return errorf("A test tried to manage the service on the default root %s. Give it a scratch root.", dir)
+	}
+	return nil
+}
+
 // Stop stops and disables the service under the root operation lease.
 func Stop(r *root.Root) (in Inspection, err error) {
 	err = root.WithOperation(r.Dir, "stop", func() error {
@@ -934,6 +946,9 @@ func Stop(r *root.Root) (in Inspection, err error) {
 
 // StopWithin is Stop for a caller that holds the operation lease.
 func StopWithin(r *root.Root) (Inspection, error) {
+	if err := refuseDefaultRootInTest(r.Dir); err != nil {
+		return Inspection{}, err
+	}
 	m, err := MetadataFor(r.Dir)
 	if err != nil {
 		return Inspection{}, err
@@ -959,6 +974,9 @@ func HasEvidence(r *root.Root) bool {
 // Remove stops the service and deletes its definition and manifest. The
 // caller holds the operation lease.
 func Remove(r *root.Root) (Inspection, error) {
+	if err := refuseDefaultRootInTest(r.Dir); err != nil {
+		return Inspection{}, err
+	}
 	m, err := MetadataFor(r.Dir)
 	if err != nil {
 		return Inspection{}, err

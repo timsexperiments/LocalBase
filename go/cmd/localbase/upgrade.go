@@ -269,7 +269,9 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 	return upgrade.Ops{
 		Stop: func() error {
 			c.Info("Stopping the gateway...")
-			if _, err := service.Stop(e.Root); err != nil {
+			_, err := service.Stop(e.Root)
+			auditService(e, "audit.service-stopped", err, "purpose", "upgrade", "disabled", err == nil)
+			if err != nil {
 				return err
 			}
 			for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(200 * time.Millisecond) {

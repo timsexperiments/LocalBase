@@ -271,3 +271,56 @@ func TestVersionForAudit(t *testing.T) {
 		}
 	}
 }
+
+// A test can't reach the installed service, whatever it asks, and what happened is on the record.
+func TestAServiceCommandOnTheDefaultRootIsRefusedInATest(t *testing.T) {
+	home := t.TempDir() // so even a guard that failed would only find a scratch root
+	t.Setenv("HOME", home)
+	t.Setenv("LOCALBASE_ROOT", "")
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	for _, c := range []struct {
+		args       []string
+		said, line string
+	}{
+		{[]string{"stop"}, "This stops the installed LocalBase service.", "audit.service-stopped"},
+		{[]string{"restart"}, "This restarts the installed LocalBase service.", "audit.service-restarted"},
+		{[]string{"start"}, "", "audit.service-started"},
+	} {
+		code, out := runApp(t, c.args...)
+		if code == 0 || !strings.Contains(out, "A test tried to manage the service on the default root") {
+			t.Errorf("%v: %d %.300q", c.args, code, out)
+		}
+		if c.said != "" && !strings.Contains(out, c.said) {
+			t.Errorf("%v doesn't say %q: %.300q", c.args, c.said, out)
+		}
+		b, err := os.ReadFile(filepath.Join(root.Default(), "logs", "audit.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var last string
+		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			if strings.Contains(line, c.line) {
+				last = line
+			}
+		}
+		for _, want := range []string{`"result":"failed"`, `"actor_kind":"cli"`, `"service_id":"`, `"root":"`} {
+			if !strings.Contains(last, want) {
+				t.Errorf("%v: %q lacks %s", c.args, last, want)
+			}
+		}
+	}
+}
+
+// Nothing to say on a root that isn't the installed one, and uninstall says its record goes too.
+func TestScratchRootsGetNoInstalledNotice(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	t.Setenv("HOME", t.TempDir())
+	dir := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", dir, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	code, out := runApp(t, "--root", dir, "uninstall", "--yes")
+	if code != 0 || strings.Contains(out, "installed LocalBase service") || !strings.Contains(out, "Its audit log goes with it.") {
+		t.Errorf("%d %.400q", code, out)
+	}
+}

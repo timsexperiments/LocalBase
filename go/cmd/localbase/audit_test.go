@@ -82,9 +82,9 @@ var auditClasses = map[string]string{
 	"smoke":                 "audited-temporary-key",
 	"upgrade":               "audited-temporary-key",
 	"upgrade check-updates": "not-a-change",
-	// Deliberately not audited: they start and stop a process. Uninstall removes the logs a line would go
-	// in, and says what it did on screen.
-	"serve": "not-a-change", "start": "not-a-change", "stop": "not-a-change", "restart": "not-a-change",
+	// Deliberately not audited: it runs the gateway, and doesn't change it.
+	"serve": "not-a-change",
+	"start": "audited-elsewhere", "stop": "audited-elsewhere", "restart": "audited-elsewhere", // audit.service-*
 	"uninstall":        "not-a-change",
 	"upgrade rollback": "audited-elsewhere", // audit.upgrade-rolled-back, in the contract test
 	// These write their own lines, under other event names, already.

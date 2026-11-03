@@ -50,6 +50,23 @@ func Resolve(flagValue string) string {
 	return Default()
 }
 
+// IsDefault reports whether dir is the default root, the one the installed service runs on.
+func IsDefault(dir string) bool {
+	def := Default()
+	if def == "" {
+		return false
+	}
+	a, err := Canonical(dir)
+	if err != nil {
+		a = dir
+	}
+	b, err := Canonical(def)
+	if err != nil {
+		b = def
+	}
+	return a == b
+}
+
 // Hash is the sha256 of the canonical path; it names the service unit.
 func Hash(dir string) string {
 	sum := sha256.Sum256([]byte(dir))
