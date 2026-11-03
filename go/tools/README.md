@@ -94,6 +94,5 @@ or lower its count, when you do. A file may not gain one, and no other file may 
 
 | Owner | File: deletes |
 |---|---|
-| FE thread | `axe-check.sh`: 2, `browser-run.sh`: 3, `ui-shots/run.ts`: 1 |
 | Go thread | `contract.sh`: 1, `ios-check.sh`: 2, `otelcol-check.sh`: 1, `placement-rollback-check.sh`: 1, `rehearsal.sh`: 1, `shadow.sh`: 6, `sync-catalog.sh`: 1, `systemd-check.sh`: 1, `tailwind.sh`: 1 |
 | Features thread | `upgrade-rehearsal-systemd.sh`: 1 |

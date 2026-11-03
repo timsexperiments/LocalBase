@@ -48,6 +48,8 @@ if [ "$DRY" = 0 ] && [ "${LOCALBASE_REAL_WINDOW:-}" != go ]; then
   exit 2
 fi
 cd "$(dirname "$0")/.." || exit 2
+. tools/disk-guard.sh
+disk_guard real-memory-check
 SRC=$PWD
 mkdir -p "$1" || exit 2
 W=$(cd "$1" && pwd)/real-memory
@@ -67,8 +69,8 @@ GW=29410 LLM=29411
 CTX=8192
 PLAN_LIMIT_MIB=4864 # 4.75 GiB
 START_PCT=48
-# The shared disk rule: refuse under the floor, and cap what this writes. The clones are APFS
-# clones, so the debug log is what can grow. Use tools/disk-guard.sh once it is in the tree.
+# disk_guard refused above if the disk was already under the floor. These hold it throughout: the
+# clones are APFS clones, so the debug log is what can grow.
 DISK_FLOOR_GIB=90
 LOG_CAP_MIB=2048
 FLOOR_PCT=40

@@ -127,8 +127,6 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 // many such deletes each has. They are reported, not changed here. A file may not gain one,
 // and no other file may join. Lower a number, or remove a line, as they are fixed.
 var knownToDelete = map[string]int{
-	"axe-check.sh":                 2,
-	"browser-run.sh":               3,
 	"contract.sh":                  1,
 	"ios-check.sh":                 2,
 	"otelcol-check.sh":             1,
@@ -138,7 +136,6 @@ var knownToDelete = map[string]int{
 	"sync-catalog.sh":              1,
 	"systemd-check.sh":             1,
 	"tailwind.sh":                  1,
-	"ui-shots/run.ts":              1,
 	"upgrade-rehearsal-systemd.sh": 1,
 }
 
