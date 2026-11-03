@@ -34,6 +34,7 @@ The first `make check` downloads Go modules and compiles dependencies. From an e
 | `make check` | Format, vet, repo guards and unit tests |
 | `make rehearse` | Rehearse a release from local artifacts. Publishes nothing |
 | `make docs` | Build the documentation site into `.cache/docs-site/book` |
+| `make soak-smoke` | One soak cycle against fake backends, about 2 minutes. `make soak` runs for 30 minutes and `make soak-race` adds the race detector. See `go/docs/reliability.md` |
 
 `make hooks` optionally runs the fast checks before each commit.
 
