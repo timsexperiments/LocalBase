@@ -149,17 +149,31 @@ func localSessionsCommand() *cli.Command {
 			}
 			return map[string]any{"sessions": list}, nil
 		})},
-		{Name: "revoke", Summary: "End one local browser session", Usage: "<id>", MinArgs: 1, MaxArgs: 1, IDArg: true, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
-			found, err := auth.RevokeLocalSession(context.Background(), e.Store, c.Args[0])
-			if err != nil {
-				return nil, err
-			}
-			if !found {
-				return nil, errors.New("No local session with that id.")
-			}
-			auditCLI(e, "Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "session_id", c.Args[0], "count", 1)
-			c.Info("Ended the session.")
-			return map[string]any{"revoked": 1}, nil
-		})},
+		{Name: "revoke", Summary: "End one local browser session, or every session", Usage: "[<id>]", MaxArgs: 1, IDArg: true,
+			Options: []cli.Option{{Name: "all", Bool: true, Help: "End every browser session, local or through a provider, and unused sign-in links"}},
+			Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
+				if c.Bool("all") == (len(c.Args) == 1) {
+					return nil, cli.Inputf("Give a session id, or --all.")
+				}
+				if c.Bool("all") {
+					n, err := auth.RevokeAllSessions(context.Background(), e.Store)
+					if err != nil {
+						return nil, err
+					}
+					auditCLI(e, "All sessions revoked.", "event", "audit.sessions-revoked", "actor_kind", "cli", "count", n)
+					c.Info("Ended %d sessions.", n)
+					return map[string]any{"revoked": n}, nil
+				}
+				found, err := auth.RevokeLocalSession(context.Background(), e.Store, c.Args[0])
+				if err != nil {
+					return nil, err
+				}
+				if !found {
+					return nil, errors.New("No local session with that id.")
+				}
+				auditCLI(e, "Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "session_id", c.Args[0], "count", 1)
+				c.Info("Ended the session.")
+				return map[string]any{"revoked": 1}, nil
+			})},
 	}}
 }
