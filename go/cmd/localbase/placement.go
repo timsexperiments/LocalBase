@@ -277,3 +277,46 @@ func showPlacementLines(e *env, id string) []string {
 	defer llm.Close()
 	return append([]string{""}, placementTextLines(placementStatus(e, llm, src, id, gatewayPlacement(e, id)))...)
 }
+
+// machineFitLine is the "This machine" line in admission's terms, for a model on disk:
+// the figure its next load is admitted with, against this computer's memory less what
+// is kept for the computer. Beside a next-load refusal, a catalog figure read as a
+// contradiction.
+func machineFitLine(e *env, id string) (string, bool) {
+	if e.Store == nil {
+		return "", false
+	}
+	lib, err := openLibrary(e)
+	if err != nil {
+		return "", false
+	}
+	spec := e.Catalog.ByID(id)
+	if spec == nil {
+		return "", false
+	}
+	if complete, _ := spec.Installation(e.Root.ModelsDir("llm")); !complete {
+		return "", false
+	}
+	mem := memory.NewController(e.Host, memory.Reserve{Percent: e.Config.SystemReserve.Percent, MinimumGB: e.Config.SystemReserve.MinimumGB}, false)
+	src := &runtime.HostPlacement{Store: e.Store, DeviceID: lib.DeviceID, Memory: mem}
+	llm := runtime.NewLLM(runtime.LLMDeps{Root: e.Root.Dir, ModelsDir: e.Root.ModelsDir("llm"), RuntimesDir: e.Root.RuntimesDir(),
+		Store: e.Store, Catalog: e.Catalog, Memory: mem, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		MemoryGB: float64(e.memoryGB()), Gate: lib.Gate(), Placement: src}, e.Config)
+	defer llm.Close()
+	need, ok := llm.NextLoadBytes(id)
+	if !ok {
+		return "", false
+	}
+	return fitLine(need, mem.Topology().SystemCapacity, mem.ReserveBytes()), true
+}
+
+// fitLine says whether need fits a computer of capacity with reserve kept for itself.
+func fitLine(need, capacity, reserve int64) string {
+	left := capacity - reserve - need
+	if left < 0 {
+		return fmt.Sprintf("  This machine:   Does not fit: needs %s, %s of %s after keeping %s for your computer",
+			gbText(need), gbText(max(0, capacity-reserve)), gbText(capacity), gbText(reserve))
+	}
+	return fmt.Sprintf("  This machine:   Fits, %s to spare of %s after keeping %s for your computer",
+		gbText(left), gbText(capacity), gbText(reserve))
+}

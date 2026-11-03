@@ -619,6 +619,7 @@ Deliberate differences the contract suite found and kept:
 - `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
 - A backend that crashes under a request answers 503 `service_unavailable` with
   `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
+- `model_too_large` also tells the person what to change: a smaller context, or `memory.systemReserve`. TS's sentence stops at the smaller model. A CPU placement that cannot fit even on an idle computer answers this 422 too, instead of a retryable 503, and `models show` says "This machine" in admission's terms, reserve included.
 
 ### M1 (done 2026-10-19)
 

@@ -211,3 +211,41 @@ func TestCheckRealVerbosityFourLines(t *testing.T) {
 		t.Errorf("20/29 passed a plan of 29: %v", err)
 	}
 }
+
+func TestRefusalOnAMachineWithNoGPUGivesNoGPUAdvice(t *testing.T) {
+	m := denseModel(10, 100*mib)
+	_, err := Resolve(m, 100*mib, Device{Platform: CPUOnly, HostAvailable: 1 << 20, KeptBytes: 8 << 30, CapacityBytes: 64 << 30}, Request{Mode: Auto})
+	var pe *Error
+	if !errors.As(err, &pe) || pe.Code != "placement_does_not_fit" {
+		t.Fatalf("%v", err)
+	}
+	if strings.Contains(pe.Message, "GPU") {
+		t.Errorf("GPU advice with no GPU: %s", pe.Message)
+	}
+	if !strings.Contains(pe.Message, "Close other applications") {
+		t.Errorf("a shortage that can clear should say how: %s", pe.Message)
+	}
+	_, err = Resolve(m, 100*mib, Device{Platform: Discrete, GPUCount: 1, GPULayers: true, HostAvailable: 1 << 20, FreeVRAM: 8 << 30, CapacityBytes: 64 << 30}, Request{Mode: CPU})
+	if !errors.As(err, &pe) || !strings.Contains(pe.Message, "GPU") {
+		t.Errorf("a machine with a GPU keeps that advice: %v", err)
+	}
+}
+
+// Even idle it cannot fit: a different code, and the numbers and what to do.
+func TestRefusalThatNoWaitCanClearIsTooLarge(t *testing.T) {
+	m := denseModel(10, 100*mib)
+	m.HostExtraBytes = 7 << 30
+	_, err := Resolve(m, 100*mib, Device{Platform: CPUOnly, HostAvailable: 7 << 30, KeptBytes: 8 << 30, CapacityBytes: 15 << 30}, Request{Mode: Auto})
+	var pe *Error
+	if !errors.As(err, &pe) || pe.Code != "model_too_large" {
+		t.Fatalf("%v", err)
+	}
+	for _, want := range []string{"15.0 GB", "8.0 GB", "7.0 GB", "smaller model", "context", "memory.systemReserve"} {
+		if !strings.Contains(pe.Message, want) {
+			t.Errorf("no %q in: %s", want, pe.Message)
+		}
+	}
+	if strings.Contains(pe.Message, "GPU") {
+		t.Errorf("GPU advice with no GPU: %s", pe.Message)
+	}
+}
