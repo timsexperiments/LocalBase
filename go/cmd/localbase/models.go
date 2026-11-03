@@ -122,8 +122,33 @@ func modelsCommand() *cli.Command {
 	return &cli.Command{Name: "models", Summary: "Browse and install models", Sub: []*cli.Command{
 		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(), modelsAdd(), modelsSearch(), modelsRemoveEntry(),
 		modelsImportCommand(), modelsBackendCommand(), modelsInspectCommand(), modelsExportCommand(), modelsAddDefinitionCommand(), modelsDeleteCommand(), feedCommand(),
-		modelsPlacementCommand(),
+		modelsPlacementCommand(), modelsForgetPeaks(),
 	}}
+}
+
+// modelsForgetPeaks is the way out of a peak that no longer applies: admission uses the highest one
+// seen, and nothing else ever lowers it.
+func modelsForgetPeaks() *cli.Command {
+	return &cli.Command{Name: "forget-peaks", Summary: "Forget the memory peaks seen for a model on this machine", Usage: "<modelId>", MinArgs: 1, MaxArgs: 1,
+		Examples: []string{"local-base models forget-peaks whisper-large-v3-turbo"},
+		Run: func(c *cli.Ctx) (any, error) {
+			e, err := openEnv(c)
+			if err != nil {
+				return nil, err
+			}
+			defer e.Close()
+			id := c.Args[0]
+			n, err := e.Store.ForgetObservedPeaks(context.Background(), id)
+			if err != nil {
+				return nil, err
+			}
+			if n == 0 {
+				c.Info("No memory peaks are recorded for %s.", id)
+			} else {
+				c.Info("Forgot %d memory peaks for %s. Its next load is sized from its estimate, and a model that is loaded now keeps recording.", n, id)
+			}
+			return map[string]any{"modelId": id, "forgotten": n}, nil
+		}}
 }
 
 func modelsCatalog() *cli.Command {

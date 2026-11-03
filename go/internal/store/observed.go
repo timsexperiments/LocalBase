@@ -45,3 +45,13 @@ func (s *Store) RecordObservedPeak(ctx context.Context, p ObservedPeak) error {
 		p.ModelID, p.ArtifactSHA256, p.LaunchShape, p.PeakBytes, p.Method, now)
 	return err
 }
+
+// ForgetObservedPeaks removes what was seen for a model, for every file and launch shape, and says
+// how many rows that was.
+func (s *Store) ForgetObservedPeaks(ctx context.Context, modelID string) (int64, error) {
+	r, err := s.DB.ExecContext(ctx, `DELETE FROM model_observed_memory WHERE model_id = ?`, modelID)
+	if err != nil {
+		return 0, err
+	}
+	return r.RowsAffected()
+}
