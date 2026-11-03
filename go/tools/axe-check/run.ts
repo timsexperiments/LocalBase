@@ -27,6 +27,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // [name, path, action run in the page before the scan]
 const states: [string, string, string][] = [
   ["chat", "/app/chat", ""],
+  ["welcome", "/app/welcome"],
+  ["welcome-choose", "/app/welcome/choose"],
+  ["not-found", "/app/nope"],
+  ["sign-in-link", "/app/login/once"],
   ["picker", "/app/chat", `document.querySelector("[data-open-picker]").click()`],
   ["history", "/app/chat", `matchMedia("(min-width: 1024px)").matches || document.querySelector("[data-open-drawer]").click()`],
   ["generation", "/app/chat", `document.querySelector("[data-open-generation]").click()`],
@@ -55,6 +59,13 @@ const states: [string, string, string][] = [
 const tags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 await send("Page.enable");
 await send("Runtime.enable");
+await send("Network.enable");
+// A gateway with sign-in on: AXE_COOKIE="name=value" scans as that session. Get one from
+// `local-base access login-link` on a scratch gateway.
+if (process.env.AXE_COOKIE) {
+  const at = process.env.AXE_COOKIE.indexOf("=");
+  await send("Network.setCookie", { name: process.env.AXE_COOKIE.slice(0, at), value: process.env.AXE_COOKIE.slice(at + 1), url: base });
+}
 let failures = 0;
 for (const [width, mobile] of [[1280, false], [390, true]] as const) {
   await send("Emulation.setDeviceMetricsOverride", { width, height: mobile ? 844 : 900, deviceScaleFactor: mobile ? 3 : 1, mobile });

@@ -6,6 +6,7 @@
 # and dark. The pinned axe-core is cached in go/.cache, verified by sha256,
 # and injected over the DevTools protocol only for the test.
 #   tools/axe-check.sh http://127.0.0.1:<port>   (a --no-auth gateway)
+#   AXE_COOKIE=name=value tools/axe-check.sh ...  (a gateway with sign-in on, as that session)
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 base=${1:?usage: axe-check.sh <base-url>}
@@ -24,8 +25,9 @@ fi
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile=$(mktemp -d)
 port=$(test_port_pick)
-"$chrome" --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
-pid=$!
-trap 'kill $pid 2>/dev/null; sleep 1; rm -rf "$profile"' EXIT
+. "$here/tools/browser-run.sh"
+browser_guard axe-check
+"$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
+browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$port/json/version" >/dev/null && break; sleep 0.5; done
-bun run "$here/tools/axe-check/run.ts" "http://127.0.0.1:$port" "$base" "$axe"
+browser_run bun run "$here/tools/axe-check/run.ts" "http://127.0.0.1:$port" "$base" "$axe"

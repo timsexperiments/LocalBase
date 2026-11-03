@@ -72,6 +72,8 @@ document.addEventListener("click", async (event) => {
   try {
     await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
   } finally {
-    location.assign(button.dataset.logoutUrl || "/app/login");
+    // Not to /app/login: with one provider that goes straight back to it, and a provider that
+    // remembers you signs you right back in.
+    location.assign(button.dataset.logoutUrl || "/app?signedout=1");
   }
 });
