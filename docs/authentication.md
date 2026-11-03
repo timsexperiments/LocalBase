@@ -138,6 +138,13 @@ Provider permissions apply to every verified browser user unless a local access
 policy is configured. A policy maps verified identities to named roles. Email
 bindings only match provider-verified email claims.
 
+Email and domain bindings trust one sign-in provider, so a provider you add
+later can't claim someone's address and take their role. With one provider
+configured, you can leave `issuer` out and LocalBase uses it. With several, each
+binding must name its provider's issuer. For OIDC that is the issuer you
+registered, for Cloudflare Access `https://<team-domain>`, and for magic links
+`<origin>/magic-link`.
+
 ```json
 {
   "roles": [
@@ -210,11 +217,22 @@ local-base --non-interactive --json access users roles \
   --roles user,video-user
 ```
 
-An invited user is pending until a provider returns that exact verified email.
-LocalBase links the provider identity and activates the user in the same
-authorization transaction. Disable a user to deny every browser permission,
-including default, email, and email-domain roles. Enable or remove users with
-`access users enable`, `access users disable`, and `access users remove`.
+An invited user is pending until their provider returns that exact verified
+email. LocalBase links the provider identity and activates the user in the same
+authorization transaction. With several providers configured, add `--issuer` to
+say which one the person will use. Disable a user to deny every browser
+permission, including default, email, and email-domain roles. Enable or remove
+users with `access users enable`, `access users disable`, and `access users remove`.
+
+Bindings and invitations from before this rule name no provider, and grant
+nothing until they do. With one provider configured, the next start gives it to
+them. With several, LocalBase doesn't guess: the gateway starts, `local-base doctor`,
+`local-base status` and the access page say how many are waiting, and you choose:
+
+```bash
+local-base --non-interactive --json access bindings adopt \
+  --issuer https://identity.example.com
+```
 
 LocalBase refuses `access policy clear` while managed users exist. Remove the
 users first if returning to provider-wide permissions is intentional.
@@ -341,6 +359,11 @@ life than it has. These refusals answer 403 with `exceeds_caller_permissions`
 or `exceeds_caller_expiry`. A key can rotate or revoke itself; rotating returns
 the only copy of the new secret. The local CLI is not bound by these rules, and
 it is the way back if nobody is left who holds a permission.
+
+The same applies to access management. A holder of `access:manage` can assign
+only roles within what it holds, and can change only people, roles and bindings
+within it. Changing sign-in providers or email delivery needs every permission
+a sign-in can grant, because they decide who proves to be whom.
 
 Use `local-base access show --json` to inspect non-secret provider state. If a
 provider is misconfigured, correct it with the local CLI and restart LocalBase.
