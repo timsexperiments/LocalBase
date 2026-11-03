@@ -155,3 +155,16 @@ func TestModelMetadataPlacement(t *testing.T) {
 		t.Errorf("%d device %v", code, dev)
 	}
 }
+
+// A CPU-only machine can chat: its backend prints nothing about a GPU it does not have.
+func TestChatOnACPUOnlyMachine(t *testing.T) {
+	t.Setenv("FAKE_NO_GPU_LINES", "1")
+	base, llm, _ := placementGateway(t, placement.CPUOnly, 0)
+	code, m := placementCall(t, "POST", base+"/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+	if code != 200 {
+		t.Fatalf("chat: %d %v", code, m)
+	}
+	if id, _, _ := llm.Running(); id != chatModel {
+		t.Errorf("running %q", id)
+	}
+}
