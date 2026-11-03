@@ -35,6 +35,7 @@ func restoreCommand() *cli.Command {
 		Options: []cli.Option{
 			{Name: "dry-run", Bool: true, Help: "Check the file and say what would change, and change nothing"},
 			{Name: "replace", Bool: true, Help: "Replace the settings of a root that has data. Its models stay, and its old files are kept"},
+			{Name: "bring-back-key", Value: "<id>", Repeatable: true, Help: "Take this backup's version of a key the report says is held back, stays out, or stays as it is on this root"},
 			{Name: "yes", Alias: "y", Bool: true, Help: "Do not ask"},
 			{Name: "undo", Bool: true, Help: "Put back a root that a restore left unfinished"},
 			{Name: "port-probe", Bool: true, Help: "Connect to the restored ports to see which are in use (on by default; --no-port-probe skips it)"},
@@ -122,6 +123,28 @@ func printManifest(c *cli.Ctx, m *backup.Manifest) {
 	}
 }
 
+// printKeys lists keys by the id that identifies them and the name a person gave them. Past the cap
+// it says how many more, as the list of who has a role does.
+func printKeys(c *cli.Ctx, heading, how string, keys []backup.KeyChange) {
+	if len(keys) == 0 {
+		return
+	}
+	c.Info("%s", heading)
+	for _, k := range keys[:min(len(keys), maxGrantLines)] {
+		line := "  " + k.ID + " (" + k.Name + ")"
+		if k.Why != "" {
+			line += ": " + k.Why
+		}
+		c.Info("%s", line)
+	}
+	if hidden := len(keys) - maxGrantLines; hidden > 0 {
+		c.Info("  and %d more. All of them: restore --dry-run --json", hidden)
+	}
+	if how != "" {
+		c.Info("%s", how)
+	}
+}
+
 // printIssuers says who each sign-in provider's bindings cover. They decide who gets which role.
 func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
 	if len(lines) == 0 {
@@ -135,6 +158,14 @@ func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
 		}
 		c.Info("  %s: %d role bindings, %d invitations, %s", l.Issuer, l.Bindings, l.Invitations, state)
 	}
+}
+
+func keyIDs(keys []backup.KeyChange) string {
+	ids := make([]string, len(keys))
+	for i, k := range keys {
+		ids[i] = k.ID
+	}
+	return strings.Join(ids, ",")
 }
 
 func runRestore(c *cli.Ctx) (any, error) {
@@ -151,7 +182,7 @@ func runRestore(c *cli.Ctx) (any, error) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	s, err := backup.Stage(ctx, c.Args[0], target, c.Bool("replace"))
+	s, err := backup.Stage(ctx, c.Args[0], target, c.Bool("replace"), c.Strings("bring-back-key")...)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil, errors.New("Interrupted. Nothing was changed, and its working files are gone.")
@@ -209,7 +240,8 @@ func runRestore(c *cli.Ctx) (any, error) {
 	}
 	if r, err := root.Open(rep.Target); err == nil {
 		auditCLI(&env{Root: r}, "backup.restored", "event", "backup.restored", "category", "audit", "component", "backup",
-			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept)
+			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept,
+			"keysKept", len(rep.KeysKept), "keysLeftOut", len(rep.KeysLeftOut), "keysHeldBack", len(rep.KeysHeldBack), "keysBroughtBack", keyIDs(rep.KeysBroughtBack))
 	}
 	printRestoreNext(c, rep, done)
 	return map[string]any{"report": rep, "beforeDir": done.BeforeDir}, nil
@@ -284,12 +316,12 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if rep.RevocationsKept > 0 {
 		c.Info("%d keys revoked on this root stay revoked.", rep.RevocationsKept)
 	}
-	if len(rep.ReturningKeys) > 0 {
-		c.Info("Keys this root no longer has would work again: %s.", strings.Join(rep.ReturningKeys, ", "))
-	}
-	if len(rep.KeysLost) > 0 {
-		c.Info("Keys made since this backup would stop working: %s.", strings.Join(rep.KeysLost, ", "))
-	}
+	printKeys(c, "API keys in this backup that would work:", "", rep.KeysActive)
+	printKeys(c, "Keys held back, because they can do more than make requests:", "  To bring one back: --bring-back-key <id>", rep.KeysHeldBack)
+	printKeys(c, "Keys changed since this backup stay as they are on this root:", "  To take this backup's version of one: --bring-back-key <id>", rep.KeysKept)
+	printKeys(c, "Keys in this backup that this root doesn't have stay out:", "  To bring one back: --bring-back-key <id>", rep.KeysLeftOut)
+	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  The secret in this backup works for these, and any they have now stops working.", rep.KeysBroughtBack)
+	printKeys(c, "Keys made since this backup would stop working:", "", rep.KeysLost)
 	if rep.ReturningUsers > 0 {
 		c.Info("%d users this root has removed would come back.", rep.ReturningUsers)
 	}

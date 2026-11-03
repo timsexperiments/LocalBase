@@ -19,7 +19,8 @@ const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"
 // keepLetters are the only fields that keep letters from another alphabet: names a person gave, and
 // the path they typed. Everything else in the report is judged by eye, so it shows them as escapes.
 // Adding a field to the report keeps this safe by default. Adding one here is a decision.
-var keepLetters = []string{"Report.Target", "Report.ReturningKeys", "Report.KeysLost", "Report.Cautions", "Report.Grants.Role"}
+var keepLetters = []string{"Report.Target", "Report.Cautions", "Report.Grants.Role",
+	"Report.KeysKept.Name", "Report.KeysLeftOut.Name", "Report.KeysBroughtBack.Name", "Report.KeysLost.Name", "Report.KeysActive.Name", "Report.KeysHeldBack.Name"}
 
 // keepsLetters says whether a path from plantInto is one of those, whatever its list index.
 func keepsLetters(path string) bool {
@@ -162,7 +163,8 @@ func TestTheReportPrintsNothingThatActsOnATerminal(t *testing.T) {
 // terminal at all, from any line.
 func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 	rep, _ := plantedReport(t)
-	rep.Target, rep.ReturningKeys, rep.KeysLost, rep.Cautions = "", nil, nil, nil
+	rep.Target, rep.Cautions = "", nil
+	rep.KeysKept, rep.KeysLeftOut, rep.KeysBroughtBack, rep.KeysLost, rep.KeysActive, rep.KeysHeldBack = nil, nil, nil, nil, nil, nil
 	for i := range rep.Grants {
 		rep.Grants[i].Role = "role"
 	}
@@ -181,7 +183,7 @@ func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 func TestAFieldThatKeepsItsLettersDoes(t *testing.T) {
 	rep, _ := plantedReport(t)
 	safe := printable(rep)
-	for _, got := range []string{safe.Target, safe.ReturningKeys[0], safe.KeysLost[0], safe.Cautions[0], safe.Grants[0].Role} {
+	for _, got := range []string{safe.Target, safe.KeysKept[0].Name, safe.KeysLost[0].Name, safe.Cautions[0], safe.Grants[0].Role} {
 		if !strings.HasSuffix(got, "\u0430") {
 			t.Errorf("%q", got)
 		}
@@ -208,8 +210,14 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"the mail server":       rep.SignIn.Mail.Value,
 		"an issuer":             rep.Issuers[1].Issuer,
 		"a setting's value":     rep.Settings[1].Value,
-		"a key coming back":     rep.ReturningKeys[1],
-		"a key lost":            rep.KeysLost[1],
+		"a key kept":            rep.KeysKept[1].Name,
+		"its id":                rep.KeysKept[1].ID,
+		"why it's kept":         rep.KeysKept[1].Why,
+		"a key left out":        rep.KeysLeftOut[1].Name,
+		"a key brought back":    rep.KeysBroughtBack[1].Name,
+		"a key lost":            rep.KeysLost[1].Name,
+		"a key that would work": rep.KeysActive[1].Name,
+		"a key held back":       rep.KeysHeldBack[1].Name,
 		"a caution":             rep.Cautions[1],
 		"a rule":                rep.Rules[1],
 		"a secret's name":       rep.Manifest.SecretNames[1],

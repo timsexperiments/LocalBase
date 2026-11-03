@@ -164,8 +164,8 @@ func TestRestoreOverACrashedRootSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Discard()
-	if s.Report.RevocationsKept == 0 || len(s.Report.ReturningKeys) != 0 {
-		t.Errorf("after recovering: kept %d, returning %v", s.Report.RevocationsKept, s.Report.ReturningKeys)
+	if s.Report.RevocationsKept == 0 || len(s.Report.KeysLeftOut) != 0 {
+		t.Errorf("after recovering: kept %d, left out %v", s.Report.RevocationsKept, s.Report.KeysLeftOut)
 	}
 }
 

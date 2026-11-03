@@ -1421,10 +1421,10 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if rep.RevocationsKept != 1 {
 		t.Errorf("revocations kept: %d", rep.RevocationsKept)
 	}
-	if strings.Join(rep.ReturningKeys, ",") != "removed since" {
-		t.Errorf("returning: %v", rep.ReturningKeys)
+	if len(rep.KeysLeftOut) != 1 || rep.KeysLeftOut[0].Name != "removed since" {
+		t.Errorf("left out: %v", rep.KeysLeftOut)
 	}
-	if strings.Join(rep.KeysLost, ",") != "made since" {
+	if len(rep.KeysLost) != 1 || rep.KeysLost[0].Name != "made since" {
 		t.Errorf("lost: %v", rep.KeysLost)
 	}
 	if rep.ReturningUsers != 1 {
@@ -1436,7 +1436,7 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if rep.UsersChanged != 1 {
 		t.Errorf("users going back: %d", rep.UsersChanged)
 	}
-	if strings.Join(rep.Rules, " ") != SignOutLine+" "+RevokedLine {
+	if strings.Join(rep.Rules, " ") != SignOutLine+" "+HeldKeyLine+" "+RevokedLine+" "+ChangedKeyLine {
 		t.Errorf("rules: %v", rep.Rules)
 	}
 
@@ -1730,8 +1730,8 @@ func TestRestoreReportsWhatMatters(t *testing.T) {
 	if strings.Contains(string(text), secretOTLP) {
 		t.Error("the report shows a secret value")
 	}
-	if strings.Join(rep.Rules, " ") != SignOutLine {
-		t.Errorf("a new root has only the sign-out rule: %v", rep.Rules)
+	if strings.Join(rep.Rules, " ") != SignOutLine+" "+HeldKeyLine {
+		t.Errorf("a new root has only the rules that apply to it: %v", rep.Rules)
 	}
 	if !strings.Contains(strings.Join(rep.Cautions, " "), "keys list") {
 		t.Errorf("a new root says to check its keys: %v", rep.Cautions)
@@ -1739,7 +1739,7 @@ func TestRestoreReportsWhatMatters(t *testing.T) {
 	if len(rep.Ports) != 3 || rep.Ports[0] != 28300 {
 		t.Errorf("ports: %v", rep.Ports)
 	}
-	if !contains(rep.Manifest.RestoreRules, SignOutLine) || !contains(rep.Manifest.RestoreRules, RevokedLine) {
+	if !contains(rep.Manifest.RestoreRules, SignOutLine) || !contains(rep.Manifest.RestoreRules, RevokedLine) || !contains(rep.Manifest.RestoreRules, ChangedKeyLine) || !contains(rep.Manifest.RestoreRules, HeldKeyLine) {
 		t.Errorf("the manifest should state the rules: %v", rep.Manifest.RestoreRules)
 	}
 }
