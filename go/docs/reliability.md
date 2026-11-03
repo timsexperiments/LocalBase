@@ -188,13 +188,16 @@ loading it, and stop if it is over the agreed size: a model's default plan can b
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
 
 **Waiting for the next window: does a real backend use more memory with every request?**
-Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
-on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
-from a leak. The plan is about 200 sequential requests to a small model on a scratch
-gateway on a Mac, with the same conditions as above, recording the backend's RSS and
-available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
-repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
-in recent `llama-server` builds): if it does, a run with the cache off separates the two.
-The plan must fit the agreed size, so the context will be far smaller than the one observed
-and the platform differs. A flat result here would not clear the Linux case; say so if
-that is the result.
+System-wide `available` memory (`free -m`) fell about 100 MiB per chat over four samples
+and two and a half minutes on a Linux x64 runner, with the gateway running `llama-server`
+on CPU (`-c 131072 --parallel 4 --cache-ram 2048`). That was not the backend's own memory,
+which was not recorded, so it could include anything on the runner and page cache
+accounting. Nothing yet ties it to the backend.
+
+The gateway always passes `--cache-ram 2048`, so one hypothesis is a prompt cache filling up
+to a limit. **That is unsupported until the RSS curve shows it.** The pass is
+`tools/real-memory-check.sh`: 200 sequential requests with short outputs on a small model,
+with the backend's own RSS as the primary measure and system memory beside it. A plateau near
++2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
+on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
+flat result here would not clear the Linux case.
