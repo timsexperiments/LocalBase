@@ -96,8 +96,15 @@ func TestAccessLockout(t *testing.T) {
 	if !strings.Contains(out, `"target_kind":"user","target_id":"`) || !strings.Contains(out, `"target_kind":"policy","target_id":"`) || !strings.Contains(out, `"target_kind":"provider","target_id":"browser-access"`) {
 		t.Errorf("audit targets:\n%s", out)
 	}
-	if strings.Contains(out, "@example.com") || strings.Contains(out, `"action":"disable-user"`) {
-		t.Errorf("the audit log has an email, or a refused change:\n%s", out)
+	if strings.Contains(out, "@example.com") {
+		t.Errorf("the audit log has an email:\n%s", out)
+	}
+	// A refused change is recorded as refused, never as a change.
+	if !strings.Contains(out, `"event":"audit.access-refused","action":"disable-user"`) || !strings.Contains(out, `"reason":"would_lock_out_admins"`) {
+		t.Errorf("the audit log has no refused change:\n%s", out)
+	}
+	if strings.Contains(out, `"event":"audit.access-changed","action":"disable-user"`) {
+		t.Errorf("a refused change is logged as made:\n%s", out)
 	}
 }
 
