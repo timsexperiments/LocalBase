@@ -62,6 +62,17 @@ func TestABusyDatabaseIsNeverReadAsEmpty(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+	target, err := openReadOnly(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	if _, err := readComparedKeys(ctx, target); !isBusy(err) {
+		t.Errorf("a root's keys: %v", err)
+	}
+	if _, err := readComparedUsers(ctx, target); !isBusy(err) {
+		t.Errorf("a root's users: %v", err)
+	}
 }
 
 func TestBackupWaitsOutABusyDatabase(t *testing.T) {
@@ -220,5 +231,38 @@ func TestCopyOfADatabaseThatStaysBusySaysWhere(t *testing.T) {
 	}
 	if exists(to) {
 		t.Error("a partial copy was left behind")
+	}
+}
+
+// The first read can pass and a writer arrive just after it. Reading the root's keys or users then
+// must not look like finding none, or a revoked key would come back with nothing to say so.
+func TestRestoreThatTurnsBusyPartWayRefuses(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	shortBusyWaits(t, 100*time.Millisecond)
+	was := targetReadHook
+	targetReadHook = func() { holdLock(t, r.DB()) }
+	defer func() { targetReadHook = was }()
+	_, err := Stage(context.Background(), res.Output, r.Dir, true)
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "is busy") {
+		t.Fatalf("stage: %v", err)
+	}
+}
+
+// An older database has no models to list, and that is the one failure that means "none".
+func TestSelectedModelsOfAnOlderDatabaseAreNone(t *testing.T) {
+	path := filepath.Join(dir(t), "older.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE unrelated (x)`); err != nil {
+		t.Fatal(err)
+	}
+	models, err := selectedModels(context.Background(), path)
+	if err != nil || len(models) != 0 {
+		t.Errorf("models %v, err %v", models, err)
 	}
 }
