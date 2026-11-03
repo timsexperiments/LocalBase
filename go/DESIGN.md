@@ -4896,6 +4896,14 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+### 31.7 What a magic-link request can start
+
+Anyone can post one, and each used to start its own goroutine: 5000 posts in 40 ms made 5000 goroutines and
+4867 database connections. Now at most 4 are worked on at once, and something that can't be an address costs
+nothing. Over that, the request is dropped. The page reads the same either way, and whoever asked can ask
+again. `auth.magic-link-dropped` is logged at most once a minute, with no address. A flood can therefore delay a
+real person's link, and it can't reach anything else. SMTP has its own deadlines, so a worker always comes back.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's

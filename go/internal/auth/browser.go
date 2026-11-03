@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -31,6 +32,7 @@ const (
 	loginStateCookie  = "__Host-localbase-login-state"
 	SessionCookie     = "__Host-localbase-session"
 	loginStateTTL     = 10 * time.Minute
+	magicLinkWorkers  = 4
 	maxLoginStates    = 128
 	maxIdPResponse    = 64 * 1024
 	OIDCCallbackPath  = "/oidc/callback"
@@ -56,7 +58,11 @@ type Browser struct {
 	cfJWKS *JWKS
 	oidc   map[string]*oidcRuntime
 	mu     sync.Mutex
-	states map[string]loginState
+	// magicWork bounds the magic-link requests being worked on, since anyone can post one.
+	magicWork chan struct{}
+	// magicDropped is when a dropped request was last logged, as Unix seconds.
+	magicDropped atomic.Int64
+	states       map[string]loginState
 }
 
 type oidcRuntime struct {
@@ -84,7 +90,7 @@ type loginState struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
+	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
 		oidc: map[string]*oidcRuntime{}, states: map[string]loginState{}}
 	if cfg == nil {
@@ -617,7 +623,23 @@ func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliv
 		done()
 		return
 	}
+	if ValidEmail(email) == "" {
+		done()
+		return
+	}
+	select {
+	case b.magicWork <- struct{}{}:
+	default:
+		// The page reads the same either way. Whoever asked can ask again.
+		now := time.Now().Unix()
+		if last := b.magicDropped.Load(); now-last >= 60 && b.magicDropped.CompareAndSwap(last, now) {
+			b.Log.Warn("Magic-link requests were dropped because too many are being worked on.", "event", "auth.magic-link-dropped")
+		}
+		done()
+		return
+	}
 	go func() {
+		defer func() { <-b.magicWork }()
 		ctx := context.Background()
 		token, to, err := IssueMagicLink(ctx, b.Store, email, MagicIssuer(b.Config.Origin))
 		if err != nil || token == "" {
