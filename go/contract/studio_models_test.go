@@ -2,7 +2,6 @@ package contract
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -89,14 +88,9 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 		dir := filepath.Join(e.root, "models", s.Kind)
 		mustMkdirAll(dir, 0o700)
 		for _, a := range s.Artifacts {
-			f, err := os.Create(filepath.Join(dir, a.Filename))
-			if err != nil {
+			if err := guardedSparse(filepath.Join(dir, a.Filename), a.ExpectedSizeBytes); err != nil {
 				t.Fatal(err)
 			}
-			if err := f.Truncate(a.ExpectedSizeBytes); err != nil {
-				t.Fatal(err)
-			}
-			f.Close()
 		}
 		return s
 	}
@@ -152,11 +146,15 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 	if len(video.Artifacts) < 2 {
 		t.Fatalf("%s should need more than one file", video.ModelID)
 	}
-	if err := os.Remove(filepath.Join(e.root, "models", video.Kind, video.Artifacts[len(video.Artifacts)-1].Filename)); err != nil {
+	if err := guardedRemoveAll(filepath.Join(e.root, "models", video.Kind, video.Artifacts[len(video.Artifacts)-1].Filename)); err != nil {
 		t.Fatal(err)
 	}
 	image := specs["image"]
-	if err := os.Truncate(filepath.Join(e.root, "models", image.Kind, image.Artifacts[0].Filename), image.Artifacts[0].ExpectedSizeBytes-1); err != nil {
+	short := filepath.Join(e.root, "models", image.Kind, image.Artifacts[0].Filename)
+	if err := guardedRemoveAll(short); err != nil {
+		t.Fatal(err)
+	}
+	if err := guardedSparse(short, image.Artifacts[0].ExpectedSizeBytes-1); err != nil {
 		t.Fatal(err)
 	}
 	for _, tool := range tools[:2] {
