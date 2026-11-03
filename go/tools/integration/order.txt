@@ -68,6 +68,9 @@ fix-close-waits
 fix-startup-accounting
 rel-chaos
 
+# Sign-in
+fix-cli-dash-args
+
 # Reliability and Security
 rel-soak
 rel-bench
