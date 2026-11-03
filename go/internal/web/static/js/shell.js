@@ -152,6 +152,15 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   showRefused();
   askAdmission();
 });
+// Back can bring a page out of the browser's memory exactly as it was, whoever is signed in now,
+// and no-store doesn't prevent it. So a restored page is never shown:
+// it's blanked and fetched again, as whoever is here now.
+addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  document.documentElement.style.visibility = "hidden";
+  location.reload();
+});
+
 // A request this computer just refused says more than "Ready" does (chat.js). It lasts until the
 // person moves on, or until the gateway's preview would admit that model. Then "try again" still
 // waits for the gateway to stop being short or settling, because a retry before then is refused too.
@@ -172,12 +181,15 @@ function showRefused() {
   if (!word) return;
   if (refusedAdmitted) {
     if (strip.classList.contains("strip-settling")) return;
-    if (!strip.classList.contains("strip-short")) {
+    // Short by the gateway's own say, not because this function marked it after the refusal.
+    if (!strip.classList.contains("strip-short") || strip.dataset.refusedHere) {
+      strip.classList.remove("strip-short");
       word.textContent = "Memory looks free. Try again.";
       return;
     }
   }
   word.textContent = refusedWord;
+  if (!strip.classList.contains("strip-short")) strip.dataset.refusedHere = "1";
   strip.classList.add("strip-short");
 }
 // The gateway's preview, which changes nothing. Asked once per strip refresh, only while a refusal

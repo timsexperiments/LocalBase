@@ -907,8 +907,9 @@ await nav("/app/chat");
 
 // --- The list of chats: search, and each chat's own actions ----------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+const savedKeyIs = `const savedKey = "localbase.chat.history.v2." + (document.documentElement.dataset.person ?? "none");`;
 await nav("/app/chat");
-await ev(`localStorage.setItem("localbase.playground.history.v1", JSON.stringify([
+await ev(`${savedKeyIs} localStorage.setItem(savedKey, JSON.stringify([
   { id: "list-a", title: "Trip to the lake", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "a1", role: "user", text: "Where should we stop for lunch on the way?" }, { id: "a2", role: "assistant", text: "A bakery by the bridge." }] },
   { id: "list-b", title: "Soup", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "b1", role: "user", text: "How long does barley take?" }] },
   { id: "list-c", title: "A very long chat name that keeps going past where a phone can show the whole of it", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "c1", role: "user", text: "muchtoolongtofitonasinglelineofaphonescreenwithoutbreakinganywhereatallinthislist" }] }]))`);
@@ -937,7 +938,7 @@ await ev(`document.querySelector("[data-option-rename]").click()`);
 await sleep(100);
 await ev(`(() => { document.getElementById("rename-input").value = "Barley soup"; document.querySelector("[data-rename-form]").requestSubmit(); })()`);
 await sleep(150);
-const renamedRow = await ev(`({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.title === "Barley soup") })`);
+const renamedRow = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.title === "Barley soup") }); })()`);
 check(renamedRow.row && renamedRow.saved, `rename from the list changes that chat, not the open one: ${JSON.stringify(renamedRow)}`);
 await ev(`${rowFor("Barley soup")}.querySelector(".chat-row-more").click()`);
 await sleep(100);
@@ -959,10 +960,10 @@ await ev(`document.querySelector("[data-option-delete]").click()`);
 await sleep(50);
 await ev(`document.querySelector("[data-option-confirm]").click()`);
 await sleep(150);
-const deleted = await ev(`({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") })`);
+const deleted = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem(savedKey)).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem(savedKey)).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") }); })()`);
 check(!deleted.row && !deleted.saved && /^Deleted Barley soup/.test(deleted.said) && deleted.focus, `delete removes it, says so, and leaves focus in the list: ${JSON.stringify(deleted)}`);
 check(deleted.others.join() === "list-a,list-c" && deleted.other && deleted.otherText === 2, `deleting one chat leaves the others whole: ${JSON.stringify(deleted.others)}`);
-await ev(`localStorage.removeItem("localbase.playground.history.v1")`);
+await ev(`${savedKeyIs} localStorage.removeItem(savedKey)`);
 await nav("/app/chat");
 
 // --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --

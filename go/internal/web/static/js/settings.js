@@ -41,7 +41,10 @@ if (box) {
       // in sessionStorage when history is off), and the older shared key, which nothing reads.
       sessionStorage.removeItem(historyKey);
       sessionStorage.removeItem(draftKeyFor(personKey()));
+      localStorage.removeItem(`localbase.runs.places.v2.${personKey()}`);
+      localStorage.removeItem("localbase.runs.places.v1");
       localStorage.removeItem(sharedKey);
+      localStorage.removeItem("localbase.decisions.saved.v1");
       sessionStorage.removeItem(sharedKey);
       sessionStorage.removeItem("localbase.chat.draft.v1");
       toggle.checked = false;

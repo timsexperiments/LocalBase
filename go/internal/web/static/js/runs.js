@@ -8,7 +8,8 @@
 // callers keep today's direct requests.
 
 const ROOT = "/_localbase/runs";
-const PLACES = "localbase.runs.places.v1"; // run id -> { href, label, last }
+// run id -> { href, label, last }. A chat's label is its title, so each person has their own.
+const PLACES = `localbase.runs.places.v2.${document.documentElement.dataset.person ?? "none"}`;
 export const ACTIVE = new Set(["queued", "in_progress"]);
 let support;
 
