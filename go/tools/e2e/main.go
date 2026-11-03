@@ -43,7 +43,7 @@ func main() {
 	os.Exit(run(*out, *chrome, *axe, *keep))
 }
 
-func run(out, chrome, axe string, keep bool) int {
+func run(out, chrome, axe string, keep bool) (code int) {
 	if chrome == "" || axe == "" {
 		fmt.Fprintln(os.Stderr, "e2e: needs -chrome and -axe; use tools/e2e.sh")
 		return 2
@@ -66,7 +66,15 @@ func run(out, chrome, axe string, keep bool) int {
 		return 2
 	}
 	w.Keep = keep
-	defer w.Close()
+	// Findings are in the result with their captures. Only a suite that could not finish
+	// needs what is in the scratch root to work out why, however early it stopped.
+	defer func() {
+		if code > 1 {
+			w.Keep = true
+			fmt.Fprintf(os.Stderr, "e2e: scratch kept at %s\n", w.Dir)
+		}
+		w.Close()
+	}()
 	time.AfterFunc(hard+30*time.Second, func() {
 		fmt.Fprintln(os.Stderr, "e2e: hard deadline passed; stopping everything")
 		w.KillStray()
@@ -81,7 +89,15 @@ func run(out, chrome, axe string, keep bool) int {
 		fmt.Fprintln(os.Stderr, "e2e:", err)
 		return 2
 	}
-	defer g.Stop(30 * time.Second)
+	// A gateway that will not stop is a failure, whatever the pages did.
+	defer func() {
+		if _, err := g.Stop(30 * time.Second); err != nil {
+			fmt.Fprintln(os.Stderr, "e2e: the gateway did not stop cleanly:", err)
+			if code == 0 {
+				code = 1
+			}
+		}
+	}()
 
 	control, err := startControl(ctx, w, g)
 	if err != nil {
@@ -108,7 +124,6 @@ func run(out, chrome, axe string, keep bool) int {
 	cmd := exec.CommandContext(ctx, "bun", "run", filepath.Join(module, "tools", "e2e", "run.ts"), cdp, g.Base, control, out, axe, wav)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	err = cmd.Run()
-	code := 0
 	if err != nil {
 		code = 2
 		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() >= 0 {
@@ -121,12 +136,6 @@ func run(out, chrome, axe string, keep bool) int {
 		if code == 0 {
 			code = 1
 		}
-	}
-	// Findings are in the result with their captures. Only a suite that could not finish
-	// needs what is in the scratch root to work out why.
-	if code > 1 {
-		w.Keep = true
-		fmt.Fprintf(os.Stderr, "e2e: scratch kept at %s\n", w.Dir)
 	}
 	fmt.Fprintf(os.Stderr, "e2e: result %s\n", filepath.Join(out, "result.md"))
 	return code
@@ -218,11 +227,12 @@ func startControl(ctx context.Context, w *lab.Workspace, g *lab.Gateway) (string
 		killed := 0
 		for _, p := range procs {
 			if p.Command == r.URL.Query().Get("name") {
-				syscall.Kill(p.PID, syscall.SIGKILL)
-				killed++
+				if err := syscall.Kill(p.PID, syscall.SIGKILL); err == nil {
+					killed++
+				}
 			}
 		}
-		json.NewEncoder(rw).Encode(map[string]int{"killed": killed})
+		_ = json.NewEncoder(rw).Encode(map[string]int{"killed": killed})
 	})
 	mux.HandleFunc("POST /unload", func(rw http.ResponseWriter, r *http.Request) {
 		res := c.Do(r.Context(), "POST", "/_localbase/models/"+r.URL.Query().Get("model")+"/unload", g.Keys.Admin, "", nil)
@@ -230,12 +240,28 @@ func startControl(ctx context.Context, w *lab.Workspace, g *lab.Gateway) (string
 		rw.Write(res.Body)
 	})
 	mux.HandleFunc("GET /models", func(rw http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(rw).Encode(map[string]string{"chat": lab.ChatSmall, "large": lab.ChatLarge, "image": lab.Image, "tts": lab.TTS, "stt": lab.STT, "decision": lab.Decision})
+		_ = json.NewEncoder(rw).Encode(map[string]string{"chat": lab.ChatSmall, "large": lab.ChatLarge, "image": lab.Image, "tts": lab.TTS, "stt": lab.STT, "decision": lab.Decision})
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go srv.Serve(ln)
-	context.AfterFunc(ctx, func() { srv.Close() })
+	go func() { _ = srv.Serve(ln) }() // ends with ErrServerClosed
+	context.AfterFunc(ctx, func() { _ = srv.Close() })
 	return fmt.Sprintf("http://127.0.0.1:%d", port), nil
+}
+
+// lastLines is the end of a file, for an error that would otherwise only point at it.
+func lastLines(path string, n int) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "(could not read it: " + err.Error() + ")"
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	if len(lines) == 1 && lines[0] == "" {
+		return "(nothing)"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // startChrome runs headless Chrome with a scratch profile and returns its DevTools
@@ -267,13 +293,13 @@ func startChrome(ctx context.Context, w *lab.Workspace, chrome string) (func(), 
 		return nil, "", fmt.Errorf("starting Chrome: %w", err)
 	}
 	stop := func() {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) // it may have gone already
 		done := make(chan struct{})
-		go func() { cmd.Wait(); close(done) }()
+		go func() { _ = cmd.Wait(); close(done) }() // a signal's exit status is expected
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			<-done
 		}
 		log.Close()
@@ -287,7 +313,7 @@ func startChrome(ctx context.Context, w *lab.Workspace, chrome string) (func(), 
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
 			stop()
-			return nil, "", fmt.Errorf("Chrome did not answer on its DevTools port; see %s", log.Name())
+			return nil, "", fmt.Errorf("Chrome did not answer on its DevTools port; %s ends:\n%s", log.Name(), lastLines(log.Name(), 20))
 		}
 	}
 }
