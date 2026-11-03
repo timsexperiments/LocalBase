@@ -4774,12 +4774,12 @@ id is data.
 **Rollback:** the table is additive. An older binary ignores it and does not prune it, so it stops growing and sits there until a
 newer binary returns or someone removes it. **What this will not do:** per-request history, cost, alerts, or export to anywhere.
 
-## 33. Upgrade and the update check (design addendum, 2026-11-02, for the operator's review)
+## 33. Upgrade and the update check (design addendum, 2026-11-02)
 
 Getting a new version means re-running the installer by hand, then remembering what a safe binary swap
 takes: replace the file by renaming, stop the gateway first, restart through the service manager so its
 definition is rewritten, run smoke. Those are easy to get wrong, and an in-place copy leaves a macOS binary
-that exits 137 on every run. **Nothing here is built yet.**
+that exits 137 on every run. Reviewed by the operator on 2026-11-02, whose decisions are written in below.
 
 **No telemetry, and no auto-install, ever.** The check is opt-in and off by default, and nothing installs
 without someone running `local-base upgrade`.
@@ -4801,7 +4801,13 @@ without someone running `local-base upgrade`.
 - **A development build** says it isn't a release and does not compare.
 - **The answer** says the current version, the latest, whether it is newer, and the release notes' URL. `--json` gives the same. A network failure exits 1 and says so.
 
-**The periodic check is opt-in and off by default.** Turned on, `serve` makes the same request at most once a day, and stores the answer in `go_settings` (`update.check`, `update.latest`, `update.checked-at`). `TestUpdateCheckOffByDefault` records every outgoing request from a gateway and finds none. A failure logs `update.check-failed` and changes nothing else.
+**The periodic check is opt-in and off by default.** Turned on, `serve` makes the same request in the background, and stores the answer in `go_settings` (`update.check`, `update.latest`, `update.etag`, `update.checked-at`). `TestUpdateCheckOffByDefault` records every outgoing request from a gateway and finds none.
+
+**GitHub's limit is low, so the check is built around it.** Unauthenticated, GitHub allows 60 requests an hour per IP address, shared with everything else behind that address.
+- **At most one attempt in 24 hours, success or failure, kept across restarts:** `update.checked-at` is stored, so restarting the gateway does not check again.
+- **A conditional request:** the daily check sends the stored `ETag` as `If-None-Match`. An unchanged answer is a 304, which does not count against the limit, and the cached answer stands. The tag is GitHub's own, and identifies the answer, not this computer.
+- **Failures are quiet and never block anything:** a 403 or 429, a network error or a 10 s timeout logs one `update.check-failed` event, leaves the cached answer as it was, and waits for the next attempt. It runs in the background, so it cannot delay startup or a request.
+- **`--check` is different:** someone asked, so it always makes the request, and when limited says so plainly, along with when GitHub says it resets. It adds to no schedule and stores nothing.
 
 ```text
 local-base upgrade --check                  # now, once; enables nothing
@@ -4816,19 +4822,25 @@ local-base upgrade check-updates on|off     # the daily check; off by default
 
 **Proposed: an Ed25519 signature over `checksums.txt`,** published as `checksums.txt.sig`.
 - **Why this one:** `crypto/ed25519` is in the standard library, so the project keeps its one module dependency, and verifying needs no network. Sigstore's Go client is a large dependency and needs a network to verify. The attestations stay, for anyone checking by hand with `gh attestation verify`.
-- **The keys:** the public key is compiled into the binary, with room for two, so a key can be rotated by a release signed with the old one. The private key is a repository secret, used only by the publish job in `release-go.yml`.
+- **The keys are a compiled-in list, each with a key id and a revoked flag,** so a key can be rotated without a flag day. `checksums.txt.sig` has one `<key id> <base64 signature>` line per signing key, so a release can carry the old key's signature and the new one's. A release is accepted if **any listed, non-revoked** key verifies. The private key is a repository secret, used only by the publish job in `release-go.yml`.
 - **It signs `checksums.txt`,** so every archive is covered by one signature.
+- **The order is fixed: the signature over `checksums.txt` is verified before anything in that file is read or trusted.** Then the archive against that hash, and then, immediately before the swap, the extracted binary's own checksum against what it was when it was verified, so what gets swapped in is what was checked.
 - **`upgrade` refuses a release with no valid signature, and there is no flag to skip it.** Since this ships in the same release as the workflow step, no release that a client would accept is ever unsigned. Older releases can't be upgrade targets.
 - **On macOS,** `codesign --verify --strict` must also pass on a binary that has an Apple signature. It adds to the Ed25519 check and doesn't replace it.
 
+**The gate: "signature verification required".** Everything here is built and tested now, with a throwaway test key compiled in by `-ldflags` for test builds only. A build with no release key in its list refuses to install anything and says why. `--check` still works. The code is complete the moment a real key's public half is added to the list.
+
 **Needs the owner:** nobody can create or hold this key but them, and the OSS thread owns the workflow step. **Until the key exists, the signature cannot be verified for real, and this feature cannot ship.**
 
-**What this protects against:** a tampered download, a mirror, or someone altering release files without the key. **What it does not:** a stolen signing key, or a compromised release workflow, which holds the key.
+**If a key is lost:** add a new key to the list and ship a release signed by the old one if it can still sign; if it can't, people on older versions reinstall with `scripts/install.sh`, since nothing they trust can vouch for the new key.
+**If a key is compromised:** mark it revoked in the list and ship a release signed by a new key; anyone not yet upgraded still trusts the old key until they do, so announce it and tell them to reinstall with the installer.
+
+**What this protects against:** a tampered download, a mirror, or someone altering release files without the key. **What it does not:** a stolen signing key before it is revoked, or a compromised release workflow, which holds the key.
 
 ### 33.3 `local-base upgrade`
 
 ```text
-local-base upgrade [--version vX.Y.Z] [--yes] [--force]
+local-base upgrade [--version vX.Y.Z] [--allow-downgrade] [--yes] [--wait <seconds>] [--force]
 ```
 
 **First it changes nothing,** and any refusal here leaves everything as it was:
@@ -4842,15 +4854,15 @@ local-base upgrade [--version vX.Y.Z] [--yes] [--force]
    | A gateway in the foreground | Refuses: stop it first, since this can't restart what it didn't start |
    | No gateway, or a stale lock | Continues: swaps only, and says how to start it. No restart and no smoke |
    | The lock can't be read | Refuses |
-3. **Whether it is busy.** A request in flight or queued, or a detached run, refuses unless `--force`, with the counts.
-4. **The version.** Same or older: "already up to date", exit 0. `--version` takes an exact release, older included, on purpose.
+3. **Whether it is busy.** A request in flight or queued, or a detached run, refuses and gives the counts, with two ways on: **`--wait <seconds>`** waits for them to finish, up to 600 s, and refuses if they have not by then, having cut nothing. **`--force`** goes ahead, cutting them. Nobody has to choose between refusing and cutting streams.
+4. **The version.** The same version: "already up to date", exit 0. **An older one is refused unless `--allow-downgrade` is given**, whatever asked for it, so a replayed old release cannot walk someone back, even one that is properly signed. `--version` takes an exact release.
 5. **Disk.** It refuses if there's no room for the download and the binary.
 
 **Then it downloads, into a private directory beside the binary** (0700, same filesystem, so the final step is a rename):
 
 6. HTTPS only, redirects included. Every download has a size limit.
-7. `checksums.txt` and its signature first, then the archive against that hash. A failure removes the directory and refuses.
-8. It takes one regular file from the archive, the expected name, refusing links and path tricks. Then it runs that file's `--version`, which must report the target version.
+7. `checksums.txt` and `checksums.txt.sig` first. **The signature is verified before anything in `checksums.txt` is read.** Then the archive against that hash. A failure removes the directory and refuses.
+8. It takes one regular file from the archive, the expected name, refusing links and path tricks. Then it runs that file's `--version`, which must report the target version, and records the file's checksum.
 
 **It says what will happen, and asks.** `--yes` skips asking, and `--json` needs it.
 
@@ -4858,7 +4870,7 @@ local-base upgrade [--version vX.Y.Z] [--yes] [--force]
 
 9. **Stop the old gateway cleanly,** through the service manager, and confirm the lock is gone and its backend ports are free. **This cannot be left to the new version:** the sweep of §29 only knows backends recorded by a version that has it, so on the first start after upgrading from before it, a survivor has no record and only the port check would see it. If anything survives, it stops, restarts the old version, and refuses.
 10. **Keep the previous binary** as `<binary>.previous`: a hard link and a rename, so nothing is copied over the old file (or a copy and a rename, on a filesystem without links).
-11. **Swap with a rename.** Never an in-place write: macOS caches a binary's code signature per inode, and an in-place copy leaves one that exits 137 on every run.
+11. **Check the binary's checksum again, then swap with a rename.** Never an in-place write: macOS caches a binary's code signature per inode, and an in-place copy leaves one that exits 137 on every run.
 12. **Restart through the new binary's `restart`,** which rewrites the plist or unit, and wait for readiness. **If it doesn't come up, it rolls back automatically** (33.4) and reports both.
 13. **Run `smoke`.** A failure leaves the new version in place, because smoke can fail for reasons of its own, such as no model installed or memory in use. It prints the failing step and the rollback line, and exits 1.
 
@@ -4887,10 +4899,14 @@ mv ~/.local/bin/local-base.previous ~/.local/bin/local-base && local-base restar
 All of these use a fake release server through `LOCALBASE_RELEASE_URL`, which the installer already honours, plain HTTP only on loopback, and scratch install directories. A test key is compiled in with `-ldflags` for test builds only, and a test holds that the release build sets no such thing. **None touch the real service, `~/.local/bin` or GitHub.**
 
 - `TestUpgradeCheckSendsNothing`: the exact headers and URL, no token even with tokens set, and nothing written.
-- `TestUpgradeCheckCompares`: older, same, newer, a runtime tag, garbage, a network failure, a development build.
-- `TestUpdateCheckOffByDefault`, and at most once a day when on.
-- `TestUpgradeRefusesBadReleases`: wrong hash, wrong signature, no signature, a signature by another key, a tampered `checksums.txt`, an archive with a link or `../`, one too large, a binary reporting the wrong version, redirects to plain HTTP. Each leaves the binary and the service untouched.
-- `TestUpgradeRefusesUnsafeStates`: every refusal in 33.3 steps 1 to 5, with the state unchanged.
+- `TestUpgradeCheckCompares`: older, same, newer, a runtime tag, garbage, a network failure, a development build, a 403 with a reset time.
+- `TestUpdateCheckOffByDefault`. `TestUpdateCheckSchedule`: at most one attempt in 24 hours across restarts, success or failure; a 304 keeps the cached answer; a 403 stays quiet and blocks nothing.
+- `TestSignatureGate`: a build with no key in its list refuses to install, and `--check` still works.
+- `TestKeyList`: any listed non-revoked key verifies; a revoked key does not, even with a valid signature; several signature lines; an unknown key id.
+- `TestSignatureBeforeChecksums`: a tampered `checksums.txt` is refused on its signature, before its contents are used.
+- `TestUpgradeRefusesBadReleases`: wrong hash, wrong signature, no signature, a signature by another key, an archive with a link or `../`, one too large, a binary reporting the wrong version, a binary changed between verifying and swapping, redirects to plain HTTP. Each leaves the binary and the service untouched.
+- `TestUpgradeDowngrade`: refused, with or without `--version`, and allowed only with `--allow-downgrade`.
+- `TestUpgradeRefusesUnsafeStates`: every refusal in 33.3 steps 1 to 5, with the state unchanged. `TestUpgradeWait`: work that finishes in time proceeds, and work that doesn't refuses having cut nothing.
 - `TestUpgradeSwap`: the order of stop, keep, swap, restart and smoke, against a fake `launchctl` and `systemctl` on `PATH`. The binary is never written in place, and is the new inode.
 - `TestUpgradeStopFailure`: a backend that survives, so nothing swaps and the old version comes back.
 - `TestUpgradeRollsBackOnFailedStart`, and `TestUpgradeSmokeFailureKeepsNewVersion`.
