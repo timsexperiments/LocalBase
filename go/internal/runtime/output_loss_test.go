@@ -23,8 +23,6 @@ func knownBug(t *testing.T, pr int, bug string) {
 	}
 }
 
-const noPRYet = 0
-
 // countLines counts the output lines that reach the log, taking a while over each.
 type countLines struct {
 	n     *atomic.Int64
@@ -46,7 +44,7 @@ func (c countLines) Handle(_ context.Context, r slog.Record) error {
 // it may be the reason for a crash. It writes more than a pipe holds, so it exits with some
 // still in the pipe.
 func TestProcessOutputSurvivesItsExit(t *testing.T) {
-	knownBug(t, noPRYet, "a backend's last output is lost when it exits: cmd.Wait closes the pipes while they are being read")
+	knownBug(t, 522, "a backend's last output is lost when it exits: cmd.Wait closes the pipes while they are being read")
 	const lines = 40000 // about 230 KB
 	var n atomic.Int64
 	p, err := StartProcess("child", "/bin/sh", []string{"-c", "seq 1 " + strconv.Itoa(lines)}, nil, slog.New(countLines{&n, 30 * time.Microsecond}))
