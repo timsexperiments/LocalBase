@@ -5898,7 +5898,11 @@ port failed the same way. One fix covers both.
    not, the group is still ours, since a pid is not reused while a group with that id exists.
 3. **Port check.** A start refuses a port something else holds, naming the port and the
    owner's pid when `lsof` can find it. It waits up to 1 s for a backend that just stopped.
-4. **Readiness comes from the child.** A health answer doesn't count if the child has exited,
+4. **A backend is its whole group.** When the leader exits, anything left in its group, such
+   as the server a wrapper started, gets TERM and then KILL, 2 s apart, before `Done` closes
+   and the reservation is released. A process that leaves the group with `setsid` is not
+   followed.
+5. **Readiness comes from the child.** A health answer doesn't count if the child has exited,
    or if `lsof` shows a listener outside its process group. A custom launch skips only the
    listener check, because it may serve from a container.
 
