@@ -35,6 +35,8 @@ func configureCommand() *cli.Command {
 			opt("ctx-size", "<tokens>", "LLM context limit ceiling"),
 			opt("ctx-mode", "<auto|explicit>", "auto clamps ctx-size to the memory-safe recommendation; explicit launches at ctx-size"),
 			opt("parallel", "<auto|1-4>", "Parallel request slots"),
+			opt("max-connections", "<connections>", "Maximum open connections, 0 for no cap; applies on restart (Go only)"),
+			opt("max-connections-per-ip", "<connections>", "Maximum open connections from one address other than loopback, 0 for no cap; applies on restart (Go only)"),
 			opt("otel-endpoint", "<url>", "OTLP/HTTP base endpoint; empty disables export"),
 			opt("otel-headers", "<key=value,...>", "OTLP exporter headers"),
 			opt("otel-sample-ratio", "<0-100>", "Percentage of root traces to sample"),
@@ -286,6 +288,17 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	active := false
 	for _, k := range keys {
 		active = active || k.RevokedAt == nil
+	}
+	for flag, key := range map[string]string{"max-connections": store.MaxConnectionsKey, "max-connections-per-ip": store.MaxConnectionsPerIPKey} {
+		if c.Has(flag) {
+			n, err := intOpt(c, flag, 0, 10_000_000)
+			if err != nil {
+				return nil, err
+			}
+			if err := e.Store.SetSetting(context.Background(), key, strconv.Itoa(n)); err != nil {
+				return nil, err
+			}
+		}
 	}
 	create := !c.Global.JSON
 	if v, ok := c.OptBool("create-key"); ok {
