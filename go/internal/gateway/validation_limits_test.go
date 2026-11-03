@@ -16,6 +16,9 @@ import (
 // detector, which turns sync.Pool off.
 const refusalAtTheBodyLimit = 4 << 30
 
+// An answer is at most this. It's about 14 KiB for the requests at the body limit below.
+const largestAnswer = 1 << 20
+
 func refusalCost(t *testing.T, url, body string) (status int, answer string, allocated uint64) {
 	t.Helper()
 	var before, after runtime.MemStats
@@ -177,6 +180,31 @@ func TestARefusalAtTheBodyLimit(t *testing.T) {
 func fill(head, item, tail string) string {
 	n := (maxRequestBytes - len(head) - len(tail)) / (len(item) + 1)
 	return head + repeated(item, n) + tail
+}
+
+// The most an answer can hold: every problem a list of the longest keys, under the longest key,
+// all of them escaped.
+func TestTheLargestAnswer(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	long := strings.Repeat(`\u0001`, maxPathKey)
+	var keys, questions strings.Builder
+	for i := range maxListedKeys + 1 {
+		fmt.Fprintf(&keys, `,"%s%02d":1`, long, i)
+	}
+	for i := range maxValidationIssues + 1 {
+		if i > 0 {
+			questions.WriteByte(',')
+		}
+		fmt.Fprintf(&questions, `"%s%03d":{"type":"noul"%s}`, long, i, keys.String())
+	}
+	status, answer, _ := refusalCost(t, ts.URL+"/v1/systemone", `{"model":"`+decisionModel+`","questions":{`+questions.String()+`}}`)
+	t.Logf("%d bytes", len(answer))
+	if status != 400 || !strings.Contains(answer, "and more") {
+		t.Errorf("%d %.200s", status, answer)
+	}
+	if len(answer) > largestAnswer || len(answer) < largestAnswer/2 {
+		t.Errorf("a %d byte answer: this should be the most one can hold, and be under %d", len(answer), largestAnswer)
+	}
 }
 
 // A request with a few problems reads as it always did.

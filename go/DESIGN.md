@@ -4909,7 +4909,8 @@ Which requests are refused doesn't change. The status stays 400, `validation_fai
 `remote_media_not_allowed` still wins past the limit (§13.6 item 13). A request with few problems reads as it did.
 
 A request at the 25 MiB body limit allocates at most 4 GiB, which `TestARefusalAtTheBodyLimit` states: 2.6 GiB measured,
-and 3.6 GiB under the race detector, which turns `sync.Pool` off. The answer stays under 15 KB.
+and 3.6 GiB under the race detector, which turns `sync.Pool` off. An answer is at most 1 MiB, and about 14 KiB for the
+requests measured at that limit.
 
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
