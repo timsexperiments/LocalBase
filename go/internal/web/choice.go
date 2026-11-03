@@ -58,7 +58,7 @@ func recommendedChoice(choices []downloadChoice) int {
 	}
 	best := -1
 	for i, c := range choices {
-		if c.Quant == nil || lowQualityQuant(c.Quant) || auxiliaryRe.MatchString(c.Path) || mtpDirRe.MatchString(c.Path) || c.Verdict == "wont-fit" {
+		if c.Quant == nil || lowQualityQuant(c.Quant) || auxiliaryRe.MatchString(c.Path) || mtpDirRe.MatchString(c.Path) {
 			continue
 		}
 		// The first of equal ranks wins, as a stable sort's first element does.

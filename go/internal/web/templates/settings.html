@@ -3,6 +3,8 @@
 <section aria-labelledby="settings-title" class="settings mx-auto max-w-2xl">
   <h1 id="settings-title" class="page-title">Settings</h1>
 
+  {{with .ComputerName}}{{template "computer-name" .}}{{end}}
+
   <section aria-labelledby="history-title" data-history-settings>
     <h2 id="history-title" class="list-label">Chat</h2>
     <div class="list-group">
@@ -99,5 +101,26 @@
   <p class="mt-2 px-1 text-sm text-muted">LocalBase uses your first choice. If it needs more memory than is free right now, it uses the next one, then the one after. A model someone picks in Chat, or an app names, is used as asked. Changes save right away.</p>
   {{with .Notice}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
   {{with .Error}}<p class="mt-2 px-1 text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+</section>
+{{end}}
+
+{{define "computer-name"}}
+<section id="computer-name" aria-labelledby="computer-name-title">
+  <h2 id="computer-name-title" class="list-label">This computer</h2>
+  <div class="list-group">
+    <form class="grid gap-3 px-4 py-3" hx-post="/app/settings/computer-name" hx-target="#computer-name" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <div class="grid gap-1">
+        <label for="computer-name-input" class="text-base font-semibold">Computer name</label>
+        <input id="computer-name-input" class="input" name="name" value="{{.Name}}" maxlength="64" autocomplete="off" placeholder="{{.Fallback}}">
+        <p class="text-sm text-muted">Shown at the top of every page, to anyone who can sign in. Leave it empty to use this computer’s own name, “{{.Fallback}}”, which may include your personal name.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
+        {{if .Name}}<button type="submit" name="action" value="reset" class="btn btn-quiet">Use its own name</button>{{end}}
+      </div>
+      {{with .Notice}}<p class="text-sm font-semibold" role="status">{{.}}</p>{{end}}
+      {{with .Failure}}<p class="text-sm font-semibold text-danger" role="alert">{{.}}</p>{{end}}
+    </form>
+  </div>
 </section>
 {{end}}

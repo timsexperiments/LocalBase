@@ -13,12 +13,14 @@ base=${1:?usage: mic-check.sh <base-url> <clip.wav> <expected>}
 clip=${2:?clip}
 expect=${3:?expected words}
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
-profile=$(mktemp -d)
+profile="$here/.cache/browser-profile-mic-check"
 port=$(test_port_pick)
-"$chrome" --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
+. "$here/tools/browser-run.sh"
+browser_guard mic-check
+(cd "$here" && rm -rf .cache/browser-profile-mic-check)
+"$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
   --no-first-run --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture="$clip" \
   --disable-features=AudioServiceOutOfProcess --autoplay-policy=no-user-gesture-required about:blank >/dev/null 2>&1 &
-pid=$!
-trap 'kill $pid 2>/dev/null; sleep 1; rm -rf "$profile"' EXIT
+browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$port/json/version" >/dev/null && break; sleep 0.5; done
-bun run "$here/tools/mic-check/run.ts" "http://127.0.0.1:$port" "$base" "$expect"
+browser_run bun run "$here/tools/mic-check/run.ts" "http://127.0.0.1:$port" "$base" "$expect"

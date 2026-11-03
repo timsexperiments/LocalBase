@@ -10,7 +10,7 @@ The inventory for UI v2 (DESIGN §25). Styles are in `internal/web/css/input.css
 |---|---|---|
 | Mark (`mark`) | `layout.html`; files in `static/brand/` | done |
 | Memory strip (`memory-strip`, `.strip`) | Studio, Models, Get models; Chat and first-run next | done |
-| Memory gauge (`gauge`, `memory-gauge`) | Strip, Running | done |
+| Memory gauge (`gauge`, `memory-legend`) | Strip, Running | done |
 
 **Mark usage:** always this shape, in one color or with its lamp; never on a busy picture, and at 16 px or larger.
 

@@ -176,7 +176,7 @@ func TestChatSheets(t *testing.T) {
 	body := get(shellUI(t, nil, ""), "/app/chat").Body.String()
 	for _, want := range []string{`<dialog id="model-picker" aria-labelledby="picker-title" class="sheet`,
 		`<dialog id="generation" aria-labelledby="generation-title" class="sheet`,
-		`class="icon-btn lg:hidden" data-open-drawer`, `aria-label="Open conversations"`, `data-stop hidden aria-label="Stop generation"`} {
+		`class="icon-btn min-[1100px]:hidden" data-open-drawer`, `aria-label="Open chats"`, `data-stop hidden aria-label="Stop generation"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -207,15 +207,19 @@ func TestUnload(t *testing.T) {
 		body   string
 		want   string
 	}{
-		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Unloaded. Freed 4.2 GB."},
+		{200, `{"unloaded":true,"memoryFreedBytes":4200000000}`, "Freed 4.2 GB. Its files stay installed."},
 		{409, `{"error":{"code":"model_busy","in_flight":2,"message":"busy"}}`, "It’s busy with 2 requests. Try again when they finish."},
-		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already unloaded."},
-		{404, `404 page not found`, "This LocalBase can’t unload models yet."},
+		{404, `{"error":{"code":"model_not_loaded","message":"x"}}`, "It was already out of memory."},
+		{404, `404 page not found`, "This LocalBase can’t free a model’s memory yet."},
 		{403, `{"error":{"code":"forbidden","message":"Missing models:manage."}}`, "Missing models:manage."},
 	} {
 		u := shellUI(t, nil, "")
 		var path string
 		u.d.Call = func(_ context.Context, _ *auth.Principal, method, p, _ string, _ []byte) APIResult {
+			// Drawing the page afterwards also reads the host.
+			if method != "POST" {
+				return APIResult{Status: 200, Body: []byte(`{}`)}
+			}
 			path = method + " " + p
 			return APIResult{Status: c.status, Body: []byte(c.body)}
 		}
