@@ -412,8 +412,6 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(pill?.href === "/app/studio/video" && /Video/.test(pill.text), `the pill leads back: ${JSON.stringify(pill)}`);
   await nav("/app/studio");
   check((await ev(`!!document.querySelector('.studio-recent a[href^="/app/studio/video"]')`)), "the landing's Recent shows it");
-  const badge = await ev(`document.querySelector('.studio-recent a[href^="/app/studio/video"] .studio-tile-badge')?.textContent.trim()`);
-  check(/^(\d+ s|Video)$/.test(badge ?? ""), `a video tile says it is a video: ${JSON.stringify(badge)}`);
   await nav("/app/studio/video");
   check((await waitItem("fake:slow a paper boat", (g) => g.active))?.active, "it is still there after leaving");
   check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
@@ -435,6 +433,11 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   await sleep(600);
   const played = await ev(`(async () => { const v = ${itemFor("a quiet beach")}.querySelector("video"); if (v.readyState < 1) await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; setTimeout(r, 4000); }); return { duration: v.duration, width: v.videoWidth, save: !!${itemFor("a quiet beach")}.querySelector("a[download='video.mp4']"), again: /Make again/.test(${itemFor("a quiet beach")}.textContent) }; })()`);
   check(played.duration > 1 && played.width > 0 && played.save && played.again, `it plays, with Save and Make again: ${JSON.stringify(played)}`);
+  // A finished video's tile on the landing says what it is, and shows its first frame.
+  await nav("/app/studio");
+  const tile = await ev(`(async () => { const a = document.querySelector('.studio-recent a[href^="/app/studio/video"]'), v = a?.querySelector("video"); if (v && v.readyState < 2) await new Promise((r) => { v.onloadeddata = r; v.onerror = r; setTimeout(r, 4000); }); return { badge: a?.querySelector(".studio-tile-badge")?.textContent.trim(), frame: v?.readyState >= 2 && v?.videoWidth > 0, hidden: a?.querySelector(".studio-tile-badge")?.getAttribute("aria-hidden"), named: a?.querySelector(".studio-tile-meta")?.textContent.trim() }; })()`);
+  check(/^\d+ s$/.test(tile.badge ?? "") && tile.frame && tile.hidden === "true" && /^Video, \d+ s · /.test(tile.named ?? ""), `a finished video's tile shows a frame, its type and its length: ${JSON.stringify(tile)}`);
+  await nav("/app/studio/video");
 
   await ev(makeVideo("fake:fail a bad one"));
   const failed = await waitItem("fake:fail a bad one", (g) => !g.active);
