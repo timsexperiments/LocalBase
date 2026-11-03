@@ -43,6 +43,7 @@ func upgradeCommand() *cli.Command {
 		Run:      runUpgrade,
 		Sub: []*cli.Command{
 			{Name: "rollback", Summary: "Go back to the previous version", Run: withEnv(runUpgradeRollback)},
+			{Name: "check-updates", Summary: "Turn the daily check for a newer version on or off", Usage: "<on|off>", MinArgs: 1, MaxArgs: 1, Run: withEnv(runCheckUpdates)},
 		}}
 }
 
@@ -435,6 +436,34 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	c.Info("To go back: local-base upgrade rollback")
 	c.Info("If that will not run: %s", rollbackLine(binary))
 	return data, nil
+}
+
+// runCheckUpdates turns the daily check on or off. Off is the default.
+func runCheckUpdates(c *cli.Ctx, e *env) (any, error) {
+	var on bool
+	switch c.Args[0] {
+	case "on":
+		on = true
+	case "off":
+	default:
+		return nil, cli.Inputf("check-updates: expected on or off")
+	}
+	out, err := writeThroughGateway(e, "/_localbase/update", map[string]any{"action": "set-check", "enabled": on}, func() (map[string]any, error) {
+		checker := upgrade.NewChecker(e.Store, upgrade.DefaultSource(), version.Version, releaseBuild(), nil)
+		if err := checker.SetEnabled(context.Background(), on); err != nil {
+			return nil, err
+		}
+		return map[string]any{"enabled": on}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if on {
+		c.Info("The daily check is on. Once a day, it asks GitHub for the latest release, and sends nothing about this computer. It installs nothing.")
+	} else {
+		c.Info("The daily check is off. local-base upgrade --check still works any time.")
+	}
+	return out, nil
 }
 
 func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {

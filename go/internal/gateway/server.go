@@ -23,6 +23,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
@@ -62,6 +63,8 @@ type Server struct {
 	Otel *otlp.Runtime
 	// Usage keeps hourly totals (DESIGN §32; nil: not recorded, and the route is disabled).
 	Usage *usage.Recorder
+	// Updates is the optional daily check for a newer version (DESIGN §33; nil: the route is disabled).
+	Updates *upgrade.Checker
 
 	mgmt *management
 	// runs are the UI's detached runs (DESIGN §21).
@@ -134,6 +137,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
 	mux.HandleFunc("/_localbase/local-sessions", s.localSessionsAPI)
 	mux.HandleFunc("/_localbase/usage", s.usageAPI)
+	mux.HandleFunc("/_localbase/update", s.updateAPI)
 	mux.HandleFunc("/_localbase/voices", s.voicesAPI)
 	mux.HandleFunc("/_localbase/voices/", s.voicesAPI)
 	if s.UI != nil {
