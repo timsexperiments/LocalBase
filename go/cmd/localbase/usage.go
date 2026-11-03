@@ -209,15 +209,9 @@ func runUsageRecording(c *cli.Ctx, e *env) (any, error) {
 	return out, nil
 }
 
-// usageWrite makes a change without going behind a running gateway's back (DESIGN §32.4): it
-// keeps counts and settings in memory, so with one running, the change goes through it, and
-// otherwise this refuses. It writes the database only when no gateway has the root.
+// usageWrite is a usage change, through the gateway or to the database.
 func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error) (map[string]any, error) {
-	state, owner, detail := e.Root.OwnerState()
-	switch state {
-	case "active":
-		return usageThroughGateway(owner.HealthURL(), owner.InstanceToken, body)
-	case "missing", "stale":
+	return writeThroughGateway(e, "/_localbase/usage", body, func() (map[string]any, error) {
 		rec, err := usage.New(e.Store, nil)
 		if err != nil {
 			return nil, err
@@ -226,7 +220,25 @@ func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error)
 			return nil, err
 		}
 		recording, days := rec.Settings()
-		return map[string]any{"recording": recording, "retentionDays": days, "cleared": body["action"] == "clear", "via": "database"}, nil
+		return map[string]any{"recording": recording, "retentionDays": days, "cleared": body["action"] == "clear"}, nil
+	})
+}
+
+// writeThroughGateway makes a change without going behind a running gateway's back (DESIGN §32.4):
+// with one running, the change goes through it, and otherwise this refuses. It writes the database
+// only when no gateway has the root.
+func writeThroughGateway(e *env, route string, body map[string]any, direct func() (map[string]any, error)) (map[string]any, error) {
+	state, owner, detail := e.Root.OwnerState()
+	switch state {
+	case "active":
+		return throughGateway(owner.HealthURL(), route, owner.InstanceToken, body)
+	case "missing", "stale":
+		out, err := direct()
+		if err != nil {
+			return nil, err
+		}
+		out["via"] = "database"
+		return out, nil
 	}
 	if detail == "" {
 		detail = "its lock could not be read"
@@ -234,13 +246,13 @@ func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error)
 	return nil, errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing changed.")
 }
 
-func usageThroughGateway(healthURL, token string, body map[string]any) (map[string]any, error) {
+func throughGateway(healthURL, route, token string, body map[string]any) (map[string]any, error) {
 	const stopIt = " Nothing changed. Try again, or stop the gateway first: local-base stop"
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(healthURL, "/health")+"/_localbase/usage", bytes.NewReader(b))
+	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(healthURL, "/health")+route, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}

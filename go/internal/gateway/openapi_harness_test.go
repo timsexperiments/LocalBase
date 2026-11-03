@@ -25,6 +25,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
@@ -140,6 +141,7 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 	}
 	s.Library = lib
 	s.Otel = testOtel
+	s.Updates = upgrade.NewChecker(st, upgrade.Source{API: "http://127.0.0.1:1/never"}, "0.2.0", true, log)
 	s.Usage, err = usage.New(st, log)
 	if err != nil {
 		t.Fatal(err)
