@@ -189,6 +189,9 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// With the root's lock held, whatever an earlier gateway left running is not
+	// serving anyone: it goes before this one starts backends on the same ports.
+	runtime.SweepBackends(r.Dir, log)
 	defer release()
 	tel, err := startTelemetry(cfg, handler, log)
 	if err != nil {
