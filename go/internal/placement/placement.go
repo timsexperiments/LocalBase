@@ -50,6 +50,8 @@ type Model struct {
 
 // Device is the machine and backend the model would run on.
 type Device struct {
+	// LogVerbosity: the backend takes -lv, which the check needs for its lines.
+	LogVerbosity  bool
 	Platform      string
 	FreeVRAM      int64 // free VRAM on GPU 0 (discrete)
 	HostAvailable int64 // usable system memory for the host side

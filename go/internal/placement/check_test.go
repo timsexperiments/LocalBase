@@ -195,3 +195,19 @@ func TestCheckGPUPlanStillNeedsTheOffloadLine(t *testing.T) {
 		t.Errorf("a GPU plan with no offload line: %v", err)
 	}
 }
+
+// Lines from a real run: llama-server 0.7.0-dev build 11671, Metal, -ngl 20 -lv 4.
+func TestCheckRealVerbosityFourLines(t *testing.T) {
+	log, err := os.ReadFile("testdata/metal-20of29-lv4.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := Plan{Platform: Unified, GPULayers: 20, TotalLayers: 29, Args: []string{"-ngl", "20"}}
+	if err := Check(log, p); err != nil {
+		t.Errorf("the real log: %v", err)
+	}
+	p.GPULayers = 29
+	if err := Check(log, p); !mismatch(err) {
+		t.Errorf("20/29 passed a plan of 29: %v", err)
+	}
+}

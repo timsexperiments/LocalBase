@@ -2517,7 +2517,9 @@ VRAM, the planner reproduces from the header alone:
 
 ### 20.5 Startup placement check (fail closed)
 
-A plan with no GPU layers needs no offload line: a CPU-only llama.cpp build prints "Available devices: (none)" and nothing about offloading. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
+The gateway starts a placed backend with `-lv 4`, because llama-server prints these lines only from that level: its default is 3 (checked on 0.7.0-dev, build 11671, on macOS). A custom build gets the flag only if its `--help` lists it. A real chat at that level put no prompt text in the log.
+
+A plan with no GPU layers needs no offload line, since zero is known from the plan and what a no-device build prints at this level has not been read. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
 
 The llama-server output is read as bytes; a strict UTF-8 decode once
 crashed a harness.

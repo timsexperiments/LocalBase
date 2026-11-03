@@ -142,6 +142,8 @@ type LLMPlan struct {
 	// nil without placement planning. PlacedAt is when it was resolved.
 	Placement *placement.Plan
 	PlacedAt  time.Time
+	// LogPlacement asks the backend for the lines the placement check reads.
+	LogPlacement bool
 	// PlacementRequest is the stored choice the placement was resolved from.
 	PlacementRequest placement.Request
 }
@@ -360,6 +362,9 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 	}
 	if p.Placement != nil {
 		a = append(a, p.Placement.Args...) // --n-cpu-moe / -ngl (DESIGN §20)
+	}
+	if p.LogPlacement {
+		a = append(a, "-lv", "4") // the startup check reads lines printed only from this level
 	}
 	return a
 }
