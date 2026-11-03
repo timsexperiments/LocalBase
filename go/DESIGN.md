@@ -4602,7 +4602,7 @@ IP addresses, user agents, emails, names, request ids, per-request timestamps, e
 **Nothing leaves the machine.** No new network call, no telemetry, and no cost estimates: a local model
 has no per-token price, and a rate made up here would be a number nobody can check. OTLP, when someone
 has configured it, exports what it already does, and this table is not added to it. The diagnostics
-bundle leaves this table out, and backup (§33) will too unless asked.
+bundle leaves this table out, and backup (feature 5) will too unless asked.
 
 ### 29.2 What counts
 
@@ -4689,7 +4689,7 @@ else `day`. Times outside retention are clipped, and `range.from` says where the
 `audit.usage-changed` with ids only.
 
 The browser gets it through `/app/api`, like the other admin reads. It goes in `openapi.json`, and the drift tests of
-§28.2 apply.
+§30.2 apply.
 
 ### 29.7 `local-base usage`
 
@@ -4724,7 +4724,7 @@ and ranks nothing, and a model's id is data.
 - `TestUsageScopes`: a key sees only its own, naming another gets 403, each permission in 29.5.
 - `TestUsageRetention`, `TestUsageClear`, `TestUsageRecordingOff`, `TestUsageFlushFailureKeepsCounts`.
 - `TestUsagePercentiles`: the histogram is within its stated bound on known distributions, and merging hours matches one bucket.
-- `TestUsageDiagnosticsExcludes`, `TestCLIUsage`, the §28.2 drift tests, and `-race -count=20`.
+- `TestUsageDiagnosticsExcludes`, `TestCLIUsage`, the §30.2 drift tests, and `-race -count=20`.
 
 **Rollback:** the table is additive. An older binary ignores it and does not prune it, so it stops growing and sits there until a
 newer binary returns or someone removes it. **What this will not do:** per-request history, cost, alerts, or export to anywhere.
