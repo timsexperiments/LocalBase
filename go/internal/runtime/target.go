@@ -36,7 +36,7 @@ type Gate func(modelID string) (*Target, error)
 
 // LaunchError is a selection problem found before anything starts.
 type LaunchError struct {
-	Code    string // backend_not_selected | backend_unavailable | model_assets_missing | backend_task_unsupported
+	Code    string // backend_not_selected | backend_unavailable | model_assets_missing | model_hardware_ineligible
 	Message string
 }
 
