@@ -147,7 +147,7 @@ A content part carries its content: one that names an address answers 400 `remot
 **Responses:**
 
 - `200`: A completion, or with `stream: true` server-sent events ending in `data: [DONE]`.
-- `400`: The request is invalid: `validation_failed` and more specific codes, or `context_length_exceeded` when the input is more than one slot of the model's context can hold.
+- `400`: The request is invalid: `validation_failed` and more specific codes, `context_length_exceeded` when the input is more than one slot of the model's context can hold, or `remote_media_not_allowed` when a content part names a web address.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
@@ -740,12 +740,15 @@ Cancelling differs from cancelling an install, on purpose. An import is identifi
 - `202`: `start`: the import is running.
 - `400`: Invalid. A body that is not JSON answers in the management shape (`validation_failed`). Anything else answers in the OpenAI envelope: `validation_failed`, `import_unresolved`, `import_choose_file`, `custom_source_unconfirmed` or `import_task_required`.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
-- `403`: The key lacks the permission this route needs (`insufficient_permissions`).
+- `403`: The key lacks the permission (`insufficient_permissions`), or this source isn't allowed: `import_private_address`, `import_address_refused`, `import_local_path` or `import_too_many_files`.
 - `404`: `cancel`: no import with that id (`import_not_found`).
 - `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: This model is already being imported (`import_running`).
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
+- `429`: Too many imports at once (`import_busy`). See `Retry-After`.
 - `499`: The client went away while sending the body (`request_aborted`).
 - `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
+- `507`: Not enough free disk space for this import (`import_no_space`).
 
 ### `GET /_localbase/model-management`
 
@@ -1340,6 +1343,7 @@ Everything after `Last-Event-ID` or `after`, then live, until the `end` event. E
 **Responses:**
 
 - `200`: Server-sent events.
+- `400`: The event cursor isn't a whole number, 0 or more (`invalid_event_cursor`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
@@ -1795,7 +1799,7 @@ A recording of a person, so only managers can replay it. A file that no longer m
 
 ## Error codes
 
-Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status.
+Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status. Two can answer any route: `request_timeout` (408), when a request's body stops arriving, and `too_busy` (503), when there are too many open connections.
 
 - `audio_silent`
 - `audio_too_large`
@@ -1821,9 +1825,19 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `hub_rate_limited`
 - `hub_rejected`
 - `hub_unavailable`
+- `import_address_refused`
+- `import_busy`
+- `import_cancelled`
 - `import_choose_file`
+- `import_local_path`
+- `import_no_space`
 - `import_not_found`
+- `import_private_address`
+- `import_running`
 - `import_task_required`
+- `import_timed_out`
+- `import_too_large`
+- `import_too_many_files`
 - `import_unresolved`
 - `inference_queue_full`
 - `inference_queue_timeout`
@@ -1831,6 +1845,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `insufficient_permissions`
 - `insufficient_storage`
 - `invalid_api_key`
+- `invalid_event_cursor`
 - `invalid_request`
 - `invalid_voice_name`
 - `issuer_required`
@@ -1859,7 +1874,9 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `policy_revision_conflict`
 - `provider_not_configured`
 - `registration_not_found`
+- `remote_media_not_allowed`
 - `request_aborted`
+- `request_timeout`
 - `role_not_found`
 - `route_disabled`
 - `run_not_found`
@@ -1867,6 +1884,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `service_unavailable`
 - `storage_unavailable`
 - `structured_output_validation_failed`
+- `too_busy`
 - `too_many_runs`
 - `ui_access_denied`
 - `unsafe_path`

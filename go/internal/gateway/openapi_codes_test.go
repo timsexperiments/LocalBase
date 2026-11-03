@@ -54,10 +54,7 @@ var notDocumentedCodes = map[string]string{
 
 // codesArriving are named in this branch's notes, and sent by a PR that isn't under it yet. Each
 // entry fails once its code is here, so the table can't go stale.
-var codesArriving = map[string]string{
-	"remote_media_not_allowed": "#529",
-	"request_timeout":          "#482",
-}
+var codesArriving = map[string]string{}
 
 // sourceErrorCodes reads the code out of the source, so that a new one can't be missed by a test
 // that has to think of asking for it. It reads each way this code base hands over a code:

@@ -1628,6 +1628,9 @@
           "description": "At most 64 KiB."
         },
         "responses": {
+          "409": {"description": "This model is already being imported (`import_running`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"description": "Too many imports at once (`import_busy`). See `Retry-After`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "507": {"description": "Not enough free disk space for this import (`import_no_space`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "200": {
             "description": "`resolve`: what would be downloaded. `cancel`: the job, usually still `running` for a moment.",
             "content": {
@@ -1677,7 +1680,7 @@
           "413": {"$ref": "#/components/responses/ManagementTooLarge"},
           "499": {"$ref": "#/components/responses/ManagementAborted"},
           "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/Forbidden"},
+          "403": {"description": "The key lacks the permission (`insufficient_permissions`), or this source isn't allowed: `import_private_address`, `import_address_refused`, `import_local_path` or `import_too_many_files`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "405": {"$ref": "#/components/responses/MethodNotAllowed"},
           "503": {"$ref": "#/components/responses/Unavailable"}
         }
@@ -2584,6 +2587,7 @@
           }
         ],
         "responses": {
+          "400": {"description": "The event cursor isn't a whole number, 0 or more (`invalid_event_cursor`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "200": {
             "description": "Server-sent events.",
             "content": {
@@ -3315,7 +3319,7 @@
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
           "400": {
-            "description": "The request is invalid: `validation_failed` and more specific codes, or `context_length_exceeded` when the input is more than one slot of the model's context can hold.",
+            "description": "The request is invalid: `validation_failed` and more specific codes, `context_length_exceeded` when the input is more than one slot of the model's context can hold, or `remote_media_not_allowed` when a content part names a web address.",
             "content": {
               "application/json": {
                 "schema": {
@@ -4917,7 +4921,7 @@
       },
       "ErrorCode": {
         "type": "string",
-        "description": "Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status.",
+        "description": "Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status. Two can answer any route: `request_timeout` (408), when a request's body stops arriving, and `too_busy` (503), when there are too many open connections.",
         "enum": [
           "audio_silent",
           "audio_too_large",
@@ -4943,9 +4947,19 @@
           "hub_rate_limited",
           "hub_rejected",
           "hub_unavailable",
+          "import_address_refused",
+          "import_busy",
+          "import_cancelled",
           "import_choose_file",
+          "import_local_path",
+          "import_no_space",
           "import_not_found",
+          "import_private_address",
+          "import_running",
           "import_task_required",
+          "import_timed_out",
+          "import_too_large",
+          "import_too_many_files",
           "import_unresolved",
           "inference_queue_full",
           "inference_queue_timeout",
@@ -4953,6 +4967,7 @@
           "insufficient_permissions",
           "insufficient_storage",
           "invalid_api_key",
+          "invalid_event_cursor",
           "invalid_request",
           "invalid_voice_name",
           "issuer_required",
@@ -4981,7 +4996,9 @@
           "policy_revision_conflict",
           "provider_not_configured",
           "registration_not_found",
+          "remote_media_not_allowed",
           "request_aborted",
+          "request_timeout",
           "role_not_found",
           "route_disabled",
           "run_not_found",
@@ -4989,6 +5006,7 @@
           "service_unavailable",
           "storage_unavailable",
           "structured_output_validation_failed",
+          "too_busy",
           "too_many_runs",
           "ui_access_denied",
           "unsafe_path",
@@ -5335,7 +5353,7 @@
             "required": ["phase", "done", "total"]
           },
           "error": {"type": "string", "description": "What went wrong. A cancelled job has none."},
-          "errorCode": {"type": "string", "description": "A stable code, when there is one. A cancelled job has `import_cancelled`."},
+          "errorCode": {"type": "string", "description": "A stable code, when there is one: `import_no_space`, `import_too_large` or `import_timed_out`. A cancelled job has `import_cancelled`."},
           "detail": {"type": "string", "description": "What happened, when it was not a failure."},
           "model": {
             "type": "object",
