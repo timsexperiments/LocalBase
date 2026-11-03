@@ -1,0 +1,48 @@
+# Template for a formula in a tap such as timsexperiments/homebrew-tap.
+# scripts/release/render-formula.sh fills in the version and checksums.
+class LocalBase < Formula
+  desc "Self-hosted, OpenAI-compatible gateway for local AI models"
+  homepage "https://github.com/timsexperiments/LocalBase"
+  version "@VERSION@"
+  license "AGPL-3.0-or-later"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/timsexperiments/LocalBase/releases/download/v@VERSION@/local-base-macos-arm64.zip"
+      sha256 "@SHA_MACOS_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/timsexperiments/LocalBase/releases/download/v@VERSION@/local-base-macos-x64.zip"
+      sha256 "@SHA_MACOS_X64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/timsexperiments/LocalBase/releases/download/v@VERSION@/local-base-linux-arm64.tar.gz"
+      sha256 "@SHA_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/timsexperiments/LocalBase/releases/download/v@VERSION@/local-base-linux-x64.tar.gz"
+      sha256 "@SHA_LINUX_X64@"
+    end
+  end
+
+  def install
+    bin.install Dir["local-base-*"].first => "local-base"
+    doc.install "README.md", "THIRD_PARTY_NOTICES.txt"
+  end
+
+  def caveats
+    <<~EOS
+      LocalBase manages its own user service, so use it instead of `brew services`:
+        local-base start
+      After `brew upgrade`, apply the new version with:
+        local-base restart
+    EOS
+  end
+
+  test do
+    assert_equal version.to_s, shell_output("#{bin}/local-base --version").strip
+  end
+end
