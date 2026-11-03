@@ -19,6 +19,8 @@ LocalBase follows [Semantic Versioning](https://semver.org/). Before 1.0, a brea
 - Anything marked experimental.
 - Platforms that aren't first-class. See [platforms and hardware](../README.md#platforms-and-hardware).
 
+`GET /openapi.json` on a running gateway marks which routes are stable: `/v1` is, and `/_localbase` isn't.
+
 ## Deprecation
 
 When something stable has to change:
