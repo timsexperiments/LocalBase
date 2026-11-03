@@ -80,6 +80,8 @@ free_pct() { echo $(( $(pages_mib) * 1048576 * 100 / $(sysctl -n hw.memsize) ));
 live_state() { curl -s -m 3 "$LIVE" | jq -c '.modalities // "unreachable"' 2>/dev/null || echo unreachable; }
 SCRATCH_ENV=(env -i PATH=/usr/bin:/bin:/usr/sbin "HOME=$W/home" LOCALBASE_CATALOG_FEED_URL=off
   HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost)
+# A rehearsal of a slow model load: the fake waits this long before it listens.
+if [ "$DRY" = 1 ] && [ -n "${DRY_FAKE_STARTUP_MS:-}" ]; then SCRATCH_ENV+=("FAKE_STARTUP_MS=$DRY_FAKE_STARTUP_MS"); fi
 
 GWPID="" STUB="" MON="" DOG="" WORK="" SAMPLER=""
 sweep() {
@@ -237,13 +239,21 @@ start_gateway() { # root, llama-server, log
 starting() { grep -E '"eventName":"runtime\.starting"' "$1" | tail -1 | jq -c '.attributes | {demand_bytes, demand_confidence, ctx_size, slots}' 2>/dev/null; }
 demand_mib() { grep -E '"eventName":"runtime\.starting"' "$1" | tail -1 | jq -r '(.attributes.demand_bytes // 0) / 1048576 | floor' 2>/dev/null; }
 backend_of() { ps -A -o pid=,ppid=,command= | awk -v parent="$GWPID" -v rt="$RT" '$2 == parent && $3 == rt { print $1 }' | head -1; }
-first_request() { curl -s -m 180 -o "$W/first.json" -w '%{http_code}' -H 'Content-Type: application/json' \
-  -d "{\"model\":\"$MODEL_ID\",\"input\":\"a first line\"}" "http://127.0.0.1:$GW/v1/embeddings"; }
+# The first request loads the model, which is when memory is most likely to spike. So it runs in the
+# background with a wait: in a command substitution, the watcher's signal would wait for it, up to 180 s.
+first_request() {
+  curl -s -m 180 -o "$W/first.json" -w '%{http_code}' -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$MODEL_ID\",\"input\":\"a first line\"}" "http://127.0.0.1:$GW/v1/embeddings" > "$W/first.status" &
+  WORK=$!
+  wait "$WORK"
+  WORK=""
+  status=$(cat "$W/first.status")
+}
 
 log "=== the planner's exact plan, with a fake backend in a separate root: nothing real is loaded"
 prepare_root "$W/plan-root"
 start_gateway "$W/plan-root" "$W/fake-llama-server" "$W/plan-gw.log"
-status=$(first_request)
+first_request
 log "plan request: $status: $(cut -c1-160 "$W/first.json" | head -1)"
 PLAN=$(starting "$W/plan-gw.log")
 PLAN_MIB=$(demand_mib "$W/plan-gw.log")
@@ -265,7 +275,7 @@ fi
 log "=== the pass: free memory $(free_pct)%, available $(pages_mib) MiB"
 prepare_root "$W/root"
 start_gateway "$W/root" "$RT" "$W/gw.log"
-status=$(first_request)
+first_request
 log "first request: $status: $(cut -c1-120 "$W/first.json" | head -1)"
 [ "$status" = 200 ] || { log "ABORT: the model did not answer"; exit 7; }
 BACKEND=$(backend_of)
@@ -283,7 +293,7 @@ if [ "${REAL:-0}" -gt "$PLAN_LIMIT_MIB" ]; then log "ABORT: the real start's pla
 memory_now() { # label
   local rss foot
   rss=$(ps -o rss= -p "$BACKEND" | tr -d ' ')
-  foot=$(/usr/bin/footprint -p "$BACKEND" 2>/dev/null | awk '/phys_footprint:/ { print $2 $3; exit }')
+  foot=$(perl -e 'alarm 20; exec @ARGV' /usr/bin/footprint -p "$BACKEND" 2>/dev/null | awk '/phys_footprint:/ { print $2 $3; exit }')
   log "MEMORY $1: rss ${rss:-?} KiB, footprint ${foot:-?}, available $(pages_mib) MiB, free $(free_pct)%"
 }
 memory_now "before measuring"
