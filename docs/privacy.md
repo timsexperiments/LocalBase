@@ -26,7 +26,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 | Settings | `local-base.db` (0600) | **Your Hugging Face token and OTLP headers, if you set them, are stored here in plain text** |
 | API keys | `local-base.db` | Stored as hashes. The secret is shown once |
 | Browser sign-in secrets | `ui-access.json` (0600) | Provider secrets |
-| Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives |
+| Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives. With `--log-level debug`, they also hold what each backend prints, and a backend can print parts of a prompt, so only turn that on for a while, and look before sharing those logs |
 | **Usage totals** | `local-base.db` | **On by default.** Hourly counts, tokens and durations per key or person, route, model and status, kept 30 days. Never prompts, replies, IP addresses or request bodies. See [usage and activity](usage.md), which also shows how to turn it off or clear it |
 | **Backups** | Where you write them, on this computer | **A backup holds secrets in plain text.** It's written only to this computer, and nothing uploads it. Keep it private. See [backup and restore](backup.md) |
 | **Detached run checkpoints** | `runs/<id>.json` (0600) | **Model output in plaintext.** Prompts aren't stored. Deleted when dismissed, or 30 minutes after the run ends |
@@ -42,5 +42,9 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 ## Removing your data
 
 `local-base uninstall --yes` removes the data directory. See [uninstall](install.md#uninstall). After a rollback to an older version, delete `runs/*.json` by hand, as [the upgrade guide](upgrade.md#roll-back) explains.
+
+## If you share this gateway
+
+People using one gateway share its models, and a model remembers its recent work to answer faster. So how quickly an answer starts, and the timing and cache figures in the response, can show someone that another person just sent the same opening text. The gateway doesn't hide this, because prompts stay cached to keep long chats fast. Don't share a gateway between people who mustn't learn anything about each other's work.
 
 If you expose LocalBase to other people, you're responsible for their data under the laws that apply to you.
