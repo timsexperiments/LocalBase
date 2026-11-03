@@ -1,0 +1,105 @@
+{{define "title"}}Usage · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="usage-title" class="mx-auto grid max-w-2xl gap-4">
+  <div>
+    <h1 id="usage-title" class="page-title">Usage</h1>
+    <p class="page-lead" data-usage-note>{{.Note}}.</p>
+  </div>
+  {{template "usage-body" .}}
+</section>
+{{end}}
+
+{{define "usage-body"}}
+<div id="usage-body" class="grid min-w-0 gap-4">
+  {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+  {{with .Error}}<p class="notice notice-error" role="alert">{{.}}</p>{{end}}
+
+  <div class="grid gap-3">
+    {{if .CanSeeAll}}<nav aria-label="Whose usage" class="segmented">{{range .Scopes}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
+    <nav aria-label="Period" class="segmented">{{range .Ranges}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>
+    <nav aria-label="Breakdown" class="segmented">{{range .Groups}}<a href="{{.URL}}" {{if .Current}}aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>
+  </div>
+
+  {{with .LoadError}}
+  <section class="group-card">
+    <h2 class="group-title">Usage unavailable</h2>
+    <p class="mt-1 text-sm text-danger" role="alert">{{.}}</p>
+  </section>
+  {{else}}
+  {{if not .Recording}}<p class="notice" role="status">Recording is off. Nothing new is counted, and what exists stays until you clear it or it ages out.</p>{{end}}
+
+  {{if .Empty}}
+  <section class="group-card" aria-labelledby="usage-empty-title">
+    <h2 id="usage-empty-title" class="group-title">No requests in this period</h2>
+    <p class="mt-1 text-sm text-muted">Requests from your apps and from this page's Chat and Studio appear here within a few seconds.</p>
+  </section>
+  {{else}}
+  <section class="group-card grid gap-3" aria-labelledby="usage-totals-title">
+    <h2 id="usage-totals-title" class="group-title">{{if eq .Scope "all"}}Everything{{else}}Your usage{{end}}</h2>
+    {{template "usage-figures" .Totals}}
+  </section>
+  {{if .Rows}}
+  <section aria-labelledby="usage-rows-title">
+    <h2 id="usage-rows-title" class="list-label">Breakdown, by number of requests</h2>
+    <ul class="list-group">
+      {{range .Rows}}
+      <li class="grid min-w-0 gap-2 p-4">
+        <p class="font-semibold wrap-anywhere">{{with .Who}}{{.}}{{end}}{{with .Model}}{{.}}{{end}}{{with .Route}}{{.}}{{end}}</p>
+        {{template "usage-figures" .Stats}}
+      </li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+  {{end}}
+
+  <section class="group-card grid gap-3" aria-labelledby="usage-keep-title">
+    <h2 id="usage-keep-title" class="group-title">What is kept</h2>
+    <p class="text-sm text-muted">Hourly totals, kept for {{.RetentionDays}} days. No record of any single request, prompt or reply. Percentiles are approximate, within about 12%.</p>
+    {{if .CanManage}}
+    <form class="grid gap-2" hx-post="/app/usage/change" hx-target="#usage-body" hx-swap="outerHTML">
+      <input type="hidden" name="action" value="recording">
+      <input type="hidden" name="range" value="{{.Range}}"><input type="hidden" name="scope" value="{{.Scope}}"><input type="hidden" name="group" value="{{.Group}}">
+      <input type="hidden" name="enabled" value="{{if .Recording}}off{{else}}on{{end}}">
+      <button type="submit" class="btn btn-quiet min-h-11 justify-self-start">{{if .Recording}}Turn recording off{{else}}Turn recording on{{end}}</button>
+    </form>
+    <form class="grid gap-2" hx-post="/app/usage/change" hx-target="#usage-body" hx-swap="outerHTML">
+      <input type="hidden" name="action" value="retention">
+      <input type="hidden" name="range" value="{{.Range}}"><input type="hidden" name="scope" value="{{.Scope}}"><input type="hidden" name="group" value="{{.Group}}">
+      <label class="grid gap-1"><span class="text-sm font-semibold">Keep totals for this many days, 1 to 365</span>
+        <input class="input min-h-11" name="days" type="number" min="1" max="365" inputmode="numeric" value="{{.RetentionDays}}"></label>
+      <button type="submit" class="btn btn-quiet min-h-11 justify-self-start">Save</button>
+    </form>
+    <details class="confirm">
+      <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">Clear all totals</summary>
+      <div class="mt-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm Clear all totals">
+        <form class="grid gap-2" hx-post="/app/usage/change" hx-target="#usage-body" hx-swap="outerHTML">
+          <input type="hidden" name="action" value="clear">
+          <input type="hidden" name="range" value="{{.Range}}"><input type="hidden" name="scope" value="{{.Scope}}"><input type="hidden" name="group" value="{{.Group}}">
+          <p class="text-sm">Every total, for everyone, is removed. This cannot be undone.</p>
+          <button type="submit" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger">Clear</button>
+        </form>
+      </div>
+    </details>
+    {{else}}
+    <p class="text-sm text-muted" data-usage-cannot-clear>Clearing and these settings need the <code>system:manage</code> or <code>access:manage</code> permission. On the computer running LocalBase, this always works:</p>
+    <code class="block rounded-lg bg-surface-muted p-3 wrap-anywhere">local-base usage clear --yes</code>
+    {{end}}
+  </section>
+  {{end}}
+</div>
+{{end}}
+
+{{define "usage-figures"}}
+<dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm min-[600px]:grid-cols-4">
+  <div><dt class="text-muted">Requests</dt><dd class="font-semibold">{{.Requests}}</dd></div>
+  <div><dt class="text-muted">Errors</dt><dd class="font-semibold">{{.Errors}} ({{.ErrorRate}})</dd></div>
+  <div><dt class="text-muted">Cancelled</dt><dd class="font-semibold">{{.Cancelled}}</dd></div>
+  <div><dt class="text-muted">Latency, p50</dt><dd class="font-semibold">{{.P50}}</dd></div>
+  <div><dt class="text-muted">p95</dt><dd class="font-semibold">{{.P95}}</dd></div>
+  <div><dt class="text-muted">p99</dt><dd class="font-semibold">{{.P99}}</dd></div>
+  <div><dt class="text-muted">Tokens in</dt><dd class="font-semibold">{{.InputTokens}}</dd></div>
+  <div><dt class="text-muted">Tokens out</dt><dd class="font-semibold">{{.OutputTokens}}</dd></div>
+</dl>
+{{if .PartialTokens}}<p class="text-sm text-muted">Tokens come from the {{.WithTokens}} requests that reported them.</p>{{end}}
+{{end}}

@@ -252,6 +252,11 @@ func TestOpenAPIDocument(t *testing.T) {
 				t.Errorf("%s: x-localbase-also-requires names unknown permission %q", where, need)
 			}
 		}
+		for _, alt := range anyStrings(o.op["x-localbase-or-permission"]) {
+			if !slices.Contains(auth.Permissions, alt) {
+				t.Errorf("%s: x-localbase-or-permission names unknown permission %q", where, alt)
+			}
+		}
 		want := "unstable"
 		if strings.HasPrefix(o.path, "/v1/") || !strings.HasPrefix(o.path, "/_localbase/") {
 			want = "stable"
@@ -647,7 +652,8 @@ func TestOpenAPIPermissions(t *testing.T) {
 		if perm == "any" {
 			continue
 		}
-		others := slices.DeleteFunc(slices.Clone(auth.Permissions), func(p string) bool { return p == perm })
+		alternatives := anyStrings(o.op["x-localbase-or-permission"])
+		others := slices.DeleteFunc(slices.Clone(auth.Permissions), func(p string) bool { return p == perm || slices.Contains(alternatives, p) })
 		if got, _, out, _ := (oaClient{t, ts.URL, keyWith(others)}).doBody(body, method, path); got != 403 {
 			t.Errorf("%s: every permission but %s answers %d, want 403: %s", where, perm, got, firstBytes(out))
 		}
@@ -655,6 +661,12 @@ func TestOpenAPIPermissions(t *testing.T) {
 		enough := append([]string{perm}, also...)
 		if got, _, out, _ := (oaClient{t, ts.URL, keyWith(enough)}).doBody(body, method, path); got == 401 || got == 403 {
 			t.Errorf("%s: %v answers %d: %s", where, enough, got, firstBytes(out))
+		}
+		// Each documented alternative is enough by itself.
+		for _, alt := range alternatives {
+			if got, _, out, _ := (oaClient{t, ts.URL, keyWith([]string{alt})}).doBody(body, method, path); got == 401 || got == 403 {
+				t.Errorf("%s: %s is documented as enough, but answers %d: %s", where, alt, got, firstBytes(out))
+			}
 		}
 		// What the document says it also needs, it does need. If that stops being true,
 		// the route got simpler and the document should say so.
@@ -1240,6 +1252,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/_localbase/local-sessions", "", 200)
 
 	// Voices: the whole life of one.
+	// Usage: what the gateway answers, with requests counted above.
+	check("GET", "/_localbase/usage", "", 200)
+	check("GET", "/_localbase/usage?range=30d&scope=all&group=principal&group=model&group=route", "", 200)
+	check("GET", "/_localbase/usage?range=1y", "", 400)
+	check("POST", "/_localbase/usage", `{"action":"set-retention","days":30}`, 200)
+	check("POST", "/_localbase/usage", `{"action":"set-recording","enabled":true}`, 200)
+	check("POST", "/_localbase/usage", `{"action":"set-retention","days":0}`, 400)
+	check("POST", "/_localbase/usage", `{}`, 400)
+
 	check("GET", "/_localbase/voices", "", 200)
 	check("GET", "/_localbase/voices/voice-0123456789ab", "", 404)
 	check("GET", "/_localbase/voices/voice-0123456789ab/audio", "", 404)
