@@ -112,8 +112,11 @@ for (const scheme of SCHEMES) {
   await sleep(600);
   const { data } = await send("Page.captureScreenshot", { format: "png" });
   const png = Buffer.from(data, "base64");
-  // A one-colour page compresses to next to nothing. Never hand one to a reviewer.
-  if (png.length < 150_000) throw new Error(`${name}.png came out blank (${png.length} bytes)`);
+  // Count the colours in the sheet itself. Never hand a blank one to a reviewer.
+  await send("Page.navigate", { url: "about:blank" });
+  await sleep(150);
+  const colours = await ev(`(async () => { const i = new Image(); i.src = "data:image/png;base64,${data}"; await i.decode(); const c = document.createElement("canvas"); c.width = c.height = 96; const x = c.getContext("2d"); x.drawImage(i, 0, 0, 96, 96); const d = x.getImageData(0, 0, 96, 96).data; const s = new Set(); for (let p = 0; p < d.length; p += 4) s.add((d[p] >> 3) + "," + (d[p + 1] >> 3) + "," + (d[p + 2] >> 3)); return s.size; })()`);
+  if (colours < 8) throw new Error(`${name}.png came out blank (${colours} colours)`);
   await Bun.write(`${out}/${name}.png`, png);
   await Bun.$`rm -f ${out}/${name}.html`;
   }
