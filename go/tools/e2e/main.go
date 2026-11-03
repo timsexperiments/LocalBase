@@ -49,13 +49,52 @@ const exitIncomplete = 4
 const exitBroken = 5
 
 func main() {
-	out := flag.String("out", "", "result directory (default: a new directory under $TMPDIR/localbase-e2e)")
+	out := flag.String("out", "", "result directory (default: a new directory under the scratch parent, in localbase-e2e)")
 	chrome := flag.String("chrome", os.Getenv("LBGO_CHROME"), "Chrome executable")
 	axe := flag.String("axe", "", "the pinned axe-core script")
 	keep := flag.Bool("keep", false, "keep the scratch root and logs")
+	var p pins
+	flag.StringVar(&p.chromeDir, "chrome-dir", "", "where the pinned Chrome is unpacked; with it, Chrome is checked before it runs")
+	flag.StringVar(&p.chromeZip, "chrome-archive", "", "the archive that Chrome came from")
+	flag.StringVar(&p.chromeSum, "chrome-sha256", "", "the archive's pinned sha256")
+	flag.StringVar(&p.chromeVersion, "chrome-version", "", "the pinned Chrome's version")
+	flag.StringVar(&p.axeZip, "axe-archive", "", "the tarball that axe-core came from")
+	flag.StringVar(&p.axeSum, "axe-sha256", "", "the tarball's pinned sha256")
 	flag.Parse()
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10)
+	if err := p.verify(*axe); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: refusing to run what is in the cache: %v\ne2e: remove it, and tools/e2e.sh fetches it again\n", err)
+		os.Exit(2)
+	}
 	os.Exit(run(*out, *chrome, *axe, *keep))
+}
+
+// pins are what a fetched browser and axe-core must match. With a Chrome from LBGO_CHROME or from
+// the machine there is nothing to match, and result.md says so.
+type pins struct {
+	chromeDir, chromeZip, chromeSum, chromeVersion, axeZip, axeSum string
+}
+
+// verify checks them before anything from the cache runs, and tells run.ts what it found, for
+// result.md.
+func (p pins) verify(axe string) error {
+	if p.axeZip != "" {
+		if err := verifyAxe(axe, p.axeZip, p.axeSum); err != nil {
+			return err
+		}
+		os.Setenv("E2E_AXE_SHA256", p.axeSum)
+	}
+	if p.chromeDir == "" {
+		return nil
+	}
+	files, err := verifyChrome(p.chromeDir, p.chromeZip, p.chromeSum)
+	if err != nil {
+		return err
+	}
+	os.Setenv("E2E_CHROME_SHA256", p.chromeSum)
+	os.Setenv("E2E_CHROME_VERSION", p.chromeVersion)
+	os.Setenv("E2E_CHROME_FILES", strconv.Itoa(files))
+	return nil
 }
 
 func run(out, chrome, axe string, keep bool) (code int) {
@@ -63,8 +102,21 @@ func run(out, chrome, axe string, keep bool) (code int) {
 		fmt.Fprintln(os.Stderr, "e2e: needs -chrome and -axe; use tools/e2e.sh")
 		return 2
 	}
+	// LOCALBASE_E2E_SCRATCH keeps a run's scratch in one place of the caller's, so that clearing up
+	// never means reaching outside it.
+	parent := os.Getenv("LOCALBASE_E2E_SCRATCH")
+	if parent != "" {
+		if err := os.MkdirAll(parent, 0o700); err != nil {
+			fmt.Fprintln(os.Stderr, "e2e:", err)
+			return 2
+		}
+	}
 	if out == "" {
-		out = filepath.Join(os.TempDir(), "localbase-e2e", time.Now().UTC().Format("20060102T150405Z"))
+		root := parent
+		if root == "" {
+			root = os.TempDir()
+		}
+		out = filepath.Join(root, "localbase-e2e", time.Now().UTC().Format("20060102T150405Z"))
 	}
 	if err := os.MkdirAll(out, 0o700); err != nil {
 		fmt.Fprintln(os.Stderr, "e2e:", err)
@@ -75,7 +127,7 @@ func run(out, chrome, axe string, keep bool) (code int) {
 	defer cancel()
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
-	w, err := lab.NewWorkspace("")
+	w, err := lab.NewWorkspace(parent)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "e2e:", err)
 		return 2
