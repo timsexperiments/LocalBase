@@ -19,6 +19,9 @@
 // "fake:slow <n>" streams n words 50 ms apart; when the client goes away
 // first it appends "cancelled" to the file FAKE_CANCEL_LOG names. "fake:burst <n>"
 // streams n words with no pause at all, for measuring what relaying them costs.
+// "fake:die" (as the chat message, the embeddings input, the decision state, the
+// image prompt, the speech input or the transcription prompt) exits at once, like
+// a crash before answering; "fake:die-body" exits halfway through its answer.
 //
 // For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
 // override per expert tensor of the first --n-cpu-moe layers and the
@@ -110,6 +113,7 @@ func main() {
 		maxTokens, _ := req["max_tokens"].(float64)
 		content := fmt.Sprintf("hello from %s (max_tokens=%d)", name, int(maxTokens))
 		mode := lastUser(req)
+		dieIfAsked(w, mode)
 		if batchOverflow(w, mode) {
 			return
 		}
@@ -180,7 +184,9 @@ func main() {
 	mux.HandleFunc("POST /v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]any
 		json.NewDecoder(r.Body).Decode(&req)
-		if in, _ := req["input"].(string); batchOverflow(w, in) {
+		in, _ := req["input"].(string)
+		dieIfAsked(w, in)
+		if batchOverflow(w, in) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -194,6 +200,7 @@ func main() {
 			Questions map[string]map[string]any `json:"questions"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
+		dieIfAsked(w, req.State)
 		if batchOverflow(w, req.State) {
 			return
 		}
@@ -211,6 +218,23 @@ func main() {
 		os.Exit(1)
 	}
 	http.Serve(ln, mux)
+}
+
+// dieIfAsked ends the process when text asks for a crash. Exiting closes the
+// connection, as a real crash does: before any answer, or partway through one.
+func dieIfAsked(w http.ResponseWriter, text string) {
+	switch {
+	case strings.Contains(text, "fake:die-body"):
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "1000")
+		w.Header().Set("X-Audio-Format", "s16le") // what a speech answer starts with
+		w.Header().Set("X-Sample-Rate", "24000")
+		w.Write([]byte(`{"partial":`))
+		w.(http.Flusher).Flush()
+		os.Exit(9)
+	case strings.Contains(text, "fake:die"):
+		os.Exit(9)
+	}
 }
 
 func messageCount(req map[string]any) int {
