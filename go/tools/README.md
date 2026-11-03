@@ -10,6 +10,7 @@ themselves.
 | `make chaos` (`tools/chaos`) | What breaks, and what a person sees when it does |
 | `make bench` (`tools/bench.sh`) | What the gateway adds per request and per token, against budgets |
 | `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
+| `go run ./tools/mutcheck <mutations.json>` | Breaks code on purpose and says whether the tests noticed. A mutation that doesn't compile is reported as that, never as a result |
 | `tools/fetch-ci-tools.sh <dir>` | The lint and secret-scan tools at CI's versions |
 
 Run the secret scan the way CI does, from the repository root. CI runs both of these, and
