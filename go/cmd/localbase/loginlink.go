@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // firstRunShownKey records that the first-run link was shown on this root.
@@ -40,17 +38,6 @@ func gatewayListen(e *env) (addr string, running bool) {
 		return net.JoinHostPort(owner.Host, strconv.Itoa(owner.Port)), true
 	}
 	return net.JoinHostPort(e.Config.GatewayHost, strconv.Itoa(e.Config.GatewayPort)), false
-}
-
-// auditCLI writes one audit event to the root's log, as the gateway does. Failing
-// to log does not stop the command. Attributes are ids only.
-func auditCLI(e *env, msg string, attrs ...any) {
-	sink, err := obs.OpenSink(e.Root.LogsDir())
-	if err != nil {
-		return
-	}
-	defer func() { _ = sink.Close() }() // the event is written; a failed close changes nothing
-	slog.New(obs.NewHandler(sink, slog.LevelInfo)).Info(msg, attrs...)
 }
 
 func issueLoginLink(e *env, addr string, forced bool) (string, error) {

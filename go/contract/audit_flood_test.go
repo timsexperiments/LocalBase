@@ -208,8 +208,9 @@ func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
 		}
 		kept.Write(b)
 	}
-	if n := strings.Count(kept.String(), "audit.api-key-changed"); n != 2 {
-		t.Errorf("%d records of the 2 changes are left, in %d files", n, len(matches))
+	// Two made here, and the two keys the command line created for this test.
+	if n := strings.Count(kept.String(), "audit.api-key-changed"); n != 4 {
+		t.Errorf("%d records of the 4 changes are left, in %d files", n, len(matches))
 	}
 	// What was held back is said when the gateway stops, in the file it was held back from.
 	if !strings.Contains(kept.String(), "audit.refused-summary") {

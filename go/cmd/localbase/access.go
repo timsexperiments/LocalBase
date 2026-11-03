@@ -151,6 +151,7 @@ func removeRegistration(c *cli.Ctx, e *env, kind, label string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	auditChange(e, "access", "remove-registration", "registration", id)
 	if result == nil {
 		c.Info("Removed %s and disabled browser access. Restart LocalBase to apply it.", id)
 		return map[string]any{"removed": true, "config": nil, "restartRequired": true}, nil
@@ -217,6 +218,7 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 		if err != nil {
 			return nil, accessError(err)
 		}
+		auditChange(e, "access", userAction(status), "user", user.ID)
 		c.Info("%s %s.", verb, user.Email)
 		warn()
 		return map[string]any{"user": user}, nil
@@ -297,6 +299,7 @@ func accessCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditChange(e, "access", "configure-cloudflare", "provider", "browser-access")
 			c.Info("Saved Cloudflare Access configuration. Restart LocalBase to apply it.")
 			return configured(cfg), nil
 		})},
@@ -350,6 +353,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, err
 				}
+				auditChange(e, "access", "upsert-oidc", "registration", id)
 				c.Info("Saved OpenID Connect registration %s. Restart LocalBase to apply it.", id)
 				return configured(cfg), nil
 			})},
@@ -395,6 +399,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, err
 				}
+				auditChange(e, "access", "upsert-magic-link", "registration", id)
 				c.Info("Saved magic-link registration %s. Restart LocalBase to apply it.", id)
 				return configured(cfg), nil
 			})},
@@ -413,6 +418,7 @@ func accessCommand() *cli.Command {
 				return nil, err
 			}
 			if disabled {
+				auditChange(e, "access", "disable", "provider", "browser-access")
 				c.Info("Disabled browser access. Restart LocalBase to apply it.")
 			} else {
 				c.Info("Browser access was already disabled. Restart LocalBase to apply it.")
@@ -484,6 +490,7 @@ func accessCommand() *cli.Command {
 				if err := withOperation(e, "configure email delivery", func() error { return auth.SaveEmail(e.Root.Dir, cfg) }); err != nil {
 					return nil, err
 				}
+				auditChange(e, "access", "configure-email-delivery", "email-delivery", "smtp")
 				c.Info("Saved email delivery configuration.")
 				return map[string]any{"config": cfg.Summary(), "restartRequired": false}, nil
 			})},
@@ -528,6 +535,7 @@ func accessCommand() *cli.Command {
 					return nil, err
 				}
 				if disabled {
+					auditChange(e, "access", "disable-email-delivery", "email-delivery", "smtp")
 					c.Info("Disabled email delivery.")
 				} else {
 					c.Info("Email delivery was already disabled.")
@@ -592,6 +600,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, accessError(err)
 				}
+				auditPolicyApplied(e, &policy)
 				c.Info("Saved browser access policy. Changes apply immediately.")
 				if open != "" {
 					c.Info("%s", open)
@@ -633,6 +642,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, accessError(err)
 				}
+				auditPolicyApplied(e, policy)
 				c.Info("Saved browser access policy: %s has every permission, and nobody else has anything. Changes apply immediately.", email)
 				return map[string]any{"policy": policy, "restartRequired": false}, nil
 			})},
@@ -695,6 +705,7 @@ func accessCommand() *cli.Command {
 					return nil, accessError(err)
 				}
 				if cleared {
+					auditChange(e, "access", "clear-policy", "policy", "")
 					c.Info("Cleared browser access policy. Provider-wide permissions now apply.")
 					warn()
 				} else {
@@ -722,6 +733,9 @@ func accessCommand() *cli.Command {
 				})
 				if err != nil {
 					return nil, accessError(err)
+				}
+				if adopted > 0 {
+					auditChange(e, "access", "adopt-binding-issuer", "issuer", issuer, "count", adopted)
 				}
 				c.Info("%d email bindings and invitations now trust %s.", adopted, issuer)
 				return map[string]any{"adopted": adopted, "issuer": issuer}, nil
@@ -779,6 +793,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, accessError(err)
 				}
+				auditChange(e, "access", "invite-user", "user", user.ID)
 				delivered := delivery != nil && auth.SendEmail(delivery, user.Email, "You were invited to LocalBase",
 					"You were invited to LocalBase. Sign in here:\n\n"+signIn) == nil
 				if delivered {
@@ -809,6 +824,7 @@ func accessCommand() *cli.Command {
 				if err != nil {
 					return nil, accessError(err)
 				}
+				auditChange(e, "access", "replace-user-roles", "user", user.ID)
 				c.Info("Replaced roles for %s.", user.Email)
 				warn()
 				return map[string]any{"user": user}, nil
