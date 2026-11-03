@@ -55,6 +55,7 @@ func (m *LLM) Unload(ctx context.Context, modelID string, wait time.Duration) (i
 		return 0, &BusyError{ModelID: modelID, InFlight: n}
 	}
 	m.unloading = modelID
+	m.unloaders++
 	for _, w := range append([]*waiter(nil), m.queue...) {
 		if w.model == modelID && !w.dispatching {
 			m.fail(w, ErrUnloading)
@@ -66,8 +67,7 @@ func (m *LLM) Unload(ctx context.Context, modelID string, wait time.Duration) (i
 		m.mu.Lock()
 		if m.cur != b {
 			// Stopped meanwhile (memory, a crash): nothing left to unload.
-			m.unloading = ""
-			m.pump()
+			m.endUnload()
 			m.mu.Unlock()
 			return 0, nil
 		}
@@ -77,14 +77,13 @@ func (m *LLM) Unload(ctx context.Context, modelID string, wait time.Duration) (i
 			freed := b.res.Bytes()
 			m.stopBackend(b, StopUnload)
 			m.mu.Lock()
-			m.claimed, m.unloading = false, ""
-			m.pump()
+			m.claimed = false
+			m.endUnload()
 			m.mu.Unlock()
 			return freed, nil
 		}
 		if n := m.active; time.Now().After(deadline) || ctx.Err() != nil {
-			m.unloading = ""
-			m.pump()
+			m.endUnload()
 			m.mu.Unlock()
 			return 0, &BusyError{ModelID: modelID, InFlight: n}
 		}
@@ -114,6 +113,7 @@ func (s *Service) Unload(ctx context.Context, modelID string, wait time.Duration
 		return 0, &BusyError{ModelID: modelID, InFlight: n}
 	}
 	s.unloading = modelID
+	s.unloaders++
 	for _, w := range append([]*svcWaiter(nil), s.queue...) {
 		if w.model == modelID && !w.done {
 			s.remove(w)
@@ -126,8 +126,7 @@ func (s *Service) Unload(ctx context.Context, modelID string, wait time.Duration
 	for {
 		s.mu.Lock()
 		if s.cur != b {
-			s.unloading = ""
-			s.pump()
+			s.endUnload()
 			s.mu.Unlock()
 			return 0, nil
 		}
@@ -137,18 +136,34 @@ func (s *Service) Unload(ctx context.Context, modelID string, wait time.Duration
 			freed := b.res.Bytes()
 			s.stop(b, StopUnload)
 			s.mu.Lock()
-			s.claimed, s.unloading = false, ""
-			s.pump()
+			s.claimed = false
+			s.endUnload()
 			s.mu.Unlock()
 			return freed, nil
 		}
 		if n := inFlight(); time.Now().After(deadline) || ctx.Err() != nil {
-			s.unloading = ""
-			s.pump()
+			s.endUnload()
 			s.mu.Unlock()
 			return 0, &BusyError{ModelID: modelID, InFlight: n}
 		}
 		s.mu.Unlock()
 		time.Sleep(unloadPoll)
 	}
+}
+
+// endUnload is one unload of the model finishing, with mu held. Others may still be draining it,
+// so its protection ends with the last of them.
+func (m *LLM) endUnload() {
+	if m.unloaders--; m.unloaders == 0 {
+		m.unloading = ""
+	}
+	m.pump()
+}
+
+// endUnload is one unload of the model finishing, with mu held; see LLM.endUnload.
+func (s *Service) endUnload() {
+	if s.unloaders--; s.unloaders == 0 {
+		s.unloading = ""
+	}
+	s.pump()
 }

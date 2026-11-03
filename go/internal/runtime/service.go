@@ -39,6 +39,7 @@ type Service struct {
 	switching bool   // a model is being stopped or started
 	claimed   bool   // idle recovery is stopping the backend; hold requests
 	unloading string // the model draining for an explicit unload (DESIGN §23)
+	unloaders int    // the unloads draining it
 	switchW   sync.WaitGroup
 	// cancelSwitch ends the switch in flight, as on the LLM.
 	cancelSwitch context.CancelCauseFunc

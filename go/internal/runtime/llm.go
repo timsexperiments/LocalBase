@@ -154,6 +154,7 @@ type LLM struct {
 	failed       bool           // the last start failed and nothing runs
 	claimed      bool           // idle recovery is stopping the backend; hold requests
 	unloading    string         // the model draining for an explicit unload (DESIGN §23)
+	unloaders    int            // the unloads draining it
 	chooser      defaultChooser // the fit-aware default chat model
 }
 
