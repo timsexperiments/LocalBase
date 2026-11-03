@@ -25,7 +25,10 @@ var (
 	categories = []string{"gateway", "http", "runtime", "service", "logging"}
 	runtimes   = []string{"gateway", "llm", "stt", "tts", "image", "video", "service", "cli"}
 	// Routes TS recognizes in http.path (route-dispatch.ts gatewayHttpRoutes).
-	apiRoutes = []string{"/health", "/health/ready", "/_localbase/instance", "/_localbase/access-management",
+	apiRoutes = []string{"/_localbase/computer-name", "/_localbase/default-chat-models", "/_localbase/default-model",
+		"/_localbase/host", "/_localbase/local-sessions", "/_localbase/placement-state", "/_localbase/runs",
+		"/_localbase/runs/{rest}", "/_localbase/update", "/_localbase/usage", "/_localbase/voices/", "/openapi.json",
+		"/health", "/health/ready", "/_localbase/instance", "/_localbase/access-management",
 		"/_localbase/api-keys", "/_localbase/model-management", "/_localbase/model-discovery", "/_localbase/hf-token",
 		"/_localbase/voices", "/_localbase/voices/{voice_id}", "/_localbase/voices/{voice_id}/audio",
 		"/_localbase/models", "/_localbase/models/{model_id}", "/v1/models", "/v1/models/{model}",
@@ -156,6 +159,9 @@ func canonicalRoute(path string) (route, uiPage string) {
 	}
 	return "unmatched-route", ""
 }
+
+// CanonicalRoute is canonicalRoute, for the test that checks every route has a name.
+func CanonicalRoute(path string) (route, uiPage string) { return canonicalRoute(path) }
 
 func safeRequestID(id string) string {
 	if id == "" || len(id) > maxRequestID || !requestIDRe.MatchString(id) || sensitiveKey.MatchString(id) || knownTokenRe.MatchString(id) {

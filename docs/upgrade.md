@@ -17,6 +17,8 @@ The script replaces the binary by rename and keeps the old one as `~/.local/bin/
 
 `restart` also rewrites the service definition, so prefer it to `launchctl kickstart` or `systemctl --user restart`.
 
+**One change from 0.2.0 for anyone reading logs or traces:** requests to `/_localbase/computer-name`, `default-chat-models`, `default-model`, `host`, `local-sessions`, `placement-state`, `runs`, `runs/{rest}`, `update`, `usage`, `voices/` and `/openapi.json` were labelled `unmatched-route`, and now carry their real route.
+
 ## Roll back
 
 ```sh
