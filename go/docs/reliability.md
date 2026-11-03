@@ -232,6 +232,12 @@ ports from the lab's block. Results and captures go to a new directory under
 Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), and exit 2 means
 the suite itself could not run.
 
+**On Ubuntu,** `kernel.apparmor_restrict_unprivileged_userns=1` stops Chrome's sandbox, and Chrome never
+answers. On a disposable runner, set it to 0 and the suite runs with the sandbox on, as CI does
+(`ubuntu-latest`). `LOCALBASE_E2E_NO_SANDBOX=1` adds `--no-sandbox` for a machine where that setting can't
+be changed; CI doesn't need it. When Chrome fails to start, the error prints the end of its log and the
+scratch root is kept.
+
 **Journeys** sign in with a first-run link from `local-base access login-link`, check it works once,
 hold a first chat, stop a stream, keep HTML in a reply inert, use Image, Speech, Transcribe and
 Decisions, and then break things: too little memory, a backend killed mid-reply, every session
@@ -244,9 +250,11 @@ allows 30 s, and prints the time it measured.
 
 **The matrix** runs every page at 320, 360, 390, 430, 768 and 1280 px in light and dark:
 
-- **Overflow.** `scrollWidth` and `clientWidth` are compared with the width asked for. `innerWidth` is
+- **Overflow.** `scrollWidth` is compared with the width asked for, less a classic scrollbar where
+  there is one (15 px on Linux), and `clientWidth` must not exceed the width asked for. `innerWidth` is
   not used: in mobile emulation it can grow with the content, so `scrollWidth - innerWidth` can read 0 on
-  a page that overflows. A self-test plants a 1200 px element and requires the check to catch it.
+  a page that overflows. Self-tests plant a 1200 px element, a page that fits beside a scrollbar and one
+  5 px too wide beside it.
 - **axe-core**, WCAG 2.0, 2.1 and 2.2 A and AA, and any exception or 5xx on the page.
 
 Per page, at 390 and 1280 px:
