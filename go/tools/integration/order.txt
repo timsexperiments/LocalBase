@@ -132,4 +132,7 @@ pick fix-auth-errors 1c2b1c21
 pick rel-output-loss 1c2b1c21
 pick fix-output-loss origin/rewrite/go-rel-output-loss
 pick tree-fixes b6d3b01a2b
+pick feat-backup-issuers 5e756b20
+pick feat-docs origin/rewrite/go-feat-backup-issuers
 pick fix-model-perms bdbbaaa6a5
+pick tree-docs 3c076992b8
