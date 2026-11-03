@@ -105,7 +105,10 @@ func keyAction(action, id string, scopes ...string) string {
 	return `{"action":"` + action + `","keyId":"` + id + `","scopes":["` + strings.Join(scopes, `","`) + `"]}`
 }
 
-const exceeds = "exceeds_caller_permissions"
+const (
+	exceeds   = "exceeds_caller_permissions"
+	keysRoute = "/_localbase/api-keys"
+)
 
 func TestKeyCreateGrantsOnlyWhatTheCallerHolds(t *testing.T) {
 	f := newKeyFixture(t)
@@ -462,13 +465,16 @@ func TestKeysStillWorkForFirstRunAndHostCallers(t *testing.T) {
 
 // sessionPoster signs a person in with a real session whose role holds perms, and
 // returns how to post as them through the /app/api forward and how to change the role.
-func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(string) (int, string), setRole func(...string)) {
+func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(body string, path ...string) (int, string), setRole func(...string)) {
 	t := f.t
 	ctx := context.Background()
 	const issuer = "https://idp.example.com"
 	cfg := &auth.BrowserAccess{Origin: "https://lb.example.com", Permissions: []string{},
 		Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "idp", Name: "IdP", Issuer: issuer, ClientID: "cid",
 			ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}}
+	if err := auth.SaveAccess(f.s.Root.Dir, cfg); err != nil {
+		t.Fatal(err)
+	}
 	f.s.Browser = auth.NewBrowser(f.st, f.s.Root.Dir, cfg, f.s.Log)
 	policy := func(perms ...string) *auth.Policy {
 		return &auth.Policy{Roles: []auth.Role{{Name: "boss", Permissions: []string{"access:manage"}}, {Name: "holder", Permissions: perms}},
@@ -481,9 +487,13 @@ func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(str
 	if err != nil {
 		t.Fatal(err)
 	}
-	post = func(body string) (int, string) {
+	post = func(body string, path ...string) (int, string) {
 		t.Helper()
-		r := httptest.NewRequest(http.MethodPost, "/app/api/_localbase/api-keys", strings.NewReader(body))
+		target := keysRoute
+		if len(path) > 0 {
+			target = path[0]
+		}
+		r := httptest.NewRequest(http.MethodPost, "/app/api"+target, strings.NewReader(body))
 		r.Host = "lb.example.com"
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Origin", "https://lb.example.com")

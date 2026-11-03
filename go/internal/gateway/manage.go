@@ -421,11 +421,41 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer lease.Release()
+		// From the checks to the write, nothing else changes keys or access.
+		s.adminMu.Lock()
+		defer s.adminMu.Unlock()
 	}
 	current, err := auth.LoadAccess(root)
 	if err != nil {
 		serviceUnavailable(w, r, "Access management")
 		return
+	}
+	if in.Action != "test-policy" && in.Action != "test-email-delivery" {
+		caller, err := s.adminCaller(ctx, p)
+		switch {
+		case errors.Is(err, errCallerGone):
+			managementError(w, 401, "invalid_api_key")
+			return
+		case err != nil:
+			serviceUnavailable(w, r, "Access management")
+			return
+		case !slices.Contains(caller.Holds, "access:manage"):
+			managementError(w, 403, "insufficient_permissions")
+			return
+		}
+		var perms []string
+		if current != nil {
+			perms = current.Permissions
+		}
+		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return
+		}
+		if err := checkAccessAuthority(g, caller.Holds, in); err != nil {
+			s.domainError(w, err)
+			return
+		}
 	}
 	// lockout refuses a change that would lock the caller or everyone out of
 	// access management (a Go addition; see auth.Guard). It reports whether
@@ -451,6 +481,9 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if err := g.CheckChange(caller, change); err != nil {
 			s.domainError(w, err)
 			return true
+		}
+		if s.beforeAdminWrite != nil {
+			s.beforeAdminWrite()
 		}
 		return false
 	}
@@ -667,6 +700,31 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		noStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": auth.Revision(in.Policy), "restartRequired": false})
 	}
+}
+
+// checkAccessAuthority refuses a change that reaches past what the caller holds
+// (DESIGN §13.6, item 5a).
+func checkAccessAuthority(g *auth.Guard, holds []string, in *accessRequest) error {
+	switch in.Action {
+	case "configure-cloudflare", "upsert-oidc", "upsert-github", "upsert-magic-link":
+		return g.CheckSignInChange(holds, in.Permissions)
+	case "remove-registration", "disable", "configure-email-delivery", "disable-email-delivery":
+		return g.CheckSignInChange(holds, nil)
+	case "invite-user":
+		return g.CheckGrantRoles(holds, in.Roles)
+	case "replace-user-roles":
+		if err := g.CheckUser(holds, in.Email); err != nil {
+			return err
+		}
+		return g.CheckGrantRoles(holds, in.Roles)
+	case "enable-user", "disable-user", "remove-user":
+		return g.CheckUser(holds, in.Email)
+	case "apply-policy":
+		return g.CheckPolicyChange(holds, in.Policy)
+	case "clear-policy":
+		return g.CheckPolicyChange(holds, nil)
+	}
+	return nil
 }
 
 type accessRequest struct {
