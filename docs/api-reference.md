@@ -119,6 +119,8 @@ Speech to English text.
 
 Chat, streaming, tools and structured output.
 
+A content part carries its content: one that names an address answers 400 `remote_media_not_allowed`, with `param` naming the first such field.
+
 **Needs:** `inference:chat`.
 
 **Request:** `application/json`.
