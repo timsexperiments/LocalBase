@@ -62,3 +62,37 @@ func TestAdmissionFlipsOnceAtTheBoundaryForEachSize(t *testing.T) {
 		t.Errorf("the larger model's boundary %d isn't above the smaller's %d", boundaries["large"], boundaries["small"])
 	}
 }
+
+// What the sweep shows about where models flip. The reserve is 9.6 GiB here, and under 1.25 times it
+// (12 GiB) everything is refused as pressure. So every model of 2.4 GiB or less flips at the same
+// 12 GiB, and only a larger one flips later, at its size plus the reserve.
+func TestSmallModelsFlipAtTheSameFloor(t *testing.T) {
+	flip := func(gb float64) int64 {
+		t.Helper()
+		for avail := int64(0); avail <= 64*GiB; avail += GiB / 10 {
+			c, host := newTestController(0)
+			host.avail = avail
+			if c.CheckAdmission(context.Background(), demand(gb), nil) == nil {
+				return avail
+			}
+		}
+		t.Fatalf("%v GiB never admitted", gb)
+		return 0
+	}
+	floor := flip(1)
+	for _, gb := range []float64{0.5, 2} {
+		if got := flip(gb); got != floor {
+			t.Errorf("%v GiB flips at %d, 1 GiB at %d", gb, got, floor)
+		}
+	}
+	if floor < 12*GiB || floor > 12*GiB+GiB/10 {
+		t.Errorf("the floor is %d", floor)
+	}
+	large := flip(12)
+	if large < 216*GiB/10 || large > 216*GiB/10+GiB/10 {
+		t.Errorf("12 GiB flips at %d, want its size plus the 9.6 GiB reserve", large)
+	}
+	if got := flip(13) - large; got < GiB-GiB/10 || got > GiB+GiB/10 {
+		t.Errorf("a GiB more moves a large model's flip by %d", got)
+	}
+}
