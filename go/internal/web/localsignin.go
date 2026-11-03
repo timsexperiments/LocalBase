@@ -64,6 +64,12 @@ func (u *UI) LoginWrongAddress(w http.ResponseWriter, r *http.Request, origin st
 	u.renderLocalSignIn(w, http.StatusForbidden, localSignIn{Mode: "wrong-address", Origin: origin})
 }
 
+// LoginBusy is for when who someone is couldn't be read. It has no form: nobody should re-enter
+// anything for a database that is busy.
+func (u *UI) LoginBusy(w http.ResponseWriter, r *http.Request) {
+	u.renderLocalSignIn(w, http.StatusServiceUnavailable, localSignIn{Mode: "busy"})
+}
+
 // LoginUnavailable is for a person who followed a way in this gateway doesn't offer.
 func (u *UI) LoginUnavailable(w http.ResponseWriter, r *http.Request, status int) {
 	u.renderLocalSignIn(w, status, localSignIn{Mode: "unavailable"})

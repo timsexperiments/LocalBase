@@ -31,6 +31,10 @@ func (localPages) LoginWrongAddress(w http.ResponseWriter, r *http.Request, orig
 	w.WriteHeader(http.StatusForbidden)
 	w.Write([]byte("wrong address"))
 }
+func (localPages) LoginBusy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(503)
+	_, _ = w.Write([]byte("busy page"))
+}
 func (localPages) LoginOnce(w http.ResponseWriter, r *http.Request) { w.Write([]byte("redeem page")) }
 func (localPages) LoginExpired(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)

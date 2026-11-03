@@ -574,7 +574,12 @@ func (b *Browser) exchange(ctx context.Context, rt *oidcRuntime, code string, st
 // no session, so nothing is kept about someone this LocalBase has nothing for, and a page
 // that says so. Authorizing also claims an invitation, so a first sign-in counts.
 func (b *Browser) establish(w http.ResponseWriter, r *http.Request, id Identity, owner string) {
-	d := b.Authorize(r.Context(), &id)
+	d, err := b.AuthorizeChecked(r.Context(), &id)
+	if err != nil {
+		// Not knowing what they may do isn't knowing they may do nothing.
+		redirect(w, b.Config.Origin+"/app?signin=failed", clearCookie(loginStateCookie))
+		return
+	}
 	if len(d.Permissions) == 0 {
 		b.Log.Info("A sign-in that has no permissions here was refused.", "event", "auth.signin-denied", "actor_id", owner)
 		policy, err := LoadPolicy(r.Context(), b.Store.DB)
@@ -708,7 +713,11 @@ func (b *Browser) Logout(w http.ResponseWriter, r *http.Request) {
 	if b.Direct() {
 		if token := cookie(r, SessionCookie); token != "" {
 			if err := DeleteSession(r.Context(), b.Store, token); err != nil {
+				// The session is still good, so the person isn't told otherwise and keeps the cookie.
 				b.Log.Error("Could not end a browser session; it stays valid until it expires.", "event", "auth.session-delete-failed", "error", err.Error())
+				w.Header().Set("Retry-After", "5")
+				Deny(w, http.StatusServiceUnavailable)
+				return
 			}
 		}
 		http.SetCookie(w, clearCookie(SessionCookie))
