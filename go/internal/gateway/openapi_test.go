@@ -600,8 +600,6 @@ func TestOpenAPIMethods(t *testing.T) {
 			}
 			_, documented := item[m]
 			switch {
-			case documented && status == 501 && !openAPIHasMedia:
-				// This platform's test gateway has no media runtime; the route says so.
 			case documented && (status == 405 || code == "route_disabled"):
 				t.Errorf("%s %s is documented, but answers %d %s", method, p, status, code)
 			case !documented && status != 405 && !openAPINoMethodCheck[p]:

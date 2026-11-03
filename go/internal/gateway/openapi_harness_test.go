@@ -35,8 +35,9 @@ const (
 	openAPIDevice     = "test-device"
 )
 
-// openAPIHasMedia: the fake media runtimes use the Metal backend entries, as the
-// other media gateways here do, so these answers are compared on macOS.
+// openAPIHasMedia: the fake media runtimes use the Metal backend entries, as the other
+// media gateways here do, so generating is compared on macOS. Every platform has the
+// services themselves, so the routes answer the same way everywhere.
 var openAPIHasMedia = goruntime.GOOS == "darwin"
 
 // openAPIGateway is the whole gateway, every modality wired over the fake backend,
@@ -75,45 +76,43 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, NoAuth: true, MemoryGB: 64,
 		Root: r, Memory: mem, Voices: voices.New(st, r.Dir)}
 
-	if openAPIHasMedia {
-		service := func(modality, modelID, backendID, binary string) *runtime.Service {
-			spec := cat.ByID(modelID)
-			if spec == nil {
-				t.Fatalf("no catalog entry %s", modelID)
+	service := func(modality, modelID, backendID, binary string) *runtime.Service {
+		spec := cat.ByID(modelID)
+		if spec == nil {
+			t.Fatalf("no catalog entry %s", modelID)
+		}
+		dir := r.ModelsDir(modality)
+		os.MkdirAll(dir, 0o700)
+		installSparse(t, dir, spec)
+		cfg.Active[modality], cfg.Selected[modality] = modelID, []string{modelID}
+		m := models.FromSpec(spec)
+		gate := func(id string) (*runtime.Target, error) {
+			if id != modelID {
+				return nil, runtime.ErrModelNotFound
 			}
-			dir := r.ModelsDir(modality)
-			os.MkdirAll(dir, 0o700)
-			installSparse(t, dir, spec)
-			cfg.Active[modality], cfg.Selected[modality] = modelID, []string{modelID}
-			m := models.FromSpec(spec)
-			gate := func(id string) (*runtime.Target, error) {
-				if id != modelID {
-					return nil, runtime.ErrModelNotFound
-				}
-				return &runtime.Target{ModelID: id, Model: &m, Variant: &m.Variants[0], Backend: reg.Get(backendID), Dir: dir}, nil
-			}
-			svc := runtime.NewService(runtime.ServiceDeps{Modality: modality, Kind: modality, Catalog: cat, Store: st, Memory: mem, Log: log,
-				Config: func() *store.Config { return cfg }, Gate: gate, ModelsDir: dir, RootDir: r.Dir, Host: "127.0.0.1",
-				Port: freePort(t), Binaries: map[string]string{binary: fakeBinary},
-				Verify: func(string, catalog.Artifact, string) error { return nil }})
-			t.Cleanup(svc.Close)
-			return svc
+			return &runtime.Target{ModelID: id, Model: &m, Variant: &m.Variants[0], Backend: reg.Get(backendID), Dir: dir}, nil
 		}
-		s.TTS = service("tts", speechModel, "tts-server", "tts-server")
-		s.STT = service("stt", openAPISTTModel, "whisper.cpp-metal", "whisper-server")
-		s.Image = service("image", openAPIImageModel, "stable-diffusion.cpp-metal", "sd-server")
-		s.Video = service("video", videoModel, "stable-diffusion.cpp-metal", "sd-server")
-		client, err := video.NewClient(s.Video.BaseURL() + "/")
-		if err != nil {
-			t.Fatal(err)
-		}
-		jobs, err := video.NewManager(video.Options{Backend: client, TempDir: filepath.Join(r.Dir, "tmp"), PollInterval: 20 * time.Millisecond})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { jobs.Shutdown() })
-		s.VideoJobs = jobs
+		svc := runtime.NewService(runtime.ServiceDeps{Modality: modality, Kind: modality, Catalog: cat, Store: st, Memory: mem, Log: log,
+			Config: func() *store.Config { return cfg }, Gate: gate, ModelsDir: dir, RootDir: r.Dir, Host: "127.0.0.1",
+			Port: freePort(t), Binaries: map[string]string{binary: fakeBinary},
+			Verify: func(string, catalog.Artifact, string) error { return nil }})
+		t.Cleanup(svc.Close)
+		return svc
 	}
+	s.TTS = service("tts", speechModel, "tts-server", "tts-server")
+	s.STT = service("stt", openAPISTTModel, "whisper.cpp-metal", "whisper-server")
+	s.Image = service("image", openAPIImageModel, "stable-diffusion.cpp-metal", "sd-server")
+	s.Video = service("video", videoModel, "stable-diffusion.cpp-metal", "sd-server")
+	client, err := video.NewClient(s.Video.BaseURL() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := video.NewManager(video.Options{Backend: client, TempDir: filepath.Join(r.Dir, "tmp"), PollInterval: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { jobs.Shutdown() })
+	s.VideoJobs = jobs
 
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
