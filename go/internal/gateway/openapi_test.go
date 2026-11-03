@@ -747,6 +747,17 @@ func (d *oaDoc) matchPath(path string) string {
 func (d *oaDoc) checkResponse(t *testing.T, method, path string, status int, hdr http.Header, body []byte) {
 	t.Helper()
 	where := method + " " + path
+	// A code the scan of the source can't see, such as one that is built up, is still caught here.
+	var answer struct {
+		Error struct {
+			Code any `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &answer) == nil {
+		if code, ok := answer.Error.Code.(string); ok && code != "" && !slices.Contains(errorCodeEnum(t), code) {
+			t.Errorf("%s answered with the code %s, which isn't on the list. %s", where, code, errorCodeFix)
+		}
+	}
 	if q := strings.IndexByte(path, '?'); q >= 0 {
 		path = path[:q]
 	}

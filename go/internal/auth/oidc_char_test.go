@@ -116,8 +116,8 @@ func TestOIDCForgedTokens(t *testing.T) {
 	}
 }
 
-// Signing in is not being allowed in: with a policy, an address it does not name
-// holds a session with no permissions. An unverified address counts for nothing.
+// Signing in is not being allowed in: with a policy, an address it does not name gets the
+// no-access page and no session. An unverified address counts for nothing.
 func TestOIDCUnauthorizedEmail(t *testing.T) {
 	b, f := oidcFixture(t)
 	ctx := context.Background()
@@ -146,8 +146,10 @@ func TestOIDCUnauthorizedEmail(t *testing.T) {
 		"unverified, as owner": {"sub": "user-3", "email_verified": false},
 		"no address":           {"sub": "user-4", "email": nil, "email_verified": nil},
 	} {
-		if got := permissions(claims); len(got) != 0 {
-			t.Errorf("%s: %v", name, got)
+		f.claims = claims
+		resp := login(t, b, f, nil)
+		if resp.StatusCode != http.StatusForbidden || cookieNamed(resp, SessionCookie) != nil {
+			t.Errorf("%s: %d, session given: %v", name, resp.StatusCode, cookieNamed(resp, SessionCookie) != nil)
 		}
 	}
 }

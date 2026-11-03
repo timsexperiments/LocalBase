@@ -71,6 +71,10 @@ func doctorCommand() *cli.Command {
 				c.Info("Browser access: %s", left.Notice())
 				data["unboundBindings"] = left.Total()
 			}
+			if open := openSignIn(e); open != "" {
+				c.Info("Browser access: %s", open)
+				data["openSignIn"] = open
+			}
 			if st := obs.InspectServiceStderr(e.Root.Dir); st != nil {
 				archive := ""
 				if st.ArchiveBytes > 0 {
@@ -119,6 +123,20 @@ func unboundBindings(e *env) auth.UnboundCount {
 		return auth.UnboundCount{}
 	}
 	return left
+}
+
+// openSignIn says what anyone who can sign in gets without being named, or "". Anything
+// it can't read is for the commands that use it to report.
+func openSignIn(e *env) string {
+	cfg, err := auth.LoadAccess(e.Root.Dir)
+	if err != nil || e.Store == nil {
+		return ""
+	}
+	policy, err := auth.LoadPolicy(context.Background(), e.Store.DB)
+	if err != nil {
+		return ""
+	}
+	return auth.OpenSignIn(cfg, policy)
 }
 
 // unendedSessions counts sign-outs whose delete failed since everything was last ended:

@@ -242,7 +242,7 @@ func TestMagicLinkSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := func(email string, headers map[string]string) (string, bool) {
+	request := func(email string, wait time.Duration, headers map[string]string) (string, bool) {
 		links := make(chan string, 1)
 		body := url.Values{"email": {email}}.Encode()
 		r := httptest.NewRequest("POST", MagicRequestPath+"?provider=email", strings.NewReader(body))
@@ -260,21 +260,24 @@ func TestMagicLinkSignIn(t *testing.T) {
 		select {
 		case link := <-links:
 			return link, true
-		case <-time.After(300 * time.Millisecond):
+		case <-time.After(wait):
 			return "", false
 		}
 	}
-	if _, sent := request("stranger@example.com", nil); sent {
+	// A link goes out in the background, so "not sent" can only be a short wait, and a link that
+	// should come gets a long one: a loaded runner took more than 300 ms.
+	const notSent, linkWait = 300 * time.Millisecond, 10 * time.Second
+	if _, ok := request("stranger@example.com", notSent, nil); ok {
 		t.Error("link sent to an uninvited address")
 	}
-	if _, sent := request("friend@example.com", map[string]string{"Origin": "https://evil.example.com"}); sent {
+	if _, ok := request("friend@example.com", notSent, map[string]string{"Origin": "https://evil.example.com"}); ok {
 		t.Error("link sent for a cross-origin form")
 	}
-	link, sent := request("FRIEND@example.com", nil)
+	link, sent := request("FRIEND@example.com", linkWait, nil)
 	if !sent || !strings.HasPrefix(link, testOrigin+MagicCallbackPath+"#") {
 		t.Fatalf("link %q", link)
 	}
-	if _, sent := request("friend@example.com", nil); sent {
+	if _, sent := request("friend@example.com", notSent, nil); sent {
 		t.Error("cooldown did not hold")
 	}
 	token := link[strings.Index(link, "#")+1:]

@@ -26,7 +26,9 @@ func endless(t *testing.T) *httptest.Server {
 	t.Helper()
 	chunk := make([]byte, 64<<10)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for {
+		// Far above any limit these tests set, so a broken limit fails a test quickly
+		// instead of filling the disk.
+		for sent := 0; sent < 64<<20; sent += len(chunk) {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}

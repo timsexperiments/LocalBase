@@ -49,6 +49,8 @@ const STEADY = `const s=document.createElement("style");s.textContent="*,*::befo
 const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+// With its browser gone nothing here can finish: stop rather than wait on it.
+ws.addEventListener("close", () => process.exit(2));
 let id = 0; const waiting = new Map();
 ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
 const send = (method: string, params: any = {}) => new Promise<any>((res, rej) => { const n = ++id; waiting.set(n, (m: any) => (m.error ? rej(new Error(method + ": " + m.error.message)) : res(m.result))); ws.send(JSON.stringify({ id: n, method, params })); });
@@ -118,7 +120,6 @@ for (const scheme of SCHEMES) {
   const colours = await ev(`(async () => { const i = new Image(); i.src = "data:image/png;base64,${data}"; await i.decode(); const c = document.createElement("canvas"); c.width = c.height = 96; const x = c.getContext("2d"); x.drawImage(i, 0, 0, 96, 96); const d = x.getImageData(0, 0, 96, 96).data; const s = new Set(); for (let p = 0; p < d.length; p += 4) s.add((d[p] >> 3) + "," + (d[p + 1] >> 3) + "," + (d[p + 2] >> 3)); return s.size; })()`);
   if (colours < 8) throw new Error(`${name}.png came out blank (${colours} colours)`);
   await Bun.write(`${out}/${name}.png`, png);
-  await Bun.$`rm -f ${out}/${name}.html`;
   }
 }
 

@@ -40,6 +40,52 @@ func (b *BrowserAccess) Issuers() []string {
 	return slices.Compact(out)
 }
 
+// signInNames are the providers people can sign in through, by the names they are shown.
+func (b *BrowserAccess) signInNames() []string {
+	if b == nil {
+		return nil
+	}
+	if b.Provider.Kind == "cloudflare-access" {
+		return []string{"Cloudflare Access"}
+	}
+	var out []string
+	for _, r := range b.Provider.Registrations {
+		if r.Kind == "oidc" || r.Kind == "magic-link" {
+			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+// OpenSignIn says what anyone who can sign in gets without being named anywhere, or ""
+// when that is nothing: a default role, or provider-wide permissions with no policy. It
+// is a warning, not a refusal: someone may want this, and should know they have it.
+func OpenSignIn(cfg *BrowserAccess, p *Policy) string {
+	names := cfg.signInNames()
+	if len(names) == 0 {
+		return ""
+	}
+	var perms []string
+	switch {
+	case p == nil:
+		perms = cfg.Permissions
+	case p.DefaultRole != nil:
+		for _, r := range p.Roles {
+			if r.Name == *p.DefaultRole {
+				perms = r.Permissions
+			}
+		}
+	}
+	if len(perms) == 0 {
+		return ""
+	}
+	who := names[len(names)-1]
+	if len(names) > 1 {
+		who = joinComma(names[:len(names)-1]) + " or " + who
+	}
+	return "Anyone who can sign in through " + who + " gets: " + joinComma(Canonical(perms)) + "."
+}
+
 func issuerRequired(what string, issuers []string) *AccessError {
 	return &AccessError{"issuer-required", what + " must name the sign-in provider that vouches for it, because several are configured. Add \"issuer\" with one of: " + joinComma(issuers) + "."}
 }

@@ -198,14 +198,18 @@ func TestImportCancelRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for {
-			if _, err := w.Write(make([]byte, 16<<10)); err != nil {
-				return
-			}
-			w.(http.Flusher).Flush()
-			if r.Header.Get("Range") == "bytes=0-0" {
-				return
-			}
+		// It sends a little and then holds the download open, so it can't finish before the
+		// cancel lands, and a cancel that does nothing fails the test instead of filling the disk.
+		if _, err := w.Write(make([]byte, 16<<10)); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		if r.Header.Get("Range") == "bytes=0-0" {
+			return
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(30 * time.Second):
 		}
 	}))
 	defer source.Close()

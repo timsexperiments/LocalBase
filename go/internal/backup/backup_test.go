@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -832,6 +833,7 @@ func TestBackupRefusesPlantedLinks(t *testing.T) {
 
 func TestBackupWhileWriting(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
+	want := create(t, r, false).Manifest
 	st, err := store.Open(r.DB())
 	if err != nil {
 		t.Fatal(err)
@@ -849,6 +851,11 @@ func TestBackupWhileWriting(t *testing.T) {
 	defer func() { cancel(); wg.Wait() }()
 	for i := 0; i < 3; i++ {
 		res := create(t, r, false)
+		// A read that lost to the writer must not look like an empty database.
+		got := res.Manifest
+		if got.Migrations != want.Migrations || !slices.Equal(got.Models, want.Models) || !slices.Equal(got.RowsLeftOut, want.RowsLeftOut) || !slices.Equal(got.SecretNames, want.SecretNames) {
+			t.Errorf("while writing: %+v\nwithout: %+v", got, want)
+		}
 		restore(t, res.Output, filepath.Join(dir(t), "new"), false)
 	}
 }
@@ -1211,8 +1218,8 @@ func TestRestoreSchemaMissingTables(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			if !hasTable(context.Background(), db, table) {
-				t.Errorf("opening it should have made %s", table)
+			if present, err := tableExists(context.Background(), db, table); err != nil || !present {
+				t.Errorf("opening it should have made %s: %v", table, err)
 			}
 		})
 	}

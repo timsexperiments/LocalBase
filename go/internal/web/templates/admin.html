@@ -184,6 +184,8 @@
 {{end}}
 
 {{define "admin-access"}}
+{{with .State}}{{with .OpenSignIn}}<p class="group-card" role="status" data-open-sign-in>{{.}}</p>{{end}}{{end}}
+{{with .State}}{{with .SignedIn}}<section class="group-card" data-signed-in><h2 class="group-title">Signed in</h2><ul class="mt-1 text-sm">{{range .}}<li>{{if .Email}}{{.Email}}{{else}}An account with no verified address{{end}} · {{.Issuer}} · {{.LastSeen}}</li>{{end}}</ul></section>{{end}}{{end}}
 {{with .State}}{{if .UnboundBindings}}<p class="group-card" role="status" data-unbound-bindings>{{.UnboundBindings}} bindings and invitations are not bound to a sign-in provider, so they grant nothing. Run: <code>local-base access bindings adopt --issuer &lt;issuer&gt;</code></p>{{end}}{{end}}
 {{$s := .State}}
 {{$cfg := $s.Config}}

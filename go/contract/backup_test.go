@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -752,4 +753,177 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 	if seen == 0 {
 		t.Fatalf("no backend found listening:\n%s", out)
 	}
+}
+
+// crashDatabase leaves a database as a process killed during a large write would: pages changed on
+// disk, and a journal that undoes them. It takes a copy's files while its transaction is open.
+func crashDatabase(t *testing.T, tmp, dbPath string) {
+	t.Helper()
+	work := filepath.Join(tmp, "crash-copy.db")
+	body, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mustWriteFile(work, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+work+"?_pragma=cache_size(8)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`CREATE TABLE crash_mid_write (x)`); err != nil {
+		t.Fatal(err)
+	}
+	for range 64 {
+		if _, err := tx.Exec(`INSERT INTO crash_mid_write VALUES (randomblob(65536))`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for from, to := range map[string]string{work: dbPath, work + "-journal": dbPath + "-journal"} {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := mustWriteFile(to, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// After a crash, backup and restore refuse and name a command. That command has to work.
+func TestCrashedRootIsRefusedUntilStatusRecoversIt(t *testing.T) {
+	backupGoOnly(t)
+	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := backupRoot(t, tmp, "root")
+	file := filepath.Join(tmp, "b"+backup.Extension)
+	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
+		t.Fatalf("%s%s", r.stdout, r.stderr)
+	}
+	crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
+	commands := [][]string{{"backup", "--dry-run"}, {"restore", "--dry-run", "--replace", file}}
+	for _, args := range commands {
+		r := e.cli(nil, args...)
+		if said := r.stdout + r.stderr; r.code == 0 || !strings.Contains(said, "never finished") || !strings.Contains(said, " status") {
+			t.Errorf("%v on a crashed root: %d %s", args, r.code, said)
+		}
+	}
+	if r := e.cli(nil, "status"); r.code != 0 {
+		t.Fatalf("status: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(e.root, "local-base.db-journal")); err == nil {
+		t.Error("status left the journal")
+	}
+	for _, args := range commands {
+		if r := e.cli(nil, args...); r.code != 0 {
+			t.Errorf("%v after status: %d %s%s", args, r.code, r.stdout, r.stderr)
+		}
+	}
+}
+
+// Every command on a crashed root either refuses and names the one command to run, or opens the
+// database for writing, which undoes the write, and shows the real settings. None shows
+// defaults as if they were real. A root's key and its settings are how to tell.
+func TestCrashedRootEveryCommand(t *testing.T) {
+	backupGoOnly(t)
+	crashed := func(t *testing.T) (*e2e, string) {
+		t.Helper()
+		tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+		e := backupRoot(t, tmp, "root")
+		crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
+		return e, tmp
+	}
+	journal := func(e *e2e) bool {
+		_, err := os.Lstat(filepath.Join(e.root, "local-base.db-journal"))
+		return err == nil
+	}
+	for _, args := range [][]string{{"doctor"}, {"--json", "doctor"}, {"config", "show"},
+		{"models", "show", "qwen3.5-4b-q4_k_m"}, {"models", "catalog"}, {"models", "recommend"}} {
+		t.Run("refuses "+strings.Join(args, " "), func(t *testing.T) {
+			e, _ := crashed(t)
+			r := e.cli(nil, args...)
+			if said := r.stdout + r.stderr; r.code == 0 || !strings.Contains(said, "never finished") || !strings.Contains(said, " status") {
+				t.Errorf("%d %.300s", r.code, said)
+			}
+			if !journal(e) {
+				t.Error("a read-only command undid the write")
+			}
+		})
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"status"}, "Service:"},
+		{[]string{"keys", "list"}, "backup"},
+		{[]string{"models", "list"}, "backup-tiny"},
+		{[]string{"access", "show"}, "not configured"},
+		{[]string{"backends", "list"}, "built-in"},
+		{[]string{"voices", "list"}, "No custom voices"},
+	} {
+		t.Run("recovers "+strings.Join(c.args, " "), func(t *testing.T) {
+			e, _ := crashed(t)
+			r := e.cli(nil, c.args...)
+			if said := r.stdout + r.stderr; r.code != 0 || !strings.Contains(said, c.want) {
+				t.Errorf("%d %.300s", r.code, said)
+			}
+			if journal(e) {
+				t.Error("the journal is still there, so what this printed came from a database it could not trust")
+			}
+		})
+	}
+	t.Run("config apply keeps working", func(t *testing.T) {
+		e, tmp := crashed(t)
+		shown := e.cli(nil, "status")
+		if shown.code != 0 {
+			t.Fatalf("%s%s", shown.stdout, shown.stderr)
+		}
+		doc := e.cli(nil, "config", "show")
+		if doc.code != 0 {
+			t.Fatalf("%s%s", doc.stdout, doc.stderr)
+		}
+		crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
+		file := filepath.Join(tmp, "config.toml")
+		mustWriteFile(file, []byte(doc.stdout), 0o600)
+		if r := e.cli(nil, "config", "plan", "--file", file); r.code == 0 || !strings.Contains(r.stdout+r.stderr, "never finished") {
+			t.Errorf("plan: %d %s%s", r.code, r.stdout, r.stderr)
+		}
+		if r := e.cli(nil, "config", "apply", "--file", file, "--restart", "never"); r.code != 0 {
+			t.Errorf("%d %s%s", r.code, r.stdout, r.stderr)
+		}
+		if after := e.cli(nil, "config", "show"); after.stdout != doc.stdout {
+			t.Errorf("the settings changed:\n%s\nthen:\n%s", doc.stdout, after.stdout)
+		}
+	})
+	t.Run("diagnostics still makes a bundle and says so", func(t *testing.T) {
+		e, tmp := crashed(t)
+		out := filepath.Join(tmp, "d.zip")
+		r := e.cli(nil, "diagnostics", "--output", out)
+		if said := r.stdout + r.stderr; r.code != 0 || !strings.Contains(said, "never finished") {
+			t.Errorf("%d %.300s", r.code, said)
+		}
+		zr, err := zip.OpenReader(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer zr.Close()
+		manifest, err := zr.Open("manifest.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer manifest.Close()
+		body, _ := io.ReadAll(manifest)
+		if !strings.Contains(string(body), "unfinished_write") {
+			t.Errorf("the manifest does not say so: %.300s", body)
+		}
+		if !journal(e) {
+			t.Error("diagnostics undid the write")
+		}
+	})
 }
