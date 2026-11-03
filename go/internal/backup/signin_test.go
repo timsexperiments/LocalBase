@@ -260,6 +260,24 @@ func TestThisRootGivingNothingIsSaid(t *testing.T) {
 	}
 }
 
+// A real role can be strong and be the default, with nothing wrong in the database. The report has
+// to say so, because anyone at all who signs in would get it.
+func TestAStrongDefaultRoleIsSaid(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	e := read(t, create(t, r, false).Output)
+	editDB(t, e,
+		`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('owner', 'owner', 'x', 'x', 'x'), ('member', 'member', 'x', 'x', 'x')`,
+		`INSERT INTO auth_role_permissions (role_id, permission) VALUES ('owner', 'access:manage'), ('member', 'access:manage'), ('member', 'keys:manage')`,
+		`INSERT INTO auth_subject_role_bindings (id, role_id, issuer, subject) VALUES ('b', 'owner', 'https://accounts.example.com', 's')`,
+		`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'member', 'x')`)
+	file := filepath.Join(dir(t), "crafted"+Extension)
+	pack(t, file, e)
+	rep := stageReport(t, file, filepath.Join(dir(t), "target"), false)
+	if got := rep.SignIn.Everyone.Value; got != "access:manage, keys:manage" {
+		t.Errorf("%q", got)
+	}
+}
+
 // Each way of signing in that has no issuer is said in words, and Cloudflare by both of its values.
 func TestWaysWithNoIssuerAreSaidInWords(t *testing.T) {
 	const access = `{"provider":{"kind":"direct","registrations":[
