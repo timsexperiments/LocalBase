@@ -20,6 +20,8 @@ type Guard struct {
 	Policy        *Policy // nil: no policy (provider-wide permissions apply)
 	Users         []GuardUser
 	ProviderPerms []string // the provider-wide permissions without a policy
+	// Issuers are the sign-in providers configured: nobody signs in through another.
+	Issuers []string
 	// KeyManagers are the active API keys with access:manage: principals
 	// too, so they count when deciding whether anyone can still manage.
 	KeyManagers []string
@@ -29,16 +31,20 @@ type Guard struct {
 type GuardUser struct {
 	ID, Email, Status string
 	Roles             []string
+	Issuer            string      // the provider that can claim this record
 	Identities        [][2]string // issuer, subject
 }
 
-// LoadGuard reads the current state.
-func LoadGuard(ctx context.Context, st *store.Store, providerPerms []string) (*Guard, error) {
+// LoadGuard reads the current state. cfg is the browser access configuration, or nil.
+func LoadGuard(ctx context.Context, st *store.Store, cfg *BrowserAccess) (*Guard, error) {
 	policy, err := LoadPolicy(ctx, st.DB)
 	if err != nil {
 		return nil, err
 	}
-	g := &Guard{Policy: policy, ProviderPerms: providerPerms}
+	g := &Guard{Policy: policy, Issuers: cfg.Issuers()}
+	if cfg != nil {
+		g.ProviderPerms = cfg.Permissions
+	}
 	keys, err := st.ListAPIKeys(ctx)
 	if err != nil {
 		return nil, err
@@ -48,22 +54,29 @@ func LoadGuard(ctx context.Context, st *store.Store, providerPerms []string) (*G
 			g.KeyManagers = append(g.KeyManagers, k.ID)
 		}
 	}
-	users, err := ListUsers(ctx, st)
+	// Removed people too: a sign-in stays refused for them, whatever a binding says.
+	users, err := listUsers(ctx, st, true)
 	if err != nil {
 		return nil, err
 	}
 	for _, u := range users {
-		gu := GuardUser{ID: u.ID, Email: strings.ToLower(u.Email), Status: u.Status, Roles: slices.Clone(u.Roles)}
+		gu := GuardUser{ID: u.ID, Email: strings.ToLower(u.Email), Status: u.Status, Roles: slices.Clone(u.Roles), Issuer: u.Issuer}
 		rows, err := st.DB.QueryContext(ctx, `SELECT issuer, subject FROM auth_identities WHERE user_id = ?`, u.ID)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			var is, sub string
-			rows.Scan(&is, &sub)
+			if err := rows.Scan(&is, &sub); err != nil {
+				rows.Close()
+				return nil, err
+			}
 			gu.Identities = append(gu.Identities, [2]string{is, sub})
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 		g.Users = append(g.Users, gu)
 	}
 	return g, nil
@@ -71,7 +84,7 @@ func LoadGuard(ctx context.Context, st *store.Store, providerPerms []string) (*G
 
 // Clone copies the snapshot so a change can be tried on it.
 func (g *Guard) Clone() *Guard {
-	c := &Guard{ProviderPerms: g.ProviderPerms, KeyManagers: slices.Clone(g.KeyManagers)}
+	c := &Guard{ProviderPerms: g.ProviderPerms, Issuers: g.Issuers, KeyManagers: slices.Clone(g.KeyManagers)}
 	if g.Policy != nil {
 		p := *g.Policy
 		p.Roles = slices.Clone(p.Roles)
@@ -109,8 +122,23 @@ func (g *Guard) roleManages(name string) bool {
 	return slices.Contains(g.rolePerms(name), "access:manage")
 }
 
-// linked is the managed user an identity signs in as: the one it is linked
-// to, else an invitation for its verified email (claimed on sign-in).
+// refusedStatus is a person no sign-in may act as.
+func refusedStatus(status string) bool { return status != "active" && status != "pending" }
+
+// Managed counts the people who have not been removed.
+func (g *Guard) Managed() int {
+	n := 0
+	for i := range g.Users {
+		if g.Users[i].Status != "removed" {
+			n++
+		}
+	}
+	return n
+}
+
+// linked is the managed user an identity signs in as: the one it is linked to, else an
+// invitation for its verified email from the provider it was made for (claimed on
+// sign-in). A refused address counts whichever provider vouches for it: it stays out.
 func (g *Guard) linked(id Identity) *GuardUser {
 	for i := range g.Users {
 		for _, l := range g.Users[i].Identities {
@@ -120,7 +148,9 @@ func (g *Guard) linked(id Identity) *GuardUser {
 		}
 	}
 	if id.VerifiedEmail != "" {
-		return g.User(id.VerifiedEmail)
+		if u := g.User(id.VerifiedEmail); u != nil && (refusedStatus(u.Status) || u.Issuer == id.Issuer) {
+			return u
+		}
 	}
 	return nil
 }
@@ -128,11 +158,14 @@ func (g *Guard) linked(id Identity) *GuardUser {
 // CanManage reports whether an identity would have access:manage, resolved
 // as ResolvePolicy resolves it.
 func (g *Guard) CanManage(id Identity) bool {
+	if !slices.Contains(g.Issuers, id.Issuer) {
+		return false
+	}
 	if g.Policy == nil {
 		return slices.Contains(g.ProviderPerms, "access:manage")
 	}
 	u := g.linked(id)
-	if u != nil && u.Status != "active" && u.Status != "pending" {
+	if u != nil && refusedStatus(u.Status) {
 		return false
 	}
 	if g.Policy.DefaultRole != nil && g.roleManages(*g.Policy.DefaultRole) {
@@ -149,11 +182,11 @@ func (g *Guard) CanManage(id Identity) bool {
 				return true
 			}
 		case "email":
-			if email != "" && b.Email == email {
+			if email != "" && b.Email == email && b.Issuer == id.Issuer {
 				return true
 			}
 		case "email-domain":
-			if at := strings.LastIndex(email, "@"); at >= 0 && b.Domain == email[at+1:] {
+			if at := strings.LastIndex(email, "@"); at >= 0 && b.Domain == email[at+1:] && b.Issuer == id.Issuer {
 				return true
 			}
 		}
@@ -173,15 +206,18 @@ func (g *Guard) HasManager() bool {
 	if len(g.KeyManagers) > 0 {
 		return true
 	}
+	if len(g.Issuers) == 0 {
+		return false // nobody can sign in
+	}
 	if g.Policy == nil {
 		return slices.Contains(g.ProviderPerms, "access:manage")
 	}
-	blocked := func(u *GuardUser) bool { return u != nil && u.Status != "active" && u.Status != "pending" }
+	blocked := func(u *GuardUser) bool { return u != nil && refusedStatus(u.Status) }
 	if g.Policy.DefaultRole != nil && g.roleManages(*g.Policy.DefaultRole) {
 		return true
 	}
 	for _, b := range g.Policy.Bindings {
-		if !g.roleManages(b.Role) {
+		if !g.roleManages(b.Role) || !slices.Contains(g.Issuers, b.Issuer) {
 			continue
 		}
 		switch b.Kind {
@@ -199,13 +235,26 @@ func (g *Guard) HasManager() bool {
 	}
 	for i := range g.Users {
 		u := &g.Users[i]
-		if blocked(u) {
+		if blocked(u) || !g.canSignIn(u) {
 			continue
 		}
 		for _, r := range u.Roles {
 			if g.roleManages(r) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// canSignIn reports whether a configured provider can reach this person.
+func (g *Guard) canSignIn(u *GuardUser) bool {
+	if slices.Contains(g.Issuers, u.Issuer) {
+		return true
+	}
+	for _, l := range u.Identities {
+		if slices.Contains(g.Issuers, l[0]) {
+			return true
 		}
 	}
 	return false
