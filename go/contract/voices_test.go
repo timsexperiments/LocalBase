@@ -79,6 +79,11 @@ func sameError(t *testing.T, label string, rs map[string]*Resp) {
 		}
 		ea, _ := first.JSON(t)["error"].(map[string]any)
 		eb, _ := r.JSON(t)["error"].(map[string]any)
+		if ea["code"] == "model_too_large" && eb["code"] == "model_too_large" {
+			// Go's sentence also says what to change (DESIGN, Deliberate differences); what
+			// comes before it must still match.
+			ea["message"], eb["message"] = modelTooLargeFacts(ea["message"]), modelTooLargeFacts(eb["message"])
+		}
 		for _, k := range []string{"type", "code", "param", "message"} {
 			if ea[k] != eb[k] || first.Status != r.Status {
 				t.Errorf("%s:\n %s %d %s\n %s %d %s", label, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
@@ -89,6 +94,16 @@ func sameError(t *testing.T, label string, rs map[string]*Resp) {
 			t.Errorf("%s: Allow %q vs %q", label, a, b)
 		}
 	}
+}
+
+// modelTooLargeFacts is a model_too_large message up to what it advises.
+func modelTooLargeFacts(message any) any {
+	text, ok := message.(string)
+	if !ok {
+		return message
+	}
+	facts, _, _ := strings.Cut(text, " Use a smaller")
+	return facts
 }
 
 // TestDifferentialVoices runs the custom voice lifecycle on both gateways:
@@ -333,4 +348,17 @@ func normalizeID(t *testing.T, stdout string) string {
 		t.Fatalf("voices list: %v %s", err, stdout)
 	}
 	return env.Data.Voices[0].ID
+}
+
+// The two gateways' sentences differ only in what they advise.
+func TestModelTooLargeFacts(t *testing.T) {
+	const facts = "This model requires about 4.3 GiB of memory, but only 0.0 GiB is available for models on this host (7.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running."
+	ts := facts + " Use a smaller quantization or a smaller model."
+	goSide := facts + " Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer."
+	if modelTooLargeFacts(ts) != modelTooLargeFacts(goSide) || modelTooLargeFacts(ts) != any(facts) {
+		t.Errorf("%q and %q", modelTooLargeFacts(ts), modelTooLargeFacts(goSide))
+	}
+	if modelTooLargeFacts(facts+" Use a smaller model.") == modelTooLargeFacts("Another fact entirely. Use a smaller model.") {
+		t.Error("different facts compare equal")
+	}
 }
