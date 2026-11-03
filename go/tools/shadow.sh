@@ -93,9 +93,15 @@ serve)
   port=$(pick)
   # LBGO_NO_AUTH=1: the --no-auth UI check (loopback only; never a real cookie).
   args=(--root "$root" serve ${LBGO_NO_AUTH:+--no-auth} --host 127.0.0.1 --port "$port"
-    --llm-host 127.0.0.1 --llm-port "$(pick)" --stt-host 127.0.0.1 --stt-port "$(pick)"
-    --tts-host 127.0.0.1 --tts-port "$(pick)" --image-host 127.0.0.1 --image-port "$(pick)"
-    --video-host 127.0.0.1 --video-port "$(pick)")
+    --llm-host 127.0.0.1 --stt-host 127.0.0.1 --tts-host 127.0.0.1 --image-host 127.0.0.1 --video-host 127.0.0.1)
+  # Five free ports in a row for Go; TS has no block flag, so it gets one flag each.
+  pick_run() { while :; do p=$(pick); free=1; for i in 1 2 3 4; do q=$((p+i))
+      { [ $q -ge 30000 ] || [ $q = 24173 ] || { [ $q -ge 25611 ] && [ $q -le 25613 ]; } || lsof -nP -iTCP:$q -sTCP:LISTEN >/dev/null 2>&1; } && free=0; done
+    [ $free = 1 ] && { echo $p; return; }; done; }
+  case "$impl" in
+  go) args+=(--runtime-port-base "$(pick_run)") ;;
+  *) args+=(--llm-port "$(pick)" --stt-port "$(pick)" --tts-port "$(pick)" --image-port "$(pick)" --video-port "$(pick)") ;;
+  esac
   case "$impl" in
   go)
     go build -o "$work/local-base-go" ./cmd/localbase || die "build"
