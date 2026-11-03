@@ -122,7 +122,7 @@ else {
   check(await ev(`!!document.querySelector(".studio-recent a[href^='/app/studio/image']")`), "the landing's Recent shows it");
   check(await ev(`document.querySelector(".studio-recent img")?.naturalWidth > 0`), "a real picture decodes");
   // Recent says what each result is, in words, and leads to that result (DESIGN §27).
-  const tile = await ev(`(() => { const a = document.querySelector(".studio-recent a"), cap = a.querySelector(".studio-tile-cap"), meta = a.querySelector(".studio-tile-meta"); return { cap: cap.textContent, meta: meta.textContent, seen: cap.getBoundingClientRect().height > 0 && meta.getBoundingClientRect().height > 0, tall: a.getBoundingClientRect().height, href: a.getAttribute("href"), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+  const tile = await ev(`(() => { const a = document.querySelector(".studio-recent a"), cap = a.querySelector(".studio-tile-cap"), meta = a.querySelector(".studio-tile-meta"); return { cap: cap.textContent, meta: meta.textContent, seen: cap.getBoundingClientRect().height > 0 && meta.getBoundingClientRect().height > 0, tall: a.getBoundingClientRect().height, href: a.getAttribute("href"), over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
   check(/paper boat/.test(tile.cap) && /^Image · /.test(tile.meta) && tile.seen && tile.tall >= 44 && /^\/app\/studio\/image#run-/.test(tile.href) && !tile.over, `a result on the landing has its words and goes to itself: ${JSON.stringify(tile)}`);
   check((await ev(`!document.querySelector(".studio-keep") && /Kept 30 minutes/.test(document.querySelector(".studio-recent-head").textContent)`)), "how long results stay is said once, beside them");
   // A file that is gone shows the tool's icon and "Expired", never a broken icon.
@@ -205,7 +205,7 @@ for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .p
 // At the narrowest width a model's name stays whole: the controls move, not the letters.
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
-const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
 check(nameAt320.lines === 1 && !nameAt320.over, `Running at 320: the model's name stays on one line: ${JSON.stringify(nameAt320)}`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
@@ -353,7 +353,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const visible = await ev(`[...document.querySelectorAll(".decide-row:not(.decide-row-head)")].filter((n) => !n.hidden).map((n) => n.querySelector(".decide-word").textContent)`);
   check(visible.join() === "Close call,Unsure", `the filter leaves close calls and unsure: ${visible}`);
   await ev(`document.querySelector("input[name=decide-filter][value=all]").click()`);
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "the batch fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "the batch fits the phone");
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
   await ev(decide);
@@ -391,7 +391,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(running?.active && /Waiting for its turn|Making the video/.test(running.text) && /it keeps going/.test(running.text) && !/\d%/.test(running.text), `a job shows its stage, no percentage: ${running?.text.slice(0, 90)}`);
   const place = await ev(`(() => { const r = document.querySelector("#lab-items .lab-item-video .video-frame").getBoundingClientRect(); return r.height / r.width; })()`);
   check(place > 1.5 && place < 2, `its place has the final shape (${place.toFixed(2)})`);
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
   const stop = await ev(`(() => { const b = ${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']"); window.scrollTo(0, 0); const dock = document.querySelector(".lab-dock").getBoundingClientRect(), text = document.querySelector("#lab-items .lab-progress span").getBoundingClientRect(), frame = document.querySelector("#lab-items .lab-progress").getBoundingClientRect(); return { firstScreen: b.getBoundingClientRect().bottom <= dock.top, centered: Math.abs((text.top + text.bottom) / 2 - (frame.top + frame.bottom) / 2) < 8 }; })()`);
   check(stop.firstScreen && stop.centered, `Stop is on the first screen above the prompt, and the stage is centered: ${JSON.stringify(stop)}`);
   await ev(makeVideo("a second one"));
@@ -552,7 +552,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await ev(`${firstItem}.querySelector("[hx-post$='/remove']").click()`);
   await sleep(400);
   check(!/Stopped after/.test((await itemState())?.text ?? ""), "Remove takes it out of the tray");
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
 }
 
 // --- Transcribe (DESIGN §22.20) ---------------------------------------------------
@@ -586,7 +586,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     const exports = await ev(`(async () => { const out = {}; for (const a of ${trItem}.querySelectorAll("a[download]")) { const r = await fetch(a.href); out[new URL(a.href).searchParams.get("format")] = [r.headers.get("content-disposition"), await r.text()]; } return out; })()`);
     check(/^1\n00:00:00,000 --> 00:00:01,200\nThe harbor/.test(exports.srt?.[1] ?? "") && exports.vtt?.[1].startsWith("WEBVTT\n\n00:00:00.000") && /harbor/.test(exports.txt?.[1] ?? "") && /transcript\.srt/.test(exports.srt?.[0] ?? ""), `exports are real SRT, VTT and text`);
-    check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+    check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
 
     // A player past its keep says so.
     await ev(`${trItem}.querySelector("audio").src = "/app/lab/results/nope"`);
@@ -718,7 +718,7 @@ await nav("/app/chat");
 await ev(`document.getElementById("chat-input").focus()`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
 await sleep(700);
-const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
 check(typing.flag && typing.h >= 44 && typing.h < 64 && typing.gauge !== "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, with its gauge as a thin rule, and the composer stays in view: ${JSON.stringify(typing)}`);
 if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
 
@@ -777,12 +777,27 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
     for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items > li").length`)) <= before; i++) await sleep(100);
   }
   await nav("/app/studio");
-  const live = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); s.scrollLeft = 124; return { word: li.querySelector(".studio-tile-live")?.textContent.trim() ?? "", polls: li.hasAttribute("hx-get"), asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, words: document.querySelectorAll(".studio-recent .studio-tile-live").length, left: s.scrollLeft, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+  const live = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); s.scrollLeft = 124; return { word: li.querySelector(".studio-tile-live")?.textContent.trim() ?? "", polls: li.hasAttribute("hx-get"), asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, words: document.querySelectorAll(".studio-recent .studio-tile-live").length, left: s.scrollLeft, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
   check(live.polls && live.left > 0 && live.asking === live.words && /…$/.test(live.word) && !live.over, `a result being made says how it stands, and asks for itself: ${JSON.stringify(live)}`);
   for (let i = 0; i < 100 && (await ev(`!!document.querySelector(".studio-recent > li[hx-get]")`)); i++) await sleep(150);
   await sleep(200);
   const settled = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); return { asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, img: li.querySelector("img")?.naturalWidth > 0, left: s.scrollLeft }; })()`);
   check(settled.asking === 0 && settled.img && settled.left === live.left, `they settle by themselves and the strip keeps its place: ${JSON.stringify(settled)}`);
+}
+
+// --- The landing never scrolls sideways, with results in it (DESIGN §27) ------------------------
+// The shelf has to be full and really scroll, or this proves nothing. clientWidth, not innerWidth:
+// under mobile emulation innerWidth grows with an overflowing page, so comparing with it can't fail.
+{
+  const hasResults = await ev(`fetch("/app/studio").then((r) => r.text()).then((t) => (t.match(/class="studio-tile"/g) ?? []).length)`);
+  if (hasResults < 4) console.log(`skip landing width (${hasResults} results)`);
+  else for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
+    await nav("/app/studio");
+    const fit = await ev(`(() => { const d = document.documentElement, shelf = document.querySelector(".studio-recent"), right = (q) => Math.round(document.querySelector(q).getBoundingClientRect().right); return { scroll: d.scrollWidth, client: d.clientWidth, tiles: shelf.children.length, shelfScrolls: shelf.scrollWidth > shelf.clientWidth, strip: right(".strip"), list: right(".studio-tools .list-group") }; })()`);
+    const inside = fit.scroll <= fit.client && fit.strip <= fit.client && fit.list <= fit.client;
+    check(inside && fit.tiles >= 4 && (width > 430 || fit.shelfScrolls), `at ${width}, the landing with results stays on the screen and only its shelf scrolls: ${JSON.stringify(fit)}`);
+  }
 }
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
@@ -792,7 +807,7 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   const fits = await ev(`(() => {
     const b = document.querySelector(".strip-host b"), w = document.querySelector(".strip-word"), s = document.querySelector(".strip");
     b.textContent = ${JSON.stringify(name)}; w.textContent = "Getting the model ready";
-    return { over: document.documentElement.scrollWidth > innerWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
+    return { over: document.documentElement.scrollWidth > document.documentElement.clientWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
   })()`);
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }

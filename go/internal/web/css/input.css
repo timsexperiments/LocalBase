@@ -1251,6 +1251,10 @@
   .studio-tools {
     @apply max-w-[34rem];
   }
+  .studio-recent-box,
+  .studio-tools {
+    @apply min-w-0;
+  }
   .studio-body-recent .studio-tools {
     @apply max-w-none;
   }
@@ -1279,8 +1283,10 @@
   .studio-recent > li {
     @apply w-28 shrink-0 snap-start;
   }
+  /* Relative: the hidden words inside must scroll with the shelf. Absolute with no positioned
+     parent, they would count against the page and widen it, however well the shelf is contained. */
   .studio-tile {
-    @apply block min-w-0 rounded-xl text-ink;
+    @apply relative block min-w-0 rounded-xl text-ink;
   }
   .studio-tile-media {
     @apply relative grid aspect-square place-items-center overflow-hidden rounded-xl border border-bound bg-surface-muted;
