@@ -112,6 +112,20 @@ clock is never moved, so timers running through a real jump are not tested.
   threads 12 to 15. That looks like a plateau, but it is one run. The weekly 2-hour run is
   the real answer.
 
+  The result files of both runs were lost in a reboot on 2026-11-03, so they stand as reported and cannot be
+  re-examined. The second run's numbers: PASS, 18 cycles, 28m8s, 44,321 operations, 0 violations, 28 of 28
+  checks, 1,111 model starts, 18,781 refusals checked, 54 pressure transitions, drain in 10.013 s with 3 of 3
+  short streams finished, restart healthy in 60 ms.
+
+  | Checkpoint | Goroutines | Descriptors | Threads | Heap, MiB | RSS, MiB |
+  |---|---:|---:|---:|---:|---:|
+  | After warm-up | 10 | 14 | 12 | 11.0 | 61.1 |
+  | After cycle 3 | 10 | 14 | 14 | 12.1 | 68.5 |
+  | After cycle 7 | 10 | 14 | 14 | 12.4 | 78.5 |
+  | After cycle 10 | 10 | 14 | 14 | 12.4 | 78.7 |
+  | After cycle 14 | 10 | 14 | 14 | 12.5 | 78.9 |
+  | After cycle 18 | 10 | 14 | 15 | 12.6 | 79.1 |
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
@@ -218,3 +232,20 @@ overhead would fit, but that was not measured.
 - **A long run.** 200 requests is about 140 evictions.
 - **Whether an orphan ignores SIGPIPE.** macOS `ps` cannot show ignored signals. On Linux,
   `SigIgn` in `/proc/<pid>/status` would answer it.
+
+**The raw evidence is gone.** A reboot on 2026-11-03 emptied `/private/tmp`, which held this run's CSV and
+log, so these results stand as reported and cannot be re-examined. The numbers kept, from `#521` at
+`48e66cf8`, with the window running 22:59:19 to 23:04:10 on 2026-11-02:
+
+| Measure | Values |
+|---|---|
+| Plan | 4,278,105,664 bytes, `derived`, also the real start's |
+| Backend RSS, MiB, at request | 1: 1,346, 10: 1,659, 20: 2,006, 25: 2,180, 40: 2,703, 50: 3,052, 58: 3,330, 59: 3,364, 60: 3,399, 65: 3,469, 70: 3,609, 75: 3,644, 80: 3,714, 90: 3,714, 100: 3,749, 125: 3,609, 150: 3,609, 175: 3,437, 200: 3,647 |
+| Backend RSS, requests 100-200 | mean 3,583, least 3,433, most 3,749 MiB |
+| `phys_footprint`, MB, at request | 1: 380, 11: 727, 21: 1,075, 31: 1,423, 41: 1,772, 51: 2,121, 61: 2,469, 71: 2,678, 81: 2,748, 91: 2,748, 101: 2,783, 111: 2,502, 121: 2,643, 131: 2,643, 141: 2,643, 151: 2,678, 161: 2,713, 171: 2,467, 181: 2,467, 191: 2,572 |
+| Evicted cache entries | 141: mean 34.74, least 34.223, most 35.458 MiB |
+| Requests | 200 of 200 returned 200; 2,345-2,432 prompt tokens, mean 2,385; mean 1,415 ms, longest 5,424 ms (the first, with the load) |
+
+System-wide memory (free + speculative + inactive), not the backend's, in MiB: request 1: 30,551, 25: 30,060,
+50: 29,495, 75: 29,179, 100: 29,210, 125: 29,425, 150: 29,348, 175: 29,428, 200: 29,505; least 28,899, at
+request 86. Its early part overlaps another thread's build and tests.
