@@ -36,6 +36,8 @@ jobs:
         run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
+      - name: A killed gateway leaves no backend behind
+        run: go test ./tools/chaos -run '^TestGatewayKilledOutright$' -count=1
       - name: Compiled CSS is current
         run: tools/tailwind.sh --check
       - name: Contract suite against the Go gateway
@@ -73,6 +75,8 @@ jobs:
         run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
+      - name: A killed gateway leaves no backend behind
+        run: go test ./tools/chaos -run '^TestGatewayKilledOutright$' -count=1
       - name: Contract suite against the Go gateway
         env:
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
