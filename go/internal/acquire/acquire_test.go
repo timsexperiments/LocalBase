@@ -428,7 +428,7 @@ func TestImportRefusesHostileHeaders(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveRange(w, r, body) }))
 			defer srv.Close()
 			ctx := context.Background()
-			p, err := Resolve(ctx, root, Request{Source: srv.URL + "/" + name, AllowHTTP: true, ID: "hostile", Task: "chat"})
+			p, err := Resolve(ctx, root, Request{Source: srv.URL + "/" + name, AllowHTTP: true, AllowPrivate: true, ID: "hostile", Task: "chat"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -461,7 +461,7 @@ func TestResolveLocalRefusesHostileHeaders(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			_, err := Resolve(context.Background(), t.TempDir(), Request{Source: path, ID: "hostile", Task: "chat"})
+			_, err := Resolve(context.Background(), t.TempDir(), Request{Source: path, AllowLocal: true, ID: "hostile", Task: "chat"})
 			if err == nil || !strings.Contains(err.Error(), "cannot be imported") {
 				t.Fatalf("%v, want a refusal", err)
 			}
