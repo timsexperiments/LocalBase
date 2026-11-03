@@ -69,7 +69,10 @@ type management struct {
 	mu         sync.Mutex
 	operations map[string]*mgmtOperation
 	installing string
-	inFlight   sync.WaitGroup
+	// cancelInstall and installDone belong to the install running now.
+	cancelInstall context.CancelFunc
+	installDone   chan struct{}
+	inFlight      sync.WaitGroup
 	// path records the operations under the root, so an install a stopped
 	// gateway interrupted is reported as such after a restart (TS keeps them
 	// in memory only and forgets them). ctx cancels installs at shutdown.
@@ -528,12 +531,48 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 	return done, nil
 }
 
+// cancelDetail is the outcome of an install someone cancelled. A cancelled install
+// has no error: nothing went wrong.
+const cancelDetail = "Installation cancelled. The downloaded part is kept, so installing again resumes it."
+
+// cancelWait is how long a cancel waits for the install to end before answering with
+// it still running. A download ends at once; verifying a large file may take longer.
+const cancelWait = 5 * time.Second
+
+// stopInstall cancels the running install of this model. The partial stays on disk,
+// where it counts as used space until the install is resumed.
+func (s *Server) stopInstall(modelID string) (*mgmtOperation, error) {
+	m := s.mgmt
+	m.mu.Lock()
+	if m.installing != modelID || m.cancelInstall == nil {
+		m.mu.Unlock()
+		return nil, &mgmtError{"conflict", "No installation of this model is running."}
+	}
+	m.cancelInstall()
+	done := m.installDone
+	m.mu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(cancelWait):
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if op := m.operations[modelID]; op != nil {
+		out := *op
+		return &out, nil
+	}
+	return &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}, nil
+}
+
 // startInstall runs the pre-checks under the root operation lease, then
 // downloads in the background; it returns once the install is accepted.
 func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 	m := s.mgmt
+	ctx, cancel := context.WithCancel(m.ctx)
+	finished := make(chan struct{})
 	m.mu.Lock()
 	m.installing = spec.ModelID
+	m.cancelInstall, m.installDone = cancel, finished
 	m.mu.Unlock()
 	clear := func() {
 		m.mu.Lock()
@@ -545,6 +584,8 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 	m.inFlight.Add(1)
 	go func() {
 		defer m.inFlight.Done()
+		defer close(finished)
+		defer cancel()
 		accepted := false
 		err := root.WithOperation(s.Root.Dir, "install model", func() error {
 			fresh, err := s.Store.LoadConfig(context.Background())
@@ -582,7 +623,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			accepted = true
 			admitted <- nil
 			progress := map[string]int64{}
-			_, err = install.Model(m.ctx, spec, dir, install.Options{HFToken: fresh.HFToken, Report: func(ev install.Event) {
+			_, err = install.Model(ctx, spec, dir, install.Options{HFToken: fresh.HFToken, Report: func(ev install.Event) {
 				switch ev.Kind {
 				case "download-progress":
 					progress[ev.Filename] = ev.Downloaded
@@ -619,6 +660,10 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			op := *running
 			op.State, op.Detail, op.DownloadedBytes = "complete", "Installation complete", running.TotalBytes
 			m.operations[spec.ModelID] = &op
+		case accepted && ctx.Err() != nil && m.ctx.Err() == nil:
+			op := *m.operations[spec.ModelID]
+			op.State, op.Detail, op.Error = "cancelled", cancelDetail, nil
+			m.operations[spec.ModelID] = &op
 		case accepted:
 			op := *m.operations[spec.ModelID]
 			op.State, op.Detail = "failed", "Installation failed. Check storage, network access, and catalog verification."
@@ -633,6 +678,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			m.persist(true)
 		}
 		m.installing = ""
+		m.cancelInstall, m.installDone = nil, nil
 		m.mu.Unlock()
 		if !accepted {
 			admitted <- err
@@ -689,12 +735,17 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	modelID, _ := in["modelId"].(string)
 	action, _ := in["action"].(string)
 	valid := ok && len(in) == 2 && len([]rune(modelID)) >= 1 && utf16Length(modelID) <= 200 &&
-		slices.Contains([]string{"install", "uninstall", "enable", "disable", "activate"}, action)
+		slices.Contains([]string{"install", "uninstall", "enable", "disable", "activate", "cancel"}, action)
 	if !valid {
 		badRequest(w, r, "Invalid model management payload.", nil)
 		return
 	}
-	op, err := s.runManagement(modelID, action)
+	var op *mgmtOperation
+	if action == "cancel" {
+		op, err = s.stopInstall(modelID)
+	} else {
+		op, err = s.runManagement(modelID, action)
+	}
 	if err != nil {
 		var me *mgmtError
 		if !errors.As(err, &me) {
