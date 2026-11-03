@@ -86,7 +86,7 @@ func TestLabImageRun(t *testing.T) {
 	if page := get(u, "/app/studio/speech").Body.String(); strings.Contains(page, `<li id="run-run_1"`) {
 		t.Error("an image result in the Speech tray")
 	}
-	if page := get(u, "/app/studio").Body.String(); !strings.Contains(page, `class="studio-tile" aria-label="Image: a paper boat"`) || strings.Contains(page, "run_c") {
+	if page := get(u, "/app/studio").Body.String(); !strings.Contains(page, `<a href="/app/studio/image#run-run_1" class="studio-tile">`) || strings.Contains(page, "run_c") {
 		t.Errorf("recent: %s", page)
 	}
 	// Interrupted: Try again puts the whole prompt back.
@@ -162,19 +162,24 @@ func TestStudioLanding(t *testing.T) {
 	cat, _ := catalog.Load("")
 	cfg := &store.Config{Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
-	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "inference:image", "inference:speech", "inference:video"}}
+	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: []string{"models:read", "models:manage", "inference:image", "inference:speech", "inference:video"}}
 	call := func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
 		return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
 	}
 	// Selected by default but not on disk is not usable: a fresh install starts like this.
 	fresh := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: t.TempDir(), Call: call})
-	if page := mainRe.FindString(get(fresh, "/app/studio").Body.String()); !strings.Contains(page, `<a href="/app/models/get?filter=images" class="studio-card">`) {
-		t.Errorf("a selected model with no files reads as ready: %s", page)
+	if page := mainRe.FindString(get(fresh, "/app/studio").Body.String()); !strings.Contains(page, `<a href="/app/models/get?filter=images" class="studio-card">`) ||
+		!strings.Contains(page, "Studio needs a model") || !strings.Contains(page, `<span class="sr-only">Needs a model</span>`) || strings.Contains(page, `<span class="tool-state">Needs a model`) {
+		t.Errorf("a selected model with no files reads as ready, or nothing says so once: %s", page)
+	}
+	// And its page says the same: no prompt for a model that isn't there, and a way to get one.
+	if page := mainRe.FindString(get(fresh, "/app/studio/image").Body.String()); !strings.Contains(page, "No picture model yet") || !strings.Contains(page, "/app/models/get?filter=images") || strings.Contains(page, `class="lab-dock"`) {
+		t.Errorf("the image page offers a model that isn't on disk: %s", page)
 	}
 	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: call})
 	main := mainRe.FindString(get(u, "/app/studio").Body.String())
 	for _, want := range []string{`<h1 id="studio-title" class="page-title">Studio</h1>`, `<a href="/app/studio/image" class="studio-card">`,
-		`<a href="/app/models/get?filter=speech" class="studio-card">`, "Needs a model", "Not on your account", "What you make stays here"} {
+		`<a href="/app/models/get?filter=speech" class="studio-card">`, `<span class="tool-state">Needs a model</span>`, "Not on your account", "What you make stays here"} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -182,10 +187,43 @@ func TestStudioLanding(t *testing.T) {
 	if strings.Contains(main, `href="/app/studio/transcribe"`) {
 		t.Error("a tool the account may not use is a link")
 	}
+	if strings.Contains(main, "Studio needs a model") || strings.Contains(main, `id="recent-title"`) {
+		t.Errorf("one tool works, so no banner, and nothing made yet, so no Recent: %s", main)
+	}
+	// Someone who can't add models isn't sent to a page they can't use.
+	p.Permissions = []string{"models:read", "inference:image", "inference:speech"}
+	ask := mainRe.FindString(get(fresh, "/app/studio").Body.String())
+	if !strings.Contains(ask, "No models here yet") || strings.Contains(ask, "/app/models/get") {
+		t.Errorf("without models:manage: %s", ask)
+	}
+	if page := mainRe.FindString(get(fresh, "/app/studio/image").Body.String()); !strings.Contains(page, "Ask whoever runs this computer") || strings.Contains(page, "/app/models/get") {
+		t.Errorf("a tool's page, without models:manage: %s", page)
+	}
+	p.Permissions = []string{"models:read", "models:manage", "inference:image", "inference:speech", "inference:video"}
 	// A tool without a model has no prompt or examples, only the way to get one.
 	tool := mainRe.FindString(get(u, "/app/studio/speech").Body.String())
 	if !strings.Contains(tool, "No speech model yet") || strings.Contains(tool, "data-lab-empty") || strings.Contains(tool, `class="lab-dock"`) {
 		t.Errorf("speech without a model: %s", tool)
+	}
+}
+
+// While a result is being made its tile asks after itself and says how it stands in words,
+// and once it is done it stops asking. A result that has gone answers with nothing, so the tile
+// leaves the strip.
+func TestStudioTile(t *testing.T) {
+	f := &fakeRuns{status: "in_progress"}
+	u := New(Deps{NoAuth: true, Call: f.call})
+	active := get(u, "/app/studio/tile/run_1").Body.String()
+	if !strings.Contains(active, `hx-get="/app/studio/tile/run_1"`) || !strings.Contains(active, "Making the image") || !strings.Contains(active, `href="/app/studio/image#run-run_1"`) {
+		t.Errorf("active: %s", active)
+	}
+	f.status = "completed"
+	done := get(u, "/app/studio/tile/run_1").Body.String()
+	if strings.Contains(done, "hx-get") || !strings.Contains(done, "data-result-img") {
+		t.Errorf("done: %s", done)
+	}
+	if gone := get(u, "/app/studio/tile/nope"); gone.Code != http.StatusOK || strings.TrimSpace(gone.Body.String()) != "" {
+		t.Errorf("gone: %d %s", gone.Code, gone.Body.String())
 	}
 }
 
@@ -349,9 +387,9 @@ func TestDecisionsPage(t *testing.T) {
 	cat, _ := catalog.Load("")
 	cfg := &store.Config{Selected: map[string][]string{"llm": {"qwen3.5-4b-q4_k_m", "clef-flash-q4_k_m"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
-	perms := []string{"models:read", "inference:decision"}
+	perms := []string{"models:read", "models:manage", "inference:decision"}
 	p := &auth.Principal{Kind: "browser-session", ID: "u", Permissions: perms}
-	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm,
+	u := New(Deps{SignInEnabled: true, Principal: func(*http.Request) *auth.Principal { return p }, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "qwen3.5-4b-q4_k_m", "clef-flash-q4_k_m"),
 		Call: func(context.Context, *auth.Principal, string, string, string, []byte) APIResult {
 			return APIResult{Status: 200, Body: []byte(`{"data":[]}`)}
 		}})
