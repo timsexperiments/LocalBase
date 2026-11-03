@@ -22,7 +22,7 @@ Reserve a number in this table before using it. The next free number is §37.
 | §33 | Upgrade | Features | not yet |
 | §34 | Backup and restore | Features | not yet |
 | §35 | Embeddings search contract, for the UI | Features | not yet |
-| §36 | Threat model and root permissions | Security | not yet |
+| §36 | Threat model and root permissions | Security | #538 |
 
 ## 1. Goals and non-goals
 
