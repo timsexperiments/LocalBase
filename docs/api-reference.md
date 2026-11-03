@@ -32,18 +32,18 @@ Text to speech.
 **Responses:**
 
 - `200`: Audio. A long text can be cut at the runtime's limit, and then `X-Localbase-Audio-Truncated: true` says so.
-- `400`: The request is invalid (`validation_failed` and more specific codes).
+- `400`: The request is invalid: `validation_failed` and more specific codes, or `voice_not_supported` when this model can't use that voice.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/audio/transcriptions`
 
@@ -71,14 +71,14 @@ Speech to text.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/audio/translations`
 
@@ -106,14 +106,14 @@ Speech to English text.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/chat/completions`
 
@@ -147,17 +147,17 @@ A content part carries its content: one that names an address answers 400 `remot
 **Responses:**
 
 - `200`: A completion, or with `stream: true` server-sent events ending in `data: [DONE]`.
-- `400`: The request is invalid (`validation_failed` and more specific codes).
+- `400`: The request is invalid: `validation_failed` and more specific codes, `context_length_exceeded` when the input is more than one slot of the model's context can hold, or `remote_media_not_allowed` when a content part names a web address.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
-- `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `502`: The backend failed or answered something unusable (`upstream_error`), or a finished reply didn't match the requested JSON Schema (`structured_output_validation_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/embeddings`
 
@@ -178,17 +178,17 @@ Embeddings.
 **Responses:**
 
 - `200`: The vectors.
-- `400`: The request is invalid (`validation_failed` and more specific codes).
+- `400`: The request is invalid: `validation_failed` and more specific codes, or `context_length_exceeded` when the input is more than one slot of the model's context can hold.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/images/edits`
 
@@ -215,14 +215,14 @@ Image to image.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/images/generations`
 
@@ -255,14 +255,14 @@ Text to image.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/systemone`
 
@@ -289,14 +289,14 @@ A LocalBase route for decision models: classification, scoring and yes/no in one
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: The model lacks the projector for the files sent.
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /v1/videos`
 
@@ -333,14 +333,14 @@ Answers 202 with the job. A job that cannot fit fails with `insufficient_memory`
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
-- `429`: The queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
+- `429`: A video job is already running (`video_job_busy`), or the queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /v1/videos/{job_id}`
 
@@ -356,11 +356,11 @@ A job's state.
 
 **Responses:**
 
-- `200`: The job.
+- `200`: The job. A failed job's `error.code` is `video_generation_failed`, or says why it couldn't run: `insufficient_memory`, `model_install_consent_required`, `model_hardware_ineligible` or `experimental_model_not_allowed`.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `404`: No such job (`video_job_not_found`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ### `DELETE /v1/videos/{job_id}`
 
@@ -398,8 +398,8 @@ Cancel a job.
 - `200`: The job, as it now stands.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `404`: No such job (`video_job_not_found`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ### `GET /v1/videos/{job_id}/content`
 
@@ -418,8 +418,8 @@ A finished job's video.
 - `200`: The video.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `404`: No such job (`video_job_not_found`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ## Models
 
@@ -436,7 +436,7 @@ List the models this key may use.
 - `200`: Per kind: the active model and the selected ones, filtered to what this key may invoke.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ### `GET /v1/models/{model}`
 
@@ -456,7 +456,7 @@ Read one model.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ## Health
 
@@ -469,7 +469,7 @@ Liveness.
 **Responses:**
 
 - `200`: The process is up.
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `503`: The gateway is stopping.
 
 ### `HEAD /health`
@@ -488,7 +488,7 @@ Whether any modality can admit a request.
 **Responses:**
 
 - `200`: Some modality admits requests.
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `503`: Nothing can admit a request now.
 
 ### `HEAD /health/ready`
@@ -510,7 +510,7 @@ The same static text on every gateway, except for `info.version`. It holds nothi
 
 - `200`: The OpenAPI document.
 - `304`: Unchanged (`If-None-Match`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 
 ### `HEAD /openapi.json`
 
@@ -538,8 +538,8 @@ Ids, origins and header names. Header values never leave the credential file.
 - `200`: The profiles.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/backends`
 
@@ -552,8 +552,8 @@ The registered backends, and this device.
 - `200`: Every backend and how it stands here.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/default-chat-models`
 
@@ -566,8 +566,8 @@ The default chat models, and the one in force.
 - `200`: The list and the effective choice.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/default-chat-models`
 
@@ -589,8 +589,8 @@ One id makes that model the active one. Each must be an enabled chat model.
 - `400`: Invalid (`validation_failed`), or a model does not qualify (`invalid_request`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/hf-token`
 
@@ -603,8 +603,8 @@ Whether a Hugging Face token is set.
 - `200`: The status.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/hf-token`
 
@@ -625,10 +625,10 @@ Save, clear or check the Hugging Face token.
 - `400`: Invalid (`validation_failed`), or the Hub rejected the token (`hf_token_invalid`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: `validate`: no token is saved or set (`hf_token_missing`).
 - `413`: The body is over this route's limit.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/model-backend`
 
@@ -648,8 +648,8 @@ What runs a model here.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/model-backend`
 
@@ -669,10 +669,10 @@ Choose a model's backend, or go back to automatic.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
 - `499`: The client went away while sending the body (`request_aborted`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/model-discovery`
 
@@ -694,11 +694,11 @@ Search the Hugging Face Hub, preview a repository, add one or install a recipe.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: Not in this catalog (`model_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: A built-in or remote entry owns that id (`catalog_conflict`).
 - `413`: The body is over this route's limit.
 - `502`: The Hub could not be reached or answered badly (`hub_unavailable`, `hub_auth_required`, `hub_rate_limited`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/model-imports`
 
@@ -718,8 +718,8 @@ An import's progress.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No import with that id (`import_not_found`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/model-imports`
 
@@ -740,12 +740,15 @@ Cancelling differs from cancelling an install, on purpose. An import is identifi
 - `202`: `start`: the import is running.
 - `400`: Invalid. A body that is not JSON answers in the management shape (`validation_failed`). Anything else answers in the OpenAI envelope: `validation_failed`, `import_unresolved`, `import_choose_file`, `custom_source_unconfirmed` or `import_task_required`.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
-- `403`: The key lacks the permission this route needs (`insufficient_permissions`).
+- `403`: The key lacks the permission (`insufficient_permissions`), or this source isn't allowed: `import_private_address`, `import_address_refused`, `import_local_path` or `import_too_many_files`.
 - `404`: `cancel`: no import with that id (`import_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: This model is already being imported (`import_running`).
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
+- `429`: Too many imports at once (`import_busy`). See `Retry-After`.
 - `499`: The client went away while sending the body (`request_aborted`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
+- `507`: Not enough free disk space for this import (`import_no_space`).
 
 ### `GET /_localbase/model-management`
 
@@ -758,8 +761,8 @@ Install state of each catalog model.
 - `200`: The models and the operation last run on each.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/model-management`
 
@@ -783,10 +786,10 @@ One install runs at a time, in the background. `GET` reports its progress.
 - `400`: Invalid (`validation_failed`), or not allowed for this model (`invalid_request`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: Not possible now: `conflict` (including a cancel with no install of this model running and no operation recorded for it), `unsafe_path`, `storage_unavailable` or `insufficient_storage`.
 - `413`: The body is over this route's limit.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/models`
 
@@ -814,8 +817,8 @@ Unknown filter values are dropped.
 - `200`: The models that match.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/models/{model_id}`
 
@@ -835,8 +838,8 @@ One catalog model.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/models/{model_id}/admission`
 
@@ -859,9 +862,9 @@ The real admission's verdict and refusal. It starts, stops and installs nothing.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/models/{model_id}/placement`
 
@@ -881,8 +884,8 @@ A model's CPU and GPU placement.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: Unknown model (`model_not_found`), or planning is off on this gateway (`route_disabled`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `PUT /_localbase/models/{model_id}/placement`
 
@@ -914,9 +917,9 @@ It applies on the next load and never restarts the model. An unknown model answe
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: Unknown model (`model_not_found`), or planning is off on this gateway (`route_disabled`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: The model is loading (`model_loading`), or this cannot fit (`placement_does_not_fit`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `DELETE /_localbase/models/{model_id}/placement`
 
@@ -938,9 +941,9 @@ It applies on the next load and never restarts the model. An unknown model answe
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: Unknown model (`model_not_found`), or planning is off on this gateway (`route_disabled`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: The model is loading (`model_loading`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/models/{model_id}/unload`
 
@@ -964,9 +967,9 @@ Requests holding the model finish first. Its queued requests are refused, and a 
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: Unknown (`model_not_found`) or not loaded (`model_not_loaded`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: Still busy: `model_busy`. The model keeps running.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ## Runs
 
@@ -985,8 +988,8 @@ Newest first, with no prompt or output text.
 - `200`: The runs.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/audio/speech`
 
@@ -1014,14 +1017,14 @@ The `/v1/audio/speech` body, at most 32 MiB, and that route's permission. It run
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/audio/transcriptions`
 
@@ -1051,14 +1054,14 @@ The `/v1/audio/transcriptions` body, at most 32 MiB, and that route's permission
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/audio/translations`
 
@@ -1088,14 +1091,14 @@ The `/v1/audio/translations` body, at most 32 MiB, and that route's permission. 
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/chat/completions`
 
@@ -1133,14 +1136,14 @@ The `/v1/chat/completions` body, at most 32 MiB, and that route's permission. It
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `499`: The client went away while sending the body. There is no body.
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/images/edits`
 
@@ -1169,14 +1172,14 @@ The `/v1/images/edits` body, at most 32 MiB, and that route's permission. It run
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/images/generations`
 
@@ -1211,14 +1214,14 @@ The `/v1/images/generations` body, at most 32 MiB, and that route's permission. 
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/v1/systemone`
 
@@ -1245,14 +1248,14 @@ The `/v1/systemone` body, at most 32 MiB, and that route's permission. It runs o
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such thing (`model_not_found`, or the route's own code).
-- `405`: Wrong method; see the `Allow` header.
-- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `409`: It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.
 - `413`: The body is over this route's limit.
 - `422`: This model can never fit on this computer, even idle (`model_too_large`). Retrying will not help.
 - `429`: Too many active runs (`too_many_runs`), or a `/v1` refusal.
 - `501`: The model lacks the projector for the files sent.
 - `502`: The backend failed or answered something unusable (`upstream_error`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/runs/{run_id}`
 
@@ -1272,8 +1275,8 @@ A run, with its output so far.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `DELETE /_localbase/runs/{run_id}`
 
@@ -1295,8 +1298,8 @@ Stops it if active, then deletes it and its checkpoint.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/runs/{run_id}/cancel`
 
@@ -1318,8 +1321,8 @@ The only thing that cancels a run. Stopping a finished run changes nothing.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/runs/{run_id}/events`
 
@@ -1340,11 +1343,12 @@ Everything after `Last-Event-ID` or `after`, then live, until the `end` event. E
 **Responses:**
 
 - `200`: Server-sent events.
+- `400`: The event cursor isn't a whole number, 0 or more (`invalid_event_cursor`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/runs/{run_id}/result`
 
@@ -1364,9 +1368,9 @@ A completed media run's result.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: A `--no-auth` gateway refused the request (`no_auth_request_refused`). Any authenticated caller is otherwise admitted.
 - `404`: No such run (`run_not_found`). Another caller's run answers the same, and this comes before the method is checked.
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: No result to fetch: not completed, not a media run, or the gateway restarted (`run_result_unavailable`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ## Access
 
@@ -1382,9 +1386,9 @@ Browser access settings, policy and users.
 
 - `200`: Everything, without secrets.
 - `401`: The key is missing or not accepted (`invalid_api_key`).
-- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
+- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
 - `405`: Wrong method. There is no body; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/access-management`
 
@@ -1418,16 +1422,16 @@ Change browser access, a policy or a user.
 
 - `200`: The action's answer.
 - `201`: `invite-user`.
-- `400`: The request is invalid: `validation_failed` or `role_not_found`.
+- `400`: The request is invalid: `validation_failed`, `role_not_found`, or a binding with no sign-in provider or an unknown one (`issuer_required`, `issuer_unknown`).
 - `401`: The key is missing or not accepted (`invalid_api_key`).
-- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
+- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
 - `404`: Not found: `registration_not_found` or `managed_user_not_found`.
 - `405`: Wrong method. There is no body; see the `Allow` header.
 - `409`: Not possible now: `provider_not_configured`, `policy_not_configured`, `email_delivery_not_configured`, `email_delivery_in_use`, `managed_user_exists`, `policy_conflict`, `policy_revision_conflict` or `would_lock_out_admins`.
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
 - `499`: The client went away while sending the body (`request_aborted`).
 - `502`: The email could not be sent (`email_delivery_failed`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/local-sessions`
 
@@ -1440,8 +1444,8 @@ Local sign-in sessions.
 - `200`: Live sessions, most recently used first. Never a token.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/local-sessions`
 
@@ -1460,8 +1464,8 @@ End one local session, or all of them.
 - `400`: The request is invalid (`validation_failed` and more specific codes).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ## Keys
 
@@ -1477,9 +1481,9 @@ List API keys.
 
 - `200`: The keys.
 - `401`: The key is missing or not accepted (`invalid_api_key`).
-- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
+- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
 - `405`: Wrong method. There is no body; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/api-keys`
 
@@ -1501,13 +1505,13 @@ You can't revoke the key you are using or remove `access:manage` from it, and th
 - `201`: `create`.
 - `400`: The request is invalid (`validation_failed`).
 - `401`: The key is missing or not accepted (`invalid_api_key`).
-- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
+- `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
 - `404`: No such key (`key_not_found`).
 - `405`: Wrong method. There is no body; see the `Allow` header.
 - `409`: This would lock someone out (`would_lock_out_admins`).
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
 - `499`: The client went away while sending the body (`request_aborted`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ## Host
 
@@ -1531,8 +1535,8 @@ Name this computer.
 - `400`: The request is invalid (`validation_failed` and more specific codes).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/host`
 
@@ -1547,8 +1551,8 @@ Read-only, and it starts nothing. Figures come from one shared sample a second.
 - `200`: The memory and activity figures.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/update`
 
@@ -1563,7 +1567,7 @@ Reads what is stored, and makes no request. The check is off by default.
 - `200`: What is stored.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
 
 ### `POST /_localbase/update`
@@ -1587,10 +1591,10 @@ Turn the daily check on or off.
 - `400`: The request is invalid (`validation_failed` and more specific codes).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `413`: The body is over this route's limit.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/usage`
 
@@ -1619,9 +1623,9 @@ Any authenticated caller sees its own usage. Asking for `scope=all`, or naming a
 - `400`: The request is invalid (`validation_failed` and more specific codes).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/usage`
 
@@ -1643,10 +1647,10 @@ Clear the totals, or change retention or recording.
 - `400`: The request is invalid (`validation_failed` and more specific codes).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `413`: The body is over this route's limit.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ## Voices
 
@@ -1663,9 +1667,9 @@ Custom voices, limits and the consent statement.
 - `200`: The voices.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `POST /_localbase/voices`
 
@@ -1687,12 +1691,12 @@ Add a voice from a reference recording.
 - `400`: Invalid: `validation_failed`, `invalid_voice_name`, `consent_required`, `unsupported_audio_format`, `audio_too_short`, `audio_too_long` or `audio_silent`.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: `voice_name_taken` or `voice_limit_reached`.
 - `413`: Over the upload limit (`audio_too_large`).
 - `415`: Not multipart form data (`unsupported_media_type`).
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/voices/{voice_id}`
 
@@ -1712,9 +1716,9 @@ One voice.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such voice (`voice_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `PATCH /_localbase/voices/{voice_id}`
 
@@ -1741,11 +1745,11 @@ Rename a voice.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such voice (`voice_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `409`: Another voice uses that name (`voice_name_taken`).
 - `413`: The body is over this route's limit.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `DELETE /_localbase/voices/{voice_id}`
 
@@ -1765,9 +1769,9 @@ Delete a voice and its recording.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such voice (`voice_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
 
 ### `GET /_localbase/voices/{voice_id}/audio`
 
@@ -1789,6 +1793,111 @@ A recording of a person, so only managers can replay it. A file that no longer m
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `404`: No such voice (`voice_not_found`).
-- `405`: Wrong method; see the `Allow` header.
+- `405`: Wrong method (`method_not_allowed`); see the `Allow` header.
 - `501`: This modality is not enabled on this gateway (`route_disabled`).
-- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
+- `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).
+
+## Error codes
+
+Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status. Two can answer any route: `request_timeout` (408), when a request's body stops arriving, and `too_busy` (503), when there are too many open connections.
+
+- `audio_silent`
+- `audio_too_large`
+- `audio_too_long`
+- `audio_too_short`
+- `backend_not_selected`
+- `backend_startup_failed`
+- `backend_unavailable`
+- `catalog_conflict`
+- `conflict`
+- `consent_required`
+- `context_length_exceeded`
+- `custom_source_unconfirmed`
+- `email_delivery_failed`
+- `email_delivery_in_use`
+- `email_delivery_not_configured`
+- `exceeds_caller_expiry`
+- `exceeds_caller_permissions`
+- `experimental_model_not_allowed`
+- `hf_token_invalid`
+- `hf_token_missing`
+- `hub_auth_required`
+- `hub_rate_limited`
+- `hub_rejected`
+- `hub_unavailable`
+- `import_address_refused`
+- `import_busy`
+- `import_cancelled`
+- `import_choose_file`
+- `import_local_path`
+- `import_no_space`
+- `import_not_found`
+- `import_private_address`
+- `import_running`
+- `import_task_required`
+- `import_timed_out`
+- `import_too_large`
+- `import_too_many_files`
+- `import_unresolved`
+- `inference_queue_full`
+- `inference_queue_timeout`
+- `insufficient_memory`
+- `insufficient_permissions`
+- `insufficient_storage`
+- `invalid_api_key`
+- `invalid_event_cursor`
+- `invalid_request`
+- `invalid_voice_name`
+- `issuer_required`
+- `issuer_unknown`
+- `key_not_found`
+- `managed_user_exists`
+- `managed_user_not_found`
+- `method_not_allowed`
+- `model_assets_missing`
+- `model_busy`
+- `model_hardware_ineligible`
+- `model_install_consent_required`
+- `model_loading`
+- `model_not_found`
+- `model_not_loaded`
+- `model_too_large`
+- `model_unloading`
+- `no_auth_request_refused`
+- `no_recipe`
+- `payload_too_large`
+- `placement_does_not_fit`
+- `placement_mismatch`
+- `placement_unsupported`
+- `policy_conflict`
+- `policy_not_configured`
+- `policy_revision_conflict`
+- `provider_not_configured`
+- `registration_not_found`
+- `remote_media_not_allowed`
+- `request_aborted`
+- `request_timeout`
+- `role_not_found`
+- `route_disabled`
+- `run_not_found`
+- `run_result_unavailable`
+- `service_unavailable`
+- `storage_unavailable`
+- `structured_output_validation_failed`
+- `too_busy`
+- `too_many_runs`
+- `ui_access_denied`
+- `unsafe_path`
+- `unsupported_audio_format`
+- `unsupported_media_type`
+- `unsupported_model_capability`
+- `upstream_error`
+- `validation_failed`
+- `video_generation_failed`
+- `video_job_busy`
+- `video_job_not_found`
+- `voice_limit_reached`
+- `voice_name_taken`
+- `voice_not_found`
+- `voice_not_supported`
+- `would_lock_out_admins`
