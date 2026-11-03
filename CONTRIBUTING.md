@@ -109,6 +109,7 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./contract -run TestServeForUI -args -
 - **Contract tests** in `go/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `fsguard_test.go`, and `TestNoUnguardedWrites` enforces that.
 - **Differential tests** compare the Go and TypeScript gateways with `-impl=both`. They need Bun and `LOCALBASE_CONTRACT_MODELS`.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
+- **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
 - **Goldens** in `testdata/` are generated from the TypeScript code by `go/tools/golden/`. Don't edit them by hand.
 
 ## Community
