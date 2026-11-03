@@ -101,9 +101,9 @@ func TestAccessLockout(t *testing.T) {
 	}
 }
 
-// API keys with access:manage are managing principals too: a key can't
-// revoke itself or drop its own access:manage, and nobody may revoke or
-// rescope the last one when no person can manage access.
+// API keys with access:manage are managing principals too: a key can't drop its own
+// access:manage, and nobody may revoke, rescope or rotate away the last one when no
+// person can manage access. A key can revoke itself while another manager remains.
 func TestKeyLockout(t *testing.T) {
 	r, err := root.Init(t.TempDir())
 	if err != nil {
@@ -117,7 +117,8 @@ func TestKeyLockout(t *testing.T) {
 	s := New(&Server{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))})
 	k1, _, _ := st.CreateAPIKey(context.Background(), "one", []string{"keys:manage", "access:manage"})
 	k2, _, _ := st.CreateAPIKey(context.Background(), "two", []string{"keys:manage", "access:manage"})
-	plain, _, _ := st.CreateAPIKey(context.Background(), "plain", []string{"inference:chat"})
+	plain, _, _ := st.CreateAPIKey(context.Background(), "plain", []string{"keys:manage"})
+	spare, _, _ := st.CreateAPIKey(context.Background(), "spare", []string{"keys:manage", "access:manage"})
 	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	asKey := func(id string) *auth.Principal {
 		return &auth.Principal{Kind: "api-key", ID: id, Permissions: auth.Permissions}
@@ -129,12 +130,14 @@ func TestKeyLockout(t *testing.T) {
 			t.Fatalf("%s: %d %s, want %d", body, res.Status, res.Body, status)
 		}
 	}
-	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409)
+	expect(asKey(spare.ID), `{"action":"revoke","keyId":"`+spare.ID+`"}`, 200) // k1 and k2 still manage
 	expect(asKey(k1.ID), `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage"]}`, 409)
 	expect(asKey(k1.ID), `{"action":"rotate","keyId":"`+k1.ID+`"}`, 200) // rotating your own key is fine
 	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+plain.ID+`"}`, 200)
 	expect(host, `{"action":"revoke","keyId":"`+k2.ID+`"}`, 200) // k1 still manages
 	expect(host, `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage"]}`, 409)
 	expect(host, `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409)
+	expect(host, `{"action":"rotate","keyId":"`+k1.ID+`"}`, 409)
+	expect(asKey(k1.ID), `{"action":"revoke","keyId":"`+k1.ID+`"}`, 409) // itself, the last manager
 	expect(host, `{"action":"set-scopes","keyId":"`+k1.ID+`","scopes":["keys:manage","access:manage","models:read"]}`, 200)
 }

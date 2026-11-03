@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -62,6 +63,12 @@ type Server struct {
 	Otel *otlp.Runtime
 
 	mgmt *management
+	// adminMu is held from the checks on a change to keys or access through its write:
+	// each check reads state the other changes can alter.
+	adminMu sync.Mutex
+	// beforeAdminWrite runs after those checks, before the write (tests only).
+	beforeAdminWrite func()
+
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runManager
 	// UI handles /app and / when set.
