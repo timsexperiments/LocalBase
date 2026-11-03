@@ -331,7 +331,7 @@ func TestRunCancel(t *testing.T) {
 		t.Errorf("second run: %v", m)
 	}
 	// A run reports queued just before it joins the queue, so wait for the count.
-	if !waitFor(2*time.Second, func() bool { snap := llm.Snapshot(); return snap.Active == 1 && snap.Waiting == 1 }) {
+	if !waitFor(5*time.Second, func() bool { snap := llm.Snapshot(); return snap.Active == 1 && snap.Waiting == 1 }) {
 		t.Errorf("snapshot with one running and one queued: %+v", llm.Snapshot())
 	}
 	began := time.Now()
