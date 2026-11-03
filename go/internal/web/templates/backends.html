@@ -22,7 +22,7 @@
 <form id="backend-add" class="card mt-6 grid gap-3 p-5" hx-post="/app/backends" hx-target="#backend-add" hx-swap="outerHTML">
   <h2 class="font-bold">Add backend</h2>
   <p class="text-sm text-muted">Paste a <code>localbase.backend/v1</code> definition. It names an executable already on this machine; LocalBase starts it only for models you choose it for. Downloading a model never adds a backend.</p>
-  <textarea class="input min-h-40 font-mono text-base" name="definition" required spellcheck="false">{{.Definition}}</textarea>
+  <textarea autocomplete="off" class="input min-h-40 font-mono text-base" name="definition" required spellcheck="false">{{.Definition}}</textarea>
   {{with .AddError}}<p class="text-danger" role="alert">{{.}}</p>{{end}}
   {{with .Added}}<p role="status">Registered {{.}}.</p>{{end}}
   <button type="submit" class="btn btn-primary justify-self-start">Add backend</button>
