@@ -19,12 +19,13 @@
 #
 # Limits the operator set: qwen3-embedding-0.6b-q8_0, default reserve, ports in 28000-28499. The gateway
 # planner's exact plan is printed BEFORE any real load, from a separate scratch root with a fake
-# backend (so no peak recorded there can skew the real root), and the pass aborts if it is over 3 GiB.
-# At least 45% free to start, 40% floor throughout (free + speculative + inactive pages).
+# backend (so no peak recorded there can skew the real root), and the pass aborts if it is over 3.5 GiB.
+# At least 46% free to start, 40% floor throughout (free + speculative + inactive pages).
 #
-# THE PLANNER'S DEFAULT FOR THIS MODEL IS OVER THAT LIMIT: 4 slots at context 32768, 3298 MiB planned.
-# So this runs 2 slots at context 16384. Each slot has the same 8192 tokens as the default, so what
-# one input can hold should not change, but memory and batch timing are not the default's.
+# THIS RUNS 2 SLOTS AT CONTEXT 16384, not the planner's default of 4 slots at context 32768, whose plan
+# on the real file was not measured. Each slot has the same 8192 tokens as the default, so what one
+# input can hold should not change, but memory and batch timing are not the default's. On the real
+# file, 2 slots at 16384 plan 3261 MiB (derived).
 #
 # Adapted from Reliability's tools/real-memory-check.sh.
 # This script deletes nothing. It prints the paths to delete afterwards.
@@ -57,8 +58,8 @@ RESULTS=$W/results.json
 MODEL_ID=qwen3-embedding-0.6b-q8_0
 GW=28410 LLM=28411
 CTX=16384 SLOTS=2
-PLAN_LIMIT_MIB=3072 # 3 GiB
-START_PCT=45
+PLAN_LIMIT_MIB=3584 # 3.5 GiB
+START_PCT=46
 FLOOR_PCT=40
 HARD_SECONDS=900
 LIVE=http://127.0.0.1:2273/health
