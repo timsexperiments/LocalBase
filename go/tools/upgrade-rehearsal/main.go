@@ -11,9 +11,7 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -66,9 +64,9 @@ const (
 var ports = []int{gatewayPort, llmPort, sttPort, releasePort}
 
 // portSet is where the scratch root's gateway and backends listen.
-type portSet struct{ gateway, llm, stt int }
+type portSet struct{ gateway, llm, stt, release int }
 
-var rehearsalPorts = portSet{gatewayPort, llmPort, sttPort}
+var rehearsalPorts = portSet{gatewayPort, llmPort, sttPort, releasePort}
 
 // identity is what a rehearsal would touch, and what it must never touch.
 type identity struct {
@@ -219,7 +217,8 @@ func sameLive(a, b map[string]liveState) string {
 // --- the kit: binaries and signed releases ------------------------------------------------------
 
 func goBuild(goos, goarch, ldflags, out, pkg string) error {
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-ldflags", ldflags, "-o", out, pkg)
+	// The flags scripts/release/build.sh uses.
+	cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags", "-s -w "+ldflags, "-o", out, pkg)
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build %s: %w\n%s", pkg, err, b)
@@ -227,49 +226,77 @@ func goBuild(goos, goarch, ldflags, out, pkg string) error {
 	return nil
 }
 
-func packTarGz(name string, body []byte) ([]byte, error) {
-	var b bytes.Buffer
-	gz := gzip.NewWriter(&b)
-	tw := tar.NewWriter(gz)
-	if err := tw.WriteHeader(&tar.Header{Name: "./" + name, Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(body))}); err != nil {
-		return nil, err
+// packRelease archives a binary the way scripts/release/build.sh does: the binary named for its
+// target beside the license files, zip on macOS and tar.gz elsewhere, with the same two tools.
+// TestReleaseScriptMatches holds this against the real script.
+func packRelease(archive, binary, goos, goarch string) error {
+	staging, err := os.MkdirTemp("", "lbur-package-")
+	if err != nil {
+		return err
 	}
-	if _, err := tw.Write(body); err != nil {
-		return nil, err
-	}
-	if err := tw.Close(); err != nil {
-		return nil, err
-	}
-	if err := gz.Close(); err != nil {
-		return nil, err
-	}
-	return b.Bytes(), nil
-}
-
-// publish writes what a release has, signed the way a real one is.
-func publish(kit, version, binary, goos, goarch string, priv ed25519.PrivateKey) error {
+	defer os.RemoveAll(staging)
 	body, err := os.ReadFile(binary)
 	if err != nil {
 		return err
 	}
-	archive, name := upgrade.AssetArchive(goos, goarch), upgrade.AssetBinary(goos, goarch)
-	packed, err := packTarGz(name, body)
+	name := upgrade.AssetBinary(goos, goarch)
+	if err := os.WriteFile(filepath.Join(staging, name), body, 0o755); err != nil {
+		return err
+	}
+	names := []string{"./" + name}
+	for _, extra := range []string{"LICENSE", "README.md", "THIRD_PARTY_NOTICES.txt"} {
+		if err := os.WriteFile(filepath.Join(staging, extra), []byte("A rehearsal placeholder.\n"), 0o644); err != nil {
+			return err
+		}
+		names = append(names, "./"+extra)
+	}
+	var cmd *exec.Cmd
+	if strings.HasSuffix(archive, ".zip") {
+		cmd = exec.Command("zip", append([]string{"-qX", archive}, names...)...)
+	} else {
+		cmd = exec.Command("tar", append([]string{"-czf", archive}, names...)...)
+		cmd.Env = append(os.Environ(), "COPYFILE_DISABLE=1")
+	}
+	cmd.Dir = staging
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %w\n%s", cmd.Args[0], err, out)
+	}
+	return nil
+}
+
+// publish writes what a release has, signed the way a real one is.
+func publish(kit, version, binary, goos, goarch string, priv ed25519.PrivateKey) error {
+	archive := upgrade.AssetArchive(goos, goarch)
+	if archive == "" {
+		return fmt.Errorf("there is no release for %s/%s", goos, goarch)
+	}
+	dir, err := filepath.Abs(filepath.Join(kit, "releases", "v"+version))
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, archive)
+	if err := packRelease(path, binary, goos, goarch); err != nil {
+		return err
+	}
+	packed, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(packed)
 	checks := []byte(hex.EncodeToString(sum[:]) + "  " + archive + "\n")
-	sig := []byte(keyID + " " + base64.StdEncoding.EncodeToString(ed25519.Sign(priv, checks)) + "\n")
-	dir := filepath.Join(kit, "releases", "v"+version)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	for file, data := range map[string][]byte{archive: packed, "checksums.txt": checks, "checksums.txt.sig": sig} {
+	for file, data := range map[string][]byte{"checksums.txt": checks, "checksums.txt.sig": signature(priv, checks)} {
 		if err := os.WriteFile(filepath.Join(dir, file), data, 0o600); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func signature(priv ed25519.PrivateKey, checks []byte) []byte {
+	return []byte(keyID + " " + base64.StdEncoding.EncodeToString(ed25519.Sign(priv, checks)) + "\n")
 }
 
 // brokenBinary passes every check a download gets, and then cannot restart anything.
@@ -309,8 +336,8 @@ func buildKit(kit, goos, goarch string) error {
 }
 
 // serveReleases answers the check, and serves the kit's files by tag.
-func serveReleases(kit string, latest *string) (*http.Server, error) {
-	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(releasePort)))
+func serveReleases(kit string, latest *string, port int) (*http.Server, error) {
+	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +418,7 @@ func (d *drill) env() []string {
 		}
 		out = append(out, kv)
 	}
-	base := "http://127.0.0.1:" + strconv.Itoa(releasePort)
+	base := "http://127.0.0.1:" + strconv.Itoa(d.ports.release)
 	return append(out, "LOCALBASE_RELEASE_URL="+base+"/files", "LOCALBASE_RELEASE_API_URL="+base+"/latest")
 }
 
@@ -779,7 +806,7 @@ func mainCode() int {
 			return 1
 		}
 	}
-	srv, err := serveReleases(d.kit, &d.latest)
+	srv, err := serveReleases(d.kit, &d.latest, d.ports.release)
 	if err != nil {
 		remove(id.work, m, id)
 		fmt.Fprintln(os.Stderr, "upgrade-rehearsal:", err)
