@@ -1271,6 +1271,12 @@ Deliberate status changes to verify against the live clients at cutover:
       another LLM before disabling the default."
     `TestFreshRootFirstInstall` and `TestFreshRootCLIInstall` run this on a root
     with nothing seeded. No response shape changed.
+12. **A policy no one could manage access under** (operator, 2026-11-02). It is refused on
+    both, as lockout prevention. Go says so in plain words: "This policy would lock
+    everyone out: at least one person it names must be able to manage access." TS's CLI says
+    "At least one reachable role must grant access:manage.", and its API, which Admin
+    shows, only "The management request is invalid." Status and code are unchanged.
+    `TestPolicyLockoutMessage` pins the wording on both.
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
