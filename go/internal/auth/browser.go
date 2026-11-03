@@ -369,8 +369,12 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 	_, given := r.URL.Query()["provider"]
 	if !given && len(regs) > 1 {
 		var links strings.Builder
+		carry := ""
+		if r.URL.Query().Get("switch") == "1" {
+			carry = "&switch=1" // survives choosing a provider
+		}
 		for _, reg := range regs {
-			fmt.Fprintf(&links, `<a href="/app/login?provider=%s">%s</a>`, url.QueryEscape(reg.ID), html.EscapeString(reg.Name))
+			fmt.Fprintf(&links, `<a href="/app/login?provider=%s%s">%s</a>`, url.QueryEscape(reg.ID), carry, html.EscapeString(reg.Name))
 		}
 		page(w, "<h1>Sign in to LocalBase</h1><nav>"+links.String()+"</nav>",
 			"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", "no-referrer")
@@ -410,6 +414,12 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 		"redirect_uri": b.Config.Origin + OIDCCallbackPath, "scope": "openid profile email", "state": state, "nonce": nonce,
 		"code_challenge": s256(verifier), "code_challenge_method": "S256"} {
 		q.Set(k, v)
+	}
+	// "Use another account": only this request asks for the provider's chooser, so
+	// normal sign-in is not one tap longer, and a provider that rejects it can only
+	// affect this recovery path.
+	if r.URL.Query().Get("switch") == "1" {
+		q.Set("prompt", "select_account")
 	}
 	authz.RawQuery = q.Encode()
 	redirect(w, authz.String(), secureCookie(loginStateCookie, state, int(loginStateTTL/time.Second)))
