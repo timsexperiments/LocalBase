@@ -1722,7 +1722,7 @@
       },
       "post": {
         "operationId": "changeModelManagement",
-        "summary": "Install, uninstall, enable, disable or activate a model",
+        "summary": "Install, uninstall, enable, disable or activate a model, or cancel its install",
         "tags": ["Model management"],
         "description": "One install runs at a time, in the background. `GET` reports its progress.",
         "x-localbase-permission": "models:manage",
@@ -1735,7 +1735,7 @@
                 "type": "object",
                 "properties": {
                   "modelId": {"type": "string", "minLength": 1, "maxLength": 200},
-                  "action": {"type": "string", "enum": ["install", "uninstall", "enable", "disable", "activate"]}
+                  "action": {"type": "string", "enum": ["install", "uninstall", "enable", "disable", "activate", "cancel"]}
                 },
                 "required": ["modelId", "action"],
                 "additionalProperties": false
@@ -1746,11 +1746,11 @@
         },
         "responses": {
           "200": {
-            "description": "Done.",
+            "description": "Done. A cancelled install answers here with state `cancelled`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelOperation"}}}
           },
           "202": {
-            "description": "An install was accepted and is running.",
+            "description": "An install was accepted and is running, or a cancel has not finished after 5 s, so its state is still `running`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelOperation"}}}
           },
           "400": {
@@ -1758,7 +1758,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "409": {
-            "description": "Not possible now: `conflict`, `unsafe_path`, `storage_unavailable` or `insufficient_storage`.",
+            "description": "Not possible now: `conflict` (including a cancel with no install of this model running), `unsafe_path`, `storage_unavailable` or `insufficient_storage`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "413": {"$ref": "#/components/responses/TooLarge"},
@@ -5175,7 +5175,7 @@
         "type": "object",
         "properties": {
           "action": {"type": "string", "enum": ["install", "uninstall", "enable", "disable", "activate"]},
-          "state": {"type": "string", "enum": ["running", "complete", "failed"]},
+          "state": {"type": "string", "enum": ["running", "complete", "failed", "cancelled"], "description": "`cancelled` is not a failure: it has no `error`, the partial download is kept, and installing again resumes it."},
           "detail": {"type": "string"},
           "downloadedBytes": {"type": ["integer", "null"]},
           "totalBytes": {"type": ["integer", "null"]}
