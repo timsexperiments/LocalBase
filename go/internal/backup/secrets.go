@@ -198,18 +198,6 @@ func sqliteDSN(path string, query string) string {
 	return (&url.URL{Scheme: "file", Path: path, RawQuery: query}).String()
 }
 
-func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
-	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
-	return err == nil && n > 0
-}
-
-func hasTable(ctx context.Context, db *sql.DB, table string) bool {
-	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
-	return err == nil && n > 0
-}
-
 // readableDatabase says whether a database can be read without changing anything.
 func readableDatabase(ctx context.Context, path string) error {
 	db, err := openReadOnly(path)
@@ -290,8 +278,8 @@ func busyMessage(rootDir, retry string, err error) string {
 	return fmt.Sprintf("The database on %s is busy: the gateway or another command is writing to it. Nothing was changed. Try again in a moment: %s. If it keeps happening, stop the gateway first: local-base --root '%s' stop. (This was while %s.)", rootDir, retry, rootDir, step)
 }
 
-// tableExists and columnExists are for the live database, where a read can fail. hasTable and
-// hasColumn read a failure as "no", which is only safe on a private copy.
+// tableExists and columnExists say so when they can't tell. An answer of "no" on a failed read once
+// made a busy database look like one with no migrations, no models and no revocations.
 func tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
 	var n int
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
@@ -372,15 +360,14 @@ func presentRows(ctx context.Context, dbPath string) ([]string, error) {
 	return out, nil
 }
 
-// selectedModels are the ids a restored root would want installed. It reads through the store,
-// and an older database that can't be read that way simply lists none.
+// selectedModels are the ids a restored root would want installed. It reads through the store. An
+// older database that can't be read that way lists none, and any other failure is a failure.
 func selectedModels(ctx context.Context, dbPath string) ([]string, error) {
-	// A database with no usable settings has no selected models. A busy one might, so it isn't that.
 	unavailable := func(err error) ([]string, error) {
-		if isBusy(err) {
-			return nil, fmt.Errorf("reading the models: %w", err)
+		if errors.Is(err, store.ErrNotConfigured) || strings.Contains(err.Error(), "no such ") {
+			return nil, nil
 		}
-		return nil, nil
+		return nil, fmt.Errorf("reading the models: %w", err)
 	}
 	st, err := store.OpenReadOnly(dbPath)
 	if err != nil {
@@ -414,14 +401,22 @@ func selectedModels(ctx context.Context, dbPath string) ([]string, error) {
 // dropRows removes what a backup and a restored root must never hold.
 func dropRows(ctx context.Context, db *sql.DB) error {
 	for _, t := range rowsLeftOut {
-		if !hasTable(ctx, db, t) {
+		present, err := tableExists(ctx, db, t)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t, err)
+		}
+		if !present {
 			continue
 		}
 		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil { //nolint:gosec // G202: t is from the constant list rowsLeftOut, and a placeholder can't name a table.
 			return fmt.Errorf("%s: %w", t, err)
 		}
 	}
-	if hasTable(ctx, db, "go_settings") {
+	settings, err := tableExists(ctx, db, "go_settings")
+	if err != nil {
+		return err
+	}
+	if settings {
 		// So that start shows a first-run link again, on a root everyone is signed out of.
 		if _, err := db.ExecContext(ctx, `DELETE FROM go_settings WHERE key = 'access.first-run-link-shown'`); err != nil {
 			return err
@@ -464,7 +459,11 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	if err := dropRows(ctx, db); err != nil {
 		return fmt.Errorf("cleaning the copy: %w", err)
 	}
-	if hasColumn(ctx, db, "config", "root") {
+	hasRoot, err := columnExists(ctx, db, "config", "root")
+	if err != nil {
+		return fmt.Errorf("cleaning the copy: %w", err)
+	}
+	if hasRoot {
 		// A backup names no path. Restore sets this to the root it restores into.
 		if _, err := db.ExecContext(ctx, `UPDATE config SET root = ''`); err != nil {
 			return fmt.Errorf("cleaning the copy: %w", err)
@@ -472,7 +471,11 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	}
 	if exclude {
 		for _, column := range []string{"hf_token", "otel_headers"} {
-			if hasColumn(ctx, db, "config", column) {
+			present, err := columnExists(ctx, db, "config", column)
+			if err != nil {
+				return fmt.Errorf("cleaning the copy: %w", err)
+			}
+			if present {
 				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil { //nolint:gosec // G202: column is from the constant list above, and a placeholder can't name a column.
 					return fmt.Errorf("cleaning the copy: %w", err)
 				}

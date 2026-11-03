@@ -1218,8 +1218,8 @@ func TestRestoreSchemaMissingTables(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer db.Close()
-			if !hasTable(context.Background(), db, table) {
-				t.Errorf("opening it should have made %s", table)
+			if present, err := tableExists(context.Background(), db, table); err != nil || !present {
+				t.Errorf("opening it should have made %s: %v", table, err)
 			}
 		})
 	}
