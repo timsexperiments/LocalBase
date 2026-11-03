@@ -52,7 +52,7 @@ func TestImportOptInFromTheCLI(t *testing.T) {
 		t.Fatalf("the setting stayed on: %s", r.stdout)
 	}
 	// The metadata range stays refused, however the opt-in is given.
-	if r := e.cli(nil, "--json", "models", "import", "http://169.254.169.254/m.gguf", "--allow-http", "--task", "chat", "--id", "meta", "--yes", "--allow-private"); r.code == 0 || !strings.Contains(r.stdout+r.stderr, "refusing to connect") {
+	if r := e.cli(nil, "--json", "models", "import", "http://169.254.169.254/m.gguf", "--allow-http", "--task", "chat", "--id", "meta", "--yes", "--allow-private"); r.code == 0 || !strings.Contains(r.stdout+r.stderr, "does not download") {
 		t.Fatalf("metadata: %d %s %s", r.code, r.stdout, r.stderr)
 	}
 	// A file on this machine stays a CLI import.

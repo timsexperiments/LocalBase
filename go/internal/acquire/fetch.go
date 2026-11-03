@@ -92,7 +92,7 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, func(n int64) {
 				progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 			}); err != nil {
-				return nil, err
+				return nil, refusal(err, p.onHost)
 			}
 			if err := os.Rename(partial, final); err != nil {
 				return nil, err

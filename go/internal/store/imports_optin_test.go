@@ -26,3 +26,28 @@ func TestPrivateImportsOptIn(t *testing.T) {
 		}
 	}
 }
+
+// The two opt-ins are separate: allowing a LAN mirror does not allow reading files.
+func TestImportOptInsAreSeparate(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	if err := st.SetSetting(ctx, PrivateImportsKey, "on"); err != nil {
+		t.Fatal(err)
+	}
+	if st.LocalPathImportsAllowed(ctx) {
+		t.Error("the private-address opt-in allowed local paths")
+	}
+	if err := st.SetSetting(ctx, PrivateImportsKey, "off"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSetting(ctx, LocalPathImportsKey, "on"); err != nil {
+		t.Fatal(err)
+	}
+	if st.PrivateImportsAllowed(ctx) || !st.LocalPathImportsAllowed(ctx) {
+		t.Errorf("private %v, local paths %v", st.PrivateImportsAllowed(ctx), st.LocalPathImportsAllowed(ctx))
+	}
+}

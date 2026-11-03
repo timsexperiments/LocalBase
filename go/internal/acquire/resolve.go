@@ -54,6 +54,9 @@ type Request struct {
 	AllowPrivate bool
 	// AllowLocal lets Source be a path on this machine.
 	AllowLocal bool
+	// OnHost: the person asking is at this computer, using the CLI, so a refusal
+	// can say which setting would allow it.
+	OnHost bool
 	// Confirmed: the person has accepted the custom-source warning. A custom
 	// source is not contacted before that.
 	Confirmed bool
@@ -104,6 +107,7 @@ type Plan struct {
 	profile      *Profile
 	hfToken      string
 	allowPrivate bool
+	onHost       bool
 }
 
 var (
@@ -157,14 +161,14 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 	case hfRepoRe.MatchString(src) && !(req.AllowLocal && fileExists(src)):
 		p, err = resolveHF(ctx, src, "", req, profile)
 	case !req.AllowLocal:
-		return nil, errors.New("that is not a URL or a Hugging Face repository. " + PrivateSourceHint)
+		return nil, &RefusedError{CodeLocalPath, localPathMessage}
 	default:
 		p, err = resolveLocal(src, req)
 	}
 	if err != nil {
-		return nil, err
+		return nil, refusal(err, req.OnHost)
 	}
-	p.profile, p.hfToken, p.hfOrigins, p.allowPrivate = profile, req.HFToken, req.hfOrigins, req.AllowPrivate
+	p.profile, p.hfToken, p.hfOrigins, p.allowPrivate, p.onHost = profile, req.HFToken, req.hfOrigins, req.AllowPrivate, req.OnHost
 	if req.Name != "" {
 		p.Name = req.Name
 	}

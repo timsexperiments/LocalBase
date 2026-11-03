@@ -107,12 +107,11 @@ func TestOptIn(t *testing.T) {
 		t.Error("a host that was not named")
 	}
 	var b *BlockedError
-	err := check(Policy{Hint: "Run this."}, "http://10.0.0.1/")
-	if !errors.As(err, &b) || !strings.Contains(err.Error(), "Run this.") {
-		t.Errorf("no hint: %v", err)
+	if err := check(Policy{}, "http://10.0.0.1/"); !errors.As(err, &b) || b.Class != Private {
+		t.Errorf("a private address: %v", err)
 	}
-	if err := check(Policy{Hint: "Run this."}, "http://169.254.169.254/"); strings.Contains(err.Error(), "Run this.") {
-		t.Errorf("a hint offered for what no setting allows: %v", err)
+	if err := check(Policy{}, "http://169.254.169.254/"); !errors.As(err, &b) || b.Class != Never {
+		t.Errorf("a metadata address: %v", err)
 	}
 }
 

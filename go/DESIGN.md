@@ -4155,20 +4155,41 @@ they mean.
 | Loopback, RFC 1918, CGNAT, IPv6 ULA | refused | allowed |
 | Link-local, cloud metadata, multicast, documentation and reserved ranges | refused | refused |
 
-**The opt-in.** `local-base configure --allow-private-imports` (`--no-allow-private-imports`
-to undo) lets imports and catalog installs reach private addresses, and lets the API and
-pages import local paths. It is a setting because importing from a LAN mirror is legitimate,
-but no request can set it: only the CLI on the host writes it. `models import --allow-private`
-does it for one import.
+**The opt-ins.** There are two, because they are different powers. Only the CLI on the host
+writes them, and no request can.
+
+| Flag on `local-base configure` | Allows | Why it is separate |
+| --- | --- | --- |
+| `--allow-private-imports` | Imports and catalog installs from private addresses | A LAN mirror is a normal thing to enable |
+| `--allow-local-path-imports` | Importing a local path through the API or a page | It copies any file the gateway can read into the store, and reports its size and checksum |
+
+`--no-...` undoes each. `models import --allow-private` allows a private address for one import.
+The CLI can always import a local path, because whoever runs it already has the files.
 
 **What this changes for people:**
-- Importing from a LAN mirror needs the opt-in.
-- Importing a local path through the API or a page needs the opt-in. The CLI still can.
-- A catalog entry whose source is at a private address needs the opt-in.
+- Importing from a LAN mirror needs the first opt-in, and so does a catalog entry whose source
+  is at a private address.
+- Importing a local path through the API or a page needs the second.
 - A private `HF_ENDPOINT` keeps working, because the person named it. The same goes for a
   private catalog feed. What those hosts redirect to is judged like anything else.
 - A custom URL is not contacted until its warning has been accepted, so a plan made before
   that has no size and takes its file name from the URL.
+
+**Refusals.** The API answers 403 with a stable code, and the job's `errorCode` says the same if a
+download is refused later. The text is for whoever asked, who may be on a phone and not the
+person running the computer, so it names no setting. The CLI's text does, since that person
+can act on it. The UI shows this text and does not write its own.
+
+| Code | Text |
+| --- | --- |
+| `import_private_address` | This address is on your local network. Ask whoever runs this computer to allow it. |
+| `import_address_refused` | LocalBase does not download from this kind of address. |
+| `import_local_path` | That is not a web address or a Hugging Face repository, and importing a file from this computer is off here. Ask whoever runs this computer to allow it. |
+
+Refused destinations give the same answer whether a port is open, closed or does not exist, so
+they are not a port scan (`TestImportRefusalsAreNotAPortOracle`). With the first opt-in on, a
+`models:manage` holder can tell them apart again from connection errors: that comes with allowing
+private addresses.
 
 **Not covered, on purpose:**
 - **OTLP:** a local collector is the normal case, and only the CLI or the environment sets the

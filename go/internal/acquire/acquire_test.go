@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
@@ -419,19 +418,36 @@ func TestImportsKeepToPublicAddresses(t *testing.T) {
 		for _, confirmed := range []bool{false, true} {
 			seen.Store(0)
 			_, err := Resolve(ctx, root, Request{Source: source, AllowHTTP: true, Confirmed: confirmed, ID: "x", Task: "chat"})
-			if !netguard.IsBlocked(err) || seen.Load() != 0 {
+			var refused *RefusedError
+			if !errors.As(err, &refused) || seen.Load() != 0 {
 				t.Errorf("%s (confirmed %v): %v, reached %d", source, confirmed, err, seen.Load())
 			}
 		}
 	}
-	// The hint says how, and only for what the opt-in can allow.
-	_, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, ID: "x", Task: "chat"})
-	if err == nil || !strings.Contains(err.Error(), "allow-private-imports") {
-		t.Errorf("no hint: %v", err)
+	code := func(req Request) (string, string) {
+		_, err := Resolve(ctx, root, req)
+		var refused *RefusedError
+		if !errors.As(err, &refused) {
+			t.Fatalf("%+v: %v", req, err)
+		}
+		return refused.Code, refused.Message
 	}
-	_, err = Resolve(ctx, root, Request{Source: "http://169.254.169.254/m.gguf", AllowHTTP: true, AllowPrivate: true, ID: "x", Task: "chat"})
-	if !netguard.IsBlocked(err) || strings.Contains(err.Error(), "allow-private-imports") {
-		t.Errorf("metadata with the opt-in: %v", err)
+	// Whoever asks through the API or a page is told what to do, without settings.
+	c, msg := code(Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, ID: "x", Task: "chat"})
+	if c != CodePrivateAddress || strings.Contains(msg, "allow-private") || strings.Contains(msg, "127.0.0.1") || !strings.Contains(msg, "Ask whoever runs") {
+		t.Errorf("%s: %s", c, msg)
+	}
+	// The person at this computer is told how to allow it.
+	c, msg = code(Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, OnHost: true, ID: "x", Task: "chat"})
+	if c != CodePrivateAddress || !strings.Contains(msg, "--allow-private") || !strings.Contains(msg, "--allow-private-imports") {
+		t.Errorf("on the host %s: %s", c, msg)
+	}
+	// What nothing can allow offers no way to allow it, even with the opt-in.
+	for _, onHost := range []bool{false, true} {
+		c, msg = code(Request{Source: "http://169.254.169.254/m.gguf", AllowHTTP: true, AllowPrivate: true, OnHost: onHost, ID: "x", Task: "chat"})
+		if c != CodeAddressRefused || strings.Contains(msg, "allow") {
+			t.Errorf("metadata, on host %v: %s: %s", onHost, c, msg)
+		}
 	}
 	// With the opt-in a LAN source works, end to end.
 	p, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, Confirmed: true, ID: "lan", Task: "chat"})
@@ -459,7 +475,8 @@ func TestImportRedirectToPrivateIsRefused(t *testing.T) {
 	defer mirror.Close()
 	t.Setenv("HF_ENDPOINT", mirror.URL)
 	_, err := Resolve(context.Background(), t.TempDir(), Request{Source: mirror.URL + "/redirect/m.gguf", AllowHTTP: true, Confirmed: true, ID: "x", Task: "chat"})
-	if !netguard.IsBlocked(err) || private.Load() != 0 {
+	var refused *RefusedError
+	if !errors.As(err, &refused) || refused.Code != CodePrivateAddress || private.Load() != 0 {
 		t.Fatalf("%v, reached %d", err, private.Load())
 	}
 }
@@ -498,8 +515,11 @@ func TestLocalPathsNeedTheOptIn(t *testing.T) {
 	path := writeFile(t, "weights.gguf")
 	ctx := context.Background()
 	for _, source := range []string{path, "/no/such/file", "weights.gguf", "./weights.gguf", "../weights.gguf"} {
-		_, err := Resolve(ctx, t.TempDir(), Request{Source: source, ID: "x", Task: "chat"})
-		if err == nil || !strings.Contains(err.Error(), "allow-private-imports") {
+		// The same answer whether or not the file exists, and allowing a LAN mirror
+		// does not change it.
+		_, err := Resolve(ctx, t.TempDir(), Request{Source: source, AllowPrivate: true, ID: "x", Task: "chat"})
+		var refused *RefusedError
+		if !errors.As(err, &refused) || refused.Code != CodeLocalPath || refused.Message != localPathMessage {
 			t.Errorf("%s: %v", source, err)
 		}
 	}

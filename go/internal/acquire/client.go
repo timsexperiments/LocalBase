@@ -75,14 +75,47 @@ func newClient(profile *Profile, hfToken string, hfExtra []string, allowPrivate 
 	}
 }
 
-// PrivateSourceHint says how to allow what the default policy refuses. Only the
-// person running LocalBase can do it: no API route changes this setting.
-const PrivateSourceHint = "To import from private addresses and local files, run `local-base configure --allow-private-imports` on this machine."
+// Stable codes for a source the policy refuses (DESIGN §31.2).
+const (
+	CodePrivateAddress = "import_private_address"
+	CodeAddressRefused = "import_address_refused"
+	CodeLocalPath      = "import_local_path"
+)
+
+// RefusedError is a source the policy refuses. Its Message is written for whoever
+// asked, who may be on a phone and not the person running this computer, so through
+// the API and the pages it names no setting and nothing about the address.
+type RefusedError struct{ Code, Message string }
+
+func (e *RefusedError) Error() string { return e.Message }
+
+const (
+	privateAddressMessage = "This address is on your local network. Ask whoever runs this computer to allow it."
+	addressRefusedMessage = "LocalBase does not download from this kind of address."
+	localPathMessage      = "That is not a web address or a Hugging Face repository, and importing a file from this computer is off here. Ask whoever runs this computer to allow it."
+	// privateAddressOnHost is for the person at this computer, who can allow it.
+	privateAddressOnHost = "This address is on your local network or this computer. To allow it, add --allow-private to this import, or run `local-base configure --allow-private-imports` to allow it for every import."
+)
+
+// refusal turns a refused connection into what the person asking is told.
+func refusal(err error, onHost bool) error {
+	var blocked *netguard.BlockedError
+	if !errors.As(err, &blocked) {
+		return err
+	}
+	switch {
+	case blocked.Class == netguard.Never:
+		return &RefusedError{CodeAddressRefused, addressRefusedMessage}
+	case onHost:
+		return &RefusedError{CodePrivateAddress, privateAddressOnHost}
+	}
+	return &RefusedError{CodePrivateAddress, privateAddressMessage}
+}
 
 // importPolicy keeps downloads to public addresses unless opted in. HF_ENDPOINT is
 // named by the person running LocalBase, so a private mirror there is allowed.
 func importPolicy(allowPrivate bool) netguard.Policy {
-	p := netguard.Policy{AllowPrivate: allowPrivate, Hint: PrivateSourceHint}
+	p := netguard.Policy{AllowPrivate: allowPrivate}
 	if u, err := url.Parse(HFEndpoint()); err == nil && u.Hostname() != "" {
 		p.AllowHosts = []string{u.Hostname()}
 	}

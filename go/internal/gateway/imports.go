@@ -188,10 +188,14 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	if cfg != nil {
 		token = cfg.HFToken
 	}
-	private := s.Store.PrivateImportsAllowed(r.Context())
 	plan, err := acquire.Resolve(r.Context(), s.Root.Dir, acquire.Request{Source: in.Source, Files: in.Files, Revision: in.Revision,
 		SHA256: in.SHA256, AuthProfile: in.AuthProfile, AllowHTTP: in.AllowHTTP, ID: in.ID, Name: in.Name, Task: in.Task, HFToken: token,
-		AllowPrivate: private, AllowLocal: private, Confirmed: in.Confirm})
+		AllowPrivate: s.Store.PrivateImportsAllowed(r.Context()), AllowLocal: s.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm})
+	var refused *acquire.RefusedError
+	if errors.As(err, &refused) {
+		writeError(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, strp("source"))
+		return
+	}
 	if err != nil {
 		writeError(w, r, 400, "invalid_request_error", "import_unresolved", obs.BoundedText(err.Error(), 1024), nil)
 		return

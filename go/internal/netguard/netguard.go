@@ -101,18 +101,13 @@ func Classify(ip netip.Addr) Class {
 type BlockedError struct {
 	Host  string
 	Class Class
-	Hint  string // what the person can do about it
 }
 
 func (e *BlockedError) Error() string {
-	msg := "refusing to connect to " + e.Host + ": it is a private or local address"
 	if e.Class == Never {
-		msg = "refusing to connect to " + e.Host + ": downloads never use link-local, metadata or reserved addresses"
+		return "refusing to connect to " + e.Host + ": downloads never use link-local, metadata or reserved addresses"
 	}
-	if e.Hint != "" && e.Class != Never {
-		msg += ". " + e.Hint
-	}
-	return msg
+	return "refusing to connect to " + e.Host + ": it is a private or local address"
 }
 
 // Policy says what a client may reach.
@@ -124,8 +119,6 @@ type Policy struct {
 	// matched by the name in the URL and may be private. Keep them out of reach of
 	// anything a request can set.
 	AllowHosts []string
-	// Hint is added to a refusal of a private address.
-	Hint string
 	// Resolver is for tests (nil: the default).
 	Resolver *net.Resolver
 }
@@ -147,7 +140,7 @@ func (p Policy) check(host string, ip netip.Addr) error {
 	case class == Private && p.AllowPrivate:
 		return nil
 	default:
-		return &BlockedError{Host: host, Class: class, Hint: p.Hint}
+		return &BlockedError{Host: host, Class: class}
 	}
 }
 
@@ -220,7 +213,7 @@ func (p Policy) CheckURL(u *url.URL) error {
 		return p.check(host, ip)
 	}
 	if localName(host) && !p.AllowPrivate {
-		return &BlockedError{Host: host, Class: Private, Hint: p.Hint}
+		return &BlockedError{Host: host, Class: Private}
 	}
 	return nil
 }
