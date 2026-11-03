@@ -1,0 +1,14 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: TimsExperiments
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Optional and fast; `make hooks` turns it on. Skip once with `git commit --no-verify`.
+set -eu
+top=$(git rev-parse --show-toplevel)
+unformatted=$(cd "$top/go" && "$(go env GOROOT)/bin/gofmt" -l .)
+if [ -n "$unformatted" ]; then
+  echo "Run make fmt. Not formatted:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+"$top/scripts/check-repo-hygiene.sh" > /dev/null
