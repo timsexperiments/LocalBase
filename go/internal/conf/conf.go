@@ -27,6 +27,33 @@ const (
 
 // Default is a fresh configuration for root (TS defaultConfig). The STT
 // default is the third smallest STT model that fits memoryGB.
+// CanBeDefaultLLM is true for a model that can answer chat: decision and
+// embedding models can be selected but never become the default on their own.
+func CanBeDefaultLLM(s *catalog.Spec) bool {
+	return s.Kind == "llm" && !s.IsDecision() && !s.IsEmbedding()
+}
+
+// ActivateFirstInstall selects a newly installed chat model and makes it the
+// default when the current default cannot run: none is set, or a catalog model
+// with files missing. A working default is left alone, as is an imported one,
+// which the catalog does not know. It reports whether it changed c.
+func ActivateFirstInstall(c *store.Config, s *catalog.Spec, cat *catalog.Catalog, installed func(*catalog.Spec) bool) bool {
+	if !CanBeDefaultLLM(s) || !installed(s) || c.Active["llm"] == s.ModelID {
+		return false
+	}
+	if id := c.Active["llm"]; id != "" {
+		cur := cat.ByID(id)
+		if cur == nil || installed(cur) {
+			return false
+		}
+	}
+	if !slices.Contains(c.Selected["llm"], s.ModelID) {
+		c.Selected["llm"] = append(c.Selected["llm"], s.ModelID)
+	}
+	c.Active["llm"] = s.ModelID
+	return true
+}
+
 func Default(root string, memoryGB int, cat *catalog.Catalog) *store.Config {
 	stt := "whisper-base-q8_0"
 	var fitting []*catalog.Spec
