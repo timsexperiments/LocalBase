@@ -469,6 +469,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   check(picker.open && picker.radios > 1 && picker.plays === picker.radios && picker.add, `each voice has a separate Play, and Add a voice is there: ${JSON.stringify(picker)}`);
   const clickSample = async (i) => { const b = await ev(`(() => { const r = document.querySelectorAll("#lab-voices [data-voice-preview]")[${i}]; r.scrollIntoView({ block: "center" }); const w = r.getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`); for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: b.x, y: b.y, button: "left", clickCount: 1 }); };
   await sleep(400); // the sheet has slid in
+  const chosenBefore = await ev(`document.querySelector("#lab-voices input[type=radio]:checked")?.value`);
   await clickSample(0);
   let pressed = 0;
   for (let i = 0; i < 40 && !pressed; i++) { await sleep(150); if (/Playing/.test(await ev(`document.querySelector("[data-voice-status]").textContent`))) pressed = 1; }
@@ -476,7 +477,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await clickSample(1);
   await sleep(200);
   check((await ev(`[...document.querySelectorAll("#lab-voices [data-voice-preview]")].filter((b) => b.getAttribute("aria-pressed") === "true").length`)) === 1, "one sample at a time");
-  check(!(await ev(`document.querySelectorAll("#lab-voices input[type=radio]")[1].checked`)), "playing a sample does not choose the voice");
+  check((await ev(`document.querySelector("#lab-voices input[type=radio]:checked")?.value`)) === chosenBefore, "playing a sample does not choose the voice");
 
   if (voiceFile) {
     const b64 = Buffer.from(await Bun.file(voiceFile).arrayBuffer()).toString("base64");
