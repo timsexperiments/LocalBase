@@ -396,7 +396,7 @@ func serve(c *cli.Ctx) (any, error) {
 	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
-		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
+		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib, Log: log,
 		Call: func(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) web.APIResult {
 			res := srv.Call(ctx, p, method, path, ct, body)
 			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}

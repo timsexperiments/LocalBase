@@ -141,7 +141,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/api-keys", s.audited("api-key", s.apiKeys))
 	mux.HandleFunc("/_localbase/hf-token", s.hfToken)
 	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
-	mux.HandleFunc("/_localbase/model-backend", s.modelBackendAPI)
+	mux.HandleFunc("/_localbase/model-backend", s.audited("model-backend", s.modelBackendAPI))
 	mux.HandleFunc("/_localbase/model-management", s.modelManagementAPI)
 	mux.HandleFunc("/_localbase/default-chat-models", s.defaultChatModelsAPI)
 	mux.HandleFunc("/_localbase/model-discovery", s.modelDiscoveryAPI)

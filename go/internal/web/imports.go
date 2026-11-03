@@ -1,7 +1,6 @@
 package web
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -143,6 +142,9 @@ func (u *UI) backendPanel(w http.ResponseWriter, r *http.Request) {
 			return err
 		})
 		msg = "Reset to automatic selection."
+		if err == nil {
+			u.auditBackendChoice(r, "reset", id, "")
+		}
 	case r.Method == http.MethodPost:
 		b := r.FormValue("backend")
 		if b == "" {
@@ -154,6 +156,9 @@ func (u *UI) backendPanel(w http.ResponseWriter, r *http.Request) {
 			return err
 		})
 		msg = "Saved for this device. Detection will not change it."
+		if err == nil {
+			u.auditBackendChoice(r, "set", id, b)
+		}
 	default:
 		var e *library.Entry
 		if e, err = l.Get(ctx, id); err == nil {
@@ -298,6 +303,9 @@ func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
 		fail(err.Error())
 		return
 	}
+	if f.Backend != "" && f.Backend != "auto" {
+		u.auditBackendChoice(r, "import", plan.ID, f.Backend)
+	}
 	u.forget(token)
 	r.Header.Set("HX-Target", "import-job")
 	u.render(w, r, "import", map[string]any{"Job": u.d.Library.Job(id)})
@@ -334,6 +342,21 @@ func (u *UI) renderImportJob(w http.ResponseWriter, r *http.Request, id string) 
 
 // --- backends -----------------------------------------------------------------------
 
+// auditBackendChoice records who chose what runs a model. Ids only.
+func (u *UI) auditBackendChoice(r *http.Request, action, model, backend string) {
+	if u.d.Log == nil {
+		return
+	}
+	kind, id := "environment", ""
+	if u.d.Principal != nil {
+		if p := u.d.Principal(r); p != nil {
+			kind, id = p.Kind, p.ID
+		}
+	}
+	u.d.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", action, "actor_kind", kind, "actor_id", id,
+		"target_kind", "model", "target_id", model, "backend_id", backend)
+}
+
 func (u *UI) backendsPage(w http.ResponseWriter, r *http.Request) {
 	l := u.d.Library
 	data := map[string]any{"Host": l.Host(), "Skipped": l.Registry.Skipped(), "InstallLabels": installLabels}
@@ -342,23 +365,6 @@ func (u *UI) backendsPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, map[string]any{"Def": d, "Install": l.Host().InstallLabel(d.ID)})
 	}
 	data["Backends"] = rows
-	if r.Method == http.MethodPost {
-		r.Header.Set("HX-Target", "backend-add")
-		d := &backends.Definition{}
-		dec := json.NewDecoder(strings.NewReader(r.FormValue("definition")))
-		dec.DisallowUnknownFields()
-		err := dec.Decode(d)
-		if err == nil {
-			err = root.WithOperation(u.d.RootDir, "register backend", func() error { return backends.Add(u.d.RootDir, d) })
-		}
-		if err != nil {
-			data["AddError"] = err.Error()
-			data["Definition"] = r.FormValue("definition")
-		} else {
-			data["Added"] = d.ID
-			w.Header().Set("HX-Refresh", "true")
-		}
-	}
 	u.render(w, r, "backends", data)
 }
 

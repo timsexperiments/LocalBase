@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"regexp"
@@ -62,6 +63,8 @@ type Deps struct {
 	Voices func(ctx context.Context) ([]voices.Voice, error)
 	// ListenAddr is where the gateway listens, for Connect's address.
 	ListenAddr func() string
+	// Log receives audit events (nil: none).
+	Log *slog.Logger
 }
 
 type UI struct {
@@ -182,7 +185,6 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app/models/backend/{id}", u.need("models:read", u.backendPanel))
 	m.HandleFunc("POST /app/models/backend/{id}", u.mutating("models:manage", u.backendPanel))
 	m.HandleFunc("GET /app/backends", u.need("models:read", u.backendsPage))
-	m.HandleFunc("POST /app/backends", u.mutating("models:manage", u.backendsPage))
 	m.HandleFunc("GET /app/studio", u.need("models:read", u.studio))
 	m.HandleFunc("GET /app/studio/{tool}", u.need("models:read", u.studioTool))
 	m.HandleFunc("GET /app/studio/tile/{id}", u.need("models:read", u.studioTile))

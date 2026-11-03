@@ -19,12 +19,9 @@
 {{end}}
 
 {{define "backend-add"}}
-<form id="backend-add" class="card mt-6 grid gap-3 p-5" hx-post="/app/backends" hx-target="#backend-add" hx-swap="outerHTML">
-  <h2 class="font-bold">Add backend</h2>
-  <p class="text-sm text-muted">Paste a <code>localbase.backend/v1</code> definition. It names an executable already on this machine; LocalBase starts it only for models you choose it for. Downloading a model never adds a backend.</p>
-  <textarea class="input min-h-40 font-mono text-base" name="definition" required spellcheck="false">{{.Definition}}</textarea>
-  {{with .AddError}}<p class="text-danger" role="alert">{{.}}</p>{{end}}
-  {{with .Added}}<p role="status">Registered {{.}}.</p>{{end}}
-  <button type="submit" class="btn btn-primary justify-self-start">Add backend</button>
-</form>
+<section id="backend-add" class="card mt-6 grid gap-2 p-5" aria-labelledby="backend-add-title">
+  <h2 id="backend-add-title" class="font-bold">Add a backend</h2>
+  <p class="text-sm text-muted">Backends are registered from this computer only, because a backend names a program to run. LocalBase starts it only for models you choose.</p>
+  <code class="block rounded-lg bg-surface-muted p-3 wrap-anywhere">local-base backends add --file &lt;definition.json&gt;</code>
+</section>
 {{end}}
