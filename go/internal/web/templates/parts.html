@@ -88,7 +88,7 @@
 {{define "memory-legend"}}
 {{if .Known}}
 <dl class="gauge-legend">
-  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}</span>{{end}}{{if .GettingReady}}<span class="gauge-caption">Includes {{gib .GettingReady}} getting ready, estimated</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>{{end}}
+  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}{{if $.GettingReady}}, {{gib $.GettingReady}} of it getting ready{{end}}.</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>{{end}}
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps and system</dt><dd>{{gib .Other}}</dd></div>
   <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Free memory</dt><dd>{{gib .Available}}</dd></div>
   <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>

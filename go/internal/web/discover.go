@@ -21,7 +21,7 @@ import (
 
 var discoveryKinds = []struct{ Value, Label string }{{"llm", "Chat"}, {"stt", "Transcription"}, {"image", "Image"}}
 
-var fitLabels = map[string]string{"fits": "Fits", "tight": "Tight fit", "wont-fit": "Won't fit"}
+var fitLabels = map[string]string{"fits": "Fits", "tight": "Tight fit", "wont-fit": "May not fit"}
 
 // tokenCodes are the errors a saved Hugging Face token can fix.
 var tokenCodes = map[string]bool{"hub_auth_required": true, "hub_rate_limited": true}
@@ -173,7 +173,7 @@ func files(card string, p *hub.Preview, match bool, canManage bool) *filesView {
 	selected := rec
 	if selected < 0 {
 		for _, i := range order {
-			if choices[i].Quant == nil && choices[i].Verdict != "wont-fit" {
+			if choices[i].Quant == nil {
 				selected = i
 				break
 			}

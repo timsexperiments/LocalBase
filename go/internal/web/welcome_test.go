@@ -475,3 +475,19 @@ func TestRoughFigureDoesNotRefuse(t *testing.T) {
 		t.Errorf("a real figure didn't refuse:\n%s\n%s", choose, getRow)
 	}
 }
+
+// A rough "won't fit" on a search result is words: it ranks last, but it can still be recommended.
+func TestSearchRecommendationKeepsARoughNo(t *testing.T) {
+	q := "Q4_K_M"
+	only := []downloadChoice{{Path: "big.gguf", SizeBytes: 9, Quant: &q, Verdict: "wont-fit"}}
+	if got := recommendedChoice(only); got != 0 {
+		t.Errorf("the only choice wasn't recommended: %d", got)
+	}
+	both := []downloadChoice{{Path: "big.gguf", SizeBytes: 9, Quant: &q, Verdict: "wont-fit"}, {Path: "small.gguf", SizeBytes: 5, Quant: &q, Verdict: "fits"}}
+	if got := recommendedChoice(both); got != 1 {
+		t.Errorf("one that fits should come first: %d", got)
+	}
+	if fitLabels["wont-fit"] != "May not fit" {
+		t.Error(fitLabels["wont-fit"])
+	}
+}

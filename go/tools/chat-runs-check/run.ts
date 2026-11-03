@@ -762,6 +762,27 @@ await nav("/app/models/get");
 const badTargets = await ev(`[...document.querySelectorAll("[hx-target^='#'], [hx-target^='.']")].map((el) => el.getAttribute("hx-target")).filter((t) => { try { document.querySelector(t); return false; } catch { return true; } })`);
 check(badTargets.length === 0, `Get's targets are all valid selectors: ${JSON.stringify(badTargets).slice(0, 200)}`);
 
+// --- Get finds its row for a model with a dot in its id. Stopped before the request, so nothing
+// downloads. The second click plants the old target, to show this check would have caught it.
+const clickGet = (plant) => ev(`(async () => {
+  const form = [...document.querySelectorAll("form[hx-post='/app/models/get/recipe']")].find((f) => f.querySelector("[name=modelId]").value.includes("."));
+  if (!form) return { none: true };
+  const id = form.querySelector("[name=modelId]").value;
+  if (${plant}) form.setAttribute("hx-target", "#cat-" + id + "-action");
+  let requested = null;
+  const stop = (e) => { requested = e.detail.target?.className ?? "?"; e.preventDefault(); };
+  document.addEventListener("htmx:beforeRequest", stop, true);
+  form.querySelector("button[type=submit]").click();
+  await new Promise((r) => setTimeout(r, 400));
+  document.removeEventListener("htmx:beforeRequest", stop, true);
+  return { id, requested };
+})()`);
+const dotted = await clickGet(false);
+check(dotted.id?.includes(".") && dotted.requested?.includes("catalog-action"), `Get on a dotted model id reaches its own row: ${JSON.stringify(dotted)}`);
+await nav("/app/models/get");
+const planted = await clickGet(true);
+check(planted.id?.includes(".") && planted.requested === null, `the old target would not have sent anything: ${JSON.stringify(planted)}`);
+
 // --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get", "/app/models/running", "/app/settings", "/app/welcome", "/app/welcome/choose", "/app/studio/image", "/app/studio/decisions"]) {
