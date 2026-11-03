@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,4 +146,23 @@ type probedHost struct{ *darwinProvider }
 
 func (*probedHost) Snapshot(context.Context) Snapshot {
 	return Snapshot{Available: 62 * GiB, Pressure: "normal"}
+}
+
+// Asking the backend's program about its devices keeps the gateway's credentials back.
+func TestProbingDevicesKeepsCredentialsBack(t *testing.T) {
+	dir := t.TempDir()
+	bin, out := filepath.Join(dir, "dump"), filepath.Join(dir, "env.txt")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n/usr/bin/env > \"$ENV_DUMP\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ENV_DUMP", out)
+	t.Setenv("HF_TOKEN", "planted-token")
+	ProbeGPUWorkingSet(context.Background(), &darwinProvider{topo: Topology{Unified: true, SystemCapacity: 64 * GiB}}, bin)
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("the program didn't run: %v", err)
+	}
+	if strings.Contains(string(b), "planted-") || !strings.Contains(string(b), "ENV_DUMP=") {
+		t.Errorf("got: %s", b)
+	}
 }

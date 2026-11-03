@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/timsexperiments/LocalBase/go/internal/childenv"
 )
 
 // Topology describes the memory pools admission reasons about. The skeleton
@@ -130,7 +132,9 @@ func ProbeGPUWorkingSet(ctx context.Context, h HostProvider, binary string) (int
 	if v := d.probed.Load(); v > 0 {
 		return v, true // read once
 	}
-	out, err := exec.CommandContext(ctx, binary, "--list-devices").CombinedOutput()
+	cmd := exec.CommandContext(ctx, binary, "--list-devices")
+	cmd.Env = childenv.Clean(os.Environ())
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return 0, false
 	}

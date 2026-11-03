@@ -4896,6 +4896,19 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+
+### 31.11 What a backend is given
+
+A backend used to inherit the gateway's whole environment, including `LOCALBASE_API_KEY`, `HF_TOKEN` and OTLP headers.
+`internal/childenv` now holds back the gateway's own `LOCALBASE_*` variables and any name that looks like a credential,
+whoever's it is, since a shell that starts `serve` can hold many. Paths, locale, library paths, GPU selection and
+`HF_HOME` still get through. It covers every way the gateway runs a backend's program: starting it, and asking it about
+its flags, devices and contract.
+
+This isn't a boundary. A backend runs as the same user, so a hostile one can read what that user can. It keeps
+credentials out of a process that doesn't need them, and out of what that process prints, crashes with or passes on. A
+custom backend that needs a credential has no way to be given one yet.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
