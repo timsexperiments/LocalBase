@@ -4691,3 +4691,70 @@ tested, and TS on Bun is unverified.
 cap, because everything arrives from one address. The caps keep the process healthy; they do
 not keep a flooded gateway available. Slow reads by an authenticated client are not bounded
 here: a stalled reader can hold a generation until it ends.
+
+### 31.2 Where a download may connect
+
+**The problem.** Imports took any URL, so a `models:manage` holder could make the gateway
+fetch from its own machine and network, and redirects went anywhere. That reaches the
+gateway itself and the backends' unauthenticated loopback ports, routers and other LAN
+services, and cloud metadata addresses. The response is not readable through the API, but
+its status, size and SHA-256 are, and a GET can have side effects.
+
+**The rule.** `internal/netguard` judges the address when a connection is made, so it holds
+across redirects and for a name that now resolves somewhere else. Addresses written in
+other forms (`127.1`, `0x7f.0.0.1`, `2130706433`, IPv4-mapped, NAT64) are judged by what
+they mean.
+
+| Destination | Default | With the opt-in |
+| --- | --- | --- |
+| Public addresses | allowed | allowed |
+| Loopback, RFC 1918, CGNAT, IPv6 ULA | refused | allowed |
+| Link-local, cloud metadata, multicast, documentation and reserved ranges | refused | refused |
+
+**The opt-ins.** There are two, because they are different powers. Only the CLI on the host
+writes them, and no request can.
+
+| Flag on `local-base configure` | Allows | Why it is separate |
+| --- | --- | --- |
+| `--allow-private-imports` | Imports and catalog installs from private addresses | A LAN mirror is a normal thing to enable |
+| `--allow-local-path-imports` | Importing a local path through the API or a page | It copies any file the gateway can read into the store, and reports its size and checksum |
+
+`--no-...` undoes each. `models import --allow-private` allows a private address for one import.
+The CLI can always import a local path, because whoever runs it already has the files.
+
+**What this changes for people:**
+- Importing from a LAN mirror needs the first opt-in, and so does a catalog entry whose source
+  is at a private address.
+- Importing a local path through the API or a page needs the second.
+- A private `HF_ENDPOINT` keeps working, because the person named it. The same goes for a
+  private catalog feed. What those hosts redirect to is judged like anything else.
+- A custom URL is not contacted until its warning has been accepted, so a plan made before
+  that has no size and takes its file name from the URL.
+
+**Refusals.** The API answers 403 with a stable code, and the job's `errorCode` says the same if a
+download is refused later. The text is for whoever asked, who may be on a phone and not the
+person running the computer, so it names no setting. The CLI's text does, since that person
+can act on it. The UI shows this text and does not write its own.
+
+| Code | Text |
+| --- | --- |
+| `import_private_address` | This address is on your local network. Ask whoever runs this computer to allow it. |
+| `import_address_refused` | LocalBase does not download from this kind of address. |
+| `import_local_path` | That is not a web address or a Hugging Face repository, and importing a file from this computer is off here. Ask whoever runs this computer to allow it. |
+
+Refused destinations give the same answer whether a port is open, closed or does not exist, so
+they are not a port scan (`TestImportRefusalsAreNotAPortOracle`). With the first opt-in on, a
+`models:manage` holder can tell them apart again from connection errors: that comes with allowing
+private addresses.
+
+**Not covered, on purpose:**
+- **OTLP:** a local collector is the normal case, and only the CLI or the environment sets the
+  endpoint. Redirects are already refused.
+- **OIDC discovery and SMTP:** `access:manage` sets these, and a LAN identity provider or mail
+  relay is normal. Someone with that permission can make the gateway connect to any HTTPS
+  host or SMTP port, and see whether it worked.
+- **Runtime downloads:** the URLs and checksums are compiled in.
+
+**Limits.** Through a configured proxy, the proxy resolves names, so only addresses and
+names that only exist locally can be judged. A public name pointing at a private address gets
+through there. And `models:manage` is still a powerful permission: see `docs/threat-model.md`.
