@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,5 +80,41 @@ func TestParsePick(t *testing.T) {
 	}
 	if _, _, ok := parsePick("fix-x"); ok {
 		t.Error("a plain branch is not a pick")
+	}
+}
+
+// A branch whose newest commit is one already in the tree, cherry-picked from a branch
+// folded earlier, is not done: its other commits are not there. Skipping it whole once
+// dropped a pull request from the tree without a word.
+func TestPickedNeedsEveryCommit(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	commit := func(subject string) {
+		t.Helper()
+		git("commit", "-q", "--allow-empty", "-m", subject)
+	}
+	git("init", "-q", "-b", "tree")
+	commit("base")
+	git("branch", "base")
+	commit("shared fix")
+	git("checkout", "-q", "-b", "pr", "base")
+	commit("the pull request's own work")
+	commit("shared fix")
+	git("checkout", "-q", "tree")
+	if picked(dir, "pr", "base") {
+		t.Error("a branch with only its newest commit in the tree counts as replayed")
+	}
+	commit("the pull request's own work")
+	if !picked(dir, "pr", "base") {
+		t.Error("a branch with every commit in the tree does not count as replayed")
+	}
+	if picked(dir, "base", "base") {
+		t.Error("a branch with no commits of its own counts as replayed")
 	}
 }

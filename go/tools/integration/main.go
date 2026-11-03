@@ -249,16 +249,27 @@ func sameTitle(a, b []byte) bool {
 	return x != nil && y != nil && bytes.Equal(x[1], y[1])
 }
 
-// picked reports whether a -resume has already replayed this branch: the tree holds a
-// commit with the subject of its newest own commit.
+// picked reports whether this branch has already been replayed: the tree holds a commit
+// with the subject of every one of its own commits. The newest alone is not enough: a
+// branch can end in a commit cherry-picked from a branch folded earlier, and would then be
+// skipped whole.
 func picked(dir, ref, from string) bool {
-	tip, err := exec.Command("git", "-C", dir, "log", "-1", "--first-parent", "--no-merges", "--format=%s", from+".."+ref).Output()
-	subject := strings.TrimSpace(string(tip))
-	if err != nil || subject == "" {
+	own, err := exec.Command("git", "-C", dir, "log", "--first-parent", "--no-merges", "--format=%s", from+".."+ref).Output()
+	subjects := strings.TrimSpace(string(own))
+	if err != nil || subjects == "" {
 		return false
 	}
-	out, err := exec.Command("git", "-C", dir, "log", "--format=%s", "-400").Output()
-	return err == nil && slices.Contains(strings.Split(string(out), "\n"), subject)
+	out, err := exec.Command("git", "-C", dir, "log", "--format=%s").Output()
+	if err != nil {
+		return false
+	}
+	have := strings.Split(string(out), "\n")
+	for _, s := range strings.Split(subjects, "\n") {
+		if !slices.Contains(have, s) {
+			return false
+		}
+	}
+	return true
 }
 
 // parsePick reads "pick <branch> <from>": a branch built on an earlier integration tree,

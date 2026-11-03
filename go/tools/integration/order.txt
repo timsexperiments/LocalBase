@@ -86,6 +86,7 @@ sec-ssrf
 sec-import-limits
 sec-root-owner
 sec-key-scopes
+sec-access-scopes
 
 # Reliability
 rel-lease-release
@@ -110,6 +111,7 @@ feat-openapi
 feat-connect
 feat-usage
 feat-upgrade
+feat-backup
 
 # OSS, docs and CI on top
 oss-tooling
@@ -127,3 +129,6 @@ pick fix-backend-group origin/rewrite/go-fix-eviction-starting
 pick runtime-port-base origin/rewrite/go-fix-backend-group
 pick lint-zero 9b7224ef
 pick fix-auth-errors 1c2b1c21
+pick rel-output-loss 1c2b1c21
+pick fix-output-loss origin/rewrite/go-rel-output-loss
+pick tree-fixes b6d3b01a2b
