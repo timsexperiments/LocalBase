@@ -52,7 +52,7 @@ func verifyChrome(dir, archive, want string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", archive, err)
 	}
-	defer z.Close()
+	defer func() { _ = z.Close() }() // only read: a failed close changes nothing already compared
 	expected := map[string]bool{filepath.Clean(archive): true}
 	files := 0
 	for _, entry := range z.File {
@@ -157,7 +157,7 @@ func verifyAxe(script, archive, want string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", archive, err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }() // only read, and its checksum is checked on reaching the end, not here
 	tr := tar.NewReader(gz)
 	for {
 		h, err := tr.Next()
