@@ -12,7 +12,7 @@ It's one Go binary with no other dependencies to install. Your prompts and outpu
 
 ## Quickstart
 
-**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and speech failed to start there. See [what runs where](docs/platforms.md).
+**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and the one speech model we tried (Kokoro) failed to start there. See [what runs where](docs/platforms.md).
 
 ```sh
 # 1. Install. The script verifies checksums, never uses sudo and installs to ~/.local/bin.
@@ -57,9 +57,9 @@ See [what runs where](docs/platforms.md) for what has actually been run.
 | Platform | LocalBase runs | Runtimes it can download | Status |
 | --- | --- | --- | --- |
 | macOS, Apple Silicon | yes | all | **First-class.** The development and daily-use platform |
-| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Under investigation without a GPU:** chat and speech failed to start in testing. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
-| macOS Intel | yes | ffmpeg only | CLI only: bring your own backend executables |
-| Linux ARM64 | yes | ffmpeg only | CLI only: bring your own backend executables |
+| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Under investigation without a GPU:** in testing, chat and the one speech model we tried (Kokoro) failed to start. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
+| macOS Intel | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
+| Linux ARM64 | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
 | Windows | no | | Not planned |
 
 **Not verified yet:**
@@ -69,16 +69,16 @@ See [what runs where](docs/platforms.md) for what has actually been run.
 - **Real phones and microphones.** Phone layouts and recording were checked in simulators and test browsers only.
 - **Video through the web page.** The video API has generated real clips on a Mac, but the page has never had enough free memory for a real run.
 
-**Memory** decides what you can run: about 5 GB free for the smallest chat model, and 20 GB or more for the larger ones. On Apple Silicon, memory is shared between CPU and GPU. `local-base doctor` reports what LocalBase sees, and `local-base models catalog` shows what fits.
+**Memory** decides what you can run. The smallest chat model is planned at about 5 GB, and the larger ones at 20 GB or more. By default LocalBase also keeps at least 8 GiB free for the system on top of that, so even the smallest needs about 13 GiB free. A 16 GB machine may refuse it. On Apple Silicon, memory is shared between CPU and GPU. `local-base doctor` reports what LocalBase sees, and `local-base models catalog` shows what fits.
 
 ## Features
 
 - **OpenAI-compatible API.** Chat completions, embeddings, audio transcriptions, translations and speech, image generation and edits, and video jobs. See [connect an app](docs/connect.md) and the [API overview](docs/api.md).
 - **Studio tools.** Pages for Image, Speech, Transcribe, Video and Decisions, plus Chat, in the web interface.
 - **Decisions.** `POST /v1/systemone` answers structured questions about a state with classifications, scores and yes/no probabilities, using decision models.
-- **Memory-safe admission.** Before loading a model, LocalBase checks it fits and refuses clearly if it doesn't. Under memory pressure it evicts idle runtimes rather than letting the machine swap, and under critical pressure it stops active ones too.
-- **Detached runs.** Generation from the web interface carries on when you switch tabs or lock your phone, and the page picks it back up when you return. API clients keep normal behaviour: disconnecting cancels.
-- **Placement.** Each model can run automatically, GPU only, CPU only or with custom layer settings. This applies on machines with a discrete GPU; on Apple Silicon, memory is shared, so it doesn't.
+- **Memory-safe admission.** Before loading a model, LocalBase checks it fits, and refuses if it doesn't. Under memory pressure it evicts idle runtimes to avoid swapping, and under critical pressure it stops active ones too.
+- **Detached runs.** Generation from the web interface carries on when you leave the page, and the page picks it back up when you return. This was checked in test browsers, not yet on a real phone. API clients keep normal behaviour: disconnecting cancels.
+- **Placement.** Each model has a setting: automatic, GPU only, CPU only or custom layers. It doesn't apply on Apple Silicon, where memory is shared. On Linux it's unverified with a real GPU, and CPU chat currently fails.
 - **Model management.** A curated catalog, plus imports from Hugging Face, direct URLs and local files, with licenses shown. LocalBase doesn't redistribute model weights. One model per type runs at a time.
 - **Operations.** Structured logs, a redacted diagnostics bundle, declarative TOML configuration, and optional OTLP export.
 
