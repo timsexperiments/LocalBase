@@ -391,6 +391,7 @@ func TestInstallFailureReasonExposed(t *testing.T) {
 	})
 	mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
 	mustWriteFile(filepath.Join(e.root, "catalog.d", "gated-stt.json"), b, 0o600)
+	allowPrivateImports(t, e.root)
 
 	human := e.cli(nil, "--non-interactive", "models", "install", "gated-stt")
 	if human.code == 0 || !strings.Contains(human.stderr, "HTTP 403") || !strings.Contains(human.stderr, "Reason: gated_or_auth_required") {
