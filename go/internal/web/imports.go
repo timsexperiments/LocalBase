@@ -205,8 +205,9 @@ func (u *UI) importPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) resolve(r *http.Request, f importForm) (*acquire.Plan, error) {
+	ctx := r.Context()
 	req := acquire.Request{Source: f.Source, Revision: "", SHA256: f.SHA256, AuthProfile: f.AuthProfile, AllowHTTP: f.AllowHTTP,
-		ID: f.ID, Task: f.Task}
+		ID: f.ID, Task: f.Task, AllowPrivate: u.d.Store.PrivateImportsAllowed(ctx), AllowLocal: u.d.Store.LocalPathImportsAllowed(ctx), Confirmed: f.Confirm}
 	if f.File != "" {
 		req.Files = []string{f.File}
 	}

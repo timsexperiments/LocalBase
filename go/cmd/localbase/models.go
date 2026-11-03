@@ -360,7 +360,7 @@ func installModel(ctx context.Context, e *env, id string, report func(install.Ev
 		return "", fmt.Errorf("%s: %s", id, reason)
 	}
 	token := e.Config.HFToken
-	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, Report: report})
+	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, AllowPrivate: e.Store.PrivateImportsAllowed(ctx), Report: report})
 	if err != nil {
 		return "", &cli.ReasonedError{Err: err, Reason: install.Reason(err)}
 	}
