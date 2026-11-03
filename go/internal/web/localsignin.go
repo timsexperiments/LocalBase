@@ -13,10 +13,12 @@ import (
 // The pages of one-time local sign-in (DESIGN §28). The template gets only these
 // fields: nothing else from the server reaches a signed-out visitor.
 type localSignIn struct {
-	Mode   string // help | redeem | expired | too-many
-	Local  bool   // this request passes the loopback rule
-	Action string
-	Script template.JS
+	Mode     string // help | redeem | expired | too-many | failed | signed-out | wrong-address | unavailable
+	Origin   string // wrong-address: where sign-in is
+	Provider bool   // signed-out: an identity provider is set up, so another account is possible
+	Local    bool   // this request passes the loopback rule
+	Action   string
+	Script   template.JS
 }
 
 func (u *UI) renderLocalSignIn(w http.ResponseWriter, status int, d localSignIn) {
@@ -55,4 +57,14 @@ func (u *UI) LoginExpired(w http.ResponseWriter, r *http.Request, status int) {
 // LoginTooMany answers after too many failed tries.
 func (u *UI) LoginTooMany(w http.ResponseWriter, r *http.Request) {
 	u.renderLocalSignIn(w, http.StatusTooManyRequests, localSignIn{Mode: "too-many", Local: true})
+}
+
+// LoginWrongAddress says where sign-in lives, for a request to another host name.
+func (u *UI) LoginWrongAddress(w http.ResponseWriter, r *http.Request, origin string) {
+	u.renderLocalSignIn(w, http.StatusForbidden, localSignIn{Mode: "wrong-address", Origin: origin})
+}
+
+// LoginUnavailable is for a person who followed a way in this gateway doesn't offer.
+func (u *UI) LoginUnavailable(w http.ResponseWriter, r *http.Request, status int) {
+	u.renderLocalSignIn(w, status, localSignIn{Mode: "unavailable"})
 }

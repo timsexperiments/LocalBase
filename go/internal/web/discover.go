@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -20,7 +21,7 @@ import (
 
 var discoveryKinds = []struct{ Value, Label string }{{"llm", "Chat"}, {"stt", "Transcription"}, {"image", "Image"}}
 
-var fitLabels = map[string]string{"fits": "Fits", "tight": "Tight fit", "wont-fit": "Won't fit"}
+var fitLabels = map[string]string{"fits": "Fits", "tight": "Tight fit", "wont-fit": "May not fit"}
 
 // tokenCodes are the errors a saved Hugging Face token can fix.
 var tokenCodes = map[string]bool{"hub_auth_required": true, "hub_rate_limited": true}
@@ -172,7 +173,7 @@ func files(card string, p *hub.Preview, match bool, canManage bool) *filesView {
 	selected := rec
 	if selected < 0 {
 		for _, i := range order {
-			if choices[i].Quant == nil && choices[i].Verdict != "wont-fit" {
+			if choices[i].Quant == nil {
 				selected = i
 				break
 			}
@@ -284,8 +285,22 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Query": q, "Kind": kind, "Kinds": discoveryKinds, "CanManage": canManage}
 	if q == "" {
 		filter := taskFilter(r)
-		data["Catalog"], data["Tasks"] = u.catalogRows(filter)
+		rows, tasks := u.catalogRows(filter)
+		rows = u.withForecast(r, rows)
+		data["Catalog"], data["Tasks"] = rows, tasks
+		data["AnyForecast"] = slices.ContainsFunc(rows, func(x CatalogRow) bool { return x.Forecast })
 		data["Filter"] = filter
+		// Nothing to chat with yet: the smallest that fits comes before anything to search.
+		if canManage && !u.hasChatModel() {
+			for _, c := range u.welcomeChoices(r) {
+				if c.Pick {
+					row := c.CatalogRow
+					data["Recommended"] = &row
+					// Once on the page is enough.
+					data["Catalog"] = slices.DeleteFunc(slices.Clone(data["Catalog"].([]CatalogRow)), func(x CatalogRow) bool { return x.ID == row.ID })
+				}
+			}
+		}
 	}
 	for _, k := range discoveryKinds {
 		if k.Value == kind {
