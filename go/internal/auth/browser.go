@@ -587,7 +587,9 @@ func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliv
 			return
 		}
 		if err := deliver(to, b.Config.Origin+MagicCallbackPath+"#"+token); err != nil {
-			RevokeMagicLink(ctx, b.Store, token)
+			if rerr := RevokeMagicLink(ctx, b.Store, token); rerr != nil {
+				b.Log.Error("Could not revoke a magic link that was not delivered.", "event", "auth.magic-link-revoke-failed", "error", rerr.Error())
+			}
 			b.Log.Warn("Magic-link email delivery failed.", "event", "auth.magic-link-delivery-failed", "error", err.Error())
 		}
 	}()
@@ -635,7 +637,9 @@ func (b *Browser) CompleteMagicLink(w http.ResponseWriter, r *http.Request) {
 func (b *Browser) Logout(w http.ResponseWriter, r *http.Request) {
 	if b.Direct() {
 		if token := cookie(r, SessionCookie); token != "" {
-			DeleteSession(r.Context(), b.Store, token)
+			if err := DeleteSession(r.Context(), b.Store, token); err != nil {
+				b.Log.Error("Could not end a browser session; it stays valid until it expires.", "event", "auth.session-delete-failed", "error", err.Error())
+			}
 		}
 		http.SetCookie(w, clearCookie(SessionCookie))
 	}

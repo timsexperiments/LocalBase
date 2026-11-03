@@ -376,7 +376,9 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	browser := auth.NewBrowser(st, r.Dir, access, log)
 	if browser.HasMagicLink() == nil {
-		auth.ClearMagicLinks(context.Background(), st)
+		if err := auth.ClearMagicLinks(context.Background(), st); err != nil {
+			log.Warn("Could not clear pending magic links.", "event", "auth.magic-links-clear-failed", "error", err.Error())
+		}
 	}
 	for _, reg := range func() []auth.Registration {
 		if access == nil {
