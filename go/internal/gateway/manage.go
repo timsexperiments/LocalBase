@@ -1002,7 +1002,15 @@ func (s *Server) saveHFTokenLocked(ctx context.Context, token string) error {
 		return err
 	}
 	cfg.HFToken = token
-	return s.Store.SaveConfig(ctx, cfg)
+	if err := s.Store.SaveConfig(ctx, cfg); err != nil {
+		return err
+	}
+	if s.LLM != nil { // Downloads read it from here. Only this changes: the rest may hold overrides.
+		next := s.LLM.Config().Clone()
+		next.HFToken = token
+		s.LLM.SetConfig(next)
+	}
+	return nil
 }
 
 func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {

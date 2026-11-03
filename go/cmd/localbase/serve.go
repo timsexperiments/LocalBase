@@ -283,17 +283,9 @@ func serve(c *cli.Ctx) (any, error) {
 	placementSource := &runtime.HostPlacement{Store: st, DeviceID: lib.DeviceID, Memory: mem, Log: log}
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
-		cur := llm.Config()
-		if cur.Active[kind] == modelID {
-			return
-		}
-		next := cur.Clone()
-		next.Active[kind] = modelID
-		if err := root.WithOperation(r.Dir, "update runtime configuration", func() error { return st.SaveConfig(context.Background(), next) }); err != nil {
+		if err := recordActive(r.Dir, st, llm, kind, modelID); err != nil {
 			log.Warn("Could not record the active "+kind+" model.", "event", "config.save-failed", "error", err.Error())
-			return
 		}
-		llm.SetConfig(next)
 	}
 	llm = runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: r.ModelsDir("llm"), RuntimesDir: r.RuntimesDir(),
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
