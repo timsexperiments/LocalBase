@@ -55,6 +55,7 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 		return err
 	}
 	plan.Placement, plan.PlacedAt, plan.PlacementRequest = &p, time.Now().UTC(), req
+	plan.LogPlacement = !dev.NoLogVerbosity && !(p.Platform == placement.Unified && len(p.Args) == 0)
 	m.d.Log.Info("Placement for "+modelID+": "+p.Note, "event", "runtime.placement", "runtime", "llm", "model_id", modelID,
 		"mode", p.Mode, "platform", p.Platform, "gpu_layers", p.GPULayers, "total_layers", p.TotalLayers,
 		"cpu_moe_layers", p.CPUMoELayers, "host_bytes", p.HostBytes, "gpu_bytes", p.GPUBytes, "free_vram_bytes", p.FreeVRAMBytes)
@@ -65,6 +66,10 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 // /health answers (they are read from its pipes asynchronously).
 var placementSettle = 2 * time.Second
 
+// cpuPlacementSettle is the same for a plan with no GPU layers: long enough to catch
+// a report that contradicts the plan, without slowing every CPU-only load.
+const cpuPlacementSettle = 250 * time.Millisecond
+
 // checkPlacement validates the backend's startup output against the plan
 // and fails closed on a difference (DESIGN §20.5).
 func (m *LLM) checkPlacement(proc *Process, plan *LLMPlan) error {
@@ -72,7 +77,11 @@ func (m *LLM) checkPlacement(proc *Process, plan *LLMPlan) error {
 	if p == nil || (p.Platform == placement.Unified && len(p.Args) == 0) {
 		return nil
 	}
-	deadline := time.Now().Add(placementSettle)
+	settle := placementSettle
+	if p.GPULayers == 0 {
+		settle = cpuPlacementSettle // the line may never come, so do not wait it out
+	}
+	deadline := time.Now().Add(settle)
 	log := proc.StartupLog()
 	for !bytes.Contains(log, []byte("layers to GPU")) && time.Now().Before(deadline) {
 		time.Sleep(25 * time.Millisecond)
@@ -93,7 +102,7 @@ type HostPlacement struct {
 	GPUs     func() []memory.GPUMemory
 
 	helpMu sync.Mutex
-	help   map[string]bool // custom llama-server build → has --n-cpu-moe
+	help   map[string]bool // custom llama-server build and flag → it has that flag
 }
 
 // Request reads the stored choice (auto without one).
@@ -122,6 +131,7 @@ func (h *HostPlacement) Device(t *Target) placement.Device {
 		cpuOnly = len(accelerators) == 1 && accelerators["cpu"]
 		if t.Backend.Launch != nil && t.Backend.Launch.Command != "" {
 			d.CPUMoE = h.hasFlag(t.Backend.Launch.Command, "--n-cpu-moe")
+			d.NoLogVerbosity = !h.hasFlag(t.Backend.Launch.Command, "--verbosity")
 		}
 	}
 	platform := h.Platform
@@ -155,14 +165,15 @@ func (h *HostPlacement) hasFlag(bin, flag string) bool {
 	if h.help == nil {
 		h.help = map[string]bool{}
 	}
-	if v, ok := h.help[bin]; ok {
+	key := bin + "\x00" + flag
+	if v, ok := h.help[key]; ok {
 		return v
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	out, _ := exec.CommandContext(ctx, bin, "--help").CombinedOutput()
-	h.help[bin] = bytes.Contains(out, []byte(flag))
-	return h.help[bin]
+	h.help[key] = bytes.Contains(out, []byte(flag))
+	return h.help[key]
 }
 
 // Loading reports whether modelID is being started now (a placement change
