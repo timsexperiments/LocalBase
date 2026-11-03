@@ -289,8 +289,7 @@ func launchEnv(impl string, extra []string) (*Target, error) {
 		}
 	}
 	// Offline: a missing fixture must fail, not be downloaded (loopback stays reachable).
-	cmd.Env = append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off", "HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://127.0.0.1:9",
-		"https_proxy=http://127.0.0.1:9", "http_proxy=http://127.0.0.1:9", "NO_PROXY=127.0.0.1,localhost", "no_proxy=127.0.0.1,localhost")
+	cmd.Env = guarded(append(cmd.Env, "LOCALBASE_CATALOG_FEED_URL=off"))
 	cmd.Env = append(cmd.Env, extra...)
 	cmd.Env = append(cmd.Env, coverEnv()...)
 	logf, _ := mustCreate(filepath.Join(dir, "serve.log"))
