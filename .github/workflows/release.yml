@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Nothing is open in the design
+        run: go/tools/open-items-check.sh
+
       - name: Run validation checks
         run: |
           bun run typecheck
