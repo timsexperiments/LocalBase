@@ -1881,6 +1881,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `route_disabled`
 - `run_not_found`
 - `run_result_unavailable`
+- `runs_memory_full`
 - `service_unavailable`
 - `storage_unavailable`
 - `structured_output_validation_failed`
