@@ -1,4 +1,5 @@
 #!/bin/bash
+. "$(dirname "$0")/test-ports.sh"
 # M7 rehearsal, service steps (DESIGN §17.2), on a copy made by
 # `tools/shadow.sh copy`: Go installed as a launchd service under the
 # copy's own throwaway label, scratch ports, smoke, the client replay and
@@ -41,8 +42,7 @@ fails=0
 ok() { printf 'ok   %s\n' "$*"; }
 bad() { printf 'FAIL %s\n' "$*"; fails=$((fails + 1)); }
 lb() { "$bin" --root "$root" "$@"; }
-pick() { while :; do p=$((24000 + RANDOM % 6000)); [ $p = 24173 ] && continue; [ $p -ge 25611 ] && [ $p -le 25613 ] && continue
-  lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 || { echo $p; return; }; done; }
+pick() { test_port_pick; }
 swap_in() { # swap_in <binary>: cp to .new, then mv over (the deploy rule)
   cp "$1" "$bin.new" && chmod 755 "$bin.new" && mv -f "$bin.new" "$bin"
 }
@@ -97,7 +97,7 @@ snap() { # launchd snapshot: loaded labels and the LaunchAgents directory.
   grep '^com\.apple\.mdworker\.shared\.' "$work/launchd-$1-all.txt" > "$work/launchd-$1-transient.txt"
   ls -1 "$HOME/Library/LaunchAgents" | sort > "$work/launchd-$1-agents.txt"
 }
-in_scratch() { [ "$1" -ge 24000 ] && [ "$1" -le 29999 ] && [ "$1" != 24173 ] && { [ "$1" -lt 25611 ] || [ "$1" -gt 25613 ]; }; }
+in_scratch() { test_port_ok "$1"; }
 check_ports() { # every port the copy's processes listen on is in the scratch range, on loopback
   local pids p bad=0
   pids=$(pgrep -f "$root" | tr '\n' ',' | sed 's/,$//')

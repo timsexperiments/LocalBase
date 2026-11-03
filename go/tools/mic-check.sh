@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/test-ports.sh"
 # Microphone dictation end to end (DESIGN §17.9): desktop Chrome with a fake
 # capture device that plays a speech clip, so the page records through
 # getUserMedia, encodes the browser WAV and sends it to the gateway's
@@ -13,7 +14,7 @@ clip=${2:?clip}
 expect=${3:?expected words}
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile=$(mktemp -d)
-port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
+port=$(test_port_pick)
 "$chrome" --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
   --no-first-run --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture="$clip" \
   --disable-features=AudioServiceOutOfProcess --autoplay-policy=no-user-gesture-required about:blank >/dev/null 2>&1 &

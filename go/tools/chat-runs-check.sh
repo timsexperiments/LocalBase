@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/test-ports.sh"
 # Detached chat runs in headless Chrome (DESIGN §22.7) against a --no-auth
 # scratch gateway whose chat model is the fake llama-server, so no weights
 # load (and, for the Lab steps, the same fake as LOCALBASE_SD_SERVER with
@@ -13,7 +14,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 base=${1:?usage: chat-runs-check.sh <base-url>}
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile=$(mktemp -d)
-port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
+port=$(test_port_pick)
 "$chrome" --headless=new --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
 pid=$!
 trap 'kill $pid 2>/dev/null; sleep 1; rm -rf "$profile"' EXIT
