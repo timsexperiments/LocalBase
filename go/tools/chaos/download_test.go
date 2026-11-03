@@ -113,6 +113,15 @@ func catalogEntry(a *artifactServer) func(rootDir string) error {
 		if err != nil {
 			return err
 		}
+		// The artifact server is on loopback, which a catalog source may reach only by opt-in.
+		st, err := store.Open(filepath.Join(rootDir, "local-base.db"))
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		if err := st.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+			return err
+		}
 		return os.WriteFile(filepath.Join(rootDir, "catalog.d", dlModel+".json"), b, 0o600)
 	}
 }
