@@ -80,6 +80,6 @@ If you publish LocalBase through Cloudflare Access, an app also has to get past 
 | `401` with `invalid_api_key` | The key is missing or not accepted. A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key, so this is also what a web page gets |
 | `403` with `insufficient_permissions` | The key lacks the permission. A key from `--create-key` has only `inference:chat` and `models:read`, unless you chose `--scopes` |
 | `404` with `model_not_found` | The app is asking for an id that isn't there. Check `GET /v1/models` |
-| `404` on `/v1/responses`, `/v1/completions` or `/v1/messages` | LocalBase doesn't serve these. See [Limits](#limits-what-will-not-work) |
+| `404` with `route_disabled` | The app uses a route LocalBase doesn't serve, such as `/v1/responses`, `/v1/completions` or `/v1/messages`. See [Limits](#limits-what-will-not-work) |
 
 The full list of answers is in the [API reference](api-reference.md).
