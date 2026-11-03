@@ -11,7 +11,7 @@
 * README.md page. The first registration gives nothing | OSS's README rewrite; docs/authentication.md has this
 * README.md `--permissions` says otherwise; | OSS's README rewrite; docs/authentication.md has this
 * README.md gives one address everything | OSS's README rewrite; docs/authentication.md has this
-* README.md unless `--permissions` is supplied | OSS's README rewrite; the provider list and remove commands are in docs/authentication.md
+* README.md unless `--permissions` is supplied | OSS's README rewrite; docs/authentication.md has the list and remove commands, and now that removing the last registration disables browser access
 integration-tool go/tools/integration/order.txt pick | the tool's own branch moves on after each rebuild
 integration-tool go/tools/integration/intended.txt * | the tool's own branch moves on after each rebuild
 integration-tool go/tools/integration/audit.go * | the tool's own branch moves on after each rebuild

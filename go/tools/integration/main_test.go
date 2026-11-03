@@ -167,3 +167,28 @@ func TestAuditSeesWhatAMergeHeld(t *testing.T) {
 		t.Error("an intention reaches another branch or file")
 	}
 }
+
+// The tool has rerere on for itself alone: the setting reaches its git commands, and a repository
+// that says off stays off for everyone else.
+func TestRerereIsTheToolsAlone(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command("git", "-C", dir, "init", "-q")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", dir, "config", "rerere.enabled", "false").CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	for _, k := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_KEY_1", "GIT_CONFIG_VALUE_1"} {
+		t.Setenv(k, "")
+	}
+	useRerere()
+	out, err := exec.Command("git", "-C", dir, "config", "rerere.enabled").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Errorf("the tool's git commands see %q, %v", out, err)
+	}
+	file, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
+	if err != nil || !strings.Contains(string(file), "enabled = false") {
+		t.Errorf("the repository's own setting changed: %s %v", file, err)
+	}
+}

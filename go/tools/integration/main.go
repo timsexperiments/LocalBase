@@ -46,6 +46,7 @@ func main() {
 	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
 	auditOnly := flag.Bool("audit", false, "report what folded pull requests added that the tree no longer has, in the existing worktree")
 	flag.Parse()
+	useRerere()
 	list, err := readOrder(orderPath())
 	check(err)
 	check(run("", "git", "fetch", "-q", "origin"))
@@ -67,9 +68,6 @@ func main() {
 		_ = exec.Command("git", "worktree", "remove", "--force", *dir).Run()
 		check(run("", "git", "worktree", "prune"))
 		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
-	}
-	for _, kv := range [][2]string{{"rerere.enabled", "true"}, {"rerere.autoupdate", "false"}} {
-		check(run(*dir, "git", "config", kv[0], kv[1]))
 	}
 	for _, b := range list {
 		if branch, from, ok := parsePick(b); ok {
@@ -295,6 +293,23 @@ func parsePick(line string) (branch, from string, ok bool) {
 		return "", "", false
 	}
 	return f[1], f[2], true
+}
+
+// useRerere turns rerere on for the git commands this tool runs, and only those. The repository
+// keeps it off, because all its worktrees share one config and one cache: a resolution recorded
+// here would otherwise be applied silently to another thread's merge. Off has to be said: git
+// turns it on by itself wherever a cache exists. tools/integration/rerere-env.sh is the same
+// thing for finishing a merge by hand, which is what records its resolution.
+func useRerere() {
+	for k, v := range map[string]string{
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "rerere.enabled",
+		"GIT_CONFIG_VALUE_0": "true",
+		"GIT_CONFIG_KEY_1":   "rerere.autoupdate",
+		"GIT_CONFIG_VALUE_1": "false",
+	} {
+		check(os.Setenv(k, v))
+	}
 }
 
 func orderPath() string {
