@@ -721,34 +721,25 @@ An import's progress.
 
 ### `POST /_localbase/model-imports`
 
-Resolve an import source, or start the import.
+Resolve an import source, start the import, or cancel it.
+
+Cancelling differs from cancelling an install, on purpose. An import is identified by its `job`, and cancelling removes what it downloaded, because its source may change between tries. An install is identified by `modelId` and keeps its partial file, because a pinned checksum makes resuming safe.
 
 **Needs:** `models:manage`.
 
 **Request:** `application/json`. At most 64 KiB.
 
-| Field | Type | Required | About |
-|---|---|---|---|
-| `action` | `resolve`, `start` | yes |  |
-| `allowHttp` | boolean |  |  |
-| `authProfile` | string |  |  |
-| `backend` | string |  | `auto`, or a registered backend's id. |
-| `confirmCustomSource` | boolean |  |  |
-| `files` | list of string |  |  |
-| `id` | string |  |  |
-| `name` | string |  |  |
-| `revision` | string |  |  |
-| `sha256` | string |  |  |
-| `source` | string | yes | A repository reference, a direct URL, or a path on the gateway's computer. |
-| `task` | `chat`, `embeddings`, `decision`, `image`, `video`, `speech`, `transcription` |  |  |
+- One of: `action` (required), `allowHttp`, `authProfile`, `backend`, `confirmCustomSource`, `files`, `id`, `name`, `revision`, `sha256`, `source` (required), `task`
+- `action: cancel`: `job` (required)
 
 **Responses:**
 
-- `200`: `resolve`: what would be downloaded.
+- `200`: `resolve`: what would be downloaded. `cancel`: the job, usually still `running` for a moment.
 - `202`: `start`: the import is running.
 - `400`: Invalid. A body that is not JSON answers in the management shape (`validation_failed`). Anything else answers in the OpenAI envelope: `validation_failed`, `import_unresolved`, `import_choose_file`, `custom_source_unconfirmed` or `import_task_required`.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
+- `404`: `cancel`: no import with that id (`import_not_found`).
 - `405`: Wrong method; see the `Allow` header.
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
 - `499`: The client went away while sending the body (`request_aborted`).
@@ -770,7 +761,7 @@ Install state of each catalog model.
 
 ### `POST /_localbase/model-management`
 
-Install, uninstall, enable, disable or activate a model.
+Install, uninstall, enable, disable or activate a model, or cancel its install.
 
 One install runs at a time, in the background. `GET` reports its progress.
 
@@ -780,18 +771,18 @@ One install runs at a time, in the background. `GET` reports its progress.
 
 | Field | Type | Required | About |
 |---|---|---|---|
-| `action` | `install`, `uninstall`, `enable`, `disable`, `activate` | yes |  |
+| `action` | `install`, `uninstall`, `enable`, `disable`, `activate`, `cancel` | yes |  |
 | `modelId` | string | yes |  |
 
 **Responses:**
 
-- `200`: Done.
-- `202`: An install was accepted and is running.
+- `200`: Done. A cancelled install answers here with state `cancelled`. A cancel with no install of this model running answers here too, with the operation recorded for it, unchanged, so a retry is safe.
+- `202`: An install was accepted and is running, or a cancel has not finished after 5 s, so its state is still `running`.
 - `400`: Invalid (`validation_failed`), or not allowed for this model (`invalid_request`).
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `405`: Wrong method; see the `Allow` header.
-- `409`: Not possible now: `conflict`, `unsafe_path`, `storage_unavailable` or `insufficient_storage`.
+- `409`: Not possible now: `conflict` (including a cancel with no install of this model running and no operation recorded for it), `unsafe_path`, `storage_unavailable` or `insufficient_storage`.
 - `413`: The body is over this route's limit.
 - `503`: Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).
 
@@ -895,9 +886,9 @@ A model's CPU and GPU placement.
 
 Choose a model's placement.
 
-It applies on the next load and never restarts the model. The route also needs `models:read`, and an unknown model answers 404 before the permission is checked.
+It applies on the next load and never restarts the model. An unknown model answers 404 before the permission is checked.
 
-**Needs:** `models:manage`, and also `[models:read]`.
+**Needs:** `models:manage`.
 
 **Parameters:**
 
@@ -929,9 +920,9 @@ It applies on the next load and never restarts the model. The route also needs `
 
 Go back to automatic placement.
 
-It applies on the next load and never restarts the model. The route also needs `models:read`, and an unknown model answers 404 before the permission is checked.
+It applies on the next load and never restarts the model. An unknown model answers 404 before the permission is checked.
 
-**Needs:** `models:manage`, and also `[models:read]`.
+**Needs:** `models:manage`.
 
 **Parameters:**
 
@@ -953,9 +944,9 @@ It applies on the next load and never restarts the model. The route also needs `
 
 Unload a loaded model.
 
-Requests holding the model finish first. Its queued requests are refused, and a later request loads it again. The route also needs `models:read`.
+Requests holding the model finish first. Its queued requests are refused, and a later request loads it again.
 
-**Needs:** `models:manage`, and also `[models:read]`.
+**Needs:** `models:manage`.
 
 **Parameters:**
 
