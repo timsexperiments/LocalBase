@@ -37,6 +37,9 @@ nothing in CI would stop a PR breaking TS parity, including this cleanup.
 
 Real-model tests (**R**) stay manual: no runner has the weights or memory.
 
+**Tests absent on a platform** are named in `contract/platform_absences_test.go`, with why and what
+runs them; a skip on the platform alone fails `TestPlatformAbsencesAreNamed`.
+
 ## 2. Baseline
 
 Statement coverage, darwin/arm64, from `tools/coverage.sh both`: unit tests plus the dual
