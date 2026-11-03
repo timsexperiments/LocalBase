@@ -231,6 +231,8 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			return nil, cli.Inputf("otelHeaders: %s", err.Error())
 		}
 	}
+	warnAboutSecretOption(c, "otel-headers", "Set OTEL_EXPORTER_OTLP_HEADERS, or use --config")
+	warnAboutSecretOption(c, "hf-token", "Set HF_TOKEN, or save it in Settings")
 	parallel := c.String("parallel")
 	if !c.Has("parallel") && overrides.Parallel != nil {
 		parallel = *overrides.Parallel
@@ -526,4 +528,12 @@ func loadOverrides(path string) (*Overrides, error) {
 		return nil, cli.Inputf("%s", strings.Join(issues, "; "))
 	}
 	return o, nil
+}
+
+// warnAboutSecretOption says what a secret on the command line costs. Clearing one with an empty value
+// costs nothing, and the value itself is never repeated.
+func warnAboutSecretOption(c *cli.Ctx, name, instead string) {
+	if c.Has(name) && c.String(name) != "" {
+		fmt.Fprintf(c.Stderr, "Warning: --%s can be read by other users of this computer while the command runs, and stays in your shell history. %s.\n", name, instead)
+	}
 }
