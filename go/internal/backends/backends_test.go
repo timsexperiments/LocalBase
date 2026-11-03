@@ -371,3 +371,23 @@ func TestUnpinnedManagedBackendIsManualOnly(t *testing.T) {
 		t.Fatalf("pinned and installed CrispASR not chosen: %q", rec.BackendID)
 	}
 }
+
+// "supported" must mean it will start. This build has no code to start the ONNX adapter,
+// so a model with that backend chosen would pass here and fail at the first request.
+func TestAdapterWithNoRunnerIsIncompatible(t *testing.T) {
+	reg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := reg.Get("onnx-cpu")
+	if d == nil {
+		t.Fatal("no onnx-cpu definition")
+	}
+	v := models.Variant{ID: "default", Format: models.Fact[string]{Value: "onnx", Source: "catalog"},
+		Architecture: models.Fact[string]{Value: "kokoro", Source: "catalog"}}
+	m := &models.Model{ID: "kokoro", Tasks: []string{"speech"}, Variants: []models.Variant{v}}
+	f := Assess(m, &m.Variants[0], d, host(d.Platforms[0].OS, d.Platforms[0].Arch, []string{"cpu"}, reg, nil), nil)
+	if f.Rating != Incompatible || len(f.Reasons) == 0 || f.Reasons[0].Code != CodeNoRunner {
+		t.Errorf("%s %+v", f.Rating, f.Reasons)
+	}
+}
