@@ -4,12 +4,11 @@
 # to the benchmark (see tools/bench/main.go).
 set -u
 cd "$(dirname "$0")/.." || exit 2
-work=$(mktemp -d "${TMPDIR:-/tmp}/lbbench-XXXXXX") || exit 2
-if ! go build -o "$work/bench" ./tools/bench; then
-  rm -rf "$work"
-  exit 2
-fi
-perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nice -n 10 "$work/bench" "$@" &
+# Built to a fixed place and replaced by the next run, so there is nothing to clean up.
+bin=${XDG_CACHE_HOME:-$HOME/.cache}/localbase/bench
+mkdir -p "${bin%/*}" || exit 2
+go build -o "$bin" ./tools/bench || exit 2
+perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nice -n 10 "$bin" "$@" &
 pid=$!
 stop() { kill -TERM -- "-$pid" 2>/dev/null; }
 trap stop INT TERM HUP
@@ -18,5 +17,4 @@ while kill -0 "$pid" 2>/dev/null; do
   wait "$pid"
   status=$?
 done
-rm -rf "$work"
 exit "$status"
