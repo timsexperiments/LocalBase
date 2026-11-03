@@ -4477,6 +4477,19 @@ action is in one row and none is covered; at 320 by 568 a scroll reaches them. T
 and fails if it can't, because a guard that quietly stays off is a hole in every table: a check run now has to show
 a result line for every `check()` in the script. **No real video model has run through this page.**
 
+### 27.2c Speech, in the same pattern
+
+- **A script reads like a video:** its first words, then the voice, length and age, then the waveform above the
+  native player. Make again leads, and Save, Share, Edit script and Remove are icons in one row.
+- **While it runs,** the voice and Stop sit together, and its progress is the real count of parts made, because this
+  page makes them one at a time. It has no shimmer: polling would restart one every two seconds.
+- **The voice chip says Voice,** since the name of a voice alone ("Default") doesn't say what the chip is.
+- **Unchanged:** the sample in each voice's row, the note about long runs of digits, and the 350 ms pause between
+  parts, which is one constant, `speechPartPause` (§22.19). No one has judged that pause by ear (`docs/owner-test-script.md`).
+
+**Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390 with Share showing, and a long press. **No real speech
+model has run through this new layout.**
+
 ### 27.3 What the landing's overflow taught
 
 - **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and
