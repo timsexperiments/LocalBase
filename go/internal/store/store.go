@@ -113,6 +113,13 @@ func OpenReadOnly(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.DB.Close() }
 
+// drizzleTable is the migration journal, which the TS build also makes.
+const drizzleTable = `CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+		id SERIAL PRIMARY KEY,
+		hash text NOT NULL,
+		created_at numeric
+	)`
+
 func (s *Store) migrate(ctx context.Context) error {
 	migrations, err := loadMigrations()
 	if err != nil {
@@ -123,11 +130,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
-		id SERIAL PRIMARY KEY,
-		hash text NOT NULL,
-		created_at numeric
-	)`); err != nil {
+	if _, err := tx.ExecContext(ctx, drizzleTable); err != nil {
 		return err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT hash, created_at FROM "__drizzle_migrations" ORDER BY created_at`)

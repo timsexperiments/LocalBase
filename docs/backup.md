@@ -1,0 +1,81 @@
+# Backup and restore
+
+```bash
+local-base backup                                 # write this root's settings to a private file
+local-base backup --dry-run                       # say what it would hold, write nothing
+local-base --root ~/restored restore --dry-run <file>   # check a backup, change nothing
+local-base --root ~/restored restore <file>       # restore it
+```
+
+## A backup is a secret
+
+By default it holds your Hugging Face token, OTLP headers, sign-in client secrets, SMTP password and download credentials, **in plain text, and it is not encrypted**. Anyone who can read the file can use them. The command says so every time.
+
+- **It is a private file:** 0600, in a 0700 directory beside the root (`~/.local/share/local-base-backups/`). `--output` chooses another place, but not inside the root or in a directory other users can change, and it never overwrites a file.
+- **LocalBase never uploads it.** There is no route, no page and no sync. Nothing in this feature uses the network.
+- **To move one anywhere,** encrypt it first with `age` or `gpg`, or keep it on an encrypted disk.
+- `uninstall` leaves your backups where they are, and says so.
+
+## What is in it, and what isn't
+
+Nothing is left out silently: `backup` lists everything it leaves out, with its size and why, and that list is in the file too.
+
+**A backup is checked before it is kept.** `backup` reads the file back with the same checks `restore` makes, and if restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work and keeps nothing.
+
+While it works, it uses a private directory named `.local-base-temporary-…`, beside the root or the backup, which holds what the backup holds. It is removed however the command ends, unless the process is killed outright. Then `local-base doctor` names it, and the next backup or restore removes it.
+
+| Included | Secrets in it |
+|---|---|
+| Settings, API keys, users, roles, policies, imported models, backend choices, voice records, usage totals (the database) | Hugging Face token, OTLP headers. **API keys are hashes only**, so they can't be read back, and a restored root accepts the same keys |
+| Sign-in providers (`ui-access.json`) | OIDC and GitHub client secrets |
+| Email delivery (`email-delivery.json`) | SMTP password |
+| Download credentials (`credentials/auth-profiles.json`) | Header values |
+| Catalog entries and custom backends (`catalog.d/`, `backends.d/`) | None that LocalBase knows of. They are copied as they are, so don't put one in them |
+| Custom voices (`voices/`) | Not secrets, but recordings of someone's voice |
+
+| Not included | Why |
+|---|---|
+| `models/` | Large, and downloaded again. Restore lists which to install |
+| `runs/` | Replies in progress. No prompt or reply ever goes in a backup |
+| `logs/`, `bin/`, `cache/`, `runtime/`, `service/`, `catalog-feed.json` | Not settings, tied to this machine, or fetched again |
+| Sessions and sign-in links | A restore signs everyone out |
+| Measured memory | Measured on one machine, and measured again on the next load |
+| Old files from an earlier restore | They hold secrets |
+
+## Leaving secrets out
+
+```bash
+local-base backup --exclude-secrets
+```
+
+Secrets are removed from the copy, never from your root. The finished file holds none of them, though a working copy holds the token and OTLP headers for a moment, in the private working directory. Because a blank secret would stop the gateway, a sign-in provider that needs one is left out whole, as are the SMTP settings and download credentials. The file lists each by name, with the command that puts it back, and `restore` prints that list.
+
+**This does not anonymise.** The file still holds users' email addresses, API key hashes, voice recordings and usage totals.
+
+## Restoring
+
+Restore checks the whole file before changing anything, treating it as input from someone else: a backup isn't signed, and **restoring one decides who can sign in and which programs run as you**. So it refuses a file you don't own or that others can change, and a database holding anything LocalBase doesn't make. Before it asks, it shows:
+
+- **Every custom backend's whole command line.** These run as you when their model loads.
+- **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
+- **Settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
+- **With `--replace`, what comes back:** keys and users the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, so check `local-base keys list` afterwards.
+
+It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, and running as root. A root with data needs `--replace`.
+
+**`--replace` only replaces what a backup holds.** Your models and logs stay. The old files go to `<root>/.before-restore-<time>/`, private to you, and nothing reads them. **They hold secrets too,** so the last line of the output gives the command to delete them.
+
+**If anything fails, everything is put back.** If a restore is interrupted, every command refuses until you run:
+
+```bash
+local-base restore --undo
+```
+
+**It starts nothing.** The settings carry their ports, so a backup restored beside a running gateway names that gateway's ports. It warns about any that are in use, by connecting to each and closing the connection: change them with `local-base config apply` before starting. `--no-port-probe` skips this, and says which ports it did not check.
+
+Files are created 0600 and directories 0700, owned by you, and the restored root passes the same checks a gateway runs at startup.
+
+## What this can't protect against
+
+- **Plaintext secrets at rest:** a backup holds the same secrets a root holds, and anyone who can read it can use them.
+- **A parent directory other users can write to** can swap the root, or the backups directory beside it. Owner and mode checks don't protect against that.
