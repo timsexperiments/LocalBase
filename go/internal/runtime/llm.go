@@ -654,6 +654,8 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		res.Release()
 		return nil, fail(err)
 	}
+	recordBackend(m.d.Root, "llm", plan.Port, proc, m.d.Log)
+	proc.ForeignListenerOK = t != nil && t.Backend != nil && t.Backend.Launch != nil
 	budget := defaultStartupBudget
 	if plan.ArtifactBytes >= largeStartupWeights {
 		budget = largeStartupBudget

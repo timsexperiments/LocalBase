@@ -496,6 +496,8 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		res.Release()
 		return nil, fail(err)
 	}
+	recordBackend(s.d.RootDir, s.d.Modality, port, proc, s.d.Log)
+	proc.ForeignListenerOK = t.Backend.Launch != nil
 	base := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 	budget := s.d.Startup
 	if cmd.startup > 0 {

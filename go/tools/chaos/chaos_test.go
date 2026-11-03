@@ -448,7 +448,6 @@ func TestFailedSwitchRestoresPrevious(t *testing.T) {
 // A gateway killed outright leaves no backend behind that stops its successor
 // from serving: the restart answers from a backend it owns, on the same ports.
 func TestGatewayKilledOutright(t *testing.T) {
-	knownBug(t, "a killed gateway leaves backends running, and they answer its successor's requests")
 	ctx, g, c := start(t, lab.Options{})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	before := backendNamed(t, "llama-server")

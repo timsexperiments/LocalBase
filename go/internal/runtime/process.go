@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -27,6 +28,11 @@ type Process struct {
 	cmd  *exec.Cmd
 	done chan struct{}
 	err  error
+	// endGuard stops the group's guard once the backend has exited (startGuard).
+	endGuard func()
+	// ForeignListenerOK skips the listener check: a custom launch may start
+	// something outside its group that serves the port (a container, say).
+	ForeignListenerOK bool
 	// startup keeps the first bytes of output, raw, for the placement check
 	// (DESIGN §20.5): never decoded, bounded.
 	startupMu sync.Mutex
@@ -90,8 +96,12 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	}
 	go drain(stdout)
 	go drain(stderr)
+	p.startGuard(log)
 	go func() {
 		p.err = cmd.Wait()
+		if p.endGuard != nil {
+			p.endGuard()
+		}
 		close(p.done)
 	}()
 	return p, nil
@@ -127,8 +137,12 @@ func checkPortFree(host string, port int) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("port %d on %s is already in use by another process, so no backend was started there; "+
-				"stop that process or choose other ports", port, host)
+			owner := "another process"
+			if pids, ok := listenerPIDs(port); ok {
+				owner = fmt.Sprintf("another process (pid %d)", pids[0])
+			}
+			return fmt.Errorf("port %d on %s is already in use by %s, so no backend was started there; "+
+				"stop that process or choose other ports", port, host, owner)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -149,6 +163,15 @@ func portBusy(addr string) bool {
 	return false
 }
 
+func urlPort(raw string) int {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(u.Port())
+	return n
+}
+
 // WaitHealthy polls url until it returns 200, the process exits, or the
 // startup budget runs out.
 func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Duration) error {
@@ -158,6 +181,11 @@ func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Durat
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
 	for {
+		select {
+		case <-p.done:
+			return fmt.Errorf("%s exited during startup: %v", p.Name, p.err)
+		default:
+		}
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if resp, err := client.Do(req); err == nil {
 			io.Copy(io.Discard, resp.Body)
@@ -169,8 +197,15 @@ func (p *Process) WaitHealthy(ctx context.Context, url string, budget time.Durat
 				case <-p.done:
 					return fmt.Errorf("%s exited during startup, and another process answered on its port: %v", p.Name, p.err)
 				case <-time.After(healthySettle):
-					return nil
 				}
+				if !p.ForeignListenerOK {
+					if port := urlPort(url); port > 0 {
+						if pid := p.foreignListener(port); pid != 0 {
+							return fmt.Errorf("%s did not answer its health check: pid %d, outside its process group, is listening on port %d", p.Name, pid, port)
+						}
+					}
+				}
+				return nil
 			}
 		}
 		select {
