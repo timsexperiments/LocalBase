@@ -215,35 +215,42 @@ func runRestore(c *cli.Ctx) (any, error) {
 	return map[string]any{"report": rep, "beforeDir": done.BeforeDir}, nil
 }
 
-// printable is a copy of the report that's safe to show on a terminal: every string in it, wherever
-// it came from, has been through cli.Printable. Doing it here, once, means a field added to the report
-// can't be missed at the line that prints it. The report itself stays as it is for --json. A field of a
-// kind this doesn't know stops it, and TestEveryStringInTheReportIsMadePrintable finds that first.
+// printable is a copy of the report that's safe to show on a terminal. Every string in it, wherever
+// it came from, has been through cli.PrintableASCII, because a person judges what's in this report by
+// eye, and a letter from another alphabet can make one address or program look like another. Only a
+// field tagged report:"letters", which is a name a person gave or the path they typed, keeps its
+// letters, through cli.Printable. Doing it here, once, means a field added to the report can't be
+// missed at the line that prints it. The report itself stays as it is for --json. A field of a kind
+// this doesn't know stops it, and TestEveryStringInTheReportIsMadePrintable finds that first.
 func printable(rep *backup.Report) *backup.Report {
 	out := &backup.Report{}
-	copyPrintable(reflect.ValueOf(out).Elem(), reflect.ValueOf(rep).Elem())
+	copyPrintable(reflect.ValueOf(out).Elem(), reflect.ValueOf(rep).Elem(), false)
 	return out
 }
 
-func copyPrintable(dst, src reflect.Value) {
+func copyPrintable(dst, src reflect.Value, letters bool) {
 	switch src.Kind() {
 	case reflect.String:
-		dst.SetString(cli.Printable(src.String()))
+		if letters {
+			dst.SetString(cli.Printable(src.String()))
+		} else {
+			dst.SetString(cli.PrintableASCII(src.String()))
+		}
 	case reflect.Struct:
 		for i := range src.NumField() {
-			copyPrintable(dst.Field(i), src.Field(i))
+			copyPrintable(dst.Field(i), src.Field(i), letters || src.Type().Field(i).Tag.Get("report") == "letters")
 		}
 	case reflect.Slice:
 		if !src.IsNil() {
 			dst.Set(reflect.MakeSlice(src.Type(), src.Len(), src.Len()))
 			for i := range src.Len() {
-				copyPrintable(dst.Index(i), src.Index(i))
+				copyPrintable(dst.Index(i), src.Index(i), letters)
 			}
 		}
 	case reflect.Pointer:
 		if !src.IsNil() {
 			dst.Set(reflect.New(src.Type().Elem()))
-			copyPrintable(dst.Elem(), src.Elem())
+			copyPrintable(dst.Elem(), src.Elem(), letters)
 		}
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
@@ -305,7 +312,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if len(rep.Sources) > 0 {
 		c.Info("Imported models that reach outside the catalog:")
 		for _, s := range rep.Sources {
-			c.Info("  %s %s %s", s.Model, s.Kind, cli.PrintableASCII(s.Where))
+			c.Info("  %s %s %s", s.Model, s.Kind, s.Where)
 		}
 	}
 	printSignIn(c, rep.SignIn)
@@ -319,18 +326,12 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if len(rep.Settings) > 0 {
 		c.Info("Settings that change who can reach it, or where it reaches:")
 		for _, setting := range rep.Settings {
-			c.Info("  %s: %s", setting.Name, cli.PrintableASCII(setting.Value))
+			c.Info("  %s: %s", setting.Name, setting.Value)
 		}
 	}
 	for _, caution := range rep.Cautions {
 		fmt.Fprintln(c.Stderr, caution)
 	}
-}
-
-// place is a line naming a place, as a person judging it by eye should see it.
-func place(l backup.Line) backup.Line {
-	l.Value, l.ThisRoot = cli.PrintableASCII(l.Value), cli.PrintableASCII(l.ThisRoot)
-	return l
 }
 
 // printSignIn says who could sign in and what they'd get. The line about what everyone gets is always
@@ -342,13 +343,13 @@ func printSignIn(c *cli.Ctx, s *backup.SignIn) {
 	if len(s.Who) > 0 {
 		c.Info("Who can sign in:")
 		for _, l := range s.Who {
-			c.Info("  %s", place(l).Text("has"))
+			c.Info("  %s", l.Text("has"))
 		}
 	} else {
 		c.Info("Sign-in: on this computer only, until a provider is added.")
 	}
 	for _, l := range s.Goes {
-		c.Info("No longer able to sign in: %s (this root names it %s)", cli.PrintableASCII(l.Value), l.Named)
+		c.Info("No longer able to sign in: %s (this root names it %s)", l.Value, l.Named)
 	}
 	everyone := s.Everyone
 	if everyone.Value == "" {
@@ -359,10 +360,10 @@ func printSignIn(c *cli.Ctx, s *backup.SignIn) {
 		c.Info("If the access policy is removed, everyone who signs in through a provider gets: %s", s.IfPolicyRemoved)
 	}
 	if s.Origin != nil {
-		c.Info("Address people sign in at: %s", place(*s.Origin).Text("has"))
+		c.Info("Address people sign in at: %s", s.Origin.Text("has"))
 	}
 	if s.Mail != nil {
-		c.Info("Mail server, which can read sign-in links: %s", place(*s.Mail).Text("has"))
+		c.Info("Mail server, which can read sign-in links: %s", s.Mail.Text("has"))
 	}
 }
 

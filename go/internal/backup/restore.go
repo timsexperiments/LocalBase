@@ -88,7 +88,7 @@ type KeyCounts struct {
 
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
-	Target    string        `json:"target"`
+	Target    string        `json:"target" report:"letters"`
 	NewRoot   bool          `json:"newRoot"`
 	Manifest  *Manifest     `json:"manifest"`
 	Rules     []string      `json:"rules"`
@@ -107,8 +107,8 @@ type Report struct {
 	// With a root being replaced, what the backup would bring back, and what stays as it is.
 	ReturningBindings []IssuerLine `json:"returningBindings,omitempty"`
 	RevocationsKept   int          `json:"revocationsKept"`
-	ReturningKeys     []string     `json:"returningKeys"`
-	KeysLost          []string     `json:"keysLost"`
+	ReturningKeys     []string     `json:"returningKeys" report:"letters"`
+	KeysLost          []string     `json:"keysLost" report:"letters"`
 	ReturningUsers    int          `json:"returningUsers"`
 	// A user the target has removed or disabled stays that way, as a revoked key does.
 	UserStatusesKept int      `json:"userStatusesKept"`
