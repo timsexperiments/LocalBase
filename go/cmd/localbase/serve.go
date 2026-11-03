@@ -334,7 +334,7 @@ func serve(c *cli.Ctx) (any, error) {
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
 	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
-	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
+	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib,
 		Call: func(ctx context.Context, p *auth.Principal, method, path, ct string, body []byte) web.APIResult {
@@ -342,6 +342,7 @@ func serve(c *cli.Ctx) (any, error) {
 			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}
 		},
 		Voices: voices.New(st, r.Dir).List})
+	srv.UI, srv.LoginPages = ui, ui
 	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
 	// started with, clearing a matching pending restart (TS serve).
@@ -380,15 +381,24 @@ func serve(c *cli.Ctx) (any, error) {
 		srv.OnReady()
 	}
 	baseURL := "http://" + ln.Addr().String()
+	var loginLink string
+	if firstRunLinkAllowed(noAuth, browser.Enabled(), os.Getenv("LOCALBASE_SERVICE_TOKEN")) {
+		loginLink = firstRunLoginLink(e, ln.Addr().String())
+	}
 	log.Info("LocalBase listening on "+baseURL, "event", "gateway.started", "root", r.Dir, "memory_gb", memoryGB, "auth", !noAuth, "version", version.Version, "commit", version.Get().Commit)
 	if c.Global.JSON {
 		enabled := map[string]bool{}
 		for _, k := range store.Kinds {
 			enabled[k] = k == "llm" || len(cfg.Selected[k]) > 0
 		}
-		c.Line(map[string]any{"event": "started", "baseUrl": baseURL, "enabled": enabled})
+		line := map[string]any{"event": "started", "baseUrl": baseURL, "enabled": enabled}
+		if loginLink != "" {
+			line["loginLink"] = loginLink
+		}
+		c.Line(line)
 	} else {
 		c.Info("LocalBase gateway listening on %s", baseURL)
+		printLoginLink(c, loginLink)
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpServer.Serve(ln) }()

@@ -16,7 +16,7 @@ import (
 // IsUIAccessPath reports the paths the browser layer owns.
 func IsUIAccessPath(p string) bool {
 	switch p {
-	case "/app/login", auth.OIDCCallbackPath, "/github/callback", auth.MagicCallbackPath, auth.MagicRequestPath,
+	case "/app/login", auth.LocalOncePath, auth.OIDCCallbackPath, "/github/callback", auth.MagicCallbackPath, auth.MagicRequestPath,
 		"/app/logout", "/app/session", "/app/api":
 		return true
 	}
@@ -26,7 +26,7 @@ func IsUIAccessPath(p string) bool {
 // allowedUIRoute lists what the browser may call through /app/api.
 func allowedUIRoute(method, p string) bool {
 	switch p {
-	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token":
+	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions":
 		return method == "GET" || method == "POST"
 	case "/_localbase/model-backend", "/_localbase/model-imports":
 		return method == "GET" || method == "POST"
@@ -98,6 +98,9 @@ func allowedUIRoute(method, p string) bool {
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.
 func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Identity) {
+	if p := s.localPrincipal(r); p != nil {
+		return p, nil
+	}
 	if !s.Browser.Enabled() {
 		return nil, nil
 	}
@@ -131,6 +134,9 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
 		fwd.URL.RawQuery = forwardedQuery(target, r)
 		s.mux.ServeHTTP(w, fwd)
+		return
+	}
+	if s.localUIAccess(w, r) {
 		return
 	}
 	if !b.Enabled() {
@@ -225,7 +231,11 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, body)
 		return
 	}
-	// Forward to the API route as the browser identity, without credentials.
+	s.forwardAsBrowser(w, r, principal, target)
+}
+
+// forwardAsBrowser runs an API route as the browser identity, without credentials.
+func (s *Server) forwardAsBrowser(w http.ResponseWriter, r *http.Request, principal *auth.Principal, target string) {
 	fwd := r.Clone(context.WithValue(r.Context(), browserPrincipalKey{}, principal))
 	for name := range fwd.Header {
 		low := strings.ToLower(name)
