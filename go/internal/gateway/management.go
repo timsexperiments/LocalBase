@@ -531,6 +531,29 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 
 // cancelDetail is the outcome of an install someone cancelled. A cancelled install
 // has no error: nothing went wrong.
+// partialKeptDetail ends a failed install's sentence when there is a part to go on from. A file that
+// changed upstream can't be continued (DESIGN's download integrity), so it says that too.
+const partialKeptDetail = "The downloaded part is kept, so installing again continues from it (or starts over if the file has changed)."
+
+// failedInstallDetail is a failed install's sentence.
+func (s *Server) failedInstallDetail(spec *catalog.Spec) string {
+	const failed = "Installation failed. Check storage, network access, and catalog verification."
+	if s.partialKept(spec) {
+		return failed + " " + partialKeptDetail
+	}
+	return failed
+}
+
+// partialKept says whether a failed install left a part of any of a model's files.
+func (s *Server) partialKept(spec *catalog.Spec) bool {
+	for _, a := range spec.Artifacts {
+		if info, err := safeFile(s.Root.Dir, filepath.Join(s.modelsDir(spec.Kind), a.Filename)+".partial"); err == nil && info != nil && info.Size() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 const cancelDetail = "Installation cancelled. The downloaded part is kept, so installing again resumes it."
 
 // cancelWait is how long a cancel waits for the install to end before answering with
@@ -670,7 +693,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			m.operations[spec.ModelID] = &op
 		case accepted:
 			op := *m.operations[spec.ModelID]
-			op.State, op.Detail = "failed", "Installation failed. Check storage, network access, and catalog verification."
+			op.State, op.Detail = "failed", s.failedInstallDetail(spec)
 			op.Error = &mgmtOpError{install.Reason(err)}
 			if m.ctx.Err() != nil {
 				op.Detail = interruptedDetail

@@ -245,7 +245,7 @@ func TestVideoJobLifecycle(t *testing.T) {
 	p := g.waitStatus(t, pressured["id"].(string))
 	e, _ := p["error"].(map[string]any)
 	if p["status"] != "failed" || e["code"] != "insufficient_memory" ||
-		!strings.HasPrefix(e["message"].(string), "The host is under memory pressure") {
+		!strings.HasPrefix(e["message"].(string), "This computer is under memory pressure, so video generation wasn't started.") {
 		t.Fatalf("pressure %v", p)
 	}
 

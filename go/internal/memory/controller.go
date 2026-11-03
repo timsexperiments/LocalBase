@@ -32,7 +32,9 @@ type AdmissionError struct {
 	AvailableBytes int64
 	ReserveBytes   int64
 	PendingBytes   int64
-	Confidence     string
+	// ReservedBytes is what LocalBase's other runtimes have reserved: a promise, not a measurement.
+	ReservedBytes int64
+	Confidence    string
 	// Permanent: the demand can never fit on this host, even idle.
 	Permanent bool
 	// CapacityBytes is the pool's total when Permanent; AvailableBytes is then what
@@ -278,6 +280,11 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 	// reject attaches the figures behind the refusal (TS reject).
 	reject := func(e AdmissionError) *AdmissionError {
 		e.Diagnostics = c.diagnose(e.PoolID, d, snap, freed, pending, reserve)
+		for id, r := range c.reservations {
+			if !releasing[id] {
+				e.ReservedBytes += r.projected
+			}
+		}
 		return &e
 	}
 

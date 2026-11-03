@@ -304,12 +304,8 @@ func gibText(v int64) string {
 func videoMemoryMessage(e *memory.AdmissionError) string {
 	accelerator := e.Reason == "accelerator-memory"
 	switch {
-	case e.Reason == "memory-pressure":
-		prefix := ""
-		if accelerator {
-			prefix = "accelerator "
-		}
-		return "The host is under " + prefix + "memory pressure, so the video runtime was not started. " + freeMemoryHint
+	case e.Reason == "memory-pressure" || e.Reason == "system-memory":
+		return memoryRefusal(e, "video generation")
 	case e.Reason == "measurement-unavailable":
 		return "Available memory could not be measured reliably, so the video runtime was not started. Retry shortly."
 	case e.PoolID == "gpu-working-set" && !e.Permanent:

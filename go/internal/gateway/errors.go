@@ -124,7 +124,7 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 			return
 		}
 		w.Header().Set("Retry-After", "5")
-		msg := "Insufficient available memory to start the requested runtime. Please try again shortly."
+		msg := memoryRefusal(ae, "this model")
 		if ae.PoolID == "gpu:0" {
 			msg = fmt.Sprintf("Not enough free GPU memory to load this model with its placement right now: it needs %.1f GiB on the GPU, %.1f GiB is free and %.1f GiB is kept free. Retry shortly, or choose a placement that keeps more in system memory.",
 				float64(ae.RequestedBytes)/float64(memory.GiB), float64(ae.AvailableBytes)/float64(memory.GiB), float64(ae.ReserveBytes)/float64(memory.GiB))
@@ -153,4 +153,45 @@ func modelTooLarge(w http.ResponseWriter, r *http.Request, ae *memory.AdmissionE
 	msg := fmt.Sprintf("This model requires about %s of %s, but only %s is available for %s (%s total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config.",
 		gib(ae.RequestedBytes), what, gib(ae.AvailableBytes), where, gib(ae.CapacityBytes))
 	writeError(w, r, 422, "invalid_request_error", "model_too_large", msg, strp("model"))
+}
+
+// memoryRefusal says why a runtime wasn't started, what has the memory and what to do. The figures
+// are the host's reserve, what is free and what LocalBase has reserved, never which models. Anything
+// else keeps the general sentence.
+func memoryRefusal(e *memory.AdmissionError, subject string) string {
+	var free string
+	requested := e.RequestedBytes
+	if g := e.Diagnostics; g != nil {
+		requested = g.Requested
+		if g.EffectiveAvailable >= 0 && g.Reserve >= 0 {
+			free = fmt.Sprintf(", and %s is free after keeping %s for your computer", gibText(max(0, g.EffectiveAvailable-g.Reserve)), gibText(g.Reserve))
+		}
+	}
+	reserved := "LocalBase's loaded models have " + gibText(e.ReservedBytes) + " reserved"
+	action := "Unload a model or close other apps, then try again."
+	if e.ReservedBytes == 0 {
+		reserved = ""
+		action = "LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
+	}
+	switch e.Reason {
+	case "memory-pressure":
+		switch {
+		case requested > 0 && reserved != "":
+			action = "It needs " + gibText(requested) + ", and " + reserved + ". " + action
+		case requested > 0:
+			action = "It needs " + gibText(requested) + ". " + action
+		case reserved != "":
+			action = reserved + ". " + action
+		}
+		return fmt.Sprintf("This computer is under memory pressure, so %s wasn't started. %s", subject, action)
+	case "system-memory":
+		if reserved != "" {
+			action = reserved + ". " + action
+		}
+		if requested <= 0 { // Not known: the job's failure didn't carry it.
+			return fmt.Sprintf("Not enough free memory to start %s%s. %s", subject, free, action)
+		}
+		return fmt.Sprintf("Not enough free memory to start %s: it needs %s%s. %s", subject, gibText(requested), free, action)
+	}
+	return "Insufficient available memory to start the requested runtime. Please try again shortly."
 }

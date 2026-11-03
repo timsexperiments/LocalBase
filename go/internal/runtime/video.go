@@ -27,8 +27,7 @@ const videoStartup = 180 * time.Second
 
 // Video eligibility messages (TS model-eligibility.ts).
 const (
-	unsupportedVideoTarget = "Requires Linux x64 with a single NVIDIA GPU."
-	experimentalOptIn      = "Experimental models require models.allowExperimental = true."
+	experimentalOptIn = "Experimental models require models.allowExperimental = true."
 )
 
 // VideoTarget names the device a video profile must support (TS
@@ -60,7 +59,7 @@ func (s *Service) videoEligible(spec *catalog.Spec) error {
 			}
 		}
 	}
-	return &LaunchError{Code: "model_hardware_ineligible", Message: spec.ModelID + ": " + unsupportedVideoTarget}
+	return &LaunchError{Code: "model_hardware_ineligible", Message: spec.ModelID + ": " + spec.VideoRefusal()}
 }
 
 // sdVideoCommand builds the vid_gen sd-server command.
