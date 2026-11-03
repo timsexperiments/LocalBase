@@ -677,3 +677,79 @@ func TestInterruptedRunsLeaveNothing(t *testing.T) {
 		noWorkingFiles(t, tmp, "the next run")
 	})
 }
+
+// A backend has no authentication. Its stored host can say 0.0.0.0, as the live root's does, and a
+// restored root must still listen only on this computer, with what the report says it will.
+func TestRestoredBackendStaysOnLoopback(t *testing.T) {
+	backupGoOnly(t)
+	lsof, err := exec.LookPath("lsof")
+	if err != nil {
+		t.Skip("needs lsof")
+	}
+	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := backupRoot(t, tmp, "root")
+	show := e.cli(nil, "config", "show")
+	lines := strings.Split(show.stdout, "\n")
+	section := ""
+	for i, line := range lines {
+		if strings.HasPrefix(line, "[") {
+			section = line
+		}
+		if section == "[runtime]" && (strings.HasPrefix(line, "host = ") || strings.HasPrefix(line, "sttHost = ")) {
+			key, _, _ := strings.Cut(line, " = ")
+			lines[i] = key + ` = "0.0.0.0"`
+		}
+	}
+	cfg := filepath.Join(tmp, "open-hosts.toml")
+	if err := mustWriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.cli(nil, "config", "apply", "--file", cfg, "--restart", "never"); r.code != 0 {
+		t.Fatalf("%s%s", r.stdout, r.stderr)
+	}
+	file := filepath.Join(tmp, "b"+backup.Extension)
+	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
+		t.Fatalf("%s%s", r.stdout, r.stderr)
+	}
+	two := &e2e{t: t, root: filepath.Join(tmp, "two"), outDir: tmp, key: e.key}
+	done := two.cli(nil, "restore", "--yes", "--no-port-probe", file)
+	if done.code != 0 {
+		t.Fatalf("%s%s", done.stdout, done.stderr)
+	}
+	if strings.Contains(done.stdout, "backend, reachable from this computer only: 0.0.0.0") || !strings.Contains(done.stdout, "chat backend, reachable from this computer only: 127.0.0.1:") {
+		t.Errorf("the report should say where it listens:\n%s", done.stdout)
+	}
+	if show := two.cli(nil, "config", "show"); !strings.Contains(show.stdout, `host = "0.0.0.0"`) {
+		t.Fatalf("this test needs the stored host to still be open:\n%s", show.stdout)
+	}
+	weights, err := os.ReadFile(filepath.Join(e.root, "models", "llm", "backup-tiny.gguf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mustMkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mustWriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	two.serve()
+	defer two.stop()
+	if r := two.chat(backupModel); r.Status != 200 {
+		t.Fatalf("chat: %d %s", r.Status, r.Body)
+	}
+	out, _ := exec.Command(lsof, "-nP", "-a", "-c", "fakebackend", "-iTCP", "-sTCP:LISTEN").CombinedOutput()
+	seen := 0
+	for _, line := range strings.Split(string(out), "\n")[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 9 {
+			continue
+		}
+		seen++
+		if address := fields[8]; !strings.HasPrefix(address, "127.0.0.1:") && !strings.HasPrefix(address, "[::1]:") {
+			t.Errorf("a backend listens on %s", address)
+		}
+	}
+	if seen == 0 {
+		t.Fatalf("no backend found listening:\n%s", out)
+	}
+}

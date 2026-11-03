@@ -48,7 +48,7 @@ While it works, it uses a private directory named `.local-base-temporary-…`, b
 local-base backup --exclude-secrets
 ```
 
-Secrets are removed from the copy, never from your root. Because a blank secret would stop the gateway, a sign-in provider that needs one is left out whole, as are the SMTP settings and download credentials. The file lists each by name, with the command that puts it back, and `restore` prints that list.
+Secrets are removed from the copy, never from your root. The finished file holds none of them, though a working copy holds the token and OTLP headers for a moment, in the private working directory. Because a blank secret would stop the gateway, a sign-in provider that needs one is left out whole, as are the SMTP settings and download credentials. The file lists each by name, with the command that puts it back, and `restore` prints that list.
 
 **This does not anonymise.** The file still holds users' email addresses, API key hashes, voice recordings and usage totals.
 
@@ -57,8 +57,8 @@ Secrets are removed from the copy, never from your root. Because a blank secret 
 Restore checks the whole file before changing anything, treating it as input from someone else: a backup isn't signed, and **restoring one decides who can sign in and which programs run as you**. So it refuses a file you don't own or that others can change, and a database holding anything LocalBase doesn't make. Before it asks, it shows:
 
 - **Every custom backend's whole command line.** These run as you when their model loads.
-- **"A restore signs everyone out. API keys keep working."**
-- **Settings that change who can reach it, or where it reaches:** hosts and ports, the OTLP endpoint, the import settings and connection caps.
+- **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
+- **Settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
 - **With `--replace`, what comes back:** keys and users the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, so check `local-base keys list` afterwards.
 
 It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, and running as root. A root with data needs `--replace`.
