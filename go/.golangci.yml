@@ -118,9 +118,6 @@ linters:
       - path: ^internal/auth/guard\.go$
         linters: [errcheck]
         text: "rows\\.Scan"
-      - path: ^internal/auth/policy\.go$
-        linters: [errcheck]
-        text: "rows\\.Scan"
       - path: ^internal/auth/users\.go$
         linters: [errcheck]
         text: "rows\\.Scan|st\\.DB\\.ExecContext|tx\\.ExecContext"
