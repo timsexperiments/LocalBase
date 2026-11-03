@@ -1175,6 +1175,7 @@ if (canVideo && pictureModel) {
 }
 
 // --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
+const settleVideoPage = async () => { for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items > li .video-actions")`)); i++) await sleep(150); };
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/video");
 if (await ev(`!!document.querySelector("#lab-items video")`)) {
@@ -1205,6 +1206,34 @@ if (await ev(`!!document.querySelector("#lab-items video")`)) {
     for (const id of left ?? []) await ev(`fetch("/app/api/_localbase/runs/${id}/cancel", { method: "POST", headers: { "x-localbase-ui": "1" } }).then((r) => r.status)`);
   }
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  // The icons, for a thumb: big enough, named for a screen reader, a long press shows the name and does nothing
+  // else, and a tap still works. A first visit teaches the pencil, which a tooltip can't on a phone.
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await nav("/app/studio/video");
+  await settleVideoPage();
+  const pencil = `document.querySelector("#lab-items > li .video-actions [aria-label='Edit prompt']")`;
+  const removeBtn = `document.querySelector("#lab-items > li .video-actions [aria-label='Remove this video']")`;
+  const icons = await ev(`[...document.querySelectorAll("#lab-items > li .video-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
+  check(icons.length >= 3 && icons.every((i) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
+  const centre = async (sel) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const count = `document.querySelectorAll("#lab-items > li").length`;
+  const itemsBefore = await ev(count);
+  const at = await centre(removeBtn);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+  await sleep(650);
+  const label = await ev(`document.querySelector(".icon-name")?.textContent ?? ""`);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(1300);
+  const held = await ev(`({ items: ${count}, left: !!document.querySelector(".icon-name") })`);
+  check(label === "Remove" && held.items === itemsBefore && !held.left, `a long press on Remove shows its name and removes nothing: ${JSON.stringify({ label, itemsBefore, ...held })}`);
+  await ev(`(() => { document.getElementById("lab-prompt").value = ""; })()`);
+  const tapAt = await centre(pencil);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [tapAt] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(500);
+  const tapped = await ev(`({ words: document.getElementById("lab-prompt").value.length, label: !!document.querySelector(".icon-name") })`);
+  check(tapped.words > 0 && !tapped.label, `a tap on the pencil still puts the words back, with no label: ${JSON.stringify(tapped)}`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
 }
 
 // A hidden tab would have made the checks above mean something else, so say if it happened.

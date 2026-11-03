@@ -210,7 +210,7 @@
 </section>
 <script src="{{asset "js/lab.js"}}" type="module"></script>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
-<script src="{{asset "js/video.js"}}" type="module"></script>
+{{if eq .Tab "video"}}<script src="{{asset "js/video.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "speech"}}<script src="{{asset "js/speech.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "transcribe"}}<script src="{{asset "js/transcribe.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "decisions"}}<script src="{{asset "js/decisions.js"}}" type="module"></script>{{end}}
@@ -475,6 +475,7 @@
     <li><button type="button" class="lab-example" data-fill="Steam rising from a cup of coffee by a window">Steam rising from a cup of coffee</button></li>
   </ul>
   <p class="mt-3 text-sm text-muted">A video can take a while and uses a lot of memory. It keeps going if you leave, and stays here for 15 minutes.</p>
+  <p class="lab-hello-icon"><span aria-hidden="true">{{template "icon-edit"}}</span><span><span class="font-semibold">Edit prompt</span> puts a video’s words back here to change.</span></p>
 </div>
 {{else}}<div class="lab-empty" data-lab-empty>
   {{if eq . "speech"}}<p>Write a script, and hear it in the voice you choose. A long one is made in parts and joined.</p>

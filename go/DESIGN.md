@@ -4463,7 +4463,10 @@ the pages before this change it failed for all five.
   API reports no steps. "It can take up to 10 minutes" is the model's limit, not a measurement, and past half of
   it the line says this is taking a while.
 - **Make again leads,** with Save, Share, Edit prompt and Remove as icons, so all of them stay in one row down to
-  360 with Share showing. The first version let Remove wrap onto a second row, behind a pill.
+  360 with Share showing. The first version let Remove wrap onto a second row, behind a pill. An icon is 44 px
+  and named for a screen reader. A tooltip can't help on a phone, so a first visit names Edit prompt, and a long
+  press shows an icon's name and does nothing else: holding Remove doesn't remove. If a reviewer finds the pencil
+  unclear, it goes back to the words.
 - **A first visit** asks what you'd like to see move, like Image, and says plainly that a video can take a while
   and uses a lot of memory. It names no model.
 
