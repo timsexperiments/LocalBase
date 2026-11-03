@@ -1,6 +1,6 @@
 # Reliability tools; docs in docs/reliability.md. Fake backends only, ports in
 # 29000-29499, and each run stops itself.
-.PHONY: soak soak-smoke soak-race chaos chaos-all known-bugs
+.PHONY: soak soak-smoke soak-race chaos chaos-all known-bugs bench bench-compare
 
 soak: ## 30 minutes against fake backends; writes a result table
 	tools/soak.sh -duration 30m
@@ -19,3 +19,9 @@ chaos-all: ## The same, including the tests of open bugs
 
 known-bugs: ## Fail if a chaos skip names a merged pull request, or none
 	tools/known-bugs-check.sh
+
+bench: ## What the gateway itself costs, against fake backends; about 2 minutes
+	tools/bench.sh
+
+bench-compare: ## The same, then compare with the recorded baseline for this platform
+	tools/bench.sh -compare tools/bench/baseline-$$(go env GOOS)-$$(go env GOARCH).json
