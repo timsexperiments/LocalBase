@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Request validation for the JSON inference routes. These port the TS Zod
@@ -16,13 +17,32 @@ import (
 
 type issue struct{ path, msg string }
 
+// What a refused request can cost is bounded, since a caller decides how much is wrong with it.
+const (
+	// maxValidationIssues is how many problems one answer lists.
+	maxValidationIssues = 100
+	// maxPathKey is how many bytes of a caller's own key go into an answer. A path is repeated in
+	// every issue under it.
+	maxPathKey = 64
+	// maxListedKeys is how many unrecognized keys one issue names.
+	maxListedKeys = 20
+)
+
 type checker struct {
 	issues []issue
+	// more says there were more problems than are listed.
+	more bool
 	// remote is the first content part that names an address (see remoteMedia).
 	remote *issue
 }
 
-func (c *checker) fail(path, msg string) { c.issues = append(c.issues, issue{path, msg}) }
+func (c *checker) fail(path, msg string) {
+	if len(c.issues) >= maxValidationIssues {
+		c.more = true
+		return
+	}
+	c.issues = append(c.issues, issue{path, msg})
+}
 
 // remoteMedia refuses a content part that names an address instead of carrying
 // its content. A backend may fetch what it is given, so an address stops here,
@@ -75,11 +95,27 @@ func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 			param = strp("messages")
 		}
 	}
-	badRequest(w, r, "Validation failed: "+strings.Join(parts, ", "), param)
+	message := "Validation failed: " + strings.Join(parts, ", ")
+	if c.more {
+		message += ", and more"
+	}
+	badRequest(w, r, message, param)
+}
+
+// shortKey keeps a caller's own key short enough to repeat, cut between characters.
+func shortKey(k string) string {
+	if len(k) <= maxPathKey {
+		return k
+	}
+	cut := maxPathKey
+	for cut > 0 && !utf8.RuneStart(k[cut]) {
+		cut--
+	}
+	return k[:cut] + "..."
 }
 
 func join(path string, key any) string {
-	k := fmt.Sprint(key)
+	k := shortKey(fmt.Sprint(key))
 	if path == "" {
 		return k
 	}
@@ -176,7 +212,7 @@ func (c *checker) strict(obj map[string]any, path string, allowed ...string) {
 	var extra []string
 	for k := range obj {
 		if !contains(allowed, k) {
-			extra = append(extra, `"`+k+`"`)
+			extra = append(extra, `"`+shortKey(k)+`"`)
 		}
 	}
 	if len(extra) > 0 {
@@ -185,7 +221,11 @@ func (c *checker) strict(obj map[string]any, path string, allowed ...string) {
 		if len(extra) > 1 {
 			key = "keys"
 		}
-		c.fail(path, "Unrecognized "+key+": "+strings.Join(extra, ", "))
+		more := ""
+		if len(extra) > maxListedKeys {
+			extra, more = extra[:maxListedKeys], ", and more"
+		}
+		c.fail(path, "Unrecognized "+key+": "+strings.Join(extra, ", ")+more)
 	}
 }
 
