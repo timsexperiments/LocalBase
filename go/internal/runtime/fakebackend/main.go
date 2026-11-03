@@ -17,7 +17,8 @@
 // the decision state) fails like an input over the physical batch size, with
 // llama-server's exact 500; "fake:batch-plain" does so without the numbers.
 // "fake:slow <n>" streams n words 50 ms apart; when the client goes away
-// first it appends "cancelled" to the file FAKE_CANCEL_LOG names.
+// first it appends "cancelled" to the file FAKE_CANCEL_LOG names. "fake:burst <n>"
+// streams n words with no pause at all, for measuring what relaying them costs.
 //
 // For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
 // override per expert tensor of the first --n-cpu-moe layers and the
@@ -129,6 +130,14 @@ func main() {
 				fmt.Fprintf(&b, "w%d ", i+1)
 			}
 			content, pause = b.String(), 50*time.Millisecond
+		}
+		if n, ok := strings.CutPrefix(mode, "fake:burst "); ok {
+			words, _ := strconv.Atoi(n)
+			var b strings.Builder
+			for i := range words {
+				fmt.Fprintf(&b, "w%d ", i+1)
+			}
+			content, pause = b.String(), 0
 		}
 		if stream, _ := req["stream"].(bool); stream {
 			w.Header().Set("Content-Type", "text/event-stream")
