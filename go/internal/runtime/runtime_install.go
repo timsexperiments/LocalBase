@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
@@ -204,7 +205,7 @@ func fetchVerified(ctx context.Context, url, dest string, size int64, want strin
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL(url), nil)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := idle.Do(http.DefaultClient, req, idle.Timeout())
 	if err != nil {
 		return err
 	}

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
@@ -224,7 +225,7 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 		if offset > 0 {
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
 		}
-		resp, err := client.Do(req)
+		resp, err := idle.Do(client, req, idle.Timeout())
 		if err != nil {
 			return redactErr(err, red)
 		}
