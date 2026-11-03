@@ -211,7 +211,9 @@ func TestKeyLifeIsLimitedByTheCallingKey(t *testing.T) {
 	// A revoke gives nothing, so an expiry doesn't limit it.
 	f.expect(shortSecret, keyAction("revoke", longer.ID), 200, "")
 	// A key's own secret can always be replaced: it doesn't outlast itself.
-	shortSecret = secretOf(t, f.expect(shortSecret, keyAction("rotate", short.ID), 200, ""))
+	if got := secretOf(t, f.expect(shortSecret, keyAction("rotate", short.ID), 200, "")); got == shortSecret {
+		t.Error("a rotate kept the old secret")
+	}
 	if got := f.stored(short.ID).ExpiresAt; got == nil {
 		t.Error("a rotate cleared the expiry")
 	}
