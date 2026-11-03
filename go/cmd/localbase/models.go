@@ -424,6 +424,9 @@ func modelsInstall() *cli.Command {
 					c.Info("Installed: %s", path)
 					installed = append(installed, map[string]string{"modelId": id, "path": path})
 				}
+				if err := activateInstalled(c, e, ids...); err != nil {
+					return nil, err
+				}
 				c.Info("\nAll selected models installed successfully.")
 				return map[string]any{"installed": installed}, nil
 			}
@@ -439,8 +442,30 @@ func modelsInstall() *cli.Command {
 				return nil, err
 			}
 			c.Info("Installed: %s", path)
+			if err := activateInstalled(c, e, id); err != nil {
+				return nil, err
+			}
 			return map[string]any{"installed": []map[string]string{{"modelId": id, "path": path}}}, nil
 		}}
+}
+
+// activateInstalled makes the first of these chat models that can run the
+// default when the current default cannot (conf.ActivateFirstInstall).
+func activateInstalled(c *cli.Ctx, e *env, ids ...string) error {
+	present := installedModels(e, "llm")
+	isInstalled := func(s *catalog.Spec) bool { return slices.Contains(present, s.ModelID) }
+	for _, id := range ids {
+		s := e.Catalog.ByID(id)
+		if s == nil || !conf.ActivateFirstInstall(e.Config, s, e.Catalog, isInstalled) {
+			continue
+		}
+		if err := e.save(e.Config); err != nil {
+			return err
+		}
+		c.Info("%s is now the default LLM.", id)
+		return nil
+	}
+	return nil
 }
 
 // installer is serve's --install-missing hook: nil without consent, so the
