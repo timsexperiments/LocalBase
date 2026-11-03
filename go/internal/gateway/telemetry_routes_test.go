@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -14,23 +13,24 @@ import (
 )
 
 // Every route the gateway serves has a name in the telemetry, or its requests are all counted as
-// "unmatched-route" and nobody can tell them apart. Reads the source, so a new route is covered
-// without being named here.
+// "unmatched-route" and nobody can tell them apart. These are the routes the mux itself recorded, so a
+// new one is covered, wherever it is registered.
 func TestEveryRouteHasATelemetryName(t *testing.T) {
-	b, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	routes := regexp.MustCompile(`mux\.Handle(?:Func)?\("(?:[A-Z]+ )?([^"]+)"`).FindAllStringSubmatch(string(b), -1)
+	ts, _, _ := newTestGateway(t, host{})
+	routes := runServer(ts).routes
 	if len(routes) < 30 {
-		t.Fatalf("found only %d routes: the pattern no longer reads server.go", len(routes))
+		t.Fatalf("only %d routes recorded", len(routes))
 	}
 	var unnamed []string
-	for _, r := range routes {
+	for _, pattern := range routes {
+		_, path, found := strings.Cut(pattern, " ")
+		if !found {
+			path = pattern
+		}
 		// As routeLabel makes it from the request's pattern.
-		path := strings.TrimSuffix(strings.ReplaceAll(r[1], "...}", "}"), "{$}")
+		path = strings.TrimSuffix(strings.ReplaceAll(path, "...}", "}"), "{$}")
 		if route, _ := obs.CanonicalRoute(path); route == "unmatched-route" {
-			unnamed = append(unnamed, r[1])
+			unnamed = append(unnamed, pattern)
 		}
 	}
 	slices.Sort(unnamed)
