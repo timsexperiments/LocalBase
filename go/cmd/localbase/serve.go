@@ -31,6 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 	"github.com/timsexperiments/LocalBase/go/internal/web"
 )
@@ -356,7 +357,7 @@ func serve(c *cli.Ctx) (any, error) {
 	if firstRunLinkAllowed(noAuth, browser.Enabled(), os.Getenv("LOCALBASE_SERVICE_TOKEN")) {
 		loginLink = firstRunLoginLink(e, ln.Addr().String())
 	}
-	log.Info("LocalBase listening on "+baseURL, "event", "gateway.started", "root", r.Dir, "memory_gb", memoryGB, "auth", !noAuth)
+	log.Info("LocalBase listening on "+baseURL, "event", "gateway.started", "root", r.Dir, "memory_gb", memoryGB, "auth", !noAuth, "version", version.Version, "commit", version.Get().Commit)
 	if c.Global.JSON {
 		enabled := map[string]bool{}
 		for _, k := range store.Kinds {
@@ -482,7 +483,7 @@ func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (
 	if err != nil {
 		return nil, err
 	}
-	tel := otlp.New(oc, gateway.Version, func(severity, message string, attrs map[string]any) {
+	tel := otlp.New(oc, version.Version, func(severity, message string, attrs map[string]any) {
 		event, level := "observability.export-failed", slog.LevelWarn
 		switch severity {
 		case "info":
