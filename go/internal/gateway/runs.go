@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -51,6 +53,7 @@ const (
 	runActiveTotal      = 32
 	runRetainedPerOwner = 32
 	runMaxDuration      = 30 * time.Minute
+	runMaxToolCalls     = 128
 	runMaxOutput        = 8 << 20
 	runMaxResult        = 64 << 20 // a media result, in memory only
 	runMaxBody          = 32 << 20 // a run's request body (the /v1 route applies its own limit)
@@ -375,8 +378,7 @@ func (r *run) view(withOutput bool) map[string]any {
 			"resume this run. To continue, send the conversation again with the partial reply."}
 	}
 	if withOutput && r.Target == chatTarget {
-		out := r.output
-		v["output"] = &out
+		v["output"] = r.output.snapshot()
 	}
 	if r.result != nil {
 		res := map[string]any{"contentType": r.resultType, "bytes": len(r.result), "url": "/_localbase/runs/" + r.ID + "/result"}
@@ -495,6 +497,23 @@ func (w *runWriter) event(block string) {
 	}
 }
 
+// snapshot copies what add changes in place, so the copy can be encoded after
+// the run's lock is released. Usage is replaced whole, never changed.
+func (o *runOutput) snapshot() *runOutput {
+	out := *o
+	if o.ToolCalls != nil {
+		out.ToolCalls = make([]map[string]any, len(o.ToolCalls))
+		for i, call := range o.ToolCalls {
+			c := maps.Clone(call)
+			if fn, ok := call["function"].(map[string]any); ok {
+				c["function"] = maps.Clone(fn)
+			}
+			out.ToolCalls[i] = c
+		}
+	}
+	return &out
+}
+
 // add folds one chat.completion.chunk into the output.
 func (o *runOutput) add(chunk map[string]any) {
 	if u, ok := chunk["usage"].(map[string]any); ok {
@@ -521,6 +540,11 @@ func (o *runOutput) add(chunk map[string]any) {
 			call, _ := tc.(map[string]any)
 			i := 0
 			if f, ok := call["index"].(float64); ok {
+				// The backend chooses this number: a delta that does not name a
+				// real slot is left out of the output (its chunk is still relayed).
+				if f < 0 || f >= runMaxToolCalls || f != math.Trunc(f) {
+					continue
+				}
 				i = int(f)
 			}
 			for len(o.ToolCalls) <= i {
