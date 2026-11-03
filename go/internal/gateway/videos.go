@@ -194,8 +194,10 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 		serviceUnavailable(w, r, "Video")
 		return
 	}
+	principal := PrincipalFrom(r.Context())
 	go func() {
 		j := <-terminal
+		s.recordVideoJob(principal, model, videoJobStatus(j.State), j.TerminalAt.Sub(j.CreatedAt))
 		level, attrs := "info", []any{"event", "video.job-terminal", "category", "runtime", "component", "video-job-manager",
 			"runtime", "video", "request_id", requestID}
 		if j.State == video.Failed {
@@ -214,6 +216,17 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	writeJSON(w, http.StatusAccepted, projectVideoJob(job))
+}
+
+// videoJobStatus is how a finished job counts in usage (DESIGN §32.2).
+func videoJobStatus(state video.State) int {
+	switch state {
+	case video.Completed:
+		return http.StatusOK
+	case video.Cancelled:
+		return 499
+	}
+	return http.StatusInternalServerError
 }
 
 // leaseAdmission holds the video runtime for a job: Acquire already waited

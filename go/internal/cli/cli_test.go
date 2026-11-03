@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 )
@@ -112,5 +113,25 @@ func TestDashValues(t *testing.T) {
 	}
 	if _, code, _ := run(id(), "-a", "-b"); code == 0 {
 		t.Error("two ids accepted")
+	}
+}
+
+// A runnable command can also have subcommands: a known name goes to the subcommand, and
+// anything else stays the parent's argument, as before.
+func TestRunnableCommandWithSubcommands(t *testing.T) {
+	var ran []string
+	sub := &Command{Name: "clear", Run: func(c *Ctx) (any, error) { ran = append(ran, "clear"); return nil, nil }}
+	parent := &Command{Name: "usage", MaxArgs: 1, Sub: []*Command{sub}, Run: func(c *Ctx) (any, error) {
+		ran = append(ran, "usage:"+strings.Join(c.Args, ","))
+		return nil, nil
+	}}
+	a := &App{Name: "x", Version: "1", Root: &Command{Sub: []*Command{parent}}, Stdout: io.Discard, Stderr: io.Discard}
+	for _, args := range [][]string{{"usage"}, {"usage", "clear"}, {"usage", "other"}} {
+		if code := a.Run(args); code != 0 {
+			t.Errorf("%v: exit %d", args, code)
+		}
+	}
+	if want := "usage:|clear|usage:other"; strings.Join(ran, "|") != want {
+		t.Errorf("ran %q, want %q", strings.Join(ran, "|"), want)
 	}
 }
