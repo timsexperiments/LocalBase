@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
@@ -215,17 +216,13 @@ func (m *runManager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	tmp := m.path(r.ID) + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		os.Rename(tmp, m.path(r.ID))
-	}
+	obs.WritePrivateAtomic(m.path(r.ID), b)
 	r.saved = m.now()
 }
 
 func (m *runManager) remove(id string) {
 	if m.dir != "" {
 		os.Remove(m.path(id))
-		os.Remove(m.path(id) + ".tmp")
 	}
 }
 
@@ -243,7 +240,7 @@ func (m *runManager) sweepStart() {
 	for _, e := range entries {
 		p := filepath.Join(m.dir, e.Name())
 		id, ok := strings.CutSuffix(e.Name(), ".json")
-		b, err := os.ReadFile(p)
+		b, err := obs.ReadOwnedRegular(p)
 		var rec runRecord
 		if !ok || !strings.HasPrefix(id, "run_") || err != nil || json.Unmarshal(b, &rec) != nil || rec.ID != id || rec.Owner == "" {
 			os.Remove(p)
