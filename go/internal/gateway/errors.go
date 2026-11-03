@@ -110,10 +110,8 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 		switch pe.Code {
 		case "model_too_large":
 			writeError(w, r, 422, "invalid_request_error", pe.Code, pe.Message, strp("model"))
-		case "placement_does_not_fit":
+		case "placement_does_not_fit", "placement_mismatch":
 			w.Header().Set("Retry-After", "5")
-			writeError(w, r, 503, "api_error", pe.Code, pe.Message, nil)
-		case "placement_mismatch":
 			writeError(w, r, 503, "api_error", pe.Code, pe.Message, nil)
 		default:
 			writeError(w, r, 409, "invalid_request_error", pe.Code, pe.Message, strp("model"))
