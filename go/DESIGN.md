@@ -4083,3 +4083,49 @@ them: `TestRemoveScratch`.
 run alongside other model loads (`harness_test.go`).
 `TestDifferentialImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
+
+## 30. Security hardening (2026-11-02)
+
+The threat model is `docs/threat-model.md`. This section records decisions that change
+behaviour.
+
+### 30.1 Request and connection limits
+
+**The problem.** With only a header timeout, a request that did not finish could hold its
+handler and connection with no time limit, and so could an idle keep-alive connection. This
+applies to any non-loopback or LAN-exposed install. Behaviour through a tunnel has not been
+tested, and TS on Bun is unverified.
+
+| Limit | Default | Applies to |
+| --- | --- | --- |
+| Headers | 30 s, 64 KiB | every connection |
+| Idle keep-alive | 2 min | every connection |
+| Body before authenticating | 30 s in total | a request that has not authenticated |
+| Authenticated upload | 2 min without progress, 1 h in total | a key, a browser session, or `--no-auth` |
+| Draining a refused body | 2 s, 1 MiB | every refusal through `writeError` |
+| Open connections | 4096, and 256 per address | every connection |
+
+- **Deadlines follow authentication.** `setAuth` and `BrowserPrincipal` give the caller the
+  longer budget, so a phone on a slow link can finish: 25 MiB at 0.5 Mbit/s takes about 7
+  minutes. A loopback connection alone earns nothing, because a tunnel connects from loopback.
+- **Nothing is set once the body has ended.** net/http clears the read deadline then, and
+  its background read would turn a later expiry into a cancelled request, ending a long
+  stream (`TestLongStreamSurvivesTheDeadlines`, `TestAuthenticatingAfterTheBodySetsNoDeadline`).
+- **A refusal does not wait.** It answers after its short drain, or at once if it has not
+  read the body. If the body did not end, it answers with `Connection: close`. A client
+  waiting on `Expect: 100-continue` is refused without being asked to send. TS discards
+  1 MiB past the limit too. A small body is read whole, so its client keeps its connection.
+- **A stalled upload is answered 499**, as for a client that went away: net/http cancels
+  the request when its read deadline passes. Nobody is usually there to read it.
+- **Connection caps.** A connection over a cap gets a 503 `too_busy` and is closed, instead
+  of waiting in the kernel's queue. Loopback does not count against the per-address cap,
+  because a tunnel connects from loopback for everyone behind it; the global cap still
+  applies. IPv6 counts by /64. The global cap is lowered to fit the open file limit.
+- **Setting the caps.** `local-base configure --max-connections N --max-connections-per-ip N`
+  saves them (`go_settings`) for a service-managed gateway, on the next restart. `serve`
+  takes the same flags, which win. 0 means no cap.
+
+**Limits.** With caps at their defaults, a flood through a tunnel can still fill the global
+cap, because everything arrives from one address. The caps keep the process healthy; they do
+not keep a flooded gateway available. Slow reads by an authenticated client are not bounded
+here: a stalled reader can hold a generation until it ends.
