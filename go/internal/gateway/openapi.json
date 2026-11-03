@@ -1748,7 +1748,7 @@
         },
         "responses": {
           "200": {
-            "description": "Done. A cancelled install answers here with state `cancelled`.",
+            "description": "Done. A cancelled install answers here with state `cancelled`. A cancel with no install of this model running answers here too, with the operation recorded for it, unchanged, so a retry is safe.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelOperation"}}}
           },
           "202": {
@@ -1760,7 +1760,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "409": {
-            "description": "Not possible now: `conflict` (including a cancel with no install of this model running), `unsafe_path`, `storage_unavailable` or `insufficient_storage`.",
+            "description": "Not possible now: `conflict` (including a cancel with no install of this model running and no operation recorded for it), `unsafe_path`, `storage_unavailable` or `insufficient_storage`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "413": {"$ref": "#/components/responses/TooLarge"},
