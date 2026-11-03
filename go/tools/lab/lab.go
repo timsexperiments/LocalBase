@@ -522,7 +522,7 @@ func writeFixture(dir string, o Options) (Keys, error) {
 	if err != nil {
 		return keys, err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	cat, err := catalog.LoadWithFormer()
 	if err != nil {
 		return keys, err
