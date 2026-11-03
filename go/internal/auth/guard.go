@@ -215,7 +215,7 @@ func (g *Guard) HasManager() bool {
 var (
 	ErrSelfLockout = &AccessError{Code: "would-lock-out-admins", Message: "You can't remove your own access management: you would lose access:manage. Ask another administrator, or use `local-base access` on the host."}
 	ErrSelfRecord  = &AccessError{Code: "would-lock-out-admins", Message: "You can't disable or forget your own account. Ask another administrator, or use `local-base access` on the host."}
-	ErrSelfKey     = &AccessError{Code: "would-lock-out-admins", Message: "You can't revoke the API key you are using, or remove access:manage from it. Use another key, or `local-base keys` on the host."}
+	ErrSelfKey     = &AccessError{Code: "would-lock-out-admins", Message: "You can't remove access:manage from the API key you are using. Use another key, or `local-base keys` on the host."}
 	ErrLastManager = &AccessError{Code: "would-lock-out-admins", Message: "This change would leave nobody able to manage access. Keep at least one active person, binding or API key with access:manage."}
 )
 
@@ -260,17 +260,32 @@ func ActiveKey(k store.APIKey) bool {
 	return err == nil && t.After(time.Now())
 }
 
-// CheckKeyChange refuses revoking the caller's own key or removing
-// access:manage from it (callerKey is the calling key's id, or ""), and a
-// change that leaves nobody able to manage access.
-func (g *Guard) CheckKeyChange(callerKey, keyID string, removesManage, revoke bool) error {
-	if callerKey != "" && callerKey == keyID && (revoke || removesManage) {
-		return ErrSelfKey
+// CheckKeyChange refuses removing access:manage from the calling key (callerKey is its
+// id, or ""), and a change that leaves nobody able to manage access. Rotating counts as
+// removal unless the caller rotates its own key: the new secret goes to the caller, so
+// whoever held the key loses it. scopes are the new permissions of a set-scopes.
+func (g *Guard) CheckKeyChange(callerKey string, target *store.APIKey, action string, scopes []string) error {
+	if !slices.Contains(target.Scopes, "access:manage") {
+		return nil
 	}
-	if !removesManage {
+	self := callerKey == target.ID
+	switch action {
+	case "revoke":
+	case "rotate":
+		if self {
+			return nil
+		}
+	case "set-scopes":
+		if slices.Contains(scopes, "access:manage") {
+			return nil
+		}
+		if self {
+			return ErrSelfKey
+		}
+	default:
 		return nil
 	}
 	return g.CheckChange(nil, func(next *Guard) {
-		next.KeyManagers = slices.DeleteFunc(next.KeyManagers, func(id string) bool { return id == keyID })
+		next.KeyManagers = slices.DeleteFunc(next.KeyManagers, func(id string) bool { return id == target.ID })
 	})
 }
