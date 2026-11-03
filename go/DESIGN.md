@@ -4237,12 +4237,16 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   (`TestKilledWhilePublishing`, with a real SIGKILL at each step).
 - **Cancel:** `POST /_localbase/model-imports {"action":"cancel","job":"<id>"}` (`models:manage`)
   stops the job and removes what it downloaded. The job then has `state: "cancelled"`, a terminal
-  state and not a failure, with `errorCode: "import_cancelled"` and a `detail`. A shutdown also stops imports, but keeps their files, so the
+  state and not a failure, with `errorCode: "import_cancelled"` and a `detail`. It answers 200 with
+  the job, unchanged if the job has already ended, and 404 for a job it does not know. If the files
+  can't be removed, `detail` says so, `model.import-cleanup-failed` is logged, and they are cleared
+  once nothing has touched them for a week. A shutdown also stops imports, but keeps their files, so the
   same import resumes after a restart. The job page's form posts to `POST /app/models/import/cancel`
   with a `job` field, and gets the same page back.
 - **How this differs from cancelling a catalog install** (#498). Both end in `state: "cancelled"`
   and need `models:manage`. An install is identified by its `modelId`, since there is one per
   model; an import by its `job`. An install keeps its partial file, because a pinned checksum
   makes resuming safe. An import removes its file, because its source may change between tries.
+  An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.

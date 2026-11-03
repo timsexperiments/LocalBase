@@ -200,16 +200,24 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 		l.jobs.mu.Lock()
 		cancelled := job.cancelled
 		l.jobs.mu.Unlock()
+		var leftBehind error
 		if err != nil && cancelled {
-			acquire.RemoveStaging(l.Root.Dir, plan)
+			leftBehind = acquire.RemoveStaging(l.Root.Dir, plan)
 		}
 		l.jobs.mu.Lock()
 		defer l.jobs.mu.Unlock()
 		if err != nil && cancelled {
 			// A person chose this, so it isn't a failure.
 			job.State, job.ErrorCode, job.Detail = "cancelled", acquire.CodeCancelled, "The import was cancelled, and what it downloaded was removed."
+			if leftBehind != nil {
+				// PruneStaging clears it once nothing has touched it for a while.
+				job.Detail = "The import was cancelled, but what it downloaded could not be removed yet. LocalBase will clear it later."
+			}
 			if log != nil {
 				log.Info("Model import cancelled.", "event", "model.import-cancelled")
+				if leftBehind != nil {
+					log.Warn("A cancelled import's download could not be removed.", "event", "model.import-cleanup-failed", "error", obs.BoundedText(leftBehind.Error(), 1024))
+				}
 			}
 			return
 		}

@@ -1,8 +1,10 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,7 +115,7 @@ func TestCancelStopsAnImportAndRemovesItsFiles(t *testing.T) {
 		t.Fatal("not found")
 	}
 	j := waitJob(t, l, id, ended)
-	if j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled || j.Error != "" || !strings.Contains(j.Detail, "was cancelled") {
+	if j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled || j.Error != "" || j.Detail != "The import was cancelled, and what it downloaded was removed." {
 		t.Errorf("%+v", j)
 	}
 	if n := stagedFiles(t, l); n != 0 {
@@ -125,6 +127,64 @@ func TestCancelStopsAnImportAndRemovesItsFiles(t *testing.T) {
 	// Cancelling a finished job changes nothing.
 	if !l.CancelImport(id) || l.Job(id).ErrorCode != acquire.CodeCancelled {
 		t.Error("a finished job")
+	}
+}
+
+// A cancel that could not remove the download says so, instead of saying it did.
+func TestCancelSaysWhenItCouldNotRemoveTheFiles(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode this test relies on")
+	}
+	l := newTestLibrary(t)
+	var logged bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logged, nil))
+	id, err := l.StartImport(planFor(t, l, slowSource(t).URL, "c3"), "", log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, l, id, downloading)
+	staging := filepath.Join(l.Root.Dir, "models", ".staging")
+	if err := os.Chmod(staging, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(staging, 0o700) })
+	if !l.CancelImport(id) {
+		t.Fatal("not found")
+	}
+	j := waitJob(t, l, id, ended)
+	if j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled || j.Error != "" {
+		t.Errorf("%+v", j)
+	}
+	if !strings.Contains(j.Detail, "could not be removed") || strings.Contains(j.Detail, "was removed") {
+		t.Errorf("detail: %q", j.Detail)
+	}
+	if !strings.Contains(logged.String(), `"event":"model.import-cleanup-failed"`) || !strings.Contains(logged.String(), `"level":"WARN"`) {
+		t.Errorf("not logged: %s", logged.String())
+	}
+	if !strings.Contains(logged.String(), `"event":"model.import-cancelled"`) {
+		t.Errorf("the cancel itself was not logged: %s", logged.String())
+	}
+}
+
+// A person cancelling a job that has no log still gets the same answer.
+func TestCancelWithNoLogWhenItCouldNotRemoveTheFiles(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode this test relies on")
+	}
+	l := newTestLibrary(t)
+	id, err := l.StartImport(planFor(t, l, slowSource(t).URL, "c4"), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, l, id, downloading)
+	staging := filepath.Join(l.Root.Dir, "models", ".staging")
+	if err := os.Chmod(staging, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(staging, 0o700) })
+	l.CancelImport(id)
+	if j := waitJob(t, l, id, ended); !strings.Contains(j.Detail, "could not be removed") {
+		t.Errorf("%+v", j)
 	}
 }
 
