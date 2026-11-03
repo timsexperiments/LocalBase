@@ -44,11 +44,15 @@ func OpenSink(dir string) (*Sink, error) {
 func (s *Sink) path() string { return filepath.Join(s.dir, "events.jsonl") }
 
 func (s *Sink) open() error {
-	f, err := os.OpenFile(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := OpenOwnedRegular(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY)
 	if err != nil {
 		return err
 	}
-	info, _ := f.Stat()
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
 	s.f, s.size = f, info.Size()
 	return nil
 }
