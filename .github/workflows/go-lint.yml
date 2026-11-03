@@ -1,0 +1,45 @@
+name: Go lint
+
+# The Go code owns the config. Until it exists this job passes without linting.
+on:
+  pull_request:
+    paths: ["go/**", ".github/workflows/go-lint.yml"]
+  push:
+    branches: [main]
+    paths: ["go/**", ".github/workflows/go-lint.yml"]
+
+permissions:
+  contents: read
+
+env:
+  # Relative to go/.
+  GOLANGCI_CONFIG: .golangci.yml
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Look for the config
+        id: config
+        run: |
+          if [ -f "go/$GOLANGCI_CONFIG" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::go/$GOLANGCI_CONFIG doesn't exist yet, so linting is skipped."
+          fi
+      - name: Set up Go
+        if: steps.config.outputs.present == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: golangci-lint
+        if: steps.config.outputs.present == 'true'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          working-directory: go
+          args: --config=${{ env.GOLANGCI_CONFIG }}
