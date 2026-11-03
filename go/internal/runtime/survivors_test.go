@@ -254,3 +254,52 @@ func TestBackendDiesWithItsGateway(t *testing.T) {
 		t.Errorf("backend %d is still running after its gateway was killed", pid)
 	}
 }
+
+// Media runtimes go through the same record as the LLM, so a sweep reaches them.
+// Fake backends only: no real whisper, speech, image or video server has been run
+// through this.
+func TestServiceAndLLMRecordTheirBackends(t *testing.T) {
+	for name, tc := range map[string]func(t *testing.T) (root string, pid func() int, stop func()){
+		"stt": func(t *testing.T) (string, func() int, func()) {
+			s, _ := newTestService(t)
+			s.d.RootDir = t.TempDir()
+			l, err := s.Acquire(context.Background(), "a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.Release()
+			return s.d.RootDir, func() int {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				return s.cur.proc.PID()
+			}, s.Close
+		},
+		"llm": func(t *testing.T) (string, func() int, func()) {
+			m := newTestLLM(t, &bigHost{avail: 50_000_000_000})
+			m.d.Root = t.TempDir()
+			l, err := m.Acquire(context.Background(), modelA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.Release()
+			return m.d.Root, func() int {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				return m.cur.proc.PID()
+			}, m.Close
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, pid, stop := tc(t)
+			defer stop()
+			p := pid()
+			// The successor's view: this process is a survivor the sweep may stop.
+			if n := SweepBackends(root, quietLog()); n != 1 {
+				t.Fatalf("swept %d", n)
+			}
+			if !waitGone(p, 3*time.Second) {
+				t.Error("the backend is still running")
+			}
+		})
+	}
+}
