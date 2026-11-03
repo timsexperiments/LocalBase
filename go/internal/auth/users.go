@@ -400,6 +400,35 @@ func checkSession(ctx context.Context, st *store.Store, h string, issuers map[st
 	return &s, "valid", nil
 }
 
+// SignIn is someone with a live session.
+type SignIn struct {
+	Email    string `json:"email,omitempty"`
+	Issuer   string `json:"issuer"`
+	LastSeen string `json:"lastSeen"`
+}
+
+// SignedIn lists who has a live session, one line a person, the latest first.
+func SignedIn(ctx context.Context, st *store.Store) ([]SignIn, error) {
+	t := ms(time.Now())
+	rows, err := st.DB.QueryContext(ctx, `SELECT COALESCE(MAX(verified_email), ''), MAX(issuer), MAX(last_seen_at) FROM auth_browser_sessions
+		WHERE idle_expires_at > ? AND absolute_expires_at > ? GROUP BY owner_id ORDER BY MAX(last_seen_at) DESC LIMIT 100`, t, t)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SignIn{}
+	for rows.Next() {
+		var s SignIn
+		var seen int64
+		if err := rows.Scan(&s.Email, &s.Issuer, &seen); err != nil {
+			return nil, err
+		}
+		s.LastSeen = time.UnixMilli(seen).UTC().Format(time.RFC3339)
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // DeleteSession signs a cookie token out.
 func DeleteSession(ctx context.Context, st *store.Store, token string) {
 	st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, hashToken(token))

@@ -62,8 +62,10 @@ type BrowserAccess struct {
 	Permissions []string `json:"permissions"`
 }
 
-// DefaultBrowserPermissions are granted when no policy is configured.
-var DefaultBrowserPermissions = []string{"inference:chat", "models:read"}
+// DefaultBrowserPermissions are what a provider added without saying gives everyone who
+// signs in through it when no policy is configured: nothing. Anyone may hold an account
+// with a public provider, so permissions for all of them are a choice to make on purpose.
+var DefaultBrowserPermissions = []string{}
 
 var (
 	teamDomainRe     = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.cloudflareaccess\.com$`)

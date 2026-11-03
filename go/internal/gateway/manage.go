@@ -383,6 +383,17 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		out := map[string]any{"config": summary, "policy": policyOut, "policyRevision": auth.Revision(policy),
 			"users": users, "roles": roles, "emailDelivery": emailSummary}
+		if open := auth.OpenSignIn(cfg, policy); open != "" {
+			out["openSignIn"] = open
+		}
+		signedIn, err := auth.SignedIn(ctx, s.Store)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return
+		}
+		if len(signedIn) > 0 {
+			out["signedIn"] = signedIn
+		}
 		if len(cfg.Issuers()) > 0 {
 			left, err := auth.CountUnbound(ctx, s.Store.DB)
 			if err != nil {

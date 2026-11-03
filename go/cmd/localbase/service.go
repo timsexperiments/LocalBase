@@ -124,6 +124,9 @@ func serviceCommands() []*cli.Command {
 			if left := unboundBindings(e); left.Total() > 0 {
 				c.Info("Browser access: %s", left.Notice())
 			}
+			if open := openSignIn(e); open != "" {
+				c.Info("Browser access: %s", open)
+			}
 			// The fit-aware default (DESIGN §18), when a list is configured.
 			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
 				if d := gatewayDefaultModel(e); d != nil {

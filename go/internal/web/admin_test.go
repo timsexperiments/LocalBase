@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -255,5 +256,49 @@ func TestAccessPageSaysWhatIsNotBound(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("page lacks %q", want)
 		}
+	}
+}
+
+// The access page says what anyone who can sign in gets, and who has signed in.
+func TestAccessPageShowsOpenSignInAndWhoSignedIn(t *testing.T) {
+	page := func(access string) string {
+		t.Helper()
+		u, f, _ := adminUI("access:read", "access:manage")
+		f.access = access
+		return get(u, "/app/admin?section=access").Body.String()
+	}
+	plain := page(adminAccess)
+	if strings.Contains(plain, "data-open-sign-in") || strings.Contains(plain, "data-signed-in") {
+		t.Error("shown with nothing to say")
+	}
+	got := page(strings.Replace(adminAccess, `"emailDelivery":null,`, `"emailDelivery":null,"openSignIn":"Anyone who can sign in through Google gets: inference:chat.","signedIn":[{"email":"someone@example.org","issuer":"https://accounts.example.org","lastSeen":"2026-11-02T20:00:00Z"},{"issuer":"https://accounts.example.org","lastSeen":"2026-11-01T20:00:00Z"}],`, 1))
+	for _, want := range []string{"Anyone who can sign in through Google gets: inference:chat.", "someone@example.org", "https://accounts.example.org", "2026-11-02T20:00:00Z", "An account with no verified address"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+}
+
+// The starter policy gives the person who asked for it everything, and nobody else anything.
+func TestStarterPolicyHasNoDefaultRole(t *testing.T) {
+	u, f, p := adminUI("access:read", "access:manage")
+	p.Identity = &auth.Identity{Issuer: "https://accounts.example.org", Subject: "o", VerifiedEmail: "owner@example.org"}
+	w := adminPost(u, "/app/admin/access", url.Values{"action": {"starter-policy"}})
+	if w.Code != 200 || len(f.sent) != 1 {
+		t.Fatalf("%d, sent %v", w.Code, f.sent)
+	}
+	if f.sent[0]["action"] != "apply-policy" {
+		t.Fatalf("%v", f.sent[0])
+	}
+	policy := f.sent[0]["policy"].(map[string]any)
+	if v, ok := policy["defaultRole"]; !ok || v != nil {
+		t.Errorf("default role: %v", v)
+	}
+	bindings := policy["bindings"].([]any)
+	if len(bindings) != 1 || bindings[0].(map[string]any)["email"] != "owner@example.org" || bindings[0].(map[string]any)["role"] != "admin" {
+		t.Errorf("bindings: %v", bindings)
+	}
+	if !strings.Contains(fmt.Sprint(policy["roles"]), "member") {
+		t.Errorf("roles: %v", policy["roles"])
 	}
 }
