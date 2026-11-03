@@ -330,8 +330,9 @@ func TestRunCancel(t *testing.T) {
 	if m := c.get(queued); m["status"] != "queued" || m["startedAt"] != nil {
 		t.Errorf("second run: %v", m)
 	}
-	if snap := llm.Snapshot(); snap.Active != 1 || snap.Waiting != 1 {
-		t.Errorf("snapshot with one running and one queued: %+v", snap)
+	// A run reports queued just before it joins the queue, so wait for the count.
+	if !waitFor(2*time.Second, func() bool { snap := llm.Snapshot(); return snap.Active == 1 && snap.Waiting == 1 }) {
+		t.Errorf("snapshot with one running and one queued: %+v", llm.Snapshot())
 	}
 	began := time.Now()
 	code, m := c.do("POST", "/_localbase/runs/"+queued+"/cancel", "")
