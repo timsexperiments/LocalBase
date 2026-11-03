@@ -40,6 +40,7 @@ func TestChecksumCacheStaysValidForTS(t *testing.T) {
 	})
 	mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
 	mustWriteFile(filepath.Join(e.root, "catalog.d", "cache-stt.json"), entry, 0o600)
+	allowPrivateImports(t, e.root)
 	if r := e.cli(nil, "--non-interactive", "models", "install", "cache-stt"); r.code != 0 {
 		t.Fatalf("install: %s", r.stderr)
 	}
