@@ -29,7 +29,12 @@ function show(message, action) {
   box.append(card);
 }
 
+// A failed sign-out says the person is still signed in. A poll failing for the same reason doesn't
+// replace that with a message that doesn't say so.
+let signOutFailed = false;
+
 async function diagnose() {
+  if (signOutFailed) return;
   let response;
   try {
     response = await fetch("/app/session", {
@@ -53,7 +58,10 @@ async function diagnose() {
 
 document.addEventListener("htmx:sendError", diagnose);
 document.addEventListener("htmx:afterRequest", (event) => {
-  if (event.detail.successful) notice()?.replaceChildren();
+  if (event.detail.successful) {
+    signOutFailed = false;
+    notice()?.replaceChildren();
+  }
 });
 
 // Polling regions (data-poll) skip requests while the page is hidden, so a
@@ -69,17 +77,18 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("[data-logout]");
   if (!button) return;
   button.disabled = true;
-  let done = false;
+  let failure = "";
   try {
     const answer = await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
     // Only a real answer ends it. A 503 means the session is still good, so saying "signed out" would be false.
-    done = answer.ok;
+    if (!answer.ok) failure = "We couldn’t sign you out. Try again in a moment.";
   } catch {
-    // Nothing came back, so nothing is known: the same as above.
+    failure = "Can’t reach LocalBase, so we couldn’t sign you out. You’re still signed in.";
   }
-  if (!done) {
+  if (failure) {
     button.disabled = false;
-    show("We couldn’t sign you out. Try again in a moment.");
+    signOutFailed = true;
+    show(failure);
     return;
   }
   // Not to /app/login: with one provider that goes straight back to it, and a provider that

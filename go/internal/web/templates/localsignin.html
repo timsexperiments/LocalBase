@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="{{themeColor "light"}}" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="{{themeColor "dark"}}" media="(prefers-color-scheme: dark)">
-<title>Sign in · LocalBase</title>
+<title>{{if eq .Mode "busy"}}Can’t check your sign-in{{else}}Sign in{{end}} · LocalBase</title>
 <link rel="stylesheet" href="{{asset "app.css"}}">
 </head>
 <body>
