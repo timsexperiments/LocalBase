@@ -68,6 +68,9 @@ func serviceUnavailable(w http.ResponseWriter, r *http.Request, service string) 
 // runtimeError maps runtime and admission errors to responses.
 // service names the runtime in a 503 ("LLM", "STT", "TTS", "Image"), as TS does.
 func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, service string) {
+	if n := noteFrom(r); n != nil && model != "" {
+		n.model = model // checked when it is counted: this came from the request
+	}
 	var ae *memory.AdmissionError
 	var notInstalled *runtime.NotInstalledError
 	var launch *runtime.LaunchError

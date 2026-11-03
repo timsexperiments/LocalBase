@@ -22,6 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 )
 
@@ -104,8 +105,12 @@ func newVideoGateway(t *testing.T) *videoGateway {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { jobs.Shutdown() })
+	counted, err := usage.New(st, log)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
-		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, Video: svc, VideoJobs: jobs})
+		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, Video: svc, VideoJobs: jobs, Usage: counted})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return &videoGateway{ts: ts, svc: svc, jobs: jobs, bodies: bodies}
