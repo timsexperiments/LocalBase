@@ -9,6 +9,8 @@
 # LOCALBASE_CONTRACT_LOGS chooses the directory (default: $TMPDIR/localbase-contract-runs).
 set -uo pipefail
 cd "$(dirname "$0")/.."
+. tools/disk-guard.sh
+disk_guard contract
 dir=${LOCALBASE_CONTRACT_LOGS:-${TMPDIR:-/tmp}/localbase-contract-runs}
 mkdir -p "$dir"
 log="$dir/contract-$(date -u +%Y%m%dT%H%M%SZ)-$$.jsonl"
