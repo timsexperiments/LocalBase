@@ -19,7 +19,7 @@ func stderrPaths(rootDir string) (string, string) {
 // .1 archive and truncates the active file (launchd appends from zero).
 func BoundServiceStderr(rootDir string) error {
 	active, archive := stderrPaths(rootDir)
-	f, err := os.OpenFile(active, os.O_RDWR, 0)
+	f, err := OpenOwnedRegular(active, os.O_RDWR)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -28,7 +28,7 @@ func BoundServiceStderr(rootDir string) error {
 	}
 	defer f.Close()
 	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() || st.Size() <= maxServiceStderr {
+	if err != nil || st.Size() <= maxServiceStderr {
 		return err
 	}
 	tail := make([]byte, maxServiceStderr)
