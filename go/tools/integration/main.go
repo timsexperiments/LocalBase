@@ -210,16 +210,30 @@ func tidyDesign(path string) (int, error) {
 		cur = append(cur, line...)
 	}
 	sections = append(sections, cur)
-	seen, removed := map[string]bool{}, 0
+	removed := 0
 	var out bytes.Buffer
-	for _, s := range sections {
-		key := string(bytes.TrimSpace(s))
-		if seen[key] {
+	for i, s := range sections {
+		// A repeat, or a copy another branch has since added to: the fullest copy stays,
+		// where the first copy was.
+		key := bytes.TrimSpace(s)
+		keep, repeat := s, false
+		for j, other := range sections {
+			o := bytes.TrimSpace(other)
+			if j == i || !bytes.HasPrefix(key, []byte("## ")) {
+				continue
+			}
+			if bytes.HasPrefix(o, key) && len(o) > len(key) {
+				keep = other
+			}
+			if j < i && bytes.HasPrefix(key, o) || j < i && bytes.HasPrefix(o, key) {
+				repeat = true
+			}
+		}
+		if repeat {
 			removed++
 			continue
 		}
-		seen[key] = true
-		out.Write(s)
+		out.Write(keep)
 	}
 	if removed+removedHeadings == 0 {
 		return 0, nil

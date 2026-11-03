@@ -36,6 +36,23 @@ func TestTidyDesignDropsRenumberedHeading(t *testing.T) {
 	}
 }
 
+func TestTidyDesignKeepsTheFullerCopy(t *testing.T) {
+	for name, in := range map[string]string{
+		"fuller second": "## 1. A\n\ntext\n\n## 2. B\n\nb\n\n## 1. A\n\ntext\n\nadded\n",
+		"fuller first":  "## 1. A\n\ntext\n\nadded\n\n## 2. B\n\nb\n\n## 1. A\n\ntext\n",
+	} {
+		p := filepath.Join(t.TempDir(), "DESIGN.md")
+		os.WriteFile(p, []byte(in), 0o600)
+		if n, err := tidyDesign(p); err != nil || n != 1 {
+			t.Fatalf("%s: %d %v", name, n, err)
+		}
+		got, _ := os.ReadFile(p)
+		if strings.Count(string(got), "## 1. A") != 1 || !strings.Contains(string(got), "added") || !strings.Contains(string(got), "## 2. B") {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+}
+
 func TestKeepBothSides(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "f")
 	os.WriteFile(p, []byte("a\n<<<<<<< HEAD\nb\n=======\nc\n>>>>>>> origin/x\nd\n"), 0o600)
