@@ -125,7 +125,7 @@ func TestInstallFailureReasons(t *testing.T) {
 				ctx, cancel = c.ctx()
 				defer cancel()
 			}
-			o := Options{Available: func(string) (int64, error) { return 1 << 40, nil }}
+			o := Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }}
 			if c.opts != nil {
 				c.opts(&o)
 			}
@@ -148,7 +148,7 @@ func TestInstallReasonRefused(t *testing.T) {
 	}
 	url := "http://" + ln.Addr().String()
 	ln.Close()
-	_, err = Model(context.Background(), specFor(url, testBody), filepath.Join(t.TempDir(), "m"), Options{Available: func(string) (int64, error) { return 1 << 40, nil }})
+	_, err = Model(context.Background(), specFor(url, testBody), filepath.Join(t.TempDir(), "m"), Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }})
 	if got := Reason(err); got != ReasonNetwork {
 		t.Errorf("%q: %v", got, err)
 	}

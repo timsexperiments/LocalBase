@@ -817,6 +817,11 @@ func TestOpenAPIResponses(t *testing.T) {
 		if key != "" {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
+		if len(body) > 1<<20 {
+			// A refused body is drained only so far (DESIGN 31), then the connection closes
+			// and a client still sending can see a broken pipe instead of the answer.
+			req.Header.Set("Expect", "100-continue")
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("%s %s: %v", method, path, err)
