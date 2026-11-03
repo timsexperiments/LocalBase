@@ -27,7 +27,7 @@ func TestDownloadRefusesAPlantedPartial(t *testing.T) {
 	content := []byte("someone's own\n")
 	os.WriteFile(target, content, 0o644)
 	os.Symlink(target, filepath.Join(dir, "m.bin.partial"))
-	_, err := Model(context.Background(), spec, dir, Options{Available: func(string) (int64, error) { return 1 << 40, nil }})
+	_, err := Model(context.Background(), spec, dir, Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }})
 	var unsafe *obs.UnsafeFileError
 	if !errors.As(err, &unsafe) {
 		t.Fatalf("want a refusal: %v", err)
@@ -41,7 +41,7 @@ func TestDownloadRefusesAPlantedPartial(t *testing.T) {
 	os.WriteFile(exact, data, 0o644)
 	dir2 := t.TempDir()
 	os.Symlink(exact, filepath.Join(dir2, "m.bin.partial"))
-	if _, err := Model(context.Background(), spec, dir2, Options{Available: func(string) (int64, error) { return 1 << 40, nil }}); !errors.As(err, &unsafe) {
+	if _, err := Model(context.Background(), spec, dir2, Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }}); !errors.As(err, &unsafe) {
 		t.Errorf("a link with the right bytes: %v", err)
 	}
 	if info, err := os.Lstat(filepath.Join(dir2, "m.bin")); err == nil {
@@ -52,13 +52,13 @@ func TestDownloadRefusesAPlantedPartial(t *testing.T) {
 	// another disk are a plausible setup, and nothing is written through it.
 	dir3 := t.TempDir()
 	os.Symlink(exact, filepath.Join(dir3, "m.bin"))
-	if _, err := Model(context.Background(), spec, dir3, Options{Available: func(string) (int64, error) { return 1 << 40, nil }}); err != nil {
+	if _, err := Model(context.Background(), spec, dir3, Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }}); err != nil {
 		t.Errorf("a symlinked final file: %v", err)
 	}
 
 	clean := t.TempDir()
 	os.Symlink(target, filepath.Join(clean, ".checksums.json"))
-	if _, err := Model(context.Background(), spec, clean, Options{Available: func(string) (int64, error) { return 1 << 40, nil }}); !errors.As(err, &unsafe) {
+	if _, err := Model(context.Background(), spec, clean, Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }}); !errors.As(err, &unsafe) {
 		t.Errorf("a linked checksum cache: %v", err)
 	}
 	if got, _ := os.ReadFile(target); string(got) != string(content) {
