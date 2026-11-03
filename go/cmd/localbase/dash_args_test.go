@@ -100,3 +100,41 @@ func TestNewSessionIDsNeverStartWithADash(t *testing.T) {
 		}
 	}
 }
+
+// `revoke --all` ends every session; it takes no id, and needs one or the other.
+func TestRevokeAllSessionsCommand(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "root")
+	r, err := root.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	token, err := auth.CreateSession(ctx, st, "owner", auth.Identity{Issuer: "https://i", Subject: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (int, string) {
+		a := app()
+		var out, errb bytes.Buffer
+		a.Stdout, a.Stderr = &out, &errb
+		code := a.Run(append([]string{"--root", dir, "--json", "access", "sessions", "revoke"}, args...))
+		return code, out.String() + errb.String()
+	}
+	if code, msg := run(); code == 0 {
+		t.Errorf("neither: %s", msg)
+	}
+	if code, msg := run("--all", "some-id"); code == 0 {
+		t.Errorf("both: %s", msg)
+	}
+	if code, msg := run("--all"); code != 0 || !strings.Contains(msg, `"revoked":1`) {
+		t.Fatalf("--all: %d %s", code, msg)
+	}
+	if s, _ := auth.FindSession(ctx, st, token, map[string]bool{"https://i": true}); s != nil {
+		t.Error("a session survived --all")
+	}
+}
