@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
@@ -35,6 +37,11 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		e.Root = r
 	} else if canon, cerr := root.Canonical(dir); cerr == nil {
 		e.Root = &root.Root{Dir: canon}
+	}
+	// Read-only, this cannot undo a write a process left unfinished, and what it reads below
+	// would quietly be defaults, reported as the real settings.
+	if msg := backup.UnfinishedWrite(context.Background(), e.Root.Dir); msg != "" {
+		return nil, errors.New(msg)
 	}
 	var err error
 	if e.Catalog, err = catalog.LoadRoot(e.Root.Dir, nil); err != nil {

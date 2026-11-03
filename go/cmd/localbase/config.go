@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
@@ -93,6 +94,9 @@ func readConfigIfPresent(dir string, cat *catalog.Catalog) (*store.Config, bool,
 	path := dir + "/local-base.db"
 	if _, err := os.Stat(path); err != nil {
 		return nil, false, nil
+	}
+	if msg := backup.UnfinishedWrite(context.Background(), dir); msg != "" {
+		return nil, false, errors.New(msg)
 	}
 	st, err := store.OpenReadOnly(path)
 	if err != nil {
