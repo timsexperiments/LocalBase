@@ -160,7 +160,7 @@ type limitedWriter struct {
 
 func (l *limitedWriter) Write(b []byte) (int, error) {
 	if keep := min(l.n, len(b)); keep > 0 {
-		l.w.Write(b[:keep])
+		_, _ = l.w.Write(b[:keep]) // a bounded copy for the audit record; the response goes on regardless
 		l.n -= keep
 	}
 	return len(b), nil

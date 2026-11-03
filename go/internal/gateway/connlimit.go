@@ -73,8 +73,9 @@ func (l *limitListener) Accept() (net.Conn, error) {
 		}
 		key := connKey(c.RemoteAddr())
 		if reason := l.admit(key); reason != "" {
-			c.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-			c.Write([]byte(busyResponse))
+			// Best effort: the connection is being refused and closed either way.
+			_ = c.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+			_, _ = c.Write([]byte(busyResponse))
 			c.Close()
 			l.noteRefused(reason)
 			continue

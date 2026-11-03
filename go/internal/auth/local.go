@@ -152,7 +152,8 @@ func CreateLocalSession(ctx context.Context, st *store.Store) (token, id string,
 	t := time.Now()
 	// The prefix keeps a leading '-' out of an id someone will type or paste.
 	token, id = RandomToken(32), "ls_"+RandomToken(9)
-	st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
+	// Tidying only: an expired row is refused when read, whether or not this removes it.
+	_, _ = st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
 	_, err = st.DB.ExecContext(ctx, `INSERT INTO local_sessions (id, token_hash, created_at, last_seen_at, idle_expires_at, absolute_expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)`, id, hashToken(token), ms(t), ms(t), ms(t.Add(LocalIdleTTL)), ms(t.Add(LocalAbsoluteTTL)))
 	if err != nil {
@@ -179,11 +180,13 @@ func FindLocalSession(ctx context.Context, st *store.Store, token string) (*Loca
 		return nil, err
 	}
 	if idle <= t || abs <= t {
-		st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, h)
+		// The session is refused either way; this only tidies the row.
+		_, _ = st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, h)
 		return nil, nil
 	}
 	if t-s.LastSeenAt >= sessionTouchEvery.Milliseconds() {
-		st.DB.ExecContext(ctx, `UPDATE local_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
+		// A failed touch only makes the idle limit come sooner: it fails closed.
+		_, _ = st.DB.ExecContext(ctx, `UPDATE local_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
 			t, t+LocalIdleTTL.Milliseconds(), h)
 		s.LastSeenAt, idle = t, t+LocalIdleTTL.Milliseconds()
 	}
@@ -191,9 +194,11 @@ func FindLocalSession(ctx context.Context, st *store.Store, token string) (*Loca
 	return &s, nil
 }
 
-// DeleteLocalSession signs a cookie token out.
-func DeleteLocalSession(ctx context.Context, st *store.Store, token string) {
-	st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, hashToken(token))
+// DeleteLocalSession signs a cookie token out. A failure leaves that session valid until
+// it expires, so the caller must hear about it.
+func DeleteLocalSession(ctx context.Context, st *store.Store, token string) error {
+	_, err := st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, hashToken(token))
+	return err
 }
 
 // ListLocalSessions lists live sessions, most recently used first.

@@ -276,7 +276,7 @@ func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	json.Unmarshal(rec.body.Bytes(), &parsed)
+	_ = json.Unmarshal(rec.body.Bytes(), &parsed) // a body that is not JSON has no message to show
 	var retry any
 	if v := rec.header.Get("Retry-After"); v != "" {
 		retry = v
