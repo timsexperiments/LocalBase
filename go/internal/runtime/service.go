@@ -42,7 +42,9 @@ type Service struct {
 	switchW   sync.WaitGroup
 	// cancelSwitch ends the switch in flight, as on the LLM.
 	cancelSwitch context.CancelCauseFunc
-	watches      sync.WaitGroup // backend watchers; each can end in a store write
+	// stopping: the gateway is stopping, so no model starts, as on the LLM.
+	stopping bool
+	watches  sync.WaitGroup // backend watchers; each can end in a store write
 }
 
 // ServiceDeps are a Service's collaborators.
@@ -263,6 +265,13 @@ func (s *Service) pump() {
 			}
 			head.lease = &ServiceLease{s: s, b: s.cur, BaseURL: s.cur.baseURL, ModelID: s.cur.modelID, Target: s.cur.target}
 			head.ready <- nil
+			return
+		}
+		if s.stopping {
+			s.queue = s.queue[1:]
+			head.done = true
+			head.ready <- ErrUnavailable
+			s.pump()
 			return
 		}
 		s.busy = true // the switch holds the backend
@@ -524,7 +533,7 @@ func (s *Service) start(life context.Context, t *Target, demand memory.Demand, p
 	if err := spanned(s.d.Otel, ctx, "localbase.backend.model_load", cmd.name, func() error {
 		return proc.WaitHealthy(life, base+cmd.health, budget)
 	}); err != nil {
-		proc.Stop(stopGrace)
+		proc.Stop(loadStopGrace)
 		res.Release()
 		return nil, fail(err)
 	}
@@ -679,6 +688,17 @@ func (s *Service) EmergencyStop(reason error) {
 }
 
 // Close stops the backend after in-flight switches finish.
+// StopLoads ends a load in flight and starts no other, as on the LLM.
+func (s *Service) StopLoads() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopping = true
+	if s.cancelSwitch != nil {
+		s.cancelSwitch(ErrUnavailable)
+	}
+	s.pump()
+}
+
 func (s *Service) Close() {
 	s.mu.Lock()
 	s.closed = true
