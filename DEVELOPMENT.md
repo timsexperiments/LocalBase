@@ -69,6 +69,7 @@ sequenceDiagram
 | `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
 | `go-lint.yml` | golangci-lint with `go/.golangci.yml` |
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |
+| `soak.yml` | One soak cycle nightly on Linux and macOS, and the 30-minute soak plus a race-detector cycle weekly |
 | `release-go.yml` | Release build, installer test on four platforms. Publishes a draft on tags only |
 | `go-dual.yml` | Differential tests against TypeScript: nightly, by hand, or with the `dual` label |
 | `ci.yml` | TypeScript checks, on PRs into main |
