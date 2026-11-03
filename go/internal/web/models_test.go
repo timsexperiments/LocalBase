@@ -65,10 +65,10 @@ func TestLibraryModelsFirst(t *testing.T) {
 	}
 }
 
-// With nothing installed, the empty state holds the one way forward.
+// With nothing installed it asks what you'd like to do, and there's nothing to search.
 func TestLibraryEmpty(t *testing.T) {
 	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/models").Body.String())
-	if !strings.Contains(main, `class="empty-state"`) || !strings.Contains(main, `class="btn btn-primary mt-4">Get a model</a>`) {
+	if !strings.Contains(main, `What would you like to do first?`) || !strings.Contains(main, `href="/app/welcome/choose"`) || strings.Contains(main, `id="lib-search"`) {
 		t.Errorf("empty: %s", main)
 	}
 	if strings.Contains(main, `aria-label="Filter by task"`) {
