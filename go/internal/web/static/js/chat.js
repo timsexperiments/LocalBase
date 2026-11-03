@@ -126,6 +126,11 @@ function select(id) {
     dropRead();
     cancelDictation();
     draft = [];
+    if (editing) {
+      editing = null;
+      input.value = "";
+      $("[data-editing]").hidden = true;
+    }
   }
   active = conversations.find((c) => c.id === id);
   if (!active) {
@@ -494,6 +499,15 @@ function messageNode(m) {
       article.append(bubble);
     }
     if (m.attachments?.length) article.append(chips(m.attachments));
+    if (!m.pending && (m.text || m.attachments?.length)) {
+      const actions = document.createElement("div");
+      actions.className = "message-actions";
+      if (m.text) actions.append(copyButton(() => m.text, "Copy"));
+      // The newest message only: anything earlier would change what later replies answered.
+      const newest = active.messages.findLast((x) => x.role === "user");
+      if (m === newest && !abort && m !== editing) actions.append(button("Edit", "md-copy", () => startEdit(m), { "aria-label": "Edit your message" }));
+      if (actions.childElementCount) article.append(actions);
+    }
     if (m.attachmentsMissing) {
       const note = document.createElement("p");
       note.className = "mt-1 text-sm text-muted";
@@ -773,6 +787,40 @@ function readyModel(conversation) {
 // send starts a reply, or explains why it cannot and returns false (the
 // caller keeps the draft). Sending while this conversation's reply streams
 // steers: that reply is marked interrupted and stopped.
+// Editing the newest message: nothing changes until it's sent, and Cancel leaves it all as it was.
+let editing = null;
+function showEditing() {
+  $("[data-editing]").hidden = !editing;
+}
+function startEdit(m) {
+  if (abort) return;
+  editing = m;
+  input.value = m.text;
+  draft = m.attachments ? [...m.attachments] : [];
+  renderDraft();
+  grow();
+  updateSend();
+  showEditing();
+  render();
+  input.focus();
+  announce("Editing your message.");
+}
+function cancelEdit() {
+  if (!editing) return;
+  editing = null;
+  input.value = "";
+  draft = [];
+  saveDraft();
+  renderDraft();
+  grow();
+  updateSend();
+  showEditing();
+  render();
+  input.focus();
+  announce("Edit cancelled.");
+}
+$("[data-cancel-edit]").addEventListener("click", cancelEdit);
+
 function send(text) {
   const steering = !!abort && running?.conversation === active;
   if (abort && !steering) return false;
@@ -781,9 +829,10 @@ function send(text) {
   if (!model) return false;
   const conversation = active;
   const user = { id: uuid(), role: "user", text, ...(draft.length ? { attachments: draft } : {}) };
+  const replaced = editing && conversation.messages.includes(editing) ? conversation.messages.indexOf(editing) : -1;
   let problem;
   try {
-    problem = chatRequestError([...conversation.messages, user], model);
+    problem = chatRequestError([...(replaced < 0 ? conversation.messages : conversation.messages.slice(0, replaced)), user], model);
   } catch (e) {
     problem = e.message;
   }
@@ -800,6 +849,9 @@ function send(text) {
     abort.abort(steerAbortReason);
   }
   strip.refused(null);
+  if (replaced >= 0) conversation.messages.length = replaced;
+  editing = null;
+  showEditing();
   if (!conversation.messages.length) conversation.title = text ? titleFrom(text) : "Attachments";
   conversation.messages.push(user);
   draft = [];

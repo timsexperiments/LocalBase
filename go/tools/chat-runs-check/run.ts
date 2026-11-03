@@ -839,6 +839,41 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
+// --- Your own message: copy it, or change the newest one. Nothing changes until it's sent.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const sendText = async (text) => { await ev(`(() => { const p = document.querySelector("#chat-input"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("[data-send]").click(); })()`); for (let i = 0; i < 60 && !(await ev(`!document.querySelector("[data-send]").hidden && document.querySelectorAll("[data-messages] article").length >= 2 && !document.querySelector("[data-messages] .reply-place")`)); i++) await sleep(100); await sleep(250); };
+const talk = `[...document.querySelectorAll("[data-messages] article")].map((a) => a.textContent.replace(/\\s+/g, " ").trim().slice(0, 44))`;
+await sendText("first question");
+await sendText("second question");
+const twoTurns = await ev(talk);
+const userButtons = await ev(`[...document.querySelectorAll("[data-messages] article.items-end")].map((a) => [...a.querySelectorAll("button")].map((b) => b.textContent.trim() + ":" + Math.round(b.getBoundingClientRect().height)))`);
+check(userButtons.length === 2 && userButtons[0].join() === "Copy:44" && userButtons[1].join() === "Copy:44,Edit:44", `your messages can be copied, and only the newest edited: ${JSON.stringify(userButtons)}`);
+const editButton = `document.querySelector("[aria-label='Edit your message']")`;
+await ev(`${editButton}.click()`);
+await sleep(100);
+const editingNow = await ev(`({ text: document.querySelector("#chat-input").value, note: !document.querySelector("[data-editing]").hidden, focus: document.activeElement?.id, kept: ${talk}.length, again: !!${editButton} })`);
+check(editingNow.text === "second question" && editingNow.note && editingNow.focus === "chat-input" && editingNow.kept === twoTurns.length && !editingNow.again, `Edit puts it in the box, says so, and changes nothing yet: ${JSON.stringify(editingNow)}`);
+await ev(`document.querySelector("[data-cancel-edit]").click()`);
+await sleep(100);
+const cancelled = await ev(`({ text: document.querySelector("#chat-input").value, note: !document.querySelector("[data-editing]").hidden, talk: ${talk}, focus: document.activeElement?.id })`);
+check(cancelled.text === "" && !cancelled.note && JSON.stringify(cancelled.talk) === JSON.stringify(twoTurns) && cancelled.focus === "chat-input", `Cancel leaves it all as it was: ${JSON.stringify(cancelled.talk).slice(0, 120)}`);
+await ev(`${editButton}.click()`);
+await sleep(100);
+await sendText("second question, changed");
+const edited = await ev(talk);
+check(edited.length === twoTurns.length && edited.some((t) => t.includes("second question, changed")) && !edited.some((t) => /second question$/.test(t)) && edited.some((t) => t.includes("first question")), `sending replaces that message and its reply, and keeps the earlier ones: ${JSON.stringify(edited).slice(0, 170)}`);
+await ev(`document.querySelector("[data-new-chat]").click()`);
+await sleep(200);
+
+// --- A background strip refresh answered 503 (a held store): it stops saying Ready --------------
+await nav("/app/chat");
+const stripBusy = await ev(`(async () => { const el = document.querySelector("[data-strip]"); const real = XMLHttpRequest.prototype.send; const before = document.querySelector("[data-strip-word]").textContent; document.dispatchEvent(new CustomEvent("htmx:responseError", { detail: { elt: el, xhr: { status: 503 } } })); const s = el.querySelector(".strip"); return { before, word: el.querySelector("[data-strip-word]").textContent, free: el.querySelector("[data-strip-free]").textContent, cls: s.className }; })()`);
+check(stripBusy.word === "LocalBase is busy" && stripBusy.free === "" && !/strip-ready/.test(stripBusy.cls), `a 503 on the strip's refresh stops it saying what it said: ${JSON.stringify(stripBusy)}`);
+await sleep(3500);
+const stripBack = await ev(`({ word: document.querySelector("[data-strip-word]").textContent, free: document.querySelector("[data-strip-free]").textContent })`);
+check(stripBack.word !== "LocalBase is busy" && /GiB free/.test(stripBack.free), `the next good answer redraws it: ${JSON.stringify(stripBack)}`);
+
 // --- After a refusal the strip tells the truth as memory comes back. "Freed" is the gateway's
 // admission answer for that model, stubbed here, not a guess from the free figure. Each step redraws
 // the strip as a refresh would, then the same event a swap fires.

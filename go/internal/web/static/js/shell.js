@@ -229,6 +229,19 @@ document.addEventListener("localbase:refused", (event) => {
   }
 });
 document.addEventListener("htmx:afterSettle", showRefused);
+// Reached, but it can't read its own state for a moment (a held store, say). What the strip last
+// said is out of date, so it doesn't go on saying it. The next good answer redraws it.
+document.addEventListener("htmx:responseError", (event) => {
+  const elt = event.detail.elt;
+  if (!elt?.hasAttribute?.("data-strip") || event.detail.xhr?.status !== 503) return;
+  elt.removeAttribute("hx-headers");
+  const strip = elt.querySelector(".strip");
+  if (strip) strip.className = "strip strip-load";
+  const word = elt.querySelector("[data-strip-word]");
+  if (word) word.textContent = "LocalBase is busy";
+  const free = elt.querySelector("[data-strip-free]");
+  if (free) free.textContent = "";
+});
 // The strip when the computer can't be reached: same place, same shape, and it says so.
 // The next refresh that works redraws it.
 document.addEventListener("htmx:sendError", (event) => {
