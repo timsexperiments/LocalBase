@@ -84,6 +84,11 @@ over a short run a slope can be a plateau still settling.
   cannot tell a plateau from a very slow leak. The weekly long run should answer
   it; until then this is open, not a pass.
 
+  A second run, at `91462a35` on the integration tree before its rebuild (macOS, 18
+  cycles), rose from 61.1 to 78.5 MiB by cycle 7 and then only to 79.1 by cycle 18, with
+  threads 12 to 15. That looks like a plateau, but it is one run. The weekly 2-hour run is
+  the real answer.
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
