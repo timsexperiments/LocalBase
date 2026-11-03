@@ -260,10 +260,10 @@ func Deny(w http.ResponseWriter, status int) {
 const pageStyle = `body{font:16px system-ui;margin:0;background:#201e25;color:#eee9f1}main{max-width:28rem;margin:12vh auto;padding:1.5rem}h1{font-size:1.6rem}nav,form{display:grid;gap:.75rem}a{color:inherit;text-decoration:none;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730}a:focus,a:hover{border-color:#a4d3bc}input,button{font:inherit;border:1px solid #453b4c;border-radius:.75rem;padding:1rem;background:#2b2730;color:inherit;min-height:44px}button{background:#a4d3bc;color:#14241d;border:0;font-weight:650}button:disabled{opacity:.5}`
 
 func page(w http.ResponseWriter, body, csp, referrer string) {
-	pageWithStatus(w, http.StatusOK, body, csp, referrer)
+	pageAt(w, http.StatusOK, body, csp, referrer)
 }
 
-func pageWithStatus(w http.ResponseWriter, status int, body, csp, referrer string) {
+func pageAt(w http.ResponseWriter, status int, body, csp, referrer string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -526,7 +526,7 @@ func (b *Browser) establish(w http.ResponseWriter, r *http.Request, id Identity,
 		if len(b.Config.Issuers()) > 1 {
 			issuer = id.Issuer
 		}
-		pageWithStatus(w, http.StatusForbidden, noAccessPage(id.VerifiedEmail, issuer, err != nil || policy != nil), formCSP, "no-referrer")
+		pageAt(w, http.StatusForbidden, noAccessPage(id.VerifiedEmail, issuer, err != nil || policy != nil), formCSP, "no-referrer")
 		return
 	}
 	token, err := CreateSession(r.Context(), b.Store, owner, id)
