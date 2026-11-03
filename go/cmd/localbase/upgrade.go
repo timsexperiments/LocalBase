@@ -160,13 +160,17 @@ func checkInstalled(binary string) error {
 }
 
 // gatewayActivity asks the running gateway how busy it is, with a key that lasts this long.
-func gatewayActivity(e *env, base string) (busy bool, detail string, err error) {
+func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string, err error) {
 	ctx := context.Background()
 	k, raw, err := e.Store.CreateAPIKeyExpiring(ctx, "local-base upgrade (temporary)", []string{"models:read"}, 1)
 	if err != nil {
 		return false, "", err
 	}
-	defer e.Store.DeleteAPIKey(ctx, k.ID)
+	defer func() {
+		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr != nil {
+			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
+		}
+	}()
 	req, err := http.NewRequest(http.MethodGet, base+"/_localbase/host", nil)
 	if err != nil {
 		return false, "", err
@@ -398,7 +402,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if state == gatewayManaged && !c.Bool("force") {
 		_, owner, _ := e.Root.OwnerState()
 		base := strings.TrimSuffix(owner.HealthURL(), "/health")
-		if err := waitIdle(func() (bool, string, error) { return gatewayActivity(e, base) }, time.Duration(wait)*time.Second, time.Sleep); err != nil {
+		if err := waitIdle(func() (bool, string, error) { return gatewayActivity(c, e, base) }, time.Duration(wait)*time.Second, time.Sleep); err != nil {
 			return nil, err
 		}
 	}

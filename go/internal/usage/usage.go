@@ -322,17 +322,19 @@ func (r *Recorder) Start() (stop func()) {
 		flush, prune := time.NewTicker(FlushInterval), time.NewTicker(pruneInterval)
 		defer flush.Stop()
 		defer prune.Stop()
-		r.Prune(context.Background())
+		r.pruneOrWarn()
 		for {
 			select {
 			case <-flush.C:
-				r.Flush(context.Background())
+				// Flush logs a failure and keeps the counts in memory, and the next tick retries.
+				_ = r.Flush(context.Background())
 			case <-prune.C:
-				if err := r.Prune(context.Background()); err != nil {
-					r.log.Warn("Could not prune usage totals.", "event", "usage.prune-failed", "error", err.Error())
-				}
+				r.pruneOrWarn()
 			case <-quit:
-				r.Flush(context.Background())
+				// There is no next tick, so what this can't write goes when the process does.
+				if err := r.Flush(context.Background()); err != nil {
+					r.log.Warn("The last usage totals could not be written and are lost.", "event", "usage.last-flush-failed", "error", err.Error())
+				}
 				return
 			}
 		}
@@ -340,6 +342,12 @@ func (r *Recorder) Start() (stop func()) {
 	var once sync.Once
 	return func() {
 		once.Do(func() { close(quit); <-done })
+	}
+}
+
+func (r *Recorder) pruneOrWarn() {
+	if err := r.Prune(context.Background()); err != nil {
+		r.log.Warn("Could not prune usage totals.", "event", "usage.prune-failed", "error", err.Error())
 	}
 }
 
