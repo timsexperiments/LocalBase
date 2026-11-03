@@ -22,10 +22,20 @@ type portBlock struct {
 	mu        sync.Mutex
 	low, high int
 	taken     map[int]bool
+	free      func(port int) bool // whether nothing is listening on a port
+}
+
+func portIsFree(p int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
 }
 
 func newPortBlock() *portBlock {
-	b := &portBlock{low: defaultPortLow, high: defaultPortHigh, taken: map[int]bool{}}
+	b := &portBlock{low: defaultPortLow, high: defaultPortHigh, taken: map[int]bool{}, free: portIsFree}
 	if raw := os.Getenv("LOCALBASE_LAB_PORTS"); raw != "" {
 		lo, hi, ok := strings.Cut(raw, "-")
 		l, err1 := strconv.Atoi(lo)
@@ -44,17 +54,15 @@ func (b *portBlock) take(n int) ([]int, error) {
 	defer b.mu.Unlock()
 	span := b.high - b.low + 1
 	var out []int
-	start := rand.IntN(span)
+	start := rand.IntN(span) //nolint:gosec // where to start looking for a free port, not a secret
 	for i := 0; i < span && len(out) < n; i++ {
 		p := b.low + (start+i)%span
 		if b.taken[p] {
 			continue
 		}
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err != nil {
+		if !b.free(p) {
 			continue
 		}
-		ln.Close()
 		b.taken[p] = true
 		out = append(out, p)
 	}
