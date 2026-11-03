@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"os"
 	"strconv"
@@ -63,6 +65,10 @@ func doctorCommand() *cli.Command {
 				c.Info("Status: ❌ Low VRAM. Focus on 1.5B/3B models or CPU offloading.")
 			}
 			data := map[string]any{"hardware": s, "configuration": conf.Public(e.Config, eff)}
+			if left := unboundBindings(e); left.Total() > 0 {
+				c.Info("Browser access: %s", left.Notice())
+				data["unboundBindings"] = left.Total()
+			}
 			if st := obs.InspectServiceStderr(e.Root.Dir); st != nil {
 				archive := ""
 				if st.ArchiveBytes > 0 {
@@ -86,6 +92,21 @@ func doctorCommand() *cli.Command {
 			}
 			return data, nil
 		}}
+}
+
+// unboundBindings is what names no sign-in provider, when there is a provider to choose.
+// Before a root's first start on this version the table may not exist yet: nothing to
+// report then, because that start names what it can.
+func unboundBindings(e *env) auth.UnboundCount {
+	cfg, err := auth.LoadAccess(e.Root.Dir)
+	if err != nil || e.Store == nil || len(cfg.Issuers()) == 0 {
+		return auth.UnboundCount{}
+	}
+	left, err := auth.CountUnbound(context.Background(), e.Store.DB)
+	if err != nil {
+		return auth.UnboundCount{}
+	}
+	return left
 }
 
 // gpuLines are doctor's GPU lines, with where CPU/GPU placement applies

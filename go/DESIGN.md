@@ -619,6 +619,8 @@ Deliberate differences the contract suite found and kept:
 - `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
 - A backend that crashes under a request answers 503 `service_unavailable` with
   `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
+- With several sign-in providers, a binding or invitation that names none answers
+  400 `issuer_required`, where TS accepts the request (§13.6, item 5b).
 
 ### M1 (done 2026-10-19)
 
@@ -1208,7 +1210,8 @@ Deliberate status changes to verify against the live clients at cutover:
      (people through roles, bindings or the default role, provider-wide
      permissions without a policy, and active API keys). Revoking a key
      counts, and so does rotating someone else's: the new secret goes to the
-     caller, so whoever held the key loses it.
+     caller, so whoever held the key loses it. So does removing or replacing the
+     sign-in provider a manager depends on, or turning off sign-in.
 
    A key may revoke or rotate itself (item 5a). Where TS refuses for its own
    reason, such as clearing a policy that has managed users, TS's status
@@ -1221,8 +1224,9 @@ Deliberate status changes to verify against the live clients at cutover:
    `TestKeyChangesAndRefusalsAreAudited`).
 
 5a. **Nobody hands out more than they hold** (operator decision). This applies
-   to `/_localbase/api-keys`, for every caller. A signed-in person holds what
-   their role gives them on that request, and a key holds its scopes.
+   to `/_localbase/api-keys` and `/_localbase/access-management`, for every
+   caller. A signed-in person holds what their role gives them on that request,
+   and a key holds its scopes.
    - **Granting.** `create` and `set-scopes` give only permissions the caller
      holds. Otherwise: 403 `exceeds_caller_permissions`, naming what is missing.
    - **Acting on a key.** `rotate`, `revoke` and `set-scopes` work only on a key
@@ -1249,9 +1253,59 @@ Deliberate status changes to verify against the live clients at cutover:
      directly, because having the machine is the authority behind all of this. A
      caller with every permission is unaffected: `--no-auth`, `LOCALBASE_API_KEY`,
      and a first-run local session (`TestKeysStillWorkForFirstRunAndHostCallers`).
+   - **People and roles.** A holder of `access:manage` can invite with, or assign,
+     only roles within what it holds. It can disable, enable, remove or re-role
+     only someone whose whole reach is within it: their roles, the default role,
+     and any binding on their address, domain or identity. These answer the same
+     403, not naming what that person holds.
+   - **Policies.** What stays the same needs nothing: a caller may leave a wider role
+     or binding alone. Whatever changes needs what it touches, before and after, so
+     a caller can neither bind or widen past itself nor take a wider role or
+     binding away. Applying a first policy or clearing one also needs the
+     provider-wide permissions it replaces or switches on.
+   - **Sign-in.** Providers and email delivery decide who proves to be whom: with a
+     provider of your own, or a mail server that receives magic links, you can
+     become anyone. Changing them needs every permission a sign-in can grant (every
+     role, and the provider-wide permissions), plus any provider-wide permissions
+     the change sets. The starter policy grants an all-permissions role, so only a
+     caller holding every permission can use it, such as a first-run local session.
    - **Recovery.** Callers can only hand down, so nobody regrows a permission
      through the API once its last holder is gone. The host commands are the way
      back.
+
+5b. **An address belongs to the provider that vouches for it** (operator decision).
+   An email address proves nothing by itself. Email and domain bindings and
+   invitations name a sign-in provider, by the issuer its identities carry, so a
+   provider added later can't sign in as someone else's people by claiming their
+   address. The names live in `go_binding_issuers` and `go_invitation_issuers`,
+   so a rollback finds the tables it knows as it left them.
+   - **Signing in.** An email or domain binding matches only through its provider,
+     and only that provider can claim an invitation. A magic link goes only to
+     someone invited for it or already linked through it. A disabled or removed
+     address stays out through every provider, and `test-policy` says what a real
+     sign-in would get. The default role is not tied to a provider, which is one
+     reason adding a provider needs every permission (item 5a).
+   - **Naming one.** The API and `local-base access` take `issuer` on a binding or
+     an invitation. Without it, a person adding their own address gets the provider
+     they signed in with, and otherwise the only provider configured is used. With
+     several it answers 400 `issuer_required`, listing them; it never guesses, which
+     is a deliberate difference from TS, where the request succeeds. A new
+     binding or invitation can't name a provider that isn't configured: 400
+     `issuer_unknown`. A binding already there may stay, and matches nobody until
+     its provider returns.
+   - **Older rows** name no provider and grant nothing until they do. At each start,
+     with one provider configured they take it. With several, nothing is guessed:
+     the gateway starts, those rows keep granting nothing, and it logs
+     `auth.bindings-unbound` once per kind of row. `local-base doctor`, `local-base status`
+     and the access page say how many, and give the command:
+     `local-base access bindings adopt --issuer <issuer>`. Someone already linked
+     through one provider keeps it, without anyone choosing. A rollback's new rows are
+     handled the same way at the next start. `--no-auth` does none of this, since
+     nothing there depends on who vouches for an address. The host commands always
+     work, so the owner can't be locked out of the host
+     (`TestServeNamesTheProviderOnOlderBindings`).
+   - `auth.Guard` models this, including that a removed person stays refused, and
+     `TestGuardAgreesWithSignIn` compares it with real sign-in.
 
 6. **A request cut off by a memory emergency** (operator decision). As in
    TS, critical memory stops every runtime, including ones serving active
