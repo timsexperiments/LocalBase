@@ -309,6 +309,12 @@ func (t Table) unexpected(table string, want Table) []string {
 			out = append(out, "a foreign key this version does not make: "+table+"."+f.From)
 		}
 	}
+	// Missing counts too: a table rebuilt without its foreign key can hold rows nothing would catch.
+	for _, f := range want.ForeignKeys {
+		if !slices.Contains(t.ForeignKeys, f) {
+			out = append(out, "a foreign key this version needs is missing: "+table+"."+f.From)
+		}
+	}
 	return out
 }
 

@@ -577,11 +577,12 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 	var perms []string
 	for rid := range roleIDs {
 		var name string
-		if err := tx.QueryRowContext(ctx, `SELECT name FROM auth_roles WHERE id = ?`, rid).Scan(&name); err == nil {
-			d.MatchedRoles = append(d.MatchedRoles, name)
-		} else if !errors.Is(err, sql.ErrNoRows) {
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM auth_roles WHERE id = ?`, rid).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+			continue // A role that doesn't exist grants nothing, whatever rows still name it.
+		} else if err != nil {
 			return nil, err
 		}
+		d.MatchedRoles = append(d.MatchedRoles, name)
 		rows, err := tx.QueryContext(ctx, `SELECT permission FROM auth_role_permissions WHERE role_id = ?`, rid)
 		if err != nil {
 			return nil, err
