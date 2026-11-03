@@ -37,6 +37,7 @@ func (p *GPUPool) Admit(id string, bytes int64) (*GPUReservation, error) {
 	if bytes > g.TotalBytes-p.Reserve {
 		e := base
 		e.Reason, e.AvailableBytes, e.Permanent = "gpu-memory", max(0, g.TotalBytes-p.Reserve), true
+		e.CapacityBytes = g.TotalBytes
 		return nil, &e
 	}
 	p.mu.Lock()

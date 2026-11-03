@@ -44,6 +44,9 @@ type videoGateway struct {
 	bodies string // the backend's submitted bodies, one JSON per line
 }
 
+// testVideoHost, when set, is the next video gateway's machine.
+var testVideoHost memory.HostProvider
+
 func newVideoGateway(t *testing.T) *videoGateway {
 	t.Helper()
 	if _, _, _, ok := runtime.VideoTarget(memory.Topology{Unified: true}); !ok {
@@ -66,7 +69,11 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	}
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Active: map[string]string{"video": videoModel}, Selected: map[string][]string{"video": {videoModel}}}
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	var machine memory.HostProvider = host{}
+	if testVideoHost != nil {
+		machine = testVideoHost
+	}
+	mem := memory.NewController(machine, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	m := models.FromSpec(spec)
 	sd := reg.Get("stable-diffusion.cpp-metal")
