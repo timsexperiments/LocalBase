@@ -3,62 +3,7 @@
 @source "../static/js";
 @source "../*.go";
 
-/* LocalBase tokens, carried over from the React UI. Dark mode follows the
-   system setting, as it does today. */
-:root {
-  color-scheme: light;
-  --lb-canvas: #faf9fc;
-  --lb-surface: #ffffff;
-  --lb-surface-muted: #efedf1;
-  --lb-hover: #e8e5eb;
-  --lb-text: #29252e;
-  --lb-muted: #6e6576;
-  --lb-border: #ded9e2;
-  --lb-accent: #286452;
-  --lb-accent-hover: #1c4f40;
-  --lb-accent-text: #ffffff;
-  --lb-accent-soft: #e5eee9;
-  --lb-accent-border: #a0b9ac;
-  --lb-warn: #7a5a00;
-  --lb-warn-soft: #fbf1d5;
-  --lb-error: #963e39;
-  --lb-error-surface: #fff0ed;
-  --lb-error-border: #e5bbb5;
-  --lb-scrim: rgb(20 16 24 / 0.42);
-  --lb-shadow-pop: 0 1px 2px rgb(41 37 46 / 0.08), 0 8px 24px rgb(41 37 46 / 0.12);
-  --lb-shadow-sheet: 0 -6px 32px rgb(41 37 46 / 0.18);
-  /* Shell geometry. --lb-kb is the on-screen keyboard's overlap with the
-     layout viewport (set by shell.js; 0 without a keyboard). */
-  --lb-tabbar-h: 3.5rem;
-  --lb-sidebar-w: 16rem;
-  --lb-kb: 0px;
-  --lb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --lb-canvas: #201e25;
-    --lb-surface: #2b2730;
-    --lb-surface-muted: #332e39;
-    --lb-hover: #3d3543;
-    --lb-text: #eee9f1;
-    --lb-muted: #b3a8bc;
-    --lb-border: #453b4c;
-    --lb-accent: #a4d3bc;
-    --lb-accent-hover: #bde4d0;
-    --lb-accent-text: #172c23;
-    --lb-accent-soft: #293d34;
-    --lb-accent-border: #557b67;
-    --lb-warn: #f3d27a;
-    --lb-warn-soft: #3d3420;
-    --lb-error: #ffb4a9;
-    --lb-error-surface: #3c282c;
-    --lb-error-border: #71464a;
-    --lb-scrim: rgb(0 0 0 / 0.55);
-    --lb-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
-    --lb-shadow-sheet: 0 -6px 32px rgb(0 0 0 / 0.5);
-  }
-}
+@import "./theme.css";
 
 @theme inline {
   --color-canvas: var(--lb-canvas);
@@ -82,7 +27,16 @@
   --shadow-pop: var(--lb-shadow-pop);
   --shadow-sheet: var(--lb-shadow-sheet);
   --ease-lb: var(--lb-ease);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--lb-font-sans);
+  --font-display: var(--lb-font-display);
+  --font-reading: var(--lb-font-reading);
+  --font-mono: var(--lb-font-mono);
+  --radius-sm: var(--lb-radius-sm);
+  --radius-md: var(--lb-radius-md);
+  --radius-lg: var(--lb-radius-lg);
+  --radius-xl: var(--lb-radius-xl);
+  --radius-2xl: var(--lb-radius-2xl);
+  --radius-3xl: var(--lb-radius-3xl);
 }
 
 @layer base {
@@ -98,7 +52,7 @@
   }
   body {
     @apply bg-canvas text-ink font-sans antialiased;
-    line-height: 1.55;
+    line-height: 1.5;
   }
   :focus-visible {
     outline: 2px solid var(--lb-accent);
@@ -123,10 +77,10 @@
     @apply bg-accent text-on-accent hover:bg-accent-hover;
   }
   .btn-quiet {
-    @apply border border-line bg-surface text-ink hover:bg-hover;
+    @apply border border-[var(--lb-edge)] bg-surface text-ink hover:bg-hover;
   }
   .chip {
-    @apply inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-4 text-base font-medium text-ink hover:bg-hover;
+    @apply inline-flex min-h-11 items-center rounded-full border border-[var(--lb-edge)] bg-surface px-4 text-base font-medium text-ink hover:bg-hover;
   }
   .chip[aria-current="true"] {
     @apply border-accent bg-accent text-on-accent;
@@ -147,7 +101,7 @@
     @apply text-base font-semibold text-accent;
   }
   .input {
-    @apply min-h-11 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
+    @apply min-h-11 w-full rounded-xl border border-[var(--lb-edge)] bg-surface px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
   }
 }
 
@@ -277,7 +231,11 @@
    desktops (≥1024px) a sidebar. Page titles replace the old header row. */
 @layer components {
   .page-title {
-    @apply text-[1.75rem] leading-tight font-bold tracking-tight lg:text-3xl;
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-display);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
   }
   .page-lead {
     @apply mt-1 max-w-2xl text-muted;
@@ -291,7 +249,10 @@
     @apply flex min-h-11 items-center gap-2.5 rounded-xl px-2 text-lg font-bold;
   }
   .brand-mark {
-    @apply grid size-8 place-items-center rounded-lg bg-accent text-base text-on-accent;
+    @apply inline-grid size-7 place-items-center text-accent;
+  }
+  .brand-mark svg {
+    @apply size-7;
   }
   .nav-item {
     @apply flex min-h-11 items-center gap-3 rounded-xl px-3 text-base font-semibold text-muted transition-colors hover:bg-hover hover:text-ink;
@@ -549,6 +510,107 @@
   }
 }
 
+/* The memory gauge (DESIGN §22.22): this computer's memory, the one thing a hosted
+   app cannot show. Geometry is in the SVG; a theme sets its look. */
+@layer components {
+  .gauge {
+    @apply block w-full;
+    height: 1.25rem;
+  }
+  .gauge rect {
+    rx: var(--lb-gauge-radius);
+  }
+  .gauge-free {
+    fill: var(--lb-gauge-free);
+  }
+  .gauge-other {
+    fill: var(--lb-gauge-other);
+  }
+  .gauge-models {
+    fill: var(--lb-gauge-models);
+  }
+  .gauge-legend {
+    @apply mt-3 grid gap-x-3 gap-y-0.5;
+    grid-template-columns: 1fr auto;
+  }
+  .gauge-legend > div {
+    display: contents;
+  }
+  .gauge-legend dt {
+    @apply flex items-center gap-2 text-muted;
+  }
+  .gauge-legend dd {
+    @apply text-right font-semibold tabular-nums;
+  }
+  .gauge-key {
+    @apply block w-3 rounded-sm;
+  }
+  .gauge-key-free {
+    height: 0.75rem;
+    box-shadow: inset 0 0 0 1.5px var(--lb-gauge-free);
+  }
+  .gauge-key-other {
+    height: 0.4375rem;
+    background: var(--lb-gauge-other);
+  }
+  .gauge-key-models {
+    height: 0.75rem;
+    background: var(--lb-gauge-models);
+  }
+  .strip {
+    @apply block rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
+    border-color: var(--lb-edge);
+    min-height: 2.75rem;
+  }
+  .strip-row {
+    @apply mb-1.5 flex min-h-6 items-center gap-2;
+    font-size: 0.8125rem;
+  }
+  .strip-host {
+    @apply inline-flex min-w-0 items-center gap-1.5;
+  }
+  .strip-host b {
+    @apply truncate font-semibold;
+  }
+  .strip-host .mark {
+    @apply size-[17px] shrink-0;
+  }
+  .strip-word {
+    @apply min-w-0 truncate text-muted;
+  }
+  .strip-free {
+    @apply ml-auto font-medium whitespace-nowrap tabular-nums;
+  }
+  .strip-load .strip-word {
+    @apply font-semibold;
+    color: var(--lb-lamp-text);
+  }
+  .strip-short {
+    border-color: var(--lb-error);
+  }
+  .strip-short .strip-word,
+  .strip-short .strip-free {
+    @apply font-semibold text-danger;
+  }
+  .strip-off {
+    @apply border-dashed;
+  }
+  .strip-off .strip-word {
+    @apply font-semibold text-ink;
+  }
+  .strip-off .gauge-other,
+  .strip-off .gauge-models {
+    fill: var(--lb-gauge-free);
+    opacity: 0.35;
+  }
+  .mark {
+    color: inherit;
+  }
+  .mark-light {
+    fill: var(--lb-lamp);
+  }
+}
+
 /* A press answers at once (DESIGN §22.21). The dimming stays with reduced motion. */
 @layer components {
   .btn:active:not(:disabled),
@@ -560,13 +622,13 @@
   button.list-row:active,
   a.setting-row:active,
   .model-row:active {
-    opacity: 0.72;
+    opacity: var(--lb-press-opacity);
   }
   @media (prefers-reduced-motion: no-preference) {
     .btn:active:not(:disabled),
     .chip:active,
     .icon-btn:active {
-      transform: scale(0.97);
+      transform: scale(var(--lb-press-scale));
     }
   }
   .player-gone {
@@ -1003,16 +1065,8 @@
   }
   /* Always dark, whatever the theme: the picture is the page. */
   .viewer {
-    @apply m-0 size-full max-h-none max-w-none bg-[#111014] p-0 text-[#eee9f1];
+    @apply m-0 size-full max-h-none max-w-none bg-[var(--lb-viewer-bg)] p-0 text-[var(--lb-viewer-text)];
     color-scheme: dark;
-    --lb-canvas: #201e25;
-    --lb-surface: #2b2730;
-    --lb-text: #eee9f1;
-    --lb-muted: #b3a8bc;
-    --lb-error: #ffb4a9;
-    --lb-error-surface: #3c282c;
-    --lb-error-border: #71464a;
-    --lb-accent: #a4d3bc;
   }
   .viewer[open] {
     @apply flex flex-col;
@@ -1033,7 +1087,7 @@
     @apply block size-full object-contain;
   }
   .viewer-foot {
-    @apply flex flex-wrap items-stretch justify-around gap-1 bg-[#1c1a20] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
+    @apply flex flex-wrap items-stretch justify-around gap-1 bg-[var(--lb-viewer-bar)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
   }
   .viewer-caption {
     @apply w-full truncate px-2 text-sm;
@@ -1051,13 +1105,13 @@
     @apply contents;
   }
   .viewer-panel {
-    @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[#2b2730] p-3 text-sm;
+    @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[var(--lb-viewer-panel)] p-3 text-sm;
   }
   .viewer-facts {
     @apply grid grid-cols-2 gap-x-4 gap-y-1;
   }
   .viewer-facts dt {
-    @apply text-xs text-[#b3a8bc];
+    @apply text-xs text-[var(--lb-viewer-muted)];
   }
   .viewer-facts dd {
     @apply wrap-anywhere font-semibold;

@@ -1,0 +1,144 @@
+/* The theme: every value a visual direction chooses, and nothing else. Components only
+   use these tokens (input.css), so changing direction is this one file.
+   TestThemeIsOneFile fails if a color appears anywhere else.
+
+   Hearth (DESIGN §25): warm paper, ink for action, and one lamp color that means "live on
+   your own machine". Dark is a lit window at night. */
+
+@font-face {
+  font-family: "Newsreader";
+  src: url("/app/assets/fonts/newsreader-latin-wght-v1.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Figtree";
+  src: url("/app/assets/fonts/figtree-latin-wght-v1.woff2") format("woff2");
+  font-weight: 300 900;
+  font-display: swap;
+}
+
+/* Dark mode follows the system setting. */
+:root {
+  color-scheme: light;
+  --lb-canvas: #f4f2ec;
+  --lb-surface: #fcfbf8;
+  --lb-surface-muted: #e9e6dd;
+  --lb-hover: #e3e0d6;
+  --lb-text: #17202c;
+  --lb-muted: #565d69;
+  --lb-border: #dad6cc; /* separators, which may be faint */
+  --lb-edge: #85888d; /* what bounds a control: at least 3:1 */
+  --lb-accent: #17202c; /* action is ink */
+  --lb-accent-hover: #2b3748;
+  --lb-accent-text: #fcfbf8;
+  --lb-accent-soft: #e9e6dd;
+  --lb-accent-border: #85888d;
+  --lb-lamp: #b56b00; /* live on this machine: fills and marks */
+  --lb-lamp-text: #8a5200;
+  --lb-other: #6b7280; /* other apps on the gauge */
+  --lb-warn: #8a5200;
+  --lb-warn-soft: #f6e8cc;
+  --lb-error: #a5300f;
+  --lb-error-surface: #fbeae3;
+  --lb-error-border: #d98f78;
+  --lb-scrim: rgb(16 20 27 / 0.42);
+  --lb-shadow-pop: 0 1px 2px rgb(23 32 44 / 0.08), 0 8px 24px rgb(23 32 44 / 0.12);
+  --lb-shadow-sheet: 0 -6px 32px rgb(23 32 44 / 0.18);
+  /* Shell geometry. --lb-kb is the on-screen keyboard's overlap with the layout viewport
+     (set by shell.js; 0 without a keyboard). */
+  --lb-tabbar-h: 3.5rem;
+  --lb-sidebar-w: 16rem;
+  --lb-kb: 0px;
+  --lb-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --lb-canvas: #10141b;
+    --lb-surface: #191e27;
+    --lb-surface-muted: #232934;
+    --lb-hover: #2a313d;
+    --lb-text: #eef0f2;
+    --lb-muted: #a7aeb9;
+    --lb-border: #2c323d;
+    --lb-edge: #7a828f;
+    --lb-accent: #eef0f2;
+    --lb-accent-hover: #ffffff;
+    --lb-accent-text: #10141b;
+    --lb-accent-soft: #232934;
+    --lb-accent-border: #7a828f;
+    --lb-lamp: #f2b23e;
+    --lb-lamp-text: #f2b23e;
+    --lb-other: #8e96a3;
+    --lb-warn: #f2b23e;
+    --lb-warn-soft: #33280f;
+    --lb-error: #ff9b7d;
+    --lb-error-surface: #35201a;
+    --lb-error-border: #8a4a35;
+    --lb-scrim: rgb(0 0 0 / 0.55);
+    --lb-shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px rgb(0 0 0 / 0.4);
+    --lb-shadow-sheet: 0 -6px 32px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Type, shape, density and motion: the same in both schemes. */
+:root {
+  --lb-font-sans: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --lb-font-display: "Newsreader", ui-serif, Georgia, serif;
+  --lb-font-reading: "Newsreader", ui-serif, Georgia, serif; /* a model's words */
+  --lb-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --lb-weight-display: 500;
+  --lb-tracking-display: -0.01em;
+  --lb-size-display: 2.125rem;
+  --lb-radius-sm: 0.25rem;
+  --lb-radius-md: 0.375rem;
+  --lb-radius-lg: 0.625rem;
+  --lb-radius-xl: 0.75rem;
+  --lb-radius-2xl: 1rem;
+  --lb-radius-3xl: 1.25rem;
+  --lb-dur-press: 90ms;
+  --lb-dur-move: 200ms;
+  --lb-dur-sheet: 280ms;
+  --lb-press-opacity: 0.72;
+  --lb-press-scale: 0.97;
+  --lb-gauge-radius: 1px;
+}
+
+/* The memory gauge's parts. */
+:root {
+  --lb-gauge-free: var(--lb-edge);
+  --lb-gauge-other: var(--lb-other);
+  --lb-gauge-models: var(--lb-lamp);
+}
+
+/* The picture viewer is always dark. */
+:root {
+  --lb-viewer-bg: #0b0e13;
+  --lb-viewer-text: #f2f3f5;
+  --lb-viewer-bar: #10141b;
+  --lb-viewer-panel: #191e27;
+  --lb-viewer-muted: #aeb4be;
+}
+dialog.viewer {
+  --lb-canvas: #10141b;
+  --lb-surface: #191e27;
+  --lb-surface-muted: #232934;
+  --lb-hover: #2a313d;
+  --lb-text: #eef0f2;
+  --lb-muted: #a7aeb9;
+  --lb-border: #2c323d;
+  --lb-edge: #7a828f;
+  --lb-accent: #eef0f2;
+  --lb-accent-hover: #ffffff;
+  --lb-accent-text: #10141b;
+  --lb-accent-soft: #232934;
+  --lb-accent-border: #7a828f;
+  --lb-error: #ff9b7d;
+  --lb-error-surface: #35201a;
+  --lb-error-border: #8a4a35;
+}
+
+/* The browser's own bar. web.go reads these two for <meta name="theme-color">. */
+/* theme-color light: #f4f2ec */
+/* theme-color dark: #10141b */
