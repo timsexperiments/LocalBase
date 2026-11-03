@@ -1,6 +1,6 @@
 # Reliability tools; docs in docs/reliability.md. Fake backends only, ports in
 # 29000-29499, and each run stops itself.
-.PHONY: soak soak-smoke soak-race chaos chaos-all
+.PHONY: soak soak-smoke soak-race chaos chaos-all known-bugs
 
 soak: ## 30 minutes against fake backends; writes a result table
 	tools/soak.sh -duration 30m
@@ -16,3 +16,6 @@ chaos: ## Break a real gateway on purpose; skips tests naming an open bug
 
 chaos-all: ## The same, including the tests of open bugs
 	GOMAXPROCS=2 LOCALBASE_CHAOS_ALL=1 nice -n 10 go test ./tools/chaos -count=1 -timeout 10m
+
+known-bugs: ## Fail if a chaos skip names a merged pull request, or none
+	tools/known-bugs-check.sh
