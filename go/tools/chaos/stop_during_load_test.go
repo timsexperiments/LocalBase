@@ -62,3 +62,31 @@ func TestStopDuringBackendLoad(t *testing.T) {
 		})
 	}
 }
+
+// Several wedged backends, serving, that ignore SIGTERM and SIGINT: each polite stop would take its
+// whole grace, one after another, so only the deadline keeps the stop inside the limit.
+func TestStopWithWedgedBackends(t *testing.T) {
+	ctx, g, c := start(t, lab.Options{FakeEnv: []string{"FAKE_IGNORE_TERM=1"}})
+	mustChat(t, ctx, c, g, lab.ChatSmall)
+	image := map[string]any{"model": lab.Image, "prompt": "a boat", "n": 1, "size": "512x512"}
+	if r := c.PostJSON(ctx, "/v1/images/generations", g.Keys.User, image); r.Status != 200 {
+		t.Fatalf("image: %d %.300s", r.Status, r.Body)
+	}
+	began := time.Now()
+	if err := g.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-g.Done():
+		took := time.Since(began)
+		t.Logf("stopped in %v", took.Round(100*time.Millisecond))
+		if took > serviceStopLimit-time.Second {
+			t.Errorf("the stop took %v; the service manager kills at %v", took, serviceStopLimit)
+		}
+	case <-time.After(45 * time.Second):
+		t.Fatal("still not stopped after 45 s")
+	}
+	if procs, err := workspace.Backends(); err != nil || len(procs) != 0 {
+		t.Errorf("a backend outlived the gateway: %+v %v", procs, err)
+	}
+}
