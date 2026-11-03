@@ -50,12 +50,15 @@ type Model struct {
 
 // Device is the machine and backend the model would run on.
 type Device struct {
-	Platform      string
-	FreeVRAM      int64 // free VRAM on GPU 0 (discrete)
-	HostAvailable int64 // usable system memory for the host side
-	GPUCount      int   // NVIDIA GPUs seen; more than one is refused
-	CPUMoE        bool  // the backend has --n-cpu-moe
-	GPULayers     bool  // the backend can offload layers (-ngl)
+	// NoLogVerbosity: a custom build whose --help has no -lv, so it cannot be asked for
+	// the lines the check reads.
+	NoLogVerbosity bool
+	Platform       string
+	FreeVRAM       int64 // free VRAM on GPU 0 (discrete)
+	HostAvailable  int64 // usable system memory for the host side
+	GPUCount       int   // NVIDIA GPUs seen; more than one is refused
+	CPUMoE         bool  // the backend has --n-cpu-moe
+	GPULayers      bool  // the backend can offload layers (-ngl)
 }
 
 // Request is the stored choice.

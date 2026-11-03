@@ -38,7 +38,9 @@ func Check(log []byte, p Plan) error {
 		if got != p.GPULayers {
 			return mismatchf("%d of %s layers were offloaded to the GPU, but the plan has %d.", got, last[2], p.GPULayers)
 		}
-	} else {
+	} else if p.GPULayers > 0 {
+		// A build given layers must report them. A plan of none has nothing to report:
+		// a CPU-only build prints no such line at all.
 		return mismatchf("the backend did not report how many layers it offloaded.")
 	}
 
