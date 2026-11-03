@@ -46,7 +46,11 @@ func writeRecord(t *testing.T, root string, rec backendRecord) string {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	rec.Root = canonicalRoot(root)
+	id, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no root identity")
+	}
+	rec.Root = id
 	b, _ := json.Marshal(rec)
 	path := filepath.Join(dir, "llm-"+strconv.Itoa(rec.PID)+".json")
 	if err := os.WriteFile(path, b, 0o600); err != nil {
@@ -403,16 +407,20 @@ func TestSweepIgnoresARecordFromAnotherRoot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(backendRecordsDir(copied), name), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if n := SweepBackends(copied, quietLog()); n != 0 {
+	var logs strings.Builder
+	if n := SweepBackends(copied, slog.New(slog.NewJSONHandler(&logs, nil))); n != 0 {
 		t.Errorf("stopped %d from a copied record", n)
+	}
+	if !strings.Contains(logs.String(), "runtime.record-ignored") || !strings.Contains(logs.String(), name) {
+		t.Errorf("no warning naming the record: %s", logs.String())
 	}
 	select {
 	case <-p.Done():
 		t.Fatal("a gateway on a copy stopped its source's backend")
 	case <-time.After(300 * time.Millisecond):
 	}
-	if _, err := os.Stat(filepath.Join(backendRecordsDir(copied), name)); err == nil {
-		t.Error("the copied record is still in the copy")
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(copied), name)); err != nil {
+		t.Errorf("an unknown record must be left alone: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(backendRecordsDir(source), name)); err != nil {
 		t.Errorf("the source's own record went: %v", err)
@@ -420,5 +428,70 @@ func TestSweepIgnoresARecordFromAnotherRoot(t *testing.T) {
 	// The source itself still sweeps it.
 	if n := SweepBackends(source, quietLog()); n != 1 {
 		t.Errorf("the source's own sweep stopped %d", n)
+	}
+}
+
+// A real clone, and a copy at the old path: neither is the root that wrote the record.
+func TestRootIdentityDiffersForACopyAtTheSamePath(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	before, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	if err := os.Rename(root, root+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	after, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	if before == after {
+		t.Errorf("a new directory at the same path has the same identity: %+v", after)
+	}
+	if before.Path != after.Path {
+		t.Errorf("the test expects the same path: %q %q", before.Path, after.Path)
+	}
+}
+
+// A renamed root fails safe: its records are ignored, its backends keep running, and
+// one warning names each file.
+func TestSweepLeavesARenamedRootsRecordsAlone(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	recordBackend(root, "llm", 1234, p, quietLog())
+	renamed := root + ".renamed"
+	if err := os.Rename(root, renamed); err != nil {
+		t.Fatal(err)
+	}
+	name := "llm-" + strconv.Itoa(p.PID()) + ".json"
+	var logs strings.Builder
+	if n := SweepBackends(renamed, slog.New(slog.NewJSONHandler(&logs, nil))); n != 0 {
+		t.Errorf("stopped %d after a rename", n)
+	}
+	if got := strings.Count(logs.String(), "runtime.record-ignored"); got != 1 || !strings.Contains(logs.String(), name) {
+		t.Errorf("%d warnings: %s", got, logs.String())
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("a renamed root's sweep stopped its backend")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(renamed), name)); err != nil {
+		t.Errorf("the record went: %v", err)
 	}
 }
