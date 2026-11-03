@@ -171,6 +171,12 @@ func (s *Store) ResetBackendChoice(ctx context.Context, modelID, deviceID string
 	return n > 0, nil
 }
 
+// Connection caps: Go-only settings a service-managed gateway reads at start.
+const (
+	MaxConnectionsKey      = "gateway.max-connections"
+	MaxConnectionsPerIPKey = "gateway.max-connections-per-ip"
+)
+
 // Setting reads a Go-only setting ("" and false when unset).
 func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
 	var v string
