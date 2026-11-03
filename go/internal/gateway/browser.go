@@ -108,6 +108,7 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 	if id == nil {
 		return nil, nil
 	}
+	markAuthenticated(r)
 	d := s.Browser.Authorize(r.Context(), id)
 	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }

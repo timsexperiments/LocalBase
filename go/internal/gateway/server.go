@@ -59,6 +59,8 @@ type Server struct {
 	OnReady func()
 	// Otel exports traces (nil: disabled).
 	Otel *otlp.Runtime
+	// Limits bounds what a request can cost (zero values take the defaults).
+	Limits Limits
 
 	mgmt *management
 	// runs are the UI's detached runs (DESIGN §21).
@@ -76,6 +78,7 @@ type Server struct {
 
 func New(s *Server) *Server {
 	s.started = time.Now()
+	s.Limits = s.Limits.withDefaults()
 	rootDir := ""
 	if s.Root != nil {
 		rootDir = s.Root.Dir
@@ -200,6 +203,9 @@ type recorder struct {
 	http.ResponseWriter
 	status int
 	auth   *auth.Principal
+	body   *bodyGuard // nil: no body, or no connection
+	// timeoutAnswer: the 408 is being written, past discarding.
+	timeoutAnswer bool
 	// errBody is the start of an error response, read only for the error
 	// envelope's type and code (never its message).
 	errBody []byte
@@ -231,14 +237,31 @@ func (r *recorder) errorKind() (typ, code string) {
 	return typ, code
 }
 
+// discarding reports a request whose body deadline passed before any answer
+// started. Whatever the handler makes of the failed read, the answer is a 408.
+func (r *recorder) discarding() bool {
+	return r.status == 0 && !r.timeoutAnswer && r.body != nil && r.body.expired.Load()
+}
+
 func (r *recorder) WriteHeader(code int) {
+	if r.discarding() {
+		return
+	}
 	if r.status == 0 {
 		r.status = code
+		// A refusal does not wait for a body it has not read: the server would
+		// otherwise try to read it before sending the answer.
+		if code >= 400 && r.body != nil && !r.body.done.Load() {
+			r.Header().Set("Connection", "close")
+		}
 	}
 	r.ResponseWriter.WriteHeader(code)
 }
 
 func (r *recorder) Write(b []byte) (int, error) {
+	if r.discarding() {
+		return len(b), nil
+	}
 	if r.status == 0 {
 		r.status = 200
 	}
@@ -249,6 +272,9 @@ func (r *recorder) Write(b []byte) (int, error) {
 }
 
 func (r *recorder) Flush() {
+	if r.discarding() {
+		return
+	}
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -261,6 +287,9 @@ type recKey struct{}
 func setAuth(r *http.Request, p *auth.Principal) {
 	if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
 		rec.auth = p
+		if p.Authenticated() {
+			rec.body.authenticated()
+		}
 	}
 }
 
@@ -294,6 +323,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
 	rec := &recorder{ResponseWriter: w}
+	if rec.body = guardBody(s.Limits, rec, r); rec.body != nil {
+		r.Body = rec.body
+		if s.NoAuth {
+			rec.body.authenticated()
+		}
+	}
 	// The server span (TS serve): named by the canonical route, parented by
 	// an incoming traceparent, active for everything the request does.
 	probe := r.Clone(r.Context())
@@ -384,6 +419,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mux.ServeHTTP(rec, r)
+	if rec.discarding() {
+		rec.timeoutAnswer = true
+		requestTimedOut(rec)
+	}
 }
 
 // authTelemetry describes who a request acted as, without credentials (TS
