@@ -423,8 +423,25 @@
       animation: lb-pulse 1.6s ease-in-out infinite;
     }
   }
+  /* On its own ground above the tab bar, or above the prompt where there is one: what scrolls
+     goes behind it, so the pill is never over words or the field you're typing in. */
   .run-pill-dock {
-    bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 0.5rem);
+    @apply border-t border-line bg-canvas py-1.5;
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom));
+  }
+  .run-pill-dock:has([data-run-pill][hidden]) {
+    display: none !important; /* over its own flex utility */
+  }
+  body:has([data-docked]) .run-pill-dock {
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom) + var(--lb-dock-h, 10rem));
+  }
+  @media (max-width: 767px) {
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .page {
+      padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 5.5rem);
+    }
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .lab-dock-spacer {
+      height: calc(var(--lb-dock-h, 10rem) + 4.5rem);
+    }
   }
   html[data-typing] .run-pill-dock {
     @apply hidden;
@@ -879,6 +896,9 @@
   .calm-banner {
     @apply mt-3 flex min-h-14 items-center gap-3 rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2.5 text-ink hover:bg-hover;
   }
+  .calm-banner-still {
+    @apply border-bound hover:bg-surface;
+  }
   /* The state and the action share a line, however narrow, so a row stays two lines tall. */
   .running-row {
     @apply flex flex-wrap items-center;
@@ -1073,8 +1093,22 @@
   .lab-item-video {
     @apply self-start;
   }
+  /* On a phone the player leaves room for what's around it: the strip, the title and heading above,
+     the caption and actions below, then the prompt and the tab bar. Fixed parts are in rem, so this
+     follows the screen, and the whole result is on one screen without scrolling. */
   .video-frame {
-    @apply mx-auto max-h-[60dvh] max-w-full min-h-0;
+    @apply mx-auto max-w-full min-h-0 object-contain;
+    max-height: max(9rem, calc(100dvh - 29rem));
+  }
+  @media (max-width: 767px) {
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .video-frame {
+      max-height: max(9rem, calc(100dvh - 32.5rem));
+    }
+  }
+  @media (min-width: 768px) {
+    .video-frame {
+      max-height: 60dvh;
+    }
   }
   video.video-frame {
     @apply block;
@@ -1263,85 +1297,112 @@
   .studio-head {
     @apply -ml-2 flex items-center gap-1;
   }
-  /* A row of small pictures: the tools are what this page is for. */
+  /* Phones: what you made, then the tools. From 1100 px: tools on the left, what you made on
+     the right, because there is room to see both at once. */
+  .studio-body {
+    @apply mt-4 grid grid-cols-[minmax(0,1fr)] gap-5;
+  }
+  .studio-tools {
+    @apply max-w-[34rem];
+  }
+  .studio-recent-box,
+  .studio-tools {
+    @apply min-w-0;
+  }
+  .studio-body-recent .studio-tools {
+    @apply max-w-none;
+  }
+  @media (min-width: 1100px) {
+    .studio-body-recent {
+      @apply grid-cols-[minmax(0,26rem)_minmax(0,1fr)] items-start gap-8;
+    }
+    .studio-body-recent .studio-recent-box {
+      @apply order-2;
+    }
+    .studio-body-recent .studio-recent {
+      @apply mx-0 grid grid-cols-3 gap-3 overflow-visible px-0;
+    }
+    .studio-body-recent .studio-recent > li {
+      @apply w-auto;
+    }
+  }
+  .studio-recent-head {
+    @apply mb-2 flex items-baseline justify-between gap-3;
+  }
+  /* On a phone the shelf runs to the screen's edge, so the next one shows. Wider, the page's
+     gutter is larger, so it ends on the content's edge. Only the shelf scrolls. */
   .studio-recent {
-    @apply flex gap-2 overflow-x-auto;
+    @apply -mx-4 flex snap-x gap-3 overflow-x-auto scroll-px-4 px-4 pb-1 min-[768px]:mx-0 min-[768px]:scroll-px-0 min-[768px]:px-0;
+    scrollbar-width: none;
   }
   .studio-recent > li {
-    @apply shrink-0;
+    @apply w-28 shrink-0 snap-start;
   }
+  /* Relative: the hidden words inside must scroll with the shelf. Absolute with no positioned
+     parent, they would count against the page and widen it, however well the shelf is contained. */
   .studio-tile {
-    @apply block size-14 overflow-hidden rounded-xl bg-surface-muted;
+    @apply relative block min-w-0 rounded-xl text-ink;
+  }
+  .studio-tile-media {
+    @apply relative grid aspect-square place-items-center overflow-hidden rounded-xl border border-bound bg-surface-muted;
   }
   .studio-tile-img {
     @apply block size-full object-cover;
   }
-  .studio-tile .art {
-    @apply size-full;
+  /* A video says it is one, on any frame: its own dark ground, whatever the picture holds. */
+  .studio-tile-badge {
+    @apply absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-md bg-[var(--lb-viewer-bg)] px-1.5 py-0.5 text-xs font-semibold text-[var(--lb-viewer-text)] tabular-nums;
   }
-  .studio-cards {
-    /* minmax(0, 1fr): a long one-line caption must not widen the column. */
-    @apply grid grid-cols-[minmax(0,1fr)] gap-2 min-[1100px]:grid-cols-[repeat(2,minmax(0,1fr))];
+  .studio-tile-cap {
+    @apply mt-1.5 block truncate text-sm font-medium;
+  }
+  .studio-tile-meta {
+    @apply block truncate text-xs text-muted;
+  }
+  /* A transcript shows its first words, on paper, set like a model's words. */
+  .studio-tile-words {
+    @apply absolute inset-0 overflow-hidden bg-surface p-2.5 text-left;
+    font-family: var(--lb-font-reading);
+    font-size: 0.9375rem;
+    line-height: 1.25;
+  }
+  /* Speech shows its real waveform, drawn by the server from the samples. */
+  .studio-tile-wave {
+    @apply h-2/5 w-4/5 fill-[var(--lb-muted)];
+  }
+  /* The lamp means something is happening on this machine. It stays still: this can last minutes. */
+  .studio-tile-live {
+    @apply grid justify-items-center gap-1.5 px-2 text-center text-xs font-medium;
+  }
+  .studio-tile-live > i {
+    @apply block size-2 rounded-full bg-[var(--lb-lamp)];
+  }
+  .studio-tile-word {
+    @apply px-2 text-center text-xs font-semibold;
   }
   .studio-card {
-    @apply flex h-full min-h-20 items-center gap-3 rounded-2xl border border-bound bg-surface p-3 text-ink;
+    @apply flex min-h-[4.25rem] items-center gap-3 px-3 py-2.5 text-ink;
   }
   a.studio-card {
     @apply transition-colors hover:bg-hover motion-reduce:transition-none;
   }
-  .studio-art-box {
-    @apply block size-14 shrink-0 overflow-hidden rounded-xl bg-surface-muted;
+  .tool-icon {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink;
   }
-  /* The drawings are built from theme colors, so they follow dark mode. */
-  .art {
-    @apply flex size-full items-center justify-center text-accent;
+  .tool-name {
+    @apply block leading-tight;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
   }
-  .art-image {
-    background: linear-gradient(140deg, var(--lb-accent-soft), var(--lb-accent-border));
+  .tool-state {
+    @apply mt-0.5 block text-sm font-medium;
   }
-  .art-video {
-    background: linear-gradient(140deg, var(--lb-surface-muted), var(--lb-accent-soft));
+  .studio-keep {
+    @apply mt-2 text-sm text-muted;
   }
-  .art-speech {
-    @apply gap-0.5;
-  }
-  .art-speech i {
-    @apply block h-3 w-0.5 rounded-full bg-accent;
-  }
-  .art-speech i:nth-child(2),
-  .art-speech i:nth-child(6) {
-    @apply h-6;
-  }
-  .art-speech i:nth-child(3),
-  .art-speech i:nth-child(5) {
-    @apply h-4;
-  }
-  .art-speech i:nth-child(4) {
-    @apply h-8;
-  }
-  .art-transcribe {
-    @apply flex-col items-stretch gap-1.5 px-2.5;
-  }
-  .art-transcribe i {
-    @apply block h-1 rounded-full bg-muted;
-  }
-  .art-transcribe i:nth-child(2) {
-    @apply w-2/3;
-  }
-  .art-transcribe i:nth-child(3) {
-    @apply w-5/6 bg-accent;
-  }
-  .art-decisions {
-    @apply flex-col items-stretch gap-1.5 px-2.5;
-  }
-  .art-decisions i {
-    @apply block h-1.5 w-2/5 rounded-full bg-muted;
-  }
-  .art-decisions i:nth-child(1) {
-    @apply w-full bg-accent;
-  }
-  .art-decisions i:nth-child(3) {
-    @apply w-1/5;
+  /* The labels sit on the gutter with what they label. */
+  .studio-body .list-label {
+    @apply px-0;
   }
   /* Waiting for a result: its place, softly moving. Still when motion is off. */
   .skeleton {
@@ -1365,7 +1426,7 @@
   }
 }
 
-/* A result whose file is gone (kept 30 minutes): its drawing and a word. */
+/* A result whose file is gone (kept 30 minutes): its tool's icon and a word. */
 @layer components {
   .result-img {
     @apply relative block size-full;
@@ -1373,11 +1434,11 @@
   .result-gone {
     @apply absolute inset-0 grid place-items-center bg-surface-muted;
   }
-  .result-gone > .art {
-    @apply absolute inset-0 opacity-60;
+  .result-gone {
+    @apply content-center justify-items-center gap-1 text-muted;
   }
   .result-gone > b {
-    @apply relative rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-muted;
+    @apply text-xs font-semibold;
   }
   .lab-item:has([data-result-gone]:not([hidden])) :is([data-share], a[download]) {
     @apply hidden;
