@@ -413,6 +413,9 @@ func (s *Server) updateConfig(fn func(*store.Config) error) error {
 		if err := s.Store.SaveConfig(context.Background(), next); err != nil {
 			return err
 		}
+		if s.Overrides != nil { // After saving, so that they aren't saved.
+			s.Overrides(next)
+		}
 		s.LLM.SetConfig(next)
 		return nil
 	})

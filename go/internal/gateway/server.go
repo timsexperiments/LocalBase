@@ -88,6 +88,10 @@ type Server struct {
 	stopping atomic.Bool
 	mux      *http.ServeMux
 	routes   []string // every registered pattern, for the OpenAPI drift test
+
+	// Overrides applies what only this process has (the environment, serve's flags) to a saved
+	// configuration, before it is published to the runtimes.
+	Overrides func(*store.Config)
 }
 
 func New(s *Server) *Server {

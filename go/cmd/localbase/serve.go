@@ -383,7 +383,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
-	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
+	srv := &gateway.Server{Overrides: runningOverrides(c.String("llm-host"), log), Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
 	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
@@ -656,4 +656,18 @@ func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (
 		}
 	}
 	return tel, nil
+}
+
+// runningOverrides puts back what only this process has when a saved configuration is published:
+// the environment and --llm-host, as serve applied them when it started. The environment was checked
+// then, so an error here means it can't have changed; it is logged, and leaves that value saved.
+func runningOverrides(llmHost string, log *slog.Logger) func(*store.Config) {
+	return func(cfg *store.Config) {
+		if err := applyEnvOverrides(cfg); err != nil {
+			log.Warn("Could not apply the environment to the running configuration.", "event", "config.override-failed", "error", err.Error())
+		}
+		if llmHost != "" {
+			cfg.Host = llmHost
+		}
+	}
 }
