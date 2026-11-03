@@ -5341,3 +5341,178 @@ id is data.
 
 **Rollback:** the table is additive. An older binary ignores it and does not prune it, so it stops growing and sits there until a
 newer binary returns or someone removes it. **What this will not do:** per-request history, cost, alerts, or export to anywhere.
+
+## 33. Upgrade and the update check (design addendum, 2026-11-02)
+
+Getting a new version means re-running the installer by hand, then remembering what a safe binary swap
+takes: replace the file by renaming, stop the gateway first, restart through the service manager so its
+definition is rewritten, run smoke. Those are easy to get wrong, and an in-place copy leaves a macOS binary
+that exits 137 on every run. Reviewed by the operator on 2026-11-02, whose decisions are written in below.
+
+**No telemetry, and no auto-install, ever.** The check is opt-in and off by default, and nothing installs
+without someone running `local-base upgrade`.
+
+### 33.1 The check
+
+**`local-base upgrade --check`** works any time, with the gateway up or down, and enables nothing. It writes nothing.
+
+**One request:** `GET https://api.github.com/repos/timsexperiments/LocalBase/releases/latest`.
+
+| | |
+|---|---|
+| **Sends** | `Accept: application/vnd.github+json` and `User-Agent: local-base`, which GitHub requires. No version, query, cookie or token, including a Hugging Face or GitHub token someone has set |
+| **Never sends** | A machine id, an installation id, usage, or anything else about this computer |
+| **Cannot avoid** | What any HTTP request shows GitHub: the IP address and the time |
+| **Compares** | The running binary's `version.Version` (#406) with the answer's `tag_name`, on this computer. The version is not sent |
+
+- **Only `vX.Y.Z` counts.** This repository also tags runtime packages (`kokoro-v0.0.2`). They are published as not-latest today, but if one were ever answered, it means "no information", not an update. Drafts and prereleases are never answered by this route.
+- **A development build** says it isn't a release and does not compare.
+- **The answer** says the current version, the latest, whether it is newer, and the release notes' URL. `--json` gives the same. A network failure exits 1 and says so.
+
+**The periodic check is opt-in and off by default.** Turned on, `serve` makes the same request in the background, and stores the answer in `go_settings` (`update.check`, `update.latest`, `update.etag`, `update.checked-at`). `TestUpdateCheckOffByDefault` runs the schedule with it off, against a server that counts requests, and finds none. It is a test of the schedule, not of a whole gateway
+
+**GitHub's limit is low, so the check is built around it.** Unauthenticated, GitHub allows 60 requests an hour per IP address, shared with everything else behind that address.
+- **At most one attempt in 24 hours, success or failure, kept across restarts:** `update.checked-at` is stored, so restarting the gateway does not check again.
+- **A conditional request:** the daily check sends the stored `ETag` as `If-None-Match`. An unchanged answer is a 304, which does not count against the limit, and the cached answer stands. The tag is GitHub's own, and identifies the answer, not this computer.
+- **Failures are quiet and never block anything:** a 403 or 429, a network error or a 10 s timeout logs one `update.check-failed` event, leaves the cached answer as it was, and waits for the next attempt. It runs in the background, so it cannot delay startup or a request.
+- **`--check` is different:** someone asked, so it always makes the request, and when limited says so plainly, along with when GitHub says it resets. It adds to no schedule and stores nothing.
+
+```text
+local-base upgrade --check                  # now, once; enables nothing
+local-base upgrade check-updates on|off     # the daily check; off by default
+```
+
+`GET /_localbase/update` (`models:read`) answers `{"enabled":false,"current":"…","latest":null,"checkedAt":null,"updateAvailable":false}`, and `POST` with `{"action":"set-check","enabled":true}` needs `system:manage` or `access:manage`, as in §32.5. With a gateway running, the CLI's setting goes through this route, or refuses, as in §32.4. Settings shows the state and the command to run. There is no install button: an upgrade restarts the gateway the page is served by, and it belongs on the computer.
+
+### 33.2 What a release has, and the signature it needs
+
+**Today (#414):** `local-base-<os>-<arch>.tar.gz` or `.zip`, `checksums.txt`, GitHub build attestations (Sigstore), and on macOS an Apple signature and notarization when the secrets are set. Nothing a binary can verify offline with the standard library, and a checksum from the same place as the file only catches corruption.
+
+**Proposed: an Ed25519 signature over `checksums.txt`,** published as `checksums.txt.sig`.
+- **Why this one:** `crypto/ed25519` is in the standard library, so the project keeps its one module dependency, and verifying needs no network. Sigstore's Go client is a large dependency and needs a network to verify. The attestations stay, for anyone checking by hand with `gh attestation verify`.
+- **The keys are a compiled-in list, each with a key id and a revoked flag,** so a key can be rotated without a flag day. `checksums.txt.sig` has one `<key id> <base64 signature>` line per signing key, so a release can carry the old key's signature and the new one's. A release is accepted if **any listed, non-revoked** key verifies. The private key is a repository secret, used only by the publish job in `release-go.yml`.
+- **It signs `checksums.txt`,** so every archive is covered by one signature.
+- **The order is fixed: the signature over `checksums.txt` is verified before anything in that file is read or trusted.** Then the archive against that hash, and then, immediately before the swap, the extracted binary's own checksum against what it was when it was verified, so what gets swapped in is what was checked.
+- **`upgrade` refuses a release with no valid signature, and there is no flag to skip it.** Since this ships in the same release as the workflow step, no release that a client would accept is ever unsigned. Older releases can't be upgrade targets.
+- **On macOS,** `codesign --verify --strict` must also pass on a binary that has an Apple signature. It adds to the Ed25519 check and doesn't replace it.
+
+**The gate: "signature verification required".** Everything here is built and tested now, with a throwaway test key compiled in by `-ldflags` for test builds only. A build with no release key in its list refuses to install anything and says why. `--check` still works. The code is complete the moment a real key's public half is added to the list.
+
+**Needs the owner:** nobody can create or hold this key but them, and the OSS thread owns the workflow step. **Until the key exists, the signature cannot be verified for real, and this feature cannot ship.**
+
+**If a key is lost:** add a new key to the list and ship a release signed by the old one if it can still sign; if it can't, people on older versions reinstall with `scripts/install.sh`, since nothing they trust can vouch for the new key.
+**If a key is compromised:** mark it revoked in the list and ship a release signed by a new key; anyone not yet upgraded still trusts the old key until they do, so announce it and tell them to reinstall with the installer.
+
+**What this protects against:** a tampered download, a mirror, or someone altering release files without the key. **What it does not:** a stolen signing key before it is revoked, or a compromised release workflow, which holds the key.
+
+### 33.3 `local-base upgrade`
+
+```text
+local-base upgrade [--version vX.Y.Z] [--allow-downgrade] [--yes] [--wait <seconds>] [--force]
+```
+
+**First it changes nothing,** and any refusal here leaves everything as it was:
+
+1. **What is installed.** The running binary's real path. It refuses a development build, a Homebrew install (it says `brew upgrade local-base`), and a directory it cannot write. Windows is not supported.
+2. **What is running on this root,** from the gateway lock:
+   | State | Then |
+   |---|---|
+   | A gateway under the service manager, using this binary | Continues |
+   | A service using a different binary, or a manager that can't be reached | Refuses: it couldn't restart safely |
+   | A gateway in the foreground | Refuses: stop it first, since this can't restart what it didn't start |
+   | No gateway, or a stale lock | Continues: swaps only, and says how to start it. No restart and no smoke |
+   | The lock can't be read | Refuses |
+3. **Whether it is busy.** A request in flight or queued, or a detached run, refuses and gives the counts, with two ways on: **`--wait <seconds>`** waits for them to finish, up to 600 s, and refuses if they have not by then, having cut nothing. **`--force`** goes ahead, cutting them. Nobody has to choose between refusing and cutting streams.
+4. **The version.** The same version: "already up to date", exit 0. **An older one is refused unless `--allow-downgrade` is given**, whatever asked for it, so a replayed old release cannot walk someone back, even one that is properly signed. `--version` takes an exact release.
+5. **Disk.** It refuses if there's no room for the download and the binary.
+
+**Then it downloads, into a private directory beside the binary** (0700, same filesystem, so the final step is a rename):
+
+6. HTTPS only, redirects included. Every download has a size limit.
+7. `checksums.txt` and `checksums.txt.sig` first. **The signature is verified before anything in `checksums.txt` is read.** Then the archive against that hash. A failure removes the directory and refuses.
+8. It takes one regular file from the archive, the expected name, refusing links and path tricks. Then it runs that file's `--version`, which must report the target version, and records the file's checksum.
+
+**It says what will happen, and asks.** `--yes` skips asking, and `--json` needs it.
+
+**Only now does anything change:**
+
+9. **Stop the old gateway cleanly,** through the service manager, and confirm the lock is gone and its backend ports are free. Only a kind of model this root has selected or active counts: another root's backend on a shared default port was never this gateway's. **This cannot be left to the new version:** the sweep of §29 only knows backends recorded by a version that has it, so on the first start after upgrading from before it, a survivor has no record and only the port check would see it. If anything survives, it stops, restarts the old version, and refuses.
+10. **Keep the previous binary** as `<binary>.previous`: a hard link and a rename, so nothing is copied over the old file (or a copy and a rename, on a filesystem without links).
+11. **Check the binary's checksum again, then swap with a rename.** Never an in-place write: macOS caches a binary's code signature per inode, and an in-place copy leaves one that exits 137 on every run.
+12. **Restart through the new binary's `restart`,** which rewrites the plist or unit, and wait for `/health/ready`, up to 90 s, because `restart` returns once the manager has taken it, which can be before the gateway listens. **If it doesn't come up, it rolls back automatically** (33.4) and reports both.
+13. **Run `smoke`.** A failure leaves the new version in place, because smoke can fail for reasons of its own, such as no model installed or memory in use. It prints the failing step and the rollback line, and exits 1.
+
+It holds the root's operation lease throughout. Another root's gateway using the same binary keeps running the old code until it is restarted, and this cannot know about it.
+
+**Not built yet:** licenses and notices are not updated by an upgrade. Both installers now put them in `~/.local/share/doc/local-base`, overridable with `LOCALBASE_LICENSE_DIR` (#452, #414). Upgrade has no record of an override, so when this is built it updates that directory only if `LICENSE` is already there, and otherwise leaves it. It waits for those two to merge.
+
+### 33.4 Rollback: one line
+
+```text
+local-base upgrade rollback
+```
+
+It stops the gateway the same way, swaps `<binary>.previous` back, restarts, checks readiness and runs smoke. The version it replaced becomes `.previous`, so a rollback can be undone the same way. With no `.previous`, it says so.
+
+**If the new binary won't run at all,** that command can't either, so every upgrade prints, and the docs give, the line that needs nothing from it:
+
+```text
+mv ~/.local/bin/local-base.previous ~/.local/bin/local-base && local-base restart
+```
+
+**The limit:** rollback is a binary swap, so it is safe while `go_schema` is unchanged. A previous version refuses a newer database, and rollback then stops and says so, rather than leaving a gateway that won't start. The changelog already calls out any release that breaks this.
+
+### 33.5 Tests, first
+
+All of these use a fake release server through `LOCALBASE_RELEASE_URL`, which the installer already honours, plain HTTP only on loopback, and scratch install directories. A test key is compiled in with `-ldflags` for test builds only, and a test holds that the release build sets no such thing. **None touch the real service, `~/.local/bin` or GitHub.**
+
+- `TestUpgradeCheckSendsNothing`: the exact headers and URL, no token even with tokens set, and nothing written.
+- `TestUpgradeCheckCompares`: older, same, newer, a runtime tag, garbage, a network failure, a development build, a 403 with a reset time.
+- `TestUpdateCheckOffByDefault`. `TestUpdateCheckSchedule`: at most one attempt in 24 hours across restarts, success or failure; a 304 keeps the cached answer; a 403 stays quiet and blocks nothing.
+- `TestSignatureGate`: a build with no key in its list refuses to install, and `--check` still works.
+- `TestKeyList`: any listed non-revoked key verifies; a revoked key does not, even with a valid signature; several signature lines; an unknown key id.
+- `TestSignatureBeforeChecksums`: a tampered `checksums.txt` is refused on its signature, before its contents are used.
+- `TestUpgradeRefusesBadReleases`: wrong hash, wrong signature, no signature, a signature by another key, an archive with a link or `../`, one too large, a binary reporting the wrong version, a binary changed between verifying and swapping, redirects to plain HTTP. Each leaves the binary and the service untouched.
+- `TestUpgradeDowngrade`: refused, with or without `--version`, and allowed only with `--allow-downgrade`.
+- `TestUpgradeRefusesUnsafeStates`: every refusal in 33.3 steps 1 to 5, with the state unchanged. `TestUpgradeWait`: work that finishes in time proceeds, and work that doesn't refuses having cut nothing.
+- `TestUpgradeSwap`: the order of stop, keep, swap, restart and smoke, against a fake `launchctl` and `systemctl` on `PATH`. The binary is never written in place, and is the new inode.
+- `TestUpgradeStopFailure`: a backend that survives, so nothing swaps and the old version comes back.
+- `TestUpgradeRollsBackOnFailedStart`, and `TestUpgradeSmokeFailureKeepsNewVersion`.
+- `TestUpgradeRollback`: one line, reversible, no `.previous`, a previous version that refuses the database.
+- `-race -count=20` on what is touched.
+
+- `TestManagedStartWaitsForReadiness`: a restart the manager accepts and a gateway that never answers is a failed start, so it rolls back.
+
+**Not verifiable by tests:** a real service manager, for which see 33.6; the real signing key, a real GitHub release, and a real `smoke`, which loads a model.
+
+### 33.6 The rehearsal on a real service manager
+
+`tools/upgrade-rehearsal` runs the real binaries under the real manager: a scratch root under its own label, a throwaway signing key made for the run and never written down, releases served from loopback, a fake backend, and no real models or network. It starts a service on an old version, then checks `--check`, an upgrade, a rollback, and a release that won't start, which rolls back. Then it removes the service. `tools/rehearsal.sh`, the cutover drill, is not the place: it never runs `upgrade`, it needs a copy of the live root, a TS build and real models, and its ports cross everyone's blocks.
+
+```sh
+go run ./tools/upgrade-rehearsal --preflight   # the refusals only, changes nothing
+go run ./tools/upgrade-rehearsal               # exit 0 passed, 1 failed, 2 refused
+go run ./tools/upgrade-rehearsal --cleanup     # after an interrupted run
+tools/upgrade-rehearsal-systemd.sh             # the same, under systemd in a disposable container
+```
+
+| On macOS | |
+|---|---|
+| Label | `com.localbase.gateway.c3bf6ae29278dcdb4955cae169cb7df73663e3f86ea393aec798aa1725781fb8` |
+| Root | `/private/tmp/lb-upgrade-rehearsal/root`, all of it deleted at the end |
+| Ports | 29500 gateway, 29501 backend, 29502 speech (unused), 29506 releases, on loopback. Outside every thread's block, and tested to be. No media model is selected, so no media port is used |
+| Stops or disables | That label only: bootstrap, bootout, disable and enable, through `local-base`. launchd keeps one disabled row for the label after it is removed, which is its own record and harmless |
+| Writes outside the root | The label's plist, removed at the end, and its operation lock, under `~/Library/Application Support/LocalBase/runtime/`, removed on release |
+| Reads of the live service | The hash of its plist and of `~/.local/bin/local-base`, and its pid from `launchctl print`. It never runs the live binary and sends nothing to its port. If any of those change, it stops and removes its own service |
+
+**It refuses (exit 2):** a work directory or root that overlaps the live root or `LOCALBASE_ROOT`; a label equal to a live one; running as root; a busy port; a work directory it didn't make; and a left-over plist. The live identity comes from the code the binary uses, so it can't drift. `TestRefusals` and `TestIdentifyRefusesTheDefaultRoot` hold this.
+
+**Found by its first run, under systemd:** step 12 was written and not built, so smoke ran before the restarted gateway listened and a good release reported failure. Every test passed, because they fake the manager.
+
+**Found by its first run under launchd (the operator's, at 5c3d80bb), a bug in the tool and not in `upgrade`:** the kit always wrote a tar.gz, and `upgrade` reads a zip on macOS, which is what the release publishes (`scripts/release/build.sh`, #414: zip for notarization, tar.gz on Linux). Linux was right by luck, so systemd couldn't show it. So the swap, restart, new process and rollback were never reached under launchd. The kit now packages with the script's tools, contents and flags. `TestKitIsPackagedLikeARelease` reads every target from any computer, `TestUpgradeOnThisComputer` runs a real upgrade and rollback with no manager, and `TestReleaseScriptMatches` runs the real script once this tree has it.
+
+**Result, 2026-11-02: passed under launchd on macOS (rehearsal, throwaway key and label, fake backend, 1 MiB model); not run with a real release, a real signing key or a notarized binary.** The operator ran it at `3bbb2dc0`: a service on the old version, `--check`, an upgrade to a new process that passes smoke and a chat, a rollback, and a release that won't start rolling back by itself, each leaving the service running and enabled. The live service kept its pid and binary hash. It also passed under systemd in a disposable container, on Debian 13 rather than the pinned image. The kit's binaries are signed only by the linker, and launchd keeps a disabled row for the throwaway label, which the operator accepted.
+
+**Depends on:** #406 (the version), #414 (the release), the signing key, and the OSS thread's workflow step.
+
+**Rollback of this feature:** an older binary has no `upgrade` command and ignores its `go_settings` keys. `go_schema` is unchanged.
