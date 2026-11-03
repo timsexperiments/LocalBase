@@ -209,13 +209,14 @@ function showError(message, retry, label = "Retry") {
 // sentence and what to do next. The gateway's own sentence, with its figures, is one tap away.
 const refusals = {
   model_too_large: { title: "This model is too big for this computer", line: "It won’t fit even with everything else closed. A smaller one will." },
-  insufficient_memory: { title: "Not enough free memory for this model", line: "Unload a model or close another app, then try again." },
+  insufficient_memory: { title: "Not enough free memory for this model", line: "Free memory from a loaded model or close other apps, then try again." },
 };
 
 function showFailure(e, retry) {
   const refusal = refusals[e.code];
   if (!refusal) return showError(e.message, retry);
-  strip.refused("Not enough memory for this model");
+  // "Too big" won't change with what's free, so it's for the card, not for the strip.
+  strip.refused(e.code === "insufficient_memory" ? "Not enough memory for this model" : null);
   const card = errorCard();
   const title = document.createElement("p");
   title.className = "font-semibold text-danger";

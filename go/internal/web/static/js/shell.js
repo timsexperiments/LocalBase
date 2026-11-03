@@ -151,20 +151,35 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   stripWait = 3000;
   showRefused();
 });
-// A request this computer just refused says more than "Ready" does (chat.js). It lasts until
-// the person moves on, through refreshes.
+// A request this computer just refused says more than "Ready" does (chat.js). It lasts until the
+// person moves on, or until memory comes back: then the gateway says when it's settling, and "try
+// again" waits for that to clear, because a retry before then is refused too.
 let refusedWord = null;
+let refusedFree = null;
+const stripFree = (strip) => {
+  const n = parseInt(strip?.querySelector("[data-strip-free]")?.textContent ?? "", 10);
+  return Number.isNaN(n) ? null : n;
+};
 function showRefused() {
   if (!refusedWord) return;
   const strip = document.querySelector("[data-strip] .strip");
   const word = strip?.querySelector("[data-strip-word]");
   if (!word) return;
+  const free = stripFree(strip);
+  if (refusedFree !== null && free !== null && free > refusedFree) {
+    if (strip.classList.contains("strip-settling")) return;
+    if (!strip.classList.contains("strip-short")) {
+      word.textContent = "Memory freed. Try again.";
+      return;
+    }
+  }
   word.textContent = refusedWord;
   strip.classList.add("strip-short");
 }
 document.addEventListener("localbase:refused", (event) => {
   const cleared = refusedWord && !event.detail;
   refusedWord = event.detail;
+  refusedFree = stripFree(document.querySelector("[data-strip] .strip"));
   showRefused();
   if (cleared) {
     stripNextTry = 0;

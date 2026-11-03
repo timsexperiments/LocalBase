@@ -248,7 +248,7 @@ export function snapshotChunk(run, sent = { content: "", reasoning: "" }) {
 }
 
 // A request that reached a model while someone unloaded it (DESIGN §23).
-export const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed.";
+export const unloadingMessage = "The model’s memory was being freed, so this didn’t run. Try again: it loads again when needed.";
 
 export function endMessage(run) {
   if (run?.error?.code === "model_unloading") return unloadingMessage;

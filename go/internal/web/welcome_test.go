@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -418,11 +419,14 @@ func TestMemoryRowsSumToTotal(t *testing.T) {
 // Short of memory, the strip says what to do and that sending still works.
 func TestStripAdvice(t *testing.T) {
 	for _, p := range []string{"critical", "constrained"} {
-		if a := stripAdvice(p); !strings.Contains(a, "free a loaded model") && !strings.Contains(a, "Free a loaded model") || !strings.Contains(a, "You can still send") {
+		if stripAdvice(p, true) != "" {
+			t.Errorf("%s: advice while memory is settling", p)
+		}
+		if a := stripAdvice(p, false); !strings.Contains(a, "free a loaded model") && !strings.Contains(a, "Free a loaded model") || !strings.Contains(a, "You can still send") {
 			t.Errorf("%s: %q", p, a)
 		}
 	}
-	if stripAdvice("healthy") != "" || stripAdvice("") != "" {
+	if stripAdvice("healthy", false) != "" || stripAdvice("", false) != "" {
 		t.Error("advice with nothing wrong")
 	}
 }
@@ -489,5 +493,19 @@ func TestSearchRecommendationKeepsARoughNo(t *testing.T) {
 	}
 	if fitLabels["wont-fit"] != "May not fit" {
 		t.Error(fitLabels["wont-fit"])
+	}
+}
+
+// Memory back, requests still refused for a moment: calm words, not a shortage.
+func TestStripWhileSettling(t *testing.T) {
+	var idle runtime.Snapshot
+	if w, st := stripWord(idle, "critical", true, false); w != "Memory just freed, ready in a few seconds" || st != "settling" {
+		t.Errorf("settling: %q %q", w, st)
+	}
+	if w, st := stripWord(idle, "critical", false, false); w != "Not enough memory" || st != "short" {
+		t.Errorf("no field, as from an older gateway: %q %q", w, st)
+	}
+	if w, _ := stripWord(runtime.Snapshot{State: "starting"}, "critical", true, false); w != "Getting the model ready" {
+		t.Errorf("a model starting says so first: %q", w)
 	}
 }

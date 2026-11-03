@@ -839,6 +839,36 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
+// --- After a refusal the strip tells the truth as memory comes back. Each step redraws the strip
+// as a refresh would: the gateway's own class and figure, then the same event a swap fires.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
+const redraw = (state, word, free) => ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); return ${stripSays}; })()`);
+await redraw("ready", "Ready", 10);
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: "Not enough memory for this model" }))`);
+const refusedNow = await ev(stripSays);
+check(refusedNow.word === "Not enough memory for this model" && refusedNow.red, `a refusal for memory says so: ${JSON.stringify(refusedNow)}`);
+const notRisen = await redraw("ready", "Ready", 10);
+check(notRisen.word === "Not enough memory for this model" && notRisen.red, `while memory hasn't risen, it stays: ${JSON.stringify(notRisen)}`);
+const stillShort = await redraw("short", "Memory is tight", 48);
+check(stillShort.word === "Not enough memory for this model" && stillShort.red, `risen but not recovered, no try again yet: ${JSON.stringify(stillShort)}`);
+const settling = await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+check(settling.word === "Memory just freed, ready in a few seconds" && !settling.red, `settling: calm, and the gateway's words: ${JSON.stringify(settling)}`);
+const cleared = await redraw("ready", "Ready", 48);
+check(cleared.word === "Memory freed. Try again." && !cleared.red, `try again only once settling clears: ${JSON.stringify(cleared)}`);
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
+const afterSend = await redraw("ready", "Ready", 48);
+check(afterSend.word === "Ready" && !afterSend.red, `sending again clears it: ${JSON.stringify(afterSend)}`);
+// A permanent refusal leaves the strip alone: the model is too big, whatever is free.
+await ev(`(() => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: "Too big." } }), { status: 422, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+await ev(`document.querySelector("[data-send]").click()`);
+await sleep(1200);
+const tooBig = await ev(`({ strip: ${stripSays}, card: document.querySelector("[data-error-box]").textContent })`);
+check(/too big/.test(tooBig.card) && !/Not enough memory/.test(tooBig.strip.word) && !tooBig.strip.red, `a model too big never reads as a shortage: ${JSON.stringify(tooBig.strip)}`);
+await nav("/app/chat");
+
 // --- The list of chats: search, and each chat's own actions ----------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 await nav("/app/chat");
