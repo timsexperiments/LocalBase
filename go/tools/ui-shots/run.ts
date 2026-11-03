@@ -16,7 +16,7 @@ const PAGES: [string, string, string?][] = [
   ["chat-failed", "/app/chat", `window.fetch=async()=>new Response(JSON.stringify({error:{code:"model_too_large",param:"model",message:"This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host (4.7 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."}}),{status:422,headers:{"content-type":"application/json"}});const p=document.querySelector("textarea");p.value="Hello there.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(1500)}`],
   ["strip-long", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="Workshop Mac Studio in Attic";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
   ["strip-cjk", "/app/studio", `const b=document.querySelector(".strip-host b");b.textContent="工房のマックスタジオ工房のマックスタジオ";b.title=b.textContent;document.querySelector(".strip-word").textContent="Getting the model ready";`],
-  ["strip-unknown", "/app/studio", `document.querySelector(".strip-word").textContent="Ready";document.querySelector(".strip-free").textContent="Memory unavailable";document.querySelector(".gauge").innerHTML=Array.from({length:48},(_,i)=>'<rect x="'+i*10+'" y="9" width="6" height="2" class="gauge-unknown"/>').join("");`],
+  ["strip-unknown", "/app/studio", `document.querySelector(".strip-word").textContent="Ready";document.querySelector(".strip-free").textContent="Memory reading unavailable";document.querySelector(".gauge").innerHTML=Array.from({length:48},(_,i)=>'<rect x="'+i*10+'" y="9" width="6" height="2" class="gauge-unknown"/>').join("");`],
   ["chat-preparing", "/app/chat", `const f=window.fetch;window.fetch=(u,o)=>o&&o.method==="POST"?new Promise(()=>{}):f(u,o);document.querySelector("[data-strip-word]").textContent="Getting the model ready";const p=document.querySelector("textarea");p.value="Plan a three-day trip on a small budget.";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(500)}`],
   ["chat-streaming", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:slow 80";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(2000)}`],
   ["chat-stopped", "/app/chat", `const p=document.querySelector("textarea");p.value="fake:slow 80";p.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("button[type=submit]").click();${wait(1200)}document.querySelector("[data-stop]").click();${wait(700)}`],
@@ -56,7 +56,13 @@ const ev = async (expression: string) => { const r = await send("Runtime.evaluat
 await send("Page.enable");
 
 const shots: { page: string; width: number; scheme: string; file: string }[] = [];
-for (const [name, path, action] of PAGES) {
+// UI_SHOTS_SHEETS_ONLY=1 redraws the sheets from the captures already in the folder.
+const sheetsOnly = !!process.env.UI_SHOTS_SHEETS_ONLY;
+if (sheetsOnly) for (const [name] of PAGES) for (const [width] of WIDTHS) for (const scheme of SCHEMES) {
+  const file = `${name}-${width}-${scheme}.png`;
+  if (await Bun.file(`${out}/${file}`).exists()) shots.push({ page: name, width, scheme, file });
+}
+for (const [name, path, action] of sheetsOnly ? [] : PAGES) {
   if (only && !only.includes(name)) continue;
   for (const [width, height] of WIDTHS.filter(([w]) => !widthsOnly || widthsOnly.includes(w))) {
     for (const scheme of SCHEMES) {
@@ -84,23 +90,33 @@ for (const [name, path, action] of PAGES) {
 // A sheet per scheme: a row per page, a column per width.
 await send("Emulation.clearDeviceMetricsOverride");
 await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
+// Parts, because a browser won't paint a page taller than about 16000 px: that came out blank.
+const SHEET_ROWS = 10;
 for (const scheme of SCHEMES) {
   const pages = [...new Set(shots.map((s) => s.page))];
-  const rows = await Promise.all(pages.map(async (p) => {
-    const cells = await Promise.all(shots.filter((s) => s.page === p && s.scheme === scheme).map(async (s) => `<figure><figcaption>${p} ${s.width}</figcaption><img src="data:image/png;base64,${Buffer.from(await Bun.file(`${out}/${s.file}`).arrayBuffer()).toString("base64")}"></figure>`));
+  for (let part = 0; part * SHEET_ROWS < pages.length; part++) {
+  const rows = await Promise.all(pages.slice(part * SHEET_ROWS, (part + 1) * SHEET_ROWS).map(async (p) => {
+    const cells = await Promise.all(shots.filter((s) => s.page === p && s.scheme === scheme).map(async (s) => `<figure><figcaption>${p} ${s.width}</figcaption><img src="${s.file}"></figure>`));
     return `<div class="r">${cells.join("")}</div>`;
   }));
   const html = `<!doctype html><meta charset="utf-8"><style>body{margin:8px;background:#555;color:#fff;font:600 12px system-ui}.r{display:flex;gap:8px;margin-bottom:10px;align-items:flex-start}figure{margin:0}img{height:440px;display:block}</style>${rows.join("")}`;
-  await Bun.write(`${out}/_sheet-${scheme}.html`, html);
-  await send("Page.navigate", { url: `file://${out}/_sheet-${scheme}.html` });
-  await sleep(2500);
+  const name = `_sheet-${scheme}-${part + 1}`;
+  await Bun.write(`${out}/${name}.html`, html);
+  await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
+  await send("Page.navigate", { url: Bun.pathToFileURL(`${out}/${name}.html`).href });
+  for (let i = 0; i < 100 && !(await ev(`[...document.images].every((i) => i.complete)`)); i++) await sleep(100);
+  const broken = await ev(`document.images.length ? [...document.images].filter((i) => !i.naturalWidth).length : -1`);
+  if (broken) throw new Error(`${name}: ${broken} pictures did not load`);
   const h = await ev(`document.documentElement.scrollHeight`);
   await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: h, deviceScaleFactor: 1, mobile: false });
-  await sleep(300);
+  await sleep(600);
   const { data } = await send("Page.captureScreenshot", { format: "png" });
-  await Bun.write(`${out}/_sheet-${scheme}.png`, Buffer.from(data, "base64"));
-  await Bun.$`rm -f ${out}/_sheet-${scheme}.html`;
-  await send("Emulation.setDeviceMetricsOverride", { width: 2600, height: 1200, deviceScaleFactor: 1, mobile: false });
+  const png = Buffer.from(data, "base64");
+  // A one-colour page compresses to next to nothing. Never hand one to a reviewer.
+  if (png.length < 150_000) throw new Error(`${name}.png came out blank (${png.length} bytes)`);
+  await Bun.write(`${out}/${name}.png`, png);
+  await Bun.$`rm -f ${out}/${name}.html`;
+  }
 }
 
 // With a baseline: how much of each picture changed.

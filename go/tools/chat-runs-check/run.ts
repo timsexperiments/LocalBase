@@ -253,6 +253,8 @@ else {
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
   await sleep(600);
   check((await ev(`document.querySelector("#voice-list [data-play]").getAttribute("aria-pressed")`)) === "true", "Play shows as pressed while it plays");
+  // Leave nothing behind: a root holds a limited number of voices.
+  await ev(`(async () => { const list = await (await fetch("/app/api/_localbase/voices", { headers: { "x-localbase-ui": "1" } })).json(); const v = (list.data ?? []).find((x) => x.name === ${JSON.stringify(voiceName)}); if (v) await fetch("/app/api/_localbase/voices/" + v.id, { method: "DELETE", headers: { "x-localbase-ui": "1" } }); })()`);
 }
 // --- Decisions (DESIGN §22.17) --------------------------------------------------
 await nav("/app/studio/decisions");
@@ -762,6 +764,12 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await nav("/app/models/running");
 const shown = await ev(`(() => { const rows = [...document.querySelectorAll("#running-live .running-row")].map((r) => r.textContent.replace(/\\s+/g, " ").trim()); return { rows, buttons: document.querySelectorAll("#running-live [aria-label^='Free memory']").length, sheets: document.querySelectorAll("#running-live dialog[id^=unload-sheet]").length }; })()`);
 check(shown.buttons === shown.rows.length && shown.sheets === shown.rows.length, `every row on Running has its own Free memory: ${JSON.stringify(shown.rows).slice(0, 300)}`);
+for (const w of [360, 390, 430, 480, 768]) {
+  await send("Emulation.setDeviceMetricsOverride", { width: w, height: 844, deviceScaleFactor: 2, mobile: w < 768 });
+  await sleep(120);
+  const inset = await ev(`[...document.querySelectorAll("#running-live .running-row")].map((li) => { const r = li.getBoundingClientRect(); return [...li.querySelectorAll(".running-actions > *")].map((el) => { const b = el.getBoundingClientRect(); return Math.round(Math.min(b.left - r.left, r.right - b.right, r.bottom - b.bottom)); }); }).flat()`);
+  check(inset.every((n) => n >= 8), `at ${w}, a row's state and action stay inside its padding: ${JSON.stringify(inset)}`);
+}
 
 // --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });

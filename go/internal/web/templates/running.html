@@ -15,6 +15,9 @@
     <section aria-labelledby="memory-title">
       <h2 id="memory-title" class="sr-only">Memory on {{.Host}}</h2>
       <div class="strip strip-here strip-{{.State}}">{{template "strip-body" .}}</div>
+      {{with .Advice}}<p class="mt-2 px-1 text-sm font-semibold">{{.}}</p>{{end}}
+      {{if not .Known}}<div class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p class="text-sm">LocalBase can’t read this computer’s memory right now. Your tools stay connected.</p>
+        <button type="button" class="btn btn-quiet" hx-get="/app/models/running" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML">Try again</button></div>{{end}}
       {{with .BusyWith}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
       <div class="running-legend">{{template "memory-legend" .}}
         <p class="mt-3 text-sm text-muted">All LocalBase tools share this memory.</p></div>
@@ -57,7 +60,6 @@
       {{end}}
       {{end}}
       <p id="unload-busy" class="htmx-indicator mt-2 px-1 font-semibold text-muted" role="status">Freeing memory… It waits for anything running on it to finish.</p>
-      {{if $.GettingReady}}<p class="mt-2 px-1 text-sm text-muted">Also {{gib $.GettingReady}} for a model getting ready.</p>{{end}}
       <p class="mt-2 px-1 text-sm text-muted">Models stay loaded until another one needs the memory{{if $.CanManage}}, or you free it{{end}}. Their files stay installed.</p>
       {{else}}
       {{if .Starting}}

@@ -28,7 +28,7 @@
   --lb-text: #17202c;
   --lb-muted: #565d69;
   --lb-border: #dad6cc; /* separators, which may be faint */
-  --lb-edge: #85888d; /* what bounds a control: at least 3:1 */
+  --lb-edge: #7a7d82; /* what bounds a control: at least 3:1 */
   --lb-bound: #dad6cc; /* what bounds a card: faint on paper, where the fill shows it */
   --lb-accent: #17202c; /* action is ink */
   --lb-accent-hover: #2b3748;

@@ -205,16 +205,41 @@ func (h *hostReading) busyWith() string {
 }
 
 // sourceWords says how LocalBase's share was arrived at.
-var sourceWords = map[string]string{"measured": "measured", "planned": "estimated", "mixed": "part measured, part estimated"}
+var sourceWords = map[string]string{"measured": "Measured", "planned": "Estimated", "mixed": "Includes estimates"}
+
+// rowSource is how one model's figure was arrived at, for a sentence.
+var rowSource = map[string]string{"measured": "measured", "planned": "estimated"}
+
+// memoryRows divides total into what the list shows, so the list always adds up to Total: whatever
+// isn't LocalBase's or free belongs to other apps and the system. Estimated reservations can be
+// ahead of what the computer reports as used; then what's free is what's left after them.
+func memoryRows(total, available, models int64) (shownModels, other, free int64) {
+	shownModels = min(max(models, 0), total)
+	free = min(max(available, 0), total-shownModels)
+	return shownModels, total - shownModels - free, free
+}
+
+// stripAdvice is the way forward when memory is short. Nothing stops anyone sending: the gateway
+// decides at load, and a refusal says why.
+func stripAdvice(pressure string) string {
+	switch pressure {
+	case "critical":
+		return "Free a loaded model or close other apps. You can still send, but a reply may not start."
+	case "constrained":
+		return "If a reply won’t start, free a loaded model or close other apps. You can still send."
+	}
+	return ""
+}
 
 // memoryView is what the strip and Running share. Every figure is the gateway's, from one reading.
 func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
 	m := h.Host.Memory
-	known := m.Total.Bytes != nil && m.Available.Bytes != nil && m.Other.Bytes != nil
-	capacity, available, other := int64(0), int64(-1), int64(-1)
-	free := "Memory unavailable"
+	known := m.Total.Bytes != nil && m.Available.Bytes != nil
+	capacity, available, other, models := int64(0), int64(-1), int64(-1), m.LocalBase.Bytes
+	free := "Memory reading unavailable"
 	if known {
-		capacity, available, other = *m.Total.Bytes, *m.Available.Bytes, *m.Other.Bytes
+		capacity = *m.Total.Bytes
+		models, other, available = memoryRows(capacity, *m.Available.Bytes, m.LocalBase.Bytes)
 		free = fmt.Sprintf("%.0f GiB free", float64(available)/(1<<30))
 	}
 	pressure := ""
@@ -230,12 +255,12 @@ func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
 	// What a refresh must see change to redraw anything: the words, and places on the gauge.
 	places := [2]int64{}
 	if capacity > 0 {
-		places = [2]int64{other * gaugeSegmentCount / capacity, m.LocalBase.Bytes * gaugeSegmentCount / capacity}
+		places = [2]int64{other * gaugeSegmentCount / capacity, models * gaugeSegmentCount / capacity}
 	}
 	sum := fnv.New32a()
 	fmt.Fprint(sum, word, "|", free, "|", name, "|", places)
 	return map[string]any{"Host": name, "Word": word, "State": state, "Free": free, "Known": known, "Key": strconv.FormatUint(uint64(sum.Sum32()), 16),
-		"Capacity": capacity, "Available": available, "Other": other, "Models": m.LocalBase.Bytes, "Source": sourceWords[m.LocalBase.Source]}
+		"Capacity": capacity, "Available": available, "Other": other, "Models": models, "Source": sourceWords[m.LocalBase.Source], "Advice": stripAdvice(pressure)}
 }
 
 // memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state in

@@ -729,6 +729,24 @@
   .gauge-legend dd {
     @apply text-right font-semibold tabular-nums;
   }
+  .gauge-caption {
+    @apply block text-xs text-muted;
+  }
+  .gauge-sub {
+    padding-left: 1.25rem;
+  }
+  .gauge-legend dd.gauge-sub-figure {
+    @apply font-normal text-muted;
+  }
+  .strip-advice {
+    @apply mt-2 flex items-center justify-between gap-3 px-1 text-sm;
+  }
+  .strip-advice .btn {
+    @apply shrink-0;
+  }
+  html[data-typing] .strip-advice {
+    @apply hidden;
+  }
   .gauge-key {
     @apply block w-3 rounded-sm;
   }
@@ -885,21 +903,24 @@
   }
   /* The state and the action share a line, however narrow, so a row stays two lines tall. */
   .running-row {
-    @apply flex flex-wrap items-center gap-x-1 pr-3;
+    @apply flex flex-wrap items-center;
   }
   .running-row > a {
     flex: 1 1 15rem;
   }
+  /* Stacked, state and action share a line inside the row's own padding. */
   .running-actions {
-    @apply flex items-center gap-2 pb-2 min-[400px]:pb-0;
-    flex: 1 1 auto;
-    justify-content: space-between;
-    padding-left: 0.75rem;
+    @apply flex items-center justify-between gap-2 px-4 pb-3;
+    flex: 1 1 100%;
   }
-  @media (min-width: 400px) {
+  @media (min-width: 560px) {
+    .running-row > a {
+      flex-basis: 0;
+      min-width: 12rem;
+    }
     .running-actions {
       flex: 0 0 auto;
-      padding-left: 0;
+      padding: 0 1rem 0 0;
     }
   }
   .welcome-skip {
