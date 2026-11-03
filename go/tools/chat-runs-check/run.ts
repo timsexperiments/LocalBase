@@ -922,6 +922,7 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
   await nav("/app/studio");
   const planted = await ev(`(async () => { const n = document.createElement("div"); n.style.cssText = "width:1200px;height:1px"; document.querySelector("main").append(n); await new Promise((r) => requestAnimationFrame(r)); const d = document.documentElement, caught = d.scrollWidth > d.clientWidth; n.remove(); return { caught, inner: innerWidth, client: d.clientWidth }; })()`);
   check(planted.caught, `the width measure catches a planted 1200 px element: ${JSON.stringify(planted)}`);
+  if (hasResults < 4) console.log("skip the landing with results (fewer than four results)");
   if (hasResults >= 4) for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
     await nav("/app/studio");
@@ -1196,7 +1197,8 @@ else {
   for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     await nav("/app/studio/video");
-    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = item.querySelector(".image-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    // With Share showing, as it does on a real phone. On a browser without it, #483's row fitted and on one with it, it wrapped.
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")); item.querySelector("[data-share]").hidden = false; const v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = item.querySelector(".image-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
     check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
   }
   // A long title and a pill together are the tightest case: two lines of words, and another tool's run showing.
