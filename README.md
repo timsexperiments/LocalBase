@@ -96,6 +96,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 - [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md)
 - [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
 - [Connect an app](docs/connect.md)
+- [Usage and activity](docs/usage.md)
 - [API overview](docs/api.md) and [API details](docs/api-details.md)
 - [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
 - [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)

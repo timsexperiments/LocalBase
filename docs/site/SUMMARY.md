@@ -14,6 +14,7 @@
 - [Configuration](configuration.md)
 - [Declarative configuration](declarative-config.md)
 - [Operating LocalBase](operations.md)
+- [Usage and activity](usage.md)
 - [Upgrade and rollback](upgrade.md)
 - [User catalog entries](user-catalog.md)
 - [Model licenses](model-licenses.md)
