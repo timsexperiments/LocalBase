@@ -152,8 +152,12 @@ func (s *Server) hostMemory(ctx context.Context) map[string]any {
 		state := s.Memory.PressureState()
 		pressure = &state
 	}
-	return map[string]any{"total": figure(total), "available": figure(available), "pressure": pressure,
+	out := map[string]any{"total": figure(total), "available": figure(available), "pressure": pressure,
 		"localBase": map[string]any{"bytes": sum, "source": source, "runtimes": runtimes}, "other": other}
+	if available >= 0 && s.Memory.Settling() {
+		out["settling"] = true // absent otherwise
+	}
+	return out
 }
 
 func (s *Server) hostActivity() map[string]any {
