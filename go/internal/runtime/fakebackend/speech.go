@@ -25,6 +25,7 @@ func addSpeech(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/generate", func(w http.ResponseWriter, r *http.Request) {
 		var body struct{ Input string }
 		json.NewDecoder(r.Body).Decode(&body)
+		dieIfAsked(w, body.Input)
 		if strings.Contains(body.Input, "fake:slow") {
 			time.Sleep(400 * time.Millisecond)
 		}
