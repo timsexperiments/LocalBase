@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -54,6 +55,14 @@ func (p *Process) StartupLog() []byte {
 
 const maxLogLine = 4096
 
+// outputLineBuffer is how much of an output line is kept for the startup capture.
+const outputLineBuffer = 64 * 1024
+
+// outputDrainLimit is how long Done waits for the output to end after the process and its
+// group are gone. Reaching end-of-file normally takes no time at all; the limit is only for
+// a descendant outside the group that holds the pipes open. A variable for its test.
+var outputDrainLimit = 2 * time.Second
+
 // StartProcess launches bin with args. Output lines are logged at debug
 // level, bounded per line, under the runtime's name.
 func StartProcess(name, bin string, args []string, env []string, log *slog.Logger) (*Process, error) {
@@ -68,37 +77,34 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	if env != nil {
 		cmd.Env = env
 	}
-	stdout, err := cmd.StdoutPipe()
+	// Our own pipes: cmd.Wait closes those from StdoutPipe as soon as the child exits, losing
+	// whatever is still unread, which may be the reason it crashed.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
+	stderr, stderrW, err := os.Pipe()
 	if err != nil {
+		stdout.Close()
+		stdoutW.Close()
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+	err = cmd.Start()
+	stdoutW.Close()
+	stderrW.Close()
+	if err != nil {
+		stdout.Close()
+		stderr.Close()
 		return nil, err
 	}
 	p := &Process{Name: name, cmd: cmd, done: make(chan struct{})}
-	drain := func(r io.Reader) {
-		sc := bufio.NewScanner(r)
-		sc.Buffer(make([]byte, 64*1024), 1<<20)
-		for sc.Scan() {
-			p.startupMu.Lock()
-			if len(p.startup) < startupCapture {
-				p.startup = append(p.startup, sc.Bytes()...)
-				p.startup = append(p.startup, '\n')
-			}
-			p.startupMu.Unlock()
-			line := sc.Text()
-			if len(line) > maxLogLine {
-				line = line[:maxLogLine]
-			}
-			log.Debug(redactOutputURLs(line), "event", "runtime.output", "runtime", name)
-		}
-	}
-	go drain(stdout)
-	go drain(stderr)
+	drained := make(chan struct{})
+	var drains sync.WaitGroup
+	drains.Add(2)
+	go func() { defer drains.Done(); p.drainOutput(stdout, log) }()
+	go func() { defer drains.Done(); p.drainOutput(stderr, log) }()
+	go func() { drains.Wait(); close(drained) }()
 	p.startGuard(log)
 	go func() {
 		p.err = cmd.Wait()
@@ -106,9 +112,45 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 			p.endGuard()
 		}
 		p.endGroup(log)
+		// All the output, unless a descendant outside the group holds the pipes open: that
+		// one can outlive us, so the wait has a limit and Done always comes.
+		select {
+		case <-drained:
+		case <-time.After(outputDrainLimit):
+		}
+		stdout.Close()
+		stderr.Close()
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// drainOutput logs r's lines until it ends, however long they are. Giving up on a long line
+// would stop reading, and a child whose pipe fills up then blocks for good.
+func (p *Process) drainOutput(r io.Reader, log *slog.Logger) {
+	br := bufio.NewReaderSize(r, outputLineBuffer)
+	for {
+		chunk, more, err := br.ReadLine()
+		if err != nil {
+			return
+		}
+		p.startupMu.Lock()
+		if len(p.startup) < startupCapture {
+			p.startup = append(p.startup, chunk...)
+			p.startup = append(p.startup, '\n')
+		}
+		p.startupMu.Unlock()
+		line := string(chunk)
+		if len(line) > maxLogLine {
+			line = line[:maxLogLine]
+		}
+		log.Debug(redactOutputURLs(line), "event", "runtime.output", "runtime", p.Name)
+		for more { // the rest of a line too long to keep
+			if _, more, err = br.ReadLine(); err != nil {
+				return
+			}
+		}
+	}
 }
 
 // sampleFootprint reads a backend's memory. A variable so a test can hold a sample.
