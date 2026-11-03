@@ -53,7 +53,7 @@ JSON
 "$work/local-base" --root "$work/root" --non-interactive access policy apply --file "$work/policy.json" >"$work/policy.log" 2>&1
 "$work/local-base" --root "$work/root" --non-interactive access users invite --email=alice@example.com --roles=member >"$work/invite.log" 2>&1
 cdp=$((first + 4))
-"$chrome" --headless=new --use-mock-keychain --password-store=basic --disable-gpu --no-first-run --ignore-certificate-errors --remote-debugging-address=127.0.0.1 --remote-debugging-port=$cdp --user-data-dir="$profile" about:blank >/dev/null 2>&1 &
+browser_group "$chrome" --headless=new --use-mock-keychain --password-store=basic --disable-gpu --no-first-run --ignore-certificate-errors --remote-debugging-address=127.0.0.1 --remote-debugging-port=$cdp --user-data-dir="$profile" about:blank >/dev/null 2>&1 &
 browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$cdp/json/version" >/dev/null && break; sleep 0.5; done
 browser_run bun run "$here/tools/person-check/run.ts" "http://127.0.0.1:$cdp" "$work" "$first"
