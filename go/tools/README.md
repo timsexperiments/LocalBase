@@ -24,6 +24,10 @@ test, or name it `PLANTED_*`. An entry in `.gitleaks.toml` is one exact made-up 
 one-line reason above it, which `scripts/check-gitleaks-allowlist.sh` enforces. It is for what
 is already in a commit and cannot be changed.
 
+`.github/soak-artifacts.gitleaks.toml` is a different file with a different rule: it scans only
+generated soak artifacts and uses patterns on purpose, because a key id differs every run. The
+gap is written in its header, and the enforcement step reads only `.gitleaks.toml`.
+
 ## Disk
 
 Keep 90 GB free on a development machine. A script, test or mutation run that can write large
