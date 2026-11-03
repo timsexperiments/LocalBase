@@ -1,0 +1,69 @@
+name: Bench
+
+# What the gateway itself costs, against fake backends. See go/docs/performance.md.
+# CI has its own baselines, because a runner isn't a developer's machine even with the
+# same platform label. Dispatch with write_baseline to get one to commit.
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+    inputs:
+      write_baseline:
+        description: Record a new CI baseline instead of comparing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    if: github.repository == 'timsexperiments/LocalBase'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Measure
+        working-directory: go
+        env:
+          WRITE_BASELINE: ${{ inputs.write_baseline }}
+        # A regression is a warning for now, because runner noise is unknown. A tool
+        # failure still fails the job.
+        run: |
+          name="baseline-ci-$(go env GOOS)-$(go env GOARCH).json"
+          out="$RUNNER_TEMP/bench"
+          mkdir -p "$out"
+          if [ "$WRITE_BASELINE" = true ]; then
+            mode=(-write-baseline "$out/$name")
+          else
+            mode=(-compare "tools/bench/$name")
+          fi
+          code=0
+          tools/bench.sh "${mode[@]}" -out "$out" || code=$?
+          case "$code" in
+            0) ;;
+            1) echo "::warning title=Bench regression::$(go env GOOS)/$(go env GOARCH) is slower than its baseline; see result.md in the artifact" ;;
+            *) exit "$code" ;;
+          esac
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-${{ matrix.runner }}
+          path: ${{ runner.temp }}/bench
+          retention-days: 7
+          if-no-files-found: warn
