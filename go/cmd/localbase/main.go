@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 func main() {
@@ -20,11 +20,13 @@ func app() *cli.App {
 	commands = append(commands, serviceCommands()...)
 	commands = append(commands, logsCommand(), diagnosticsCommand(), smokeCommand(), keysCommand(), accessCommand(), backendsCommand(), authProfilesCommand(), voicesCommand(), speechCommand())
 	commands = append(commands, maintenanceCommands()...)
+	commands = append(commands, versionCommand())
 	return &cli.App{
-		Name:    "local-base",
-		Version: gateway.Version,
-		Summary: "Local AI installer, manager, and OpenAI-compatible gateway",
-		Default: "configure",
-		Root:    &cli.Command{Sub: commands},
+		Name:           "local-base",
+		Version:        version.Version,
+		VersionDetails: func() any { return version.Get() },
+		Summary:        "Local AI installer, manager, and OpenAI-compatible gateway",
+		Default:        "configure",
+		Root:           &cli.Command{Sub: commands},
 	}
 }
