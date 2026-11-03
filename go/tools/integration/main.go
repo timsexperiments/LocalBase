@@ -44,10 +44,24 @@ func main() {
 	push := flag.Bool("push", false, "force-push the result with a lease")
 	test := flag.Bool("test", false, "run gofmt, vet and the unit tests on the result")
 	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
+	auditOnly := flag.Bool("audit", false, "report what folded pull requests added that the tree no longer has, in the existing worktree")
 	flag.Parse()
 	list, err := readOrder(orderPath())
 	check(err)
 	check(run("", "git", "fetch", "-q", "origin"))
+	if *auditOnly {
+		intended, err := readIntended(filepath.Join(filepath.Dir(orderPath()), "intended.txt"))
+		check(err)
+		unexplained, report := audit(*dir, list, *base, intended)
+		for _, l := range report {
+			fmt.Println(l)
+		}
+		fmt.Printf("%d lines unexplained\n", unexplained)
+		if unexplained > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	if !*resume {
 		// Only ever removes this tool's own worktree.
 		_ = exec.Command("git", "worktree", "remove", "--force", *dir).Run()
