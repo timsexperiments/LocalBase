@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
-	"io"
 	"net/http"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -26,13 +25,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// writeError writes the OpenAI error envelope. The unread request body is
-// drained first (bounded) so a rejected upload cannot stall the connection
-// (#279, #305).
+// writeError writes the OpenAI error envelope. A bounded part of the unread request
+// body is drained first so a rejected upload cannot stall the connection (#279, #305).
 func writeError(w http.ResponseWriter, r *http.Request, status int, typ, code, message string, param *string) {
-	if r != nil && r.Body != nil {
-		io.Copy(io.Discard, io.LimitReader(r.Body, 32<<20))
-	}
+	drainRefused(w, r)
 	writeJSON(w, status, map[string]any{"error": apiError{Message: message, Type: typ, Param: param, Code: code}})
 }
 
