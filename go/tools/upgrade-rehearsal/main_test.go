@@ -1,21 +1,31 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 func TestRefusals(t *testing.T) {
@@ -207,7 +217,7 @@ func serviceMeta(dir string) service.Metadata {
 	return service.Metadata{Manager: "launchd", ServiceID: "scratch", DefinitionPath: filepath.Join(dir, "absent.plist")}
 }
 
-// testPorts are three free ports. LBUR_TEST_PORT_BASE keeps them in a thread's own block.
+// testPorts are four free ports. LBUR_TEST_PORT_BASE keeps them in a thread's own block.
 func testPorts(t *testing.T) portSet {
 	t.Helper()
 	if v := os.Getenv("LBUR_TEST_PORT_BASE"); v != "" {
@@ -215,15 +225,15 @@ func testPorts(t *testing.T) portSet {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, p := range []int{base, base + 1, base + 2} {
+		for _, p := range []int{base, base + 1, base + 2, base + 3} {
 			if portBusy(p) {
 				t.Fatalf("port %d is in use", p)
 			}
 		}
-		return portSet{base, base + 1, base + 2}
+		return portSet{base, base + 1, base + 2, base + 3}
 	}
 	var got []int
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		l, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
@@ -231,7 +241,255 @@ func testPorts(t *testing.T) portSet {
 		defer l.Close()
 		got = append(got, l.Addr().(*net.TCPAddr).Port)
 	}
-	return portSet{got[0], got[1], got[2]}
+	return portSet{got[0], got[1], got[2], got[3]}
+}
+
+// goDir moves to go/, where the kit's builds run.
+func goDir(t *testing.T) {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(filepath.Join(wd, "..", "..")); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(wd) })
+}
+
+func scratch(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "lbur-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	if dir, err = filepath.EvalSymlinks(dir); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// failOnAbort turns the drill's stop into a test failure.
+func failOnAbort(t *testing.T) {
+	t.Helper()
+	if r := recover(); r != nil {
+		if a, ok := r.(abort); ok {
+			t.Fatal(a.why)
+		}
+		panic(r)
+	}
+}
+
+// targets is every release target, and what the workflow calls each one.
+var targets = []struct{ goos, goarch string }{{"darwin", "arm64"}, {"darwin", "amd64"}, {"linux", "amd64"}, {"linux", "arm64"}}
+
+// prepare reads a release the way upgrade does, for any target, from any computer. It does
+// not run the binary it reads, which may be for another system.
+func prepare(t *testing.T, files http.Handler, pub ed25519.PublicKey, version, goos, goarch string) []byte {
+	t.Helper()
+	srv := httptest.NewServer(files)
+	defer srv.Close()
+	dir := t.TempDir()
+	c, err := upgrade.Prepare(context.Background(), upgrade.Source{API: srv.URL + "/latest", Files: srv.URL + "/files", Client: upgrade.NewClient()},
+		upgrade.PrepareOptions{Tag: "v" + version, GOOS: goos, GOARCH: goarch, Dir: dir,
+			Keys: []upgrade.Key{{ID: keyID, Public: base64.StdEncoding.EncodeToString(pub)}},
+			Run:  func(string) (string, error) { return version, nil }})
+	if err != nil {
+		t.Fatalf("%s/%s: %v", goos, goarch, err)
+	}
+	b, err := os.ReadFile(c.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// entries lists an archive, by the name each file would have once unpacked.
+func entries(t *testing.T, path string) []string {
+	t.Helper()
+	var out []string
+	if strings.HasSuffix(path, ".zip") {
+		zr, err := zip.OpenReader(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		defer zr.Close()
+		for _, f := range zr.File {
+			out = append(out, strings.TrimPrefix(f.Name, "./"))
+		}
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		tr := tar.NewReader(gz)
+		for {
+			h, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, strings.TrimPrefix(h.Name, "./"))
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// The first launchd run failed because the kit always wrote a tar.gz, and upgrade reads a zip on
+// macOS. Linux was right by luck, so the systemd run could not see it. Every target is read here
+// from any computer, the way upgrade reads it.
+func TestKitIsPackagedLikeARelease(t *testing.T) {
+	if _, err := exec.LookPath("zip"); err != nil {
+		t.Skip("the release workflow's zip is not on this computer")
+	}
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		kit := scratch(t)
+		body := []byte("a binary for " + target.goos + "/" + target.goarch)
+		binary := filepath.Join(kit, "binary")
+		if err := os.WriteFile(binary, body, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := publish(kit, newVersion, binary, target.goos, target.goarch, priv); err != nil {
+			t.Fatal(err)
+		}
+		mux := http.NewServeMux()
+		mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(filepath.Join(kit, "releases")))))
+		if got := prepare(t, mux, pub, newVersion, target.goos, target.goarch); !bytes.Equal(got, body) {
+			t.Errorf("%s/%s: read %q", target.goos, target.goarch, got)
+		}
+		archive := filepath.Join(kit, "releases", "v"+newVersion, upgrade.AssetArchive(target.goos, target.goarch))
+		if isZip := strings.HasSuffix(archive, ".zip"); isZip != (target.goos == "darwin") {
+			t.Errorf("%s: zip on macOS only: %s", target.goos, archive)
+		}
+		want := []string{"LICENSE", "README.md", "THIRD_PARTY_NOTICES.txt", upgrade.AssetBinary(target.goos, target.goarch)}
+		slices.Sort(want)
+		if got := entries(t, archive); !slices.Equal(got, want) {
+			t.Errorf("%s/%s holds %v, want %v", target.goos, target.goarch, got, want)
+		}
+	}
+}
+
+// The real script, when this tree has it: what the workflow publishes must be what upgrade reads,
+// and hold what the kit's archives hold. #414 adds the script, so until it merges this needs
+// LBUR_RELEASE_SCRIPT pointing at a checkout of it.
+func TestReleaseScriptMatches(t *testing.T) {
+	script := os.Getenv("LBUR_RELEASE_SCRIPT")
+	if script == "" {
+		script = filepath.Join("..", "..", "..", "scripts", "release", "build.sh")
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Skipf("no %s in this tree yet (#414); set LBUR_RELEASE_SCRIPT to run this", script)
+	}
+	if _, err := exec.LookPath("zip"); err != nil {
+		t.Skip("the release workflow's zip is not on this computer")
+	}
+	out := scratch(t)
+	if err := os.MkdirAll(filepath.Join(out, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		name := upgrade.AssetBinary(target.goos, target.goarch)
+		if err := os.WriteFile(filepath.Join(out, "bin", name), []byte("a binary for "+name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, step := range []string{"package", "checksums"} {
+		cmd := exec.Command("bash", script, step, out)
+		if b, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("build.sh %s: %v\n%s", step, err, b)
+		}
+	}
+	dist := filepath.Join(out, "dist")
+	checks, err := os.ReadFile(filepath.Join(dist, "checksums.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := filepath.Base(r.URL.Path)
+		if name == "checksums.txt.sig" {
+			w.Write(signature(priv, checks))
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(dist, name))
+	})
+	for _, target := range targets {
+		name := upgrade.AssetBinary(target.goos, target.goarch)
+		if got := prepare(t, files, pub, newVersion, target.goos, target.goarch); string(got) != "a binary for "+name {
+			t.Errorf("%s: read %q", name, got)
+		}
+		kit := scratch(t)
+		binary := filepath.Join(kit, "binary")
+		if err := os.WriteFile(binary, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mine := filepath.Join(kit, upgrade.AssetArchive(target.goos, target.goarch))
+		if err := packRelease(mine, binary, target.goos, target.goarch); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := entries(t, mine), entries(t, filepath.Join(dist, upgrade.AssetArchive(target.goos, target.goarch))); !slices.Equal(got, want) {
+			t.Errorf("%s: the kit holds %v, the release %v", name, got, want)
+		}
+	}
+}
+
+// A real upgrade and rollback on this computer, with no gateway and no service manager: the download
+// path on the system this runs on, which a rehearsal must not be the first thing to reach.
+func TestUpgradeOnThisComputer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds real binaries")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("a root refuses uid 0")
+	}
+	goDir(t)
+	work := scratch(t)
+	kit := filepath.Join(work, "kit")
+	if err := buildKit(kit, goruntime.GOOS, goruntime.GOARCH); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := &drill{ctx: ctx, work: work, root: filepath.Join(work, "root"), bin: filepath.Join(work, "bin", "local-base"), kit: kit, ports: testPorts(t), latest: newVersion}
+	defer failOnAbort(t)
+	srv, err := serveReleases(kit, &d.latest, d.ports.release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Close()
+	d.installOld()
+	d.must("init")
+	if code, out, errb := d.lb("upgrade", "--yes"); code != 0 {
+		t.Fatalf("upgrade: exit %d\n%s%s", code, out, errb)
+	}
+	if got := versionOf(d.bin); got != newVersion {
+		t.Errorf("the binary is %s", got)
+	}
+	if got := versionOf(d.bin + upgrade.PreviousSuffix); got != oldVersion {
+		t.Errorf("the previous binary is %s", got)
+	}
+	if code, out, errb := d.lb("upgrade", "rollback"); code != 0 {
+		t.Fatalf("rollback: exit %d\n%s%s", code, out, errb)
+	}
+	if got := versionOf(d.bin); got != oldVersion {
+		t.Errorf("after rollback the binary is %s", got)
+	}
 }
 
 // The whole drill rests on the fixture passing smoke with nothing but what a service gets: no
@@ -244,21 +502,8 @@ func TestFixturePassesSmoke(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("a root refuses uid 0")
 	}
-	if wd, err := os.Getwd(); err != nil {
-		t.Fatal(err)
-	} else if err := os.Chdir(filepath.Join(wd, "..", "..")); err != nil {
-		t.Fatal(err)
-	} else {
-		t.Cleanup(func() { os.Chdir(wd) })
-	}
-	work, err := os.MkdirTemp("", "lbur-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(work) })
-	if work, err = filepath.EvalSymlinks(work); err != nil {
-		t.Fatal(err)
-	}
+	goDir(t)
+	work := scratch(t)
 	kit := filepath.Join(work, "kit")
 	if err := buildKit(kit, goruntime.GOOS, goruntime.GOARCH); err != nil {
 		t.Fatal(err)
@@ -267,14 +512,7 @@ func TestFixturePassesSmoke(t *testing.T) {
 	defer cancel()
 	p := testPorts(t)
 	d := &drill{ctx: ctx, work: work, root: filepath.Join(work, "root"), bin: filepath.Join(work, "bin", "local-base"), kit: kit, ports: p, latest: newVersion}
-	defer func() {
-		if r := recover(); r != nil {
-			if a, ok := r.(abort); ok {
-				t.Fatal(a.why)
-			}
-			panic(r)
-		}
-	}()
+	defer failOnAbort(t)
 	d.installOld()
 	d.fixture()
 

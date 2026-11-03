@@ -4941,6 +4941,10 @@ tools/upgrade-rehearsal-systemd.sh             # the same, under systemd in a di
 
 **Found by its first run, under systemd:** step 12 was written and not built, so smoke ran before the restarted gateway listened and a good release reported failure. Every test passed, because they fake the manager.
 
+**Found by its first run under launchd (the operator's, at 5c3d80bb), a bug in the tool and not in `upgrade`:** the kit always wrote a tar.gz, and `upgrade` reads a zip on macOS, which is what the release publishes (`scripts/release/build.sh`, #414: zip for notarization, tar.gz on Linux). Linux was right by luck, so systemd couldn't show it. So the swap, restart, new process and rollback were never reached under launchd. The kit now packages with the script's tools, contents and flags. `TestKitIsPackagedLikeARelease` reads every target from any computer, `TestUpgradeOnThisComputer` runs a real upgrade and rollback with no manager, and `TestReleaseScriptMatches` runs the real script once this tree has it.
+
+**What has run under launchd and passed so far:** install, running, smoke, `--check`, a failed upgrade leaving the service running and enabled, and cleanup. Nothing else.
+
 **Depends on:** #406 (the version), #414 (the release), the signing key, and the OSS thread's workflow step.
 
 **Rollback of this feature:** an older binary has no `upgrade` command and ignores its `go_settings` keys. `go_schema` is unchanged.
