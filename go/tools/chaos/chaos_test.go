@@ -235,7 +235,7 @@ func knownBug(t *testing.T, pr int, bug string) {
 	}
 }
 
-const noPRYet = 0
+const noPRYet = 0 //nolint:unused // for a new bug that has no PR yet; tools/known-bugs-check.sh fails on it
 
 // --- a backend dies mid-request -------------------------------------------------
 
