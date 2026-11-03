@@ -24,6 +24,7 @@ async function api(path, init = {}) {
     const value = await response.json().catch(() => null);
     const error = new Error(value?.error?.message ?? `Request failed (${response.status}). Try again.`);
     error.status = response.status;
+    error.code = value?.error?.code;
     throw error;
   }
   return response;
@@ -218,7 +219,7 @@ export async function response({ create: start, id, after, signal, onRun, onEnd 
             onEnd?.(e.data);
             if (e.data?.status === "completed") controller.enqueue(line("[DONE]"));
             else if (!failed)
-              controller.enqueue(line(JSON.stringify({ error: { message: endMessage(e.data), code: `run_${e.data?.status}` } })));
+              controller.enqueue(line(JSON.stringify({ error: { message: endMessage(e.data), code: e.data?.error?.code ?? `run_${e.data?.status}` } })));
           }
         }
         controller.close();
@@ -251,6 +252,7 @@ export const unloadingMessage = "The model was being unloaded, so this didn’t 
 
 export function endMessage(run) {
   if (run?.error?.code === "model_unloading") return unloadingMessage;
+  if (run?.error?.code === "model_too_large" && run.error.message) return run.error.message;
   if (run?.status === "cancelled") return "Stopped.";
   if (run?.reason === "output_limit") return "The reply grew too long and was stopped.";
   switch (run?.reason) {
