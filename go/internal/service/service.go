@@ -92,6 +92,15 @@ type Manifest struct {
 	Invocation            Invocation `json:"invocation"`
 }
 
+// InstalledInvocation is what the service on this root runs, or "" with no valid manifest.
+func InstalledInvocation(rootDir string) (program string, arguments []string) {
+	state, m := readManifest(rootDir)
+	if state != "valid" || m == nil {
+		return "", nil
+	}
+	return m.Invocation.Program, m.Invocation.Arguments
+}
+
 func manifestPath(rootDir string) string { return filepath.Join(rootDir, "service", "manifest.json") }
 
 // readManifest returns missing, valid (with the manifest) or invalid.
