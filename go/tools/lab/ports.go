@@ -44,7 +44,7 @@ func (b *portBlock) take(n int) ([]int, error) {
 	defer b.mu.Unlock()
 	span := b.high - b.low + 1
 	var out []int
-	start := rand.IntN(span)
+	start := rand.IntN(span) //nolint:gosec // where to start looking for a free port, not a secret
 	for i := 0; i < span && len(out) < n; i++ {
 		p := b.low + (start+i)%span
 		if b.taken[p] {

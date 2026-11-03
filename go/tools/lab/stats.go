@@ -118,7 +118,7 @@ if command -v ps >/dev/null; then ps -A -o pid=,command= | awk -v p=%q 'index($2
 	w := exec.Command("sh", "-c", script)
 	w.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if w.Start() == nil {
-		go w.Wait()
+		go func() { _ = w.Wait() }()
 	}
 }
 
