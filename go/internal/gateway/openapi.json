@@ -2148,7 +2148,7 @@
                           },
                           "reason": {
                             "type": "string",
-                            "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit"],
+                            "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit", "memory_limit"],
                             "description": "Present only when it applies."
                           },
                           "createdAt": {"type": "string", "format": "date-time"},
@@ -5824,7 +5824,7 @@
           },
           "reason": {
             "type": "string",
-            "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit"],
+            "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit", "memory_limit"],
             "description": "Present only when it applies."
           },
           "error": {

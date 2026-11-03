@@ -255,6 +255,7 @@ export function endMessage(run) {
   if (run?.error?.code === "model_too_large" && run.error.message) return run.error.message;
   if (run?.status === "cancelled") return "Stopped.";
   if (run?.reason === "output_limit") return "The reply grew too long and was stopped.";
+  if (run?.reason === "memory_limit") return "LocalBase is holding too many results in memory, so this was stopped. Finished results clear within 30 minutes, or dismiss some and try again.";
   switch (run?.reason) {
     case "gateway_restart":
       return "LocalBase restarted before the reply finished.";

@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -56,10 +57,16 @@ const (
 	runMaxToolCalls     = 128
 	runMaxOutput        = 8 << 20
 	runMaxResult        = 64 << 20 // a media result, in memory only
-	runMaxBody          = 32 << 20 // a run's request body (the /v1 route applies its own limit)
-	runRetention        = 30 * time.Minute
-	runPing             = 15 * time.Second
-	runCheckpointEvery  = time.Second
+	// What runs may hold in memory, overhead included: one chat run, and all runs together with
+	// media results. Proposals, not measured against real traffic. runMaxOutput normally ends a
+	// chat run first; this catches many tiny chunks, whose overhead it doesn't count.
+	runMaxHeld         = 32 << 20
+	runsMaxHeld        = 256 << 20
+	runEventHeldFor    = 64       // a retained event beyond its payload
+	runMaxBody         = 32 << 20 // a run's request body (the /v1 route applies its own limit)
+	runRetention       = 30 * time.Minute
+	runPing            = 15 * time.Second
+	runCheckpointEvery = time.Second
 )
 
 // Run statuses.
@@ -154,6 +161,7 @@ type run struct {
 	notes      []string // facts about the result that a header carries on /v1
 	events     []runEvent
 	bytes      int
+	held       int64         // what it counts towards runManager.held
 	notify     chan struct{} // closed and replaced on every event
 	done       chan struct{} // closed when the run ends
 	cancel     context.CancelFunc
@@ -181,6 +189,8 @@ type runManager struct {
 
 	retention, maxDuration, ping time.Duration
 	maxOutput, maxResult         int
+	maxHeld, maxHeldTotal        int64
+	held                         atomic.Int64 // what all retained runs hold
 
 	mu      sync.Mutex
 	runs    map[string]*run
@@ -194,9 +204,37 @@ type runManager struct {
 
 func newRunManager(s *Server, dir string) *runManager {
 	m := &runManager{s: s, dir: dir, now: time.Now, retention: runRetention, maxDuration: runMaxDuration,
-		ping: runPing, maxOutput: runMaxOutput, maxResult: runMaxResult, runs: map[string]*run{}, quit: make(chan struct{})}
+		ping: runPing, maxOutput: runMaxOutput, maxResult: runMaxResult, maxHeld: runMaxHeld, maxHeldTotal: runsMaxHeld, runs: map[string]*run{}, quit: make(chan struct{})}
+	if s.RunMemoryLimit > 0 {
+		m.maxHeld = s.RunMemoryLimit
+	}
+	if s.RunsMemoryLimit > 0 {
+		m.maxHeldTotal = s.RunsMemoryLimit
+	}
 	m.sweepStart()
 	return m
+}
+
+// charge counts n more bytes held for a chat run, with r.mu held, unless that passes a limit: then it
+// counts nothing and says which.
+func (m *runManager) charge(r *run, n int64) string {
+	if r.held+n > m.maxHeld {
+		return "output_limit"
+	}
+	if m.held.Add(n) > m.maxHeldTotal {
+		m.held.Add(-n)
+		return "memory_limit"
+	}
+	r.held += n
+	return ""
+}
+
+// release ends what a run holds, when it is dropped.
+func (m *runManager) release(r *run) {
+	r.mu.Lock()
+	m.held.Add(-r.held)
+	r.held = 0
+	r.mu.Unlock()
 }
 
 // --- checkpoints ------------------------------------------------------------------
@@ -262,6 +300,8 @@ func (m *runManager) sweepStart() {
 			os.Remove(p)
 			continue
 		}
+		r.held = int64(len(b)) // Its output is back in memory.
+		m.held.Add(r.held)
 		if !r.terminal() || (r.Target != chatTarget && r.Status == runCompleted) {
 			// Unfinished, or a media result that lived in memory only and is
 			// gone: either way the run was interrupted by the restart.
@@ -295,6 +335,7 @@ func (m *runManager) sweepExpired() {
 	}
 	m.mu.Unlock()
 	for _, r := range gone {
+		m.release(r)
 		m.remove(r.ID)
 		m.log(r, "run.expired")
 	}
@@ -440,10 +481,19 @@ func (w *runWriter) Write(b []byte) (int, error) {
 		w.WriteHeader(200)
 	}
 	if !w.sse {
-		if w.body.Len()+len(b) > w.r.m.maxResult {
-			w.r.m.stop(w.r, runFailed, "output_limit")
+		m := w.r.m
+		if w.body.Len()+len(b) > m.maxResult {
+			m.stop(w.r, runFailed, "output_limit")
 			return len(b), nil
 		}
+		if m.held.Add(int64(len(b))) > m.maxHeldTotal {
+			m.held.Add(-int64(len(b)))
+			m.stop(w.r, runFailed, "memory_limit")
+			return len(b), nil
+		}
+		w.r.mu.Lock()
+		w.r.held += int64(len(b))
+		w.r.mu.Unlock()
 		w.body.Write(b)
 		return len(b), nil
 	}
@@ -482,15 +532,25 @@ func (w *runWriter) event(block string) {
 	defer r.mu.Unlock()
 	if e, ok := obj["error"].(map[string]any); ok {
 		r.Error = e
+		r.held += int64(len(payload))
+		m.held.Add(int64(len(payload)))
 		r.emit("error", []byte(payload))
 		return
 	}
-	r.bytes += len(payload)
-	if r.bytes > m.maxOutput {
+	stop := func(reason string) {
 		if r.stopStatus == "" {
-			r.stopStatus, r.stopReason = runFailed, "output_limit"
+			r.stopStatus, r.stopReason = runFailed, reason
 			r.cancel()
 		}
+	}
+	r.bytes += len(payload)
+	if r.bytes > m.maxOutput {
+		stop("output_limit")
+		return
+	}
+	// Twice: it is kept as an event and folded into the output, which can't grow by more than it.
+	if reason := m.charge(r, 2*int64(len(payload))+runEventHeldFor); reason != "" {
+		stop(reason)
 		return
 	}
 	r.output.add(obj)
@@ -702,6 +762,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		m.mu.Lock()
 		delete(m.runs, r.ID)
 		m.mu.Unlock()
+		m.release(r)
 		m.remove(r.ID)
 		r.span.End()
 		status := rw.status
@@ -791,6 +852,10 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 			r.Error = map[string]any{"type": "server_error", "code": "upstream_error", "message": "The run ended without a result."}
 		}
 	}
+	if rw.body.Len() > 0 && r.result == nil { // The error was taken from it, if anything was.
+		r.held -= int64(rw.body.Len())
+		m.held.Add(-int64(rw.body.Len()))
+	}
 	now := m.now()
 	exp := now.Add(m.retention)
 	r.EndedAt, r.ExpiresAt = &now, &exp
@@ -860,6 +925,7 @@ func (m *runManager) trim(owner string) {
 		r.mu.Unlock()
 		if done {
 			delete(m.runs, r.ID)
+			m.release(r)
 			m.remove(r.ID)
 			m.log(r, "run.dismissed")
 			excess--
@@ -976,6 +1042,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 			m.mu.Lock()
 			delete(m.runs, r.ID)
 			m.mu.Unlock()
+			m.release(r)
 			m.remove(r.ID)
 			m.log(r, "run.dismissed")
 			writeJSON(w, 200, map[string]any{"id": r.ID, "object": "localbase.run.deleted", "deleted": true})
