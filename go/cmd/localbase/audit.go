@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -59,6 +60,14 @@ func auditUpgrade(e *env, event, from, to, sha256, outcome string) {
 		"from_version", from, "to_version", to, "build", sha256, "outcome", outcome)
 }
 
+// versionForAudit is what a binary said its version is, if it is one: whatever else it says stays out.
+func versionForAudit(v string) string {
+	if !upgrade.Compare(v, "v0.0.0").Known {
+		return "unknown"
+	}
+	return v
+}
+
 // upgradeOutcome is how an Apply ended, in words from a short list.
 func upgradeOutcome(res upgrade.Result, err error) string {
 	var smoke *upgrade.SmokeFailed
@@ -89,10 +98,16 @@ func auditFailureClass(err error) string {
 	return "write-failed"
 }
 
+// auditTargetRe is what a target can be in the log, as on the routes.
+var auditTargetRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$`)
+
 // auditChange records a change made from the command line, in the line the route for the
 // same change writes: same event, same action word, same target. Unlike a route it isn't
 // rate limited, since each line is a process someone on this machine started.
 func auditChange(e *env, area, action, targetKind, targetID string, attrs ...any) {
+	if !auditTargetRe.MatchString(targetID) {
+		targetID = "" // from a file someone else may have written: the same rule as the routes
+	}
 	auditCLI(e, "Administration change.", append([]any{"event", "audit." + area + "-changed", "action", action,
 		"actor_kind", "cli", "actor_id", "", "target_kind", targetKind, "target_id", targetID}, attrs...)...)
 }

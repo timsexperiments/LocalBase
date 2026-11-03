@@ -512,7 +512,7 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 	// What it goes back to, for the record, if the file will say.
 	to := "unknown"
 	if v, err := upgrade.RunVersion(binary + upgrade.PreviousSuffix); err == nil {
-		to = v
+		to = versionForAudit(v)
 	}
 	if err := upgrade.Rollback(binary, ops); err != nil {
 		auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "failed")

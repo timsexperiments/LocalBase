@@ -15,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
@@ -241,6 +242,32 @@ func TestUpgradeOutcome(t *testing.T) {
 	} {
 		if got != want {
 			t.Errorf("%q, want %q", got, want)
+		}
+	}
+}
+
+// A target from a file someone else wrote is only logged in the shape of an id.
+func TestAnOddTargetIsNotLogged(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	dir := filepath.Join(t.TempDir(), "root")
+	r, err := root.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{Root: r, warnings: &bytes.Buffer{}}
+	auditChange(e, "imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
+	auditChange(e, "imports", "add-definition", "model", "ok.id-1")
+	lines := auditLines(t, dir)
+	if len(lines) != 2 || lines[0].TargetID != "" || lines[1].TargetID != "ok.id-1" || lines[0].Event != "audit.imports-changed" {
+		t.Errorf("%+v", lines)
+	}
+}
+
+func TestVersionForAudit(t *testing.T) {
+	for in, want := range map[string]string{"0.2.0": "0.2.0", "9.9.9": "9.9.9", "not a version": "unknown", "": "unknown",
+		"0.2.0\nPLANTED": "unknown", strings.Repeat("9", 100000): "unknown"} {
+		if got := versionForAudit(in); got != want {
+			t.Errorf("%.40q: %.40q, want %q", in, got, want)
 		}
 	}
 }
