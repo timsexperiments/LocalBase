@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
@@ -536,7 +537,13 @@ func RefreshFeed(ctx context.Context, rootDir string, o RefreshOptions) RefreshR
 	}
 	client := o.Client
 	if client == nil {
-		client = &http.Client{}
+		// The feed may be on a private host the person named; its redirects may not.
+		host := ""
+		if u, err := url.Parse(s.URL); err == nil {
+			host = u.Hostname()
+		}
+		client = netguard.Policy{AllowHosts: []string{host}}.Client()
+		defer client.CloseIdleConnections()
 	}
 	ctx, cancel := context.WithTimeout(ctx, feedRequestTimeout)
 	defer cancel()

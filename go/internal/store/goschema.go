@@ -192,6 +192,30 @@ const (
 	MaxConnectionsPerIPKey = "gateway.max-connections-per-ip"
 )
 
+// The opt-ins for imports (DESIGN §31.2). Only the CLI on the host sets them, never
+// an API route. Allowing a LAN mirror does not allow reading this machine's files.
+const (
+	PrivateImportsKey   = "imports.allow-private"
+	LocalPathImportsKey = "imports.allow-local-paths"
+)
+
+func (s *Store) settingOn(ctx context.Context, key string) bool {
+	v, ok, err := s.Setting(ctx, key)
+	return err == nil && ok && v == "on"
+}
+
+// PrivateImportsAllowed reports the opt-in to sources at private addresses. An
+// unreadable setting means no.
+func (s *Store) PrivateImportsAllowed(ctx context.Context) bool {
+	return s.settingOn(ctx, PrivateImportsKey)
+}
+
+// LocalPathImportsAllowed reports the opt-in to local paths through the API and
+// pages. An unreadable setting means no.
+func (s *Store) LocalPathImportsAllowed(ctx context.Context) bool {
+	return s.settingOn(ctx, LocalPathImportsKey)
+}
+
 // Setting reads a Go-only setting ("" and false when unset).
 func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
 	var v string
