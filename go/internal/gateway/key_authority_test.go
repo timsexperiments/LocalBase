@@ -542,3 +542,26 @@ func TestKeyRulesThroughARealSession(t *testing.T) {
 		t.Fatalf("after the role was narrowed: %d %s", status, out)
 	}
 }
+
+// Which permission access management needs is read from the body. Only a clear test-policy gets by
+// on access:read. A body that can't be read isn't acted on, whichever key sends it.
+func TestAccessPermissionComesFromAClearAction(t *testing.T) {
+	f := newKeyFixture(t)
+	_, reader := f.key("reader", 0, "access:read")
+	const testPolicy = `{"action":"test-policy","identity":{"issuer":"https://id.example.com","subject":"someone"}}`
+	// Past the permission check: there is no provider to test against here.
+	if code, _, body := f.post(reader, "/_localbase/access-management", testPolicy); code != 409 {
+		t.Fatalf("a clear test-policy on access:read: %d %s", code, body)
+	}
+	for _, body := range []string{`{"action":"disable"}`, `{"action":"remove-registration","registrationId":"x"}`, `{"action":"test-email-delivery","to":"someone@example.com"}`} {
+		if code, _, answer := f.post(reader, "/_localbase/access-management", body); code != 403 {
+			t.Errorf("%s on access:read: %d %.120s", body, code, answer)
+		}
+	}
+	for _, body := range []string{`{"action":"test-policy"`, `{"action":7}`, `[]`, `not json`, `{"action":"test-policy","x":`} {
+		code, _, answer := f.post(reader, "/_localbase/access-management", body)
+		if code != 400 && code != 403 {
+			t.Errorf("%s: %d %.120s", body, code, answer)
+		}
+	}
+}

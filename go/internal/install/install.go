@@ -205,11 +205,17 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 	if existing, ok := size(out); ok {
 		if existing < a.ExpectedSizeBytes {
 			// A truncated final file becomes the partial download to resume.
+			// A failure here is reported rather than downloaded past: the bytes are this model's, and
+			// the directory they're in is about to be written to.
 			if p, ok := size(partial); !ok {
-				os.Rename(out, partial)
+				if err := os.Rename(out, partial); err != nil {
+					return err
+				}
 			} else if p > a.ExpectedSizeBytes || existing > p {
 				os.Remove(partial)
-				os.Rename(out, partial)
+				if err := os.Rename(out, partial); err != nil {
+					return err
+				}
 			} else {
 				os.Remove(out)
 			}

@@ -36,7 +36,7 @@ Ignoring these is the right call, in every use:
 
 ## `errcheck`: the per-file baseline
 
-The 50 path rules in `.golangci.yml` cover 111 calls. **They are a list of what has not been reviewed
+The 49 path rules in `.golangci.yml` cover the calls left. **They are a list of what has not been reviewed
 as correct, not a claim that it is.** They exist so the job can start green and catch new problems.
 A function not listed for a file still fails, but a new call to a listed function in that file does
 not. Remove a rule when its calls are handled.
@@ -52,6 +52,27 @@ they are not in this change.
 | `internal/catalog/feed.go`, `runtime_install.go`, `web/csrf.go` | `os.MkdirAll` | Usually surfaces at the next write. |
 
 Four files carry `is not checked`, which excuses any call there rather than named ones: `cmd/localbase/config.go`, `internal/catalog/feed.go`, `internal/runtime/service.go` and `internal/video/convert.go`. A new unchecked call in those isn't caught.
+
+### Reviewed by risk
+
+Every excused or swallowed call in `internal/auth`, `internal/store`, `internal/library`, `internal/acquire`, `internal/install` and the gateway and CLI management and configuration paths. `internal/store` and `internal/library` have none. Fixed means the error is now handled.
+
+| Where | Call | Decision and why |
+| --- | --- | --- |
+| `gateway/manage.go`, the action read | `json.Unmarshal` | **Fixed.** It decides `access:read` or `access:manage`. It was already safe, because a body that can't be read is refused with a 400 whichever key sends it; now that is explicit and tested |
+| `auth/policy.go` | `rows.Scan` | **Fixed in its own PR.** A role it can't read would get a new id |
+| `cmd/localbase/config.go` | `MarkRestartPendingUnlessChanged` | **Fixed.** A restart owed but not recorded is now said |
+| `install/install.go` | `os.Rename` of a truncated file, 2 | **Fixed.** Now reported, not downloaded past |
+| `auth/email.go` | `conn.SetDeadline` | **Fixed.** Without it a silent mail server holds a sign-in |
+| `auth/email.go` | `qp.Write`, `qp.Close` | Into a buffer: can't fail |
+| `auth/email.go` | `client.Close` | The message has been sent or has already failed |
+| `gateway/manage.go` | `json.Unmarshal` of `in.raw` | The strict decode has just accepted it |
+| `gateway/manage.go` | `json.Unmarshal` in `nullField` | A body that isn't an object has no such member |
+| `gateway/placement.go`, `cmd/localbase/placement.go` | `json.Unmarshal` | This process's own marshalled struct |
+| `install/install.go` | `os.Chmod` of `.checksums.json.lock.db` | A lock file with no data, in a private folder |
+| `install/install.go` | `conn.Close`, the deferred `ROLLBACK` | Cleanup of a lock held by the connection; the kernel releases it |
+| `acquire/resolve.go` | `io.Copy` to discard | Draining a response before reuse |
+| `cmd/localbase/config.go`, `maintenance.go` | `st.Close` | At the end of the command |
 
 The rest I have not gone through one by one. By name they are mostly `json.Unmarshal` (24), JSON
 encoding and decoding (19), `Close` on stores at exit (7), and `io.Copy` (5).

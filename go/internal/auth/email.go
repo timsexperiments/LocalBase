@@ -142,7 +142,11 @@ func SendEmail(c *EmailConfig, to, subject, text string) error {
 	if err != nil {
 		return categorize(err)
 	}
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	// Without it, a server that stops answering holds the sign-in that's waiting for this.
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		_ = conn.Close()
+		return categorize(err)
+	}
 	client, err := smtp.NewClient(conn, c.Host)
 	if err != nil {
 		conn.Close()
@@ -174,8 +178,8 @@ func SendEmail(c *EmailConfig, to, subject, text string) error {
 	}
 	var body bytes.Buffer
 	qp := quotedprintable.NewWriter(&body)
-	qp.Write([]byte(strings.ReplaceAll(text, "\n", "\r\n")))
-	qp.Close()
+	_, _ = qp.Write([]byte(strings.ReplaceAll(text, "\n", "\r\n"))) // Into a buffer: can't fail.
+	_ = qp.Close()
 	fmt.Fprintf(w, "From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%s@%s>\r\nMIME-Version: 1.0\r\n"+
 		"Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n%s",
 		c.From, to, mime.QEncoding.Encode("utf-8", subject), time.Now().Format(time.RFC1123Z), RandomToken(16), c.Host, body.String())

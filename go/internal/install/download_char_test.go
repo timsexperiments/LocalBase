@@ -427,3 +427,26 @@ func TestInstallRefusesBeforeDownloading(t *testing.T) {
 		t.Errorf("%d requests", srv.requests())
 	}
 }
+
+// A truncated file that can't become the partial is reported, not downloaded past.
+func TestATruncatedFileThatCannotMoveIsReported(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	srv := newArtifactServer(t, map[string][]byte{"m.bin": modelBytes})
+	dir := filepath.Join(t.TempDir(), "models")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "m.bin"), modelBytes[:10], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	err := installTo(t, dir, specWith(srv.URL, artifactOf("m.bin", modelBytes)), nil)
+	if err == nil || !strings.Contains(err.Error(), "rename") {
+		t.Errorf("%v", err)
+	}
+}

@@ -114,7 +114,7 @@ linters:
         text: "io\\.Copy"
       - path: ^internal/auth/email\.go$
         linters: [errcheck]
-        text: "client\\.Close|conn\\.SetDeadline|qp\\.Close|qp\\.Write"
+        text: "client\\.Close"
       - path: ^internal/auth/policy\.go$
         linters: [errcheck]
         text: "rows\\.Scan"
@@ -145,9 +145,6 @@ linters:
       - path: ^internal/gateway/images\.go$
         linters: [errcheck]
         text: "pw\\.Write"
-      - path: ^internal/gateway/manage\.go$
-        linters: [errcheck]
-        text: "json\\.Unmarshal"
       - path: ^internal/gateway/metadata\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
