@@ -73,10 +73,11 @@ type UI struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
 
-	results   resultStore
-	notes     labNotes
-	previewMu sync.Mutex
-	previews  map[string][]byte // voice samples, by model and voice
+	results     resultStore
+	notes       labNotes
+	previewMu   sync.Mutex
+	localSignIn *template.Template
+	previews    map[string][]byte // voice samples, by model and voice
 }
 
 func New(d Deps) *UI {
@@ -128,9 +129,10 @@ func New(d Deps) *UI {
 			return fmt.Sprintf("%.1f", 100*float64(max(part, 0))/float64(whole))
 		},
 	}
+	u.localSignIn = template.Must(template.New("localsignin.html").Funcs(funcs).ParseFS(templateFS, "templates/localsignin.html"))
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "signin", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin"} {
+	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -315,8 +317,7 @@ func (u *UI) need(permission string, next http.HandlerFunc) http.HandlerFunc {
 		p := u.principal(r)
 		if !p.Authenticated() {
 			if !u.d.SignInEnabled {
-				w.WriteHeader(http.StatusUnauthorized)
-				u.render(w, r, "signin", map[string]any{})
+				u.LoginHelp(w, r, http.StatusUnauthorized)
 				return
 			}
 			if r.Header.Get("HX-Request") == "true" {
