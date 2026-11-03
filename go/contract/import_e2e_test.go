@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	goruntime "runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -89,13 +90,15 @@ func serveBytes(w http.ResponseWriter, r *http.Request, b []byte) {
 }
 
 type e2e struct {
-	t      *testing.T
-	root   string
-	env    []string
-	base   string
-	key    string
-	noAuth bool
-	stop   func()
+	t    *testing.T
+	root string
+	env  []string
+	// noLLMPortFlag leaves the LLM's port to the configuration, for tests of what sets it.
+	noLLMPortFlag bool
+	base          string
+	key           string
+	noAuth        bool
+	stop          func()
 	// kill ends the gateway with SIGKILL (no shutdown at all).
 	kill   func()
 	outDir string
@@ -170,6 +173,9 @@ func (e *e2e) serve(extra ...string) {
 	port, llmPort := freePort(), freePort()
 	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
 		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
+	if e.noLLMPortFlag {
+		args = slices.DeleteFunc(args, func(a string) bool { return a == "--llm-port" || a == fmt.Sprint(llmPort) })
+	}
 	cmd := e.command(args...)
 	cmd.Env = append(cleanEnv(), e.env...)
 	logf, _ := mustCreate(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
