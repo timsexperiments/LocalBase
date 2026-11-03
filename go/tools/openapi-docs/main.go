@@ -365,7 +365,30 @@ func render(raw []byte) ([]byte, error) {
 			d.responses(&b, o.op)
 		}
 	}
+	d.errorCodes(&b)
 	return append(bytes.TrimRight(b.Bytes(), "\n"), '\n'), nil
+}
+
+// errorCodes is the list clients branch on, sorted so that its order can't change the page.
+func (d document) errorCodes(b *bytes.Buffer) {
+	schema := asObject(asObject(asObject(d.root["components"])["schemas"])["ErrorCode"])
+	list, _ := schema["enum"].([]any)
+	if len(list) == 0 {
+		return
+	}
+	codes := make([]string, 0, len(list))
+	for _, c := range list {
+		codes = append(codes, fmt.Sprint(c))
+	}
+	sort.Strings(codes)
+	b.WriteString("## Error codes\n\n")
+	if text := oneLine(str(schema, "description")); text != "" {
+		b.WriteString(text + "\n\n")
+	}
+	for _, c := range codes {
+		fmt.Fprintf(b, "- `%s`\n", c)
+	}
+	b.WriteString("\n")
 }
 
 func sortedKeysOf[V any](m map[string]V) []string {
