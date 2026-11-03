@@ -112,6 +112,12 @@ func Open(dir string) (*Root, error) {
 	return &Root{Dir: dir}, nil
 }
 
+// onlyLicenses: the v0.1.0 installer writes licenses/ into the default data directory,
+// so a root holding only that real directory is one nobody has used yet.
+func onlyLicenses(entries []os.DirEntry) bool {
+	return len(entries) == 1 && entries[0].Name() == "licenses" && entries[0].IsDir()
+}
+
 // Init creates the directory and marker if absent and returns the root.
 // A nonempty directory without a marker, / and the home directory are rejected.
 func Init(dir string) (*Root, error) {
@@ -125,7 +131,7 @@ func Init(dir string) (*Root, error) {
 	if r, err := Open(dir); err == nil {
 		return r, nil
 	}
-	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 && !onlyLicenses(entries) {
 		return nil, fmt.Errorf("Refusing to initialize nonempty LocalBase root: %s.", dir)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
