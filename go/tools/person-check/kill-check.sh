@@ -12,6 +12,12 @@ alive() { n=0; for x in $1; do kill -0 "$x" 2>/dev/null && n=$((n + 1)); done; e
 bad=0
 try() {
   what=$1
+  # A listener here before the run isn't the run's, and nothing below may touch it.
+  if [ -n "$(listeners)" ]; then
+    echo "FAIL $what: NOT EXERCISED: these ports are already held: [$(listeners)]"
+    bad=1
+    return
+  fi
   sh tools/person-check.sh "$first" >"$log" 2>&1 </dev/null &
   s=$!
   # Wait for a backend, so there's something to orphan. No backend means this proved nothing.
@@ -19,7 +25,8 @@ try() {
   sleep 1
   gw=$(lsof -nP -iTCP:$((first + 2)) -sTCP:LISTEN -t 2>/dev/null | head -1)
   be=$(lsof -nP -iTCP:$((first + 3)) -sTCP:LISTEN -t 2>/dev/null | head -1)
-  drv=$(ps -axo pid=,command= | grep "$here/tools/person-check/run.ts" | grep -v grep | awk '{print $1}' | head -1)
+  # The script records the check it started.
+  drv=$(cat "$here/.cache/person-check.browser.pid.child" 2>/dev/null)
   if [ -z "$gw" ] || [ -z "$be" ] || [ -z "$drv" ]; then
     echo "FAIL $what: NOT EXERCISED: driver [$drv], gateway [$gw], backend [$be]"
     bad=1
@@ -41,7 +48,6 @@ try() {
   fi
   wait "$s" 2>/dev/null
   for x in $list; do kill -9 "$x" 2>/dev/null; done
-  for x in $(listeners); do kill -9 "$x" 2>/dev/null; done
   sleep 2
 }
 try driver
