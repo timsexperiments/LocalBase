@@ -1976,7 +1976,7 @@
         "operationId": "setModelPlacement",
         "summary": "Choose a model's placement",
         "tags": ["Model management"],
-        "description": "It applies on the next load and never restarts the model. The route also needs `models:read`, and an unknown model answers 404 before the permission is checked.",
+        "description": "It applies on the next load and never restarts the model. An unknown model answers 404 before the permission is checked.",
         "x-localbase-permission": "models:manage",
         "x-localbase-stability": "unstable",
         "requestBody": {
@@ -2029,14 +2029,13 @@
             "description": "The model is loading (`model_loading`), or this cannot fit (`placement_does_not_fit`).",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           }
-        },
-        "x-localbase-also-requires": ["models:read"]
+        }
       },
       "delete": {
         "operationId": "resetModelPlacement",
         "summary": "Go back to automatic placement",
         "tags": ["Model management"],
-        "description": "It applies on the next load and never restarts the model. The route also needs `models:read`, and an unknown model answers 404 before the permission is checked.",
+        "description": "It applies on the next load and never restarts the model. An unknown model answers 404 before the permission is checked.",
         "x-localbase-permission": "models:manage",
         "x-localbase-stability": "unstable",
         "responses": {
@@ -2056,8 +2055,7 @@
             "description": "The model is loading (`model_loading`).",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           }
-        },
-        "x-localbase-also-requires": ["models:read"]
+        }
       }
     },
     "/_localbase/models/{model_id}/unload": {
@@ -2066,7 +2064,7 @@
         "operationId": "unloadModel",
         "summary": "Unload a loaded model",
         "tags": ["Model management"],
-        "description": "Requests holding the model finish first. Its queued requests are refused, and a later request loads it again. The route also needs `models:read`.",
+        "description": "Requests holding the model finish first. Its queued requests are refused, and a later request loads it again.",
         "x-localbase-permission": "models:manage",
         "x-localbase-stability": "unstable",
         "parameters": [
@@ -2110,8 +2108,7 @@
             "description": "Still busy: `model_busy`. The model keeps running.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelBusyError"}}}
           }
-        },
-        "x-localbase-also-requires": ["models:read"]
+        }
       }
     },
     "/_localbase/runs": {
