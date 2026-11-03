@@ -62,7 +62,9 @@ type Browser struct {
 	magicWork chan struct{}
 	// magicDropped is when a dropped request was last logged, as Unix seconds.
 	magicDropped atomic.Int64
-	states       map[string]loginState
+	// magicFailed is when a link that could not be issued was last logged, as Unix seconds.
+	magicFailed atomic.Int64
+	states      map[string]loginState
 }
 
 type oidcRuntime struct {
@@ -642,7 +644,15 @@ func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliv
 		defer func() { <-b.magicWork }()
 		ctx := context.Background()
 		token, to, err := IssueMagicLink(ctx, b.Store, email, MagicIssuer(b.Config.Origin))
-		if err != nil || token == "" {
+		if err != nil {
+			// Sparingly, since anyone can ask as often as the database keeps failing.
+			now := time.Now().Unix()
+			if last := b.magicFailed.Load(); now-last >= 60 && b.magicFailed.CompareAndSwap(last, now) {
+				b.Log.Error("A magic link could not be issued.", "event", "auth.magic-link-issue-failed", "error", err.Error())
+			}
+			return
+		}
+		if token == "" {
 			return
 		}
 		if err := deliver(to, b.Config.Origin+MagicCallbackPath+"#"+token); err != nil {
