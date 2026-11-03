@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+# A runner has no other work on it, so tests get a wide block to pick from.
+env:
+  LOCALBASE_TEST_PORTS: 24000-29999
+
 jobs:
   test:
     runs-on: macos-14
