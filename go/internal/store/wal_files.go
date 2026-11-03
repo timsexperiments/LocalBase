@@ -134,7 +134,7 @@ func checkWALBelongs(path string) error {
 	if err != nil || strconv.FormatUint(uint64(token), 10) == string(recorded) {
 		return nil
 	}
-	return fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, as after copying a whole root, remove %s and try again", wal, path+ownerSuffix)
+	return fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, remove %s and try again", wal, path+ownerSuffix)
 }
 
 // readOnlyRoot: this failed because nothing can be written here, not because the database is busy.
