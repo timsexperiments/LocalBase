@@ -2,13 +2,34 @@
 // end to end (leave and return, the pill, Stop, the draft, a dropped
 // connection). Exits 1 when any check fails.
 const [cdpBase, base] = process.argv.slice(2);
+// This script leaves its gateway changed, and on one it has already used it fails in ways that
+// say nothing about the page. So: once per gateway, known by when it started.
+{
+  const marker = new URL("../../.cache/chat-runs-check.gateway", import.meta.url).pathname;
+  const health = await (await fetch(base + "/health")).json();
+  if (typeof health.uptimeSeconds === "number") {
+    const started = Date.now() / 1000 - health.uptimeSeconds;
+    const last = (await Bun.file(marker).text().catch(() => "")).trim().split(" ");
+    if (last[0] === base && Math.abs(Number(last[1]) - started) < 5) {
+      console.error("this check needs a fresh gateway: restart it (this run already used the one at " + base + ")");
+      process.exit(4);
+    }
+    await Bun.write(marker, base + " " + started + "\n");
+  }
+}
 const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
 const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
+// With its browser gone nothing here can finish: stop rather than wait on it.
+ws.addEventListener("close", () => process.exit(2));
 let id = 0; const waiting = new Map();
 ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-const send = (method, params = {}) => new Promise((res, rej) => { const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });
+const send = (method, params = {}) => new Promise((res, rej) => { if (method === "Emulation.setDeviceMetricsOverride") askedWidth = params.width; const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
+// to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
+let askedWidth = 0;
+const pageFits = () => `Math.max(document.documentElement.scrollWidth, innerWidth) <= ${askedWidth}`;
 const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
@@ -812,6 +833,7 @@ for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get"
     return { small, tiny: [...tiny] };
   })()`);
   check(sizes.small.length === 0 && sizes.tiny.length === 0, `at 320, ${path}: targets at least 44 px and text at least 12 px${sizes.small.length || sizes.tiny.length ? ": " + JSON.stringify(sizes).slice(0, 320) : ""}`);
+  check(await ev(pageFits()), `at 320, ${path}: no sideways scroll`);
 }
 
 // --- The landing while a result is being made (DESIGN §27) ------------------------------------
