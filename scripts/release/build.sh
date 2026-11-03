@@ -1,5 +1,3 @@
-  commit="$(git -C "$repo" rev-parse HEAD)"
-  date="$(git -C "$repo" show -s --format=%cI HEAD)"
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
