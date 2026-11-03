@@ -231,6 +231,21 @@ func RevokeLocalSession(ctx context.Context, st *store.Store, id string) (bool, 
 	return n > 0, err
 }
 
+// RevokeAllSessions ends every browser session, local or through a provider, and every
+// unused local link. It reports how many sessions it ended.
+func RevokeAllSessions(ctx context.Context, st *store.Store) (int, error) {
+	res, err := st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions`)
+	if err != nil {
+		return 0, err
+	}
+	browser, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	local, err := RevokeAllLocal(ctx, st)
+	return int(browser) + local, err
+}
+
 // RevokeAllLocal ends every local session and unused link.
 func RevokeAllLocal(ctx context.Context, st *store.Store) (int, error) {
 	if _, err := st.DB.ExecContext(ctx, `DELETE FROM local_login_links`); err != nil {
