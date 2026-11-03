@@ -259,7 +259,7 @@ func (u *UI) renderRunning(w http.ResponseWriter, r *http.Request, notice string
 		summary = fmt.Sprintf("%s is loaded and idle.", item["Name"])
 	}
 	u.render(w, r, "running", map[string]any{
-		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0),
+		"Capacity": capacity, "Available": snap.Available, "Models": models, "Other": max(other, 0), "Host": computerName(),
 		"Item": item, "Starting": state.State == "starting" && item == nil, "Summary": summary,
 		"CanManage": u.caller(r).Can("models:manage"), "Notice": notice, "Failed": failed,
 	})
