@@ -54,7 +54,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &env{Root: r, Store: st, Host: memory.NewHostProvider()}
+	e := &env{Root: r, Store: st, Host: memory.NewHostProvider(), warnings: c.Stderr}
 	if e.Catalog, err = catalog.LoadRoot(r.Dir, nil); err != nil {
 		e.Close()
 		return nil, err

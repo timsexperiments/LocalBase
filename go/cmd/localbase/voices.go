@@ -75,6 +75,7 @@ func voicesCommand() *cli.Command {
 				if err != nil {
 					return nil, voiceCLIError(err)
 				}
+				auditChange(e, "voices", "create", "voice", v.ID)
 				c.Info("Added voice %s", describeVoice(v))
 				c.Info(`Use it with "voice": "%s" on /v1/audio/speech.`, v.ID)
 				return map[string]any{"voice": v}, nil
@@ -85,6 +86,7 @@ func voicesCommand() *cli.Command {
 				if err != nil {
 					return nil, voiceCLIError(err)
 				}
+				auditChange(e, "voices", "delete", "voice", v.ID)
 				c.Info("Removed voice %s (%s)", v.ID, v.Name)
 				return map[string]any{"voice": v}, nil
 			})},

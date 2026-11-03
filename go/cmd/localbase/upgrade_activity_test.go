@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -31,7 +32,7 @@ func TestActivityKeyIsGoneAfterAsking(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st}, srv.URL); err != nil {
+	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL); err != nil {
 		t.Fatal(err)
 	}
 	keys, err := st.ListAPIKeys(context.Background())
@@ -53,7 +54,7 @@ func TestActivityKeyThatCannotBeDeletedIsReported(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st}, srv.URL); err != nil {
+	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL); err != nil {
 		t.Fatalf("the answer was good, so the question should still succeed: %v", err)
 	}
 	if got := stderr.String(); !strings.Contains(got, "temporary key") || !strings.Contains(got, "local-base keys revoke ") {

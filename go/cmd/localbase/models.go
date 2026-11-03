@@ -494,6 +494,7 @@ func modelsInstall() *cli.Command {
 						fmt.Fprintf(os.Stderr, "Failed to install %q: %v\n", id, err)
 						return nil, err
 					}
+					auditChange(e, "models", "install", "model", id)
 					c.Info("Installed: %s", path)
 					installed = append(installed, map[string]string{"modelId": id, "path": path})
 				}
@@ -501,7 +502,7 @@ func modelsInstall() *cli.Command {
 					return nil, err
 				}
 				c.Info("\nAll selected models installed successfully.")
-				return map[string]any{"installed": installed}, nil
+				return e.withAuditResult(map[string]any{"installed": installed}), nil
 			}
 			if len(c.Args) == 0 {
 				return nil, cli.Inputf("Provide a model ID or --all.")
@@ -514,11 +515,12 @@ func modelsInstall() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditChange(e, "models", "install", "model", id)
 			c.Info("Installed: %s", path)
 			if err := activateInstalled(c, e, id); err != nil {
 				return nil, err
 			}
-			return map[string]any{"installed": []map[string]string{{"modelId": id, "path": path}}}, nil
+			return e.withAuditResult(map[string]any{"installed": []map[string]string{{"modelId": id, "path": path}}}), nil
 		}}
 }
 
@@ -535,6 +537,7 @@ func activateInstalled(c *cli.Ctx, e *env, ids ...string) error {
 		if err := e.save(e.Config); err != nil {
 			return err
 		}
+		auditChange(e, "default-models", "set", "model", id)
 		c.Info("%s is now the default LLM.", id)
 		return nil
 	}

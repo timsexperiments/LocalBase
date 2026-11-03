@@ -207,6 +207,7 @@ func modelsImportCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditChange(e, "imports", "import", "model", res.Model.ID)
 			c.Info("Imported %s into %s.", res.Model.ID, res.Dir)
 			c.Info("Downloading a model does not prove it runs; the backend below starts it on first use.")
 			printSelection(c, sel, l.Registry)
@@ -246,6 +247,12 @@ func modelsBackendCommand() *cli.Command {
 			}
 			if err != nil {
 				return nil, err
+			}
+			switch {
+			case c.Has("set"):
+				auditChange(e, "backend", "set", "model", id)
+			case c.Bool("auto"):
+				auditChange(e, "backend", "reset", "model", id)
 			}
 			printSelection(c, s, l.Registry)
 			return map[string]any{"modelId": id, "selection": s}, nil
@@ -344,6 +351,7 @@ func modelsDeleteCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditChange(e, "imports", "delete", "model", id)
 			c.Info("Deleted %s.", id)
 			return map[string]any{"deleted": id}, nil
 		})}
@@ -402,6 +410,7 @@ func backendsCommand() *cli.Command {
 			if err := root.WithOperation(e.Root.Dir, "register backend", func() error { return backends.Add(e.Root.Dir, d) }); err != nil {
 				return nil, cli.Inputf("%v", err)
 			}
+			auditChange(e, "backend", "register", "backend", d.ID)
 			c.Info("Registered backend %s. LocalBase starts %s only when a model you chose it for runs.", d.ID, d.Launch.Command)
 			return map[string]any{"backend": d}, nil
 		})},
@@ -416,6 +425,7 @@ func backendsCommand() *cli.Command {
 					return nil, err
 				}
 				if removed {
+					auditChange(e, "backend", "unregister", "backend", c.Args[0])
 					c.Info("Removed %s. Models set to it keep that choice and show it as unavailable.", c.Args[0])
 				} else {
 					c.Info("%s is not a registered custom backend.", c.Args[0])
@@ -477,6 +487,7 @@ func authProfilesCommand() *cli.Command {
 				return nil, cli.Inputf("%v", err)
 			}
 			pub := p.Public()
+			auditChange(e, "auth-profiles", "add", "auth-profile", pub.ID)
 			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), strings.Join(pub.Origins, ", "))
 			return map[string]any{"profile": pub}, nil
 		})},
@@ -485,6 +496,9 @@ func authProfilesCommand() *cli.Command {
 				removed, err := acquire.RemoveProfile(e.Root.Dir, c.Args[0])
 				if err != nil {
 					return nil, err
+				}
+				if removed {
+					auditChange(e, "auth-profiles", "remove", "auth-profile", c.Args[0])
 				}
 				return map[string]any{"removed": removed}, nil
 			})},
@@ -535,6 +549,7 @@ func modelsAddDefinitionCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditChange(e, "imports", "add-definition", "model", m.ID)
 			c.Info("Added %s. Its files are not downloaded; backend selection on this device is automatic.", m.ID)
 			printSelection(c, sel, l.Registry)
 			return map[string]any{"model": m, "selection": sel}, nil

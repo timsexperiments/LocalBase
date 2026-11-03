@@ -166,8 +166,11 @@ func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string,
 	if err != nil {
 		return false, "", err
 	}
+	auditKeyChange(e, "create", k, "purpose", "upgrade")
 	defer func() {
-		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr != nil {
+		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr == nil {
+			auditKeyChange(e, "delete", k, "purpose", "upgrade")
+		} else {
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()

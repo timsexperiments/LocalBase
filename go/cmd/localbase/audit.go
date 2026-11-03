@@ -73,8 +73,31 @@ func auditChange(e *env, area, action, targetKind, targetID string, attrs ...any
 }
 
 // auditKeyChange names the key and the permissions it now has, never its secret.
-func auditKeyChange(e *env, action string, k *store.APIKey) {
-	auditChange(e, "api-key", action, "api-key", k.ID, "scopes", strings.Join(k.Scopes, ","))
+func auditKeyChange(e *env, action string, k *store.APIKey, attrs ...any) {
+	auditChange(e, "api-key", action, "api-key", k.ID, append([]any{"scopes", strings.Join(k.Scopes, ",")}, attrs...)...)
+}
+
+// auditOutcome goes in a command's result when the result isn't a map.
+type auditOutcome struct {
+	AuditWritten *bool  `json:"auditWritten,omitempty"`
+	AuditError   string `json:"auditError,omitempty"`
+}
+
+func (e *env) auditOutcome() auditOutcome {
+	if e.auditFailure == "" {
+		return auditOutcome{}
+	}
+	written := false
+	return auditOutcome{&written, e.auditFailure}
+}
+
+// withAuditResult says in a --json result that a record of this command couldn't be written. withEnv
+// does this for the commands it runs.
+func (e *env) withAuditResult(data map[string]any) map[string]any {
+	if e.auditFailure != "" {
+		data["auditWritten"], data["auditError"] = false, e.auditFailure
+	}
+	return data
 }
 
 // auditPolicyApplied names the policy by its revision: it holds addresses, which don't go in the log.

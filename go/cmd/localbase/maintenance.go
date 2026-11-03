@@ -57,9 +57,11 @@ func maintenanceCommands() []*cli.Command {
 				if err := st.SaveConfig(context.Background(), cfg); err != nil {
 					return nil, err
 				}
+				e := &env{Root: r, warnings: c.Stderr}
+				auditChange(e, "config", "reset", "configuration", "")
 				c.Info("Database reset complete at %s", r.Dir)
 				c.Info("Initialized default configuration.")
-				return map[string]any{"reset": true, "root": r.Dir}, nil
+				return e.withAuditResult(map[string]any{"reset": true, "root": r.Dir}), nil
 			}},
 		{Name: "uninstall", Summary: "Remove all LocalBase-managed data", Options: []cli.Option{withHelp(yes, "Confirm uninstall")},
 			Run: func(c *cli.Ctx) (any, error) {

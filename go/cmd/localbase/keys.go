@@ -79,10 +79,9 @@ func withEnv(run func(c *cli.Ctx, e *env) (any, error)) func(c *cli.Ctx) (any, e
 			return nil, err
 		}
 		defer e.Close()
-		e.warnings = c.Stderr
 		data, err := run(c, e)
-		if m, ok := data.(map[string]any); ok && e.auditFailure != "" {
-			m["auditWritten"], m["auditError"] = false, e.auditFailure
+		if m, ok := data.(map[string]any); ok {
+			e.withAuditResult(m)
 		}
 		return data, err
 	}
