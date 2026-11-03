@@ -4572,3 +4572,159 @@ Today that is run for curl and the two SDKs, and not run for every editor, agent
 
 **Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
 page, the command and the route. The keys it creates are ordinary keys.
+
+## 29. Usage and activity (design addendum, 2026-11-02, for the operator's review)
+
+Someone running this for themselves, or for a few people and apps, should be able to answer: which
+key is busy, which model, how many tokens, how often it fails, and how slow it is. Today that means
+reading logs. **Nothing here is built yet.**
+
+### 29.1 What is stored, and what never is
+
+**Hourly totals, not a log of requests.** One row per hour, principal, route, model and status. There
+is no per-request timeline, so nobody can reconstruct when a person sent any one message, and the
+table stays small: a busy gateway writes a few thousand rows a month.
+
+| Stored | How |
+|---|---|
+| Hour | The start of the hour, UTC. The only timestamp |
+| Principal | Its kind and id: a key's id, a browser identity's owner hash, or `local`, `environment`, `no-auth`. Never an email or a name |
+| Route | One of a fixed list: `chat`, `embeddings`, `decision`, `speech`, `transcription`, `translation`, `image`, `image-edit`, `video` |
+| Model id | Only an id the gateway knows. A request naming anything else is stored with no model, so a string a client typed can never land here |
+| Status | The final HTTP status, as a number |
+| Counts and totals | Requests, input tokens, output tokens, and how many requests reported tokens, so a total is not misread as complete |
+| Durations | Sum, queue-wait sum, and a latency histogram (29.3) |
+
+**Never stored:** prompts, completions, request or response bodies, file names, key material, headers,
+IP addresses, user agents, emails, names, request ids, per-request timestamps, error messages, and the
+`user` field clients can send. A key's name is looked up when usage is read, and is not copied here.
+
+**Nothing leaves the machine.** No new network call, no telemetry, and no cost estimates: a local model
+has no per-token price, and a rate made up here would be a number nobody can check. OTLP, when someone
+has configured it, exports what it already does, and this table is not added to it. The diagnostics
+bundle leaves this table out, and backup (§33) will too unless asked.
+
+### 29.2 What counts
+
+Requests to the inference routes that got as far as an identified principal, once each:
+
+- A request refused for its body, its scope, a full queue or memory counts, under that principal. That is
+  what makes an error rate true. A request with no valid key has no principal and is not counted; the
+  logs cover those.
+- **Failed, refused and cancelled are separate.** `failed` is 5xx, `refused` is any other 4xx, `cancelled` is
+  499, a client going away. The error rate is `(failed + refused) / requests`, so people closing a tab
+  do not look like an outage.
+- **A stream that fails after it started counts as failed,** though its HTTP status was 200.
+- **A detached run (§21) counts once,** as its inner request. The UI's in-process calls count as the signed-in
+  person.
+- **A video job counts once, when it ends:** completed as 200, failed as 500, cancelled as 499, with the job's whole
+  time as its duration. A refused create counts as a refused request.
+- Not counted: `/v1/models`, `/_localbase`, `/app` pages, health checks.
+
+### 29.3 Percentiles are approximate, and say so
+
+Latency is the time to the last byte, in a histogram with buckets 25% apart from 1 ms to 1 hour, about 70
+in all, stored sparsely. Merging hours gives p50, p95 and p99 over any range, within about 12%. The API marks
+them `approximate`, and the page shows them with a `~`. Exact percentiles would need a row per request, which
+29.1 rules out. Time to first token is not recorded in this version.
+
+### 29.4 Storage, retention and clearing
+
+- **Table:** `usage_hourly` in `local-base.db`, `CREATE TABLE IF NOT EXISTS`. `go_schema` stays 1 and TS ignores it,
+  like `local_sessions`. File permissions are the root's (§27).
+- **Writing:** counted in memory and written every 30 s and at shutdown, in one transaction. So a request never
+  waits on SQLite for this, and a crash loses at most 30 s of counts. Only `serve` writes. A failed write logs
+  `usage.flush-failed`, keeps the counts, and never fails a request.
+- **Retention:** 30 days by default, from 1 to 365, in `go_settings` key `usage.retention-days`. Pruned hourly, and
+  reads never return anything older.
+- **Turning it off:** `usage.recording`, on by default. Off, nothing is counted or written; what exists stays until it
+  is cleared or ages out.
+- **Clearing:** `POST /_localbase/usage` with `{"action":"clear"}`, or `local-base usage clear --yes`. It removes
+  every row, and optionally only those before a date. The API also empties the in-memory counts. **The limit:** the CLI
+  writes to the database directly, so with a gateway running, up to the last 30 s of counts can reappear after it clears.
+
+### 29.5 Who sees what
+
+| Caller | Sees | Changes |
+|---|---|---|
+| Any authenticated principal | Its own usage only. `scope=self`, the default. A key cannot name another principal | Nothing |
+| `models:manage` or `system:read` | Everything: `scope=all`, totals and by key, person, model or route | Nothing |
+| `system:manage` | The same with `system:read` | Retention, recording, clearing |
+| The CLI on this computer | Everything, as with `keys` | Everything |
+
+A caller asking for `scope=all` or another principal without the permission gets 403, not an empty answer. `--no-auth`
+has one principal, so `self` and `all` match.
+
+**Per-key against total:** `group=principal` splits by key and person, and `principal=<id>` narrows to one. With no
+`group`, the answer has totals only.
+
+### 29.6 `GET /_localbase/usage`
+
+Query: `range=24h|7d|30d` (default `7d`) or `from` and `to` as RFC 3339, `scope=self|all`,
+`group=principal|model|route` (repeatable), and the filters `principal`, `model`, `route`. `step` is `hour` up to 7 days,
+else `day`. Times outside retention are clipped, and `range.from` says where the answer really starts.
+
+```json
+{"object": "localbase.usage", "scope": "self",
+ "range": {"from": "2026-10-26T00:00:00Z", "to": "2026-11-02T23:00:00Z", "step": "hour"},
+ "recording": true, "retentionDays": 30, "pendingSeconds": 30,
+ "totals": {"requests": 1240, "failed": 3, "refused": 12, "cancelled": 7, "errorRate": 0.0121,
+   "inputTokens": 91234, "outputTokens": 40112, "requestsWithTokens": 1190,
+   "latencyMs": {"p50": 420, "p95": 2800, "p99": 9100, "approximate": true}, "queueWaitMsAvg": 12},
+ "groups": [{"principal": {"kind": "api-key", "id": "key_…", "name": "my editor"}, "model": "…", "route": "chat",
+   "requests": 800, "failed": 1, "refused": 2, "cancelled": 3, "errorRate": 0.0038,
+   "inputTokens": 60000, "outputTokens": 30000, "requestsWithTokens": 790,
+   "latencyMs": {"p50": 400, "p95": 2500, "p99": 8000, "approximate": true}, "queueWaitMsAvg": 9}],
+ "series": [{"t": "2026-11-02T22:00:00Z", "requests": 12, "failed": 0, "refused": 0, "cancelled": 0,
+   "inputTokens": 900, "outputTokens": 400, "p95Ms": 2100}]}
+```
+
+- `principal.name` is present only for a key that still exists, read from `api_keys`. A browser identity shows as
+  `{"kind":"browser","id":"browser:ab12…"}`, because the name was never stored.
+- `groups` is ordered by requests, most first. It is a count, not a ranking of anything's quality.
+- A period with no requests is left out of `series`.
+
+**Changes:** `POST /_localbase/usage` with `{"action":"clear","before":"<RFC 3339, optional>"}`,
+`{"action":"set-retention","days":30}` or `{"action":"set-recording","enabled":false}`, and `system:manage`. Each writes
+`audit.usage-changed` with ids only.
+
+The browser gets it through `/app/api`, like the other admin reads. It goes in `openapi.json`, and the drift tests of
+§28.2 apply.
+
+### 29.7 `local-base usage`
+
+```text
+local-base usage [--range 24h|7d|30d] [--from <time>] [--to <time>] [--by key|model|route]...
+                 [--key <id>] [--model <id>] [--route <route>]
+local-base usage clear [--before <time>] --yes
+local-base usage retention <days>
+local-base usage recording on|off
+```
+
+It reads the database directly, so it works with the gateway stopped, and with one running it can be up to 30 s behind. A plain
+table, or `--json` with the same fields as the API.
+
+### 29.8 The page: data contract for the FE thread
+
+`/app/usage`: the signed-in person's own usage for anyone, and a `Everything` choice for those allowed. Admin gets a
+**Usage** section that links here, and Settings a **Your usage** row. The FE thread restyles it later; the first version
+uses existing components.
+
+Template data: `Scope`, `CanSeeAll`, `CanManage`, `Range`, `Ranges`, `Group`, `Usage` (the JSON above, decoded), `Recording`,
+`RetentionDays`, `Notice`, `Error`. States to design: **empty** (no requests yet), **recording off** (says so, with what still
+exists), **partial tokens** (`requestsWithTokens` below `requests`), and **a range clipped by retention**. Copy names no model
+and ranks nothing, and a model's id is data.
+
+### 29.9 Tests, first
+
+- `TestUsageStoresNoContent`: planted values in a prompt, a completion, a file name, the `user` field, an unknown model and a key.
+  None appears anywhere in the database, its WAL or the logs' usage events, read as raw bytes after a flush.
+- `TestUsageCountsOnce`: API, detached run, UI call, stream, stream failing midway, video job, each once.
+- `TestUsageCategories`: each status lands in the right count, and 499 stays out of the error rate.
+- `TestUsageScopes`: a key sees only its own, naming another gets 403, each permission in 29.5.
+- `TestUsageRetention`, `TestUsageClear`, `TestUsageRecordingOff`, `TestUsageFlushFailureKeepsCounts`.
+- `TestUsagePercentiles`: the histogram is within its stated bound on known distributions, and merging hours matches one bucket.
+- `TestUsageDiagnosticsExcludes`, `TestCLIUsage`, the §28.2 drift tests, and `-race -count=20`.
+
+**Rollback:** the table is additive. An older binary ignores it and does not prune it, so it stops growing and sits there until a
+newer binary returns or someone removes it. **What this will not do:** per-request history, cost, alerts, or export to anywhere.
