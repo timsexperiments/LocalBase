@@ -37,7 +37,7 @@ func TestARestoreReportSaysWhoCanSignIn(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Who can sign in:\n  https://sign-in.example.com (this file names it oidc:google)\n",
-		"Everyone who signs in gets: access:manage, keys:manage\n",
+		"Everyone who signs in through a provider gets: access:manage, keys:manage\n",
 		"Address people sign in at: https://localbase.example.com\n",
 		"Mail server, which can read sign-in links: smtp.example.com:587\n",
 	} {
@@ -83,7 +83,7 @@ func TestTheSignInLinesRead(t *testing.T) {
 		}, `Who can sign in:
   https://accounts.example.com (this file names it oidc:google)
   GitHub accounts (this file names it github-oauth:gh)
-Everyone who signs in gets: inference:chat
+Everyone who signs in through a provider gets: inference:chat
 Address people sign in at: https://x.example
 Mail server, which can read sign-in links: smtp.x.example:587
 `},
@@ -101,8 +101,8 @@ Mail server, which can read sign-in links: smtp.x.example:587
   https://new.example (this file names it oidc:public; this root has https://old.example)
   https://more.example (this file names it oidc:more; new to this root)
 No longer able to sign in: https://gone.example (this root names it oidc:gone)
-Everyone who signs in gets: access:manage, keys:manage (this root gives nothing)
-If the access policy is removed, everyone who signs in gets: models:read
+Everyone who signs in through a provider gets: access:manage, keys:manage (this root gives nothing)
+If the access policy is removed, everyone who signs in through a provider gets: models:read
 Address people sign in at: https://x.example (this root has https://y.example)
 Mail server, which can read sign-in links: none (this root has smtp.y.example:587)
 `},
@@ -112,11 +112,11 @@ Mail server, which can read sign-in links: none (this root has smtp.y.example:58
 			Mail:     &backup.Line{Value: "smtp.x.example:587", Against: backup.AgainstUnreadable},
 		}, `Who can sign in:
   https://new.example (this file names it oidc:public; this root's can't be read)
-Everyone who signs in gets: nothing, unless a role gives it (this root's can't be read)
+Everyone who signs in through a provider gets: nothing, unless a role gives it (this root's can't be read)
 Mail server, which can read sign-in links: smtp.x.example:587 (this root's can't be read)
 `},
 		{"no provider at all", backup.SignIn{}, `Sign-in: on this computer only, until a provider is added.
-Everyone who signs in gets: nothing, unless a role gives it
+Everyone who signs in through a provider gets: nothing, unless a role gives it
 `},
 	} {
 		t.Run(c.name, func(t *testing.T) {

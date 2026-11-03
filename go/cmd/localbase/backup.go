@@ -305,7 +305,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if len(rep.Sources) > 0 {
 		c.Info("Imported models that reach outside the catalog:")
 		for _, s := range rep.Sources {
-			c.Info("  %s %s %s", s.Model, s.Kind, s.Where)
+			c.Info("  %s %s %s", s.Model, s.Kind, cli.PrintableASCII(s.Where))
 		}
 	}
 	printSignIn(c, rep.SignIn)
@@ -319,12 +319,18 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if len(rep.Settings) > 0 {
 		c.Info("Settings that change who can reach it, or where it reaches:")
 		for _, setting := range rep.Settings {
-			c.Info("  %s: %s", setting.Name, setting.Value)
+			c.Info("  %s: %s", setting.Name, cli.PrintableASCII(setting.Value))
 		}
 	}
 	for _, caution := range rep.Cautions {
 		fmt.Fprintln(c.Stderr, caution)
 	}
+}
+
+// place is a line naming a place, as a person judging it by eye should see it.
+func place(l backup.Line) backup.Line {
+	l.Value, l.ThisRoot = cli.PrintableASCII(l.Value), cli.PrintableASCII(l.ThisRoot)
+	return l
 }
 
 // printSignIn says who could sign in and what they'd get. The line about what everyone gets is always
@@ -336,27 +342,27 @@ func printSignIn(c *cli.Ctx, s *backup.SignIn) {
 	if len(s.Who) > 0 {
 		c.Info("Who can sign in:")
 		for _, l := range s.Who {
-			c.Info("  %s", l.Text("has"))
+			c.Info("  %s", place(l).Text("has"))
 		}
 	} else {
 		c.Info("Sign-in: on this computer only, until a provider is added.")
 	}
 	for _, l := range s.Goes {
-		c.Info("No longer able to sign in: %s (this root names it %s)", l.Value, l.Named)
+		c.Info("No longer able to sign in: %s (this root names it %s)", cli.PrintableASCII(l.Value), l.Named)
 	}
 	everyone := s.Everyone
 	if everyone.Value == "" {
 		everyone.Value = "nothing, unless a role gives it"
 	}
-	c.Info("Everyone who signs in gets: %s", everyone.Text("gives"))
+	c.Info("Everyone who signs in through a provider gets: %s", everyone.Text("gives"))
 	if s.IfPolicyRemoved != "" {
-		c.Info("If the access policy is removed, everyone who signs in gets: %s", s.IfPolicyRemoved)
+		c.Info("If the access policy is removed, everyone who signs in through a provider gets: %s", s.IfPolicyRemoved)
 	}
 	if s.Origin != nil {
-		c.Info("Address people sign in at: %s", s.Origin.Text("has"))
+		c.Info("Address people sign in at: %s", place(*s.Origin).Text("has"))
 	}
 	if s.Mail != nil {
-		c.Info("Mail server, which can read sign-in links: %s", s.Mail.Text("has"))
+		c.Info("Mail server, which can read sign-in links: %s", place(*s.Mail).Text("has"))
 	}
 }
 

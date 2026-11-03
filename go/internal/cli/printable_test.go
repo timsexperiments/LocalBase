@@ -47,3 +47,17 @@ func TestPrintableLeavesNothingThatActsOnATerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestPrintableASCII(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://accounts.example.com":      "https://accounts.example.com",
+		"https://\u0430ccounts.example.com": `https://\u0430ccounts.example.com`,
+		"smtp.\U0001f642.example":           `smtp.\U0001f642.example`,
+		"two\nlines":                        `two\x0alines`,
+		"erase\x1b[2K":                      `erase\x1b[2K`,
+	} {
+		if got := PrintableASCII(in); got != want {
+			t.Errorf("PrintableASCII(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
