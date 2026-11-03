@@ -15,6 +15,9 @@ import (
 // intended.txt, and what is not explained there is a failure.
 func audit(dir string, list []string, base string, intended []intention) (unexplained int, report []string) {
 	for _, b := range list {
+		if b == tidyStep {
+			continue
+		}
 		branch, from := b, ""
 		if p, f, ok := parsePick(b); ok {
 			branch, from = p, f
