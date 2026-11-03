@@ -5,14 +5,23 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
 
-// audited logs each successful change through an admin route (a Go
-// addition): the action, who made it (actor kind and id) and what it changed
-// (target kind and id). Ids only: never emails, names, secrets, key material
-// or request bodies.
+// What a refused request can put in the log. It is whatever the caller sent, so only
+// what can't hold anything else gets through: an action word and a key id.
+var (
+	auditActionRe = regexp.MustCompile(`^[a-z][a-z-]{0,39}$`)
+	auditKeyIDRe  = regexp.MustCompile(`^key_[0-9a-f-]{36}$`)
+)
+
+// audited logs each change through an admin route, and each one refused: the action,
+// who made it (actor kind and id), what it changed (target kind and id) and, for a
+// key, the permissions it now has; for a refusal, the status and the reason. Ids and
+// permission names only: never emails, names, secrets, key material or request bodies.
 func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -27,7 +36,9 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
 		rec := &auditRecorder{recorder: recorder{ResponseWriter: w}}
 		next(rec, r)
-		if rec.status >= 300 {
+		// A request the client abandoned or never finished was not refused.
+		refused := rec.status >= 400 && rec.status < 500 && rec.status != http.StatusRequestTimeout && rec.status != 499
+		if rec.status >= 300 && !refused {
 			return
 		}
 		var in struct {
@@ -39,7 +50,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			} `json:"registration"`
 		}
 		json.Unmarshal(seen.Bytes(), &in)
-		if in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery" {
+		if !refused && (in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery") {
 			return
 		}
 		// The principal the handler resolved (never resolved twice).
@@ -53,12 +64,53 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			p = &auth.Principal{Kind: "environment"}
 		}
 		kind, id := auditTarget(in.Action, in.KeyID, in.RegistrationID, in.Registration.ID, rec.body.Bytes())
-		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", "", "actor_id", "", "target_kind", kind, "target_id", id}
+		actorKind, actorID := "", ""
 		if p != nil {
-			attrs[5], attrs[7] = p.Kind, p.ID
+			actorKind, actorID = p.Kind, p.ID
+		}
+		if refused {
+			action := in.Action
+			if !auditActionRe.MatchString(action) {
+				action = ""
+			}
+			if !auditKeyIDRe.MatchString(id) {
+				id = ""
+			}
+			s.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
+				"target_kind", kind, "target_id", id, "status", rec.status, "reason", auditReason(rec.body.Bytes()))
+			return
+		}
+		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}
+		if scopes, ok := auditScopes(rec.body.Bytes()); ok {
+			attrs = append(attrs, "scopes", scopes)
 		}
 		s.Log.Info("Administration change.", attrs...)
 	}
+}
+
+// auditReason is the error code of a refusal: this gateway's own words.
+func auditReason(response []byte) string {
+	var out struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	json.Unmarshal(response, &out)
+	return out.Error.Code
+}
+
+// auditScopes are the permissions a key has after a change. They come from this
+// gateway's own response, which has already validated them.
+func auditScopes(response []byte) (string, bool) {
+	var out struct {
+		Key *struct {
+			Scopes []string `json:"scopes"`
+		} `json:"key"`
+	}
+	if json.Unmarshal(response, &out) != nil || out.Key == nil {
+		return "", false
+	}
+	return strings.Join(out.Key.Scopes, ","), true
 }
 
 // auditTarget names what an admin change changed, by id.
