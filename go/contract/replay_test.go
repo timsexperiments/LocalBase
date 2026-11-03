@@ -11,10 +11,10 @@ import (
 
 // TestClientReplay replays the request shapes of the live clients against
 // an already running gateway (-url, with LOCALBASE_CONTRACT_KEY): the M7
-// rehearsal's stand-in for naya-device-worker and t3-opencode, which must
-// not be pointed at a copy (DESIGN §17.2). naya uses GET /v1/models, GET
+// rehearsal's stand-in for a device-worker client and an editor client, which must
+// not be pointed at a copy (DESIGN §17.2). The device worker uses GET /v1/models, GET
 // /v1/models/{id}, POST /v1/chat/completions and POST /v1/systemone;
-// opencode streams chat completions.
+// the editor client streams chat completions.
 //
 //	LOCALBASE_REPLAY=1 LOCALBASE_CONTRACT_KEY=… go test ./contract -run TestClientReplay -args -url http://127.0.0.1:<port>
 //

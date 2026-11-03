@@ -14,7 +14,7 @@ import (
 const mib = 1 << 20
 
 // The GPT-OSS-20B fixtures are the header-derived evidence of the operator's
-// Pixelator qualification (internal; DESIGN §20.3): the tensor table and the
+// GPU test host qualification (internal; DESIGN §20.3): the tensor table and the
 // architecture metadata, no weights.
 func loadGptoss(t *testing.T) (Model, *memory.Geometry) {
 	t.Helper()
