@@ -30,6 +30,9 @@ var readCalls = []string{"Scan", "QueryRowContext", "QueryContext", "QueryRow", 
 //	return err == nil && n > 0             the answer swallows the failure, or just err == nil
 //	if err != nil { return nil, nil }      a failure returned as success
 //	func f(...) bool { ...read... }        no way to report a failure at all
+//
+// Its limits: it reads this package only, and it reads patterns. A failure hidden any other way gets
+// past it. selectedModels did, in a closure that returned nil, nil, and was found by reading.
 func TestNoFailedReadLooksLikeAbsent(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
 	if err != nil {
