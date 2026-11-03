@@ -349,6 +349,11 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	}
 	in, valid := parseAccessRequest(body)
 	if !valid {
+		// The one refusal Admin must explain (DESIGN §13.6 item 12).
+		if in != nil && in.lockedOut {
+			noStore(w, 400, map[string]any{"error": map[string]string{"code": "validation_failed", "message": auth.PolicyLockoutMessage}})
+			return
+		}
 		managementError(w, 400, "validation_failed")
 		return
 	}
@@ -631,6 +636,8 @@ type accessRequest struct {
 	ExpectedRevision *string            `json:"expectedPolicyRevision"`
 	Identity         *auth.Identity     `json:"identity"`
 	raw              map[string]json.RawMessage
+	// lockedOut: the policy failed only because no one could manage access.
+	lockedOut bool
 }
 
 var revisionRe = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -724,7 +731,10 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 			return nil, false
 		}
 		copyPolicy := *in.Policy
-		if copyPolicy.Normalize() != nil {
+		if err := copyPolicy.Normalize(); err != nil {
+			if errors.Is(err, auth.ErrPolicyLockout) {
+				return &accessRequest{lockedOut: true}, false
+			}
 			return nil, false
 		}
 	case "clear-policy":
