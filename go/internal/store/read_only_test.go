@@ -202,12 +202,13 @@ func TestAWALFromAnotherFileIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir, path := aRoot(t, "wal")
-	// Replaced by a copy, as a restore or a hand does: another file with the same name.
+	// Replaced by a copy, as a restore does, keeping the old file: another file with the same name.
+	// Removing the old one first could give the new one its inode, which this can't see.
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(path); err != nil {
+	if err := os.Rename(path, filepath.Join(t.TempDir(), "kept.db")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, body, 0o600); err != nil {

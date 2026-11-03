@@ -56,8 +56,9 @@ func recordWALOwner(path string) {
 // checkWALBelongs refuses a -wal with commits in it that came with a different database file. A -wal
 // says nothing of which database it belongs to: SQLite would replay it into this one and damage it
 // (https://www.sqlite.org/howtocorrupt.html, "Mispairing database files and hot journals"). This
-// catches a database moved or restored into place. It can't see one overwritten in place, or a -wal
-// copied in with its owner file. A restore's own guarantee is that it leaves no -wal behind.
+// catches a database moved or restored into place. It can't see one overwritten in place, one deleted
+// and written again if the filesystem gives it the old inode number, as Linux can, or a -wal copied in
+// with its owner file. A restore's own guarantee is that it leaves no -wal behind.
 func checkWALBelongs(path string) error {
 	wal := path + "-wal"
 	info, err := os.Stat(wal)
