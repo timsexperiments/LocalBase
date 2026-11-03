@@ -158,7 +158,8 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Action      string   `json:"action"` // resolve | start
+		Action      string   `json:"action"` // resolve | start | cancel
+		Job         string   `json:"job"`    // cancel
 		Source      string   `json:"source"`
 		Files       []string `json:"files"`
 		Revision    string   `json:"revision"`
@@ -171,8 +172,24 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		AllowHTTP   bool     `json:"allowHttp"`
 		Confirm     bool     `json:"confirmCustomSource"`
 	}
-	if !strictDecode(body, &in) || (in.Action != "resolve" && in.Action != "start") || in.Source == "" {
-		badRequest(w, r, "Expected {action: resolve|start, source, ...}.", nil)
+	if !strictDecode(body, &in) {
+		badRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
+		return
+	}
+	if in.Action == "cancel" {
+		if in.Job == "" || !onlyFields(body, "job") {
+			badRequest(w, r, "Expected {action: cancel, job}.", strp("job"))
+			return
+		}
+		if !l.CancelImport(in.Job) {
+			writeError(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", strp("job"))
+			return
+		}
+		noStore(w, 200, l.Job(in.Job))
+		return
+	}
+	if (in.Action != "resolve" && in.Action != "start") || in.Source == "" {
+		badRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
 		return
 	}
 	if in.Task != "" && !slices.Contains(models.Tasks, in.Task) {
@@ -215,7 +232,23 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, 400, "invalid_request_error", "import_task_required", "Choose what the model does.", nil)
 		return
 	}
-	id := l.StartImport(plan, in.Backend, s.Log)
+	if err := acquire.CheckSpace(s.Root.Dir, plan); errors.As(err, &refused) {
+		writeError(w, r, http.StatusInsufficientStorage, "invalid_request_error", refused.Code, refused.Message, nil)
+		return
+	}
+	id, err := l.StartImport(plan, in.Backend, s.Log)
+	switch {
+	case errors.Is(err, library.ErrImportsBusy):
+		w.Header().Set("Retry-After", "5")
+		writeError(w, r, 429, "rate_limit_error", "import_busy", err.Error(), nil)
+		return
+	case errors.Is(err, library.ErrImportRunning):
+		writeError(w, r, 409, "invalid_request_error", "import_running", err.Error(), nil)
+		return
+	case err != nil:
+		serviceUnavailable(w, r, "Model management")
+		return
+	}
 	noStore(w, 202, map[string]any{"job": id, "plan": plan})
 }
 
