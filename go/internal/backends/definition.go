@@ -33,6 +33,13 @@ var Adapters = []string{
 	"process-openai/v1",
 }
 
+// Startable reports whether this build has code to start an adapter. A definition may
+// name one it has none for, kept for its metadata. A backend on such an adapter is
+// never offered as able to run anything.
+func Startable(adapter string) bool {
+	return adapter != "kokoro-onnx/v1" && slices.Contains(Adapters, adapter)
+}
+
 // Platform is one os/arch/accelerator a backend build runs on.
 type Platform struct {
 	OS          string `json:"os"`
