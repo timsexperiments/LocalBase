@@ -2519,7 +2519,9 @@ VRAM, the planner reproduces from the header alone:
 
 The gateway starts a placed backend with `-lv 4`, because llama-server prints these lines only from that level: its default is 3 (checked on 0.7.0-dev, build 11671, on macOS). A custom build gets the flag only if its `--help` lists it. A real chat at that level put no prompt text in the log.
 
-A plan with no GPU layers needs no offload line, since zero is known from the plan and what a no-device build prints at this level has not been read. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
+**Rule: with a plan of 0 GPU layers, the check requires nothing from the log except that the backend started.** Zero is known from the plan, and what a no-device build prints at this level has not been read. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
+
+On a Mac a chat model with no GPU layers starts without `--embeddings`: the two together crash the first chat on 0.7.0-dev build 11671.
 
 The llama-server output is read as bytes; a strict UTF-8 decode once
 crashed a harness.

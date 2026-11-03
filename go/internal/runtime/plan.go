@@ -354,7 +354,12 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 			a = append(a, "--flash-attn", "auto")
 		}
 	default:
-		a = append(a, "--jinja", "--embeddings", "--flash-attn", "on")
+		a = append(a, "--jinja")
+		// On a Mac this crashes the first chat with no layers on the GPU.
+		if !(darwinArm64 && p.Placement != nil && p.Placement.GPULayers == 0) {
+			a = append(a, "--embeddings")
+		}
+		a = append(a, "--flash-attn", "on")
 	}
 	a = append(a, "--cache-type-k", p.KVType, "--cache-type-v", p.KVType, "--cache-ram", strconv.Itoa(p.PromptCacheMiB))
 	if !p.Embedding && !p.Decision {
