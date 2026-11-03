@@ -89,6 +89,19 @@ func resolveExistingAncestor(p string) (string, error) {
 
 // Open validates an existing root's marker.
 func Open(dir string) (*Root, error) {
+	r, err := OpenForUndo(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := unfinishedRestore(r.Dir); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// OpenForUndo is Open for the one command that finishes an interrupted restore. Every
+// other check still applies.
+func OpenForUndo(dir string) (*Root, error) {
 	dir, err := canonical(dir)
 	if err != nil {
 		return nil, err
