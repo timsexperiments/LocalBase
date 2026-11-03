@@ -106,14 +106,6 @@ func plainIfBusy(err error) error {
 	return err
 }
 
-// Each open connection holds the database and its -wal open, so this bounds the descriptors the store
-// can use, at about twice maxOpenConns. A request past it waits in the pool's queue, which it would
-// otherwise do in SQLite's, where a writer can lose for the whole busy timeout.
-const (
-	maxOpenConns = 16
-	maxIdleConns = 4
-)
-
 // WriteFailed says that a write nobody is waiting on failed, so it isn't lost silently. what is a word
 // from the code. It logs to the store's Log, or to the default logger for a command that set none.
 func (s *Store) WriteFailed(what string, err error) {
