@@ -55,3 +55,12 @@ func TestReadOrder(t *testing.T) {
 		t.Errorf("%v %v", got, err)
 	}
 }
+
+func TestParsePick(t *testing.T) {
+	if b, f, ok := parsePick("pick fix-x abc123"); !ok || b != "fix-x" || f != "abc123" {
+		t.Errorf("%q %q %v", b, f, ok)
+	}
+	if _, _, ok := parsePick("fix-x"); ok {
+		t.Error("a plain branch is not a pick")
+	}
+}

@@ -57,6 +57,22 @@ func main() {
 		check(run(*dir, "git", "config", kv[0], kv[1]))
 	}
 	for _, b := range list {
+		if branch, from, ok := parsePick(b); ok {
+			ref := "origin/" + prefix + branch
+			cmdErr := exec.Command("git", "-C", *dir, "cherry-pick", "--empty=drop", from+".."+ref).Run()
+			for cmdErr != nil && exec.Command("git", "-C", *dir, "rev-parse", "--verify", "-q", "CHERRY_PICK_HEAD").Run() == nil {
+				left, err := resolve(*dir)
+				check(err)
+				if len(left) > 0 {
+					fatalf("picking %s stopped in %s. Unresolved:\n  %s\nResolve them, git cherry-pick --continue, then run again with -resume.",
+						branch, *dir, strings.Join(left, "\n  "))
+				}
+				cmdErr = exec.Command("git", "-C", *dir, "-c", "core.editor=true", "cherry-pick", "--continue").Run()
+			}
+			check(cmdErr)
+			fmt.Printf("picked  %s\n", branch)
+			continue
+		}
 		ref := "origin/" + prefix + b
 		if exec.Command("git", "-C", *dir, "rev-parse", "--verify", "-q", ref).Run() != nil {
 			fatalf("no branch %s", ref)
@@ -212,6 +228,17 @@ var numberedHeading = regexp.MustCompile(`^## \d+\. (.*)`)
 func sameTitle(a, b []byte) bool {
 	x, y := numberedHeading.FindSubmatch(a), numberedHeading.FindSubmatch(b)
 	return x != nil && y != nil && bytes.Equal(x[1], y[1])
+}
+
+// parsePick reads "pick <branch> <from>": a branch built on an earlier integration
+// tree, whose own commits (from..branch) are replayed. A merge would bring that old
+// tree's history back in.
+func parsePick(line string) (branch, from string, ok bool) {
+	f := strings.Fields(line)
+	if len(f) != 3 || f[0] != "pick" {
+		return "", "", false
+	}
+	return f[1], f[2], true
 }
 
 func orderPath() string {
