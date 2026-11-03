@@ -19,6 +19,22 @@ one passing says nothing about the other:
 - `gitleaks git . --no-banner --redact --config .gitleaks.toml --log-opts=<base>..HEAD` scans
   every commit in the pull request, so changing a value now does not clear an older commit.
 
+A fixture that looks like a secret should not need an allowlist entry: generate it in the
+test, or name it `PLANTED_*`. An entry in `.gitleaks.toml` is one exact made-up value with a
+one-line reason above it, which `scripts/check-gitleaks-allowlist.sh` enforces. It is for what
+is already in a commit and cannot be changed.
+
+## Disk
+
+Keep 90 GB free on a development machine. A script, test or mutation run that can write large
+files must refuse to start under that floor and must cap what it writes, because a timeout
+skips a test's cleanup. A mutation that disabled a size limit once left 136 GB behind.
+
+Source `tools/disk-guard.sh` and call `disk_guard` near the top of a bash script. It refuses
+under the floor and caps each file the script and its children write (64 GiB by default;
+`LOCALBASE_FILE_CAP_GB`). `LOCALBASE_DISK_FLOOR_GB` moves the floor, which is 5 GB in CI. A test
+server that sends without end must stop at a bound well above the limit it tests.
+
 ## Where things go
 
 - **Built tools:** `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE` if set. They are
