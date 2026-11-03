@@ -8,8 +8,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -35,6 +37,14 @@ type Sink struct {
 	// audit holds audit.* events too, in a file nothing else writes, so a flood of other
 	// events can't push them out. Opened when the first one arrives.
 	audit *Sink
+
+	write  func([]byte) (int, error)
+	closed bool
+	torn   bool // the file ends in part of a line
+	// A log that can't be written has only this to say so: stderr, once per outage.
+	complaints io.Writer
+	failing    bool
+	dropped    int
 }
 
 const auditPrefix = "audit."
@@ -43,11 +53,19 @@ func OpenSink(dir string) (*Sink, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	s := &Sink{dir: dir, name: "events"}
+	s := &Sink{dir: dir, name: "events", complaints: os.Stderr}
 	return s, s.open()
 }
 
 func (s *Sink) path() string { return filepath.Join(s.dir, s.name+".jsonl") }
+
+func (s *Sink) archive(i int) string {
+	return filepath.Join(s.dir, fmt.Sprintf("%s.%d.jsonl", s.name, i))
+}
+
+// rotatingPath is the name the active file passes through, so that a file that can't be moved fails
+// before any archive has. Nothing reads it, and the next rotation replaces one a crash left behind.
+func (s *Sink) rotatingPath() string { return filepath.Join(s.dir, s.name+".rotating.jsonl") }
 
 func (s *Sink) open() error {
 	f, err := OpenOwnedRegular(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY)
@@ -59,31 +77,101 @@ func (s *Sink) open() error {
 		f.Close()
 		return err
 	}
-	s.f, s.size = f, info.Size()
+	s.f, s.size, s.write = f, info.Size(), f.Write
 	return nil
 }
 
+// rotate makes the active file archive 1. A file that can't be moved stays as it was with the
+// archives untouched, and the error tells the caller not to add to it, which keeps it under the
+// limit however long that lasts.
 func (s *Sink) rotate() error {
-	s.f.Close()
-	for i := archives - 1; i >= 1; i-- {
-		os.Rename(filepath.Join(s.dir, fmt.Sprintf("%s.%d.jsonl", s.name, i)), filepath.Join(s.dir, fmt.Sprintf("%s.%d.jsonl", s.name, i+1)))
+	rotating := s.rotatingPath()
+	moved := true
+	if err := os.Rename(s.path(), rotating); errors.Is(err, fs.ErrNotExist) {
+		moved = false // Someone removed it: there is nothing to keep.
+	} else if err != nil {
+		return err
 	}
-	os.Rename(s.path(), filepath.Join(s.dir, s.name+".1.jsonl"))
+	_ = s.f.Close() // Only ever written to, and each write was checked.
+	s.f = nil
+	for i := archives - 1; i >= 1; i-- {
+		if err := os.Rename(s.archive(i), s.archive(i+1)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(s.complaints, "local-base: could not keep an old %s log: %v\n", s.name, reason(err))
+		}
+	}
+	if moved {
+		if err := os.Rename(rotating, s.archive(1)); err != nil {
+			fmt.Fprintf(s.complaints, "local-base: could not keep the last %s log, the next rotation replaces it: %v\n", s.name, reason(err))
+		}
+	}
+	s.torn = false
 	return s.open()
+}
+
+// add puts one line in the file, or says why not.
+func (s *Sink) add(line []byte) error {
+	if s.f == nil {
+		if err := s.open(); err != nil {
+			return err
+		}
+	}
+	if s.size+int64(len(line)) > rotateBytes {
+		if err := s.rotate(); err != nil {
+			return err
+		}
+	}
+	if s.torn {
+		line = append([]byte{'\n'}, line...)
+	}
+	n, err := s.write(line)
+	s.size += int64(n)
+	if err == nil && n < len(line) {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		s.torn = s.torn || n > 0
+		return err
+	}
+	s.torn = false
+	return nil
+}
+
+// reason is what went wrong without the path, which holds a home directory and gets pasted into reports.
+func reason(err error) error {
+	var link *os.LinkError
+	if errors.As(err, &link) {
+		return link.Err
+	}
+	var path *fs.PathError
+	if errors.As(err, &path) {
+		return path.Err
+	}
+	return err
 }
 
 func (s *Sink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.size+int64(len(line)) > rotateBytes {
-		if err := s.rotate(); err != nil {
-			return
-		}
+	if !s.closed {
+		s.note(s.add(line))
 	}
-	n, _ := s.f.Write(line)
-	s.size += int64(n)
 	if s.Mirror != nil {
 		s.Mirror.Write(line)
+	}
+}
+
+// note says when the log stops being written and when it starts again, not at every line.
+func (s *Sink) note(err error) {
+	switch {
+	case err != nil:
+		s.dropped++
+		if !s.failing {
+			s.failing = true
+			fmt.Fprintf(s.complaints, "local-base: cannot write the %s log, dropping events until it can: %v\n", s.name, reason(err))
+		}
+	case s.failing:
+		fmt.Fprintf(s.complaints, "local-base: the %s log is being written again, %d events were dropped\n", s.name, s.dropped)
+		s.failing, s.dropped = false, 0
 	}
 }
 
@@ -91,7 +179,7 @@ func (s *Sink) Write(line []byte) {
 func (s *Sink) writeAudit(line []byte) {
 	s.mu.Lock()
 	if s.audit == nil {
-		a := &Sink{dir: s.dir, name: "audit"}
+		a := &Sink{dir: s.dir, name: "audit", complaints: s.complaints}
 		if a.open() != nil {
 			s.mu.Unlock()
 			return // the line is in the main log; the next one tries again
@@ -108,10 +196,19 @@ func (s *Sink) Close() error {
 	defer s.mu.Unlock()
 	if s.audit != nil {
 		if err := s.audit.Close(); err != nil {
-			s.f.Close()
+			s.closeFile()
 			return err
 		}
 	}
+	return s.closeFile()
+}
+
+func (s *Sink) closeFile() error {
+	if s.closed || s.f == nil {
+		s.closed = true
+		return nil
+	}
+	s.closed = true
 	return s.f.Close()
 }
 
