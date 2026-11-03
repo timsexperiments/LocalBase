@@ -67,20 +67,33 @@
 </nav>
 {{end}}
 
-{{define "memory-bar"}}
-{{/* Shared memory: other apps, models, free. Widths are percentages of capacity. */}}
+{{define "gauge"}}
+{{/* This computer's memory, in equal places. The words nearby say the same, so it is never
+     shape or color alone, and the picture itself is hidden from assistive technology. */}}
+<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Other .Models .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
+{{end}}
+
+{{define "memory-gauge"}}
 <div>
-  <svg class="block h-3 w-full overflow-hidden rounded-full" viewBox="0 0 100 3" preserveAspectRatio="none" role="img"
-       aria-label="Other apps {{gib .Other}}, models {{gib .Models}}, available {{gib .Available}}">
-    <rect width="100" height="3" class="fill-surface-muted"/>
-    <rect width="{{pct .Other .Capacity}}" height="3" class="fill-muted/60"/>
-    <rect x="{{pct .Other .Capacity}}" width="{{pct .Models .Capacity}}" height="3" class="fill-accent"/>
-  </svg>
-  <dl class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
-    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-muted/60"></span><dt>Other apps</dt><dd class="font-semibold text-ink">{{gib .Other}}</dd></div>
-    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-accent"></span><dt>Models</dt><dd class="font-semibold text-ink">{{gib .Models}}</dd></div>
-    <div class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full border border-line bg-surface-muted"></span><dt>Available</dt><dd class="font-semibold text-ink">{{if ge .Available 0}}{{gib .Available}}{{else}}unknown{{end}}</dd></div>
+  {{template "gauge" .}}
+  <dl class="gauge-legend">
+    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span>Text model</dt><dd>{{gib .Models}}</dd></div>
+    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Everything else</dt><dd>{{gib .Other}}</dd></div>
+    <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Available</dt><dd>{{gib .Available}}</dd></div>
+    <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
   </dl>
+</div>
+{{end}}
+
+{{/* The strip: which computer does the work, in what state, with how much room. All of it
+     opens Running. It refreshes itself, and shell.js marks it when the computer can't be
+     reached. */}}
+{{define "memory-strip"}}
+<div id="memory-strip" hx-get="/app/strip" hx-trigger="every 15s" hx-swap="outerHTML" data-poll data-strip>
+  <a class="strip strip-{{.State}}" href="/app/models/running">
+    <span class="strip-row"><span class="strip-host">{{template "mark"}}<b>{{.Host}}</b></span><span class="strip-word" data-strip-word>{{.Word}}</span><span class="strip-free" data-strip-free>{{.Free}}</span><span class="sr-only">. Open Running.</span></span>
+    {{template "gauge" .}}
+  </a>
 </div>
 {{end}}
 
