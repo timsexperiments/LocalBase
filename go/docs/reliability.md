@@ -234,7 +234,9 @@ the suite itself could not run.
 
 **On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
 so it never asks the Keychain for anything and cannot put a prompt on the screen. A test requires both
-flags. A watcher stops Chrome if the suite is killed. See `tools/README.md` before pointing anything
+flags, and fails on any script under `tools/` that starts a Chrome without them. A watcher stops Chrome
+if the suite is killed; `make e2e-kill-check` shows nothing stays after SIGTERM, SIGKILL or the
+last-resort exit. See `tools/README.md` before pointing anything
 else at a current Chrome.
 
 **On Ubuntu,** `kernel.apparmor_restrict_unprivileged_userns=1` stops Chrome's sandbox, and Chrome never
