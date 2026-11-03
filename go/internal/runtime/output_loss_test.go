@@ -82,6 +82,57 @@ echo started`
 	}
 }
 
+// The limit is on silence, not on how long the log takes: a slow log still gets the last
+// lines, which are the ones that may say why. Here reading takes far longer than the limit.
+func TestProcessOutputWaitsWhileItArrives(t *testing.T) {
+	limit := outputDrainLimit
+	outputDrainLimit = 300 * time.Millisecond
+	defer func() { outputDrainLimit = limit }()
+	const lines = 20000 // about 110 KB: more than the reader's buffer and the pipe together hold at once
+	var n atomic.Int64
+	p, err := StartProcess("child", "/bin/sh", []string{"-c", "seq 1 " + strconv.Itoa(lines)}, nil, slog.New(countLines{&n, 100 * time.Microsecond}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-p.Done()
+	for last := int64(-1); n.Load() != last; time.Sleep(600 * time.Millisecond) { // until it stops moving
+		last = n.Load()
+	}
+	if got := n.Load(); got != lines {
+		t.Errorf("%d of %d lines reached the log", got, lines)
+	}
+}
+
+// A descendant that keeps writing keeps the output "arriving", so the cap ends the wait.
+func TestProcessEndsWhileADescendantKeepsWriting(t *testing.T) {
+	limit, most := outputDrainLimit, outputDrainCap
+	outputDrainCap = 3 * time.Second
+	defer func() { outputDrainLimit, outputDrainCap = limit, most }()
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	script := `perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", $ARGV[0]) or die; print F $$; close F; $|=1; while (1) { print "1\n"; select(undef, undef, undef, 0.05) }' "$1" &
+while [ ! -s "$1" ]; do :; done`
+	var n atomic.Int64
+	p, err := StartProcess("child", "/bin/sh", []string{"-c", script, "sh", pidFile}, nil, slog.New(countLines{&n, 0}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if b, err := os.ReadFile(pidFile); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 1 {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+	select {
+	case <-p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatal("the process never ended while a descendant kept writing")
+	}
+	if n.Load() == 0 {
+		t.Fatal("the descendant wrote nothing, so this proved nothing")
+	}
+}
+
 // With nothing holding its output, a process does not wait for the limit: stopping a backend
 // costs nothing extra.
 func TestProcessEndWaitsOnlyForItsOutput(t *testing.T) {
