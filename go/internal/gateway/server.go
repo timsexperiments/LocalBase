@@ -85,6 +85,9 @@ type Server struct {
 	// anonAdminRefused counts the changes among them refused on an audited route, which
 	// aren't audit events. Each summary carries both.
 	anonRefused, anonAdminRefused atomic.Int64
+	// refusedAudit keeps refused changes small in the audit file. Any key can be refused, and the
+	// same file says who changed what.
+	refusedAudit *obs.Sampler
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
@@ -101,6 +104,8 @@ type Server struct {
 const (
 	anonymousLogEvery = time.Minute
 	anonymousLogBurst = 20
+	refusedAuditEvery = time.Minute
+	refusedAuditBurst = 20
 )
 
 func New(s *Server) *Server {
@@ -117,6 +122,7 @@ func New(s *Server) *Server {
 	}
 	s.runs = newRunManager(s, runsDir)
 	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
+	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	go s.runs.janitor()
 	mux := newRouteMux()
 	mux.HandleFunc("/health", s.health)
@@ -192,6 +198,9 @@ func (s *Server) LogHeldBack() {
 	held := s.anonLog.Drain(time.Now())
 	if held > 0 || s.anonRefused.Load() > 0 || s.anonAdminRefused.Load() > 0 {
 		s.anonymousSummary(held)
+	}
+	if held := s.refusedAudit.Drain(time.Now()); held > 0 {
+		s.Log.Warn("Refused changes were counted rather than logged.", "event", "audit.refused-summary", "held_back", held)
 	}
 }
 

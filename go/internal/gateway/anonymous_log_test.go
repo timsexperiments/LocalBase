@@ -382,6 +382,100 @@ func TestAnonymousRefusalsAreNotAudited(t *testing.T) {
 	}
 }
 
+// Any key can be refused, so refusals write little. A summary says how many were held back, in
+// the same file.
+func TestRefusedChangesAreLoggedSparingly(t *testing.T) {
+	ts, srv, logs, key := anonymousLogGateway(t, time.Hour, 5)
+	srv.refusedAudit = &obs.Sampler{Every: time.Hour, Burst: 5}
+	for range 30 {
+		if code := postKeys(t, ts.URL, key); code != 403 {
+			t.Fatalf("a key without the permission: %d", code)
+		}
+	}
+	if n := strings.Count(logs.String(), `"event":"audit.api-key-refused"`); n != 5 {
+		t.Errorf("%d lines for 30 refusals", n)
+	}
+	srv.LogHeldBack()
+	srv.LogHeldBack()
+	if n := strings.Count(logs.String(), `"event":"audit.refused-summary"`); n != 1 || !strings.Contains(logs.String(), `"held_back":25`) {
+		t.Errorf("%d summaries: %s", n, logs.String())
+	}
+}
+
+// A summary isn't written when nothing was held back.
+func TestFewRefusalsHaveNoSummary(t *testing.T) {
+	ts, srv, logs, key := anonymousLogGateway(t, time.Hour, 5)
+	srv.refusedAudit = &obs.Sampler{Every: time.Hour, Burst: 5}
+	for range 5 {
+		postKeys(t, ts.URL, key)
+	}
+	srv.LogHeldBack()
+	if strings.Contains(logs.String(), "audit.refused-summary") {
+		t.Errorf("a summary with nothing held back: %s", logs.String())
+	}
+}
+
+// During a run the next refusal written says how many came before it, so each one is on a line of
+// its own or in a count, however long the requests took.
+func TestEachRefusalIsOnALineOrInACount(t *testing.T) {
+	ts, srv, logs, key := anonymousLogGateway(t, time.Hour, 5)
+	srv.refusedAudit = &obs.Sampler{Every: 200 * time.Millisecond, Burst: 2}
+	for range 40 {
+		postKeys(t, ts.URL, key)
+	}
+	time.Sleep(250 * time.Millisecond)
+	postKeys(t, ts.URL, key) // brings out what the last interval held back
+	lines, held := 0, 0
+	for _, line := range strings.Split(logs.String(), "\n") {
+		var ev map[string]any
+		if json.Unmarshal([]byte(line), &ev) != nil || ev["event"] != "audit.api-key-refused" {
+			continue
+		}
+		lines++
+		n, _ := ev["held_back"].(float64)
+		held += int(n)
+	}
+	if lines+held != 41 {
+		t.Errorf("%d lines and %d held back, for 41 refusals: %s", lines, held, logs.String())
+	}
+}
+
+// A change someone made is on record however many were refused around it.
+func TestAChangeIsAlwaysOnRecord(t *testing.T) {
+	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 5)
+	srv.refusedAudit = &obs.Sampler{Every: time.Hour, Burst: 0}
+	_, admin, err := srv.Store.CreateAPIKey(context.Background(), "admin", []string{"keys:manage", "keys:read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		req, _ := http.NewRequest("POST", ts.URL+"/_localbase/api-keys", strings.NewReader(`{"action":"create","name":"x","scopes":["keys:read"]}`))
+		req.Header.Set("Authorization", "Bearer "+admin)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 201 {
+			t.Fatalf("the change: %d", resp.StatusCode)
+		}
+	}
+	if n := strings.Count(logs.String(), `"event":"audit.api-key-changed"`); n != 3 {
+		t.Errorf("%d lines for 3 changes", n)
+	}
+}
+
+// The numbers the documents state.
+func TestTheRefusalLimitIsTheStatedOne(t *testing.T) {
+	if refusedAuditEvery != time.Minute || refusedAuditBurst != 20 {
+		t.Errorf("%v, %d", refusedAuditEvery, refusedAuditBurst)
+	}
+	ts, _, _ := newTestGateway(t, host{})
+	if got := runServer(ts).refusedAudit; got.Every != refusedAuditEvery || got.Burst != refusedAuditBurst {
+		t.Errorf("a gateway starts with %v, %d", got.Every, got.Burst)
+	}
+}
+
 // Something going wrong is always on record, whoever asked.
 func TestServerErrorsAreAlwaysLogged(t *testing.T) {
 	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 0)

@@ -4905,6 +4905,12 @@ seconds, could push out everything older, including the record of who changed wh
   the same rotation and modes, so nothing else can push them out. `local-base logs --audit` reads it.
 - **Only someone with standing writes one.** A refused change by a caller with no valid credential is no longer an
   audit event, since anyone can send it. It's counted with other requests like it.
+- **A refused change can't push out a change made.** Any key can be refused, and both go in the audit file. A key with
+  only `models:read` took the record of a change out of every file in about 10 seconds. So the first 20 refusals in a
+  minute are written, the next one written gives how many it held back as `held_back`, and `audit.refused-summary` says
+  the rest at shutdown. A change someone made is always written. The limit is shared, so one key's refusals can crowd
+  out another's: those are counted, not named. At 20 lines a minute, turning over what the file keeps would take more
+  than five days of refusals without a pause.
 - **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
   summed in one `http.anonymous-summary` when a request arrives after that minute, and at shutdown. A flood of 20,000 now writes
   under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or

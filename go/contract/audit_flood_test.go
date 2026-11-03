@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -124,5 +126,91 @@ func TestAuditEventsSurviveAFlood(t *testing.T) {
 	}
 	if r := e.cli(nil, "logs", "--audit", "--follow"); r.code == 0 {
 		t.Errorf("logs --audit --follow was accepted: %s", r.stdout)
+	}
+}
+
+// Any key can be refused, and refusals share a file with the record of who changed what. A real
+// gateway, and a key with no admin rights refused for longer than that file keeps: the record stays.
+func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
+	if *implFlag != "go" && *implFlag != "both" {
+		t.Skip("runs the Go gateway")
+	}
+	tmp := scratchDir(t)
+	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
+	if r := e.cli(nil, "--json", "init"); r.code != 0 {
+		t.Fatalf("init: %s %s", r.stdout, r.stderr)
+	}
+	admin, _ := e.json("keys", "create", "--name", "admin", "--scopes", "keys:manage,keys:read")["secret"].(string)
+	reader, _ := e.json("keys", "create", "--name", "reader", "--scopes", "models:read")["secret"].(string)
+	if admin == "" || reader == "" {
+		t.Fatal("no keys")
+	}
+	e.serve()
+	defer e.stop()
+	post := func(c *http.Client, key string) int {
+		t.Helper()
+		req, _ := http.NewRequest("POST", e.base+"/_localbase/api-keys", strings.NewReader(`{"action":"create","name":"x","scopes":["keys:read"]}`))
+		req.Header.Set("Authorization", "Bearer "+key)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Error(err)
+			return 0
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post(http.DefaultClient, admin); code != 201 {
+		t.Fatalf("the change: %d", code)
+	}
+	logs := filepath.Join(e.root, "logs")
+	before, err := os.Stat(filepath.Join(logs, "audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Before this limit, about 160,000 of these took the record out of every file.
+	const flood = 170_000
+	var left, wrong atomic.Int64
+	left.Store(flood)
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: 8}}
+			for left.Add(-1) >= 0 {
+				if post(c, reader) != 403 {
+					wrong.Add(1)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if n := wrong.Load(); n != 0 {
+		t.Errorf("%d answers weren't a refusal", n)
+	}
+	after, err := os.Stat(filepath.Join(logs, "audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grew := after.Size() - before.Size(); grew > 64<<10 {
+		t.Errorf("the audit file grew %d bytes for %d refusals", grew, flood)
+	}
+	e.stop()
+	var kept strings.Builder
+	matches, _ := filepath.Glob(filepath.Join(logs, "audit*.jsonl"))
+	for _, m := range matches {
+		b, err := os.ReadFile(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kept.Write(b)
+	}
+	if !strings.Contains(kept.String(), "audit.api-key-changed") {
+		t.Errorf("the record of the change is gone, from %d files", len(matches))
+	}
+	// What was held back is said when the gateway stops, in the file it was held back from.
+	if !strings.Contains(kept.String(), "audit.refused-summary") {
+		t.Error("no summary of the refusals")
 	}
 }
