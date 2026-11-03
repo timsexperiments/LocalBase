@@ -82,7 +82,9 @@ func (p pins) verify(axe string) error {
 		if err := verifyAxe(axe, p.axeZip, p.axeSum); err != nil {
 			return err
 		}
-		os.Setenv("E2E_AXE_SHA256", p.axeSum)
+		if err := os.Setenv("E2E_AXE_SHA256", p.axeSum); err != nil {
+			return err
+		}
 	}
 	if p.chromeDir == "" {
 		return nil
@@ -91,9 +93,11 @@ func (p pins) verify(axe string) error {
 	if err != nil {
 		return err
 	}
-	os.Setenv("E2E_CHROME_SHA256", p.chromeSum)
-	os.Setenv("E2E_CHROME_VERSION", p.chromeVersion)
-	os.Setenv("E2E_CHROME_FILES", strconv.Itoa(files))
+	for k, v := range map[string]string{"E2E_CHROME_SHA256": p.chromeSum, "E2E_CHROME_VERSION": p.chromeVersion, "E2E_CHROME_FILES": strconv.Itoa(files)} {
+		if err := os.Setenv(k, v); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
