@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -73,4 +74,55 @@ func oidcSwitchFixture(t *testing.T) (*Browser, *fakeIdP) {
 		ClientAuthentication: &ClientAuth{Kind: "client-secret-basic", ClientSecret: "shh"}})
 	b.Client = f.srv.Client()
 	return b, f
+}
+
+// Asking for the account chooser changes nothing else about the sign-in: the same
+// parameters and fresh state, nonce and challenge, the callback signs in, and the state
+// still works only once.
+func TestLoginSwitchKeepsTheSignInFlow(t *testing.T) {
+	b, f := oidcSwitchFixture(t)
+	start := func(target string) (*http.Response, url.Values) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		b.StartLogin(w, get(target))
+		resp := w.Result()
+		loc, err := url.Parse(resp.Header.Get("Location"))
+		if err != nil || resp.StatusCode != 303 {
+			t.Fatalf("%s: %d %v", target, resp.StatusCode, err)
+		}
+		return resp, loc.Query()
+	}
+	_, plain := start("/app/login")
+	resp, switched := start("/app/login?switch=1")
+	for k := range plain {
+		if _, ok := switched[k]; !ok {
+			t.Errorf("switch=1 lost %q", k)
+		}
+	}
+	for k := range switched {
+		if _, ok := plain[k]; !ok && k != "prompt" {
+			t.Errorf("switch=1 added %q", k)
+		}
+	}
+	for _, k := range []string{"state", "nonce", "code_challenge"} {
+		if switched.Get(k) == "" || switched.Get(k) == plain.Get(k) {
+			t.Errorf("%s is not fresh: %q", k, switched.Get(k))
+		}
+	}
+	f.challenge, f.nonce = switched.Get("code_challenge"), switched.Get("nonce")
+	state := cookieNamed(resp, loginStateCookie)
+	if state == nil || state.Value != switched.Get("state") {
+		t.Fatalf("state cookie %+v", state)
+	}
+	back := url.Values{"state": {switched.Get("state")}, "code": {"good-code"}}
+	w := httptest.NewRecorder()
+	b.CompleteLogin(w, get(OIDCCallbackPath+"?"+back.Encode(), state))
+	if cookieNamed(w.Result(), SessionCookie) == nil {
+		t.Fatalf("the callback signed nobody in: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	b.CompleteLogin(w, get(OIDCCallbackPath+"?"+back.Encode(), state))
+	if cookieNamed(w.Result(), SessionCookie) != nil {
+		t.Error("the state worked twice")
+	}
 }
