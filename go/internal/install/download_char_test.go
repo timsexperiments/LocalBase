@@ -71,7 +71,7 @@ func plenty(string) (int64, error) { return 1 << 40, nil }
 
 func installTo(t *testing.T, dir string, s *catalog.Spec, report func(Event)) error {
 	t.Helper()
-	_, err := Model(context.Background(), s, dir, Options{Available: plenty, Report: report})
+	_, err := Model(context.Background(), s, dir, Options{Available: plenty, AllowPrivate: true, Report: report})
 	return err
 }
 
@@ -419,7 +419,7 @@ func TestInstallRefusesBeforeDownloading(t *testing.T) {
 	if err := installTo(t, t.TempDir(), specWith(srv.URL, noSize), nil); err == nil || !strings.Contains(err.Error(), "installation is disabled") {
 		t.Errorf("no size: %v", err)
 	}
-	_, err := Model(context.Background(), specWith(srv.URL, artifactOf("m.bin", modelBytes)), t.TempDir(), Options{Available: func(string) (int64, error) { return 1, nil }})
+	_, err := Model(context.Background(), specWith(srv.URL, artifactOf("m.bin", modelBytes)), t.TempDir(), Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1, nil }})
 	if err == nil || !strings.Contains(err.Error(), "Insufficient disk space") {
 		t.Errorf("no space: %v", err)
 	}
