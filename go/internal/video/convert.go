@@ -65,7 +65,7 @@ func (c *Converter) Prepare(ctx context.Context, media Media, dir string, maxByt
 		return Media{}, err
 	}
 	defer os.RemoveAll(tmp)
-	os.Chmod(tmp, 0o700)
+	os.Chmod(tmp, 0o700) //nolint:gosec // a directory needs its execute bit
 	in, out := filepath.Join(tmp, "input.avi"), filepath.Join(tmp, "output.mp4")
 	if err := writePrivate(in, b); err != nil {
 		return Media{}, err

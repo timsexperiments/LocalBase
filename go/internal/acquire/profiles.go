@@ -151,7 +151,7 @@ func saveProfiles(rootDir string, ps *Profiles) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := os.Chmod(dir, 0o700); err != nil {
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory needs its execute bit
 		return err
 	}
 	b, _ := json.MarshalIndent(ps, "", "  ")

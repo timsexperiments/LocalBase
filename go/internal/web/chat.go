@@ -168,11 +168,11 @@ func (u *UI) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	db, _ := json.Marshal(def)
 	u.render(w, r, "chat", map[string]any{
-		"PermissionsJSON": template.JS(pb),
-		"DefaultJSON":     template.JS(db),
+		"PermissionsJSON": template.JS(pb), //nolint:gosec // json.Marshal output: it escapes < > &
+		"DefaultJSON":     template.JS(db), //nolint:gosec // json.Marshal output: it escapes < > &
 		// A JSON data block: never executed, and html/template escapes it
 		// for the script context.
-		"ModelsJSON": template.JS(b),
+		"ModelsJSON": template.JS(b), //nolint:gosec // json.Marshal output: it escapes < > &
 		"Ready":      ready,
 		"CanChat":    p.Can("inference:chat"),
 		"CanManage":  p.Can("models:manage"),
