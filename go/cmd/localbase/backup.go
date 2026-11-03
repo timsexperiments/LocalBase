@@ -202,7 +202,11 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		c.Info("This replaces the settings of %s. Its models stay, and its old files are kept.", rep.Target)
 	}
 	m := rep.Manifest
-	c.Info("The backup was made %s by version %s. It holds %d keys and %d users.", m.CreatedAt, m.Version, rep.Keys, rep.Users)
+	keys := fmt.Sprintf("%d active, %d revoked", rep.Keys.Active, rep.Keys.Revoked)
+	if rep.Keys.Expired > 0 {
+		keys += fmt.Sprintf(", %d expired", rep.Keys.Expired)
+	}
+	c.Info("The backup was made %s by version %s. It holds %d API keys (%s) and %d users.", m.CreatedAt, m.Version, rep.Keys.Total, keys, rep.Users)
 	if len(m.SecretNames) > 0 {
 		c.Info("Secrets in it: %s.", strings.Join(m.SecretNames, ", "))
 	} else {

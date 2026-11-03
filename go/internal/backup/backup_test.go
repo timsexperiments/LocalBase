@@ -84,6 +84,7 @@ func newRoot(t *testing.T, parent string) (*root.Root, string) {
 	cfg := conf.Default(r.Dir, 64, cat)
 	cfg.HFToken, cfg.OtelHeaders, cfg.OtelEndpoint = secretHF, secretOTLP, "https://otel.example.com"
 	cfg.GatewayHost, cfg.GatewayPort, cfg.Port, cfg.SttPort = "0.0.0.0", 28300, 28301, 28302
+	cfg.Host, cfg.SttHost = "0.0.0.0", "0.0.0.0"
 	if err := st.SaveConfig(ctx, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -1441,6 +1442,61 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	}
 }
 
+// A long-lived root can hold many revoked keys, so a bare count reads as that many that work.
+func TestRestoreCountsKeysByState(t *testing.T) {
+	r, active := newRoot(t, dir(t))
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	var revokedSecrets []string
+	for i := 0; i < 2; i++ {
+		k, secret, err := st.CreateAPIKey(ctx, fmt.Sprintf("revoked-%d", i), []string{"inference:chat"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.RevokeAPIKey(ctx, k.ID); err != nil {
+			t.Fatal(err)
+		}
+		revokedSecrets = append(revokedSecrets, secret)
+	}
+	gone, goneSecret, err := st.CreateAPIKey(ctx, "expired", []string{"inference:chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, `UPDATE api_keys SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	target := filepath.Join(dir(t), "target")
+	rep, _ := restore(t, create(t, r, false).Output, target, false)
+	if want := (KeyCounts{Total: 4, Active: 1, Revoked: 2, Expired: 1}); rep.Keys != want {
+		t.Errorf("keys: %+v, want %+v", rep.Keys, want)
+	}
+	if !strings.Contains(strings.Join(rep.Rules, " "), "revoked ones stay revoked") {
+		t.Errorf("rules: %v", rep.Rules)
+	}
+	restored, err := store.Open(filepath.Join(target, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if k, err := restored.ResolveAPIKey(ctx, active); err != nil || k == nil || k.RevokedAt != nil {
+		t.Errorf("the active key: %+v %v", k, err)
+	}
+	for _, secret := range append(revokedSecrets, goneSecret) {
+		k, err := restored.ResolveAPIKey(ctx, secret)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if k != nil && k.Active(time.Now()) {
+			t.Errorf("a key that was not active works after a restore: %s", k.Name)
+		}
+	}
+}
+
 func TestRestoreReportsWhatMatters(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	e := read(t, create(t, r, false).Output)
@@ -1461,7 +1517,11 @@ func TestRestoreReportsWhatMatters(t *testing.T) {
 		t.Errorf("the whole command line: %+v", rep.Programs)
 	}
 	text, _ := json.Marshal(rep.Settings)
-	for _, want := range []string{"0.0.0.0:28300", "otel.example.com", "OTLP headers", "imports.allow-private", "imports.allow-local-paths", "gateway.max-connections"} {
+	// A backend stored as 0.0.0.0 listens on loopback, and the report must say so.
+	if strings.Contains(string(text), "0.0.0.0:28301") || strings.Contains(string(text), "0.0.0.0:28302") {
+		t.Errorf("the report names a backend's stored host, not where it listens: %s", text)
+	}
+	for _, want := range []string{"reachable from other computers too", "0.0.0.0:28300", "127.0.0.1:28301", "127.0.0.1:28302", "otel.example.com", "OTLP headers", "imports.allow-private", "imports.allow-local-paths", "gateway.max-connections"} {
 		if !strings.Contains(string(text), want) {
 			t.Errorf("%s is missing from %s", want, text)
 		}

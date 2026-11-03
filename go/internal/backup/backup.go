@@ -52,7 +52,7 @@ const (
 	formerLog = "catalog.d/.former-built-ins"
 
 	// SignOutLine and RevokedLine are said before a restore asks, and are in every manifest.
-	SignOutLine = "A restore signs everyone out. API keys keep working."
+	SignOutLine = "A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."
 	RevokedLine = "A key revoked, or a user removed or disabled, on the root being replaced stays that way, whatever this backup says."
 )
 

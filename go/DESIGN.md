@@ -5051,6 +5051,8 @@ Feasible, and a real option: `local-base backup --exclude-secrets`.
 It works on the copy, never on the root. It clears `config.hf_token` and `config.otel_headers`, then
 runs `VACUUM INTO` again so the old values are not left in free pages.
 
+**So it isn't "secrets never touch disk".** The first copy holds them until they are cleared and it is deleted, in the private working directory, for about as long as the copy takes. `VACUUM INTO` can't leave columns out. The finished file holds none of them.
+
 **A file with a secret is reduced to what still validates,** because a blank secret would stop the
 gateway: `auth.LoadAccess` refuses a `client-secret-basic` registration with no secret, and a
 refused file stops `serve`.
@@ -5142,8 +5144,8 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - `ui-access.json`, `email-delivery.json`, profiles, backends and catalog entries pass the validators the gateway uses, and each voice file matches its row. Each `imported_models.definition` must pass `Model.Validate`, match its row's id, and name only clean relative file names.
 3. **The report, before it asks.** What it holds, secrets or not, and:
    - **Each custom backend's whole command line:** program and arguments, since the program can be a shell, and it runs as you when its model loads. One whose program doesn't exist here gets a line and stays registered. Imported models that read a local path or a direct URL are named too.
-   - **"A restore signs everyone out. API keys keep working."**
-   - **Settings that change exposure or where data goes:** the gateway and backend hosts and ports, the OTLP endpoint and whether it has headers, the private-address and local-path import settings, and the connection caps.
+   - **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state, `68 API keys (5 active, 63 revoked)`, since a bare count reads as that many that work.
+   - **Settings that change exposure or where data goes:** the gateway's host and port, and who can reach it. Where each backend will listen, which is always loopback: `runtime.BackendHost` ignores a stored `0.0.0.0`, as on the live root, because a backend has no authentication. So a restored root can't expose one. Then the OTLP endpoint and whether it has headers, the private-address and local-path import settings, and the connection caps.
    - **With `--replace`, what comes back:** keys and users the target no longer has. **A key the target has revoked stays revoked, and a user it has removed or disabled stays that way,** whatever the backup says, and the counts are printed, so restoring an older backup can't bring a leaked key back. The rule is also in every manifest. A fresh target has nothing to compare, and it says to check `local-base keys list`.
    - Sign-in providers, the number of keys and users, models to install, and secrets to re-enter.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
@@ -5203,6 +5205,7 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway has nothing neither table names.
 - `TestBeforeRestoreIsNeverRead`: planted text in `.before-restore-*` does not reach a backup, diagnostics or any API answer, and a gateway starts with it there.
 - `TestRestoreWarnsAboutBusyPorts`, `TestUninstallNamesBackups`.
+- `TestRestoredBackendStaysOnLoopback`: a stored `0.0.0.0` restores, the report says loopback, and a real listening backend is on loopback.
 - `TestInterruptedRunsLeaveNothing`: an interrupt and a termination during a dry run and a restore leave nothing. After a real kill, `doctor` names what was left, and the next run removes it and says so.
 - `TestBackupRestoreCLI`: the "not encrypted" line, the sign-out line before the question, `--json` needing `--yes`, an unsafe root refused, and the old files named last, with the command to delete them.
 
@@ -5215,6 +5218,7 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, a wrong size, an extra, missing or duplicate entry, a link, `../`, an absolute path, a device, a sparse entry, data after the tar or after the gzip, a newer format or schema, a manifest over each limit, a corrupt database, an invalid `ui-access.json`, backend or catalog entry, a voice that doesn't match, a bad imported model, and a file others can change. The target is the same afterwards, and nothing is left beside it.
 - `TestRestoreRefusesCraftedSchema`: a trigger, a view, an extra table, column, generated column or index. `TestRestoreAcceptsEveryMigrationLevel`: a database at each earlier level restores and migrates, so the check can't refuse a real older backup. `TestShapeOfAMigratedDatabaseIsExpected`.
 - `TestRestoreSchemaMissingTables`: a backup from before each Go table restores and gains it, and one missing a migration's table or column is refused.
+- `TestRestoreCountsKeysByState`: active, revoked and expired are counted apart, and only the active ones work afterwards.
 - `TestRestoreDeletesLeftOutRows`, `TestRestoreReportsWhatMatters`. `TestRestoreKeepsRevocations`: a revoked key and a removed or disabled user stay that way, by id or by address.
 - `TestRestoreIntoANewRoot`: modes and owners on every path under each umask, `root.Open` and `CheckRootFiles` clean, and the key works. `TestRestoreReplace`: only 34.1 entries change, `models/` keeps its inode, and the old files are in a 0700 directory. `TestRestoreRefusesTargets`, `TestRestoreDryRunWritesNothing`.
 - `TestRestoreFailureAndCrash`: a failure and a crash at every step. Each puts the root back byte for byte, and a crash makes `root.Open` refuse with the one line first. `TestRestoreCrashOnANewRoot`, `TestRestoreVerifiesBeforeFinishing`.

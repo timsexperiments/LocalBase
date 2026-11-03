@@ -29,6 +29,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -60,6 +61,15 @@ type Setting struct {
 	Value string `json:"value"`
 }
 
+// KeyCounts says what an API key count means. Most of a long-lived root's keys can be revoked, and
+// "68 keys" alone reads as 68 that work.
+type KeyCounts struct {
+	Total   int `json:"total"`
+	Active  int `json:"active"`
+	Revoked int `json:"revoked"`
+	Expired int `json:"expired"`
+}
+
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
 	Target    string        `json:"target"`
@@ -70,7 +80,7 @@ type Report struct {
 	Sources   []ModelSource `json:"modelSources"`
 	Settings  []Setting     `json:"settings"`
 	Providers []string      `json:"signInProviders"`
-	Keys      int           `json:"keys"`
+	Keys      KeyCounts     `json:"keys"`
 	Users     int           `json:"users"`
 	Ports     []int         `json:"ports"`
 	// With a root being replaced, what the backup would bring back, and what stays as it is.
@@ -572,13 +582,16 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if rep.Sources, err = checkImported(ctx, st); err != nil {
 		return nil, err
 	}
-	if err := fillCounts(ctx, st.DB, rep); err != nil {
+	if err := fillCounts(ctx, st, rep); err != nil {
 		return nil, err
 	}
 	if cfg != nil {
 		rep.Ports = []int{cfg.GatewayPort, cfg.Port, cfg.SttPort}
-		rep.Settings = append(rep.Settings, Setting{"gateway", fmt.Sprintf("%s:%d", cfg.GatewayHost, cfg.GatewayPort)},
-			Setting{"llm backend", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)}, Setting{"speech backend", fmt.Sprintf("%s:%d", cfg.SttHost, cfg.SttPort)})
+		// A backend has no authentication, so it only ever listens on loopback, whatever its stored
+		// host says. The report says where it will listen, not what is stored.
+		rep.Settings = append(rep.Settings, Setting{"gateway, reachable from " + reach(cfg.GatewayHost), fmt.Sprintf("%s:%d", cfg.GatewayHost, cfg.GatewayPort)},
+			Setting{"chat backend, reachable from this computer only", fmt.Sprintf("%s:%d", runtime.BackendHost(cfg.Host), cfg.Port)},
+			Setting{"speech backend, reachable from this computer only", fmt.Sprintf("%s:%d", runtime.BackendHost(cfg.SttHost), cfg.SttPort)})
 		if cfg.OtelEndpoint != "" {
 			rep.Settings = append(rep.Settings, Setting{"OTLP endpoint: traces and logs go here", cfg.OtelEndpoint})
 		}
@@ -714,21 +727,36 @@ func checkImported(ctx context.Context, st *store.Store) ([]ModelSource, error) 
 	return out, nil
 }
 
-func fillCounts(ctx context.Context, db *sql.DB, rep *Report) error {
-	count := func(table string) (int, error) {
-		if !hasTable(ctx, db, table) {
-			return 0, nil
+func fillCounts(ctx context.Context, st *store.Store, rep *Report) error {
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil {
+		return refuse("The API keys in this backup can't be read: %v", err)
+	}
+	now := time.Now()
+	for _, k := range keys {
+		rep.Keys.Total++
+		switch {
+		case k.RevokedAt != nil:
+			rep.Keys.Revoked++
+		case k.Active(now):
+			rep.Keys.Active++
+		default:
+			rep.Keys.Expired++
 		}
-		var n int
-		err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&n)
-		return n, err
 	}
-	var err error
-	if rep.Keys, err = count("api_keys"); err != nil {
-		return err
+	if !hasTable(ctx, st.DB, "auth_users") {
+		return nil
 	}
-	rep.Users, err = count("auth_users")
-	return err
+	return st.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_users`).Scan(&rep.Users)
+}
+
+// reach says plainly who could reach an address, for the report.
+func reach(host string) string {
+	bare := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(host), "["), "]")
+	if runtime.BackendHost(host) == bare {
+		return "this computer only"
+	}
+	return "other computers too"
 }
 
 // exposureSettings are stored settings that change who can reach this root, or where it reaches.
