@@ -236,7 +236,9 @@ func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles 
 	if err != nil {
 		return nil, err
 	}
-	tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, u.ID)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, u.ID); err != nil {
+		return nil, err // otherwise the old roles would stay beside the new ones
+	}
 	for _, r := range roles {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO auth_user_roles (user_id, role_id) VALUES (?, ?)`, u.ID, ids[r]); err != nil {
 			return nil, err
@@ -341,7 +343,8 @@ func ms(t time.Time) int64 { return t.UnixMilli() }
 // CreateSession stores a session and returns its cookie token.
 func CreateSession(ctx context.Context, st *store.Store, ownerID string, id Identity) (string, error) {
 	t := time.Now()
-	st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
+	// Tidying only: an expired row is refused when read, whether or not this removes it.
+	_, _ = st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
 	token := RandomToken(32)
 	var email any
 	if id.VerifiedEmail != "" {
@@ -363,10 +366,12 @@ func FindSession(ctx context.Context, st *store.Store, token string, issuers map
 	case err != nil:
 		return nil, err
 	case verdict == "expired" || verdict == "issuer":
-		st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h)
+		// Refused either way; this only tidies the row, and the verdict comes again if it stays.
+		_, _ = st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h)
 		return nil, nil
 	case verdict == "valid-touch":
-		st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
+		// A failed touch only makes the idle limit come sooner: it fails closed.
+		_, _ = st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
 			t, t+SessionIdleTTL.Milliseconds(), h)
 	}
 	return s, nil
@@ -400,9 +405,11 @@ func checkSession(ctx context.Context, st *store.Store, h string, issuers map[st
 	return &s, "valid", nil
 }
 
-// DeleteSession signs a cookie token out.
-func DeleteSession(ctx context.Context, st *store.Store, token string) {
-	st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, hashToken(token))
+// DeleteSession signs a cookie token out. A failure leaves that session valid until it
+// expires, so the caller must hear about it.
+func DeleteSession(ctx context.Context, st *store.Store, token string) error {
+	_, err := st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, hashToken(token))
+	return err
 }
 
 // --- magic links --------------------------------------------------------------------
@@ -447,10 +454,12 @@ func IssueMagicLink(ctx context.Context, st *store.Store, email, issuer string) 
 }
 
 // RevokeMagicLink drops a token (after a failed delivery).
-func RevokeMagicLink(ctx context.Context, st *store.Store, token string) {
-	if magicTokenRe.MatchString(token) {
-		st.DB.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens WHERE token_hash = ?`, hashToken(token))
+func RevokeMagicLink(ctx context.Context, st *store.Store, token string) error {
+	if !magicTokenRe.MatchString(token) {
+		return nil
 	}
+	_, err := st.DB.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens WHERE token_hash = ?`, hashToken(token))
+	return err
 }
 
 // ConsumeMagicLink redeems a token once; nil when invalid or expired.
@@ -468,7 +477,10 @@ func ConsumeMagicLink(ctx context.Context, st *store.Store, token, issuer string
 	err = tx.QueryRowContext(ctx, `SELECT t.user_id, t.expires_at, u.status, e.email FROM auth_magic_link_tokens t
 		JOIN auth_users u ON t.user_id = u.id JOIN auth_user_emails e ON t.user_id = e.user_id WHERE t.token_hash = ?`, h).
 		Scan(&userID, &expires, &status, &email)
-	tx.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens WHERE token_hash = ?`, h)
+	// Used up first, or not at all: a link that could not be spent must not sign anyone in.
+	if _, derr := tx.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens WHERE token_hash = ?`, h); derr != nil {
+		return nil, derr
+	}
 	if cerr := tx.Commit(); cerr != nil {
 		return nil, cerr
 	}
@@ -482,6 +494,7 @@ func ConsumeMagicLink(ctx context.Context, st *store.Store, token, issuer string
 }
 
 // ClearMagicLinks drops every pending token (serve start without magic link).
-func ClearMagicLinks(ctx context.Context, st *store.Store) {
-	st.DB.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens`)
+func ClearMagicLinks(ctx context.Context, st *store.Store) error {
+	_, err := st.DB.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens`)
+	return err
 }
