@@ -178,7 +178,9 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 			auth.Deny(w, 403)
 			return true
 		}
-		auth.DeleteLocalSession(r.Context(), s.Store, token)
+		if err := auth.DeleteLocalSession(r.Context(), s.Store, token); err != nil {
+			s.Log.Error("Could not end a local session; it stays valid until it expires.", "event", "local-session.delete-failed", "error", err.Error())
+		}
 		http.SetCookie(w, auth.ClearLocalSessionCookie())
 		w.WriteHeader(http.StatusNoContent)
 		return true
