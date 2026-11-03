@@ -62,6 +62,7 @@ different ID to add another provider; using an existing ID updates it. With
 multiple registrations, `/app/login` presents a provider picker. Automation can
 list and remove registrations with `access oidc list` and
 `access oidc remove ID`.
+Removing the last registration disables browser access.
 
 OIDC discovery keeps this integration provider-neutral. Google, Microsoft
 Entra, Okta, Auth0, Keycloak, and other standards-compliant OIDC providers use
