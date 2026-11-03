@@ -189,26 +189,9 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 	if running && margin == 0 {
 		return nil
 	}
-	spec := m.d.Catalog.ByID(id)
-	t, err := m.target(id)
+	demand, err := m.switchDemand(id, running, false)
 	if err != nil {
 		return err
-	}
-	if spec != nil && (t == nil || !t.Imported) {
-		if complete, _ := spec.Installation(m.d.ModelsDir); !complete && !running {
-			return errNotInstalled
-		}
-	}
-	plan, err := m.planFor(id, t)
-	if err != nil {
-		return err
-	}
-	if t != nil && t.Imported {
-		spec = nil
-	}
-	demand := m.admissionDemand(spec, plan)
-	if t != nil && t.Backend.Adapter == "process-openai/v1" {
-		demand = customDemand(t, plan)
 	}
 	if margin > 0 {
 		pad := max(margin, demand.UnifiedBytes/10)
@@ -217,6 +200,63 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 		demand.AcceleratorBytes += pad
 	}
 	return m.d.Memory.CheckAdmission(context.Background(), demand, append([]string{"llm"}, m.d.Recovery.idleIDs("llm")...))
+}
+
+// switchDemand is the demand a switch to id would be admitted with, computed as
+// doSwitch does, without installing or starting anything.
+func (m *LLM) switchDemand(id string, running, assumeInstalled bool) (memory.Demand, error) {
+	var demand memory.Demand
+	spec := m.d.Catalog.ByID(id)
+	t, err := m.target(id)
+	if err != nil {
+		return demand, err
+	}
+	if spec != nil && (t == nil || !t.Imported) {
+		if complete, _ := spec.Installation(m.d.ModelsDir); !complete && !running && !assumeInstalled {
+			return demand, errNotInstalled
+		}
+	}
+	plan, err := m.planFor(id, t)
+	if err != nil {
+		return demand, err
+	}
+	if t != nil && t.Imported {
+		spec = nil
+	}
+	demand = m.admissionDemand(spec, plan)
+	if t != nil && t.Backend.Adapter == "process-openai/v1" {
+		demand = customDemand(t, plan)
+	}
+	return demand, nil
+}
+
+// PreviewAdmission is what a request for id would meet now: the demand a switch
+// would use, on the admission a real one would finally face, crediting this
+// runtime and every idle one recovery could stop. It changes nothing.
+// assumeInstalled answers the memory question alone, for a model not yet on disk.
+func (m *LLM) PreviewAdmission(ctx context.Context, id string, assumeInstalled bool) (memory.AdmissionPreview, memory.Demand, error) {
+	m.mu.Lock()
+	running := m.cur != nil && m.cur.modelID == id
+	m.mu.Unlock()
+	demand, err := m.switchDemand(id, running, assumeInstalled)
+	if errors.Is(err, errNotInstalled) {
+		return memory.AdmissionPreview{}, demand, &NotInstalledError{ModelID: id}
+	}
+	if err != nil {
+		return memory.AdmissionPreview{}, demand, err
+	}
+	p := m.d.Memory.Preview(ctx, demand, append([]string{"llm"}, m.d.Recovery.idleIDs("llm")...))
+	if running {
+		p.Err = nil // already loaded: nothing to admit
+	}
+	return p, demand, nil
+}
+
+// Activity is the request count behind Busy: running now, and waiting.
+func (m *LLM) Activity() (inFlight, queued int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.active, len(m.queue)
 }
 
 // isChat: a chat-capable LLM (not a decision or embedding model). Models
