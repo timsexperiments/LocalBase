@@ -249,13 +249,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			next(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, bp)))
 			return
 		}
-		p, err := s.Auth.ResolveAPI(r.Context(), r)
-		if err != nil {
-			s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
-			serviceUnavailable(w, r, "Authentication")
-			return
-		}
-		setAuth(r, p)
+		p := s.resolveCredential(r)
 		if !p.Authenticated() {
 			unauthorized(w, r)
 			return
@@ -271,6 +265,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 // --- request middleware -------------------------------------------------------
 
 type recorder struct {
+	lookupFailed bool // see resolveCredential
 	http.ResponseWriter
 	status int
 	auth   *auth.Principal
@@ -516,6 +511,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 	p := rec.auth
 	switch {
+	case rec.lookupFailed:
+		return []any{"auth_outcome", "unavailable"}
 	case s.NoAuth || p == nil:
 		return []any{"auth_outcome", "disabled"}
 	case p.Kind == "api-key":
@@ -534,9 +531,7 @@ func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 	if !s.NoAuth {
-		p, _ := s.Auth.ResolveAPI(r.Context(), r)
-		setAuth(r, p)
-		if !p.Authenticated() {
+		if p := s.resolveCredential(r); !p.Authenticated() {
 			unauthorized(w, r)
 			return
 		}

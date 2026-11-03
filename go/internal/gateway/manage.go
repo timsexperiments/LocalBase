@@ -61,9 +61,32 @@ func (s *Server) principal(r *http.Request) *auth.Principal {
 	if s.NoAuth {
 		return &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	}
-	p, _ := s.Auth.ResolveAPI(r.Context(), r)
+	return s.resolveCredential(r)
+}
+
+// resolveCredential is every path from an API credential to a principal. A lookup that failed says
+// nothing about the key, so the request is marked, and unauthorized and forbidden answer 503 for it:
+// a client told 401 may treat a good key as revoked and throw it away.
+func (s *Server) resolveCredential(r *http.Request) *auth.Principal {
+	p, err := s.Auth.ResolveAPI(r.Context(), r)
+	if err != nil {
+		s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
+		if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
+			rec.lookupFailed = true
+		}
+	}
 	setAuth(r, p)
 	return p
+}
+
+// credentialLookupFailed answers for a request whose credential couldn't be looked up.
+func credentialLookupFailed(w http.ResponseWriter, r *http.Request) bool {
+	rec, ok := r.Context().Value(recKey{}).(*recorder)
+	if !ok || !rec.lookupFailed {
+		return false
+	}
+	serviceUnavailable(w, r, "Authentication")
+	return true
 }
 
 // errCallerGone is a key that stopped working after its request was authenticated.
@@ -183,6 +206,9 @@ func validScopes(scopes []string) ([]string, bool) {
 func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
+		if credentialLookupFailed(w, r) {
+			return
+		}
 		managementError(w, 401, "invalid_api_key")
 		return
 	}
@@ -351,6 +377,9 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
+		if credentialLookupFailed(w, r) {
+			return
+		}
 		managementError(w, 401, "invalid_api_key")
 		return
 	}

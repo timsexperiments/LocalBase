@@ -99,12 +99,17 @@ func TestLimitedChangesCannotPushOutWhoChangedKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	took := time.Since(started)
-	// This is about the log. On a busy machine a few of these lose out on the database, and those
-	// answer 503, or 401 where a handler doesn't report a failed key lookup. They changed nothing.
+	// This is about the log. On a busy machine a few of these lose out on the database and answer 503,
+	// having changed nothing. A key that's good is never told otherwise.
 	if n := wrong.Load(); n > 0 {
 		t.Logf("%d answers weren't a change: %v", n, answers)
 		if n > flood/100 {
 			t.Errorf("%d of %d answers weren't a change", n, flood)
+		}
+		for answer := range answers {
+			if !strings.HasPrefix(answer, "503 ") {
+				t.Errorf("a good key was answered: %s", answer)
+			}
 		}
 	}
 	after, err := os.Stat(filepath.Join(logs, "audit.jsonl"))
