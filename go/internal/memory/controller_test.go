@@ -146,3 +146,38 @@ func TestParseVMStatAndFootprint(t *testing.T) {
 		t.Fatalf("footprint = %d %v", b, ok)
 	}
 }
+
+// holdHost runs a callback in the middle of a sample.
+type holdHost struct {
+	HostProvider
+	during func()
+}
+
+func (h *holdHost) Snapshot(ctx context.Context) Snapshot {
+	if h.during != nil {
+		f := h.during
+		h.during = nil
+		f()
+	}
+	return h.HostProvider.Snapshot(ctx)
+}
+
+// A sample that began before a runtime became resident does not show its memory,
+// so that runtime still counts as pending against it. The next sample does not.
+func TestResidentCountsOnlyInLaterSamples(t *testing.T) {
+	inner, _ := newTestController(30)
+	h := &holdHost{HostProvider: inner.host}
+	c := NewController(h, inner.system, false)
+	c.SetSampler(nil)
+	r, err := c.Reserve(context.Background(), "a", demand(10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.during = func() { r.Materialize(1) }
+	if e := reason(c.CheckAdmission(context.Background(), demand(12), nil)); e != "system-memory" {
+		t.Errorf("sample older than the runtime: %q, want system-memory", e)
+	}
+	if err := c.CheckAdmission(context.Background(), demand(12), nil); err != nil {
+		t.Errorf("a later sample: %v", err)
+	}
+}
