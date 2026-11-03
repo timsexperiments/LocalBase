@@ -247,7 +247,7 @@ func (a *App) Run(args []string) int {
 	i := 0
 	for ; i < len(rest); i++ {
 		tok := rest[i]
-		if strings.HasPrefix(tok, "-") || cmd.Run != nil {
+		if strings.HasPrefix(tok, "-") || (cmd.Run != nil && cmd.find(tok) == nil) {
 			break
 		}
 		next := cmd.find(tok)
