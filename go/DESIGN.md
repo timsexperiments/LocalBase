@@ -5133,6 +5133,14 @@ Today that is run for curl and the two SDKs, and not run for every editor, agent
 **Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
 page, the command and the route. The keys it creates are ordinary keys.
 
+### 31.14 A feed entry can't take another model's file
+
+Every model of a kind shares a directory, and installing an entry replaces whatever has its file's name. So a feed entry
+naming a qualified model's file would take that file's place, and the qualified model would then run what the feed
+supplied. An entry from the feed that names a file another model uses, with different bytes or no checksum, is left out
+of the catalog, with a diagnostic saying why. Case doesn't count, since a disk may not care. Between two feed entries,
+the first keeps the name. A person's own entries in `catalog.d` aren't checked: what they name is their choice.
+
 ## 32. Usage and activity (design addendum, 2026-11-02)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
