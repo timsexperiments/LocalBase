@@ -748,12 +748,19 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await nav("/app/models/running");
 const shown = await ev(`(() => { const rows = [...document.querySelectorAll("#running-live .running-row")].map((r) => r.textContent.replace(/\\s+/g, " ").trim()); return { rows, buttons: document.querySelectorAll("#running-live [aria-label^='Free memory']").length, sheets: document.querySelectorAll("#running-live dialog[id^=unload-sheet]").length }; })()`);
 check(shown.buttons === shown.rows.length && shown.sheets === shown.rows.length, `every row on Running has its own Free memory: ${JSON.stringify(shown.rows).slice(0, 300)}`);
-for (const w of [360, 390, 430, 480, 768]) {
+for (const w of [320, 360, 390, 430, 480, 768]) {
   await send("Emulation.setDeviceMetricsOverride", { width: w, height: 844, deviceScaleFactor: 2, mobile: w < 768 });
   await sleep(120);
   const inset = await ev(`[...document.querySelectorAll("#running-live .running-row")].map((li) => { const r = li.getBoundingClientRect(); return [...li.querySelectorAll(".running-actions > *")].map((el) => { const b = el.getBoundingClientRect(); return Math.round(Math.min(b.left - r.left, r.right - b.right, r.bottom - b.bottom)); }); }).flat()`);
   check(inset.every((n) => n >= 8), `at ${w}, a row's state and action stay inside its padding: ${JSON.stringify(inset)}`);
+  const tallest = await ev(`Math.max(0, ...[...document.querySelectorAll(".running-actions .btn")].map((b) => b.getBoundingClientRect().height))`);
+  check(tallest < 50, `at ${w}, Free memory stays on one line: ${tallest}`);
 }
+
+// --- An htmx target that isn't a valid selector does nothing, silently (a dot in a model's id).
+await nav("/app/models/get");
+const badTargets = await ev(`[...document.querySelectorAll("[hx-target^='#'], [hx-target^='.']")].map((el) => el.getAttribute("hx-target")).filter((t) => { try { document.querySelector(t); return false; } catch { return true; } })`);
+check(badTargets.length === 0, `Get's targets are all valid selectors: ${JSON.stringify(badTargets).slice(0, 200)}`);
 
 // --- Sizes: targets at least 44 px and text at least 12 px, as rendered at 320 ----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });

@@ -182,6 +182,7 @@ type CatalogRow struct {
 	FreeFirstBytes          int64  // how much to free before it would start, when it wouldn't now
 	Fit                     string // fits | tight | close-others | wont-fit | "" (unknown)
 	Forecast                bool   // Fit is the gateway's answer for right now, not total memory
+	MayNotFit               string // the catalog's rough figure says no: words, and the choice stays open
 	Installed               bool
 }
 
