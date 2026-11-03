@@ -120,6 +120,7 @@ func New(d Deps) *UI {
 		"canAdmin":   func(p *auth.Principal) bool { return p.Can("access:read") || p.Can("keys:read") },
 		"initial":    initial,
 		"firstWords": firstWords,
+		"studioName": func(tool string) string { return studioNames[tool] },
 		"uses":       usesText,
 		"mayDetail":  mayNotFitDetail,
 		"aboutGib":   aboutGib,
@@ -176,6 +177,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("POST /app/backends", u.mutating("models:manage", u.backendsPage))
 	m.HandleFunc("GET /app/studio", u.need("models:read", u.studio))
 	m.HandleFunc("GET /app/studio/{tool}", u.need("models:read", u.studioTool))
+	m.HandleFunc("GET /app/studio/tile/{id}", u.need("models:read", u.studioTile))
 	m.HandleFunc("GET /app/lab", u.need("models:read", u.labRedirect))
 	m.HandleFunc("GET /app/lab/voices", u.need("models:read", u.labVoiceOptions))
 	m.HandleFunc("POST /app/lab/image", u.mutating("inference:image", u.labImage))
