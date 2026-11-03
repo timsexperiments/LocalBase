@@ -274,7 +274,7 @@ func selectedModels(ctx context.Context, dbPath string) []string {
 	if err != nil {
 		return nil
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }() // Read-only.
 	cfg, err := st.LoadConfig(ctx)
 	if err != nil {
 		return nil
@@ -305,7 +305,7 @@ func dropRows(ctx context.Context, db *sql.DB) error {
 		if !hasTable(ctx, db, t) {
 			continue
 		}
-		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil {
+		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil { //nolint:gosec // G202: t is from the constant list rowsLeftOut, and a placeholder can't name a table.
 			return fmt.Errorf("%s: %w", t, err)
 		}
 	}
@@ -356,7 +356,7 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	if exclude {
 		for _, column := range []string{"hf_token", "otel_headers"} {
 			if hasColumn(ctx, db, "config", column) {
-				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil {
+				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil { //nolint:gosec // G202: column is from the constant list above, and a placeholder can't name a column.
 					return err
 				}
 			}
