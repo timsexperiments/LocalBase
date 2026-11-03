@@ -115,7 +115,7 @@ func New(s *Server) *Server {
 	mux.HandleFunc("/_localbase/instance", s.instance)
 	mux.HandleFunc("/_localbase/host", s.guard("models:read", s.hostAPI))
 	mux.HandleFunc("/_localbase/computer-name", s.computerNameAPI)
-	mux.HandleFunc("/_localbase/default-model", s.defaultModel)
+	mux.HandleFunc("/_localbase/default-model", s.defaultModel) // for the local CLI: an empty 404 without its instance token, by design
 	mux.HandleFunc("/_localbase/placement-state", s.placementRuntimeState)
 	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
 	mux.HandleFunc("/v1/models/{model...}", s.guard("models:read", s.retrieveModel))
