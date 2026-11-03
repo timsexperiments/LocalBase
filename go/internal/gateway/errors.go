@@ -105,6 +105,8 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 		// honour is a conflict; not fitting now may change; a backend that
 		// placed tensors differently from the plan was stopped.
 		switch pe.Code {
+		case "model_too_large":
+			writeError(w, r, 422, "invalid_request_error", pe.Code, pe.Message, strp("model"))
 		case "placement_does_not_fit":
 			w.Header().Set("Retry-After", "5")
 			writeError(w, r, 503, "api_error", pe.Code, pe.Message, nil)
@@ -145,7 +147,7 @@ func modelTooLarge(w http.ResponseWriter, r *http.Request, ae *memory.AdmissionE
 	if ae.PoolID == "gpu:0" { // Go only: placement's GPU pool (DESIGN §20)
 		what, where = "GPU memory", "models on this GPU"
 	}
-	msg := fmt.Sprintf("This model requires about %s of %s, but only %s is available for %s (%s total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model.",
+	msg := fmt.Sprintf("This model requires about %s of %s, but only %s is available for %s (%s total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config.",
 		gib(ae.RequestedBytes), what, gib(ae.AvailableBytes), where, gib(ae.CapacityBytes))
 	writeError(w, r, 422, "invalid_request_error", "model_too_large", msg, strp("model"))
 }
