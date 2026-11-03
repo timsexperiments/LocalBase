@@ -230,6 +230,10 @@
   .btn:disabled {
     @apply cursor-not-allowed opacity-50;
   }
+  /* A box that can't be typed in says so, and what it holds stays readable. */
+  .input:disabled {
+    @apply cursor-not-allowed bg-transparent text-muted;
+  }
 }
 
 /* Disclosures whose summary is a flex row lose the native marker; draw one. */
