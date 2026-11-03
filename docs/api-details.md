@@ -211,6 +211,8 @@ local-base --json models catalog
 local-base doctor --json
 ```
 
+If `doctor` can't read the database, it still reports everything else, with `ok: true`, `data.databaseProblem` (`message` and `reason`) and exit code 1, so scripts must read the exit code and `data.databaseProblem`, not just `ok`.
+
 Finite commands write exactly one JSON document to stdout:
 
 ```json

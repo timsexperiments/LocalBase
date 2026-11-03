@@ -273,6 +273,7 @@ Measured. Nothing here is done yet. `internal/web` is excluded (the FE thread ow
 | Test | Failure | Status |
 |---|---|---|
 | `TestUnloadScope` | once, temp-dir cleanup only; not reproduced | Recorded; `scratchDir` will explain the next one |
+| `TestRuntimePortBaseServes` | once under `-race`, a 503 from `/v1/chat/completions`, at about 10:15-10:16 UTC on 2026-11-03; passed 5 of 5 straight after | Recorded. A test flood had exhausted the machine's local ports at about that time, which fits, but nothing proves it. Output kept by the Go thread until the next reboot |
 | `TestEmbeddings`, `TestDifferentialModelMetadata`, `TestDifferentialImageRejections` | **D** or **R**: memory refusals while other models are loaded | Load-dependent; the image test logs free memory on failure |
 
 ## 6. TS-parity shims: keep until TS retires
