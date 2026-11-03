@@ -7,7 +7,7 @@ PORT ?= 26400
 # Tools from `make bootstrap` come first.
 export PATH := $(CURDIR)/.cache/tools/bin:$(PATH)
 
-need_go_makefile = [ -f go/Makefile ] || { echo "The soak tools (go/Makefile) aren't in this tree yet."; exit 1; }
+need_go_makefile = [ -f go/Makefile ] || { echo "This target needs go/Makefile and go/tools/soak, which come from PR \#468 (branch rewrite/go-rel-soak). They aren't in this tree yet."; exit 1; }
 
 help: ## List the commands
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | expand -t 12
