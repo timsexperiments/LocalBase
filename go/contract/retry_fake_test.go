@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,11 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	}
 	if *urlFlag != "" {
 		t.Skip("launches its own gateways")
+	}
+	// Whisper's backends need Metal or Vulkan. Without one, a request stops at backend_not_selected
+	// and never reaches the start this is about, as on a Linux CI runner.
+	if goruntime.GOOS != "darwin" || goruntime.GOARCH != "arm64" {
+		t.Skip("needs a whisper backend this host can select: Apple Silicon here")
 	}
 	tmp := scratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
