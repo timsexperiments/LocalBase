@@ -4477,6 +4477,22 @@ action is in one row and none is covered; at 320 by 568 a scroll reaches them. T
 and fails if it can't, because a guard that quietly stays off is a hole in every table: a check run now has to show
 a result line for every `check()` in the script. **No real video model has run through this page.**
 
+### 27.2e What Studio keeps in a browser is one person's
+
+- **Keyed by person.** Saved examples, the question being asked and a prompt on its way to another tool are stored under
+  `data-person`, a hash that doesn't say who someone is. They had one key per browser, so on a shared profile the next
+  person saw the last one's saved questions, and the words they were still typing.
+- **A tab holds nothing for the next person.** Signing out clears what the tab holds. A session can also just end, with
+  a redirect to sign-in and no chance to run anything, so every page also removes anything in the tab that isn't this
+  person's, before anything can read it.
+- **Older examples aren't shown, and aren't silently deleted.** They could be anyone's, so nothing reads them, and the
+  Examples sheet says so and offers to clear them on this device. That is the same policy as Chat's old history.
+- **A look preference stays per browser:** the viewer's mat says nothing about anyone.
+
+**Checks:** a real two-person sign-in on one profile, through a fake provider over TLS, on both browsers. It fails at the
+commit before this: B sees A's saved example and A's question, and gets A's prompt. Which pages hop with a prompt today
+is narrow: only Image's own Try again offers one, on Image itself, so that test plants the button and tests the key.
+
 ### 27.3 What the landing's overflow taught
 
 - **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and

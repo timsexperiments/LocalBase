@@ -19,6 +19,21 @@ import (
 )
 
 // installedRoot is a root where these models are on disk, as sparse files of their real size.
+// Studio's and Chat's words are stored under a key for the person, which doesn't say who they are.
+func TestPersonKey(t *testing.T) {
+	a := &auth.Principal{Kind: "browser-session", ID: "alice@example.com"}
+	b := &auth.Principal{Kind: "browser-session", ID: "bob@example.com"}
+	if personKey(a) == "" || personKey(a) != personKey(&auth.Principal{Kind: a.Kind, ID: a.ID}) {
+		t.Error("the same person should get the same key")
+	}
+	if personKey(a) == personKey(b) {
+		t.Error("different people share a key")
+	}
+	if strings.Contains(personKey(a), "alice") || personKey(nil) != "" {
+		t.Errorf("%q", personKey(a))
+	}
+}
+
 func installedRoot(t *testing.T, cat *catalog.Catalog, ids ...string) string {
 	t.Helper()
 	root := t.TempDir()

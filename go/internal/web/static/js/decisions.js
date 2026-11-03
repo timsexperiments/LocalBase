@@ -3,10 +3,13 @@
 // the model, and the page deletes the run once it has the answer. Everything is
 // kept in one state object, so boosted navigation and a reload find it again.
 import * as runs from "./runs.js";
+import { personKey } from "./person.js";
 import { MAX_OPTIONS, MAX_ROWS, STANDING_LINE, TEMPLATES, batchCSV, buildRequest, curlSnippet, jsSnippet, namedOptions, needsReview, problem, readAnswer, situations } from "./decision-read.js";
 
-const KEY = "localbase.decisions.v1";
-const SAVED = "localbase.decisions.saved.v1";
+const KEY = () => `localbase.decisions.v2.${personKey()}`;
+const SAVED = () => `localbase.decisions.saved.v2.${personKey()}`;
+// From before keys were per person. It could be anyone's, so it isn't read; it stays until someone clears it.
+const OLD_SAVED = "localbase.decisions.saved.v1";
 const PLACE = { href: "/app/studio/decisions", label: "Decision" };
 const TYPE_NAMES = { choice: "Pick one", noul: "Yes or no", score: "Rate" };
 
@@ -27,7 +30,7 @@ let batchRunning = false;
 
 function restore() {
   try {
-    Object.assign(state, JSON.parse(sessionStorage.getItem(KEY) ?? "{}"));
+    Object.assign(state, JSON.parse(sessionStorage.getItem(KEY()) ?? "{}"));
   } catch {
     // Nothing to find again.
   }
@@ -35,7 +38,7 @@ function restore() {
 
 function persist() {
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(state));
+    sessionStorage.setItem(KEY(), JSON.stringify(state));
   } catch {
     // Storage full or blocked: the page still works until it is reloaded.
   }
@@ -476,15 +479,23 @@ function renderBatch() {
 // --- templates and saved examples -----------------------------------------------
 function savedExamples() {
   try {
-    return JSON.parse(localStorage.getItem(SAVED) ?? "[]");
+    return JSON.parse(localStorage.getItem(SAVED()) ?? "[]");
   } catch {
     return [];
   }
 }
 
+function hasOldSaved() {
+  try {
+    return localStorage.getItem(OLD_SAVED) !== null;
+  } catch {
+    return false;
+  }
+}
+
 function writeSaved(list) {
   try {
-    localStorage.setItem(SAVED, JSON.stringify(list));
+    localStorage.setItem(SAVED(), JSON.stringify(list));
     return true;
   } catch {
     return false;
@@ -523,6 +534,7 @@ function renderSheet() {
   sheet.querySelector("[data-templates]").replaceChildren(row({ id: "", name: "Start blank", type: "choice" }), ...TEMPLATES.map((t) => row(t)));
   const saved = savedExamples();
   sheet.querySelector("[data-saved-box]").hidden = !saved.length;
+  sheet.querySelector("[data-old-saved]").hidden = !hasOldSaved();
   sheet.querySelector("[data-saved]").replaceChildren(
     ...saved.map((t) => row(t, el("button", { type: "button", class: "btn btn-quiet shrink-0", "data-unsave": t.id, "aria-label": `Delete ${t.name}` }, "Delete"))),
   );
@@ -697,6 +709,13 @@ function onClick(event) {
     download(batchCSV(state.rows));
   } else if (t.matches("[data-copy-json]")) {
     copy(JSON.stringify(state.one?.json?.answers?.answer ?? {}, null, 2), t);
+  } else if (t.matches("[data-clear-old-saved]")) {
+    try {
+      localStorage.removeItem(OLD_SAVED);
+    } catch {
+      // Blocked: it stays, and so does this line.
+    }
+    root.querySelector("#decide-template [data-old-saved]").hidden = !hasOldSaved();
   } else if (t.matches("[data-save]")) {
     saveExample(t);
   } else if (t.matches("[data-code]")) {

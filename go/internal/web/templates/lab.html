@@ -277,6 +277,10 @@
     {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Examples")}}
     <p class="px-5 pb-2 text-sm text-muted">Fills in the question. Nothing runs until you send it.</p>
     <ul class="list-group mx-4 mb-3" data-templates></ul>
+    <div class="mx-5 mb-3 grid justify-items-start gap-2 text-sm text-muted" data-old-saved hidden>
+      <p>Examples saved on this browser before an update aren’t shown, because they could be someone else’s.</p>
+      <button type="button" class="btn btn-quiet rounded-full" data-clear-old-saved>Clear old examples on this device</button>
+    </div>
     <div data-saved-box hidden>
       <h3 class="list-label mx-5 mt-0">Saved in this browser</h3>
       <ul class="list-group mx-4 mb-3" data-saved></ul>
