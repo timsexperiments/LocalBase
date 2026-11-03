@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"os"
@@ -84,8 +85,44 @@ func doctorCommand() *cli.Command {
 				c.Info("%s", line)
 				data["unsafeFiles"] = problems
 			}
+			if n := unendedSessions(e.Root.Dir); n > 0 {
+				c.Info("%d sessions could not be ended; run `local-base access sessions revoke --all`.", n)
+				data["unendedSessions"] = n
+			}
 			return data, nil
 		}}
+}
+
+// unendedSessions counts sign-outs whose delete failed since everything was last ended:
+// each left a session valid until it expires. It reads the event log, because the failure
+// was a database write, and counts what the log still holds.
+func unendedSessions(rootDir string) int {
+	events, err := obs.Snapshot(rootDir, obs.Filters{}, 5000)
+	if err != nil {
+		return 0
+	}
+	last := ""
+	for _, ev := range events {
+		var head struct {
+			EventName string `json:"eventName"`
+		}
+		if json.Unmarshal(ev.Raw, &head) == nil && head.EventName == "audit.sessions-revoked" && ev.Timestamp > last {
+			last = ev.Timestamp
+		}
+	}
+	n := 0
+	for _, ev := range events {
+		var head struct {
+			EventName string `json:"eventName"`
+		}
+		if json.Unmarshal(ev.Raw, &head) != nil || ev.Timestamp < last {
+			continue
+		}
+		if head.EventName == "auth.session-delete-failed" || head.EventName == "local-session.delete-failed" {
+			n++
+		}
+	}
+	return n
 }
 
 // gpuLines are doctor's GPU lines, with where CPU/GPU placement applies
