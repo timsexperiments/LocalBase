@@ -2,6 +2,9 @@ name: Feature request
 description: Suggest an improvement to LocalBase.
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: Check the [roadmap](https://github.com/timsexperiments/LocalBase/blob/main/ROADMAP.md) first, including what isn't planned.
   - type: textarea
     id: problem
     attributes:
