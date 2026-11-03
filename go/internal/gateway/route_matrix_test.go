@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -644,7 +645,7 @@ func TestPathTricksReachNoProtectedHandler(t *testing.T) {
 func TestUpgradeHeadersChangeNothing(t *testing.T) {
 	g := newMatrixGateway(t, nil)
 	upgrades := []map[string]string{
-		{"Connection": "Upgrade", "Upgrade": "websocket", "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="},
+		{"Connection": "Upgrade", "Upgrade": "websocket", "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": base64.StdEncoding.EncodeToString([]byte("the sample nonce"))},
 		{"Connection": "Upgrade, HTTP2-Settings", "Upgrade": "h2c", "HTTP2-Settings": "AAMAAABkAAQAAP__"},
 	}
 	for _, path := range []string{"/v1/models", "/_localbase/api-keys", "/_localbase/models", "/app/api/_localbase/api-keys", "/_localbase/runs"} {
