@@ -72,3 +72,45 @@ func TestHelpAndVersion(t *testing.T) {
 		t.Errorf("help %q", out.String())
 	}
 }
+
+// An id can start with '-': a session id is base64url, so about 1 in 64 did. `--` always
+// makes the next token a value, and a command that declares its one positional as an id
+// takes a token that is no option as that id. A revoke that fails to parse leaves a leaked
+// session working.
+func TestDashValues(t *testing.T) {
+	run := func(cmd *Command, args ...string) (*Ctx, int, string) {
+		var got *Ctx
+		cmd.Run = func(c *Ctx) (any, error) { got = c; return map[string]any{}, nil }
+		var out, errb bytes.Buffer
+		app := &App{Name: "x", Root: &Command{Sub: []*Command{cmd}}, Stdout: &out, Stderr: &errb}
+		code := app.Run(append([]string{cmd.Name}, args...))
+		return got, code, out.String() + errb.String()
+	}
+	plain := func() *Command {
+		return &Command{Name: "plain", Usage: "<id>", MinArgs: 1, MaxArgs: 1, Options: []Option{{Name: "flag", Bool: true}}}
+	}
+	id := func() *Command {
+		return &Command{Name: "id", Usage: "<id>", MinArgs: 1, MaxArgs: 1, IDArg: true, Options: []Option{{Name: "flag", Bool: true}}}
+	}
+	if c, code, _ := run(plain(), "--", "-AnZqiOlvvn8"); code != 0 || c.Args[0] != "-AnZqiOlvvn8" {
+		t.Errorf("plain with --: %d %v", code, c)
+	}
+	if _, code, msg := run(plain(), "-AnZqiOlvvn8"); code == 0 || !strings.Contains(msg, "write -- before it") || !strings.Contains(msg, "Unknown option") {
+		t.Errorf("plain without --: %d %q", code, msg)
+	}
+	for _, v := range []string{"-AnZqiOlvvn8", "--AnZqiOlvvn8", "-x=y"} {
+		if c, code, msg := run(id(), v); code != 0 || c.Args[0] != v {
+			t.Errorf("id %q: %d %q", v, code, msg)
+		}
+		if c, code, msg := run(id(), "--", v); code != 0 || c.Args[0] != v {
+			t.Errorf("id %q with --: %d %q", v, code, msg)
+		}
+	}
+	// A real option stays an option, and a second token is still too many.
+	if c, code, msg := run(id(), "--flag", "abc"); code != 0 || !c.Bool("flag") || c.Args[0] != "abc" {
+		t.Errorf("real option: %d %q", code, msg)
+	}
+	if _, code, _ := run(id(), "-a", "-b"); code == 0 {
+		t.Error("two ids accepted")
+	}
+}

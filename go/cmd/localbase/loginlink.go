@@ -149,7 +149,7 @@ func localSessionsCommand() *cli.Command {
 			}
 			return map[string]any{"sessions": list}, nil
 		})},
-		{Name: "revoke", Summary: "End one local browser session", Usage: "<id>", MinArgs: 1, MaxArgs: 1, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
+		{Name: "revoke", Summary: "End one local browser session", Usage: "<id>", MinArgs: 1, MaxArgs: 1, IDArg: true, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 			found, err := auth.RevokeLocalSession(context.Background(), e.Store, c.Args[0])
 			if err != nil {
 				return nil, err
