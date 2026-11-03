@@ -9,7 +9,8 @@
 # --cache-ram 2048, so a prompt cache filling at about 100 MiB a request would stop near
 # +2 GiB. A plateau near +2 GiB and then flat supports that. A straight line past it is a
 # leak. What prompted this was system-wide available memory on a Linux runner, not the
-# backend, so a result here is about this Mac and Metal: Linux CPU may differ.
+# backend, so a result here is about this Mac and Metal: Linux CPU may differ. It is also about
+# this model, a 1.5B coder model: growth per request may scale differently on other models.
 #
 # DOCUMENTED EXCEPTION TO "NEVER THE LIVE PORT". Inside a granted window only, the watcher
 # may GET http://127.0.0.1:2273/health every 3 s, and nothing else on the live port: no other
@@ -20,14 +21,14 @@
 # THE ONLY OTHER TOUCH OF THE LIVE ROOT is one read-only APFS clone, inside the window, of
 # exactly these two paths and nothing else (no database, keys, config, ui-access.json or logs),
 # and nothing runs from the live root:
-#   $HOME/.local/share/local-base/models/llm/Qwen_Qwen3.5-4B-Q4_K_M.gguf
+#   $HOME/.local/share/local-base/models/llm/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
 #   $HOME/.local/share/local-base/bin/runtimes/llama-server/0f9c093f77b9c194f2f097df6204d9f5f8758968815e7db0374e98b0485ef9df
 # If either is missing the pass stops, having loaded nothing. Both are logged.
 #
-# Limits the operator set: qwen3.5-4b-q4_k_m, context 8192, one slot, default reserve, ports
+# Limits the operator set: qwen2.5-coder-1.5b-instruct-q4_k_m, context 8192, one slot, default reserve, ports
 # in 29000-29499. The gateway planner's exact plan is printed BEFORE any real load, from a
 # separate scratch root with a fake backend (so no peak recorded there can skew the real
-# root), and the pass aborts if it is over 6.75 GiB. At least 52% free to start, 40% floor
+# root), and the pass aborts if it is over the limit below. At least 48% free to start, 40% floor
 # throughout (free + speculative + inactive pages). 200 sequential requests, short outputs.
 # One pass only: a second is a new ask of the operator.
 #
@@ -58,11 +59,13 @@ EV=$W/evidence.txt
 CSV=$W/requests.csv
 : > "$EV"
 
-MODEL_ID=qwen3.5-4b-q4_k_m
+MODEL_ID=qwen2.5-coder-1.5b-instruct-q4_k_m
+# A former catalog entry: an install with its file on disk adopts it, as the live root has.
+SPEC=internal/catalog/data/former/llm/$MODEL_ID.json
 GW=29410 LLM=29411
 CTX=8192
-PLAN_LIMIT_MIB=6912 # 6.75 GiB
-START_PCT=52
+PLAN_LIMIT_MIB=4864 # 4.75 GiB
+START_PCT=48
 FLOOR_PCT=40
 REQUESTS=200
 HARD_SECONDS=1500
@@ -86,6 +89,8 @@ free_pct() { echo $(( $(pages_mib) * 1048576 * 100 / $(sysctl -n hw.memsize) ));
 live_state() { curl -s -m 3 "$LIVE" | jq -c '.modalities // "unreachable"' 2>/dev/null || echo unreachable; }
 SCRATCH_ENV=(env -i PATH=/usr/bin:/bin:/usr/sbin "HOME=$W/home" LOCALBASE_CATALOG_FEED_URL=off
   HTTP_PROXY=http://127.0.0.1:9 HTTPS_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost)
+# A rehearsal can make the fake slow to load, to test a stop during a load.
+[ "$DRY" = 1 ] && [ -n "${DRY_FAKE_STARTUP_MS:-}" ] && SCRATCH_ENV+=("FAKE_STARTUP_MS=$DRY_FAKE_STARTUP_MS")
 
 GWPID="" STUB="" MON="" DOG=""
 sweep() {
@@ -101,6 +106,13 @@ stop_gateway() {
   wait "$GWPID" 2>/dev/null
   GWPID=""
 }
+# The backend alone, at once: during a load the gateway can take many seconds to go, and the
+# model would go on loading all that time. The gateway stays, to be stopped properly next.
+kill_backend() {
+  ps -A -o pid=,command= | awk -v a="$W/rt/" -v b="$W/fake-llama-server" 'index($2, a) == 1 || index($2, b) == 1 { print $1 }' | while read -r pid; do
+    kill -KILL "$pid" 2>/dev/null
+  done
+}
 finish() {
   local code=$1
   # Ignored, not reset: a signal arriving now must not stop the cleanup and leave a model loaded.
@@ -108,6 +120,7 @@ finish() {
   trap - EXIT
   [ -n "$MON" ] && kill "$MON" 2>/dev/null
   [ -n "$DOG" ] && kill "$DOG" 2>/dev/null
+  [ "$code" = 0 ] || kill_backend
   stop_gateway
   sweep
   [ -n "$STUB" ] && kill "$STUB" 2>/dev/null
@@ -116,7 +129,9 @@ finish() {
   log "END: nothing was deleted. When done, delete by exact path: $W"
   exit "$code"
 }
-trap 'trap "" INT TERM HUP; log "stopped by a signal"; finish 3' INT TERM HUP
+# A signal landing as bash forks a subshell can run this in the child too. Only the script itself
+# cleans up, so that the record shows one stop. (No BASHPID in macOS's bash 3.2: sh names its parent.)
+trap 'trap "" INT TERM HUP; [ "$(sh -c "echo \$PPID")" = "$$" ] || exit 3; log "stopped by a signal"; finish 3' INT TERM HUP
 trap 'finish $?' EXIT
 
 # A stale listener would answer in place of ours, and a run could look fine while measuring
@@ -137,9 +152,9 @@ log "plan: $MODEL_ID, context $CTX, one slot, $REQUESTS requests; limit $PLAN_LI
 refuse_busy_ports "$GW" "$LLM"
 [ "$DRY" = 1 ] && refuse_busy_ports 29412
 
-FILE=$(jq -r '.artifacts[] | select(.role == "primary") | .filename' "internal/catalog/data/llm/$MODEL_ID.json")
+FILE=$(jq -r '.artifacts[] | select(.role == "primary") | .filename' "$SPEC")
 [ -n "$FILE" ] || { log "no primary file for $MODEL_ID in the catalog"; exit 5; }
-SIZE=$(jq -r '.artifacts[] | select(.role == "primary") | .expectedSizeBytes' "internal/catalog/data/llm/$MODEL_ID.json")
+SIZE=$(jq -r '.artifacts[] | select(.role == "primary") | .expectedSizeBytes' "$SPEC")
 
 if [ "$DRY" = 1 ]; then
   mkdir -p "$W/stub"
@@ -199,14 +214,13 @@ if [ "$DRY" = 1 ]; then
   # A sparse file with just the header the planner reads, at the catalog's size.
   mkdir -p "$SOURCE_RUNTIME" "$(dirname "$SOURCE_MODEL")" || exit 5
   cp "$W/fake-llama-server" "$SOURCE_RUNTIME/llama-server" || exit 5
-  perl -e 'my ($path, $bytes) = @ARGV; open(my $f, ">:raw", $path) or die;
+  [ "${DRY_DROP_MODEL:-}" = 1 ] || perl -e 'my ($path, $bytes) = @ARGV; open(my $f, ">:raw", $path) or die;
     sub s_ { pack("Q<", length $_[0]) . $_[0] }
     print $f pack("L<L<Q<Q<", 0x46554747, 3, 0, 3),
-      s_("general.architecture"), pack("L<", 8), s_("qwen3"),
+      s_("general.architecture"), pack("L<", 8), s_("qwen2"),
       s_("general.file_type"), pack("L<L<", 4, 15),
-      s_("qwen3.context_length"), pack("L<L<", 4, 262144);
+      s_("qwen2.context_length"), pack("L<L<", 4, 32768);
     close $f; truncate($path, $bytes) or die;' "$SOURCE_MODEL" "$SIZE" || exit 5
-  [ "${DRY_DROP_MODEL:-}" = 1 ] && rm -f "$W/fake-live-root/models/llm/$FILE"
 fi
 log "clone source, read-only: $SOURCE_MODEL"
 log "clone source, read-only: $SOURCE_RUNTIME"
@@ -346,5 +360,6 @@ awk -F, -v limit=2048 'NR > 1 && $5 != "" { n++; r[n] = $5 / 1024; a[n] = $7; re
     else print "READING: still rising, and below +2 GiB. 200 requests were not enough to say."
   }' "$CSV" | tee -a "$EV"
 log "the backend's own word on its cache, last lines: $(grep -oE 'cache state: [^"]*' "$W/gw.log" | tail -2 | tr '\n' ';' | cut -c1-240)"
+log "This was $MODEL_ID, a 1.5B coder model: growth per request may scale differently on other models."
 log "Mac and Metal only: Linux CPU may differ, so this does not settle what the Linux runner showed."
 exit 0
