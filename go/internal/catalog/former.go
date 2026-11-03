@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Former built-in entries (TS src/catalog/former, #368): models earlier
@@ -189,12 +190,10 @@ func AdoptFormerEntries(rootDir string, referenced []string) []string {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return written
 		}
-		tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
-		if err := os.WriteFile(tmp, append(jsjson.Indent(spec), '\n'), 0o600); err != nil {
-			return written
-		}
-		if err := os.Rename(tmp, path); err != nil {
-			os.Remove(tmp)
+		if err := obs.WritePrivateChecked(path, append(jsjson.Indent(spec), '\n')); err != nil {
+			// This runs while the catalog loads, before the gateway's log is open, so
+			// it goes to the default logger.
+			obs.WarnRefusedWrite(nil, err)
 			return written
 		}
 		adopted[id] = true
@@ -206,7 +205,7 @@ func AdoptFormerEntries(rootDir string, referenced []string) []string {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
-		os.WriteFile(FormerAdoptionLogPath(rootDir), []byte(strings.Join(ids, "\n")+"\n"), 0o600)
+		obs.WarnRefusedWrite(nil, obs.WritePrivateChecked(FormerAdoptionLogPath(rootDir), []byte(strings.Join(ids, "\n")+"\n")))
 	}
 	return written
 }

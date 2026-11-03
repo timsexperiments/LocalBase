@@ -1082,6 +1082,44 @@ Contract fixtures: launched gateways run offline (dead proxies, loopback
 exempt), so a missing runtime or model fails instead of downloading, and
 `bin/runtimes` fixtures merge instead of nesting.
 
+### 13.5b Log and checkpoint files are opened safely
+
+As TS does, log and stderr files open through `obs.OpenOwnedRegular`: no following a link
+(`O_NOFOLLOW`), a regular file, owned by this user, one hard link, the same file before and after
+the open, and 0600 afterwards. Without this, a link planted at `logs/service-stderr.log` got its
+target truncated. The port had lost this.
+
+`serve` **refuses to start** on `obs.CheckRootFiles`: an unsafe `logs/events*.jsonl`, stderr
+capture, `runs/*.json` or `runtime/model-operations.json`, or a linked `logs`, `runs` or `runtime`
+directory. The message names the file and says to remove it and check who can write to its
+directory. `doctor` reports the same (`unsafeFiles`, only when there are any) without starting
+anything. Checkpoints write through `obs.WritePrivateAtomic`, with a fresh exclusive temporary
+name instead of a fixed `.tmp`.
+
+**Difference from TS:** TS also refuses a log directory other users can read. Go does not, and a
+separate change tightens a loose root at startup instead.
+
+**A refusal under a service manager:** launchd retries a gateway that exits. Each try prints the
+reason on stderr, and `gateway.start-refused` is logged once per cause, not per retry, using
+`runtime/start-refusal.json`, which a clean start removes. If the log itself is the unsafe file,
+stderr is all there is. `doctor` says how long it has been refusing (`startRefusedSince`).
+
+**A hard link** refuses as in TS, and the message explains it: a second name for the same file,
+which a backup made with `ln` creates. A `cp` copy is fine.
+
+**Settings, caches and downloads** do not stop the gateway. `obs.WritePrivateChecked` writes
+`ui-access.json`, `email-delivery.json`, `catalog.d`, custom backends, auth profiles, the feed and
+Hub caches, the service manifest and unit, and `.checksums.json`: a planted link at the path fails
+that write with the same clear error rather than being quietly replaced, and its target stays
+untouched. A fresh exclusive temporary name means a link at an old fixed `.tmp` name redirects
+nothing. Download partials open through `OpenOwnedRegular`, and a link at a partial is refused
+before its size or hash is read, since it could otherwise be published as the model.
+
+**Left as they are:** a symlinked final model file (weights on another disk are plausible, and
+nothing is written through it); reads of settings files other than auth profiles; `root/operation.go`
+and `.localbase-root.json`, written before or around the root's own setup. A runtime package's
+files keep their modes, so extraction uses `O_NOFOLLOW` alone.
+
 ### 13.6 Status changes for the cutover checklist
 
 Live clients (naya-device-worker, t3-opencode) retry on 503 with

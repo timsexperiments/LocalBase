@@ -426,6 +426,23 @@ func mustMkdirAll(path string, perm os.FileMode) error { return mustGuard(guarde
 
 func mustChmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
 
+// mustSymlink plants a link in a scratch directory. Its target may be elsewhere.
+func mustSymlink(target, link string) error {
+	if err := mustGuard(checkWrite(filepath.Dir(link))); err != nil {
+		return err
+	}
+	return os.Symlink(target, link)
+}
+
+// mustRemoveLink removes a symlink a test planted in its scratch directory. The guard
+// checks the link's own directory: its target is outside on purpose.
+func mustRemoveLink(path string) error {
+	if err := mustGuard(checkWrite(filepath.Dir(path))); err != nil {
+		return err
+	}
+	return os.Remove(path)
+}
+
 func mustRemoveAll(path string) error { return mustGuard(guardedRemoveAll(path)) }
 
 // scratchTemp is os.MkdirTemp under the system temp directory, registered
