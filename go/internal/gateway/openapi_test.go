@@ -32,7 +32,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
-// The drift tests of DESIGN §28.2: a route without documentation, documentation
+// The drift tests of DESIGN §30.2: a route without documentation, documentation
 // without a route, a wrong method, permission, status or response field fails here.
 
 // openAPIExempt lists what the document leaves out on purpose, by registered pattern.
@@ -354,7 +354,7 @@ func TestOpenAPICoversEveryRoute(t *testing.T) {
 	}
 	for _, pattern := range srv.routes {
 		if _, exempt := openAPIExempt[pattern]; !exempt && !reached[pattern] {
-			t.Errorf("route %s is registered but not in openapi.json: document it, or exempt it with a reason (DESIGN §28.1)", pattern)
+			t.Errorf("route %s is registered but not in openapi.json: document it, or exempt it with a reason (DESIGN §30.1)", pattern)
 		}
 	}
 	for pattern := range openAPIExempt {

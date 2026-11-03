@@ -4402,7 +4402,7 @@ accelerator bytes against the GPU limit.
 `/app/strip`, which every visible page polls, is not traced and logs only on failure,
 like `/health`.
 
-## 28. Connect an app, and the OpenAPI document (design addendum, 2026-11-02)
+## 30. Connect an app, and the OpenAPI document (design addendum, 2026-11-02)
 
 Someone who has a model running should get an editor, an agent or their own code
 talking to it in a minute, without reading the source. Today that takes the API
@@ -4410,7 +4410,7 @@ reference, a key command with the right scopes, and knowing that a client wants
 `…/v1` and a model id. Nothing describes the API in a form tools can read, and
 `production-inventory.md` lists "route table or OpenAPI tested against routes" as missing.
 
-### 28.1 `GET /openapi.json`
+### 30.1 `GET /openapi.json`
 
 - **Public, like `/health`:** no credential, because docs tools and client generators
   fetch it without one. It is the same static text everywhere and holds no instance data:
@@ -4444,7 +4444,7 @@ reference, a key command with the right scopes, and knowing that a client wants
   the bounds the validators enforce. Pass-through fields stay open
   (`additionalProperties` is not `false`) where the gateway forwards them to the backend.
 
-### 28.2 Tests that stop it drifting
+### 30.2 Tests that stop it drifting
 
 No test dependency is added: the project keeps one module dependency. All of these use the real
 `gateway.New` over the fake backend, in `internal/gateway/openapi_test.go`.
@@ -4457,7 +4457,7 @@ No test dependency is added: the project keeps one module dependency. All of the
 | `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
 | `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
 | `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
-| `TestOpenAPIServed` | the answers in 28.1 change, or the served version is not `Version` |
+| `TestOpenAPIServed` | the answers in 30.1 change, or the served version is not `Version` |
 
 So a route added without documentation fails CI, and so does documentation without a route.
 Each test was checked by breaking the document or the routes on purpose: a dropped path, method,
@@ -4468,7 +4468,7 @@ does not read, the schemas of answers no test reaches, and the wording of descri
 linter, run by hand and reported in the PR; CI does not run it, since that would add a
 dependency.
 
-### 28.3 Connect: one shared source for page and CLI
+### 30.3 Connect: one shared source for page and CLI
 
 `internal/connect` is a small package with no gateway dependency. Given a base URL, a model id
 and a key (or none), it returns each client's snippets. The page and the CLI both render from
@@ -4490,7 +4490,7 @@ The one place it appears literally is the token `YOUR_LOCALBASE_KEY`.
 **The model** is the effective default chat model, else `YOUR_MODEL_ID`, with a choice among
 the installed chat models. Copy never names a model: the id is data, shown as chosen.
 
-### 28.4 `/app/connect`
+### 30.4 `/app/connect`
 
 Needs `models:read`, like the pages around it; creating a key needs `keys:manage`.
 
@@ -4502,7 +4502,7 @@ Needs `models:read`, like the pages around it; creating a key needs `keys:manage
 3. **Model,** when there is a choice. Changing it re-renders the snippets with htmx.
 4. **Your app:** an accordion by group (Code; Editors and agents; Apps), each with its snippets,
    where they go, a copy button and a link to the client's own docs. `?client=<id>` opens one.
-5. A link to `/openapi.json`, and what will not work (28.6).
+5. A link to `/openapi.json`, and what will not work (30.6).
 
 **The secret** appears once, in the response to the POST, as Admin does: never in a URL, no
 history entry, `Cache-Control: no-store`. The response fills the token into every snippet. `connect.js`
@@ -4516,7 +4516,7 @@ Data contract for the FE thread: `Bases []{Label, URL, Note}`, `Base`, `Models [
 `Model`, `Groups []{Label, Clients []{ID, Name, Docs, Note, Open, Snippets []{Label, Path, Language,
 Text}}}`, `CanCreateKey`, `Presets []{ID, Label, Scopes}`, `Secret`, `Error`, `NoAuth`.
 
-### 28.5 `local-base connect`
+### 30.5 `local-base connect`
 
 ```text
 local-base connect [client] [--model <id>] [--base-url <url>] [--list]
@@ -4539,11 +4539,11 @@ local-base connect [client] [--model <id>] [--base-url <url>] [--list]
 
 It is Go only. TS has no such command, and the differential does not compare it.
 
-### 28.6 What will not work, stated on the page and in the docs
+### 30.6 What will not work, stated on the page and in the docs
 
 - **A client that requires `/v1/responses`, `/v1/completions` or Anthropic's `/v1/messages`.**
   None of them exists here. The gateway serves chat completions.
-- **Keys from a web page** (28.1): a browser-side app cannot use a key, by design.
+- **Keys from a web page** (30.1): a browser-side app cannot use a key, by design.
 - **Services that call the base URL from their own servers** cannot reach `127.0.0.1`. They need
   the public address.
 
@@ -4553,7 +4553,7 @@ completions is not listed as supported. Each client says which it is, on the pag
 **run** (its snippet has been run against a gateway) or **follows the client's docs, not run**.
 Today that is run for curl and the two SDKs, and not run for every editor, agent and app.
 
-### 28.7 Tests for Connect, and what is not verified
+### 30.7 Tests for Connect, and what is not verified
 
 - `TestRenderEveryClient`: every client renders for every combination of key and model, with no
   unfilled token other than the two documented, and no model name in fixed copy.
