@@ -51,11 +51,22 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(e.Root.DB()); err == nil {
-		if st, err := store.OpenReadOnly(e.Root.DB()); err == nil {
+		st, err := store.OpenReadOnly(e.Root.DB())
+		// A database that can't be read isn't one with nothing in it: the defaults would be reported
+		// as this root's settings.
+		if err != nil && persisted {
+			return nil, fmt.Errorf("Could not read the settings of %s: %w", e.Root.Dir, err)
+		}
+		if err == nil {
 			e.Store = st
 			if persisted {
-				if cfg, err := st.LoadConfig(context.Background()); err == nil {
+				cfg, err := st.LoadConfig(context.Background())
+				switch {
+				case err == nil:
 					e.Config = cfg
+				case !errors.Is(err, store.ErrNotConfigured):
+					_ = st.Close() // only read
+					return nil, fmt.Errorf("Could not read the settings of %s: %w", e.Root.Dir, err)
 				}
 			}
 		}

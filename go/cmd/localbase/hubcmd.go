@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -75,9 +76,14 @@ func modelsSearch() *cli.Command {
 			}
 			var cfg *store.Config
 			if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
-				if st, err := store.Open(filepath.Join(dir, "local-base.db")); err == nil {
-					cfg, _ = st.LoadConfig(context.Background())
+				// Only for a saved token, so a search goes on without one, and says so.
+				st, err := store.Open(filepath.Join(dir, "local-base.db"))
+				if err == nil {
+					cfg, err = st.LoadConfig(context.Background())
 					st.Close()
+				}
+				if err != nil && !errors.Is(err, store.ErrNotConfigured) {
+					c.Error("Could not read this root's saved Hugging Face token, so searching without it: %v", err)
 				}
 			}
 			query := strings.Join(c.Args, " ")
