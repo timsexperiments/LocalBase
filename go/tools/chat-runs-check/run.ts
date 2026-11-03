@@ -7,8 +7,12 @@ const ws = new WebSocket(target.webSocketDebuggerUrl);
 await new Promise((r) => ws.addEventListener("open", r, { once: true }));
 let id = 0; const waiting = new Map();
 ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-const send = (method, params = {}) => new Promise((res, rej) => { const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });
+const send = (method, params = {}) => new Promise((res, rej) => { if (method === "Emulation.setDeviceMetricsOverride") askedWidth = params.width; const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
+// to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
+let askedWidth = 0;
+const pageFits = () => `Math.max(document.documentElement.scrollWidth, innerWidth) <= ${askedWidth}`;
 const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
@@ -349,7 +353,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const visible = await ev(`[...document.querySelectorAll(".decide-row:not(.decide-row-head)")].filter((n) => !n.hidden).map((n) => n.querySelector(".decide-word").textContent)`);
   check(visible.join() === "Close call,Unsure", `the filter leaves close calls and unsure: ${visible}`);
   await ev(`document.querySelector("input[name=decide-filter][value=all]").click()`);
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "the batch fits the phone");
+  check((await ev(pageFits())), "the batch fits the phone");
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
   await ev(decide);
@@ -387,7 +391,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(running?.active && /Waiting for its turn|Making the video/.test(running.text) && /it keeps going/.test(running.text) && !/\d%/.test(running.text), `a job shows its stage, no percentage: ${running?.text.slice(0, 90)}`);
   const place = await ev(`(() => { const r = document.querySelector("#lab-items .lab-item-video .video-frame").getBoundingClientRect(); return r.height / r.width; })()`);
   check(place > 1.5 && place < 2, `its place has the final shape (${place.toFixed(2)})`);
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+  check((await ev(pageFits())), "it fits the phone");
   const stop = await ev(`(() => { const b = ${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']"); window.scrollTo(0, 0); const dock = document.querySelector(".lab-dock").getBoundingClientRect(), text = document.querySelector("#lab-items .lab-progress span").getBoundingClientRect(), frame = document.querySelector("#lab-items .lab-progress").getBoundingClientRect(); return { firstScreen: b.getBoundingClientRect().bottom <= dock.top, centered: Math.abs((text.top + text.bottom) / 2 - (frame.top + frame.bottom) / 2) < 8 }; })()`);
   check(stop.firstScreen && stop.centered, `Stop is on the first screen above the prompt, and the stage is centered: ${JSON.stringify(stop)}`);
   await ev(makeVideo("a second one"));
@@ -548,7 +552,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await ev(`${firstItem}.querySelector("[hx-post$='/remove']").click()`);
   await sleep(400);
   check(!/Stopped after/.test((await itemState())?.text ?? ""), "Remove takes it out of the tray");
-  check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+  check((await ev(pageFits())), "it fits the phone");
 }
 
 // --- Transcribe (DESIGN §22.20) ---------------------------------------------------
@@ -582,7 +586,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     const exports = await ev(`(async () => { const out = {}; for (const a of ${trItem}.querySelectorAll("a[download]")) { const r = await fetch(a.href); out[new URL(a.href).searchParams.get("format")] = [r.headers.get("content-disposition"), await r.text()]; } return out; })()`);
     check(/^1\n00:00:00,000 --> 00:00:01,200\nThe harbor/.test(exports.srt?.[1] ?? "") && exports.vtt?.[1].startsWith("WEBVTT\n\n00:00:00.000") && /harbor/.test(exports.txt?.[1] ?? "") && /transcript\.srt/.test(exports.srt?.[0] ?? ""), `exports are real SRT, VTT and text`);
-    check((await ev(`document.documentElement.scrollWidth <= innerWidth`)), "it fits the phone");
+    check((await ev(pageFits())), "it fits the phone");
 
     // A player past its keep says so.
     await ev(`${trItem}.querySelector("audio").src = "/app/lab/results/nope"`);
@@ -760,6 +764,7 @@ for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get"
     return { small, tiny: [...tiny] };
   })()`);
   check(sizes.small.length === 0 && sizes.tiny.length === 0, `at 320, ${path}: targets at least 44 px and text at least 12 px${sizes.small.length || sizes.tiny.length ? ": " + JSON.stringify(sizes).slice(0, 320) : ""}`);
+  check(await ev(pageFits()), `at 320, ${path}: no sideways scroll`);
 }
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
@@ -769,7 +774,7 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   const fits = await ev(`(() => {
     const b = document.querySelector(".strip-host b"), w = document.querySelector(".strip-word"), s = document.querySelector(".strip");
     b.textContent = ${JSON.stringify(name)}; w.textContent = "Getting the model ready";
-    return { over: document.documentElement.scrollWidth > innerWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
+    return { over: Math.max(document.documentElement.scrollWidth, innerWidth) > ${askedWidth}, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
   })()`);
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
