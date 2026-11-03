@@ -410,3 +410,25 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 	})
 	return state, lease, err
 }
+
+// InUse reports whether a live process holds this root: a gateway, or a command holding the operation
+// lease. What it can't tell counts as held, for a caller about to read files someone may be writing.
+func InUse(dir string) bool {
+	canonical, err := Canonical(dir)
+	if err != nil {
+		canonical = dir
+	}
+	switch state, _, _ := (&Root{Dir: canonical}).OwnerState(); state {
+	case "active", "unknown":
+		return true
+	}
+	var o operationOwner
+	p := operationPaths(canonical)
+	if _, err := os.Stat(p.lock); err != nil {
+		return false
+	}
+	if !readJSON(p.owner, &o) || !o.valid() {
+		return true
+	}
+	return presence(o.PID) != 0
+}

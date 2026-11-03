@@ -201,3 +201,13 @@ with the backend's own RSS as the primary measure and system memory beside it. A
 +2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
 on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
 flat result here would not clear the Linux case.
+
+## Reading a root that isn't running
+
+A root in write-ahead logging can't be read in place without leaving files beside its database, or at all
+in a folder that can't be written. So with no process holding the root, `store.OpenReadOnly` reads a private
+copy of the database and its `-wal`: in a 0700 folder under `local-base` in the user's cache folder, named
+`localbase-read-<pid>-*`. Commands print `Read a copy of this root's database, as it stood just now.` on
+stderr when they do. `Close` removes it. It can hold secrets, so if a crash leaves one, the next read removes
+it once it's an hour old and its process has gone. With a process holding the root there's no copy, because
+one could be torn, and the command says another process is using the root.

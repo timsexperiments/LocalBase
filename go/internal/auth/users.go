@@ -344,7 +344,9 @@ func ms(t time.Time) int64 { return t.UnixMilli() }
 func CreateSession(ctx context.Context, st *store.Store, ownerID string, id Identity) (string, error) {
 	t := time.Now()
 	// Tidying only: an expired row is refused when read, whether or not this removes it.
-	_, _ = st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
+	if _, err := st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t)); err != nil {
+		st.WriteFailed("session-tidy", err)
+	}
 	token := RandomToken(32)
 	var email any
 	if id.VerifiedEmail != "" {
@@ -367,12 +369,16 @@ func FindSession(ctx context.Context, st *store.Store, token string, issuers map
 		return nil, err
 	case verdict == "expired" || verdict == "issuer":
 		// Refused either way; this only tidies the row, and the verdict comes again if it stays.
-		_, _ = st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h)
+		if _, err := st.DB.ExecContext(ctx, `DELETE FROM auth_browser_sessions WHERE token_hash = ?`, h); err != nil {
+			st.WriteFailed("session-tidy", err)
+		}
 		return nil, nil
 	case verdict == "valid-touch":
 		// A failed touch only makes the idle limit come sooner: it fails closed.
-		_, _ = st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
-			t, t+SessionIdleTTL.Milliseconds(), h)
+		if _, err := st.DB.ExecContext(ctx, `UPDATE auth_browser_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
+			t, t+SessionIdleTTL.Milliseconds(), h); err != nil {
+			st.WriteFailed("session-touch", err) // still due, so the next request tries again
+		}
 	}
 	return s, nil
 }
