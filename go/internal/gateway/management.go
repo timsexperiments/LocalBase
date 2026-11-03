@@ -580,7 +580,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			accepted = true
 			admitted <- nil
 			progress := map[string]int64{}
-			_, err = install.Model(m.ctx, spec, dir, install.Options{HFToken: fresh.HFToken, Report: func(ev install.Event) {
+			_, err = install.Model(m.ctx, spec, dir, install.Options{HFToken: fresh.HFToken, AllowPrivate: s.Store.PrivateImportsAllowed(m.ctx), Report: func(ev install.Event) {
 				switch ev.Kind {
 				case "download-progress":
 					progress[ev.Filename] = ev.Downloaded
