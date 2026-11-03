@@ -100,10 +100,23 @@ func TestImportCancelRoute(t *testing.T) {
 	for lib.Job(job).State == "running" && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if j := lib.Job(job); j.State != "failed" || j.ErrorCode != acquire.CodeCancelled {
+	if j := lib.Job(job); j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled {
 		t.Errorf("after the cancel: %s %s", j.State, j.ErrorCode)
 	}
-	if body := get(manager, "/app/models/import/jobs/"+job).Body.String(); !strings.Contains(body, "was cancelled") {
+	body := get(manager, "/app/models/import/jobs/"+job).Body.String()
+	if !strings.Contains(body, "was cancelled") {
 		t.Errorf("the job page: %.200s", body)
+	}
+	// The job's own card says it calmly: it isn't shown as a failure.
+	at := strings.Index(body, `id="import-job"`)
+	if at < 0 {
+		t.Fatalf("no job card: %.200s", body)
+	}
+	card := body[at:]
+	if end := strings.Index(card, "</div>"); end >= 0 {
+		card = card[:end]
+	}
+	if strings.Contains(card, "The import failed") || strings.Contains(card, `role="alert"`) {
+		t.Errorf("a cancel shown as a failure: %s", card)
 	}
 }

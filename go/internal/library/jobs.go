@@ -20,9 +20,10 @@ import (
 // values, tokens or signed URLs.
 type Job struct {
 	ID        string              `json:"id"`
-	State     string              `json:"state"` // running | done | failed
+	State     string              `json:"state"` // running | done | failed | cancelled
 	Progress  acquire.Progress    `json:"progress"`
 	Error     string              `json:"error,omitempty"`
+	Detail    string              `json:"detail,omitempty"`    // what happened, when it wasn't a failure
 	ErrorCode string              `json:"errorCode,omitempty"` // a stable code when there is one
 	Model     *models.Model       `json:"model,omitempty"`
 	Selection *backends.Selection `json:"selection,omitempty"`
@@ -204,12 +205,18 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 		}
 		l.jobs.mu.Lock()
 		defer l.jobs.mu.Unlock()
+		if err != nil && cancelled {
+			// A person chose this, so it isn't a failure.
+			job.State, job.ErrorCode, job.Detail = "cancelled", acquire.CodeCancelled, "The import was cancelled, and what it downloaded was removed."
+			if log != nil {
+				log.Info("Model import cancelled.", "event", "model.import-cancelled")
+			}
+			return
+		}
 		if err != nil {
 			job.State, job.Error = "failed", obs.BoundedText(err.Error(), 1024)
 			var refused *acquire.RefusedError
 			switch {
-			case cancelled:
-				job.Error, job.ErrorCode = "The import was cancelled.", acquire.CodeCancelled
 			case errors.Is(ctx.Err(), context.DeadlineExceeded):
 				job.Error, job.ErrorCode = "The import took too long and was stopped. Try again to resume it. Whoever runs this LocalBase can allow longer.", acquire.CodeTimedOut
 			case errors.As(err, &refused):

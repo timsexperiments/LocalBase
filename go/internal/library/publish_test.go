@@ -190,7 +190,7 @@ func TestPublishWaitsForABusyRoot(t *testing.T) {
 		}
 		l.CancelImport(id)
 		j := waitJob(t, l, id, ended)
-		if j.State != "failed" || j.ErrorCode != acquire.CodeCancelled {
+		if j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled || j.Error != "" {
 			t.Errorf("%s %s", j.State, j.ErrorCode)
 		}
 		if listed(t, l, "stopped") || stagedFiles(t, l) != 0 {

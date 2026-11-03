@@ -70,6 +70,8 @@
   {{if eq .State "running"}}
   <p class="font-semibold">Importing… {{.Progress.Phase}} {{.Progress.File}}</p>
   {{if .Progress.Total}}<progress class="mt-2 w-full" max="{{.Progress.Total}}" value="{{.Progress.Done}}">{{pct .Progress.Done .Progress.Total}}%</progress>{{end}}
+  {{else if eq .State "cancelled"}}
+  <p role="status">{{.Detail}}</p>
   {{else if eq .State "failed"}}
   <p class="text-danger" role="alert">The import failed: {{.Error}}</p>
   {{else}}

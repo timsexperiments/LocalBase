@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,7 +113,7 @@ func TestCancelStopsAnImportAndRemovesItsFiles(t *testing.T) {
 		t.Fatal("not found")
 	}
 	j := waitJob(t, l, id, ended)
-	if j.State != "failed" || j.ErrorCode != acquire.CodeCancelled || j.Error != "The import was cancelled." {
+	if j.State != "cancelled" || j.ErrorCode != acquire.CodeCancelled || j.Error != "" || !strings.Contains(j.Detail, "was cancelled") {
 		t.Errorf("%+v", j)
 	}
 	if n := stagedFiles(t, l); n != 0 {
