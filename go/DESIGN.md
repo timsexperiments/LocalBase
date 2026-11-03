@@ -2812,6 +2812,12 @@ VRAM, the planner reproduces from the header alone:
 
 ### 20.5 Startup placement check (fail closed)
 
+The gateway starts a placed backend with `-lv 4`, because llama-server prints these lines only from that level: its default is 3 (checked on 0.7.0-dev, build 11671, on macOS). A custom build gets the flag only if its `--help` lists it. Real requests at that level, a chat with tool calls and an image with text through the decision path, put none of their text in the log. A backend's output is at debug level, so at `--log-level debug` it reaches the event log, the diagnostics bundle and any exporter, and it can include image URLs, at any verbosity. Those are logged with credentials, query values and fragments removed.
+
+**Rule: with a plan of 0 GPU layers, the check requires nothing from the log except that the backend started.** Zero is known from the plan, and what a no-device build prints at this level has not been read. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
+
+On a Mac a chat model with no GPU layers starts without `--embeddings`: the two together crash the first chat on 0.7.0-dev build 11671.
+
 The llama-server output is read as bytes; a strict UTF-8 decode once
 crashed a harness.
 - **Experts:** with `--n-cpu-moe N`, every expected expert tensor of layers
