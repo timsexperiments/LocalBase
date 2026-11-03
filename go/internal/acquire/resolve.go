@@ -549,6 +549,9 @@ func resolveLocal(src string, req Request) (*Plan, error) {
 	}
 	first := p.Files[0]
 	ff := models.InspectFile(first.local)
+	if ff.Refused {
+		return nil, fmt.Errorf("%s cannot be imported: %s", first.Filename, ff.Problem)
+	}
 	p.Preview = models.Variant{Format: ff.Format, Architecture: ff.Architecture, Precision: ff.Precision, ContextLength: ff.ContextLength}
 	p.ID, p.Name = deriveID(name), strings.TrimSuffix(name, filepath.Ext(name))
 	return p, nil
