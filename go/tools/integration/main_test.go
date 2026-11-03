@@ -192,3 +192,51 @@ func TestRerereIsTheToolsAlone(t *testing.T) {
 		t.Errorf("the repository's own setting changed: %s %v", file, err)
 	}
 }
+
+// A branch that moved after the fold shows up, merged or picked, with what it lacks.
+func TestBehindSeesNewCommits(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	commit := func(subject string) { t.Helper(); git("commit", "-q", "--allow-empty", "-m", subject) }
+	git("init", "-q", "-b", "tree")
+	commit("base")
+	git("branch", "base")
+	git("checkout", "-q", "-b", "merged", "base")
+	commit("merged work")
+	git("checkout", "-q", "-b", "picked", "base")
+	commit("picked work")
+	git("checkout", "-q", "tree")
+	git("merge", "-q", "--no-ff", "-m", "merge", "merged")
+	commit("picked work")
+	for _, b := range []string{"merged", "picked"} {
+		git("update-ref", "refs/remotes/origin/"+prefix+b, b)
+	}
+	list := []string{"merged", "pick picked base", tidyStep}
+	rows, err := behind(dir, list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].behind != 0 || rows[1].behind != 0 {
+		t.Fatalf("nothing moved yet: %+v", rows)
+	}
+	git("checkout", "-q", "merged")
+	commit("merged, later")
+	git("update-ref", "refs/remotes/origin/"+prefix+"merged", "merged")
+	git("checkout", "-q", "picked")
+	commit("picked, later")
+	git("update-ref", "refs/remotes/origin/"+prefix+"picked", "picked")
+	git("checkout", "-q", "tree")
+	rows, err = behind(dir, list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].behind != 1 || !strings.Contains(rows[0].missing[0], "merged, later") || rows[1].behind != 1 || !strings.Contains(rows[1].missing[0], "picked, later") {
+		t.Errorf("%+v", rows)
+	}
+}

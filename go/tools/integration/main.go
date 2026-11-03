@@ -45,11 +45,35 @@ func main() {
 	test := flag.Bool("test", false, "run gofmt, vet and the unit tests on the result")
 	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
 	auditOnly := flag.Bool("audit", false, "report what folded pull requests added that the tree no longer has, in the existing worktree")
+	behindOnly := flag.Bool("behind", false, "report folded branches whose current head has commits the tree lacks, in the existing worktree")
 	flag.Parse()
 	useRerere()
 	list, err := readOrder(orderPath())
 	check(err)
 	check(run("", "git", "fetch", "-q", "origin"))
+	if *behindOnly {
+		rows, err := behind(*dir, list)
+		check(err)
+		late := 0
+		for _, r := range rows {
+			fmt.Printf("%-28s %-6s %-9s %d", r.branch, r.kind, r.head, r.behind)
+			if r.mergesInPick > 0 {
+				fmt.Printf("  (%d merge commits, covered only by -audit)", r.mergesInPick)
+			}
+			fmt.Println()
+			for _, m := range r.missing {
+				fmt.Printf("    behind: %s\n", clip(m))
+			}
+			if r.behind > 0 {
+				late++
+			}
+		}
+		fmt.Printf("%d of %d folded branches are behind\n", late, len(rows))
+		if late > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	if *auditOnly {
 		intended, err := readIntended(filepath.Join(filepath.Dir(orderPath()), "intended.txt"))
 		check(err)
