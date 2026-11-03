@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +49,7 @@ func TestEveryPooledConnectionHasItsSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	for i, c := range holdConnections(t, st.DB, 20) {
+	for i, c := range holdConnections(t, st.DB, maxOpenConns) {
 		var timeout, fk, limit int
 		ctx := context.Background()
 		for pragma, into := range map[string]*int{"busy_timeout": &timeout, "foreign_keys": &fk, "journal_size_limit": &limit} {
@@ -74,6 +75,7 @@ func TestAConnectionOpenedLaterDoesNotChangeTheMode(t *testing.T) {
 	if _, err := st.DB.ExecContext(context.Background(), `PRAGMA journal_mode=DELETE`); err != nil {
 		t.Fatal(err)
 	}
+	st.DB.SetMaxOpenConns(24) // past the store's own limit, to open more than it normally would
 	for i, c := range holdConnections(t, st.DB, 20) {
 		if mode := journalMode(t, c); mode != "delete" {
 			t.Errorf("connection %d: %s", i, mode)
@@ -219,5 +221,47 @@ func TestClosingLeavesOneFile(t *testing.T) {
 		if _, err := os.Stat(path + suffix); !os.IsNotExist(err) {
 			t.Errorf("%s is left: %v", suffix, err)
 		}
+	}
+}
+
+// The store's descriptors are bounded: past the limit a request waits for a connection, and gets one.
+func TestThePoolIsBounded(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if got := st.DB.Stats().MaxOpenConnections; got != maxOpenConns {
+		t.Errorf("max open %d, want %d", got, maxOpenConns)
+	}
+	conns := holdConnections(t, st.DB, maxOpenConns)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := st.DB.Conn(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("one past the limit: %v", err)
+	}
+	_ = conns[0].Close()
+	c, err := st.DB.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("after one came back: %v", err)
+	}
+	_ = c.Close()
+}
+
+// WriteFailed names what failed, and a store with no log of its own still says so.
+func TestWriteFailedIsNeverSilent(t *testing.T) {
+	var b strings.Builder
+	st := &Store{Log: slog.New(slog.NewJSONHandler(&b, nil))}
+	st.WriteFailed("session-touch", errors.New("database is locked"))
+	if !strings.Contains(b.String(), `"event":"store.session-touch-write-failed"`) || !strings.Contains(b.String(), "database is locked") {
+		t.Errorf("%s", b.String())
+	}
+	var def strings.Builder
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&def, nil)))
+	defer slog.SetDefault(previous)
+	(&Store{}).WriteFailed("observed-peak", errors.New("x"))
+	if !strings.Contains(def.String(), `"event":"store.observed-peak-write-failed"`) {
+		t.Errorf("%s", def.String())
 	}
 }

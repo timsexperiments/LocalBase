@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -29,6 +30,8 @@ var migrationFS embed.FS
 
 type Store struct {
 	DB *sql.DB
+	// Log is where WriteFailed reports. Set it before anything can write in the background.
+	Log *slog.Logger
 }
 
 type migration struct {
@@ -77,6 +80,8 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
 	s := &Store{DB: db}
 	if err := s.useWAL(context.Background()); err != nil {
 		db.Close()
@@ -99,6 +104,24 @@ func plainIfBusy(err error) error {
 		return fmt.Errorf("%w", ErrInUse)
 	}
 	return err
+}
+
+// Each open connection holds the database and its -wal open, so this bounds the descriptors the store
+// can use, at about twice maxOpenConns. A request past it waits in the pool's queue, which it would
+// otherwise do in SQLite's, where a writer can lose for the whole busy timeout.
+const (
+	maxOpenConns = 16
+	maxIdleConns = 4
+)
+
+// WriteFailed says that a write nobody is waiting on failed, so it isn't lost silently. what is a word
+// from the code. It logs to the store's Log, or to the default logger for a command that set none.
+func (s *Store) WriteFailed(what string, err error) {
+	log := s.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("A background database write failed.", "event", "store."+what+"-write-failed", "error", err.Error())
 }
 
 // walSizeLimit is the most of a -wal file a checkpoint leaves behind, in bytes.
