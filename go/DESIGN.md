@@ -4952,3 +4952,173 @@ the pages before this change it failed for all five.
 - **Real pictures vary.** Captures use pictures a real model made and a quiet video fixture, so
   sheets are judged on the design. Real media is as colorful as it is.
 
+## 30. Connect an app, and the OpenAPI document (design addendum, 2026-11-02)
+
+Someone who has a model running should get an editor, an agent or their own code
+talking to it in a minute, without reading the source. Today that takes the API
+reference, a key command with the right scopes, and knowing that a client wants
+`…/v1` and a model id. Nothing describes the API in a form tools can read, and
+`production-inventory.md` lists "route table or OpenAPI tested against routes" as missing.
+
+### 30.1 `GET /openapi.json`
+
+- **Public, like `/health`:** no credential, because docs tools and client generators
+  fetch it without one. It is the same static text everywhere and holds no instance data:
+  no paths, host names, model ids or key names. The version is already public on `/health`.
+- **Answers:** 200 `application/json; charset=utf-8`, `Cache-Control: no-cache`, a strong
+  `ETag`, 304 on `If-None-Match`. `HEAD` works. Any other method gets 405 with `Allow`.
+- **The document** is `internal/gateway/openapi.json`, embedded and edited by hand. It is
+  OpenAPI 3.1.0. `info.version` in the file is a placeholder, and serving replaces it with
+  the running `Version`, so a stamped build (#406) reports itself. `servers` is
+  `[{"url": "/"}]`, relative to where the document was fetched, so it is right behind a
+  proxy.
+- **Covers:** `/v1`, `/_localbase`, `/health`, `/health/ready` and itself.
+- **Leaves out, by name and with a reason in the test:** the browser's pages and sign-in
+  (`/app/*`, callbacks), and the routes only this machine's CLI can call, behind the
+  instance token (`/_localbase/instance`, `/default-model`, `/placement-state`).
+- **Extensions on each operation:**
+  - `x-localbase-permission`: the permission the route needs. It is absent on a public route,
+    and `"any"` means any authenticated caller. A method's own permission is on that method's
+    operation.
+  - `x-localbase-also-requires`: a second permission the route needs today. `unload` and
+    `placement` sit under the `models:read` guard of `/_localbase/models/{model_id...}`, so a
+    `models:manage`-only key gets 403, which §23 and §20.2 do not say. The document states what
+    the code does, and the test fails if it stops being true.
+  - `x-localbase-stability`: `stable` for `/v1`, `unstable` for `/_localbase`, as
+    `docs/versioning.md` promises.
+- **Security schemes:** `Authorization: Bearer` and `X-Api-Key`, the two `Resolver.Token`
+  reads. The document says what the code enforces: **a request carrying `Origin` or
+  `Sec-Fetch-Site` never authenticates with an API key** (`auth.IsBrowser`), so a key cannot
+  be used from a web page, and the gateway sends no CORS headers.
+- **Schemas** are exact for `/v1` and for what `/_localbase` returns; request schemas state
+  the bounds the validators enforce. Pass-through fields stay open
+  (`additionalProperties` is not `false`) where the gateway forwards them to the backend.
+
+### 30.2 Tests that stop it drifting
+
+No test dependency is added: the project keeps one module dependency. All of these use the real
+`gateway.New` over the fake backend, in `internal/gateway/openapi_test.go`.
+
+| Test | Fails when |
+|---|---|
+| `TestOpenAPIDocument` | it is not 3.1.x; an operation lacks an id, a response or a known tag; a `$ref` or path parameter does not resolve; a permission is not in `auth.Permissions` |
+| `TestOpenAPICoversEveryRoute` | a pattern registered on the mux is neither documented nor exempt by name; an exemption names a route that is gone; a documented path reaches no route |
+| `TestOpenAPISubroutes` | a wildcard route's real operations (`models/{id}/unload`, `/admission`, `/placement`, `runs/{id}/…`, `voices/{id}/audio`) differ from the document; `runTargets` differs from the documented targets; anything `allowedUIRoute` allows is undocumented |
+| `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
+| `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
+| `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
+| `TestOpenAPIServed` | the answers in 30.1 change, or the served version is not `Version` |
+
+So a route added without documentation fails CI, and so does documentation without a route.
+Each test was checked by breaking the document or the routes on purpose: a dropped path, method,
+status or field, a wrong permission, a fake path, a bad `$ref`, and an undocumented route each
+fail at least one test. **What these cannot catch:** a request field the validators accept and
+the document omits, a sub-route of a wildcard route that the code adds in a way the source scan
+does not read, the schemas of answers no test reaches, and the wording of descriptions. The syntax is also checked once by an external OpenAPI 3.1
+linter, run by hand and reported in the PR; CI does not run it, since that would add a
+dependency.
+
+### 30.3 Connect: one shared source for page and CLI
+
+`internal/connect` is a small package with no gateway dependency. Given a base URL, a model id
+and a key (or none), it returns each client's snippets. The page and the CLI both render from
+it, so they cannot disagree. It has **no HTTP API of its own**: keys go through the existing
+`/_localbase/api-keys`, and base URLs are not something a remote caller needs from the server.
+
+**Base URLs.** Each has a label and an optional note.
+- **This computer:** from the listen address. A wildcard reads as `127.0.0.1`, and a LAN-only
+  bind gives that address.
+- **Your public address:** the `origin` from `ui-access.json`, when one is configured. With
+  Cloudflare Access the note says API requests must also get past Access at the edge (a
+  service token or a bypass rule for `/v1/*`), since the gateway only checks the key.
+- **This page's address (page only):** when the page is open at another address, such as a LAN
+  name. Never added for a loopback name.
+
+**The key token.** Snippets read the key from the environment wherever the client allows.
+The one place it appears literally is the token `YOUR_LOCALBASE_KEY`.
+
+**The model** is the effective default chat model, else `YOUR_MODEL_ID`, with a choice among
+the installed chat models. Copy never names a model: the id is data, shown as chosen.
+
+### 30.4 `/app/connect`
+
+Needs `models:read`, like the pages around it; creating a key needs `keys:manage`.
+
+1. **Base URL,** with a copy button; a choice only when there is more than one.
+2. **Key.** A person with `keys:manage` gets one button, "Create a key for chat"
+   (`inference:chat`, `models:read`), with chat and embeddings, and all inference, one
+   step further. `POST /app/connect/key` calls `/_localbase/api-keys` as that person, so the API's
+   validation and audit apply. Anyone else is told who can make one and sees the CLI command.
+3. **Model,** when there is a choice. Changing it re-renders the snippets with htmx.
+4. **Your app:** an accordion by group (Code; Editors and agents; Apps), each with its snippets,
+   where they go, a copy button and a link to the client's own docs. `?client=<id>` opens one.
+5. A link to `/openapi.json`, and what will not work (30.6).
+
+**The secret** appears once, in the response to the POST, as Admin does: never in a URL, no
+history entry, `Cache-Control: no-store`. The response fills the token into every snippet. `connect.js`
+keeps it in memory and re-applies it after an htmx swap, so changing the model does not lose it.
+Leaving the page does. Like every change in the UI, creating a key needs JavaScript: the CSRF and
+same-origin rules depend on htmx's headers.
+
+`--no-auth` says any key works and that this is for local development only.
+
+Data contract for the FE thread: `Bases []{Label, URL, Note}`, `Base`, `Models []{ID, Name}`,
+`Model`, `Groups []{Label, Clients []{ID, Name, Docs, Note, Open, Snippets []{Label, Path, Language,
+Text}}}`, `CanCreateKey`, `Presets []{ID, Label, Scopes}`, `Secret`, `Error`, `NoAuth`.
+
+### 30.5 `local-base connect`
+
+```text
+local-base connect [client] [--model <id>] [--base-url <url>] [--list]
+                   [--create-key] [--name <label>] [--scopes <permission,...>] [--expires-days <n>]
+```
+
+- **With no client:** base URLs, whether the gateway is running, the model, how to get a key, and
+  the client ids.
+- **With a client:** the snippet that does the job on stdout, and everything else on stderr, so
+  redirecting a config into a file works. Snippets read the key from `LOCALBASE_API_KEY` wherever
+  the client allows, so setting it comes first. An unknown client exits 2 and lists the ids.
+- **`--base-url`** overrides the address, for a proxy the CLI cannot know about.
+- **`--create-key`** creates a key the way `keys create` does, and fills it into the snippets. It works
+  with the gateway stopped. The defaults are the name `connect-<client>` and the chat scopes;
+  `--scopes` is the complete set, as elsewhere. It writes `audit.api-key-changed` with ids only.
+  Without the flag no key is created and no secret is printed.
+- **`--json`** gives the usual envelope: `{"baseUrls":[{"label","url","note"}],"baseUrl","model",
+  "models","gateway":{"running"},"clients":[{"id","name","group","docs","note","snippets":[{"label",
+  "path","language","text"}]}]}`, plus `key` and `secret` with `--create-key`.
+
+It is Go only. TS has no such command, and the differential does not compare it.
+
+### 30.6 What will not work, stated on the page and in the docs
+
+- **A client that requires `/v1/responses`, `/v1/completions` or Anthropic's `/v1/messages`.**
+  None of them exists here. The gateway serves chat completions.
+- **Keys from a web page** (30.1): a browser-side app cannot use a key, by design.
+- **Services that call the base URL from their own servers** cannot reach `127.0.0.1`. They need
+  the public address.
+
+Which clients appear, and each one's exact fields, come from that client's current documentation and
+are recorded in `internal/connect` with the date they were checked. A client that cannot use chat
+completions is not listed as supported. Each client says which it is, on the page and in the CLI:
+**run** (its snippet has been run against a gateway) or **follows the client's docs, not run**.
+Today that is run for curl and the two SDKs, and not run for every editor, agent and app.
+
+### 30.7 Tests for Connect, and what is not verified
+
+- `TestRenderEveryClient`: every client renders for every combination of key and model, with no
+  unfilled token other than the two documented, and no model name in fixed copy.
+- `TestBaseURLs`: wildcard, loopback, LAN, IPv6, public origin, and the Cloudflare note.
+- `TestSnippetsWorkAgainstTheGateway`: runs the `curl` snippet's request against a real test gateway,
+  and checks that every snippet's base URL ends in `/v1` and reaches `/v1/models`.
+- `TestConnectPage`: permissions, one-tap key with exactly the preset scopes, the secret absent from
+  a later GET and from every URL, the no-store header.
+- `TestCLIConnect` (contract suite, real binary): text and JSON, stdout against stderr, `--create-key`
+  with the gateway stopped, the secret absent without the flag, unknown client exits 2.
+- **Checked by hand, 2026-11-02:** curl, and the OpenAI Python (3.42.1) and JS (7.47.0) SDKs, running
+  exactly what `local-base connect` prints against a scratch gateway with the fake backend. Each got
+  the fake's own reply, and a wrong key got 401.
+- **Not run:** opencode, Continue, Cline, Aider, Zed, goose and Open WebUI. Their snippets follow each
+  client's docs. Someone who runs one can check it, and these are listed in `docs/connect.md`.
+
+**Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
+page, the command and the route. The keys it creates are ordinary keys.
