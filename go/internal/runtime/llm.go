@@ -214,7 +214,7 @@ func (m *LLM) port() int {
 	if m.d.PortOverride > 0 {
 		return m.d.PortOverride
 	}
-	return m.cfg.Port
+	return m.Config().Port
 }
 
 // geometryFor caches GGUF geometry by path and modification time.
