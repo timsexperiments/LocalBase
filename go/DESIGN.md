@@ -5815,3 +5815,19 @@ Event: `runtime.survivor-stopped`, a warning.
 **Not verified.** Only fake backends so far. For the next real-model window, away from the
 live root: does a real `llama-server` exit when its port is taken, does an orphan answer
 `/health`, and does the guard end one in time?
+
+## 36. Threat model and root permissions (2026-11-03)
+
+The threat model is [`docs/threat-model.md`](docs/threat-model.md): what LocalBase protects, from whom, the
+residual risks, what was proven and what was only read. This section holds the one decision made
+for it rather than for a finding.
+
+**Group-writable counts as writable by others, unless the group is provably private.** `root.WritableByOthers`
+is the rule, and backup and restore use it too (§34). On macOS local accounts share `staff`, so group write
+there means every account on the computer. A group is private only if the local account files show it has
+nobody but you and nothing else decides membership (`groupIsPrivate`). Unknown means refused, and the message
+gives `chmod go-w <path>`. The check happens before the marker is read, and a root that stays open to others
+after a chmod is refused, except on a read-only volume.
+
+**Custom voices are shared on purpose,** for now: they belong to the gateway, not to a key or a person. The
+threat model says what that means.

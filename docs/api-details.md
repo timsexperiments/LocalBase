@@ -39,6 +39,8 @@ The Qwen3 TTS runtime clones a voice zero-shot from a short reference recording,
 | `DELETE /_localbase/voices/{id}` | `models:manage` | Delete the voice and its recording |
 | `GET /_localbase/voices/{id}/audio` | `models:manage` | Play back the stored reference |
 
+Custom voices belong to the gateway, not to a key or a person. Anyone with `models:read` can list them and anyone with `inference:speech` can speak in them, which includes a default key. Anyone with `models:manage` can play back, rename or delete any of them, whoever made them. Treat a voice as visible to everyone with a key.
+
 ```bash
 curl http://127.0.0.1:2273/_localbase/voices -H 'Authorization: Bearer <ADMIN_KEY>' \
   -F name=Narrator -F consent=true -F audio=@narrator.wav
