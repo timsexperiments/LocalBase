@@ -17,6 +17,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // RemovedSecret names something --exclude-secrets took out, and how to put it back. It never
@@ -205,6 +207,29 @@ func hasTable(ctx context.Context, db *sql.DB, table string) bool {
 	var n int
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
 	return err == nil && n > 0
+}
+
+// readableDatabase says whether a database can be read without changing anything.
+func readableDatabase(ctx context.Context, path string) error {
+	db, err := openReadOnly(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }() // Read-only.
+	var n int
+	return db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master`).Scan(&n)
+}
+
+// isUnfinishedWrite is a database whose journal was left by a process that stopped mid-write. Its
+// file can't be trusted until SQLite plays that journal back, which takes opening it for writing.
+// A process still writing holds a lock, so its journal doesn't count.
+func isUnfinishedWrite(err error) bool {
+	var e *sqlite.Error
+	return errors.As(err, &e) && e.Code() == sqlite3.SQLITE_READONLY_ROLLBACK
+}
+
+func unfinishedWriteMessage(rootDir string) string {
+	return fmt.Sprintf("The database on %s has a write that never finished, left by a process that stopped. Nothing was changed. To undo that write, run: local-base --root '%s' status. Then try again.", rootDir, rootDir)
 }
 
 func openReadOnly(path string) (*sql.DB, error) {

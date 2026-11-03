@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -751,5 +752,77 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 	}
 	if seen == 0 {
 		t.Fatalf("no backend found listening:\n%s", out)
+	}
+}
+
+// crashDatabase leaves a database as a process killed during a large write would: pages changed on
+// disk, and a journal that undoes them. It takes a copy's files while its transaction is open.
+func crashDatabase(t *testing.T, tmp, dbPath string) {
+	t.Helper()
+	work := filepath.Join(tmp, "crash-copy.db")
+	body, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mustWriteFile(work, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+work+"?_pragma=cache_size(8)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`CREATE TABLE crash_mid_write (x)`); err != nil {
+		t.Fatal(err)
+	}
+	for range 64 {
+		if _, err := tx.Exec(`INSERT INTO crash_mid_write VALUES (randomblob(65536))`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for from, to := range map[string]string{work: dbPath, work + "-journal": dbPath + "-journal"} {
+		b, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := mustWriteFile(to, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// After a crash, backup and restore refuse and name a command. That command has to work.
+func TestCrashedRootIsRefusedUntilStatusRecoversIt(t *testing.T) {
+	backupGoOnly(t)
+	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := backupRoot(t, tmp, "root")
+	file := filepath.Join(tmp, "b"+backup.Extension)
+	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
+		t.Fatalf("%s%s", r.stdout, r.stderr)
+	}
+	crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
+	commands := [][]string{{"backup", "--dry-run"}, {"restore", "--dry-run", "--replace", file}}
+	for _, args := range commands {
+		r := e.cli(nil, args...)
+		if said := r.stdout + r.stderr; r.code == 0 || !strings.Contains(said, "never finished") || !strings.Contains(said, " status") {
+			t.Errorf("%v on a crashed root: %d %s", args, r.code, said)
+		}
+	}
+	if r := e.cli(nil, "status"); r.code != 0 {
+		t.Fatalf("status: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(e.root, "local-base.db-journal")); err == nil {
+		t.Error("status left the journal")
+	}
+	for _, args := range commands {
+		if r := e.cli(nil, args...); r.code != 0 {
+			t.Errorf("%v after status: %d %s%s", args, r.code, r.stdout, r.stderr)
+		}
 	}
 }

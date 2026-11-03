@@ -5105,6 +5105,8 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 
 **A backup is checked before it is kept.** After writing the file, `backup` reads it back with every check restore makes before changing anything. If its own restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work, in a directory beside the root that it removes, so its answer can be believed. This came from the first run on a clone of the live root, where `backup` kept a file restore refused.
 
+**A write that never finished stops both commands, and its journal travels with its database.** This database uses a rollback journal, so `local-base.db-journal` exists during any write, and stays if a process is killed mid-write. A live writer holds a lock, so a backup reads straight past it and holds only finished writes. A journal left by a crash can't be read past: until SQLite plays it back the database's pages can't be trusted, and that takes opening it for writing, which `backup` and `restore --dry-run` must not do. So both refuse, change nothing, and name `status`, which opens the database for writing. `doctor` opens it read-only, so it can't. The journal is on `restore`'s list of what it moves. Left behind beside the restored database, SQLite would play it into that database and use it up, leaving both damaged. A target whose database can't be read for any other reason can still be replaced, since that may be why it's being replaced, but the report says nothing could be compared with it, instead of reading as if nothing were revoked.
+
 **Working directories hold what a backup holds, secrets included.** Backup and restore each work in a directory named `.local-base-temporary-<backup|restore>-<pid>-<number>`, 0700 from its first moment, removed on every way out that can run anything: success, failure, an interrupt or a termination, including at restore's question. A kill can't clean up, so `doctor` names what one left, with the command to delete it, and the next backup or restore removes it and says so. A directory whose process is still running is left alone.
 
 **Included:**
@@ -5129,6 +5131,7 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 | `runtime/`, `service/` | Tied to this machine and this process. `ui-csrf.key` regenerates, `start` rewrites the service |
 | `cache/`, `catalog-feed.json` | Caches that are fetched again. Whether a feed URL needs keeping is checked when this is built |
 | The root marker, the lock | `restore` makes its own |
+| `local-base.db-wal`, `-shm`, `-journal` | SQLite's working files. The copy is made through SQLite, so it holds only finished writes |
 | Rows: `auth_browser_sessions`, `local_sessions`, `local_login_links`, `auth_magic_link_tokens` | **A restore signs everyone out.** Bringing back old sessions would undo a sign-out |
 | Rows: `model_observed_memory`, `model_runtime_capabilities` | Measured on one machine. Measured again on the next load |
 | Rows: `config_activation` | A restart that was pending on another gateway |
@@ -5318,6 +5321,8 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestRestoreUndoTreatsJournalAsInput`: a journal naming `../`, an absolute path, a link, a directory that isn't 0700, or a name off the list moves nothing, and one claiming a fresh root can't delete a root.
 
 **By hand, in a disposable container, as a second real user:** a restored root belongs to the user running it, restoring as root is refused, and so are another user's root, empty directory or backup file, and a backup to a directory others can write.
+
+- `TestBackupDuringAWriteHoldsOnlyWhatIsFinished`, `TestBackupOfACrashedRootSaysWhatToDo`, `TestRestoreOverACrashedRootSaysWhatToDo`, `TestRestoreKeepsAJournalWithItsDatabase`, `TestRestoreFailureAndCrashBringBackDatabaseAndJournal`, `TestRestoreOverAnUnreadableDatabaseSaysSo`, and with the real binary `TestCrashedRootIsRefusedUntilStatusRecoversIt`. The crash is real SQLite state: a copy's files, taken while a large transaction is open.
 
 **Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. That is the operator's to run.
 

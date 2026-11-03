@@ -112,7 +112,7 @@ func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 
 // replaceable is all a restore moves, here and on undo. It is a constant, so a journal
 // can't name anything else.
-var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
+var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
 
 // targetState is what a restore found at its target.
 type targetState struct{ newRoot, hasData bool }
@@ -205,6 +205,11 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 	state, err := checkTarget(target, replace)
 	if err != nil {
 		return nil, err
+	}
+	if !state.newRoot && state.hasData {
+		if err := readableDatabase(ctx, filepath.Join(target, "local-base.db")); isUnfinishedWrite(err) {
+			return nil, refuse("%s", unfinishedWriteMessage(target))
+		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
 	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() && root.WritableByOthers(info) {
@@ -795,6 +800,12 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 // compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
 // backup would bring back. Restoring must not revive a key someone revoked because it leaked.
 func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
+	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
+	// root is often replaced because its database is broken, so this can't refuse, but it says so.
+	if err := readableDatabase(ctx, targetDB); err != nil {
+		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
+		return nil
+	}
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
 		return err
