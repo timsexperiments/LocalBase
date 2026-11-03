@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +21,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 var fakeBinary string
@@ -39,20 +38,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func freePort(t testing.TB) int {
-	for i := 0; i < 200; i++ {
-		p := 24000 + rand.IntN(6000)
-		if p == 24173 || (p >= 25611 && p <= 25613) {
-			continue
-		}
-		if ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p)); err == nil {
-			ln.Close()
-			return p
-		}
-	}
-	t.Fatal("no free port")
-	return 0
-}
+func freePort(t testing.TB) int { return testutil.FreePort() }
 
 type host struct{}
 
