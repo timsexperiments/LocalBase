@@ -233,6 +233,11 @@ func (m *LLM) PreviewPlacement(modelID string, req placement.Request) (*LLMPlan,
 	return plan, nil
 }
 
+// cpuOnly reports a machine and backend that cannot take any layers on a GPU.
+func (m *LLM) cpuOnly(t *Target) bool {
+	return m.d.Placement != nil && m.d.Placement.Device(t).Platform == placement.CPUOnly
+}
+
 // NextLoadBytes is what the model's next load would count for against this computer's
 // memory: the figure admission uses. ok is false when that cannot be told.
 func (m *LLM) NextLoadBytes(modelID string) (need int64, ok bool) {
