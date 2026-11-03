@@ -434,8 +434,7 @@ func TestLongStreamSurvivesTheDeadlines(t *testing.T) {
 // cancel whatever the request does next.
 func TestAuthenticatingAfterTheBodySetsNoDeadline(t *testing.T) {
 	limits := Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 100 * time.Millisecond}
-	var g *limitsGateway
-	g = newLimitsGateway(t, limits, func(s *Server) {
+	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
 		s.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			io.Copy(io.Discard, r.Body)
@@ -504,8 +503,7 @@ func limitsAccess(perms ...string) *auth.BrowserAccess {
 // A browser session gets the same budget through /app/api, as a key does.
 func TestSlowUploadFromABrowserSession(t *testing.T) {
 	limits := Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
-	var g *limitsGateway
-	g = newLimitsGateway(t, limits, func(s *Server) {
+	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("inference:chat"), s.Log)
 	})
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/app/api/v1/chat/completions", throttled(paddedChat("fake:reply received", 1<<20), 12, 60*time.Millisecond))
@@ -530,8 +528,7 @@ func TestSlowUploadFromABrowserSession(t *testing.T) {
 func TestSlowUploadToAPage(t *testing.T) {
 	limits := Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
 	var read atomic.Int64
-	var g *limitsGateway
-	g = newLimitsGateway(t, limits, func(s *Server) {
+	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
 		s.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if p, _ := s.BrowserPrincipal(r); p == nil {

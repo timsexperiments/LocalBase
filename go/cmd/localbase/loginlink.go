@@ -49,7 +49,7 @@ func auditCLI(e *env, msg string, attrs ...any) {
 	if err != nil {
 		return
 	}
-	defer sink.Close()
+	defer func() { _ = sink.Close() }() // the event is written; a failed close changes nothing
 	slog.New(obs.NewHandler(sink, slog.LevelInfo)).Info(msg, attrs...)
 }
 
