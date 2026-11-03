@@ -130,7 +130,12 @@ func TestLookalikesInBindingsAndProgramsAreShownForWhatTheyAre(t *testing.T) {
 
 // A person's own path has to read as they'd type it, in the lines that give them a command to copy.
 func TestAPersonsOwnPathKeepsItsLetters(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "jos\u00e9", "root")
+	// A root is named by its real path, and a temporary folder can be behind a link.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(base, "jos\u00e9", "root")
 	if err := os.MkdirAll(filepath.Dir(root), 0o700); err != nil {
 		t.Fatal(err)
 	}
