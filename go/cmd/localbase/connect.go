@@ -19,7 +19,7 @@ import (
 )
 
 // connectScopes are what --create-key grants by default: enough for an editor or an
-// agent, and no more. The same one tap as the page (DESIGN §28.5).
+// agent, and no more. The same one tap as the page (DESIGN §30.5).
 var connectScopes = []string{"inference:chat", "models:read"}
 
 func connectCommand() *cli.Command {

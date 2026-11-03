@@ -10,7 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 )
 
-// What Connect hands out works (DESIGN §28.7): the curl snippet, run by a real shell
+// What Connect hands out works (DESIGN §30.7): the curl snippet, run by a real shell
 // with a real curl, gets a real answer from a real gateway, using the scopes the page's
 // one tap grants. The fields every other client is given reach the same routes.
 func TestSnippetsWorkAgainstTheGateway(t *testing.T) {

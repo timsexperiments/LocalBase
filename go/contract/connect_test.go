@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// `local-base connect` (DESIGN §28.5), a Go-only command: the snippet on stdout, so it can
+// `local-base connect` (DESIGN §30.5), a Go-only command: the snippet on stdout, so it can
 // go into a file, everything else on stderr, and no secret unless a key was asked for.
 func TestCLIConnect(t *testing.T) {
 	root := filepath.Join(scratchDir(t), "root")

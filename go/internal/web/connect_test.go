@@ -198,7 +198,7 @@ func TestConnectNoModelYet(t *testing.T) {
 	if !strings.Contains(body, connect.ModelToken) || !strings.Contains(body, `href="/app/models/get"`) {
 		t.Error("with no model, the page should say so and link to getting one")
 	}
-	// Copy never names a model (DESIGN §28.3): with none installed, none can appear.
+	// Copy never names a model (DESIGN §30.3): with none installed, none can appear.
 	cat, _ := catalog.Load("")
 	main := body[strings.Index(body, `id="connect-title"`):]
 	for _, s := range cat.All() {

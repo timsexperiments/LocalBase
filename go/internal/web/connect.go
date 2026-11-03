@@ -10,7 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 )
 
-// Connect an app (DESIGN §28.4): the address, a key in one tap, and each client's
+// Connect an app (DESIGN §30.4): the address, a key in one tap, and each client's
 // snippets, all from internal/connect, which the CLI renders too. A key goes through
 // /_localbase/api-keys as the signed-in person, so the API's rules and audit apply. The
 // secret appears once, in the response to the change that made it, as in Admin.

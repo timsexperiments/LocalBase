@@ -2,7 +2,7 @@ package connect
 
 // Each client's fields come from its own current documentation, not from memory, and
 // were last checked on Checked. Run marks the ones whose snippets have been run for real
-// against a gateway (DESIGN §28.7). Setting it for another client means having run that
+// against a gateway (DESIGN §30.7). Setting it for another client means having run that
 // client, and every other one says it was not (docs/connect.md asks for help with them).
 //
 // Marks: @BASE@ the /v1 URL, @ROOT@ the same without /v1, @MODEL@, @KEY@, @ENV@ the key's
