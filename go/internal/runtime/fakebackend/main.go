@@ -22,6 +22,7 @@
 // "fake:die" (as the chat message, the embeddings input, the decision state, the
 // image prompt, the speech input or the transcription prompt) exits at once, like
 // a crash before answering; "fake:die-body" exits halfway through its answer.
+// "fake:die-saying" prints crashLine to stderr and exits 1.
 //
 // For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
 // override per expert tensor of the first --n-cpu-moe layers and the
@@ -227,6 +228,9 @@ func main() {
 	http.Serve(ln, mux)
 }
 
+// crashLine is what "fake:die-saying" prints before it exits 1: a reason only the backend knows.
+const crashLine = "fake: ran out of device memory at layer 7"
+
 // dieIfAsked ends the process when text asks for a crash. Exiting closes the
 // connection, as a real crash does: before any answer, or partway through one.
 func dieIfAsked(w http.ResponseWriter, text string) {
@@ -239,6 +243,9 @@ func dieIfAsked(w http.ResponseWriter, text string) {
 		w.Write([]byte(`{"partial":`))
 		w.(http.Flusher).Flush()
 		os.Exit(9)
+	case strings.Contains(text, "fake:die-saying"):
+		fmt.Fprintln(os.Stderr, crashLine)
+		os.Exit(1)
 	case strings.Contains(text, "fake:die"):
 		os.Exit(9)
 	}
