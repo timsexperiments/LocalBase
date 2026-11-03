@@ -17,3 +17,5 @@ integration-tool go/tools/integration/intended.txt * | the tool's own branch mov
 integration-tool go/tools/integration/audit.go * | the tool's own branch moves on after each rebuild
 integration-tool go/tools/integration/main.go * | the tool's own branch moves on after each rebuild
 integration-tool go/tools/integration/main_test.go * | the tool's own branch moves on after each rebuild
+feat-docs-tree docs/api-details.md Arrives with PR #529 | #529 is in the tree, so the sentence is dropped from this line
+feat-docs-tree go/contract/unlisted_user_test.go * | the tree's tiny-model fixture replaces this test's earlier form

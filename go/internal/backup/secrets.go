@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -197,18 +198,6 @@ func sqliteDSN(path string, query string) string {
 	return (&url.URL{Scheme: "file", Path: path, RawQuery: query}).String()
 }
 
-func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
-	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
-	return err == nil && n > 0
-}
-
-func hasTable(ctx context.Context, db *sql.DB, table string) bool {
-	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
-	return err == nil && n > 0
-}
-
 // readableDatabase says whether a database can be read without changing anything.
 func readableDatabase(ctx context.Context, path string) error {
 	db, err := openReadOnly(path)
@@ -242,7 +231,65 @@ func unfinishedWriteMessage(rootDir string) string {
 }
 
 func openReadOnly(path string) (*sql.DB, error) {
-	return sql.Open("sqlite", sqliteDSN(path, "mode=ro&_pragma=busy_timeout(5000)&_pragma=trusted_schema(OFF)"))
+	return sql.Open("sqlite", sqliteDSN(path, fmt.Sprintf("mode=ro&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
+}
+
+// A backup runs beside a live gateway, and a rollback journal lets a writer keep readers out while
+// it commits. SQLite's own timeout isn't fair to a reader, so a busy spell can outlast it.
+var (
+	// readBusyMillis is how long one read waits on SQLite. busyWait is how long a step keeps trying.
+	// Variables so that a test needn't take a minute.
+	readBusyMillis = 5000
+	busyWait       = 60 * time.Second
+)
+
+const busyRetryPause = 100 * time.Millisecond
+
+func isBusy(err error) bool {
+	var e *sqlite.Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	code := e.Code() & 0xff
+	return code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED
+}
+
+// retryBusy runs a read until the database lets it, for up to busyWait. The read must be safe to
+// run again.
+func retryBusy(ctx context.Context, read func() error) error {
+	deadline := time.Now().Add(busyWait)
+	for {
+		err := read()
+		if !isBusy(err) || !time.Now().Before(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(busyRetryPause):
+		}
+	}
+}
+
+// busyMessage is what a person reads when the database stayed busy, with the command to run again.
+// Its last words name the step, so that a report says where, and no raw SQLite error reaches them.
+func busyMessage(rootDir, retry string, err error) string {
+	step, _, _ := strings.Cut(err.Error(), ":")
+	return fmt.Sprintf("The database on %s is busy: the gateway or another command is writing to it. Nothing was changed. Try again in a moment: %s. If it keeps happening, stop the gateway first: local-base --root '%s' stop. (This was while %s.)", rootDir, retry, rootDir, step)
+}
+
+// tableExists and columnExists say so when they can't tell. An answer of "no" on a failed read once
+// made a busy database look like one with no migrations, no models and no revocations.
+func tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
+	return n > 0, err
+}
+
+func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
+	return n > 0, err
 }
 
 // configSecrets reads the database directly: an older one may lack a column, and being wrong
@@ -254,18 +301,21 @@ func configSecrets(ctx context.Context, dbPath string) (hf, otel bool, err error
 	}
 	defer db.Close()
 	read := func(column string) (bool, error) {
-		if !hasColumn(ctx, db, "config", column) {
-			return false, nil
+		present, err := columnExists(ctx, db, "config", column)
+		if err != nil || !present {
+			return false, err
 		}
 		var n int
-		err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM config WHERE `+column+` != ''`).Scan(&n)
+		err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM config WHERE `+column+` != ''`).Scan(&n) //nolint:gosec // G202: column is one of the two names below, and a placeholder can't name a column.
 		return n > 0, err
 	}
 	if hf, err = read("hf_token"); err != nil {
-		return false, false, err
+		return false, false, fmt.Errorf("reading the settings: %w", err)
 	}
-	otel, err = read("otel_headers")
-	return hf, otel, err
+	if otel, err = read("otel_headers"); err != nil {
+		return false, false, fmt.Errorf("reading the settings: %w", err)
+	}
+	return hf, otel, nil
 }
 
 func appliedMigrations(ctx context.Context, dbPath string) (int, error) {
@@ -274,44 +324,59 @@ func appliedMigrations(ctx context.Context, dbPath string) (int, error) {
 		return 0, err
 	}
 	defer db.Close()
-	return migrationLevel(ctx, db)
+	level, err := migrationLevel(ctx, db)
+	if err != nil {
+		return 0, fmt.Errorf("reading the migrations: %w", err)
+	}
+	return level, nil
 }
 
 func migrationLevel(ctx context.Context, db *sql.DB) (int, error) {
-	if !hasTable(ctx, db, "__drizzle_migrations") {
-		return 0, nil
+	present, err := tableExists(ctx, db, "__drizzle_migrations")
+	if err != nil || !present {
+		return 0, err
 	}
 	var n int
-	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM "__drizzle_migrations"`).Scan(&n)
+	err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM "__drizzle_migrations"`).Scan(&n)
 	return n, err
 }
 
-func presentRows(ctx context.Context, dbPath string) []string {
+func presentRows(ctx context.Context, dbPath string) ([]string, error) {
 	db, err := openReadOnly(dbPath)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("reading the tables: %w", err)
 	}
 	defer db.Close()
 	var out []string
 	for _, t := range rowsLeftOut {
-		if hasTable(ctx, db, t) {
+		present, err := tableExists(ctx, db, t)
+		if err != nil {
+			return nil, fmt.Errorf("reading the tables: %w", err)
+		}
+		if present {
 			out = append(out, t)
 		}
 	}
-	return out
+	return out, nil
 }
 
-// selectedModels are the ids a restored root would want installed. It reads through the store,
-// and an older database that can't be read that way simply lists none.
-func selectedModels(ctx context.Context, dbPath string) []string {
+// selectedModels are the ids a restored root would want installed. It reads through the store. An
+// older database that can't be read that way lists none, and any other failure is a failure.
+func selectedModels(ctx context.Context, dbPath string) ([]string, error) {
+	unavailable := func(err error) ([]string, error) {
+		if errors.Is(err, store.ErrNotConfigured) || strings.Contains(err.Error(), "no such ") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading the models: %w", err)
+	}
 	st, err := store.OpenReadOnly(dbPath)
 	if err != nil {
-		return nil
+		return unavailable(err)
 	}
 	defer func() { _ = st.Close() }() // Read-only.
 	cfg, err := st.LoadConfig(ctx)
 	if err != nil {
-		return nil
+		return unavailable(err)
 	}
 	seen := map[string]bool{}
 	out := []string{}
@@ -330,20 +395,28 @@ func selectedModels(ctx context.Context, dbPath string) []string {
 		add(id)
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
 }
 
 // dropRows removes what a backup and a restored root must never hold.
 func dropRows(ctx context.Context, db *sql.DB) error {
 	for _, t := range rowsLeftOut {
-		if !hasTable(ctx, db, t) {
+		present, err := tableExists(ctx, db, t)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t, err)
+		}
+		if !present {
 			continue
 		}
 		if _, err := db.ExecContext(ctx, `DELETE FROM `+t); err != nil { //nolint:gosec // G202: t is from the constant list rowsLeftOut, and a placeholder can't name a table.
 			return fmt.Errorf("%s: %w", t, err)
 		}
 	}
-	if hasTable(ctx, db, "go_settings") {
+	settings, err := tableExists(ctx, db, "go_settings")
+	if err != nil {
+		return err
+	}
+	if settings {
 		// So that start shows a first-run link again, on a root everyone is signed out of.
 		if _, err := db.ExecContext(ctx, `DELETE FROM go_settings WHERE key = 'access.first-run-link-shown'`); err != nil {
 			return err
@@ -362,11 +435,16 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	}
 	// VACUUM INTO takes an empty file, and keeps its mode.
 	first := filepath.Join(stage, "database-first")
-	if err := writePrivate(first, nil); err != nil {
-		source.Close()
+	err = retryBusy(ctx, func() error {
+		if err := os.Remove(first); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := writePrivate(first, nil); err != nil {
+			return err
+		}
+		_, err := source.ExecContext(ctx, `VACUUM INTO ?`, first)
 		return err
-	}
-	_, err = source.ExecContext(ctx, `VACUUM INTO ?`, first)
+	})
 	source.Close()
 	if err != nil {
 		return fmt.Errorf("copying the database: %w", err)
@@ -379,19 +457,27 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 	defer db.Close()
 	db.SetMaxOpenConns(1)
 	if err := dropRows(ctx, db); err != nil {
-		return err
+		return fmt.Errorf("cleaning the copy: %w", err)
 	}
-	if hasColumn(ctx, db, "config", "root") {
+	hasRoot, err := columnExists(ctx, db, "config", "root")
+	if err != nil {
+		return fmt.Errorf("cleaning the copy: %w", err)
+	}
+	if hasRoot {
 		// A backup names no path. Restore sets this to the root it restores into.
 		if _, err := db.ExecContext(ctx, `UPDATE config SET root = ''`); err != nil {
-			return err
+			return fmt.Errorf("cleaning the copy: %w", err)
 		}
 	}
 	if exclude {
 		for _, column := range []string{"hf_token", "otel_headers"} {
-			if hasColumn(ctx, db, "config", column) {
+			present, err := columnExists(ctx, db, "config", column)
+			if err != nil {
+				return fmt.Errorf("cleaning the copy: %w", err)
+			}
+			if present {
 				if _, err := db.ExecContext(ctx, `UPDATE config SET `+column+` = ''`); err != nil { //nolint:gosec // G202: column is from the constant list above, and a placeholder can't name a column.
-					return err
+					return fmt.Errorf("cleaning the copy: %w", err)
 				}
 			}
 		}
@@ -400,7 +486,7 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 		return err
 	}
 	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, to); err != nil {
-		return fmt.Errorf("copying the database: %w", err)
+		return fmt.Errorf("writing the copy: %w", err)
 	}
 	return nil
 }
