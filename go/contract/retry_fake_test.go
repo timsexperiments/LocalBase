@@ -12,7 +12,8 @@ import (
 // TestDifferentialRetrySemanticsFake is TestDifferentialRetrySemantics without a real sd-server, so
 // that it runs in CI: a fake that refuses to start while a file exists, and then starts. A failed
 // start is transient on both gateways: 503 with Retry-After on each repeat, with the same envelope.
-// Once the fault is gone, Go's next request works, because it retries the start.
+// Once the fault is gone, Go's next request works, because it retries the start. The reserve is off,
+// so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
 func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	impls := []string{*implFlag}
 	if *implFlag == "both" {
@@ -27,6 +28,8 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
+	fixtureWithNoReserve = true
+	t.Cleanup(func() { fixtureWithNoReserve = false })
 	type answer struct {
 		status      int
 		code        string
@@ -64,9 +67,6 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 		for i := 1; i <= 2; i++ {
 			r := ask()
 			e, _ := r.JSON(t)["error"].(map[string]any)
-			if e["code"] == "insufficient_memory" {
-				t.Skipf("%s: refused for memory on this machine, so the start wasn't reached", impl)
-			}
 			a = answer{status: r.Status, retry: r.Header.Get("Retry-After") != ""}
 			a.code, _ = e["code"].(string)
 			a.message, _ = e["message"].(string)
