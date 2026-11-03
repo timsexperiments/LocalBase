@@ -43,6 +43,9 @@ func (c countLines) Handle(_ context.Context, r slog.Record) error {
 // What a process wrote before it exited reaches the log, however slowly the log takes it:
 // it may be the reason for a crash. It writes more than a pipe holds, so it exits with some
 // still in the pipe.
+//
+// Seen unprovoked as TestBackendOutputRedactsURLs on macOS CI, with an empty log after its full
+// wait: job 125685743835 (#506 at fad49b3b) and job 125706211906 (#521 at fabba49a).
 func TestProcessOutputSurvivesItsExit(t *testing.T) {
 	knownBug(t, 522, "a backend's last output is lost when it exits: cmd.Wait closes the pipes while they are being read")
 	const lines = 40000 // about 230 KB
