@@ -29,6 +29,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
@@ -1507,8 +1508,8 @@ func TestOpenAPIServed(t *testing.T) {
 	if err := json.Unmarshal(body, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Info.Version != Version {
-		t.Errorf("served version %q, want %q", doc.Info.Version, Version)
+	if doc.Info.Version != version.Version {
+		t.Errorf("served version %q, want %q", doc.Info.Version, version.Version)
 	}
 	if !strings.HasPrefix(doc.OpenAPI, "3.1.") {
 		t.Errorf("openapi = %q", doc.OpenAPI)

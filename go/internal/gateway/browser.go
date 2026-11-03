@@ -26,7 +26,7 @@ func IsUIAccessPath(p string) bool {
 // allowedUIRoute lists what the browser may call through /app/api.
 func allowedUIRoute(method, p string) bool {
 	switch p {
-	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions", "/_localbase/usage":
+	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions", "/_localbase/usage", "/_localbase/update":
 		return method == "GET" || method == "POST"
 	case "/_localbase/model-backend", "/_localbase/model-imports":
 		return method == "GET" || method == "POST"
