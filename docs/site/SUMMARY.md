@@ -7,7 +7,7 @@
 - [Install](install.md)
 - [Quickstart](quickstart.md)
 - [First-run sign-in](first-run-sign-in.md)
-- [Connect an app](connect-an-app.md)
+- [Connect an app](connect.md)
 
 # Run it
 

@@ -69,7 +69,7 @@ go build -o local-base ./cmd/localbase
 
 ## Features
 
-- **OpenAI-compatible API.** Chat completions, embeddings, audio transcriptions, translations and speech, image generation and edits, and video jobs. See the [API overview](docs/api.md).
+- **OpenAI-compatible API.** Chat completions, embeddings, audio transcriptions, translations and speech, image generation and edits, and video jobs. See [connect an app](docs/connect.md) and the [API overview](docs/api.md).
 - **Studio tools.** Pages for Image, Speech, Transcribe, Video and Decisions, plus Chat, in the web interface.
 - **Decisions.** `POST /v1/systemone` answers structured questions about a state with classifications, scores and yes/no probabilities, using decision models.
 - **Memory-safe admission.** Before loading a model, LocalBase checks it fits and refuses clearly if it doesn't. Under memory pressure it evicts idle runtimes rather than letting the machine swap, and under critical pressure it stops active ones too.
@@ -95,6 +95,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 
 - [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md)
 - [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
+- [Connect an app](docs/connect.md)
 - [API overview](docs/api.md) and [API details](docs/api-details.md)
 - [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
 - [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)

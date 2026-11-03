@@ -40,6 +40,7 @@ Docs merge after what they describe. Arrows are stacks; each PR merges after the
 | 6 | UI v2: #410, then #448 directly after it, then the rest of its stack. #418 must already be in, because it allowlists the fonts and icons and annotates their license |
 | 7 | #446, last, because it links to all of the feature docs |
 | 8 | #460, #461, then the soak targets. The soak CI goes with #468 |
+| 9 | This PR, after #478 and #459, because it links to `docs/connect.md` and describes `/openapi.json` |
 
 The Go order within step 4 belongs to the Go thread. If it changes, keep the doc PRs after their features.
 
