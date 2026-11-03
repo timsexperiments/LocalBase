@@ -1206,7 +1206,10 @@ else {
   await nav("/app/studio/video");
   const long = "A long slow pan across a quiet harbour at first light, with gulls overhead and small boats rocking on the water";
   await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(long)}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 80 && !(await ev(`!!document.querySelector("#lab-items > li video") && document.querySelector("#lab-items > li .image-title")?.textContent.startsWith("A long slow pan")`)); i++) await sleep(150);
+  // That video itself, not an older one further down: the title shows as soon as it starts.
+  const longDone = `(() => { const item = document.querySelector("#lab-items > li"); return !!item?.querySelector("video") && !!item.querySelector("[data-share]") && !!item.querySelector(".image-title")?.textContent.startsWith("A long slow pan"); })()`;
+  for (let i = 0; i < 200 && !(await ev(longDone)); i++) await sleep(150);
+  check(await ev(longDone), "the video with the long title has finished, so its actions are there to read");
   const slowPictures = `(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a slow lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: "dreamshaper-8-lcm" }) }); })()`;
   for (const [width, height] of [[360, 740], [390, 844]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
