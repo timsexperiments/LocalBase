@@ -507,6 +507,13 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	srv.Stopping()
+	// A load in flight goes first: everything below would otherwise wait on it.
+	llm.StopLoads()
+	for _, s := range []*runtime.Service{stt, tts, image, videoService} {
+		if s != nil {
+			s.StopLoads()
+		}
+	}
 	srv.StopRuns(5 * time.Second) // runs end as interrupted, and their event streams close (DESIGN §21.6)
 	close(stopPoll)
 	<-feedDone // an in-flight refresh settles first

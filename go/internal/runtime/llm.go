@@ -38,6 +38,10 @@ const (
 	largeStartupBudget   = 180 * time.Second
 	largeStartupWeights  = 10 * memory.GiB
 	stopGrace            = 10 * time.Second
+	// loadStopGrace is how long a backend still loading gets after SIGTERM: it serves nobody yet
+	// and holds nothing worth saving, and one that won't stop must not use up the service
+	// manager's limit on a gateway that is stopping.
+	loadStopGrace = 2 * time.Second
 )
 
 // LLMDeps are the LLM manager's collaborators.
@@ -143,6 +147,7 @@ type LLM struct {
 	// cause its waiters get. An eviction or a shutdown calls it, with mu held; a
 	// start that was ready just before finds out in install, also with mu held.
 	cancelSwitch context.CancelCauseFunc
+	stopping     bool // the gateway is stopping: no model starts, and what is loaded still serves
 	active       int
 	queue        []*waiter
 	closed       bool
@@ -415,6 +420,10 @@ func (m *LLM) pump() {
 				return
 			}
 			m.grant(head)
+			continue
+		}
+		if m.stopping {
+			m.fail(head, ErrUnavailable)
 			continue
 		}
 		if m.active > 0 {
@@ -701,7 +710,7 @@ func (m *LLM) startBackend(life context.Context, modelID string, spec *catalog.S
 	if err := spanned(m.d.Otel, ctx, "localbase.backend.model_load", name, func() error {
 		return proc.WaitHealthy(life, base+health, budget)
 	}); err != nil {
-		proc.Stop(stopGrace)
+		proc.Stop(loadStopGrace)
 		res.Release()
 		return nil, fail(err)
 	}
@@ -814,6 +823,19 @@ func (m *LLM) EmergencyStop(reason error) {
 }
 
 // Close rejects queued work and stops the runtime.
+// StopLoads ends a load in flight and starts no other. The gateway calls it first when it stops:
+// waiting for requests to drain would otherwise wait on a load nobody will use. A model already
+// loaded goes on serving what it holds until Close.
+func (m *LLM) StopLoads() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stopping = true
+	if m.cancelSwitch != nil {
+		m.cancelSwitch(ErrUnavailable)
+	}
+	m.pump()
+}
+
 func (m *LLM) Close() {
 	m.mu.Lock()
 	m.closed = true

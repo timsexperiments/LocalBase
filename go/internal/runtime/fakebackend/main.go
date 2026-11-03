@@ -29,6 +29,7 @@
 // offloaded layer count. FAKE_PLACEMENT_BUG=cuda0 puts the first expert on
 // CUDA0; FAKE_COMPUTE_MIB sets the CUDA0 compute buffer (default 100).
 // FAKE_STARTUP_MS delays listening, like a slow model load.
+// FAKE_IGNORE_TERM makes it ignore SIGTERM.
 //
 // It also answers sd-server's image routes (images.go) and tts-server's
 // /v1/generate (speech.go).
@@ -43,8 +44,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -85,6 +88,9 @@ func main() {
 	// placement lines need 4.
 	if verbosity >= 4 {
 		placementLines(model, ngl, cpuMoE)
+	}
+	if os.Getenv("FAKE_IGNORE_TERM") != "" {
+		signal.Ignore(syscall.SIGTERM) // a load that doesn't answer a polite stop
 	}
 	if ms, _ := strconv.Atoi(os.Getenv("FAKE_STARTUP_MS")); ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond) // a slow model load
