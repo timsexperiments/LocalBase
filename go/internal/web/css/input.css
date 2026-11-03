@@ -1154,8 +1154,20 @@
 /* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
 @layer components {
   .lab-item-video,
-  .lab-item-speech {
+  .lab-item-speech,
+  .lab-item-transcribe {
     @apply grid content-start gap-2 self-start;
+  }
+  /* Written out: Tailwind's tabular-nums does nothing on the floor browser (§27.4). */
+  .record-time,
+  .transcript-time {
+    font-variant-numeric: tabular-nums;
+  }
+  .result-actions [data-toggle-times][aria-pressed="true"] {
+    @apply text-ink;
+  }
+  .result-actions [data-toggle-times][aria-pressed="false"] {
+    @apply opacity-60;
   }
   /* On a phone the player leaves room for what's around it: the strip and heading, the words (two
      lines at most here) and facts above, the actions below, then the prompt and the tab bar, and a
@@ -1195,7 +1207,7 @@
     @apply fixed z-50 -translate-x-1/2 -translate-y-full rounded-lg bg-ink px-2 py-1 text-sm whitespace-nowrap text-canvas;
   }
   /* Without a card round each result, space is what separates them. */
-  .lab-items:has(.lab-item-video, .lab-item-speech) {
+  .lab-items:has(.lab-item-video, .lab-item-speech, .lab-item-transcribe) {
     row-gap: 1.75rem;
   }
   @media (min-width: 768px) {

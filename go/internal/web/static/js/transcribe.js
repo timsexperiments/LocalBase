@@ -1,3 +1,5 @@
+import "./icon-names.js";
+
 // The Transcribe studio (DESIGN §22.20): recording with a level, and a transcript
 // whose times move the player. Converting and sending is audio.js. The level is
 // reassurance that it can hear you, not a measurement.
@@ -215,7 +217,7 @@ document.addEventListener("click", (event) => {
       audio.currentTime = Number(t.dataset.seek);
       audio.play().catch(() => {});
     }
-  } else if (t.matches("[data-toggle-times]")) {
+  } else if (t.closest?.("[data-toggle-times]")) {
     const off = t.getAttribute("aria-pressed") === "true";
     t.setAttribute("aria-pressed", String(!off));
     t.closest("li")?.querySelector("[data-times]")?.classList.toggle("times-off", off);

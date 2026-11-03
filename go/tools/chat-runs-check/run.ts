@@ -694,6 +694,19 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     const at = await ev(`${trItem}.querySelector("audio").currentTime`);
     check(at >= 1.2 && at < 2.5, `a time moves the player: ${at}`);
     check((await ev(`${trItem}.querySelector("[data-seek]").getAttribute("aria-label")`)) === "0:00, play from 0 seconds", "a time says what it does");
+    // Copy and Export lead, with Timestamps and Remove as icons in one row. Times line up, on the floor browser too.
+    for (const width of [360, 390]) {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: width === 360 ? 740 : 844, deviceScaleFactor: 2, mobile: true });
+      const row = await ev(`(() => { const item = ${trItem}, acts = [...item.querySelectorAll(".result-actions a, .result-actions button")].filter((a) => a.getBoundingClientRect().width > 0); return { first: acts[0].textContent.trim(), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, big: acts.every((a) => a.getBoundingClientRect().height >= 44), named: acts.every((a) => a.getAttribute("aria-label") || a.textContent.trim()), figures: getComputedStyle(item.querySelector(".transcript-time")).fontVariantNumeric, fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth }; })()`);
+      check(row.first === "Copy" && row.acts === 4 && row.rows === 1 && row.big && row.named && /tabular/.test(row.figures) && row.fits, `at ${width}, a transcript's actions are one row, and its times are in tabular figures: ${JSON.stringify(row)}`);
+    }
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    const ways = await ev(`(() => { const [a, b] = [document.querySelector("[data-record-start]"), document.querySelector("[data-pick-audio]")]; const r = [a, b].map((x) => x.getBoundingClientRect()); return { same: a.className === b.className, widths: r.map((x) => Math.round(x.width)), heights: r.map((x) => Math.round(x.height)), ground: [a, b].map((x) => getComputedStyle(x).backgroundColor) }; })()`);
+    check(ways.same && ways.widths[0] === ways.widths[1] && ways.heights[0] === ways.heights[1] && ways.ground[0] === ways.ground[1], `Record and Choose a file carry equal weight: ${JSON.stringify(ways)}`);
+    // A tap on the icon itself, not the button around it.
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+    check(await ev(`${trItem}.querySelector("[data-toggle-times]").getAttribute("aria-pressed") === "false"`), "a tap on the Timestamps icon itself turns them off");
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     check((await ev(`getComputedStyle(${trItem}.querySelector("[data-seek]")).display`)) === "none", "Times hides the times");
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
