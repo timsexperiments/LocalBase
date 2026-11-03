@@ -50,6 +50,7 @@ var publicRoutes = map[string]string{
 	"GET /app":                  "redirects to the app",
 	"/app/":                     "the UI's routes; unmatched paths are not found",
 	"GET /app/assets/{name...}": "static files built into the binary",
+	"/openapi.json":             "the same static document everywhere, no instance data (DESIGN 30.1)",
 }
 
 // signInRoutes are the browser layer's own paths: sign-in pages and callbacks,
@@ -370,7 +371,7 @@ func isSignInPath(path string) bool {
 
 func isPublicPath(path string) bool {
 	switch {
-	case path == "/health", path == "/health/ready", path == "/", path == "/app", path == "/app/":
+	case path == "/health", path == "/health/ready", path == "/", path == "/app", path == "/app/", path == "/openapi.json":
 		return true
 	case strings.HasPrefix(path, "/app/assets/"):
 		return true
@@ -594,6 +595,16 @@ func TestKeyWithoutPermissionsRouteMatrix(t *testing.T) {
 				// Not a voice route at all: the same answer as any unknown path.
 				if r.status != 404 {
 					t.Errorf("%s %s: %d %.200q, want 404", method, path, r.status, r.body)
+				}
+			case path == "/openapi.json" && (method == http.MethodGet || method == http.MethodHead):
+				// Public (DESIGN 30.1).
+				if r.status != 200 {
+					t.Errorf("%s %s: %d, want 200", method, path, r.status)
+				}
+			case path == "/_localbase/usage" && method == http.MethodGet:
+				// Any key reads its own usage (DESIGN 32); this gateway records none.
+				if r.status != 501 {
+					t.Errorf("%s %s: %d %.200q, want 501", method, path, r.status, r.body)
 				}
 			case r.status != 403 && r.status != 405:
 				t.Errorf("%s %s: %d %.200q, want 403 or 405", method, path, r.status, r.body)
