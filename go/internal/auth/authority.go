@@ -2,6 +2,7 @@ package auth
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -114,4 +115,177 @@ func (c KeyCaller) CheckSetScopes(target *store.APIKey, scopes []string) error {
 	}
 	until, ok := keyExpiry(target.ExpiresAt)
 	return c.checkLife(until, ok)
+}
+
+// --- access management ----------------------------------------------------------------
+
+func needs(holds, want []string, refusal func(missing []string) *AccessError) error {
+	if missing := Missing(holds, want); len(missing) > 0 {
+		return refusal(missing)
+	}
+	return nil
+}
+
+func refusedSignIn(missing []string) *AccessError {
+	return &AccessError{"exceeds-caller-permissions", "Changing how people sign in can decide who holds any role, so it needs every permission a sign-in can grant. You don't hold: " + joinComma(missing) + ". Ask someone who holds them, or use `local-base access` on the host."}
+}
+
+func refusedPolicy(missing []string) *AccessError {
+	return &AccessError{"exceeds-caller-permissions", "You can only change roles and bindings within the permissions you hold. This change also touches: " + joinComma(missing) + ". Ask someone who holds them, or use `local-base access` on the host."}
+}
+
+// ErrWiderUser refuses acting on a person with permissions the caller lacks. It does
+// not name them, for the same reason as ErrWiderKey.
+var ErrWiderUser = &AccessError{"exceeds-caller-permissions", "This person has permissions you don't hold, so you can't change them. Ask someone who holds them, or use `local-base access` on the host."}
+
+func (g *Guard) role(name string) ([]string, bool) {
+	if g.Policy == nil {
+		return nil, false
+	}
+	for _, r := range g.Policy.Roles {
+		if r.Name == name {
+			return r.Permissions, true
+		}
+	}
+	return nil, false
+}
+
+// signInReach is everything a sign-in could resolve to: every role, and the
+// provider-wide permissions, which apply when there is no policy.
+func (g *Guard) signInReach() []string {
+	reach := slices.Clone(g.ProviderPerms)
+	if g.Policy != nil {
+		for _, r := range g.Policy.Roles {
+			reach = append(reach, r.Permissions...)
+		}
+	}
+	return reach
+}
+
+// userReach is what a managed person resolves to, as ResolvePolicy resolves it.
+func (g *Guard) userReach(u *GuardUser) []string {
+	if g.Policy == nil {
+		return g.ProviderPerms
+	}
+	var reach []string
+	add := func(name string) {
+		perms, _ := g.role(name)
+		reach = append(reach, perms...)
+	}
+	for _, name := range u.Roles {
+		add(name)
+	}
+	if g.Policy.DefaultRole != nil {
+		add(*g.Policy.DefaultRole)
+	}
+	domain := u.Email[strings.LastIndex(u.Email, "@")+1:]
+	for _, b := range g.Policy.Bindings {
+		switch b.Kind {
+		case "email":
+			if b.Email == u.Email {
+				add(b.Role)
+			}
+		case "email-domain":
+			if b.Domain == domain {
+				add(b.Role)
+			}
+		case "subject":
+			if slices.Contains(u.Identities, [2]string{b.Issuer, b.Subject}) {
+				add(b.Role)
+			}
+		}
+	}
+	return reach
+}
+
+// CheckSignInChange judges a change to providers or email delivery. Those decide who
+// proves to be whom, so whoever changes them could reach any role anyone holds: the
+// caller must already hold all of it, and any provider-wide permissions it sets.
+func (g *Guard) CheckSignInChange(holds, permissions []string) error {
+	return needs(holds, append(g.signInReach(), permissions...), refusedSignIn)
+}
+
+// CheckGrantRoles judges giving someone these roles. An unknown role is left for the
+// call that assigns it to refuse.
+func (g *Guard) CheckGrantRoles(holds, roles []string) error {
+	var want []string
+	for _, name := range roles {
+		perms, _ := g.role(name)
+		want = append(want, perms...)
+	}
+	return needs(holds, want, grantRefused)
+}
+
+// CheckUser judges acting on a managed person. An unknown person is left for the call
+// that acts on them to refuse.
+func (g *Guard) CheckUser(holds []string, email string) error {
+	if u := g.User(email); u != nil && u.Status != "removed" && len(Missing(holds, g.userReach(u))) > 0 {
+		return ErrWiderUser
+	}
+	return nil
+}
+
+func rolesByName(p *Policy) map[string][]string {
+	out := map[string][]string{}
+	if p != nil {
+		for _, r := range p.Roles {
+			out[r.Name] = r.Permissions
+		}
+	}
+	return out
+}
+
+func bindingSet(p *Policy) map[Binding]bool {
+	out := map[Binding]bool{}
+	if p != nil {
+		for _, b := range p.Bindings {
+			out[b] = true
+		}
+	}
+	return out
+}
+
+func defaultRole(p *Policy) string {
+	if p == nil || p.DefaultRole == nil {
+		return ""
+	}
+	return *p.DefaultRole
+}
+
+// CheckPolicyChange judges replacing the policy with next (nil: clearing it). What
+// stays the same needs nothing: a caller may leave a wider role alone. Everything that
+// changes needs what it touches, before and after, so a caller can neither hand out a
+// wider role nor take one away. Moving between no policy and a policy replaces the
+// provider-wide permissions of everyone signing in.
+func (g *Guard) CheckPolicyChange(holds []string, next *Policy) error {
+	var want []string
+	if (g.Policy == nil) != (next == nil) {
+		want = append(want, g.ProviderPerms...)
+	}
+	before, after := rolesByName(g.Policy), rolesByName(next)
+	for name, old := range before {
+		if now, kept := after[name]; !kept || !slices.Equal(Canonical(old), Canonical(now)) {
+			want = append(append(want, old...), now...)
+		}
+	}
+	for name, now := range after {
+		if _, existed := before[name]; !existed {
+			want = append(want, now...)
+		}
+	}
+	had, has := bindingSet(g.Policy), bindingSet(next)
+	for b := range had {
+		if !has[b] {
+			want = append(want, before[b.Role]...)
+		}
+	}
+	for b := range has {
+		if !had[b] {
+			want = append(want, after[b.Role]...)
+		}
+	}
+	if old, now := defaultRole(g.Policy), defaultRole(next); old != now {
+		want = append(append(want, before[old]...), after[now]...)
+	}
+	return needs(holds, want, refusedPolicy)
 }
