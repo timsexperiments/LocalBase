@@ -283,6 +283,13 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not embeddings.", model, t), nil)
 		return
 	}
+	// What the backend says here names its own flags and pooling types, and it would
+	// start the model first.
+	if spec != nil && spec.Kind == "llm" && !spec.IsEmbedding() {
+		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+			fmt.Sprintf("Model '%s' is a chat model and cannot produce embeddings. Choose an embedding model from GET /v1/models.", model), strp("model"))
+		return
+	}
 	if spec != nil && spec.IsEmbedding() && len(spec.LLMRuntime.Dimensions) > 0 {
 		if v, present := req["dimensions"]; present {
 			var d struct{ Minimum, Maximum float64 }
