@@ -5343,15 +5343,15 @@ An embedding model loads into the same slot as a chat model, so **the first sear
 
 ### 35.6 What a real model showed
 
-One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `3aa2f63c`. **It ran 2 slots at context 16384, not the default.** The plan was 3261 MiB (derived). The default of 4 slots at context 32768 was not measured: computed from the plan test data it would be 5090 MiB, and that figure has not been checked against a real load. Each slot has the same 8192 tokens either way, so what one input can hold should not change, but memory and batch timing may. The page has to work whichever way these come out.
+One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `3aa2f63c`. **It ran 2 slots at context 16384, not the default.** The plan was 3261 MiB (derived). **Default 4 x 32768: computed 5090 MiB, not measured.** That figure comes from the plan test data. Each slot has the same 8192 tokens either way, so what one input can hold should not change, but memory and batch timing may. The page has to work whichever way these come out.
 
 | Question | Answer |
 |---|---|
 | The most text one input can hold | **8124 tokens were accepted, and larger inputs got `400 context_length_exceeded`,** with the backend naming a context of 8192. So here the limit is the slot's context, with no smaller limit from a batch size. That was 2,688 words and 25,090 characters of generated test text, so real text will differ |
 | Time per batch | **58 to 65 ms per passage,** for passages of about 455 tokens: 58 ms for 1, about 2 s for 32, about 4.1 s for 64. Larger batches weren't faster per passage, so 32 stays, because it lets progress update about every 2 s |
 | Whether vectors arrive normalized | **Yes:** 1024 dimensions, norms within 0.0000001 of 1, and the same text twice gives a cosine of 1.0000. The page still computes cosine, so another model that doesn't normalize works too |
-| Whether a query prefix helps | **No difference shown:** plain and with a prefix both gave first place 1.00 and MRR 1.000, on 16 questions over 24 passages. A corpus that small can only show a large difference, and it ranks nothing. Version 1 keeps sending text as it is |
-| Memory | Peak rss **2575 MiB** against the plan's 3261 MiB, while the same process served all of this. 2541 MiB once loaded |
+| Whether a query prefix helps | **No difference, on a corpus that can only show large differences:** plain and with a prefix both gave first place 1.00 and MRR 1.000, on 16 questions over 24 passages. It ranks nothing. Version 1 keeps sending text as it is |
+| Memory | Peak rss **2575 MiB** against the plan's 3261 MiB, so the plan was about 27% above use in this configuration. 2541 MiB once loaded, the same process throughout, and at least 28706 MiB available during the pass |
 
 **The limits in 35.2 stay.** 1,000 characters is far under what one input can hold, and is there to make passages useful to search, not because the backend needs it. The split-and-retry in 35.2 has met the real answer it handles, in the backend's own words.
 
