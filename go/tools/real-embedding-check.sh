@@ -209,7 +209,8 @@ else
   RT=$W/rt/llama-server
   cp -c "$LIVE_ROOT/models/llm/$FILE" "$W/model.gguf" || exit 5
   [ "$(stat -f %z "$W/model.gguf")" = "$SIZE" ] || { log "the model clone is not the catalog's size"; exit 5; }
-  log "runtime: $PINNED: $("$RT" --version 2>&1 | grep -iE 'version|build' | head -2 | tr '\n' ' ' | cut -c1-120)"
+  # With a time limit: a command substitution holds off the watcher's signal until it ends.
+  log "runtime: $PINNED: $(perl -e 'alarm 10; exec @ARGV' "$RT" --version 2>&1 | grep -iE 'version|build' | head -2 | tr '\n' ' ' | cut -c1-120)"
 fi
 
 prepare_root() { # root
