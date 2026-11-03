@@ -621,6 +621,7 @@ Deliberate differences the contract suite found and kept:
   `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
 - `model_too_large` also tells the person what to change: a smaller context, or `memory.systemReserve`. TS's sentence stops at the smaller model. A CPU placement that cannot fit even on an idle computer answers this 422 too, instead of a retryable 503, and `models show` says "This machine" in admission's terms, reserve included.
 - `POST /v1/embeddings` with a catalog chat model answers `400 unsupported_model_capability` without starting it. TS relays the backend's own error.
+- `POST /_localbase/model-management` also takes `{"modelId", "action":"cancel"}` for a running install, under the same `models:manage` check. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. There is no pause. TS has no cancel and answers this action 400.
 
 ### M1 (done 2026-10-19)
 
