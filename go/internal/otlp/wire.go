@@ -32,20 +32,6 @@ func (b *buf) uint(field int, v uint64) {
 	}
 }
 
-func (b *buf) int64(field int, v int64) {
-	if v != 0 {
-		b.tag(field, 0)
-		b.varint(uint64(v))
-	}
-}
-
-func (b *buf) boolean(field int, v bool) {
-	if v {
-		b.tag(field, 0)
-		b.varint(1)
-	}
-}
-
 func (b *buf) fixed64(field int, v uint64) {
 	if v != 0 {
 		b.tag(field, 1)
