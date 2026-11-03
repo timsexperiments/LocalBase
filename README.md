@@ -12,6 +12,8 @@ It's one Go binary with no other dependencies to install. Your prompts and outpu
 
 ## Quickstart
 
+**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and speech failed to start there.
+
 ```sh
 # 1. Install. The script verifies checksums, never uses sudo and installs to ~/.local/bin.
 curl -fsSLO https://github.com/timsexperiments/LocalBase/releases/latest/download/install.sh
@@ -53,7 +55,7 @@ go build -o local-base ./cmd/localbase
 | Platform | LocalBase runs | Runtimes it can download | Status |
 | --- | --- | --- | --- |
 | macOS, Apple Silicon | yes | all | **First-class.** The development and daily-use platform |
-| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | CI runs the tests, the installer and a fake backend. **Not qualified as an end-user install** |
+| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Under investigation without a GPU:** chat and speech failed to start in testing. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
 | macOS Intel | yes | ffmpeg only | CLI only: bring your own backend executables |
 | Linux ARM64 | yes | ffmpeg only | CLI only: bring your own backend executables |
 | Windows | no | | Not planned |
