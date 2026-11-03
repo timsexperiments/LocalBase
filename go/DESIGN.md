@@ -4487,6 +4487,9 @@ a result line for every `check()` in the script. **No real video model has run t
   person's, before anything can read it.
 - **Older examples aren't shown, and aren't silently deleted.** They could be anyone's, so nothing reads them, and the
   Examples sheet says so and offers to clear them on this device. That is the same policy as Chat's old history.
+- **What someone typed and never sent stays out of form restore.** A browser can put typed words back into a form when a
+  page comes back from history, into whoever's page it now is. `autocomplete="off"` on every typed box is what stops it:
+  removed from the prompts, B's box showed what A had typed, on Chrome 114 and 156. A test holds the attribute in place.
 - **A look preference stays per browser:** the viewer's mat says nothing about anyone.
 
 **Checks:** a real two-person sign-in on one profile, through a fake provider over TLS, on both browsers. It fails at the
