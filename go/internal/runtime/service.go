@@ -718,6 +718,9 @@ func (s *Service) binary(life context.Context, name string, t *Target) (string, 
 	if b := s.d.Binaries[name]; b != "" {
 		return b, nil
 	}
+	if err := life.Err(); err != nil {
+		return "", err // an ended switch says so, whether or not this platform has a pin
+	}
 	return EnsureBinary(life, s.d.RuntimesDir, name)
 }
 
