@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
-.PHONY: help bootstrap build run test race contract ui lint fmt check hooks rehearse
+.PHONY: help bootstrap build run test race contract ui lint fmt check hooks rehearse docs
 
 PORT ?= 26400
 
@@ -52,3 +52,6 @@ hooks: ## Optional: format and repo guard checks before each commit
 
 rehearse: ## Rehearse a release from local artifacts; publishes nothing. Needs make bootstrap
 	scripts/release/rehearse.sh
+
+docs: ## Build the documentation site into .cache/docs-site/book. Needs make bootstrap
+	scripts/docs-site.sh
