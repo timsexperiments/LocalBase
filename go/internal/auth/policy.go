@@ -218,13 +218,11 @@ func LoadPolicy(ctx context.Context, db *sql.DB) (*Policy, error) {
 	}
 	names := map[string]string{}
 	var roles []Role
-	var ids []string
 	for rows.Next() {
 		var id string
 		var r Role
 		rows.Scan(&id, &r.Name, &r.Description)
 		names[id] = r.Name
-		ids = append(ids, id)
 		roles = append(roles, r)
 	}
 	rows.Close()

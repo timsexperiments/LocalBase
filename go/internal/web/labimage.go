@@ -82,7 +82,7 @@ func (q imageRequest) body() []byte {
 
 // randomSeed leaves room for a batch: the API takes seeds up to 2^31-1, and the
 // images of a batch use seed, seed+1 and so on.
-func randomSeed() int64 { return int64(rand.Int32N(math.MaxInt32 - 10)) }
+func randomSeed() int64 { return int64(rand.Int32N(math.MaxInt32 - 10)) } //nolint:gosec // an image seed, not a secret
 
 // imageForm reads the Image studio's form; msg says what is wrong with it.
 func imageForm(r *http.Request) (q imageRequest, msg string) {
