@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -58,10 +59,15 @@ const maxLogLine = 4096
 // outputLineBuffer is how much of an output line is kept for the startup capture.
 const outputLineBuffer = 64 * 1024
 
-// outputDrainLimit is how long Done waits for the output to end after the process and its
-// group are gone. Reaching end-of-file normally takes no time at all; the limit is only for
-// a descendant outside the group that holds the pipes open. A variable for its test.
-var outputDrainLimit = 2 * time.Second
+// How long Done waits for the output to end after the process and its group are gone.
+// End-of-file normally comes at once, however slow the log, as long as lines are still
+// arriving the wait goes on: the last ones may say why the process crashed. The limits are
+// for a descendant outside the group that holds the pipes open: outputDrainLimit if it is
+// silent, outputDrainCap if it keeps writing. Variables for their tests.
+var (
+	outputDrainLimit = 2 * time.Second
+	outputDrainCap   = 20 * time.Second
+)
 
 // StartProcess launches bin with args. Output lines are logged at debug
 // level, bounded per line, under the runtime's name.
@@ -102,8 +108,9 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	drained := make(chan struct{})
 	var drains sync.WaitGroup
 	drains.Add(2)
-	go func() { defer drains.Done(); p.drainOutput(stdout, log) }()
-	go func() { defer drains.Done(); p.drainOutput(stderr, log) }()
+	var lines atomic.Int64
+	go func() { defer drains.Done(); p.drainOutput(stdout, &lines, log) }()
+	go func() { defer drains.Done(); p.drainOutput(stderr, &lines, log) }()
 	go func() { drains.Wait(); close(drained) }()
 	p.startGuard(log)
 	go func() {
@@ -112,12 +119,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 			p.endGuard()
 		}
 		p.endGroup(log)
-		// All the output, unless a descendant outside the group holds the pipes open: that
-		// one can outlive us, so the wait has a limit and Done always comes.
-		select {
-		case <-drained:
-		case <-time.After(outputDrainLimit):
-		}
+		awaitOutput(drained, &lines)
 		stdout.Close()
 		stderr.Close()
 		close(p.done)
@@ -125,15 +127,37 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	return p, nil
 }
 
+// awaitOutput returns when the output has ended, or when it has stopped arriving, or at the
+// cap, so Done always comes.
+func awaitOutput(drained <-chan struct{}, lines *atomic.Int64) {
+	limit := time.After(outputDrainCap)
+	seen := lines.Load()
+	for {
+		select {
+		case <-drained:
+			return
+		case <-limit:
+			return
+		case <-time.After(outputDrainLimit):
+			now := lines.Load()
+			if now == seen {
+				return
+			}
+			seen = now
+		}
+	}
+}
+
 // drainOutput logs r's lines until it ends, however long they are. Giving up on a long line
 // would stop reading, and a child whose pipe fills up then blocks for good.
-func (p *Process) drainOutput(r io.Reader, log *slog.Logger) {
+func (p *Process) drainOutput(r io.Reader, lines *atomic.Int64, log *slog.Logger) {
 	br := bufio.NewReaderSize(r, outputLineBuffer)
 	for {
 		chunk, more, err := br.ReadLine()
 		if err != nil {
 			return
 		}
+		lines.Add(1)
 		p.startupMu.Lock()
 		if len(p.startup) < startupCapture {
 			p.startup = append(p.startup, chunk...)
