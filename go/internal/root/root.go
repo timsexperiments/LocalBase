@@ -109,6 +109,9 @@ func Open(dir string) (*Root, error) {
 	if m.Version != 1 || m.Root != dir || m.RootHash != Hash(dir) {
 		return nil, fmt.Errorf("root marker in %s belongs to %q; refusing to use a copied or moved root", dir, m.Root)
 	}
+	if err := secure(dir); err != nil {
+		return nil, err
+	}
 	return &Root{Dir: dir}, nil
 }
 
@@ -122,13 +125,22 @@ func Init(dir string) (*Root, error) {
 	if home, _ := os.UserHomeDir(); dir == "/" || (home != "" && dir == mustCanonical(home)) {
 		return nil, fmt.Errorf("Refusing LocalBase operation for protected directory: %s.", dir)
 	}
-	if r, err := Open(dir); err == nil {
+	r, err := Open(dir)
+	if err == nil {
 		return r, nil
+	}
+	var unsafe *UnsafeRootError
+	if errors.As(err, &unsafe) {
+		return nil, err
 	}
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 		return nil, fmt.Errorf("Refusing to initialize nonempty LocalBase root: %s.", dir)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	// The directory may have been there already, and open to others.
+	if err := closeDirectory(dir); err != nil {
 		return nil, err
 	}
 	m := marker{Version: 1, Root: dir, RootHash: Hash(dir), Identity: uuid()}
