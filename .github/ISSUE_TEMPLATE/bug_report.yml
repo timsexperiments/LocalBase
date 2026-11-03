@@ -4,19 +4,28 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Share enough detail to reproduce the issue. Do not include API keys or other secrets.
+      value: |
+        Do not include API keys, tokens or private prompts. For security problems, report privately instead.
   - type: input
     id: version
     attributes:
       label: LocalBase version
-      placeholder: 0.1.0
+      description: The output of `local-base --version`.
+      placeholder: 0.2.0
     validations:
       required: true
   - type: textarea
-    id: environment
+    id: doctor
     attributes:
-      label: Environment
-      description: OS, architecture, installation method, and relevant backend/runtime.
+      label: Output of `local-base doctor`
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options: [Install script, Homebrew, Release archive, Built from source]
     validations:
       required: true
   - type: textarea
@@ -34,5 +43,6 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Relevant logs
-      description: Redact credentials and personal data before posting.
+      label: Logs or diagnostics
+      description: |
+        `local-base logs --level error` for relevant lines. `local-base diagnostics` creates a redacted ZIP you can attach; look through it first. It holds hardware details, configuration shape, model names and recent log events.
