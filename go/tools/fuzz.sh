@@ -10,8 +10,16 @@ set -eu
 cd "$(dirname "$0")/.."
 time=${FUZZTIME:-60s}
 for target in \
+	./internal/auth:FuzzJWKSVerify \
+	./internal/conf:FuzzParseDocument \
+	./internal/gateway:FuzzImageChecks \
+	./internal/gateway:FuzzMultipart \
+	./internal/gateway:FuzzRelayStream \
+	./internal/gateway:FuzzValidateSpeech \
+	./internal/gateway:FuzzValidators \
 	./internal/memory:FuzzGGUFHeader \
-	./internal/models:FuzzInspectVariant; do
+	./internal/models:FuzzInspectVariant \
+	./internal/otlp:FuzzExtract; do
 	pkg=${target%%:*}
 	name=${target##*:}
 	echo "== $name ($pkg) for $time"
