@@ -23,7 +23,7 @@ jobs:
           echo "=== as installed: free figures seen by LocalBase"; lb doctor 2>&1 | grep -E 'RAM|Status' | cut -c1-110 || true
           echo "=== config show, memory"; lb config show 2>&1 | sed -n '/^\[memory/,+4p' | cut -c1-70 || true
           lb config show > "$RUNNER_TEMP/c.toml"
-          sed -i -E 's/^allowExperimental = .*/allowExperimental = true/; /^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/; s/^minGb = .*/minGb = 1/ }; s/^selectedTtsModels = .*/selectedTtsModels = ["kokoro-82m-v1.0-q8"]/; s/^activeTtsModel = .*/activeTtsModel = "kokoro-82m-v1.0-q8"/' "$RUNNER_TEMP/c.toml"
+          sed -i -E '/^allowExperimental = /d; s/^\[models\]$/[models]\nallowExperimental = true/; /^\[memory\.systemReserve\]/,/^\[/ { s/^percent = .*/percent = 5/; s/^minimumGb = .*/minimumGb = 1/; s/^minGb = .*/minGb = 1/ }; s/^selectedTtsModels = .*/selectedTtsModels = ["kokoro-82m-v1.0-q8"]/; s/^activeTtsModel = .*/activeTtsModel = "kokoro-82m-v1.0-q8"/' "$RUNNER_TEMP/c.toml"
           echo "=== config apply"; lb config apply --file "$RUNNER_TEMP/c.toml" --restart never 2>&1 | tail -3 | cut -c1-140 || true
           lb config show 2>&1 | grep -nE 'allowExperimental|^percent|^minimum|^min|selectedTts|activeTts' | cut -c1-90 || true
           key="$(lb keys create --name t --scopes inference:chat,inference:speech,models:read,models:manage 2>/dev/null | sed -nE 's/^secret=//p')"
