@@ -1,13 +1,27 @@
-# Security Policy
+# Security policy
 
 ## Supported versions
 
-Only the latest pre-1.0 release is supported with security fixes.
+Only the latest release is supported with security fixes. LocalBase is pre-1.0, and there are no long-term support branches.
 
 ## Reporting a vulnerability
 
-Report vulnerabilities privately through GitHub Security Advisories: use **Report a vulnerability** on the [LocalBase repository](https://github.com/timsexperiments/LocalBase/security/advisories/new). Please do not disclose security issues publicly before coordinating with the maintainer, [@timsexperiments](https://github.com/timsexperiments).
+Report privately through [GitHub Security Advisories](https://github.com/timsexperiments/LocalBase/security/advisories/new). Please don't open a public issue. Include the affected version, how it's deployed and the steps to reproduce, without live credentials.
 
-## Scope
+The project has one volunteer maintainer, so there's no guaranteed response time. Please allow reasonable time for a fix before publishing details.
 
-Reports are especially useful for issues involving gateway authentication and authorization, API key handling, and exposure of the gateway or web interface to a local network. Include the affected version, deployment context, and steps to reproduce without sharing live credentials.
+## In scope
+
+- Gateway authentication and authorization: API keys, scopes, browser sessions, OIDC, Cloudflare Access, magic links.
+- CSRF, and anything that lets one user or key act beyond its permissions.
+- Secrets or prompt content reaching logs, diagnostics bundles or telemetry.
+- Exposure of the gateway or runtimes beyond their configured address.
+- Download integrity: checksums and pins for runtimes, models and releases.
+- The install script and release artifacts.
+
+## Out of scope
+
+- Vulnerabilities in third-party runtimes or model weights. Please report those upstream, and tell us if LocalBase needs a new pin.
+- What a model says, including jailbreaks and unsafe output.
+- Attacks that need write access to the data directory or the same user account: that access already means full control.
+- Denial of service by an authenticated user with inference access.
