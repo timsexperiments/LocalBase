@@ -54,6 +54,7 @@ func TestInstallCancel(t *testing.T) {
 	freshRootInit(t, e, tmp)
 	freshRootModel(t, e.root, freshTiny, src.URL, big)
 	freshRootModel(t, e.root, freshSecond, src.URL, other)
+	allowPrivateImports(t, e.root)
 	e.serve("--no-auth")
 	defer e.stop()
 
