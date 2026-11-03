@@ -1,4 +1,5 @@
 #!/bin/bash
+. "$(dirname "$0")/test-ports.sh"
 # M7 shadow and rollback drill on a COPY of a LocalBase root (DESIGN §17.2,
 # §17.3). Nothing here writes to the source root: the database is read
 # through SQLite's online backup API on a read-only connection, everything
@@ -88,8 +89,7 @@ copy)
 serve)
   impl=${2:-}; [ -d "$root" ] || die "no copy"
   [ -e "$work/gateway.pid" ] && die "a gateway is already running (stop first)"
-  pick() { while :; do p=$((24000 + RANDOM % 6000)); [ $p = 24173 ] && continue; [ $p -ge 25611 ] && [ $p -le 25613 ] && continue
-    lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 || { echo $p; return; }; done; }
+  pick() { test_port_pick; }
   port=$(pick)
   # LBGO_NO_AUTH=1: the --no-auth UI check (loopback only; never a real cookie).
   args=(--root "$root" serve ${LBGO_NO_AUTH:+--no-auth} --host 127.0.0.1 --port "$port"
