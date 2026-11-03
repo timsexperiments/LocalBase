@@ -41,6 +41,7 @@ While it works, it uses a private directory named `.local-base-temporary-…`, b
 | Sessions and sign-in links | A restore signs everyone out |
 | Measured memory | Measured on one machine, and measured again on the next load |
 | Old files from an earlier restore | They hold secrets |
+| SQLite's working files (`local-base.db-wal`, `-shm`, `-journal`) | The backup copies through SQLite, so it holds only finished writes |
 
 ## Leaving secrets out
 
@@ -60,9 +61,9 @@ Restore checks the whole file before changing anything, treating it as input fro
 - **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
 - **Settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
 - **Who gets a role, by sign-in provider,** and what names no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
-- **With `--replace`, what comes back:** keys, users and role bindings the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, so check `local-base keys list` afterwards.
+- **With `--replace`, what comes back:** keys, users and role bindings the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says, so an older backup can't bring back a leaked key. A new root has nothing to compare with, and neither does a database that can't be read, which the report says. In either case, check `local-base keys list` afterwards.
 
-It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, and running as root. A root with data needs `--replace`.
+It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, a database with a write that never finished, and running as root. A root with data needs `--replace`.
 
 **`--replace` only replaces what a backup holds.** Your models and logs stay. The old files go to `<root>/.before-restore-<time>/`, private to you, and nothing reads them. **They hold secrets too,** so the last line of the output gives the command to delete them.
 
@@ -86,7 +87,7 @@ Files are created 0600 and directories 0700, owned by you, and the restored root
 
 ## What has been tested
 
-Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `f05052cb`.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Later commits have not been through that run.
+Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `d4dcfa34`.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Later commits have not been through that run.
 
 **Not tested:**
 
@@ -95,6 +96,7 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 - Restoring on a second computer.
 - Signing in with a real provider after a restore.
 - Installing a real model after a restore.
+- A database journal on real data. That clone had none, so handling a live or crash-left journal has run only in tests, on real SQLite files with no process actually killed.
 
 ## Troubleshooting
 
