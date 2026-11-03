@@ -1,0 +1,185 @@
+{
+  "platform": "darwin/arm64",
+  "commit": "052785be",
+  "metrics": [
+    {
+      "name": "binary size",
+      "unit": "MiB",
+      "value": 25.390169143676758
+    },
+    {
+      "name": "startup, new root",
+      "unit": "ms",
+      "value": 72.361583,
+      "budget": 1000
+    },
+    {
+      "name": "startup, existing root",
+      "unit": "ms",
+      "value": 54.923,
+      "budget": 500
+    },
+    {
+      "name": "idle RSS",
+      "unit": "MiB",
+      "value": 31.203125,
+      "budget": 128
+    },
+    {
+      "name": "idle heap in use",
+      "unit": "MiB",
+      "value": 9.078125
+    },
+    {
+      "name": "idle goroutines",
+      "unit": "count",
+      "value": 10,
+      "budget": 40
+    },
+    {
+      "name": "idle file descriptors",
+      "unit": "count",
+      "value": 13,
+      "budget": 40
+    },
+    {
+      "name": "first request, model load included",
+      "unit": "ms",
+      "value": 256.885541
+    },
+    {
+      "name": "gateway CPU per request",
+      "unit": "µs",
+      "value": 410,
+      "budget": 1000
+    },
+    {
+      "name": "backend directly, p50",
+      "unit": "ms",
+      "value": 0.0415
+    },
+    {
+      "name": "through the gateway, p50",
+      "unit": "ms",
+      "value": 0.356125
+    },
+    {
+      "name": "added per request, p50",
+      "unit": "ms",
+      "value": 0.314625,
+      "budget": 5
+    },
+    {
+      "name": "added per request, p99",
+      "unit": "ms",
+      "value": 0.622458,
+      "budget": 25
+    },
+    {
+      "name": "gateway CPU per streamed token",
+      "unit": "µs",
+      "value": 11.8,
+      "budget": 100
+    },
+    {
+      "name": "added per streamed token, p50",
+      "unit": "µs",
+      "value": 3.905,
+      "budget": 100
+    },
+    {
+      "name": "added to first token, p50",
+      "unit": "ms",
+      "value": 0.254625,
+      "budget": 5
+    },
+    {
+      "name": "added to first token, p99",
+      "unit": "ms",
+      "value": 0.714,
+      "budget": 25
+    },
+    {
+      "name": "memory per idle connection, RSS",
+      "unit": "KiB",
+      "value": 12.576,
+      "budget": 64
+    },
+    {
+      "name": "memory per idle connection, heap",
+      "unit": "KiB",
+      "value": 10.752
+    },
+    {
+      "name": "goroutines per idle connection",
+      "unit": "count",
+      "value": 1,
+      "budget": 2
+    },
+    {
+      "name": "auth with 1 keys, p50",
+      "unit": "ms",
+      "value": 0.128791
+    },
+    {
+      "name": "auth with 1 keys, p99",
+      "unit": "ms",
+      "value": 0.225958
+    },
+    {
+      "name": "auth with 100 keys, p50",
+      "unit": "ms",
+      "value": 0.236042
+    },
+    {
+      "name": "auth with 100 keys, p99",
+      "unit": "ms",
+      "value": 0.4225
+    },
+    {
+      "name": "auth with 1000 keys, p50",
+      "unit": "ms",
+      "value": 1.3415,
+      "budget": 15
+    },
+    {
+      "name": "auth with 1000 keys, p99",
+      "unit": "ms",
+      "value": 1.979333,
+      "budget": 50
+    },
+    {
+      "name": "read with no writers, p50",
+      "unit": "ms",
+      "value": 0.203708
+    },
+    {
+      "name": "read with no writers, p99",
+      "unit": "ms",
+      "value": 1.781709
+    },
+    {
+      "name": "read with 4 writers, p50",
+      "unit": "ms",
+      "value": 0.874375
+    },
+    {
+      "name": "read with 4 writers, p99",
+      "unit": "ms",
+      "value": 55.407875,
+      "budget": 250
+    },
+    {
+      "name": "failed writes with 4 writers",
+      "unit": "count",
+      "value": 0,
+      "budget": 0.5
+    },
+    {
+      "name": "writes per second with 4 writers",
+      "unit": "per s (higher is better)",
+      "value": 2026.125
+    }
+  ],
+  "load": "7.2"
+}
