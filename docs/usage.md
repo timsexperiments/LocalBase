@@ -12,7 +12,7 @@ local-base usage --range 30d --by key --by model
 local-base usage --json
 ```
 
-## What is stored
+## Privacy: what is stored
 
 One row per hour, key or person, route, model and status:
 
@@ -67,4 +67,28 @@ With a gateway running on the root, these go through it, so what it holds in mem
 
 The API is `GET` and `POST /_localbase/usage`, described at `/openapi.json`.
 
-Reading from the CLI with a gateway running can be up to 30 seconds behind, and a crash can lose up to the last 30 seconds of counts. The page and the API include what hasn't been written yet.
+## Limits
+
+- **Hourly totals only.** Nothing can show one request, or anything finer than an hour.
+- **Periods:** `--range` takes `24h`, `7d` or `30d`, and `--from` and `--to` take RFC 3339 times.
+- **Keeping:** 1 to 365 days, 30 by default.
+- **Percentiles** are approximate, within about 12%.
+- **Reading from the CLI** with a gateway running can be up to 30 seconds behind. The page and the API include what hasn't been written yet.
+- **Losing counts:** a crash can lose up to the last 30 seconds. If the last write fails when the gateway stops, those counts are lost too, and the log says so with `usage.last-flush-failed`.
+
+## Troubleshooting
+
+| It says, or you see | What to do |
+| --- | --- |
+| `No requests in this period.` | Check that recording is on, and the period. Listing models, administration, pages, health checks and requests with no valid key aren't counted |
+| A request you just made is missing from the CLI | Wait up to 30 seconds, or look at the page |
+| A 403 from `GET /_localbase/usage` | The key asked for more than its own usage. See [Who sees what](#who-sees-what) |
+| `A gateway is running on this root, but it did not answer.` | Clearing and settings go through a running gateway, and change nothing if it doesn't answer. Check `local-base status`, or stop it |
+| `The gateway running on this root did not accept the change (HTTP …).` | It may be an older build, or not reachable on this computer's loopback address. Stop it, and the command writes to the database directly |
+| `clear removes usage totals. Re-run with --yes to confirm.` | Add `--yes` |
+| `retention must be from 1 to 365 days` | Use a whole number of days in that range |
+| `range must be 24h, 7d or 30d` | Use one of those, or `--from` and `--to` |
+| `give range, or from and to, not both` | Use only one way of choosing the period |
+| `from must be before to`, or `from must be an RFC 3339 time` | Write times like `2026-10-01T00:00:00Z` |
+| `usage.flush-failed` in the log | A write to the database failed. The counts stay in memory, and it tries again in 30 seconds. Check the disk |
+| `usage.prune-failed` in the log | Old totals couldn't be removed. Nothing is lost, and it tries again in an hour. Check the disk |
