@@ -37,7 +37,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 
 ## Diagnostics bundles
 
-`local-base diagnostics` creates a redacted ZIP on your machine and sends nothing. It holds hardware details, configuration shape, model names and recent log events, and never `runs/`. Look through it before sharing it.
+`local-base diagnostics` creates a redacted ZIP on your machine and sends nothing. It leaves out who it came from: your root's path, your home directory wherever it's quoted, email addresses, and the names and ids of API keys. The log on your own computer keeps them. It holds hardware details, configuration shape, model names and recent log events, and never `runs/`. Look through it before sharing it.
 
 ## Removing your data
 
