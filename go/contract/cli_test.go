@@ -55,7 +55,7 @@ func cleanEnv() []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env, "LOCALBASE_CATALOG_FEED_URL=off", "NO_COLOR=1")
+	return guarded(append(env, "LOCALBASE_CATALOG_FEED_URL=off", "NO_COLOR=1"))
 }
 
 func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
