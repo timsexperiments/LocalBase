@@ -71,6 +71,16 @@ func choiceRefusal(key string, n int) string {
 	return `{"model":"` + decisionModel + `","questions":{"q":{"type":"choice","criteria":{` + b.String() + `}}}}`
 }
 
+func speechKeys(n int) string {
+	var b strings.Builder
+	b.WriteString(`{"model":"x","input":"x","voice":"x"`)
+	for i := range n {
+		fmt.Fprintf(&b, `,"unknown%04d":1`, i)
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
 func unknownKeys(n int) string {
 	var b strings.Builder
 	b.WriteString(`{"model":"` + decisionModel + `","questions":{"q":{"type":"noul"}}`)
@@ -86,18 +96,19 @@ func unknownKeys(n int) string {
 func smallRefusals() map[string]struct{ path, body string } {
 	long := strings.Repeat("a", 16<<10)
 	return map[string]struct{ path, body string }{
-		"messages":           {"/v1/chat/completions", chatRefusal(repeated("1", 10_000))},
-		"content parts":      {"/v1/chat/completions", chatRefusal(`{"role":"user","content":[` + repeated("1", 10_000) + `]}`)},
-		"stop":               {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"stop":[` + repeated("1", 10_000) + `]}`},
-		"tools":              {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"tools":[` + repeated("1", 10_000) + `]}`},
-		"logit_bias":         {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"logit_bias":{"` + long + `":"x"}}`},
-		"unknown keys":       {"/v1/systemone", unknownKeys(2_000)},
-		"long question id":   {"/v1/systemone", scoreRefusal(long, 2_000)},
-		"long option keys":   {"/v1/systemone", choiceRefusal(strings.Repeat("o", 1<<10), 200)},
-		"many files":         {"/v1/systemone", `{"model":"` + decisionModel + `","questions":{},"files":[` + repeated("1", 10_000) + `]}`},
-		"many questions":     {"/v1/systemone", `{"model":"` + decisionModel + `","questions":{` + questions(5_000) + `}}`},
-		"control characters": {"/v1/systemone", scoreRefusal(strings.Repeat(`\u0001`, 5<<10), 2_000)},
-		"embeddings input":   {"/v1/embeddings", `{"model":"` + embeddingModel + `","input":[` + repeated("null", 10_000) + `]}`},
+		"messages":            {"/v1/chat/completions", chatRefusal(repeated("1", 10_000))},
+		"content parts":       {"/v1/chat/completions", chatRefusal(`{"role":"user","content":[` + repeated("1", 10_000) + `]}`)},
+		"stop":                {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"stop":[` + repeated("1", 10_000) + `]}`},
+		"tools":               {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"tools":[` + repeated("1", 10_000) + `]}`},
+		"logit_bias":          {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"logit_bias":{"` + long + `":"x"}}`},
+		"unknown keys":        {"/v1/systemone", unknownKeys(2_000)},
+		"unknown speech keys": {"/v1/audio/speech", speechKeys(2_000)},
+		"long question id":    {"/v1/systemone", scoreRefusal(long, 2_000)},
+		"long option keys":    {"/v1/systemone", choiceRefusal(strings.Repeat("o", 1<<10), 200)},
+		"many files":          {"/v1/systemone", `{"model":"` + decisionModel + `","questions":{},"files":[` + repeated("1", 10_000) + `]}`},
+		"many questions":      {"/v1/systemone", `{"model":"` + decisionModel + `","questions":{` + questions(5_000) + `}}`},
+		"control characters":  {"/v1/systemone", scoreRefusal(strings.Repeat(`\u0001`, 5<<10), 2_000)},
+		"embeddings input":    {"/v1/embeddings", `{"model":"` + embeddingModel + `","input":[` + repeated("null", 10_000) + `]}`},
 	}
 }
 
@@ -248,6 +259,31 @@ func TestUnknownKeysAreListedUpToTheLimit(t *testing.T) {
 		`{"model":"`+decisionModel+`","questions":{"q":{"type":"noul"}},"`+strings.Repeat("k", maxPathKey+1)+`":1}`)
 	if got := refusalMessage(t, answer); strings.Contains(got, strings.Repeat("k", maxPathKey+1)) || !strings.Contains(got, strings.Repeat("k", maxPathKey)+`..."`) {
 		t.Errorf("a long unknown key: %.200s", got)
+	}
+}
+
+func TestUnknownSpeechKeysAreListedUpToTheLimit(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	message := func(body string) string {
+		t.Helper()
+		status, answer, _ := refusalCost(t, ts.URL+"/v1/audio/speech", body)
+		if status != 400 {
+			t.Fatalf("%d %.200s", status, answer)
+		}
+		return refusalMessage(t, answer)
+	}
+	all := message(speechKeys(maxListedKeys))
+	if strings.Contains(all, "and more") || strings.Count(all, "Unrecognized key") != maxListedKeys {
+		t.Errorf("exactly at the limit: %s", all)
+	}
+	over := message(speechKeys(maxListedKeys + 1))
+	if !strings.HasSuffix(over, ", and more") || strings.Count(over, "Unrecognized key") != maxListedKeys {
+		t.Errorf("past the limit: %s", over)
+	}
+	long := strings.Repeat("k", maxPathKey+1)
+	got := message(`{"model":"x","input":"x","voice":"x","` + long + `":1}`)
+	if strings.Contains(got, long) || !strings.Contains(got, strings.Repeat("k", maxPathKey)+`..."`) {
+		t.Errorf("a long key: %.200s", got)
 	}
 }
 

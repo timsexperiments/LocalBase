@@ -4896,6 +4896,21 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+
+### 31.9 What a refused request costs
+
+A caller decides how much is wrong with a request, so what refusing it costs is bounded.
+
+- **An answer lists at most 100 problems,** and ends ", and more" if there were others.
+- **A caller's own key is cut to 64 bytes in an answer,** between characters, with "...".
+- **A list of unrecognized keys names at most 20,** then ", and more", on speech as well.
+
+Which requests are refused doesn't change. The status stays 400, `validation_failed` is unchanged, and
+`remote_media_not_allowed` still wins past the limit (§13.6 item 13). A request with few problems reads as it did.
+
+A request at the 25 MiB body limit allocates at most 4 GiB, which `TestARefusalAtTheBodyLimit` states: 2.6 GiB measured,
+and 3.6 GiB under the race detector, which turns `sync.Pool` off. The answer stays under 15 KB.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's

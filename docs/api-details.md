@@ -98,6 +98,10 @@ A chat content part carries its content. `image_url.url` must be a `data:` URL, 
 
 `POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](video-qualification.md).
 
+### Validation answers
+
+A request refused with `validation_failed` lists at most 100 problems, and ends ", and more" if there were others. A key you sent is cut to 64 bytes in the answer, with "...", and a list of unrecognized keys names at most 20.
+
 ### Cancelling an install or an import
 
 `POST /_localbase/model-management` with `{"modelId": "<id>", "action": "cancel"}` stops a running install. It needs `models:manage`. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. With no install of that model running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded.
