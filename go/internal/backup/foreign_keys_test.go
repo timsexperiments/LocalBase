@@ -93,8 +93,8 @@ func TestRestoreRefusesATableRebuiltWithoutItsForeignKey(t *testing.T) {
 	}
 }
 
-// A check over a database that only LocalBase wrote finds nothing, so it can't turn away a real backup.
-func TestARealBackupHasNoRowPointingAtNothing(t *testing.T) {
+// A check over a database that only LocalBase wrote finds nothing, so it can't turn away what LocalBase made.
+func TestABackupLocalBaseMadeHasNoRowPointingAtNothing(t *testing.T) {
 	for _, exclude := range []bool{false, true} {
 		r, _ := newRoot(t, dir(t))
 		target := filepath.Join(dir(t), "target")
