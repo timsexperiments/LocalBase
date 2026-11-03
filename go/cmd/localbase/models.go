@@ -487,7 +487,14 @@ func modelsShow() *cli.Command {
 				isDefault = isDefault || e.Config.Active[k] == s.ModelID
 			}
 			path := s.LayerPath // the contributing file or feed position (TS provenance.path)
+			fit, fitOK := "", false
+			if s.Kind == "llm" && !c.Global.JSON {
+				fit, fitOK = machineFitLine(e, s.ModelID)
+			}
 			for _, l := range meta.DetailLines(m, m.Device.Installed, m.Device.Selected, isDefault, path) {
+				if fitOK && strings.HasPrefix(l, "  This machine:") {
+					l = fit
+				}
 				c.Info("%s", l)
 			}
 			// The CPU/GPU placement (DESIGN §20), text only: the JSON stays

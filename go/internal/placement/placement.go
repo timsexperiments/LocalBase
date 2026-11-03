@@ -54,6 +54,8 @@ type Model struct {
 
 // Device is the machine and backend the model would run on.
 type Device struct {
+	// CapacityBytes is the computer's whole memory, to tell a wait from a refusal.
+	CapacityBytes int64
 	// KeptBytes is the reserve already taken out of HostAvailable, for the refusal.
 	KeptBytes     int64
 	Platform      string
@@ -97,7 +99,7 @@ type Plan struct {
 
 // Error is an unsupported or unfittable placement.
 type Error struct {
-	Code    string // placement_unsupported | placement_does_not_fit
+	Code    string // placement_unsupported | placement_does_not_fit | model_too_large
 	Message string
 }
 
@@ -395,7 +397,20 @@ func doesNotFit(sp split, d Device) error {
 	if d.KeptBytes > 0 {
 		kept = " after keeping " + gib(d.KeptBytes) + " for your computer"
 	}
-	return &Error{"placement_does_not_fit", fmt.Sprintf("This placement needs %s of system memory, but %s is available"+kept+". Keep more of the model on the GPU, close other applications, or lower the context size.",
+	advice := "Keep more of the model on the GPU, close other applications, or lower the context size."
+	if d.Platform == CPUOnly {
+		advice = "Close other applications, or lower the context size."
+	}
+	// A CPU load that would not fit on this computer even idle: no wait can clear it.
+	if sp.gpuLayers == 0 && d.CapacityBytes > 0 && sp.host > d.CapacityBytes-d.KeptBytes {
+		also := ""
+		if d.Platform != CPUOnly {
+			also = "use the GPU (placement auto), "
+		}
+		return &Error{"model_too_large", fmt.Sprintf("This model needs %s of system memory. This computer has %s and keeps %s for itself, which leaves %s, so it cannot load here even with nothing else running. Use a smaller model, %sa smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config.",
+			gib(sp.host), gib(d.CapacityBytes), gib(d.KeptBytes), gib(max(0, d.CapacityBytes-d.KeptBytes)), also)}
+	}
+	return &Error{"placement_does_not_fit", fmt.Sprintf("This placement needs %s of system memory, but %s is available"+kept+". "+advice,
 		gib(sp.host), gib(d.HostAvailable))}
 }
 

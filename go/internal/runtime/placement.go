@@ -132,6 +132,7 @@ func (h *HostPlacement) Device(t *Target) placement.Device {
 	if h.Memory != nil {
 		if room := h.Memory.Headroom(context.Background(), []string{"llm"}); room >= 0 {
 			d.HostAvailable, d.KeptBytes = room, h.Memory.ReserveBytes()
+			d.CapacityBytes = h.Memory.Topology().SystemCapacity
 		}
 	}
 	cpuOnly := false
@@ -219,6 +220,23 @@ func (m *LLM) PreviewPlacement(modelID string, req placement.Request) (*LLMPlan,
 		return nil, err
 	}
 	return plan, nil
+}
+
+// NextLoadBytes is what the model's next load would count for against this computer's
+// memory: the figure admission uses. ok is false when that cannot be told.
+func (m *LLM) NextLoadBytes(modelID string) (need int64, ok bool) {
+	if m.d.Memory == nil {
+		return 0, false
+	}
+	t, _ := m.target(modelID)
+	plan, err := m.planFor(modelID, t)
+	if err != nil {
+		return 0, false
+	}
+	if m.d.Placement != nil {
+		_ = m.place(modelID, plan, t) // a refusal still leaves a figure
+	}
+	return m.d.Memory.Projected(m.demandFor(modelID, plan, t)), true
 }
 
 // SetPlacementSource sets the placement source (before any load).
