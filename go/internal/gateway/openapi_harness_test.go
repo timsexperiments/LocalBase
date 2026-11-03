@@ -68,6 +68,10 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	// The import checks use a local file, which is opt-in over the API.
+	if err := st.SetSetting(context.Background(), store.LocalPathImportsKey, "on"); err != nil {
+		t.Fatal(err)
+	}
 	llmDir := r.ModelsDir("llm")
 	os.MkdirAll(llmDir, 0o700)
 	for _, id := range []string{chatModel, embeddingModel, decisionModel} {
