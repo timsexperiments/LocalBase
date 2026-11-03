@@ -58,7 +58,7 @@ If it works, the change is one line: set `Run: true` for that client in `interna
 - **A service that calls the address from its own servers.** It cannot reach `127.0.0.1` on your computer, only a public address. Cursor works this way, and its forum also reports that Agent mode needs the Responses API.
 - **Open WebUI in Docker using `127.0.0.1`.** That is the container itself: use an address the container can reach.
 - **Anything beyond chat, with a key from `--create-key`.** It can chat and list models, and nothing else. For more, choose its permissions with `--scopes`. Give an app only what it needs, and never a `manage` permission, which lets whoever holds the key change models, keys or who can sign in.
-- **A web address for an image or other media in a chat request.** A content part carries its content, so send a `data:` URL or base64. An address answers 400 `remote_media_not_allowed`. Arrives with PR #529.
+- **A web address for an image or other media in a chat request.** A content part carries its content, so send a `data:` URL or base64. An address answers 400 `remote_media_not_allowed`.
 
 If you publish LocalBase through Cloudflare Access, an app also has to get past Access at the edge, with a service token or a bypass rule for `/v1/*`. LocalBase still checks the key.
 
