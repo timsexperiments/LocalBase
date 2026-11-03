@@ -24,6 +24,8 @@ type env struct {
 	Catalog *catalog.Catalog
 	Config  *store.Config
 	Host    memory.HostProvider
+	// auditFailure is why an audit record of this command wasn't written, as auditFailureClass says it.
+	auditFailure string
 }
 
 func (e *env) Close() {
