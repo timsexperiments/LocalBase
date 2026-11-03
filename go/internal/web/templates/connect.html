@@ -52,7 +52,7 @@
         <fieldset class="grid gap-1">
           <legend class="text-sm font-semibold">What it can do</legend>
           {{range .Presets}}
-          <label class="flex min-h-11 items-center gap-2"><input type="radio" class="size-4 accent-[var(--lb-accent)]" name="preset" value="{{.ID}}" {{if eq .ID "chat"}}checked{{end}}>
+          <label class="flex min-h-11 items-center gap-2"><input type="radio" class="size-4 shrink-0 accent-[var(--lb-accent)]" name="preset" value="{{.ID}}" {{if eq .ID "chat"}}checked{{end}}>
             <span class="min-w-0"><span class="block font-semibold">{{.Label}}</span><span class="block text-sm text-muted">{{.Detail}}</span></span></label>
           {{end}}
         </fieldset>
@@ -96,10 +96,13 @@
       <li>Anything that needs <code>/v1/responses</code>, <code>/v1/completions</code> or Anthropic's <code>/v1/messages</code>. LocalBase serves chat completions.</li>
       <li>A key used from a web page. Browsers are refused on purpose, and there are no CORS headers.</li>
       <li>A service that calls the address from its own servers. It cannot reach this computer's own address, only a public one.</li>
-      {{range .Unusable}}<li><span class="font-semibold">{{.Name}}.</span> {{.Why}} <a class="font-semibold text-accent" href="{{.Docs}}" rel="noreferrer" target="_blank">Its docs</a></li>{{end}}
+      {{range .Unusable}}<li><span class="font-semibold">{{.Name}}.</span> {{.Why}}<br><a class="inline-flex min-h-11 items-center text-base font-semibold text-accent" href="{{.Docs}}" rel="noreferrer" target="_blank">{{.Name}} documentation</a></li>{{end}}
     </ul>
   </details>
-  <p class="text-sm text-muted">Building something else? The whole API is described at <a class="font-semibold text-accent" href="/openapi.json" hx-boost="false">/openapi.json</a>.</p>
+  <div>
+    <p class="text-sm text-muted">Building something else? The whole API is described here.</p>
+    <a class="inline-flex min-h-11 items-center font-semibold text-accent" href="/openapi.json" hx-boost="false">/openapi.json</a>
+  </div>
   <p class="sr-only" role="status" data-copy-status></p>
 </div>
 {{end}}
