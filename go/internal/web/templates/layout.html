@@ -79,7 +79,7 @@
 {{/* Phone tab bar: four destinations and More. */}}
 {{define "tabbar"}}
 {{$s := section .Page}}
-<div class="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4 lg:hidden run-pill-dock">{{template "run-pill" "dock"}}</div>
+<div class="fixed inset-x-0 z-30 flex justify-center px-4 lg:hidden run-pill-dock">{{template "run-pill" "dock"}}</div>
 <nav class="tabbar" aria-label="Primary">
   <ul>
     <li><a class="tab" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} aria-label="Chat">{{template "icon-chat"}}<span class="tab-label" aria-hidden="true">Chat</span></a></li>

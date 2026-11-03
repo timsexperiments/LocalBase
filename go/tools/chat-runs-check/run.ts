@@ -79,7 +79,14 @@ check(r5.page <= 0 && r5.reply <= 0 && r5.log <= 0, `nothing overflows at 360 px
 // 6. Running now: quiet while nothing changes, one announcement on a change.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/models/running");
-await sleep(7000); // two polls with no change
+// An earlier request may still be finishing: wait until it has, not for a fixed time. Then start
+// again from that steady state, and watch two polls with no change.
+for (let i = 0; i < 60 && (await ev(`document.querySelector("#running-live .pill")?.textContent.trim()`)) !== "Idle"; i++) {
+  await sleep(500);
+  await nav("/app/models/running");
+}
+await nav("/app/models/running");
+await sleep(7000);
 const quiet = await ev(`document.getElementById("running-status").textContent`);
 check(quiet === "", `no announcement while nothing changes: ${JSON.stringify(quiet)}`);
 const idle = await ev(`document.querySelector("#running-live .pill")?.textContent.trim()`);
@@ -405,6 +412,8 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(pill?.href === "/app/studio/video" && /Video/.test(pill.text), `the pill leads back: ${JSON.stringify(pill)}`);
   await nav("/app/studio");
   check((await ev(`!!document.querySelector('.studio-recent a[href^="/app/studio/video"]')`)), "the landing's Recent shows it");
+  const badge = await ev(`document.querySelector('.studio-recent a[href^="/app/studio/video"] .studio-tile-badge')?.textContent.trim()`);
+  check(/^(\d+ s|Video)$/.test(badge ?? ""), `a video tile says it is a video: ${JSON.stringify(badge)}`);
   await nav("/app/studio/video");
   check((await waitItem("fake:slow a paper boat", (g) => g.active))?.active, "it is still there after leaving");
   check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
@@ -797,6 +806,53 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
     const fit = await ev(`(() => { const d = document.documentElement, shelf = document.querySelector(".studio-recent"), right = (q) => Math.round(document.querySelector(q).getBoundingClientRect().right); return { scroll: d.scrollWidth, client: d.clientWidth, tiles: shelf.children.length, shelfScrolls: shelf.scrollWidth > shelf.clientWidth, strip: right(".strip"), list: right(".studio-tools .list-group") }; })()`);
     const inside = fit.scroll <= fit.client && fit.strip <= fit.client && fit.list <= fit.client;
     check(inside && fit.tiles >= 4 && (width > 430 || fit.shelfScrolls), `at ${width}, the landing with results stays on the screen and only its shelf scrolls: ${JSON.stringify(fit)}`);
+  }
+}
+
+// --- A pill leads somewhere useful, and is never over content (DESIGN §27) -----------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+const imageModel = await ev(`document.querySelector("form input[name=model]")?.value ?? ""`);
+if (imageModel) {
+  // Waits for what is running to end, then starts slow pictures, so the states below are really there.
+  const anyActive = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
+  const settle = async () => { for (let i = 0; i < 120 && (await ev(anyActive)); i++) await sleep(150); };
+  const startSlow = async () => {
+    await settle();
+    await ev(`(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: ${JSON.stringify(imageModel)} }) }); })()`);
+  };
+  const noPill = `[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`;
+  const reading = `(() => {
+    const bar = document.querySelector(".run-pill-dock"), pill = document.querySelector("[data-run-pill=dock]"), r = bar.getBoundingClientRect();
+    const words = [...document.querySelectorAll("main.page a, main.page button, main.page p, main.page li, main.page h2")].filter((n) => n.getBoundingClientRect().height > 0 && !n.closest("[data-docked], dialog"));
+    const dock = document.querySelector("[data-docked]")?.getBoundingClientRect();
+    return { shown: !pill.hidden && r.height > 0, href: pill.getAttribute("href"), top: Math.round(r.top), bottom: Math.round(r.bottom), ground: getComputedStyle(bar).backgroundColor, dockTop: dock ? Math.round(dock.top) : null, lastBottom: Math.round(words.at(-1)?.getBoundingClientRect().bottom ?? 0), over: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+  })()`;
+  await startSlow();
+  await nav("/app/studio/image");
+  await sleep(250);
+  check((await ev(anyActive)) && (await ev(noPill)), "no pill on the page that holds the result");
+  await nav("/app/studio");
+  await sleep(250);
+  check((await ev(anyActive)) && (await ev(noPill)), "no pill on the landing for what Recent already shows");
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/models");
+    await startSlow();
+    await nav("/app/models");
+    await sleep(250);
+    const away = await ev(reading);
+    check(away.shown && away.href === "/app/studio/image" && !/, 0\)$/.test(away.ground) && !away.ground.includes("transparent") && !away.over, `at ${width}, elsewhere it leads to the result, on its own ground: ${JSON.stringify(away)}`);
+    await ev(`scrollTo(0, document.documentElement.scrollHeight)`);
+    await sleep(120);
+    const end = await ev(reading);
+    check(end.shown && end.lastBottom <= end.top, `at ${width}, the page's last line clears it: ${JSON.stringify(end)}`);
+    await startSlow();
+    await nav("/app/studio/video");
+    await sleep(250);
+    const onTool = await ev(reading);
+    check(onTool.shown && onTool.dockTop !== null && onTool.bottom <= onTool.dockTop + 1, `at ${width}, on a tool's page it sits above the prompt: ${JSON.stringify(onTool)}`);
+    await settle();
   }
 }
 

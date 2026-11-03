@@ -55,7 +55,7 @@
     <span class="studio-tile-media">
       {{if .Active}}<span class="studio-tile-live"><i aria-hidden="true"></i><span>{{.Message}}</span></span>
       {{else if .Image}}{{template "result-image" (dict "Src" .Image "Alt" "" "Class" "studio-tile-img" "Tool" .Tool)}}
-      {{else if .Video}}<video src="{{.Video}}#t=0.1" preload="metadata" muted playsinline tabindex="-1" aria-hidden="true" class="studio-tile-img"></video>
+      {{else if .Video}}<video src="{{.Video}}#t=0.1" preload="metadata" muted playsinline tabindex="-1" aria-hidden="true" class="studio-tile-img"></video><span class="studio-tile-badge" aria-hidden="true"><svg viewBox="0 0 24 24" class="size-3" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>{{or .Length "Video"}}</span>
       {{else if .Transcript}}<span class="studio-tile-words">{{firstWords .Transcript}}</span>
       {{else if .Audio}}{{if .Bars}}<svg viewBox="0 0 192 24" preserveAspectRatio="none" class="studio-tile-wave" aria-hidden="true">{{range .Bars}}<rect x="{{.X}}" y="{{.Y}}" width="2" height="{{.H}}" rx="1"/>{{end}}</svg>{{else}}<span class="tool-icon" aria-hidden="true">{{template "tool-icon" .Tool}}</span>{{end}}
       {{else if eq .Status "failed"}}<span class="studio-tile-word text-danger">Didn’t finish</span>
@@ -63,7 +63,7 @@
       {{else}}<span class="studio-tile-word">Stopped</span>{{end}}
     </span>
     <span class="studio-tile-cap">{{or .Caption (studioName .Tool)}}</span>
-    <span class="studio-tile-meta">{{if and (not .Active) .Ago}}<span class="sr-only">{{studioName .Tool}} · </span>{{.Ago}}{{else}}{{studioName .Tool}}{{end}}</span>
+    <span class="studio-tile-meta">{{if and (not .Active) .Ago}}<span class="sr-only">{{studioName .Tool}}{{with .Length}}, {{.}}{{end}} · </span>{{.Ago}}{{else}}{{studioName .Tool}}{{end}}</span>
   </a>
 </li>
 {{end}}

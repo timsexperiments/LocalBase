@@ -41,6 +41,14 @@ func (m videoLabModel) Length() string {
 	return fmt.Sprintf("About %d seconds", seconds)
 }
 
+// Seconds is the same length, short, for a place with little room.
+func (m videoLabModel) Seconds() string {
+	if m.FPS <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d s", int(math.Round(float64(m.Frames)/float64(m.FPS))))
+}
+
 func (m videoLabModel) Shape() string {
 	switch {
 	case m.Width > m.Height:
@@ -316,6 +324,7 @@ func (u *UI) videoItem(job videoJobView, note *labNote) labItemView {
 			}
 			if m := u.videoModel(q.Model); m != nil {
 				v.Shape = m.Shape()
+				v.Length = m.Seconds()
 				v.Slow = v.Active && m.Deadline > 0 && time.Since(at) > m.Deadline/2
 			}
 		}
