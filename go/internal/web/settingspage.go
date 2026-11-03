@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -171,7 +172,11 @@ func (u *UI) computerNameData(r *http.Request, notice, failure string) map[strin
 	if host.Host.Name != nil && host.Host.NameSource == "setting" {
 		name = *host.Host.Name
 	}
-	return map[string]any{"Name": name, "Notice": notice, "Failure": failure}
+	fallback := computerName()
+	if host.Host.Name != nil && host.Host.NameSource == "system" && strings.TrimSpace(os.Getenv("LOCALBASE_COMPUTER_NAME")) == "" {
+		fallback = *host.Host.Name
+	}
+	return map[string]any{"Name": name, "Fallback": fallback, "Notice": notice, "Failure": failure}
 }
 
 // computerNameSave saves or resets the name shown for this computer.

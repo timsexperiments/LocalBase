@@ -72,11 +72,17 @@ func TestGaugeSegments(t *testing.T) {
 	if s[0].H >= s[28].H {
 		t.Error("other apps and LocalBase are the same shape")
 	}
-	if got := gaugeSegments(0, gb/5, 64*gb); count(got, "models") != 1 {
-		t.Error("a sliver vanished")
+	if got := gaugeSegments(0, gb/5, 64*gb); count(got, "models") != 0 || count(got, "sliver") != 1 {
+		t.Error("a tiny share should be one thin mark, not a block")
 	}
-	if got := gaugeSegments(0, 1<<20, 64*gb); count(got, "models") != 0 || gibText(1<<20) != "<0.1 GiB" {
-		t.Error("a figure that prints as nothing drew a block, or printed 0.0")
+	if got := gaugeSegments(0, 1<<20, 64*gb); count(got, "models") != 0 || count(got, "sliver") != 1 || gibText(1<<20) != "<0.1 GiB" {
+		t.Error("a share under 0.1 GiB should be a mark beside <0.1 GiB")
+	}
+	if got := gibText(int64(1<<30) / 20); got != "<0.1 GiB" {
+		t.Errorf("the figure that rounds to nothing printed %q", got)
+	}
+	if got := gaugeSegments(0, 3*gb, 64*gb); count(got, "models") != 2 || count(got, "sliver") != 0 {
+		t.Error("a real share should be blocks")
 	}
 	for _, none := range [][3]int64{{-1, 0, 64 * gb}, {0, 0, 0}, {-1, 3 * gb, 0}} {
 		if got := gaugeSegments(none[0], none[1], none[2]); count(got, "unknown") != gaugeSegmentCount {
