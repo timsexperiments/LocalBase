@@ -15,14 +15,21 @@
 # may GET http://127.0.0.1:2273/health every 3 s, and nothing else on the live port: no other
 # path, no POST, no live llama-server port. It stops everything if the live modalities state
 # changes or free memory falls under the floor. Before the window, use vm_stat or
-# memory_pressure only, and the operator does any live check. The only other touch of the
-# live root is an APFS clone of the model and the runtime, read-only; nothing runs from it.
+# memory_pressure only, and the operator does any live check.
+#
+# THE ONLY OTHER TOUCH OF THE LIVE ROOT is one read-only APFS clone, inside the window, of
+# exactly these two paths and nothing else (no database, keys, config, ui-access.json or logs),
+# and nothing runs from the live root:
+#   $HOME/.local/share/local-base/models/llm/Qwen_Qwen3.5-4B-Q4_K_M.gguf
+#   $HOME/.local/share/local-base/bin/runtimes/llama-server/0f9c093f77b9c194f2f097df6204d9f5f8758968815e7db0374e98b0485ef9df
+# If either is missing the pass stops, having loaded nothing. Both are logged.
 #
 # Limits the operator set: qwen3.5-4b-q4_k_m, context 8192, one slot, default reserve, ports
 # in 29000-29499. The gateway planner's exact plan is printed BEFORE any real load, from a
 # separate scratch root with a fake backend (so no peak recorded there can skew the real
-# root), and the pass aborts if it is over 6.5 GiB. At least 50% free to start, 40% floor
+# root), and the pass aborts if it is over 6.75 GiB. At least 52% free to start, 40% floor
 # throughout (free + speculative + inactive pages). 200 sequential requests, short outputs.
+# One pass only: a second is a new ask of the operator.
 #
 # This script deletes nothing. It prints the paths to delete afterwards.
 set -u
@@ -54,13 +61,15 @@ CSV=$W/requests.csv
 MODEL_ID=qwen3.5-4b-q4_k_m
 GW=29410 LLM=29411
 CTX=8192
-PLAN_LIMIT_MIB=6656 # 6.5 GiB
-START_PCT=50
+PLAN_LIMIT_MIB=6912 # 6.75 GiB
+START_PCT=52
 FLOOR_PCT=40
 REQUESTS=200
 HARD_SECONDS=1500
 LIVE=http://127.0.0.1:2273/health
+LIVE_ROOT=$HOME/.local/share/local-base
 if [ "$DRY" = 1 ]; then
+  LIVE_ROOT=$W/fake-live-root # the same clone below, from a copy of the layout
   # A rehearsal's own stub takes the place of live /health. These can only change it.
   LIVE=http://127.0.0.1:29412/health
   START_PCT=${DRY_START_PCT:-0}
@@ -94,10 +103,12 @@ stop_gateway() {
 }
 finish() {
   local code=$1
-  trap - EXIT INT TERM HUP
-  stop_gateway
+  # Ignored, not reset: a signal arriving now must not stop the cleanup and leave a model loaded.
+  trap '' INT TERM HUP
+  trap - EXIT
   [ -n "$MON" ] && kill "$MON" 2>/dev/null
   [ -n "$DOG" ] && kill "$DOG" 2>/dev/null
+  stop_gateway
   sweep
   [ -n "$STUB" ] && kill "$STUB" 2>/dev/null
   log "END: exit $code; running from the scratch path: $(ps -A -o pid=,command= | awk -v p="$W/" 'index($2, p) == 1' | wc -l | tr -d ' ')"
@@ -105,10 +116,26 @@ finish() {
   log "END: nothing was deleted. When done, delete by exact path: $W"
   exit "$code"
 }
-trap 'log "stopped by a signal"; finish 3' INT TERM HUP
+trap 'trap "" INT TERM HUP; log "stopped by a signal"; finish 3' INT TERM HUP
 trap 'finish $?' EXIT
 
+# A stale listener would answer in place of ours, and a run could look fine while measuring
+# nothing. Bash's own /dev/tcp, so this needs nothing installed.
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+refuse_busy_ports() {
+  local p
+  for p in "$@"; do
+    if port_busy "$p"; then
+      log "ABORT: port $p is already in use, so a listener that is not this run's could answer. Nothing was started."
+      exit 4
+    fi
+  done
+}
+
 log "plan: $MODEL_ID, context $CTX, one slot, $REQUESTS requests; limit $PLAN_LIMIT_MIB MiB; start at $START_PCT% free, floor $FLOOR_PCT%; dry run $DRY"
+
+refuse_busy_ports "$GW" "$LLM"
+[ "$DRY" = 1 ] && refuse_busy_ports 29412
 
 FILE=$(jq -r '.artifacts[] | select(.role == "primary") | .filename' "internal/catalog/data/llm/$MODEL_ID.json")
 [ -n "$FILE" ] || { log "no primary file for $MODEL_ID in the catalog"; exit 5; }
@@ -160,28 +187,54 @@ log "build"
 go build -o "$W/local-base" ./cmd/localbase || exit 5
 go build -o "$W/fake-llama-server" ./internal/runtime/fakebackend || exit 5
 
+SOURCE_MODEL=$LIVE_ROOT/models/llm/$FILE
+# The live root holds more than one runtime directory: the one to use is what this build pins.
+RUNTIME_ID=0f9c093f77b9c194f2f097df6204d9f5f8758968815e7db0374e98b0485ef9df
+if ! grep -q "$RUNTIME_ID" internal/runtime/managed-runtime-manifest.json; then
+  log "ABORT: this build no longer pins runtime $RUNTIME_ID. Update this script."
+  exit 5
+fi
+SOURCE_RUNTIME=$LIVE_ROOT/bin/runtimes/llama-server/$RUNTIME_ID
 if [ "$DRY" = 1 ]; then
   # A sparse file with just the header the planner reads, at the catalog's size.
+  mkdir -p "$SOURCE_RUNTIME" "$(dirname "$SOURCE_MODEL")" || exit 5
+  cp "$W/fake-llama-server" "$SOURCE_RUNTIME/llama-server" || exit 5
   perl -e 'my ($path, $bytes) = @ARGV; open(my $f, ">:raw", $path) or die;
     sub s_ { pack("Q<", length $_[0]) . $_[0] }
     print $f pack("L<L<Q<Q<", 0x46554747, 3, 0, 3),
       s_("general.architecture"), pack("L<", 8), s_("qwen3"),
       s_("general.file_type"), pack("L<L<", 4, 15),
       s_("qwen3.context_length"), pack("L<L<", 4, 262144);
-    close $f; truncate($path, $bytes) or die;' "$W/model.gguf" "$SIZE" || exit 5
-  RT=$W/fake-llama-server
+    close $f; truncate($path, $bytes) or die;' "$SOURCE_MODEL" "$SIZE" || exit 5
+  [ "${DRY_DROP_MODEL:-}" = 1 ] && rm -f "$W/fake-live-root/models/llm/$FILE"
+fi
+log "clone source, read-only: $SOURCE_MODEL"
+log "clone source, read-only: $SOURCE_RUNTIME"
+if [ ! -f "$SOURCE_MODEL" ] || [ ! -x "$SOURCE_RUNTIME/llama-server" ]; then
+  log "ABORT: a clone source is missing. Nothing was loaded, and nothing else was read."
+  exit 5
+fi
+cp -c -R "$SOURCE_RUNTIME" "$W/rt" || exit 5
+RT=$W/rt/llama-server
+cp -c "$SOURCE_MODEL" "$W/model.gguf" || exit 5
+# Bounded: a binary that does not exit on --version must not hang the window. The fake serves
+# instead of exiting, and on a port this script does not choose, so a rehearsal tries the bound
+# on something that hangs.
+version_of() { # binary, quarter seconds
+  "$1" --version > "$W/version.txt" 2>&1 &
+  local v=$!
+  for _ in $(seq 1 "$2"); do kill -0 "$v" 2>/dev/null || break; sleep 0.25; done
+  kill -KILL "$v" 2>/dev/null
+  wait "$v" 2>/dev/null
+  grep -iE 'version|build' "$W/version.txt" | head -2 | tr '\n' ' ' | cut -c1-120
+}
+if [ "$DRY" = 1 ]; then
+  printf '#!/bin/sh\nexec sleep 60\n' > "$W/hang"
+  chmod +x "$W/hang"
+  version_of "$W/hang" 4 > /dev/null
+  log "runtime: a rehearsal; the bound on --version held"
 else
-  log "clones, read-only from the live root"
-  LIVE_ROOT=$HOME/.local/share/local-base
-  set -- "$LIVE_ROOT"/bin/runtimes/llama-server/*/llama-server
-  if [ $# -ne 1 ] || [ ! -x "$1" ]; then
-    log "expected exactly one llama-server in the live root's runtimes, found: $*"
-    exit 5
-  fi
-  cp -c -R "$(dirname "$1")" "$W/rt" || exit 5
-  RT=$W/rt/llama-server
-  cp -c "$LIVE_ROOT/models/llm/$FILE" "$W/model.gguf" || exit 5
-  log "runtime: $("$RT" --version 2>&1 | grep -iE 'version|build' | head -2 | tr '\n' ' ' | cut -c1-120)"
+  log "runtime: $(version_of "$RT" 80)"
 fi
 
 prepare_root() { # root
