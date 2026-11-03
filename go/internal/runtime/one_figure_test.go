@@ -68,3 +68,12 @@ func TestCPUPlanRefusalNamesTheReserve(t *testing.T) {
 }
 
 func formatTenth(v float64) string { return strconv.FormatFloat(v, 'f', 1, 64) }
+
+// Room for the file and its KV cache but not for the rest: the plan must refuse what
+// admission would refuse, not say it fits and then be stopped.
+func TestCPUPlanCountsWhatAdmissionCounts(t *testing.T) {
+	m := cpuLLM(t, 8*memory.GiB+3*memory.GiB+memory.GiB/2)
+	if _, err := m.PreviewPlacement(modelB, placement.Request{Mode: placement.Auto}); err == nil {
+		t.Error("the plan fits without the prompt cache, runtime and slot state")
+	}
+}
