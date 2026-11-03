@@ -274,6 +274,7 @@ Measured. Nothing here is done yet. `internal/web` is excluded (the FE thread ow
 |---|---|---|
 | `TestUnloadScope` | once, temp-dir cleanup only; not reproduced | Recorded; `scratchDir` will explain the next one |
 | `TestEmbeddings`, `TestDifferentialModelMetadata`, `TestDifferentialImageRejections` | **D** or **R**: memory refusals while other models are loaded | Load-dependent; the image test logs free memory on failure |
+| `TestBackendOutputRedactsURLs` | Twice on macOS CI, with an empty log after its full 2 s wait: job 125685743835 (#506 at fad49b3b) and job 125706211906 (#521 at fabba49a) | A real bug, not a flake: a backend's last output is lost when it exits. Reproduced by `TestProcessOutputSurvivesItsExit` (#519); the fix is #522. Remove this row when #522 lands |
 | `chat-runs-check`, video step after "a failure says so in words and offers Try again" | `TypeError: Cannot read properties of undefined (reading 'click')` at `${retry}.click()` in `tools/chat-runs-check/run.ts`, because the Try again button wasn't found. Once, on Chrome 156, on `rewrite/go-ui-v2-host` at 42b3a0cb plus uncommitted script changes, right after a series of killed runs on the same scratch root | Not reproduced, cause unknown. Later full runs on both browsers passed |
 
 ## 6. TS-parity shims: keep until TS retires
