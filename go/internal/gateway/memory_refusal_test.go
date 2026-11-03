@@ -178,3 +178,27 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		t.Errorf("%s", rec.Body.String())
 	}
 }
+
+// The differential tests no longer compare a memory refusal's words with TS, so they have to be pinned
+// here. This fails if the golden stops holding them, or the words stop being the golden's.
+func TestTheRefusalWordsArePinnedInTheGolden(t *testing.T) {
+	raw, err := os.ReadFile("testdata/video.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const nothing = "LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
+	for _, want := range []string{
+		"This computer is under memory pressure, so video generation wasn't started. " + nothing,
+		"Not enough free memory to start video generation: it needs 12.0 GiB, and 5.4 GiB is free after keeping 9.6 GiB for your computer. " + nothing,
+	} {
+		if !strings.Contains(string(raw), jsonEscaped(want)) {
+			t.Errorf("not in the golden: %s", want)
+		}
+	}
+	e := refusal("memory-pressure", 0)
+	e.Diagnostics = nil
+	e.RequestedBytes = 0
+	if got := memoryRefusal(e, "video generation"); !strings.Contains(string(raw), jsonEscaped(got)) {
+		t.Errorf("the code's words aren't the golden's: %s", got)
+	}
+}
