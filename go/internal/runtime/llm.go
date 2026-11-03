@@ -59,6 +59,9 @@ type LLMDeps struct {
 	QueueTimeout      time.Duration
 	// Binary overrides managed resolution (tests: a fake backend).
 	Binary string
+	// BeforeSwitch runs before a switch computes admission (serve: read the GPU
+	// limit, if a runtime installed since startup makes that possible).
+	BeforeSwitch func()
 	// Install downloads a missing model (serve --install-missing); nil means
 	// requests for missing models fail with NotInstalledError.
 	Install func(ctx context.Context, modelID string) error
@@ -438,6 +441,9 @@ func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
 }
 
 func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
+	if m.d.BeforeSwitch != nil {
+		m.d.BeforeSwitch()
+	}
 	// Catalog models keep the install check (and its consent error) first;
 	// then the selection: an unselected or unavailable backend fails before
 	// the current model is stopped.
