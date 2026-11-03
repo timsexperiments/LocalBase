@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 const (
@@ -77,6 +80,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 	}), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
 	freshRootInit(t, e, tmp)
+	allowPrivateImports(t, e.root)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
 	freshRootModel(t, e.root, freshSecond, src.URL, second)
 	e.serve("--no-auth")
@@ -209,6 +213,7 @@ func TestFreshRootCLIInstall(t *testing.T) {
 	src := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveBytes(w, r, tiny) }), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
 	freshRootInit(t, e, tmp)
+	allowPrivateImports(t, e.root)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
 	if r := e.cli(nil, "--non-interactive", "models", "install", freshTiny); r.code != 0 {
 		t.Fatalf("install: %s", r.stderr)
@@ -220,5 +225,19 @@ func TestFreshRootCLIInstall(t *testing.T) {
 	}
 	if r := e.chatRetrying(freshTiny); r.Status != 200 {
 		t.Fatalf("chat: %d %s", r.Status, r.Body)
+	}
+}
+
+// allowPrivateImports opts a root in to catalog sources on this machine, where these
+// tests serve their models from.
+func allowPrivateImports(t *testing.T, root string) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(root, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+		t.Fatal(err)
 	}
 }
