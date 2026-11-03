@@ -41,6 +41,14 @@ func (m videoLabModel) Length() string {
 	return fmt.Sprintf("About %d seconds", seconds)
 }
 
+// Seconds is the same length, short, for a place with little room.
+func (m videoLabModel) Seconds() string {
+	if m.FPS <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d s", int(math.Round(float64(m.Frames)/float64(m.FPS))))
+}
+
 func (m videoLabModel) Shape() string {
 	switch {
 	case m.Width > m.Height:
@@ -80,6 +88,17 @@ func (u *UI) videoModels() []videoLabModel {
 		q := s.VideoRuntime.Qualification
 		out = append(out, videoLabModel{labModel: m, Width: q.MaxWidth, Height: q.MaxHeight, Frames: q.MaxFrames,
 			FPS: q.FPS, Image: s.VideoRuntime.Mode == "ti2v", Deadline: time.Duration(q.JobDeadlineMs) * time.Millisecond})
+	}
+	return out
+}
+
+// readyVideoModels are the ones on disk, so the page and the landing agree.
+func (u *UI) readyVideoModels() []videoLabModel {
+	var out []videoLabModel
+	for _, m := range u.videoModels() {
+		if len(u.installedOnly([]labModel{m.labModel})) > 0 {
+			out = append(out, m)
+		}
 	}
 	return out
 }
@@ -305,6 +324,7 @@ func (u *UI) videoItem(job videoJobView, note *labNote) labItemView {
 			}
 			if m := u.videoModel(q.Model); m != nil {
 				v.Shape = m.Shape()
+				v.Length = m.Seconds()
 				v.Slow = v.Active && m.Deadline > 0 && time.Since(at) > m.Deadline/2
 			}
 		}

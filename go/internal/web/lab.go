@@ -259,17 +259,17 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	data["Items"] = items
 	switch tab {
 	case "image":
-		data["Models"] = u.labModels("image")
+		data["Models"] = u.installedOnly(u.labModels("image"))
 		data["Looks"] = imageLooks
 	case "video":
-		models := u.videoModels()
+		models := u.readyVideoModels()
 		data["Models"] = models
 		if len(models) > 0 {
 			data["VideoModel"] = &models[0]
 		}
 		data["RecentPictures"] = u.recentPictures(r)
 	case "speech":
-		models := u.labModels("tts")
+		models := u.installedOnly(u.labModels("tts"))
 		data["Models"] = models
 		if len(models) > 0 {
 			data["Voices"] = u.voiceChoices(r.Context(), models[0].ID, "")
@@ -280,10 +280,10 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 			data["VoiceModel"] = models[0].ID
 		}
 	case "transcribe":
-		data["Models"] = u.sttModels()
+		data["Models"] = u.installedOnly(u.sttModels())
 		data["Languages"] = transcriptLanguages
 	case "decisions":
-		data["Models"] = u.decisionModels()
+		data["Models"] = u.installedOnly(u.decisionModels())
 	}
 	u.render(w, r, "lab", data)
 }

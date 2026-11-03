@@ -29,7 +29,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
 // to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
 let askedWidth = 0;
-const pageFits = () => `Math.max(document.documentElement.scrollWidth, innerWidth) <= ${askedWidth}`;
 const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
@@ -100,7 +99,14 @@ check(r5.page <= 0 && r5.reply <= 0 && r5.log <= 0, `nothing overflows at 360 px
 // 6. Running now: quiet while nothing changes, one announcement on a change.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/models/running");
-await sleep(7000); // two polls with no change
+// An earlier request may still be finishing: wait until it has, not for a fixed time. Then start
+// again from that steady state, and watch two polls with no change.
+for (let i = 0; i < 60 && (await ev(`document.querySelector("#running-live .pill")?.textContent.trim()`)) !== "Idle"; i++) {
+  await sleep(500);
+  await nav("/app/models/running");
+}
+await nav("/app/models/running");
+await sleep(7000);
 const quiet = await ev(`document.getElementById("running-status").textContent`);
 check(quiet === "", `no announcement while nothing changes: ${JSON.stringify(quiet)}`);
 const idle = await ev(`document.querySelector("#running-live .pill")?.textContent.trim()`);
@@ -140,9 +146,13 @@ else {
   await nav("/app/models");
   await sleep(2000);
   await nav("/app/studio");
-  check(await ev(`!!document.querySelector(".studio-recent a[href='/app/studio/image']")`), "the landing's Recent shows it");
+  check(await ev(`!!document.querySelector(".studio-recent a[href^='/app/studio/image']")`), "the landing's Recent shows it");
   check(await ev(`document.querySelector(".studio-recent img")?.naturalWidth > 0`), "a real picture decodes");
-  // A file that is gone shows the drawing and "Expired", never a broken icon.
+  // Recent says what each result is, in words, and leads to that result (DESIGN §27).
+  const tile = await ev(`(() => { const a = document.querySelector(".studio-recent a"), cap = a.querySelector(".studio-tile-cap"), meta = a.querySelector(".studio-tile-meta"); return { cap: cap.textContent, meta: meta.textContent, seen: cap.getBoundingClientRect().height > 0 && meta.getBoundingClientRect().height > 0, tall: a.getBoundingClientRect().height, href: a.getAttribute("href"), over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
+  check(/paper boat/.test(tile.cap) && /^Image · /.test(tile.meta) && tile.seen && tile.tall >= 44 && /^\/app\/studio\/image#run-/.test(tile.href) && !tile.over, `a result on the landing has its words and goes to itself: ${JSON.stringify(tile)}`);
+  check((await ev(`!document.querySelector(".studio-keep") && /Kept 30 minutes/.test(document.querySelector(".studio-recent-head").textContent)`)), "how long results stay is said once, beside them");
+  // A file that is gone shows the tool's icon and "Expired", never a broken icon.
   await ev(`new Promise((done) => { const img = document.querySelector(".studio-recent img"); img.addEventListener("error", () => setTimeout(done, 50), { once: true }); img.src = "/app/lab/results/gone"; })`);
   const gone = await ev(`(() => { const box = document.querySelector(".studio-recent .result-img"); return { img: box.querySelector("img").hidden, shown: !box.querySelector("[data-result-gone]").hidden, text: box.textContent.trim() }; })()`);
   check(gone.img && gone.shown && gone.text === "Expired", `an expired result falls back: ${JSON.stringify(gone)}`);
@@ -222,7 +232,7 @@ for (let i = 0; i < 30 && !(await ev(`!!document.querySelector("#running-live .p
 // At the narrowest width a model's name stays whole: the controls move, not the letters.
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
-const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > innerWidth }; })()`);
+const nameAt320 = await ev(`(() => { const n = document.querySelector("#running-live .running-row a .font-semibold"); const r = document.createRange(); r.selectNodeContents(n); const lines = new Set([...r.getClientRects()].map((c) => Math.round(c.top))).size; return { lines, width: Math.round(n.getBoundingClientRect().width), over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
 check(nameAt320.lines === 1 && !nameAt320.over, `Running at 320: the model's name stays on one line: ${JSON.stringify(nameAt320)}`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await sleep(150);
@@ -372,7 +382,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   const visible = await ev(`[...document.querySelectorAll(".decide-row:not(.decide-row-head)")].filter((n) => !n.hidden).map((n) => n.querySelector(".decide-word").textContent)`);
   check(visible.join() === "Close call,Unsure", `the filter leaves close calls and unsure: ${visible}`);
   await ev(`document.querySelector("input[name=decide-filter][value=all]").click()`);
-  check((await ev(pageFits())), "the batch fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "the batch fits the phone");
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
   await ev(decide);
@@ -410,7 +420,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   check(running?.active && /Waiting for its turn|Making the video/.test(running.text) && /it keeps going/.test(running.text) && !/\d%/.test(running.text), `a job shows its stage, no percentage: ${running?.text.slice(0, 90)}`);
   const place = await ev(`(() => { const r = document.querySelector("#lab-items .lab-item-video .video-frame").getBoundingClientRect(); return r.height / r.width; })()`);
   check(place > 1.5 && place < 2, `its place has the final shape (${place.toFixed(2)})`);
-  check((await ev(pageFits())), "it fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
   const stop = await ev(`(() => { const b = ${itemFor("fake:slow a paper boat")}.querySelector("[hx-post$='/cancel']"); window.scrollTo(0, 0); const dock = document.querySelector(".lab-dock").getBoundingClientRect(), text = document.querySelector("#lab-items .lab-progress span").getBoundingClientRect(), frame = document.querySelector("#lab-items .lab-progress").getBoundingClientRect(); return { firstScreen: b.getBoundingClientRect().bottom <= dock.top, centered: Math.abs((text.top + text.bottom) / 2 - (frame.top + frame.bottom) / 2) < 8 }; })()`);
   check(stop.firstScreen && stop.centered, `Stop is on the first screen above the prompt, and the stage is centered: ${JSON.stringify(stop)}`);
   await ev(makeVideo("a second one"));
@@ -423,7 +433,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   const pill = await ev(`(() => { const p = [...document.querySelectorAll("[data-run-pill]")].find((n) => !n.hidden); return p ? { href: p.getAttribute("href"), text: p.textContent.trim() } : null; })()`);
   check(pill?.href === "/app/studio/video" && /Video/.test(pill.text), `the pill leads back: ${JSON.stringify(pill)}`);
   await nav("/app/studio");
-  check((await ev(`!!document.querySelector('.studio-recent a[href="/app/studio/video"]')`)), "the landing's Recent shows it");
+  check((await ev(`!!document.querySelector('.studio-recent a[href^="/app/studio/video"]')`)), "the landing's Recent shows it");
   await nav("/app/studio/video");
   check((await waitItem("fake:slow a paper boat", (g) => g.active))?.active, "it is still there after leaving");
   check((await ev(`[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`)), "no pill on its own page");
@@ -445,6 +455,11 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) 
   await sleep(600);
   const played = await ev(`(async () => { const v = ${itemFor("a quiet beach")}.querySelector("video"); if (v.readyState < 1) await new Promise((r) => { v.onloadedmetadata = r; v.onerror = r; setTimeout(r, 4000); }); return { duration: v.duration, width: v.videoWidth, save: !!${itemFor("a quiet beach")}.querySelector("a[download='video.mp4']"), again: /Make again/.test(${itemFor("a quiet beach")}.textContent) }; })()`);
   check(played.duration > 1 && played.width > 0 && played.save && played.again, `it plays, with Save and Make again: ${JSON.stringify(played)}`);
+  // A finished video's tile on the landing says what it is, and shows its first frame.
+  await nav("/app/studio");
+  const tile = await ev(`(async () => { const a = document.querySelector('.studio-recent a[href^="/app/studio/video"]'), v = a?.querySelector("video"); if (v && v.readyState < 2) await new Promise((r) => { v.onloadeddata = r; v.onerror = r; setTimeout(r, 4000); }); return { badge: a?.querySelector(".studio-tile-badge")?.textContent.trim(), frame: v?.readyState >= 2 && v?.videoWidth > 0, hidden: a?.querySelector(".studio-tile-badge")?.getAttribute("aria-hidden"), named: a?.querySelector(".studio-tile-meta")?.textContent.trim() }; })()`);
+  check(/^\d+ s$/.test(tile.badge ?? "") && tile.frame && tile.hidden === "true" && /^Video, \d+ s · /.test(tile.named ?? ""), `a finished video's tile shows a frame, its type and its length: ${JSON.stringify(tile)}`);
+  await nav("/app/studio/video");
 
   await ev(makeVideo("fake:fail a bad one"));
   const failed = await waitItem("fake:fail a bad one", (g) => !g.active);
@@ -571,7 +586,7 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   await ev(`${firstItem}.querySelector("[hx-post$='/remove']").click()`);
   await sleep(400);
   check(!/Stopped after/.test((await itemState())?.text ?? ""), "Remove takes it out of the tray");
-  check((await ev(pageFits())), "it fits the phone");
+  check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
 }
 
 // --- Transcribe (DESIGN §22.20) ---------------------------------------------------
@@ -605,7 +620,7 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     const exports = await ev(`(async () => { const out = {}; for (const a of ${trItem}.querySelectorAll("a[download]")) { const r = await fetch(a.href); out[new URL(a.href).searchParams.get("format")] = [r.headers.get("content-disposition"), await r.text()]; } return out; })()`);
     check(/^1\n00:00:00,000 --> 00:00:01,200\nThe harbor/.test(exports.srt?.[1] ?? "") && exports.vtt?.[1].startsWith("WEBVTT\n\n00:00:00.000") && /harbor/.test(exports.txt?.[1] ?? "") && /transcript\.srt/.test(exports.srt?.[0] ?? ""), `exports are real SRT, VTT and text`);
-    check((await ev(pageFits())), "it fits the phone");
+    check((await ev(`document.documentElement.scrollWidth <= document.documentElement.clientWidth`)), "it fits the phone");
 
     // A player past its keep says so.
     await ev(`${trItem}.querySelector("audio").src = "/app/lab/results/nope"`);
@@ -737,7 +752,7 @@ await nav("/app/chat");
 await ev(`document.getElementById("chat-input").focus()`);
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 508, deviceScaleFactor: 2, mobile: true });
 await sleep(700);
-const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > innerWidth }; })()`);
+const typing = await ev(`(() => { const box = document.querySelector(".composer-box").getBoundingClientRect(), strip = document.querySelector(".strip"), r = strip.getBoundingClientRect(); return { flag: document.documentElement.hasAttribute("data-typing"), h: r.height, top: r.top, gauge: getComputedStyle(strip.querySelector(".gauge")).display, host: strip.querySelector(".strip-host b").textContent, fits: box.bottom <= innerHeight, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
 check(typing.flag && typing.h >= 44 && typing.h < 64 && typing.gauge !== "none" && typing.host && typing.fits && !typing.over, `keyboard up: the strip stays, with its gauge as a thin rule, and the composer stays in view: ${JSON.stringify(typing)}`);
 if (process.env.UI_KEYBOARD_SHOT) await Bun.write(process.env.UI_KEYBOARD_SHOT, Buffer.from((await send("Page.captureScreenshot", { format: "png" })).data, "base64"));
 
@@ -820,6 +835,147 @@ for (const path of ["/app/chat", "/app/studio", "/app/models", "/app/models/get"
   check(await ev(pageFits()), `at 320, ${path}: no sideways scroll`);
 }
 
+// --- The landing while a result is being made (DESIGN §27) ------------------------------------
+// At 320, with several results, so the strip really scrolls: otherwise "keeps its place" proves nothing.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+if (await ev(`!!document.querySelector("#lab-prompt")`)) {
+  for (const word of ["first", "second", "third"]) {
+    const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
+    await ev(`(() => { document.querySelector("#lab-prompt").value = "a slow lighthouse, ${word}, fake:slow-image"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+    for (let i = 0; i < 30 && (await ev(`document.querySelectorAll("#lab-items > li").length`)) <= before; i++) await sleep(100);
+  }
+  await nav("/app/studio");
+  const live = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); s.scrollLeft = 124; return { word: li.querySelector(".studio-tile-live")?.textContent.trim() ?? "", polls: li.hasAttribute("hx-get"), asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, words: document.querySelectorAll(".studio-recent .studio-tile-live").length, left: s.scrollLeft, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
+  check(live.polls && live.left > 0 && live.asking === live.words && /…$/.test(live.word) && !live.over, `a result being made says how it stands, and asks for itself: ${JSON.stringify(live)}`);
+  for (let i = 0; i < 100 && (await ev(`!!document.querySelector(".studio-recent > li[hx-get]")`)); i++) await sleep(150);
+  await sleep(200);
+  const settled = await ev(`(() => { const li = document.querySelector(".studio-recent > li"), s = document.querySelector(".studio-recent"); return { asking: document.querySelectorAll(".studio-recent > li[hx-get]").length, img: li.querySelector("img")?.naturalWidth > 0, left: s.scrollLeft }; })()`);
+  check(settled.asking === 0 && settled.img && settled.left === live.left, `they settle by themselves and the strip keeps its place: ${JSON.stringify(settled)}`);
+}
+
+// --- The landing never scrolls sideways, with results in it (DESIGN §27) ------------------------
+// The shelf has to be full and really scroll, or this proves nothing. clientWidth, not innerWidth:
+// under mobile emulation innerWidth grows with an overflowing page, so comparing with it can't fail.
+{
+  const hasResults = await ev(`fetch("/app/studio").then((r) => r.text()).then((t) => (t.match(/class="studio-tile"/g) ?? []).length)`);
+  if (hasResults < 4) console.log(`skip landing width (${hasResults} results)`);
+  else for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
+    await nav("/app/studio");
+    const fit = await ev(`(() => { const d = document.documentElement, shelf = document.querySelector(".studio-recent"), right = (q) => Math.round(document.querySelector(q).getBoundingClientRect().right); return { scroll: d.scrollWidth, client: d.clientWidth, tiles: shelf.children.length, shelfScrolls: shelf.scrollWidth > shelf.clientWidth, strip: right(".strip"), list: right(".studio-tools .list-group") }; })()`);
+    const inside = fit.scroll <= fit.client && fit.strip <= fit.client && fit.list <= fit.client;
+    check(inside && fit.tiles >= 4 && (width > 430 || fit.shelfScrolls), `at ${width}, the landing with results stays on the screen and only its shelf scrolls: ${JSON.stringify(fit)}`);
+  }
+}
+
+// --- A pill leads somewhere useful, and is never over content (DESIGN §27) -----------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+const imageModel = await ev(`document.querySelector("form input[name=model]")?.value ?? ""`);
+if (imageModel) {
+  // Waits for what is running to end, then starts slow pictures, so the states below are really there.
+  const anyActive = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
+  const settle = async () => { for (let i = 0; i < 120 && (await ev(anyActive)); i++) await sleep(150); };
+  const startSlow = async () => {
+    await settle();
+    await ev(`(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: ${JSON.stringify(imageModel)} }) }); })()`);
+  };
+  const noPill = `[...document.querySelectorAll("[data-run-pill]")].every((n) => n.hidden)`;
+  const reading = `(() => {
+    const bar = document.querySelector(".run-pill-dock"), pill = document.querySelector("[data-run-pill=dock]"), r = bar.getBoundingClientRect();
+    const words = [...document.querySelectorAll("main.page a, main.page button, main.page p, main.page li, main.page h2")].filter((n) => n.getBoundingClientRect().height > 0 && !n.closest("[data-docked], dialog"));
+    const dock = document.querySelector("[data-docked]")?.getBoundingClientRect();
+    return { shown: !pill.hidden && r.height > 0, href: pill.getAttribute("href"), top: Math.round(r.top), bottom: Math.round(r.bottom), ground: getComputedStyle(bar).backgroundColor, dockTop: dock ? Math.round(dock.top) : null, lastBottom: Math.round(words.at(-1)?.getBoundingClientRect().bottom ?? 0), over: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+  })()`;
+  await startSlow();
+  await nav("/app/studio/image");
+  await sleep(250);
+  check((await ev(anyActive)) && (await ev(noPill)), "no pill on the page that holds the result");
+  await nav("/app/studio");
+  await sleep(250);
+  check((await ev(anyActive)) && (await ev(noPill)), "no pill on the landing for what Recent already shows");
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/models");
+    await startSlow();
+    await nav("/app/models");
+    await sleep(250);
+    const away = await ev(reading);
+    check(away.shown && away.href === "/app/studio/image" && !/, 0\)$/.test(away.ground) && !away.ground.includes("transparent") && !away.over, `at ${width}, elsewhere it leads to the result, on its own ground: ${JSON.stringify(away)}`);
+    await ev(`scrollTo(0, document.documentElement.scrollHeight)`);
+    await sleep(120);
+    const end = await ev(reading);
+    check(end.shown && end.lastBottom <= end.top, `at ${width}, the page's last line clears it: ${JSON.stringify(end)}`);
+    await startSlow();
+    await nav("/app/studio/video");
+    await sleep(250);
+    const onTool = await ev(reading);
+    check(onTool.shown && onTool.dockTop !== null && onTool.bottom <= onTool.dockTop + 1, `at ${width}, on a tool's page it sits above the prompt: ${JSON.stringify(onTool)}`);
+    await settle();
+  }
+}
+
+// --- The last thing on a page can be reached, with a run elsewhere (DESIGN §27) ------------------
+// Scrolls to the end and asks the browser what is really at the last control's centre, with the
+// pill showing and with the prompt where the page has one. A video keeps running for Image and
+// Models; slow pictures do for Video, where a video's own run shows no pill.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/video");
+const canVideo = await ev(`!!document.querySelector("#lab-prompt") && !!document.querySelector("form input[name=model]")`);
+const pictureModel = await (async () => { await nav("/app/studio/image"); return ev(`document.querySelector("form input[name=model]")?.value ?? ""`); })();
+if (canVideo && pictureModel) {
+  const activeRuns = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
+  const lastControl = `(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+    const shown = [...document.querySelectorAll("main.page a[href], main.page button, main.page summary, main.page input:not([type=hidden]), main.page textarea, main.page select")].filter((n) => { const r = n.getBoundingClientRect(); return r.width > 1 && r.height > 1 && !n.closest("[data-docked], dialog:not([open]), [hidden], .sr-only") && getComputedStyle(n).visibility !== "hidden"; });
+    const last = shown.at(-1), r = last.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, at = document.elementFromPoint(x, y);
+    const pill = document.querySelector("[data-run-pill=dock]");
+    return { what: (last.getAttribute("aria-label") || last.textContent || last.tagName).trim().slice(0, 28), bottom: Math.round(r.bottom), height: innerHeight, reached: !!at && (at === last || last.contains(at) || at.contains(last)), at: at?.className?.toString().slice(0, 28) ?? null, pill: !pill.hidden && pill.getBoundingClientRect().height > 0 };
+  })()`;
+  await nav("/app/studio/video");
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = "fake:slow still going"; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items video, #lab-items .lab-progress")].length > 0`)); i++) await sleep(150);
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    for (const path of ["/app/studio/image", "/app/models"]) {
+      await nav(path);
+      for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-run-pill=dock]").hidden`)); i++) await sleep(150);
+      await sleep(150);
+      const end = await ev(lastControl);
+      check(end.pill && end.reached, `at ${width}, ${path}: the last control is reachable, with the pill showing: ${JSON.stringify(end)}`);
+    }
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  await ev(`document.querySelector('#lab-items [hx-post$="/cancel"]')?.click()`);
+  for (let i = 0; i < 40 && (await ev(`!!document.querySelector('#lab-items [hx-post$="/cancel"]')`)); i++) await sleep(150);
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    for (let i = 0; i < 120 && (await ev(activeRuns)); i++) await sleep(150);
+    await nav("/app/studio/video");
+    await ev(`(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: ${JSON.stringify(pictureModel)} }) }); })()`);
+    await nav("/app/studio/video");
+    for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-run-pill=dock]").hidden`)); i++) await sleep(150);
+    await sleep(150);
+    const end = await ev(lastControl);
+    check(end.pill && end.reached, `at ${width}, /app/studio/video: the last control is reachable, with the pill showing: ${JSON.stringify(end)}`);
+  }
+  for (let i = 0; i < 120 && (await ev(activeRuns)); i++) await sleep(150);
+}
+
+// --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/video");
+if (await ev(`!!document.querySelector("#lab-items video")`)) {
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/video");
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = document.getElementById("results-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
+  }
+}
+
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio");
@@ -827,7 +983,7 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   const fits = await ev(`(() => {
     const b = document.querySelector(".strip-host b"), w = document.querySelector(".strip-word"), s = document.querySelector(".strip");
     b.textContent = ${JSON.stringify(name)}; w.textContent = "Getting the model ready";
-    return { over: Math.max(document.documentElement.scrollWidth, innerWidth) > ${askedWidth}, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
+    return { over: document.documentElement.scrollWidth > document.documentElement.clientWidth, cut: w.scrollWidth > w.clientWidth, inside: w.getBoundingClientRect().right <= s.getBoundingClientRect().right, title: !!b.title, ell: getComputedStyle(b).textOverflow };
   })()`);
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }

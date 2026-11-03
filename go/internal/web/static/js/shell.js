@@ -198,6 +198,10 @@ announceChanges();
 // about apart. Polled pages call this often: it asks at most every 10 s while one
 // runs, every 60 s when none does, and not at all while the page is hidden. Their
 // own pages show them, and leaving one asks at once.
+// Where a run's result is, when the page that started it recorded no place.
+const RUN_PAGES = { "/v1/images/generations": "/app/studio/image", "/v1/images/edits": "/app/studio/image", "/v1/audio/transcriptions": "/app/studio/transcribe", "/v1/audio/translations": "/app/studio/transcribe" };
+// The landing shows these itself, in Recent.
+const ON_LANDING = new Set(["/app/studio/image", "/app/studio/video", "/app/studio/speech", "/app/studio/transcribe"]);
 const OWN_PAGES = { video: "/app/studio/video", speech: "/app/studio/speech" };
 const OWN_LABELS = { video: "Video", speech: "Speech" };
 let ownLast = { video: 0, speech: 0 };
@@ -233,10 +237,10 @@ async function syncRuns() {
   // A run started in another browser has no place here: send it to its page.
   const shown = list
     .map((run) => ({
-      href: run.place?.href || (run.target?.includes("chat") ? "/app/chat" : "/app/studio"),
+      href: run.place?.href || (run.target?.includes("chat") ? "/app/chat" : RUN_PAGES[run.target] || "/app/studio"),
       label: run.place?.label || run.label || "Generating",
     }))
-    .filter((run) => run.href !== here);
+    .filter((run) => run.href !== here && run.href !== location.pathname && !(location.pathname === "/app/studio" && ON_LANDING.has(run.href)));
   for (const pill of document.querySelectorAll("[data-run-pill]")) {
     pill.hidden = !shown.length;
     if (!shown.length) continue;
