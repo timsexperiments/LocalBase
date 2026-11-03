@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
 // Progress reports a transfer. It names files only, never URLs or headers.
@@ -214,7 +215,7 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 			resp.Body.Close()
 			return fmt.Errorf("download failed: HTTP %d from %s", resp.StatusCode, red.Text(RedactURL(resp.Request.URL.String())))
 		}
-		f, err := os.OpenFile(partial, flags, 0o600)
+		f, err := obs.OpenOwnedRegular(partial, flags)
 		if err != nil {
 			resp.Body.Close()
 			return err
@@ -259,7 +260,7 @@ func copyFile(ctx context.Context, src, dst string, size int64, progress func(in
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	out, err := obs.OpenOwnedRegular(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
