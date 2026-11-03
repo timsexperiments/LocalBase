@@ -50,10 +50,17 @@ type Request struct {
 	SHA256      string   // a trusted checksum for a single-file source
 	AuthProfile string
 	AllowHTTP   bool
-	ID          string // model id; derived when empty
-	Name        string
-	Task        string // when the source does not say
-	HFToken     string
+	// AllowPrivate lets a download reach private addresses, for a LAN mirror.
+	AllowPrivate bool
+	// AllowLocal lets Source be a path on this machine.
+	AllowLocal bool
+	// Confirmed: the person has accepted the custom-source warning. A custom
+	// source is not contacted before that.
+	Confirmed bool
+	ID        string // model id; derived when empty
+	Name      string
+	Task      string // when the source does not say
+	HFToken   string
 
 	hfOrigins []string // extra origins for the token (the "huggingface" profile)
 }
@@ -93,9 +100,10 @@ type Plan struct {
 	// Preview holds the facts known before downloading (pinned upstream
 	// metadata, or a local file's header), for a backend recommendation in
 	// the import form. Downloaded files are inspected again.
-	Preview models.Variant `json:"preview"`
-	profile *Profile
-	hfToken string
+	Preview      models.Variant `json:"preview"`
+	profile      *Profile
+	hfToken      string
+	allowPrivate bool
 }
 
 var (
@@ -146,15 +154,17 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 		p, err = resolveHF(ctx, repo, file, req, profile)
 	case strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "http://"):
 		p, err = resolveURL(ctx, src, req, profile)
-	case hfRepoRe.MatchString(src) && !fileExists(src):
+	case hfRepoRe.MatchString(src) && !(req.AllowLocal && fileExists(src)):
 		p, err = resolveHF(ctx, src, "", req, profile)
+	case !req.AllowLocal:
+		return nil, errors.New("that is not a URL or a Hugging Face repository. " + PrivateSourceHint)
 	default:
 		p, err = resolveLocal(src, req)
 	}
 	if err != nil {
 		return nil, err
 	}
-	p.profile, p.hfToken, p.hfOrigins = profile, req.HFToken, req.hfOrigins
+	p.profile, p.hfToken, p.hfOrigins, p.allowPrivate = profile, req.HFToken, req.hfOrigins, req.AllowPrivate
 	if req.Name != "" {
 		p.Name = req.Name
 	}
@@ -247,7 +257,7 @@ func resolveHF(ctx context.Context, repo, file string, req Request, profile *Pro
 	if rev == "" {
 		rev = "main"
 	}
-	client := newClient(profile, req.HFToken, req.hfOrigins)
+	client := newClient(profile, req.HFToken, req.hfOrigins, req.AllowPrivate)
 	api := HFEndpoint() + "/api/models/" + repo + "/revision/" + url.PathEscape(rev) + "?blobs=true"
 	hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, api, nil)
 	hreq.Header.Set("Accept", "application/json")
@@ -460,32 +470,38 @@ func resolveURL(ctx context.Context, raw string, req Request, profile *Profile) 
 	if profile != nil && !profile.Allows(origin) {
 		return nil, fmt.Errorf("auth profile %s is not allowed for %s; add the origin to the profile", profile.ID, origin)
 	}
-	client := newClient(profile, "", nil)
+	// A destination that can be refused now is refused before the confirmation.
+	if err := importPolicy(req.AllowPrivate).CheckURL(u); err != nil {
+		return nil, err
+	}
 	size, name := int64(0), path.Base(u.Path)
-	hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
-	hreq.Header.Set("Range", "bytes=0-0")
-	resp, err := client.Do(hreq)
-	if err != nil {
-		return nil, redactErr(err, redactorFor(profile))
-	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-	resp.Body.Close()
-	switch {
-	case resp.StatusCode == 206:
-		if cr := resp.Header.Get("Content-Range"); cr != "" {
-			if i := strings.LastIndex(cr, "/"); i >= 0 {
-				size, _ = strconv.ParseInt(cr[i+1:], 10, 64)
+	if req.Confirmed { // nothing contacts a custom source until then
+		client := newClient(profile, "", nil, req.AllowPrivate)
+		hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+		hreq.Header.Set("Range", "bytes=0-0")
+		resp, err := client.Do(hreq)
+		if err != nil {
+			return nil, redactErr(err, redactorFor(profile))
+		}
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		resp.Body.Close()
+		switch {
+		case resp.StatusCode == 206:
+			if cr := resp.Header.Get("Content-Range"); cr != "" {
+				if i := strings.LastIndex(cr, "/"); i >= 0 {
+					size, _ = strconv.ParseInt(cr[i+1:], 10, 64)
+				}
 			}
+		case resp.StatusCode == 200:
+			if resp.Header.Get("Content-Encoding") == "" {
+				size = resp.ContentLength
+			}
+		default:
+			return nil, fmt.Errorf("%s answered HTTP %d", origin, resp.StatusCode)
 		}
-	case resp.StatusCode == 200:
-		if resp.Header.Get("Content-Encoding") == "" {
-			size = resp.ContentLength
+		if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil && params["filename"] != "" {
+			name = path.Base(params["filename"])
 		}
-	default:
-		return nil, fmt.Errorf("%s answered HTTP %d", origin, resp.StatusCode)
-	}
-	if _, params, err := mime.ParseMediaType(resp.Header.Get("Content-Disposition")); err == nil && params["filename"] != "" {
-		name = path.Base(params["filename"])
 	}
 	name = filenameClean.ReplaceAllString(name, "_")
 	if name == "" || name == "." || name == "/" || name == "_" {

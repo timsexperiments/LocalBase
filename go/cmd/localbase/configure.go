@@ -37,6 +37,7 @@ func configureCommand() *cli.Command {
 			opt("parallel", "<auto|1-4>", "Parallel request slots"),
 			opt("max-connections", "<connections>", "Maximum open connections, 0 for no cap; applies on restart (Go only)"),
 			opt("max-connections-per-ip", "<connections>", "Maximum open connections from one address other than loopback, 0 for no cap; applies on restart (Go only)"),
+			{Name: "allow-private-imports", Bool: true, Help: "Let imports reach private addresses and local files, such as a LAN mirror (--no-allow-private-imports: do not). Off by default (Go only)"},
 			opt("otel-endpoint", "<url>", "OTLP/HTTP base endpoint; empty disables export"),
 			opt("otel-headers", "<key=value,...>", "OTLP exporter headers"),
 			opt("otel-sample-ratio", "<0-100>", "Percentage of root traces to sample"),
@@ -298,6 +299,12 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			if err := e.Store.SetSetting(context.Background(), key, strconv.Itoa(n)); err != nil {
 				return nil, err
 			}
+		}
+	}
+	if v, ok := c.OptBool("allow-private-imports"); ok {
+		state := map[bool]string{true: "on", false: "off"}[v]
+		if err := e.Store.SetSetting(context.Background(), store.PrivateImportsKey, state); err != nil {
+			return nil, err
 		}
 	}
 	create := !c.Global.JSON

@@ -77,7 +77,7 @@ func Import(ctx context.Context, rootDir string, p *Plan, progress func(Progress
 	}
 	red := redactorFor(p.profile)
 	red.Add(p.hfToken)
-	client := newClient(p.profile, p.hfToken, p.hfOrigins)
+	client := newClient(p.profile, p.hfToken, p.hfOrigins, p.allowPrivate)
 	var arts []models.Artifact
 	for _, f := range p.Files {
 		final := filepath.Join(staging, f.Filename)
@@ -318,7 +318,7 @@ func FetchPinned(ctx context.Context, dir string, arts []models.Artifact, hfToke
 	if err := os.MkdirAll(staging, 0o700); err != nil {
 		return err
 	}
-	client := newClient(nil, hfToken, nil)
+	client := newClient(nil, hfToken, nil, false)
 	for _, a := range arts {
 		final := filepath.Join(dir, a.Filename)
 		if info, err := os.Stat(final); err == nil && (a.SizeBytes == 0 || info.Size() == a.SizeBytes) {

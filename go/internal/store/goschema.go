@@ -177,6 +177,16 @@ const (
 	MaxConnectionsPerIPKey = "gateway.max-connections-per-ip"
 )
 
+// PrivateImportsKey is the opt-in to imports from private addresses and local files
+// (DESIGN §31.2). Only the CLI on the host sets it, never an API route.
+const PrivateImportsKey = "imports.allow-private"
+
+// PrivateImportsAllowed reports the opt-in. An unreadable setting means no.
+func (s *Store) PrivateImportsAllowed(ctx context.Context) bool {
+	v, ok, err := s.Setting(ctx, PrivateImportsKey)
+	return err == nil && ok && v == "on"
+}
+
 // Setting reads a Go-only setting ("" and false when unset).
 func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
 	var v string

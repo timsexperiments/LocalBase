@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
@@ -191,7 +193,7 @@ func TestDirectURLImport(t *testing.T) {
 	if _, err := Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf", AuthProfile: "vendor"}); err == nil {
 		t.Fatal("plain HTTP accepted without consent")
 	}
-	p, err := Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf?sig=abc123", AuthProfile: "vendor", AllowHTTP: true, Task: "chat"})
+	p, err := Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf?sig=abc123", AuthProfile: "vendor", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +224,7 @@ func TestDirectURLImport(t *testing.T) {
 	}
 
 	// A redirect to another origin does not carry the profile's headers.
-	p, err = Resolve(ctx, root, Request{Source: main.URL + "/redirect/model.gguf", AuthProfile: "vendor", AllowHTTP: true, Task: "chat", ID: "redirected"})
+	p, err = Resolve(ctx, root, Request{Source: main.URL + "/redirect/model.gguf", AuthProfile: "vendor", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat", ID: "redirected"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestDirectURLImport(t *testing.T) {
 	}
 
 	// A wrong trusted checksum blocks publication.
-	p, _ = Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf", AuthProfile: "vendor", AllowHTTP: true, Task: "chat",
+	p, _ = Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf", AuthProfile: "vendor", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat",
 		ID: "pinned", SHA256: strings.Repeat("ab", 32)})
 	_, err = Import(ctx, root, p, nil)
 	var mismatch *HashMismatchError
@@ -248,7 +250,7 @@ func TestDirectURLImport(t *testing.T) {
 		t.Fatal("published despite a checksum mismatch")
 	}
 	// The right one is recorded as the user's.
-	p, _ = Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf", AuthProfile: "vendor", AllowHTTP: true, Task: "chat",
+	p, _ = Resolve(ctx, root, Request{Source: main.URL + "/files/model.gguf", AuthProfile: "vendor", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat",
 		ID: "pinned", SHA256: sum(weights)})
 	res, err = Import(ctx, root, p, nil)
 	if err != nil || res.Model.Variants[0].Artifacts[0].HashTrust != models.HashUser {
@@ -256,7 +258,7 @@ func TestDirectURLImport(t *testing.T) {
 	}
 
 	// Errors never contain header values or signed query values.
-	p, err = Resolve(ctx, root, Request{Source: main.URL + "/broken/model.gguf?token=topsecretquery", AuthProfile: "vendor", AllowHTTP: true, Task: "chat", ID: "broken"})
+	p, err = Resolve(ctx, root, Request{Source: main.URL + "/broken/model.gguf?token=topsecretquery", AuthProfile: "vendor", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat", ID: "broken"})
 	if err == nil {
 		_, err = Import(ctx, root, p, nil)
 	}
@@ -279,7 +281,7 @@ func TestResumeAndLocal(t *testing.T) {
 	defer srv.Close()
 	root := t.TempDir()
 	ctx := context.Background()
-	p, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, Task: "chat"})
+	p, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, Confirmed: true, Task: "chat"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,12 +305,12 @@ func TestResumeAndLocal(t *testing.T) {
 	for i := 1; i <= 2; i++ {
 		testutil.GGUF(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), map[string]any{"general.architecture": "qwen3", "split.count": 3, "split.no": i - 1}, 2048)
 	}
-	if _, err := Resolve(ctx, root, Request{Source: filepath.Join(dir, "big-00001-of-00003.gguf"), Task: "chat"}); err == nil ||
+	if _, err := Resolve(ctx, root, Request{Source: filepath.Join(dir, "big-00001-of-00003.gguf"), AllowLocal: true, Task: "chat"}); err == nil ||
 		!strings.Contains(err.Error(), "big-00003-of-00003.gguf") {
 		t.Fatalf("incomplete local split: %v", err)
 	}
 	testutil.GGUF(filepath.Join(dir, "big-00003-of-00003.gguf"), map[string]any{"general.architecture": "qwen3", "split.count": 3, "split.no": 2}, 2048)
-	p, err = Resolve(ctx, root, Request{Source: filepath.Join(dir, "big-00002-of-00003.gguf"), Task: "chat"})
+	p, err = Resolve(ctx, root, Request{Source: filepath.Join(dir, "big-00002-of-00003.gguf"), AllowLocal: true, Task: "chat"})
 	if err != nil || len(p.Files) != 3 {
 		t.Fatalf("local split: %v %+v", err, p)
 	}
@@ -316,7 +318,7 @@ func TestResumeAndLocal(t *testing.T) {
 	if err != nil || res.Model.Variants[0].Architecture.Value != "qwen3" {
 		t.Fatalf("local import: %v", err)
 	}
-	if _, err := Resolve(ctx, root, Request{Source: writeFile(t, "train.py")}); err == nil {
+	if _, err := Resolve(ctx, root, Request{Source: writeFile(t, "train.py"), AllowLocal: true}); err == nil {
 		t.Fatal("imported a .py file")
 	}
 }
@@ -392,5 +394,134 @@ func TestRedirectDowngradeRefused(t *testing.T) {
 	}
 	if err := redirectPolicy(mk("https://b.example.com/f"), []*http.Request{mk("http://a.example.com/f")}); err != nil {
 		t.Fatalf("http -> https is an upgrade: %v", err)
+	}
+}
+
+// By default an import reaches public addresses only, including through a redirect,
+// and the opt-in that lifts this is not something a request can set for itself.
+func TestImportsKeepToPublicAddresses(t *testing.T) {
+	var seen atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Add(1)
+		if strings.Contains(r.URL.Path, "away") {
+			http.Redirect(w, r, "http://127.0.0.1:"+strings.Split(r.Host, ":")[1]+"/m.gguf", http.StatusFound)
+			return
+		}
+		serveRange(w, r, ggufBytes(t, "qwen3", 2048))
+	}))
+	defer srv.Close()
+	port := srv.URL[strings.LastIndex(srv.URL, ":")+1:]
+	root := t.TempDir()
+	ctx := context.Background()
+	for _, source := range []string{srv.URL + "/m.gguf", "http://localhost:" + port + "/m.gguf", "http://[::1]:" + port + "/m.gguf",
+		"http://[::ffff:127.0.0.1]:" + port + "/m.gguf", "http://127.1:" + port + "/m.gguf", "http://2130706433:" + port + "/m.gguf",
+		"http://169.254.169.254/latest/meta-data/m.gguf", "http://[fd00:ec2::254]/m.gguf", "http://10.0.0.1/m.gguf", "http://192.168.1.1/m.gguf"} {
+		for _, confirmed := range []bool{false, true} {
+			seen.Store(0)
+			_, err := Resolve(ctx, root, Request{Source: source, AllowHTTP: true, Confirmed: confirmed, ID: "x", Task: "chat"})
+			if !netguard.IsBlocked(err) || seen.Load() != 0 {
+				t.Errorf("%s (confirmed %v): %v, reached %d", source, confirmed, err, seen.Load())
+			}
+		}
+	}
+	// The hint says how, and only for what the opt-in can allow.
+	_, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, ID: "x", Task: "chat"})
+	if err == nil || !strings.Contains(err.Error(), "allow-private-imports") {
+		t.Errorf("no hint: %v", err)
+	}
+	_, err = Resolve(ctx, root, Request{Source: "http://169.254.169.254/m.gguf", AllowHTTP: true, AllowPrivate: true, ID: "x", Task: "chat"})
+	if !netguard.IsBlocked(err) || strings.Contains(err.Error(), "allow-private-imports") {
+		t.Errorf("metadata with the opt-in: %v", err)
+	}
+	// With the opt-in a LAN source works, end to end.
+	p, err := Resolve(ctx, root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, Confirmed: true, ID: "lan", Task: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(ctx, root, p, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A redirect to a private address is refused while downloading, as well as while
+// resolving: a plan can outlive what its source answered when it was made.
+func TestImportRedirectToPrivateIsRefused(t *testing.T) {
+	var private atomic.Int64
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		private.Add(1)
+		serveRange(w, r, ggufBytes(t, "qwen3", 2048))
+	}))
+	defer target.Close()
+	// HF_ENDPOINT names this host, so the first hop is allowed and the second is judged.
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, strings.Replace(target.URL, "127.0.0.1", "localhost", 1)+"/m.gguf", http.StatusFound)
+	}))
+	defer mirror.Close()
+	t.Setenv("HF_ENDPOINT", mirror.URL)
+	_, err := Resolve(context.Background(), t.TempDir(), Request{Source: mirror.URL + "/redirect/m.gguf", AllowHTTP: true, Confirmed: true, ID: "x", Task: "chat"})
+	if !netguard.IsBlocked(err) || private.Load() != 0 {
+		t.Fatalf("%v, reached %d", err, private.Load())
+	}
+}
+
+// Nothing contacts a custom source before the person has accepted its warning.
+func TestCustomSourceIsNotContactedBeforeConfirmation(t *testing.T) {
+	var seen atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Add(1)
+		serveRange(w, r, ggufBytes(t, "qwen3", 2048))
+	}))
+	defer srv.Close()
+	ctx := context.Background()
+	p, err := Resolve(ctx, t.TempDir(), Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, ID: "x", Task: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen.Load() != 0 {
+		t.Errorf("contacted %d times before the confirmation", seen.Load())
+	}
+	if !p.Custom || p.SizeKnown || len(p.Files) != 1 || p.Files[0].Filename != "m.gguf" {
+		t.Errorf("plan %+v", p)
+	}
+	p, err = Resolve(ctx, t.TempDir(), Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, Confirmed: true, ID: "x", Task: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen.Load() != 1 || !p.SizeKnown || p.TotalBytes != 2048 {
+		t.Errorf("after the confirmation: contacted %d, size known %v, %d bytes", seen.Load(), p.SizeKnown, p.TotalBytes)
+	}
+}
+
+// A local path needs the opt-in. An API caller cannot read the machine's files
+// into the model store, or learn which exist.
+func TestLocalPathsNeedTheOptIn(t *testing.T) {
+	path := writeFile(t, "weights.gguf")
+	ctx := context.Background()
+	for _, source := range []string{path, "/no/such/file", "weights.gguf", "./weights.gguf", "../weights.gguf"} {
+		_, err := Resolve(ctx, t.TempDir(), Request{Source: source, ID: "x", Task: "chat"})
+		if err == nil || !strings.Contains(err.Error(), "allow-private-imports") {
+			t.Errorf("%s: %v", source, err)
+		}
+	}
+	if _, err := Resolve(ctx, t.TempDir(), Request{Source: path, AllowLocal: true, ID: "x", Task: "chat"}); err != nil {
+		t.Errorf("with the opt-in: %v", err)
+	}
+}
+
+func TestParserTricksAreRefusedOrJudged(t *testing.T) {
+	var seen atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen.Add(1) }))
+	defer srv.Close()
+	port := srv.URL[strings.LastIndex(srv.URL, ":")+1:]
+	ctx := context.Background()
+	for _, source := range []string{"http://huggingface.co@127.0.0.1:" + port + "/m.gguf", "http://huggingface.co:443@127.0.0.1:" + port + "/m.gguf",
+		"http://127.0.0.1:" + port + "/m.gguf#@huggingface.co", "http://127.0.0.1:" + port + "\\@huggingface.co/m.gguf",
+		"http://user:pass@10.0.0.1/m.gguf", "http://127.0.0.1:" + port + "?@huggingface.co/m.gguf"} {
+		if _, err := Resolve(ctx, t.TempDir(), Request{Source: source, AllowHTTP: true, Confirmed: true, ID: "x", Task: "chat"}); err == nil {
+			t.Errorf("%s was accepted", source)
+		}
+	}
+	if seen.Load() != 0 {
+		t.Errorf("reached %d times", seen.Load())
 	}
 }

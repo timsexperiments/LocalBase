@@ -110,6 +110,7 @@ func modelsImportCommand() *cli.Command {
 			{Name: "id", Value: "<model-id>", Help: "Model id (default: derived from the file name)"},
 			{Name: "name", Value: "<name>", Help: "Display name"},
 			{Name: "allow-http", Bool: true, Help: "Allow a plain HTTP source (insecure transport)"},
+			{Name: "allow-private", Bool: true, Help: "Allow a source at a private address, such as a LAN mirror, for this import"},
 			{Name: "yes", Alias: "y", Bool: true, Help: "Confirm a custom-source download after reading its warning"},
 			{Name: "dry-run", Bool: true, Help: "Resolve and show the plan without downloading"},
 		},
@@ -124,6 +125,7 @@ func modelsImportCommand() *cli.Command {
 			}
 			plan, err := acquire.Resolve(ctx, e.Root.Dir, acquire.Request{Source: c.Args[0], Files: c.Strings("file"),
 				Revision: c.String("revision"), SHA256: c.String("sha256"), AuthProfile: c.String("auth-profile"),
+				AllowPrivate: c.Bool("allow-private") || e.Store.PrivateImportsAllowed(ctx), AllowLocal: true, Confirmed: c.Bool("yes"),
 				AllowHTTP: c.Bool("allow-http"), ID: c.String("id"), Name: c.String("name"), Task: c.String("task"), HFToken: hfToken(e)})
 			if err != nil {
 				return nil, err

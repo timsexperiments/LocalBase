@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 )
 
 // HFEndpoint is the Hugging Face base URL (HF_ENDPOINT overrides it).
@@ -59,17 +61,32 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // endpoint's origin plus any origins listed in a "huggingface" auth profile
 // (for example a CDN the person chose to trust with the token). Anonymous
 // downloads from CDNs work without it.
-func newClient(profile *Profile, hfToken string, hfExtra []string) *http.Client {
+func newClient(profile *Profile, hfToken string, hfExtra []string, allowPrivate bool) *http.Client {
 	hfOrig, _ := Origin(HFEndpoint())
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	if pool := extraRoots(); pool != nil {
 		base.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 	}
 	base.ResponseHeaderTimeout = 60 * time.Second
+	guarded := importPolicy(allowPrivate).Transport(base)
 	return &http.Client{
-		Transport:     &scopedTransport{base: base, profile: profile, hfToken: hfToken, hfOrigs: append([]string{hfOrig}, hfExtra...)},
+		Transport:     &scopedTransport{base: guarded, profile: profile, hfToken: hfToken, hfOrigs: append([]string{hfOrig}, hfExtra...)},
 		CheckRedirect: redirectPolicy,
 	}
+}
+
+// PrivateSourceHint says how to allow what the default policy refuses. Only the
+// person running LocalBase can do it: no API route changes this setting.
+const PrivateSourceHint = "To import from private addresses and local files, run `local-base configure --allow-private-imports` on this machine."
+
+// importPolicy keeps downloads to public addresses unless opted in. HF_ENDPOINT is
+// named by the person running LocalBase, so a private mirror there is allowed.
+func importPolicy(allowPrivate bool) netguard.Policy {
+	p := netguard.Policy{AllowPrivate: allowPrivate, Hint: PrivateSourceHint}
+	if u, err := url.Parse(HFEndpoint()); err == nil && u.Hostname() != "" {
+		p.AllowHosts = []string{u.Hostname()}
+	}
+	return p
 }
 
 // ErrDowngrade: an HTTPS download was redirected to plain HTTP. It is refused,
@@ -94,6 +111,10 @@ func redirectPolicy(req *http.Request, via []*http.Request) error {
 // redactErr turns transport errors into text without URLs' secrets: a
 // url.Error repeats the full URL, including signed query values.
 func redactErr(err error, red *Redactor) error {
+	var blocked *netguard.BlockedError
+	if errors.As(err, &blocked) {
+		return blocked // names a host, and callers can tell it apart
+	}
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = fmt.Errorf("%s %s: %v", ue.Op, RedactURL(ue.URL), ue.Err)

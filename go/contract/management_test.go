@@ -2,6 +2,7 @@ package contract
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // tinyModel is a user catalog entry whose 4 KiB file is already in place, so
@@ -269,6 +272,15 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 			b, _ := json.Marshal(entry)
 			mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
 			mustWriteFile(filepath.Join(e.root, "catalog.d", "slow-stt.json"), b, 0o600)
+			// The fixture serves the model from this machine.
+			st, err := store.Open(filepath.Join(e.root, "local-base.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+				t.Fatal(err)
+			}
+			st.Close()
 			state := func() map[string]any {
 				r := e.do("GET", "/_localbase/model-management", "")
 				for _, m := range r.JSON(t)["models"].([]any) {

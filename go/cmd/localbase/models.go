@@ -360,7 +360,7 @@ func installModel(ctx context.Context, e *env, id string, report func(install.Ev
 		return "", fmt.Errorf("%s: %s", id, reason)
 	}
 	token := e.Config.HFToken
-	return install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, Report: report})
+	return install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, AllowPrivate: e.Store.PrivateImportsAllowed(ctx), Report: report})
 }
 
 // progressReporter prints download progress on a terminal, as TS does.
