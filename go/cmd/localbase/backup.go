@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -214,7 +215,46 @@ func runRestore(c *cli.Ctx) (any, error) {
 	return map[string]any{"report": rep, "beforeDir": done.BeforeDir}, nil
 }
 
+// printable is a copy of the report that's safe to show on a terminal: every string in it, wherever
+// it came from, has been through cli.Printable. Doing it here, once, means a field added to the report
+// can't be missed at the line that prints it. The report itself stays as it is for --json. A field of a
+// kind this doesn't know stops it, and TestEveryStringInTheReportIsMadePrintable finds that first.
+func printable(rep *backup.Report) *backup.Report {
+	out := &backup.Report{}
+	copyPrintable(reflect.ValueOf(out).Elem(), reflect.ValueOf(rep).Elem())
+	return out
+}
+
+func copyPrintable(dst, src reflect.Value) {
+	switch src.Kind() {
+	case reflect.String:
+		dst.SetString(cli.Printable(src.String()))
+	case reflect.Struct:
+		for i := range src.NumField() {
+			copyPrintable(dst.Field(i), src.Field(i))
+		}
+	case reflect.Slice:
+		if !src.IsNil() {
+			dst.Set(reflect.MakeSlice(src.Type(), src.Len(), src.Len()))
+			for i := range src.Len() {
+				copyPrintable(dst.Index(i), src.Index(i))
+			}
+		}
+	case reflect.Pointer:
+		if !src.IsNil() {
+			dst.Set(reflect.New(src.Type().Elem()))
+			copyPrintable(dst.Elem(), src.Elem())
+		}
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		dst.Set(src)
+	default:
+		panic("the restore report has a field of a kind that can't be made printable: " + src.Type().String())
+	}
+}
+
 func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
+	rep = printable(rep)
 	if rep.NewRoot {
 		c.Info("This makes a new root at %s.", rep.Target)
 	} else {
@@ -292,6 +332,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 }
 
 func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
+	rep = printable(rep)
 	flag := "local-base --root '" + rep.Target + "'"
 	c.Info("Restored to %s. Nothing was started.", rep.Target)
 	c.Info("Next:")
@@ -310,7 +351,8 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 	}
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {
-		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf '%s'", done.BeforeDir, done.BeforeDir)
+		before := cli.Printable(done.BeforeDir)
+		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf '%s'", before, before)
 	}
 }
 

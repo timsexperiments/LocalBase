@@ -26,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -40,7 +41,21 @@ type Refused struct{ Why string }
 
 func (e *Refused) Error() string { return e.Why }
 
-func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format, a...)} }
+// refuse says why. A refusal can quote what's in the file, so what it quotes can't act on a terminal.
+func refuse(format string, a ...any) error {
+	shown := make([]any, len(a))
+	for i, v := range a {
+		switch x := v.(type) {
+		case string:
+			shown[i] = cli.Printable(x)
+		case error:
+			shown[i] = cli.Printable(x.Error())
+		default:
+			shown[i] = v
+		}
+	}
+	return &Refused{fmt.Sprintf(format, shown...)}
+}
 
 // Program is one custom backend's whole command line: the program can be a shell.
 type Program struct {
