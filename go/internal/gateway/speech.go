@@ -189,6 +189,8 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		case errors.As(err, &voice):
 			writeError(w, r, 400, "invalid_request_error", "voice_not_supported", voice.Error(), strp("voice"))
 			tel.finish("error", 400, "")
+		case errors.Is(err, errSpeechBackendGone):
+			backendGone(w, r, tel, "TTS")
 		default:
 			upstreamFailure(w, r, err.Error())
 			tel.finish("error", 502, "")
@@ -206,6 +208,10 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	writeSpeech(w, req, pcm)
 	tel.finish("completed", 200, "")
 }
+
+// errSpeechBackendGone is a speech backend that could not be reached or closed
+// the connection before its audio was complete.
+var errSpeechBackendGone = errors.New("the speech backend went away")
 
 type voiceUnavailable struct{ voice, backend string }
 
@@ -243,10 +249,13 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 		hr.Header.Set("Content-Type", "application/json")
 		resp, err := do(hr)
 		if err != nil {
-			return nil, errors.New("Speech runtime request failed.")
+			return nil, errSpeechBackendGone
 		}
 		defer resp.Body.Close()
-		wav, _ := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes*4+1<<20))
+		wav, err := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes*4+1<<20))
+		if err != nil {
+			return nil, errSpeechBackendGone
+		}
 		if resp.StatusCode != 200 {
 			return nil, fmt.Errorf("Speech runtime rejected the request (HTTP %d).", resp.StatusCode)
 		}
@@ -262,7 +271,7 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 			hr.Header.Set("Content-Type", "application/json")
 			resp, err := do(hr)
 			if err != nil {
-				return nil, errors.New("Speech runtime request failed.")
+				return nil, errSpeechBackendGone
 			}
 			if resp.StatusCode == 503 {
 				// A cancelled generation finishes its window before the slot frees.
@@ -281,7 +290,10 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 			if resp.Header.Get("X-Audio-Format") != "s16le" || resp.Header.Get("X-Sample-Rate") != strconv.Itoa(runtime.SpeechSampleRate) {
 				return nil, errors.New("Speech runtime returned an unexpected audio format.")
 			}
-			pcm, _ := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes+1))
+			pcm, err := io.ReadAll(io.LimitReader(resp.Body, speechMaxPCMBytes+1))
+			if err != nil {
+				return nil, errSpeechBackendGone
+			}
 			switch {
 			case len(pcm) > speechMaxPCMBytes:
 				return nil, errors.New("Speech output exceeds the native frame limit.")

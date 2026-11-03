@@ -614,6 +614,8 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A backend that crashes under a request answers 503 `service_unavailable` with
+  `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
 
 ### M1 (done 2026-10-19)
 
@@ -1176,6 +1178,18 @@ Deliberate status changes to verify against the live clients at cutover:
    request, the model-management state therefore shows a different active
    model on each gateway. `TestDifferentialModelManagement` first activates
    the same chat model on both.
+10. **A backend that crashes under a request** (operator decision, from the
+    chaos tests, go/docs/reliability.md). TS answers 502 `upstream_error`
+    without `Retry-After`, and so did Go. Go now answers 503
+    `service_unavailable` ("LLM service…", "Image…", "TTS…", "STT…") with
+    `Retry-After: 5`, the same contract as item 6: the failure is transient,
+    and the next request starts the backend again. This covers a backend that
+    cannot be reached and one that closes the connection before its answer is
+    complete. A detached run ends as `failed` with that code as its error. A
+    backend that answers with something invalid stays a 502, as does a stream
+    that has started, which still ends with an `upstream_error` event because
+    its status has been sent (`TestLLMCrashAnswers503` and its siblings in
+    `internal/gateway/crash_test.go`).
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
@@ -1720,7 +1734,7 @@ Each item is done, or waived on record by the operator.
 
    Each row is signed off as "no client relies on the TS behaviour". The
    transient-failure contract (503 or 429 with `Retry-After`) is unchanged,
-   and 6 replaces a 502 with that contract.
+   and 6 and 10 replace a 502 with that contract.
 4. **The open cutover checklist items (§13.6), on the release candidate:**
    - an image turn with a real vision model;
    - a real chat model choosing a generation tool by itself;

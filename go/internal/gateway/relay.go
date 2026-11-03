@@ -290,6 +290,24 @@ var proxyClient = &http.Client{Transport: &http.Transport{
 	Proxy: nil, MaxIdleConnsPerHost: 16, IdleConnTimeout: 90 * time.Second, DisableCompression: true,
 }}
 
+// backendGone answers a request whose backend could not be reached or closed the
+// connection before its answer was complete. A crash is transient, and the next
+// request starts the backend again, so this is the transient-failure answer: 503
+// with Retry-After (DESIGN §13.6, item 10), not a 502. A backend that answers
+// with something invalid is still an upstream failure.
+func backendGone(w http.ResponseWriter, r *http.Request, t *inference, service string) {
+	serviceUnavailable(w, r, service)
+	t.finish("error", 503, "")
+}
+
+// relayService names the runtime behind a relayed request in its 503.
+func relayService(kind string) string {
+	if kind == "image" {
+		return "Image"
+	}
+	return "LLM"
+}
+
 func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
 	writeError(w, r, 502, "server_error", "upstream_error", message, nil)
 }
@@ -316,8 +334,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			memoryInterrupted(w, r, t)
 			return
 		}
-		upstreamFailure(w, r, "The upstream service could not be reached.")
-		t.finish("error", 502, "")
+		backendGone(w, r, t, relayService(o.kind))
 		return
 	}
 	defer resp.Body.Close()
@@ -345,8 +362,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			memoryInterrupted(w, r, t)
 			return
 		}
-		upstreamFailure(w, r, "The upstream service returned malformed JSON.")
-		t.finish("error", 502, "response_validation")
+		backendGone(w, r, t, relayService(o.kind))
 		return
 	}
 	if !ok && o.interrupted != nil && o.interrupted() {
