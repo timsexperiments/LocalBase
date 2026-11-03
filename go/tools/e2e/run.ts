@@ -301,7 +301,8 @@ async function failures() {
     need(/[a-z.,:;]\s+11 GiB free/.test(spoken), `the strip reads as: ${spoken}`);
     await ctl("/host?available=48");
     // What the refusal tells a person to do: free some memory and try again. It counts when
-    // the reply comes, since the person's own words are on the page from the start.
+    // the reply comes, since the person's own words are on the page from the start. Refusals
+    // go on for about 4.6 s, on purpose: recovery takes three normal samples at a 2 s poll.
     const freed = Date.now();
     let tries = 0;
     for (;;) {
