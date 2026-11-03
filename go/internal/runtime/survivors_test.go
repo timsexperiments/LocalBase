@@ -46,6 +46,7 @@ func writeRecord(t *testing.T, root string, rec backendRecord) string {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	rec.Root = canonicalRoot(root)
 	b, _ := json.Marshal(rec)
 	path := filepath.Join(dir, "llm-"+strconv.Itoa(rec.PID)+".json")
 	if err := os.WriteFile(path, b, 0o600); err != nil {
@@ -377,5 +378,47 @@ func TestServiceAndLLMRecordTheirBackends(t *testing.T) {
 				t.Error("the backend is still running")
 			}
 		})
+	}
+}
+
+// A copied root carries the records of the backends its source is running, and
+// they pass every identity check. A gateway started on the copy must not stop them:
+// that would take down the live gateway's models from a scratch directory.
+func TestSweepIgnoresARecordFromAnotherRoot(t *testing.T) {
+	source, copied := t.TempDir(), t.TempDir()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	recordBackend(source, "llm", 1234, p, quietLog())
+	name := "llm-" + strconv.Itoa(p.PID()) + ".json"
+	b, err := os.ReadFile(filepath.Join(backendRecordsDir(source), name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(backendRecordsDir(copied), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backendRecordsDir(copied), name), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n := SweepBackends(copied, quietLog()); n != 0 {
+		t.Errorf("stopped %d from a copied record", n)
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("a gateway on a copy stopped its source's backend")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(copied), name)); err == nil {
+		t.Error("the copied record is still in the copy")
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(source), name)); err != nil {
+		t.Errorf("the source's own record went: %v", err)
+	}
+	// The source itself still sweeps it.
+	if n := SweepBackends(source, quietLog()); n != 1 {
+		t.Errorf("the source's own sweep stopped %d", n)
 	}
 }
