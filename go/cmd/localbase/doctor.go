@@ -10,6 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 func doctorCommand() *cli.Command {
@@ -23,6 +24,7 @@ func doctorCommand() *cli.Command {
 			if err := applyEnvOverrides(e.Config); err != nil {
 				return nil, err
 			}
+			c.Info("LocalBase: %s", version.Get())
 			s := memory.DetectSpecs()
 			c.Info("OS: %s", s.OSName)
 			c.Info("CPU: %s", s.CPUModel)

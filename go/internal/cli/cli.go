@@ -170,7 +170,9 @@ type App struct {
 	Name    string
 	Version string
 	Summary string
-	Root    *Command
+	// VersionDetails is what --version --json reports (default: only Version).
+	VersionDetails func() any
+	Root           *Command
 	// Default runs when no command is given (TS: configure).
 	Default string
 	Stdout  io.Writer
@@ -209,7 +211,11 @@ func (a *App) Run(args []string) int {
 	}
 	if len(rest) == 1 && (rest[0] == "--version" || rest[0] == "-v") {
 		if g.JSON {
-			a.writeEnvelope(map[string]any{"ok": true, "data": map[string]string{"version": a.Version}})
+			var data any = map[string]string{"version": a.Version}
+			if a.VersionDetails != nil {
+				data = a.VersionDetails()
+			}
+			a.writeEnvelope(map[string]any{"ok": true, "data": data})
 		} else {
 			fmt.Fprintln(a.Stdout, a.Version)
 		}
