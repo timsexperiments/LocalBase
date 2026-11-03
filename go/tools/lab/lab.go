@@ -209,6 +209,8 @@ type Gateway struct {
 	logFile  *os.File
 	waitDone chan struct{}
 	waitErr  error
+	// Startup is how long the process took from exec to answering /health.
+	Startup time.Duration
 }
 
 // Start creates a fixture (or reuses Opts.Reuse's root) and starts a gateway,
@@ -362,6 +364,7 @@ func (g *Gateway) launch(ctx context.Context) error {
 	}
 	g.logFile = f
 	cmd.Stdout, cmd.Stderr = f, f
+	began := time.Now()
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -371,7 +374,11 @@ func (g *Gateway) launch(ctx context.Context) error {
 		g.waitErr = cmd.Wait()
 		close(g.waitDone)
 	}()
-	return g.WaitHealthy(ctx, 60*time.Second)
+	if err := g.WaitHealthy(ctx, 60*time.Second); err != nil {
+		return err
+	}
+	g.Startup = time.Since(began)
+	return nil
 }
 
 // env is a scrubbed environment: no LOCALBASE_ or token settings from the
@@ -455,6 +462,9 @@ func (g *Gateway) Stop(grace time.Duration) (time.Duration, error) {
 		return time.Since(began), fmt.Errorf("gateway did not stop within %v", grace)
 	}
 }
+
+// LLMBase is the LLM backend's own address, for measuring against it directly.
+func (g *Gateway) LLMBase() string { return fmt.Sprintf("http://127.0.0.1:%d", g.ports["llm"]) }
 
 // Addr is the gateway's host:port.
 func (g *Gateway) Addr() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(g.Port)) }
