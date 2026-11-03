@@ -46,7 +46,7 @@ func (u *UI) LoginHelp(w http.ResponseWriter, r *http.Request, status int) {
 
 // LoginOnce posts the token in the URL fragment.
 func (u *UI) LoginOnce(w http.ResponseWriter, r *http.Request) {
-	u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "redeem", Local: true, Action: auth.LocalOncePath, Script: template.JS(auth.LocalRedeemScript)})
+	u.renderLocalSignIn(w, http.StatusOK, localSignIn{Mode: "redeem", Local: true, Action: auth.LocalOncePath, Script: template.JS(auth.LocalRedeemScript)}) //nolint:gosec // a constant from this binary, also pinned by hash in the CSP
 }
 
 // LoginExpired answers a wrong, used or expired link, all alike.
