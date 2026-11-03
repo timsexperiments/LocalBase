@@ -31,6 +31,9 @@ type FileFacts struct {
 	SplitIndex    int    // 1-based shard number, 0 when not split
 	SplitCount    int
 	Problem       string // why nothing could be read
+	// Refused: the header breaks the format or contradicts itself, so the file is
+	// never imported. Problem says why.
+	Refused bool
 }
 
 // GGUF general.file_type values (llama.cpp LLAMA_FTYPE).
@@ -48,6 +51,12 @@ const (
 	ggufMagic        = 0x46554747 // "GGUF"
 	ggmlMagic        = 0x67676d6c // whisper.cpp "ggml"
 	maxSafetensorsHd = 100 << 20
+	maxSidecarBytes  = 4 << 20
+	// maxSplitCount is far beyond any real split set. A shard count comes from a
+	// file's own bytes, so it is checked before anything is sized by it.
+	maxSplitCount = 4096
+	// maxVariantArtifacts bounds what inspecting one variant can list.
+	maxVariantArtifacts = 16384
 )
 
 func readMagic(path string) (uint32, int64, error) {
@@ -105,11 +114,19 @@ func inspectGGUF(path string) FileFacts {
 			strings.HasSuffix(k, ".context_length") || strings.HasSuffix(k, ".embedding_length")
 	})
 	ff := FileFacts{Format: Of("gguf", SourceInspect)}
+	nameIndex, nameCount := 0, 0
 	if m := shardNameRe.FindStringSubmatch(filepath.Base(path)); m != nil {
-		ff.SplitIndex, _ = strconv.Atoi(m[2])
-		ff.SplitCount, _ = strconv.Atoi(m[3])
+		nameIndex, _ = strconv.Atoi(m[2])
+		nameCount, _ = strconv.Atoi(m[3])
 	}
+	if nameCount > maxSplitCount {
+		return refuse(ff, fmt.Sprintf("the file name says it is one of %d parts, more than any real split set", nameCount))
+	}
+	ff.SplitIndex, ff.SplitCount = nameIndex, nameCount
 	if err != nil {
+		if errors.Is(err, memory.ErrNestedGGUFArray) {
+			return refuse(ff, "the GGUF header is not valid: "+err.Error())
+		}
 		ff.Problem = "GGUF header could not be read: " + err.Error()
 		return ff
 	}
@@ -140,12 +157,31 @@ func inspectGGUF(path string) FileFacts {
 			ff.Dimensions = Of(n, SourceInspect)
 		}
 	}
-	if n, ok := num("split.count"); ok && n > 1 {
-		ff.SplitCount = n
-		if i, ok := num("split.no"); ok {
-			ff.SplitIndex = i + 1
+	if raw, present := values["split.count"]; present {
+		n, ok := num("split.count")
+		switch {
+		case !ok || n > maxSplitCount:
+			return refuse(ff, fmt.Sprintf("the header's split.count (%v) is not a plausible number of parts", raw))
+		case n > 1 && nameCount != 0 && n != nameCount:
+			return refuse(ff, fmt.Sprintf("the header says it is one of %d parts, the file name says %d", n, nameCount))
+		case n > 1:
+			ff.SplitCount = n
+			if i, ok := num("split.no"); ok {
+				if i >= n || (nameIndex != 0 && i+1 != nameIndex) {
+					return refuse(ff, fmt.Sprintf("the header's split.no (%d) does not fit part %d of %d", i, nameIndex, n))
+				}
+				ff.SplitIndex = i + 1
+			}
 		}
 	}
+	return ff
+}
+
+// refuse marks a file whose header cannot be trusted. It claims no split, so
+// nothing is derived from the numbers it holds.
+func refuse(ff FileFacts, why string) FileFacts {
+	ff.Problem, ff.Refused = why, true
+	ff.SplitIndex, ff.SplitCount = 0, 0
 	return ff
 }
 
@@ -216,8 +252,13 @@ func inspectSafetensors(path string, size int64) (FileFacts, bool) {
 
 func sidecarArchitecture(dir string) string {
 	read := func(name string) map[string]any {
-		b, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil || len(b) > 4<<20 {
+		f, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, maxSidecarBytes+1))
+		if err != nil || len(b) > maxSidecarBytes {
 			return nil
 		}
 		var m map[string]any
@@ -278,6 +319,10 @@ func InspectVariant(v Variant, dir string) Inspection {
 					name := fmt.Sprintf("%s-%05d-of-%05d.gguf", m[1], i, ff.SplitCount)
 					if have[name] {
 						continue
+					}
+					if len(out.Variant.Artifacts) >= maxVariantArtifacts {
+						out.Problems = append(out.Problems, fmt.Sprintf("%s: the variant lists more than %d files", a.Filename, maxVariantArtifacts))
+						break
 					}
 					have[name] = true
 					// A shard the record did not list joins the variant when it is
