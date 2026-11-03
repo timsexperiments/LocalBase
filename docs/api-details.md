@@ -165,6 +165,7 @@ See [Operating LocalBase](operations.md) for queue limits, model-switch behavior
 local-base logs --level error
 local-base logs --limit 500 --since 2026-01-01T00:00:00Z
 local-base logs --runtime llm
+local-base logs --audit
 local-base --json logs --request-id req-123
 ```
 

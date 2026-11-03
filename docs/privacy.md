@@ -26,7 +26,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 | Settings | `local-base.db` (0600) | **Your Hugging Face token and OTLP headers, if you set them, are stored here in plain text** |
 | API keys | `local-base.db` | Stored as hashes. The secret is shown once |
 | Browser sign-in secrets | `ui-access.json` (0600) | Provider secrets |
-| Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives |
+| Logs | `logs/` | Redacted, with no prompts or responses. Rotated at 10 MiB, five archives. `logs/audit.jsonl` also keeps who changed what, by id, rotated the same way |
 | **Usage totals** | `local-base.db` | **On by default.** Hourly counts, tokens and durations per key or person, route, model and status, kept 30 days. Never prompts, replies, IP addresses or request bodies. See [usage and activity](usage.md), which also shows how to turn it off or clear it |
 | **Backups** | Where you write them, on this computer | **A backup holds secrets in plain text.** It's written only to this computer, and nothing uploads it. Keep it private. See [backup and restore](backup.md) |
 | **Detached run checkpoints** | `runs/<id>.json` (0600) | **Model output in plaintext.** Prompts aren't stored. Deleted when dismissed, or 30 minutes after the run ends |

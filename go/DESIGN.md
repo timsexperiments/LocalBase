@@ -4896,6 +4896,22 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+### 31.8 What a flood can write
+
+Every request wrote a line to the log, which keeps 60 MiB. So about 140,000 requests from anyone, a matter of
+seconds, could push out everything older, including the record of who changed what.
+
+- **Audit events have a file of their own.** `audit.*` events go to `logs/audit.jsonl` as well as the main log, with
+  the same rotation and modes, so nothing else can push them out. `local-base logs --audit` reads it.
+- **Only someone with standing writes one.** A refused change by a caller with no valid credential is no longer an
+  audit event, since anyone can send it. It's counted with other requests like it.
+- **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
+  summed in one `http.anonymous-summary` when a request arrives after that minute. A flood of 20,000 now writes
+  under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or
+  a signed-in API request, and from `--no-auth`. A page view from a signed-in person counts here too: the page layer
+  resolves the person after this point.
+- **`auth.signin-failed`** is limited the same way, with `held_back` saying how many it skipped.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
