@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -62,6 +63,7 @@ func loadMigrations() ([]migration, error) {
 
 // Open opens (creating if needed) the database and applies pending migrations.
 func Open(path string) (*Store, error) {
+	makePrivate(path)
 	// busy_timeout: the gateway and CLI share this file; wait for another
 	// process's write lock instead of failing with SQLITE_BUSY (#359).
 	// _txlock=immediate: writes never hit the deferred read-to-write upgrade,
@@ -77,6 +79,23 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// makePrivate creates the database file 0600 if it is missing, since SQLite would
+// create it under the umask and it holds secrets (DESIGN §27), and tightens the file
+// and its journals if they exist. SQLite gives new journals the database's mode. An
+// empty file is a new database to SQLite. It never fails: root.TightenPermissions
+// reports what could not be changed, and SQLite reports what cannot be opened.
+func makePrivate(path string) {
+	if f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
+		f.Close()
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		p := path + suffix
+		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 != 0 {
+			os.Chmod(p, info.Mode().Perm()&^0o077)
+		}
+	}
 }
 
 // OpenReadOnly opens an existing database without migrating or writing it.

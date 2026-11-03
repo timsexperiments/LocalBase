@@ -4220,3 +4220,38 @@ accelerator bytes against the GPU limit.
 
 `/app/strip`, which every visible page polls, is not traced and logs only on failure,
 like `/health`.
+## 27. Where secrets live, and file permissions (2026-11-02)
+
+**Nothing below is encrypted at rest.** The protection is file permissions: a root is
+private to the account that runs LocalBase, and anyone who can read as that account can
+read these.
+
+| Secret | Where | Stored as |
+| --- | --- | --- |
+| Hugging Face token | `local-base.db`, `config.hf_token` | Plain text |
+| OTLP headers | `local-base.db`, `config.otel_headers` | Plain text |
+| API keys | `local-base.db`, `api_keys.key_hash` | SHA-256 only; the key is shown once and cannot be recovered |
+| Browser sessions, magic links | `local-base.db` | SHA-256 of the token only |
+| OIDC client secret | `ui-access.json` | Plain text |
+| SMTP password | `email-delivery.json` | Plain text |
+| Auth-profile header values, for private downloads | `credentials/auth-profiles.json` | Plain text |
+| CSRF key | `runtime/ui-csrf.key` | Raw key |
+| Instance and service tokens | `runtime/gateway.lock/owner.json`; the service token is also in `service/manifest.json` and the launchd plist or systemd unit | Plain text |
+
+Copies of the database, such as `local-base.db.bak-*`, hold all of its plain-text
+secrets.
+
+**Permissions.** Directories are 0700 and files 0600.
+- `store.Open` creates the database 0600, since SQLite would otherwise use the umask,
+  and tightens an existing one and its `-wal` and `-shm`. SQLite gives new journals the
+  database's mode (`TestDatabaseIsPrivate`). The format does not change.
+- `serve` calls `root.TightenPermissions` at startup, so an older root is fixed. It covers
+  everything in the root, including database copies, except `models/` and `bin/`, which
+  hold no secrets and can be large; `bin/` keeps its packages' modes. It keeps an owner's
+  execute bit, follows no symlink, does nothing to what is already tight, and never stops
+  startup: a failure is the warning `root.permissions-failed`.
+- A symlinked database keeps the target's mode.
+
+**Limits.** File permissions do not protect against the same account, root, or a backup
+of the disk. Only `serve` runs the sweep, so a loose copy stays loose until the next
+start.
