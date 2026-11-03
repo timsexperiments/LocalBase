@@ -137,7 +137,7 @@ func New(d Deps) *UI {
 	base := template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/parts.html"))
 	auth.Stylesheet = "/app/assets/app.css?v=" + u.assetVer["app.css"]
 	u.pages = map[string]*template.Template{}
-	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound", "noaccess", "connect"} {
+	for _, page := range []string{"library", "running", "get", "details", "forbidden", "import", "backends", "lab", "studio", "voices", "chat", "settings", "admin", "welcome", "notfound", "noaccess", "connect", "usage"} {
 		t := template.Must(base.Clone())
 		u.pages[page] = template.Must(t.ParseFS(templateFS, "templates/"+page+".html"))
 	}
@@ -158,6 +158,8 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app/admin", u.admin)
 	m.HandleFunc("POST /app/admin/access", u.mutating("access:manage", u.adminAccess))
 	m.HandleFunc("POST /app/admin/keys", u.mutating("keys:manage", u.adminKeys))
+	m.HandleFunc("GET /app/usage", u.need("models:read", u.usagePage))
+	m.HandleFunc("POST /app/usage/change", u.mutating("models:read", u.usageChange))
 	m.HandleFunc("GET /app/connect", u.need("models:read", u.connectPage))
 	m.HandleFunc("POST /app/connect/key", u.mutating("keys:manage", u.connectKey))
 	m.HandleFunc("GET /app/assets/{name...}", u.asset)
