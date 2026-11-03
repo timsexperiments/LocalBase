@@ -651,7 +651,6 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		res.Release()
 		return nil, fail(err)
 	}
-	res.Materialize(proc.PID())
 	budget := defaultStartupBudget
 	if plan.ArtifactBytes >= largeStartupWeights {
 		budget = largeStartupBudget
@@ -670,6 +669,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 		logStartFailed(m.d.Log, "llm", err)
 		return nil, err
 	}
+	res.Materialize(proc.PID())
 	m.d.Log.InfoContext(ctx, name+" is ready for "+modelID+".", "event", "runtime.ready", "runtime", "llm", "model_id", modelID, "pid", proc.PID())
 	sampling, stopSampling := context.WithCancel(context.Background())
 	return &backend{modelID: modelID, spec: spec, target: t, demand: demand, plan: plan, proc: proc, res: res, baseURL: base,
