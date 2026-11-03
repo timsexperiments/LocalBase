@@ -4,7 +4,9 @@
 // ones it does not need.
 //
 // Environment: FAKE_FAIL_MODEL=<substring> exits during startup when -m
-// contains it; FAKE_DELAY_MS delays each completion.
+// contains it; FAKE_FAIL_FILE=<path> exits during startup while that file
+// exists, so a test can make starts fail and recover; FAKE_DELAY_MS delays each
+// completion.
 //
 // A last user message starting with "fake:" selects a behavior: "fake:reply <text>"
 // answers <text>, "fake:context" fails like an overflowing prompt,
@@ -47,6 +49,10 @@ func main() {
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--localbase-capabilities":
+			// What Linux asks of an sd-server before running it (requireSdGPUContract).
+			fmt.Println("localbase-sd-gpu-pci-v1")
+			return
 		case "--host", "--listen-ip":
 			i++
 			host = args[i]
@@ -74,6 +80,12 @@ func main() {
 	if f := os.Getenv("FAKE_FAIL_MODEL"); f != "" && strings.Contains(model, f) {
 		fmt.Fprintln(os.Stderr, "fake: refusing to load", model)
 		os.Exit(3)
+	}
+	if f := os.Getenv("FAKE_FAIL_FILE"); f != "" {
+		if _, err := os.Stat(f); err == nil {
+			fmt.Fprintln(os.Stderr, "fake: refusing to start while", f, "exists")
+			os.Exit(3)
+		}
 	}
 	delay, _ := strconv.Atoi(os.Getenv("FAKE_DELAY_MS"))
 	name := model[strings.LastIndex(model, "/")+1:]
