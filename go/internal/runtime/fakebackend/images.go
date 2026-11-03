@@ -51,6 +51,7 @@ func fakePNG(prompt string, seed int64) string {
 // is recorded in FAKE_CANCEL_LOG.
 func addImages(mux *http.ServeMux) {
 	answer := func(w http.ResponseWriter, r *http.Request, prompt string, n int) {
+		dieIfAsked(w, prompt)
 		if strings.Contains(prompt, "fake:slow-image") {
 			select {
 			case <-time.After(1500 * time.Millisecond):
