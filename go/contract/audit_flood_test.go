@@ -7,9 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // A real gateway and a real flood: the main log barely grows, the audit event stays, and the
@@ -51,13 +52,16 @@ func TestAuditEventsSurviveAFlood(t *testing.T) {
 	}
 	before := size("events.jsonl")
 	const flood = 20000
-	for range flood {
-		resp, err := http.Get(e.base + "/v1/models")
+	if err := testutil.Flood(1, flood, func(c *http.Client) {
+		resp, err := c.Get(e.base + "/v1/models")
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
+	}); err != nil {
+		t.Fatal(err)
 	}
 	const refusedChanges = 3
 	for range refusedChanges {
@@ -147,9 +151,9 @@ func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
 	}
 	e.serve()
 	defer e.stop()
-	post := func(c *http.Client, key string) int {
+	post := func(c *http.Client, key string, body io.Reader) int {
 		t.Helper()
-		req, _ := http.NewRequest("POST", e.base+"/_localbase/api-keys", strings.NewReader(`{"action":"create","name":"x","scopes":["keys:read"]}`))
+		req, _ := http.NewRequest("POST", e.base+"/_localbase/api-keys", body)
 		req.Header.Set("Authorization", "Bearer "+key)
 		resp, err := c.Do(req)
 		if err != nil {
@@ -160,32 +164,29 @@ func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
 		resp.Body.Close()
 		return resp.StatusCode
 	}
-	if code := post(http.DefaultClient, admin); code != 201 {
-		t.Fatalf("the change: %d", code)
+	change := func() {
+		t.Helper()
+		if code := post(http.DefaultClient, admin, strings.NewReader(`{"action":"create","name":"x","scopes":["keys:read"]}`)); code != 201 {
+			t.Fatalf("the change: %d", code)
+		}
 	}
+	change()
 	logs := filepath.Join(e.root, "logs")
 	before, err := os.Stat(filepath.Join(logs, "audit.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Before this limit, about 160,000 of these took the record out of every file.
+	// Before this limit, about 160,000 of these took the record out of every file. They carry no
+	// body, because a refusal closes a connection whose body it hasn't read.
 	const flood = 170_000
-	var left, wrong atomic.Int64
-	left.Store(flood)
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			c := &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: 8}}
-			for left.Add(-1) >= 0 {
-				if post(c, reader) != 403 {
-					wrong.Add(1)
-				}
-			}
-		}()
+	var wrong atomic.Int64
+	if err := testutil.Flood(8, flood, func(c *http.Client) {
+		if post(c, reader, nil) != 403 {
+			wrong.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
 	if n := wrong.Load(); n != 0 {
 		t.Errorf("%d answers weren't a refusal", n)
 	}
@@ -196,6 +197,7 @@ func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
 	if grew := after.Size() - before.Size(); grew > 64<<10 {
 		t.Errorf("the audit file grew %d bytes for %d refusals", grew, flood)
 	}
+	change() // while refusals are being held back
 	e.stop()
 	var kept strings.Builder
 	matches, _ := filepath.Glob(filepath.Join(logs, "audit*.jsonl"))
@@ -206,8 +208,8 @@ func TestRefusedChangesCannotPushOutWhoChangedWhat(t *testing.T) {
 		}
 		kept.Write(b)
 	}
-	if !strings.Contains(kept.String(), "audit.api-key-changed") {
-		t.Errorf("the record of the change is gone, from %d files", len(matches))
+	if n := strings.Count(kept.String(), "audit.api-key-changed"); n != 2 {
+		t.Errorf("%d records of the 2 changes are left, in %d files", n, len(matches))
 	}
 	// What was held back is said when the gateway stops, in the file it was held back from.
 	if !strings.Contains(kept.String(), "audit.refused-summary") {
