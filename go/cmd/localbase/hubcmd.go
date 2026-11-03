@@ -76,8 +76,11 @@ func modelsSearch() *cli.Command {
 			var cfg *store.Config
 			if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
 				if st, err := store.Open(filepath.Join(dir, "local-base.db")); err == nil {
-					cfg, _ = st.LoadConfig(context.Background())
+					cfg, err = persistedConfig(st)
 					st.Close()
+					if err != nil {
+						return nil, err
+					}
 				}
 			}
 			query := strings.Join(c.Args, " ")

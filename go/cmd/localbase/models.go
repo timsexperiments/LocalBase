@@ -48,20 +48,18 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(e.Root.DB()); err == nil {
-		// With no usable database the defaults stand in, but a busy one has settings: reporting
-		// defaults as if they were those would be wrong, and exit 0.
+		// There is a database, so it has settings, and defaults reported as if they were those would
+		// be wrong, and exit 0.
 		st, err := store.OpenReadOnly(e.Root.DB())
-		if store.IsBusy(err) {
-			return nil, err
+		if err != nil {
+			return nil, &failedRead{"opening the database", err}
 		}
-		if err == nil {
-			e.Store = st
-			if persisted {
-				afterReadOpen()
-				if e.Config, err = persistedConfig(st); err != nil {
-					_ = st.Close() // Read-only.
-					return nil, err
-				}
+		e.Store = st
+		if persisted {
+			afterReadOpen()
+			if e.Config, err = persistedConfig(st); err != nil {
+				_ = st.Close() // Read-only.
+				return nil, err
 			}
 		}
 	}
@@ -108,12 +106,27 @@ func specJSON(s *catalog.Spec, extra map[string]any) map[string]any {
 	return m
 }
 
-func cliFit(e *env, s *catalog.Spec, memoryGB int) *runtime.Fit {
+func cliFit(e *env, s *catalog.Spec, memoryGB int) (*runtime.Fit, error) {
 	var peaks []store.ObservedPeak
 	if sha := s.Primary().SHA256; sha != "" && e.Store != nil {
-		peaks, _ = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha)
+		var err error
+		if peaks, err = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha); err != nil {
+			return nil, &failedRead{"reading the memory peaks seen for " + s.ModelID, err}
+		}
 	}
-	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s))
+	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s)), nil
+}
+
+// cliVoices is the custom voices a speech model's page lists.
+func cliVoices(e *env, s *catalog.Spec) ([]store.Voice, error) {
+	if s.Kind != "tts" || e.Store == nil {
+		return nil, nil
+	}
+	voices, err := e.Store.Voices(context.Background())
+	if err != nil {
+		return nil, &failedRead{"reading the custom voices", err}
+	}
+	return voices, nil
 }
 
 func tier(s *catalog.Spec) string {
@@ -198,7 +211,10 @@ func modelsCatalog() *cli.Command {
 			out := []map[string]any{}
 			for _, m := range rows {
 				s := e.Catalog.ByID(m.ID)
-				f := cliFit(e, s, memGB)
+				f, err := cliFit(e, s, memGB)
+				if err != nil {
+					return nil, err
+				}
 				c.Info("%-5s | %-38s | size=%-10s | plan_min=%3d GB %-8s | fit=%-8s | storage=%.2f GB | status=%s",
 					s.Kind, s.ModelID, s.Size, f.MinVramGB, f.Source, f.Fit, s.StorageGB, s.CommercialStatus)
 				line := fmt.Sprintf("      in=%s out=%s features=%s", strings.Join(s.InputModalities, ","),
@@ -287,7 +303,10 @@ func modelsRecommend() *cli.Command {
 			c.Info("Recommended %s models for <= %dGB VRAM:", strings.ToUpper(kind), vram)
 			out := []map[string]any{}
 			for _, s := range picks {
-				f := cliFit(e, s, vram)
+				f, err := cliFit(e, s, vram)
+				if err != nil {
+					return nil, err
+				}
 				c.Info("- %s (%.2f GB, planning min %d GB %s, features=%s)", s.ModelID, s.StorageGB, f.MinVramGB, f.Source,
 					strings.Join(meta.Features(s), "/"))
 				out = append(out, specJSON(s, memoryJSON(f)))
@@ -520,9 +539,9 @@ func modelsShow() *cli.Command {
 			if s == nil {
 				return nil, cli.Inputf("Unknown model id: %s", c.Args[0])
 			}
-			var voices []store.Voice
-			if s.Kind == "tts" && e.Store != nil {
-				voices, _ = e.Store.Voices(context.Background())
+			voices, err := cliVoices(e, s)
+			if err != nil {
+				return nil, err
 			}
 			m := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
 				MemoryGB: e.memoryGB(), Voices: voices, CLI: true}, s)
