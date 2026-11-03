@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -123,5 +125,34 @@ func TestLookalikesInBindingsAndProgramsAreShownForWhatTheyAre(t *testing.T) {
 	}
 	if strings.Contains(out, lookalike) {
 		t.Errorf("the lookalike reached the terminal:\n%s", out)
+	}
+}
+
+// A person's own path has to read as they'd type it, in the lines that give them a command to copy.
+func TestAPersonsOwnPathKeepsItsLetters(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "jos\u00e9", "root")
+	if err := os.MkdirAll(filepath.Dir(root), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	theirs := noAuthRoot(t)
+	file := filepath.Join(t.TempDir(), "b.lbbackup")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	busy := ln.Addr().(*net.TCPAddr).Port
+	if code, out := runApp(t, "--root", theirs, "configure", "--defaults", "--no-create-key", "--port", strconv.Itoa(busy)); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	if code, out := runApp(t, "--root", theirs, "backup", "--output", file); code != 0 {
+		t.Fatalf("backup: %s", out)
+	}
+	code, out := runApp(t, "--root", root, "restore", "--dry-run", file)
+	if code != 0 {
+		t.Fatalf("restore: %s", out)
+	}
+	if want := "local-base --root '" + root + "'"; !strings.Contains(out, want) {
+		t.Errorf("no %q in:\n%s", want, out)
 	}
 }
