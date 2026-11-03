@@ -267,6 +267,12 @@ func placementLines(model string, ngl, cpuMoE int) {
 	if ngl < 0 || ngl > total {
 		ngl = total
 	}
+	// FAKE_NO_GPU_LINES: as a CPU-only llama.cpp build, which reports no devices and no
+	// offload. Seen on a real Linux machine with no GPU.
+	if os.Getenv("FAKE_NO_GPU_LINES") != "" {
+		fmt.Fprintln(os.Stderr, "main: Available devices: (none)")
+		return
+	}
 	fmt.Fprintf(os.Stderr, "load_tensors: offloaded %d/%d layers to GPU\n", ngl, total)
 	compute := os.Getenv("FAKE_COMPUTE_MIB")
 	if compute == "" {

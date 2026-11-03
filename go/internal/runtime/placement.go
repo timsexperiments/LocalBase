@@ -65,6 +65,10 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 // /health answers (they are read from its pipes asynchronously).
 var placementSettle = 2 * time.Second
 
+// cpuPlacementSettle is the same for a plan with no GPU layers: long enough to catch
+// a report that contradicts the plan, without slowing every CPU-only load.
+const cpuPlacementSettle = 250 * time.Millisecond
+
 // checkPlacement validates the backend's startup output against the plan
 // and fails closed on a difference (DESIGN §20.5).
 func (m *LLM) checkPlacement(proc *Process, plan *LLMPlan) error {
@@ -72,7 +76,11 @@ func (m *LLM) checkPlacement(proc *Process, plan *LLMPlan) error {
 	if p == nil || (p.Platform == placement.Unified && len(p.Args) == 0) {
 		return nil
 	}
-	deadline := time.Now().Add(placementSettle)
+	settle := placementSettle
+	if p.GPULayers == 0 {
+		settle = cpuPlacementSettle // the line may never come, so do not wait it out
+	}
+	deadline := time.Now().Add(settle)
 	log := proc.StartupLog()
 	for !bytes.Contains(log, []byte("layers to GPU")) && time.Now().Before(deadline) {
 		time.Sleep(25 * time.Millisecond)

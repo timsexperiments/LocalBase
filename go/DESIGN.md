@@ -2540,6 +2540,8 @@ VRAM, the planner reproduces from the header alone:
 
 ### 20.5 Startup placement check (fail closed)
 
+A plan with no GPU layers needs no offload line: a CPU-only llama.cpp build prints "Available devices: (none)" and nothing about offloading. A line that contradicts such a plan still fails, and a plan with GPU layers must still report them.
+
 The llama-server output is read as bytes; a strict UTF-8 decode once
 crashed a harness.
 - **Experts:** with `--n-cpu-moe N`, every expected expert tensor of layers
