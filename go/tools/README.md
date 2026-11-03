@@ -12,6 +12,11 @@ themselves.
 | `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `tools/fetch-ci-tools.sh <dir>` | The lint and secret-scan tools at CI's versions |
 
+Run the secret scan the way CI does, from the repository root:
+`gitleaks dir . --no-banner --redact --config .gitleaks.toml`. That scans the files as they
+stand. `gitleaks detect` scans history instead and reports other things, so its result says
+nothing about whether CI will pass.
+
 ## Where things go
 
 - **Built tools:** `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE` if set. They are
