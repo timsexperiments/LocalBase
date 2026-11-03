@@ -46,10 +46,16 @@ type Model struct {
 	Tensors       []Tensor
 	ArtifactBytes int64 // the file, a conservative bound on resident weights
 	Layers        int   // repeating blocks (block_count)
+	// HostExtraBytes is the system memory a CPU load holds beyond the file and its KV
+	// cache: the runtime, the prompt cache, the slot state. Without it the plan is
+	// smaller than what admission asks for.
+	HostExtraBytes int64
 }
 
 // Device is the machine and backend the model would run on.
 type Device struct {
+	// KeptBytes is the reserve already taken out of HostAvailable, for the refusal.
+	KeptBytes     int64
 	Platform      string
 	FreeVRAM      int64 // free VRAM on GPU 0 (discrete)
 	HostAvailable int64 // usable system memory for the host side
@@ -192,7 +198,7 @@ func (s sizes) evaluate(m Model, kv int64, nMoE, gpuLayers int) split {
 	total := m.Layers + 1
 	sp := split{nMoE: nMoE, gpuLayers: gpuLayers}
 	if gpuLayers == 0 {
-		sp.host = m.ArtifactBytes + kv
+		sp.host = m.ArtifactBytes + kv + m.HostExtraBytes
 		return sp
 	}
 	hostExperts := int64(0)
@@ -374,7 +380,7 @@ func Resolve(m Model, kv int64, d Device, r Request) (Plan, error) {
 		p.Args = append(p.Args, "-ngl", strconv.Itoa(sp.gpuLayers))
 	}
 	if p.Note == "" {
-		p.Note = describe(p, r.Mode)
+		p.Note = Describe(p, r.Mode)
 	}
 	return p, nil
 }
@@ -385,13 +391,17 @@ func doesNotFit(sp split, d Device) error {
 		return &Error{"placement_does_not_fit", fmt.Sprintf("This placement needs %s of GPU memory (including the %s reserve), but %s is free. Choose auto, keep more layers or experts in CPU memory, or lower the context size.",
 			gib(sp.gpu+ReserveBytes), gib(ReserveBytes), gib(d.FreeVRAM))}
 	}
-	return &Error{"placement_does_not_fit", fmt.Sprintf("This placement needs %s of system memory, but %s is available. Keep more of the model on the GPU, close other applications, or lower the context size.",
+	kept := ""
+	if d.KeptBytes > 0 {
+		kept = " after keeping " + gib(d.KeptBytes) + " for your computer"
+	}
+	return &Error{"placement_does_not_fit", fmt.Sprintf("This placement needs %s of system memory, but %s is available"+kept+". Keep more of the model on the GPU, close other applications, or lower the context size.",
 		gib(sp.host), gib(d.HostAvailable))}
 }
 
-// describe is the factual line for a discrete placement: capacity and CPU
+// Describe is the factual line for a discrete placement: capacity and CPU
 // use only.
-func describe(p Plan, mode string) string {
+func Describe(p Plan, mode string) string {
 	gb := strconv.FormatFloat(float64(p.HostBytes)/(1<<30), 'f', 1, 64) + " GB"
 	switch {
 	case p.GPULayers == 0:
