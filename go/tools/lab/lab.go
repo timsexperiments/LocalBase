@@ -195,6 +195,9 @@ type Options struct {
 	Dir string
 	// PrepareRoot runs after the fixture is written, before the gateway starts.
 	PrepareRoot func(rootDir string) error
+	// RuntimePortBase starts the gateway with --runtime-port-base instead of a flag
+	// per runtime. The caller finds the five free ports.
+	RuntimePortBase int
 	// Reuse restarts on another gateway's root, with its keys. SamePorts keeps
 	// its ports too, as a real restart would.
 	Reuse     *Gateway
@@ -379,9 +382,13 @@ func (g *Gateway) launch(ctx context.Context) error {
 	g.Port, g.Debug = g.ports["gateway"], fmt.Sprintf("127.0.0.1:%d", g.ports["debug"])
 	g.Base = fmt.Sprintf("http://127.0.0.1:%d", g.Port)
 	args := []string{"--root", g.Root, "serve", "--host", "127.0.0.1", "--port", strconv.Itoa(g.Port),
-		"--llm-port", strconv.Itoa(g.ports["llm"]), "--stt-port", strconv.Itoa(g.ports["stt"]), "--tts-port", strconv.Itoa(g.ports["tts"]),
-		"--image-port", strconv.Itoa(g.ports["image"]), "--video-port", strconv.Itoa(g.ports["video"]),
 		"--inference-queue-capacity", strconv.Itoa(g.Opts.QueueCapacity), "--inference-queue-timeout-ms", strconv.Itoa(g.Opts.QueueTimeoutMS)}
+	if g.Opts.RuntimePortBase > 0 {
+		args = append(args, "--runtime-port-base", strconv.Itoa(g.Opts.RuntimePortBase))
+	} else {
+		args = append(args, "--llm-port", strconv.Itoa(g.ports["llm"]), "--stt-port", strconv.Itoa(g.ports["stt"]), "--tts-port", strconv.Itoa(g.ports["tts"]),
+			"--image-port", strconv.Itoa(g.ports["image"]), "--video-port", strconv.Itoa(g.ports["video"]))
+	}
 	if g.Opts.CtxSize > 0 {
 		args = append(args, "--ctx-size", strconv.Itoa(g.Opts.CtxSize))
 	}
