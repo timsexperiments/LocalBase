@@ -1,6 +1,9 @@
 package store
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,33 +20,58 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
-// ownerSuffix names the file beside the database saying which file its -wal belongs to.
+// ownerSuffix names the file beside the database saying which database its -wal belongs to.
 const ownerSuffix = "-wal-owner"
 
 // walHeaderMode is byte 18 of a database, its write version, when it is in write-ahead logging.
 const walHeaderMode = 2
 
-// fileID says which file this is, whatever it's called. A copy or a restored file is another one.
-func fileID(path string) (string, error) {
-	info, err := os.Stat(path)
+// tokenOffset is where the database header holds application_id, which this uses as a token for the
+// database: unlike an inode, it can't be reused by a new file, and it goes with the file when it's
+// copied. It's read from the bytes of the main file, because SQLite would answer from the -wal being judged.
+const tokenOffset = 68
+
+// fileToken is the token in the main file's own header, 0 if it has none.
+func fileToken(path string) (uint32, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return "", errors.New("no file identity here")
+	defer func() { _ = f.Close() }() // only read
+	b := make([]byte, 4)
+	if _, err := f.ReadAt(b, tokenOffset); errors.Is(err, io.EOF) {
+		return 0, nil // a new, empty file
+	} else if err != nil {
+		return 0, err
 	}
-	return strconv.FormatUint(uint64(st.Dev), 10) + ":" + strconv.FormatUint(st.Ino, 10), nil
+	return binary.BigEndian.Uint32(b), nil
 }
 
-// recordWALOwner notes which file the -wal belongs to. It can't be done on a read-only root, which
-// writes no -wal either. Failing here only makes checkWALBelongs unable to tell.
-func recordWALOwner(path string) {
-	id, err := fileID(path)
+// walIsEmpty: no commits are waiting in a -wal, so nobody else is writing and nothing needs judging.
+func walIsEmpty(path string) bool {
+	info, err := os.Stat(path + "-wal")
+	return err != nil || info.Size() == 0
+}
+
+// claimWAL gives a database its token if it has none, and records whose -wal this is. It runs on a
+// clean, writable open only, the -wal having been empty when it began: with commits in it, this can't
+// know whose they are. Failing here only leaves checkWALBelongs unable to tell until the next open, so
+// nothing here stops the open.
+func (s *Store) claimWAL(ctx context.Context, path string) {
+	token, err := fileToken(path)
 	if err != nil {
 		return
 	}
+	if token == 0 {
+		if err := s.setToken(ctx); err != nil {
+			return
+		}
+		if token, err = fileToken(path); err != nil || token == 0 {
+			return // another process's commits kept the checkpoint from finishing: the next open
+		}
+	}
 	owner := path + ownerSuffix
+	id := strconv.FormatUint(uint64(token), 10)
 	if b, err := os.ReadFile(owner); err == nil && string(b) == id {
 		return
 	}
@@ -53,12 +81,45 @@ func recordWALOwner(path string) {
 	}
 }
 
-// checkWALBelongs refuses a -wal with commits in it that came with a different database file. A -wal
-// says nothing of which database it belongs to: SQLite would replay it into this one and damage it
-// (https://www.sqlite.org/howtocorrupt.html, "Mispairing database files and hot journals"). This
-// catches a database moved or restored into place. It can't see one overwritten in place, one deleted
-// and written again if the filesystem gives it the old inode number, as Linux can, or a -wal copied in
-// with its owner file. A restore's own guarantee is that it leaves no -wal behind.
+// setToken writes a random token, unless another process got there first, and checkpoints so that it
+// reaches the main file's header.
+func (s *Store) setToken(ctx context.Context) error {
+	conn, err := s.DB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }() // back to the pool
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return err
+	}
+	var current int64
+	err = conn.QueryRowContext(ctx, `PRAGMA application_id`).Scan(&current)
+	if err == nil && current == 0 {
+		b := make([]byte, 4)
+		if _, err = rand.Read(b); err == nil {
+			// application_id is signed, and a value of 0 means none.
+			token := int32(binary.BigEndian.Uint32(b)>>1) | 1
+			_, err = conn.ExecContext(ctx, `PRAGMA application_id = `+strconv.Itoa(int(token)))
+		}
+	}
+	if err != nil {
+		_, _ = conn.ExecContext(ctx, `ROLLBACK`) // the error is what matters
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return err
+	}
+	_, err = conn.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	return err
+}
+
+// checkWALBelongs refuses a -wal with commits in it that came with a different database. A -wal says
+// nothing of which database it belongs to, and SQLite would replay it into this one and damage it: from
+// the SQLite docs, https://www.sqlite.org/howtocorrupt.html, "Mispairing database files and hot
+// journals". This catches a database replaced by another in any way, and a -wal carried in with its
+// owner file. It can't see a root with no owner file yet, an older copy of the same database with its
+// later -wal, which has the same token, or a database and its owner file copied in together under a -wal
+// that isn't theirs. A restore's own guarantee is that it leaves no -wal behind.
 func checkWALBelongs(path string) error {
 	wal := path + "-wal"
 	info, err := os.Stat(wal)
@@ -69,8 +130,8 @@ func checkWALBelongs(path string) error {
 	if err != nil {
 		return nil // no record to compare, as on a root that hasn't opened with this build
 	}
-	id, err := fileID(path)
-	if err != nil || id == string(recorded) {
+	token, err := fileToken(path)
+	if err != nil || strconv.FormatUint(uint64(token), 10) == string(recorded) {
 		return nil
 	}
 	return fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, as after copying a whole root, remove %s and try again", wal, path+ownerSuffix)

@@ -89,6 +89,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	clean := walIsEmpty(path)
 	if err := s.useWAL(context.Background()); err != nil {
 		db.Close()
 		if readOnlyRoot(err) {
@@ -96,13 +97,15 @@ func Open(path string) (*Store, error) {
 		}
 		return nil, plainIfBusy(err)
 	}
-	recordWALOwner(path)
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
 		if readOnlyRoot(err) {
 			return OpenReadOnly(path)
 		}
 		return nil, plainIfBusy(err)
+	}
+	if clean {
+		s.claimWAL(context.Background(), path)
 	}
 	return s, nil
 }

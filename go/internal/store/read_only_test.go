@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -194,69 +195,230 @@ func TestReadingAStoppedRootLeavesNoTrace(t *testing.T) {
 	}
 }
 
-// A -wal with commits in it beside a different file isn't replayed: it would damage that file.
-func TestAWALFromAnotherFileIsRefused(t *testing.T) {
-	_, crashed := aCrashedRoot(t, false)
-	wal, err := os.ReadFile(crashed + "-wal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir, path := aRoot(t, "wal")
-	// Replaced by a copy, as a restore does, keeping the old file: another file with the same name.
-	// Removing the old one first could give the new one its inode, which this can't see.
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(path, filepath.Join(t.TempDir(), "kept.db")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path+"-wal", wal, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	before := rootFiles(t, dir)
-	for name, open := range map[string]func(string) (*Store, error){"Open": Open, "OpenReadOnly": OpenReadOnly} {
-		st, err := open(path)
-		if err == nil {
-			st.Close()
-			t.Fatalf("%s opened it", name)
+// A -wal with commits in it isn't replayed into a database it didn't come from, however that database
+// got there. Whatever inode the new file gets, this has to hold: the token is what's compared.
+func TestAWALFromAnotherDatabaseIsRefused(t *testing.T) {
+	foreignWAL := func(t *testing.T) []byte {
+		t.Helper()
+		_, crashed := aCrashedRoot(t, false)
+		wal, err := os.ReadFile(crashed + "-wal")
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, want := range []string{path + "-wal", "move it somewhere safe", path + ownerSuffix} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("%s: %q lacks %q", name, err, want)
+		return wal
+	}
+	other := func(t *testing.T) []byte { // another database, with a token of its own
+		t.Helper()
+		_, p := aRoot(t, "wal")
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	for _, tc := range []struct {
+		name    string
+		replace func(t *testing.T, path string)
+	}{
+		{"deleted and written again", func(t *testing.T, path string) {
+			body := other(t)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
 			}
-		}
+			if err := os.WriteFile(path, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"overwritten in place", func(t *testing.T, path string) {
+			if err := os.WriteFile(path, other(t), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"replaced, keeping the old file", func(t *testing.T, path string) {
+			body := other(t)
+			if err := os.Rename(path, filepath.Join(t.TempDir(), "kept.db")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"the same file, with the -wal and owner file of another", func(t *testing.T, path string) {
+			_, from := aCrashedRootWithOwner(t)
+			owner, err := os.ReadFile(from + ownerSuffix)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path+ownerSuffix, owner, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a database from before tokens", func(t *testing.T, path string) {
+			body := other(t)
+			copy(body[tokenOffset:tokenOffset+4], []byte{0, 0, 0, 0})
+			if err := os.WriteFile(path, body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, path := aRoot(t, "wal")
+			tc.replace(t, path)
+			if err := os.WriteFile(path+"-wal", foreignWAL(t), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			before := rootFiles(t, dir)
+			for name, open := range map[string]func(string) (*Store, error){"Open": Open, "OpenReadOnly": OpenReadOnly} {
+				st, err := open(path)
+				if err == nil {
+					st.Close()
+					t.Fatalf("%s opened it", name)
+				}
+				for _, want := range []string{path + "-wal", "move it somewhere safe", path + ownerSuffix} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("%s: %q lacks %q", name, err, want)
+					}
+				}
+			}
+			if after := rootFiles(t, dir); after != before {
+				t.Errorf("a refusal changed the root:\n%s\nwas\n%s", after, before)
+			}
+			// The way out it gives.
+			if err := os.Rename(path+"-wal", filepath.Join(t.TempDir(), "kept-wal")); err != nil {
+				t.Fatal(err)
+			}
+			st, err := Open(path)
+			if err != nil {
+				t.Fatalf("with it moved aside: %v", err)
+			}
+			st.Close()
+		})
 	}
-	if after := rootFiles(t, dir); after != before {
-		t.Errorf("a refusal changed the root:\n%s\nwas\n%s", after, before)
+}
+
+// aCrashedRootWithOwner is aCrashedRoot, carrying the owner file a real root would have.
+func aCrashedRootWithOwner(t *testing.T) (dir, path string) {
+	t.Helper()
+	dir, path = aCrashedRoot(t, false)
+	token, err := fileToken(path)
+	if err != nil || token == 0 {
+		t.Fatalf("no token: %d %v", token, err)
 	}
-	// The way out it gives.
-	if err := os.Rename(path+"-wal", filepath.Join(t.TempDir(), "kept-wal")); err != nil {
+	if err := os.WriteFile(path+ownerSuffix, []byte(strconv.FormatUint(uint64(token), 10)), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	return dir, path
+}
+
+// The token is in the file's own header, once, and stays there.
+func TestADatabaseGetsOneToken(t *testing.T) {
+	_, path := aRoot(t, "wal")
+	first, err := fileToken(path)
+	if err != nil || first == 0 {
+		t.Fatalf("%d %v", first, err)
 	}
 	st, err := Open(path)
 	if err != nil {
-		t.Fatalf("with it moved aside: %v", err)
+		t.Fatal(err)
 	}
-	wantSetting(t, st, "stored")
 	st.Close()
+	if again, err := fileToken(path); err != nil || again != first {
+		t.Errorf("it changed: %d, was %d: %v", again, first, err)
+	}
+	owner, err := os.ReadFile(path + ownerSuffix)
+	if err != nil || string(owner) != strconv.FormatUint(uint64(first), 10) {
+		t.Errorf("owner file %q, token %d: %v", owner, first, err)
+	}
+	_, otherPath := aRoot(t, "wal")
+	if other, _ := fileToken(otherPath); other == first {
+		t.Errorf("two databases share a token: %d", first)
+	}
 }
 
-// What must keep working: a whole root copied after a clean stop, and a root moved after a crash,
-// whose -wal is still its own.
+// A database from before tokens gets one at its next writable open, and one that arrives with a token
+// and no owner file, as a restored one does, keeps it and gets an owner file.
+func TestADatabaseWithoutARecordGetsOne(t *testing.T) {
+	t.Run("from before tokens", func(t *testing.T) {
+		_, path := aRoot(t, "delete")
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(b[tokenOffset:tokenOffset+4], []byte{0, 0, 0, 0})
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path + ownerSuffix); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantSetting(t, st, "stored")
+		st.Close()
+		if token, err := fileToken(path); err != nil || token == 0 {
+			t.Errorf("%d %v", token, err)
+		}
+		if _, err := os.Stat(path + ownerSuffix); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("restored, with a token and no owner file", func(t *testing.T) {
+		_, path := aRoot(t, "wal")
+		token, err := fileToken(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path + ownerSuffix); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Close()
+		if after, _ := fileToken(path); after != token {
+			t.Errorf("the token changed: %d, was %d", after, token)
+		}
+		if b, err := os.ReadFile(path + ownerSuffix); err != nil || string(b) != strconv.FormatUint(uint64(token), 10) {
+			t.Errorf("%q %v", b, err)
+		}
+	})
+	t.Run("replaced cleanly: no -wal, so nothing to judge, and the record follows", func(t *testing.T) {
+		_, path := aRoot(t, "wal")
+		_, from := aRoot(t, "wal")
+		b, err := os.ReadFile(from)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.Close()
+		token, _ := fileToken(path)
+		if got, err := os.ReadFile(path + ownerSuffix); err != nil || string(got) != strconv.FormatUint(uint64(token), 10) {
+			t.Errorf("%q, token %d: %v", got, token, err)
+		}
+	})
+}
+
+// What must keep working: a whole root copied or moved, after a clean stop or a crash. Its -wal, its
+// database and its owner file are all still each other's.
 func TestALegitimateRootStillOpens(t *testing.T) {
-	t.Run("copied after a clean stop", func(t *testing.T) {
-		dir, path := aRoot(t, "wal")
+	copyDir := func(t *testing.T, from string) string {
+		t.Helper()
 		to := t.TempDir()
-		entries, err := os.ReadDir(dir)
+		entries, err := os.ReadDir(from)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, e := range entries {
-			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			b, err := os.ReadFile(filepath.Join(from, e.Name()))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -264,7 +426,11 @@ func TestALegitimateRootStillOpens(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		st, err := Open(filepath.Join(to, filepath.Base(path)))
+		return to
+	}
+	t.Run("copied after a clean stop", func(t *testing.T) {
+		dir, path := aRoot(t, "wal")
+		st, err := Open(filepath.Join(copyDir(t, dir), filepath.Base(path)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -272,9 +438,7 @@ func TestALegitimateRootStillOpens(t *testing.T) {
 		st.Close()
 	})
 	t.Run("moved after a crash", func(t *testing.T) {
-		// Its files as a kill leaves them, under a recorded owner.
-		dir, path := aCrashedRoot(t, false)
-		recordWALOwner(path)
+		dir, path := aCrashedRootWithOwner(t)
 		to := filepath.Join(t.TempDir(), "moved")
 		if err := os.Rename(dir, to); err != nil {
 			t.Fatal(err)
@@ -286,32 +450,9 @@ func TestALegitimateRootStillOpens(t *testing.T) {
 		wantSetting(t, st, "only in the wal")
 		st.Close()
 	})
-	t.Run("copied after a crash: refused, and the way out works", func(t *testing.T) {
-		dir, path := aCrashedRoot(t, false)
-		recordWALOwner(path)
-		to := t.TempDir()
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, e := range entries {
-			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(to, e.Name()), b, 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}
-		copied := filepath.Join(to, filepath.Base(path))
-		if st, err := Open(copied); err == nil {
-			st.Close()
-			t.Fatal("it opened: a copied file can't be told from a replaced one")
-		}
-		if err := os.Remove(copied + ownerSuffix); err != nil {
-			t.Fatal(err)
-		}
-		st, err := Open(copied)
+	t.Run("copied after a crash", func(t *testing.T) {
+		dir, path := aCrashedRootWithOwner(t)
+		st, err := Open(filepath.Join(copyDir(t, dir), filepath.Base(path)))
 		if err != nil {
 			t.Fatal(err)
 		}
