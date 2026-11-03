@@ -114,6 +114,15 @@ func moduleDir() (string, error) {
 	return filepath.Dir(mod), nil
 }
 
+// TakePort reserves one port from the block, for a server a test runs itself.
+func (w *Workspace) TakePort() (int, error) {
+	ports, err := w.ports.take(1)
+	if err != nil {
+		return 0, err
+	}
+	return ports[0], nil
+}
+
 // Close stops anything still running from this workspace and removes it.
 func (w *Workspace) Close() {
 	w.KillStray()
@@ -181,6 +190,11 @@ type Options struct {
 	CtxSize int
 	// FakeEnv adds environment entries, for the fake backends' behaviors.
 	FakeEnv []string
+	// Dir places this gateway's directory somewhere other than the workspace, for
+	// a root on a small volume. It must be a scratch path too.
+	Dir string
+	// PrepareRoot runs after the fixture is written, before the gateway starts.
+	PrepareRoot func(rootDir string) error
 	// Reuse restarts on another gateway's root, with its keys. SamePorts keeps
 	// its ports too, as a real restart would.
 	Reuse     *Gateway
@@ -233,6 +247,12 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 	}
 	g := &Gateway{W: w, Opts: o, waitDone: make(chan struct{})}
 	g.Dir = filepath.Join(w.Dir, o.Name)
+	if o.Dir != "" {
+		if err := refuseLive(o.Dir); err != nil {
+			return nil, err
+		}
+		g.Dir = o.Dir
+	}
 	g.Root = filepath.Join(g.Dir, "root")
 	g.Fake = &FakeHost{Path: filepath.Join(g.Dir, "host.json"), Spec: o.Host}
 	g.LogPath = filepath.Join(g.Dir, "serve.log")
@@ -260,6 +280,11 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 		}
 		if err := writeLabBackends(g.Root, w.Bin); err != nil {
 			return nil, fmt.Errorf("fixture: %w", err)
+		}
+		if o.PrepareRoot != nil {
+			if err := o.PrepareRoot(g.Root); err != nil {
+				return nil, fmt.Errorf("fixture: %w", err)
+			}
 		}
 	}
 	if err := g.launch(ctx); err != nil {
@@ -381,6 +406,17 @@ func (g *Gateway) launch(ctx context.Context) error {
 	return g.WaitHealthy(ctx, 60*time.Second)
 }
 
+// runtimeDir holds this gateway's coordination files, so nothing lands outside
+// the scratch directory whatever the machine's XDG_RUNTIME_DIR is.
+func (g *Gateway) runtimeDir() string { return filepath.Join(g.Dir, "run") }
+
+// LeasePaths are where the gateway's root operation lease and its mutation lock
+// live, for a test that needs to get in their way.
+func (g *Gateway) LeasePaths() (lease, mutation string) {
+	lease = filepath.Join(g.runtimeDir(), "local-base", root.Hash(g.Root)+".operation.lock")
+	return lease, lease + ".mutation"
+}
+
 // env is a scrubbed environment: no LOCALBASE_ or token settings from the
 // caller, a scratch home, and no route off this machine.
 func (g *Gateway) env() []string {
@@ -396,7 +432,7 @@ func (g *Gateway) env() []string {
 		env = append(env, kv)
 	}
 	bin := g.W.Bin
-	env = append(env, "HOME="+filepath.Join(g.Dir, "home"),
+	env = append(env, "HOME="+filepath.Join(g.Dir, "home"), "XDG_RUNTIME_DIR="+g.runtimeDir(),
 		"GOMAXPROCS=2",
 		"GORACE=log_path="+filepath.Join(g.Dir, "race")+" halt_on_error=0",
 		"LOCALBASE_LAB_HOST_FILE="+g.Fake.Path, "LOCALBASE_LAB_DEBUG_ADDR="+g.Debug,

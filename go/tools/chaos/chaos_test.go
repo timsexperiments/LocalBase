@@ -66,17 +66,37 @@ func start(t *testing.T, o lab.Options) (context.Context, *lab.Gateway, *lab.Cli
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if _, err := g.Stop(30 * time.Second); err != nil {
-			select {
-			case <-g.Done():
-			default:
-				t.Errorf("the gateway did not stop: %v", err)
+		select {
+		case <-g.Done():
+			// The test ended it, on purpose or with its own check.
+		default:
+			dumpIfStuck(t, g)
+			if took, err := g.Stop(30 * time.Second); err != nil {
+				t.Errorf("the gateway did not stop cleanly after %v: %v", took.Round(time.Millisecond), err)
 			}
 		}
 		checkLogClean(t, g)
 		workspace.KillStray() // nothing crosses into the next test
 	})
 	return ctx, g, lab.NewClient(g.Base)
+}
+
+// dumpIfStuck saves the goroutines of a gateway still stopping well after a
+// SIGTERM, for the failure report. It runs alongside the stop.
+func dumpIfStuck(t *testing.T, g *lab.Gateway) {
+	t.Helper()
+	path := filepath.Join(os.TempDir(), "chaos-stuck-"+strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())+".txt")
+	time.AfterFunc(20*time.Second, func() {
+		select {
+		case <-g.Done():
+		default:
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := g.GoroutineDump(ctx, path); err == nil {
+				fmt.Fprintln(os.Stderr, "chaos: a stuck gateway's goroutines are in", path)
+			}
+		}
+	})
 }
 
 // checkLogClean fails on what must never be in any log, whatever was broken.
