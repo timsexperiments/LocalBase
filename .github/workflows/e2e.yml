@@ -1,0 +1,74 @@
+name: Browser suite
+
+# Real browser, fake backends. See go/docs/reliability.md. Findings are a warning for now;
+# a suite that can't run fails the job.
+on:
+  pull_request:
+    paths:
+      - "go/internal/web/**"
+      - "go/tools/e2e/**"
+      - "go/tools/e2e.sh"
+      - "go/tools/axe.pins"
+      - ".github/scripts/e2e-artifacts.sh"
+      - ".github/workflows/e2e.yml"
+  schedule:
+    - cron: "37 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    if: github.event_name == 'pull_request' || github.repository == 'timsexperiments/LocalBase'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LOCALBASE_E2E_CACHE: ${{ github.workspace }}/.e2e-cache
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Restore Chrome and axe-core
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e-cache
+          key: e2e-v3-${{ runner.os }}-${{ hashFiles('go/tools/e2e/pins', 'go/tools/axe.pins') }}
+      - name: Let Chrome's sandbox run
+        # Ubuntu's AppArmor stops unprivileged user namespaces, which the sandbox needs.
+        # This relaxes it on this disposable runner, so the sandbox can stay on.
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run the suite
+        working-directory: go
+        run: |
+          code=0
+          tools/e2e.sh -out "$RUNNER_TEMP/e2e" || code=$?
+          case "$code" in
+            0) ;;
+            1) echo "::warning title=Browser suite findings::see result.md in the artifact" ;;
+            *) exit "$code" ;;
+          esac
+      - name: Check what may be published
+        id: stage
+        if: always()
+        run: .github/scripts/e2e-artifacts.sh "$RUNNER_TEMP/e2e"
+      - name: Keep the checked files
+        if: always() && steps.stage.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e
+          path: ${{ runner.temp }}/e2e
+          retention-days: 7
+          if-no-files-found: warn
