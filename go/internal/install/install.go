@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 
 	_ "modernc.org/sqlite"
 )
@@ -213,6 +213,11 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 			os.Remove(partial)
 		}
 	}
+	// Before anything reads its size or hashes it: a link here could otherwise be
+	// verified by what it points at and then published as the model.
+	if err := obs.CheckOwnedRegular(partial); err != nil {
+		return err
+	}
 	if p, ok := size(partial); ok {
 		switch {
 		case p > a.ExpectedSizeBytes:
@@ -291,7 +296,7 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 		removeIfEmpty(partial)
 		return err
 	}
-	f, err := os.OpenFile(partial, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := obs.OpenOwnedRegular(partial, os.O_CREATE|os.O_WRONLY|os.O_APPEND)
 	if err != nil {
 		return err
 	}
@@ -450,15 +455,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		c := readCache(dir)
 		c.Entries[a.Filename] = cacheEntry{AuthoritativeSha256: digest, ExpectedSizeBytes: a.ExpectedSizeBytes, File: id}
 		b, _ := json.MarshalIndent(c, "", "  ")
-		tmp := filepath.Join(dir, fmt.Sprintf(".checksums.json.%d.%s.tmp", os.Getpid(), store.UUID()))
-		if err := os.WriteFile(tmp, b, 0o600); err != nil {
-			return err
-		}
-		if err := os.Rename(tmp, filepath.Join(dir, ".checksums.json")); err != nil {
-			os.Remove(tmp)
-			return err
-		}
-		return nil
+		return obs.WritePrivateChecked(filepath.Join(dir, ".checksums.json"), b)
 	})
 	return "sha256", err
 }
