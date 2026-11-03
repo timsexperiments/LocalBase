@@ -299,7 +299,7 @@ func TestKeyChangeUsesTheRoleTheCallerHasNow(t *testing.T) {
 	cfg := &auth.BrowserAccess{Provider: auth.Provider{Kind: "direct"}, Origin: "https://lb.example.com", Permissions: []string{}}
 	f.s.Browser = auth.NewBrowser(f.st, f.s.Root.Dir, cfg, f.s.Log)
 	p := &auth.Policy{Roles: []auth.Role{{Name: "boss", Permissions: []string{"access:manage", "keys:manage"}}, {Name: "small", Permissions: []string{"keys:read"}}},
-		Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com"}, {Kind: "email", Role: "small", Email: "person@example.com"}}}
+		Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com", Issuer: issuer}, {Kind: "email", Role: "small", Email: "person@example.com", Issuer: issuer}}}
 	if err := auth.ApplyPolicy(ctx, f.st, p); err != nil {
 		t.Fatal(err)
 	}
@@ -309,6 +309,13 @@ func TestKeyChangeUsesTheRoleTheCallerHasNow(t *testing.T) {
 	res := f.s.Call(ctx, stale, "POST", "/_localbase/api-keys", "application/json", []byte(`{"action":"create","name":"x","scopes":["keys:read"]}`))
 	if res.Status != 403 || !strings.Contains(string(res.Body), "insufficient_permissions") {
 		t.Errorf("a session whose role changed: %d %s", res.Status, res.Body)
+	}
+	// A session whose role still gives it keys:manage goes ahead.
+	current := &auth.Principal{Kind: "browser-session", ID: "browser:b", Permissions: []string{"keys:manage"},
+		Identity: &auth.Identity{Issuer: issuer, Subject: "b", VerifiedEmail: "boss@example.com"}}
+	res = f.s.Call(ctx, current, "POST", "/_localbase/api-keys", "application/json", []byte(`{"action":"create","name":"y","scopes":["keys:manage"]}`))
+	if res.Status != 201 {
+		t.Errorf("a session whose role gives keys:manage: %d %s", res.Status, res.Body)
 	}
 }
 
@@ -478,7 +485,7 @@ func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(bod
 	f.s.Browser = auth.NewBrowser(f.st, f.s.Root.Dir, cfg, f.s.Log)
 	policy := func(perms ...string) *auth.Policy {
 		return &auth.Policy{Roles: []auth.Role{{Name: "boss", Permissions: []string{"access:manage"}}, {Name: "holder", Permissions: perms}},
-			Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com"}, {Kind: "email", Role: "holder", Email: "person@example.com"}}}
+			Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com", Issuer: issuer}, {Kind: "email", Role: "holder", Email: "person@example.com", Issuer: issuer}}}
 	}
 	if err := auth.ApplyPolicy(ctx, f.st, policy(perms...)); err != nil {
 		t.Fatal(err)

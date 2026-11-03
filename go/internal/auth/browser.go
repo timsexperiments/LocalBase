@@ -552,7 +552,7 @@ func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliv
 	}
 	go func() {
 		ctx := context.Background()
-		token, to, err := IssueMagicLink(ctx, b.Store, email)
+		token, to, err := IssueMagicLink(ctx, b.Store, email, MagicIssuer(b.Config.Origin))
 		if err != nil || token == "" {
 			return
 		}

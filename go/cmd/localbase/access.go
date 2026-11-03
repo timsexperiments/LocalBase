@@ -573,10 +573,15 @@ func accessCommand() *cli.Command {
 				}
 				warn := noManagerWarning(c, e)
 				err = withOperation(e, "configure browser access", func() error {
-					if cfg, err := auth.LoadAccess(e.Root.Dir); err != nil {
+					cfg, err := auth.LoadAccess(e.Root.Dir)
+					if err != nil {
 						return err
-					} else if cfg == nil {
+					}
+					if cfg == nil {
 						return cli.Inputf("Configure a browser identity provider first.")
+					}
+					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
+						return err
 					}
 					return auth.ApplyPolicy(ctx, e.Store, &policy)
 				})
@@ -654,6 +659,30 @@ func accessCommand() *cli.Command {
 				return map[string]any{"cleared": cleared, "restartRequired": false}, nil
 			})},
 		}},
+		{Name: "bindings", Summary: "Name the sign-in provider on older email bindings and invitations", Sub: []*cli.Command{
+			{Name: "adopt", Summary: "Give every email binding and invitation that names no provider this one", Options: []cli.Option{
+				{Name: "issuer", Value: "<https://identity.example.com>", Help: "A configured sign-in provider's issuer"},
+			}, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
+				issuer, err := required(c, "issuer", "issuer")
+				if err != nil {
+					return nil, err
+				}
+				var adopted int
+				err = withOperation(e, "configure browser access", func() error {
+					cfg, err := auth.LoadAccess(e.Root.Dir)
+					if err != nil {
+						return err
+					}
+					adopted, err = auth.AdoptBindingIssuer(ctx, e.Store, cfg, issuer)
+					return err
+				})
+				if err != nil {
+					return nil, accessError(err)
+				}
+				c.Info("%d email bindings and invitations now trust %s.", adopted, issuer)
+				return map[string]any{"adopted": adopted, "issuer": issuer}, nil
+			})},
+		}},
 		{Name: "users", Summary: "Provision and manage browser users", Sub: []*cli.Command{
 			{Name: "list", Summary: "List provisioned browser users", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				users, err := auth.ListUsers(ctx, e.Store)
@@ -667,6 +696,7 @@ func accessCommand() *cli.Command {
 				{Name: "email", Value: "<person@example.com>", Help: "Verified email address"},
 				{Name: "roles", Value: "<role,...>", Help: "Named roles to grant after first sign-in"},
 				{Name: "send-email", Bool: true, Help: "Send the invitation using configured email delivery"},
+				{Name: "issuer", Value: "<https://identity.example.com>", Help: "The sign-in provider this person will use; needed when several are configured"},
 			}, Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				email, err := emailOption(c, "email", "email")
 				if err != nil {
@@ -694,7 +724,11 @@ func accessCommand() *cli.Command {
 							return cli.Inputf("Configure email delivery before sending an invitation email.")
 						}
 					}
-					user, err = auth.InviteUser(ctx, e.Store, email, roles)
+					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
+					if err != nil {
+						return err
+					}
+					user, err = auth.InviteUser(ctx, e.Store, email, roles, issuer)
 					signIn = cfg.Origin + "/app/login"
 					return err
 				})
@@ -739,7 +773,7 @@ func accessCommand() *cli.Command {
 			userCommand("disable", "Disable a browser user and revoke all browser permissions", "disable a browser user", "Disabled", "disabled"),
 			userCommand("remove", "Remove a browser user and linked identities", "remove a browser user", "Removed", ""),
 		}},
-	}}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "users")
+	}}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "bindings", "users")
 }
 
 // ordered puts a group's subcommands in the TS help order.
@@ -782,10 +816,10 @@ func noManagerWarning(c *cli.Ctx, e *env) func() {
 }
 
 func hasManager(e *env) bool {
-	var perms []string
-	if cfg, err := auth.LoadAccess(e.Root.Dir); err == nil && cfg != nil {
-		perms = cfg.Permissions
+	cfg, err := auth.LoadAccess(e.Root.Dir)
+	if err != nil {
+		return false
 	}
-	g, err := auth.LoadGuard(context.Background(), e.Store, perms)
+	g, err := auth.LoadGuard(context.Background(), e.Store, cfg)
 	return err == nil && g.HasManager()
 }

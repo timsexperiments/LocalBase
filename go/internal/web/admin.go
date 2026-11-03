@@ -95,6 +95,8 @@ type accessState struct {
 	PolicyRevision *string      `json:"policyRevision"`
 	Roles          []auth.Role  `json:"roles"`
 	Users          []auth.User  `json:"users"`
+	// UnboundBindings names no sign-in provider, and so grants nothing.
+	UnboundBindings int `json:"unboundBindings"`
 }
 
 type apiKey struct {

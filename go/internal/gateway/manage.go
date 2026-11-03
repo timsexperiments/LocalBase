@@ -139,9 +139,11 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 		"would-lock-out-admins":      {"would_lock_out_admins", 409},
 		"exceeds-caller-permissions": {"exceeds_caller_permissions", 403},
 		"exceeds-caller-expiry":      {"exceeds_caller_expiry", 403},
+		"issuer-required":            {"issuer_required", 400},
+		"issuer-unknown":             {"issuer_unknown", 400},
 	}[ae.Code]
 	switch ae.Code {
-	case "would-lock-out-admins", "exceeds-caller-permissions", "exceeds-caller-expiry":
+	case "would-lock-out-admins", "exceeds-caller-permissions", "exceeds-caller-expiry", "issuer-required", "issuer-unknown":
 		// Rules of this gateway: the error carries its own explanation.
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, mapped[1].(int), map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
@@ -294,11 +296,12 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	// Lockout rules (DESIGN §13.6): never the last principal with access:manage.
 	if in.Action != "create" {
-		var perms []string
-		if cfg, err := auth.LoadAccess(s.Root.Dir); err == nil && cfg != nil {
-			perms = cfg.Permissions
+		cfg, err := auth.LoadAccess(s.Root.Dir)
+		if err != nil {
+			serviceUnavailable(w, r, "Key management")
+			return
 		}
-		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		g, err := auth.LoadGuard(ctx, s.Store, cfg)
 		if err != nil {
 			serviceUnavailable(w, r, "Key management")
 			return
@@ -378,8 +381,19 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if policy != nil {
 			roles, policyOut = policy.Roles, policy
 		}
-		noStore(w, 200, map[string]any{"config": summary, "policy": policyOut, "policyRevision": auth.Revision(policy),
-			"users": users, "roles": roles, "emailDelivery": emailSummary})
+		out := map[string]any{"config": summary, "policy": policyOut, "policyRevision": auth.Revision(policy),
+			"users": users, "roles": roles, "emailDelivery": emailSummary}
+		if len(cfg.Issuers()) > 0 {
+			left, err := auth.CountUnbound(ctx, s.Store.DB)
+			if err != nil {
+				serviceUnavailable(w, r, "Access management")
+				return
+			}
+			if left.Total() > 0 {
+				out["unboundBindings"] = left.Total()
+			}
+		}
+		noStore(w, 200, out)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -443,16 +457,12 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			managementError(w, 403, "insufficient_permissions")
 			return
 		}
-		var perms []string
-		if current != nil {
-			perms = current.Permissions
-		}
-		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		g, err := auth.LoadGuard(ctx, s.Store, current)
 		if err != nil {
 			serviceUnavailable(w, r, "Access management")
 			return
 		}
-		if err := checkAccessAuthority(g, caller.Holds, in); err != nil {
+		if err := prepareAccessChange(g, caller.Holds, p.Identity, in); err != nil {
 			s.domainError(w, err)
 			return
 		}
@@ -461,11 +471,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	// access management (a Go addition; see auth.Guard). It reports whether
 	// it wrote a response.
 	lockout := func(email string, self bool, change func(*auth.Guard)) bool {
-		var perms []string
-		if current != nil {
-			perms = current.Permissions
-		}
-		g, err := auth.LoadGuard(ctx, s.Store, perms)
+		g, err := auth.LoadGuard(ctx, s.Store, current)
 		if err != nil {
 			serviceUnavailable(w, r, "Access management")
 			return true
@@ -487,6 +493,16 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		return false
 	}
+	// signInLockout is lockout for a change of who can sign in: cfg is the configuration
+	// it would leave, or nil for none.
+	signInLockout := func(cfg *auth.BrowserAccess) bool {
+		return lockout("", false, func(next *auth.Guard) {
+			next.ProviderPerms, next.Issuers = nil, cfg.Issuers()
+			if cfg != nil {
+				next.ProviderPerms = cfg.Permissions
+			}
+		})
+	}
 	configured := func(cfg *auth.BrowserAccess) {
 		noStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
 	}
@@ -503,7 +519,11 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			managementError(w, 409, "provider_not_configured")
 			return
 		}
-		policy, _ := auth.LoadPolicy(ctx, s.Store.DB)
+		policy, err := auth.LoadPolicy(ctx, s.Store.DB)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return
+		}
 		d, err := auth.ResolvePolicy(ctx, s.Store, *in.Identity, false)
 		if err != nil {
 			serviceUnavailable(w, r, "Access management")
@@ -536,7 +556,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		user, err := auth.InviteUser(ctx, s.Store, in.Email, in.Roles)
+		user, err := auth.InviteUser(ctx, s.Store, in.Email, in.Roles, in.Issuer)
 		if err != nil {
 			if !s.domainError(w, err) {
 				managementError(w, 400, "validation_failed")
@@ -552,7 +572,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		noStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
 		cfg := &auth.BrowserAccess{Provider: *in.Provider, Origin: in.Origin, Permissions: in.Permissions}
-		if save(cfg) {
+		if !signInLockout(cfg) && save(cfg) {
 			configured(cfg)
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
@@ -571,7 +591,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		cfg := auth.UpsertRegistration(current, *in.Registration, in.Origin, in.Permissions)
-		if save(cfg) {
+		if !signInLockout(cfg) && save(cfg) {
 			configured(cfg)
 		}
 	case "remove-registration":
@@ -581,15 +601,28 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			managementError(w, 404, "registration_not_found")
 			return
 		case "disabled":
-			auth.DisableAccess(root)
+			if signInLockout(nil) {
+				return
+			}
+			if _, err := auth.DisableAccess(root); err != nil {
+				serviceUnavailable(w, r, "Access management")
+				return
+			}
 			noStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": nil, "restartRequired": true})
 		default:
-			if save(cfg) {
+			if !signInLockout(cfg) && save(cfg) {
 				noStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": cfg.Summary(), "restartRequired": true})
 			}
 		}
 	case "disable":
-		disabled, _ := auth.DisableAccess(root)
+		if signInLockout(nil) {
+			return
+		}
+		disabled, err := auth.DisableAccess(root)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return
+		}
 		noStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
 	case "configure-email-delivery":
 		if err := auth.SaveEmail(root, in.Config); err != nil {
@@ -606,7 +639,11 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		disabled, _ := auth.DisableEmail(root)
+		disabled, err := auth.DisableEmail(root)
+		if err != nil {
+			serviceUnavailable(w, r, "Access management")
+			return
+		}
 		noStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
 	case "replace-user-roles", "enable-user", "disable-user", "remove-user":
 		var user *auth.User
@@ -620,8 +657,9 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			case in.Action == "disable-user":
 				u.Status = "disabled"
 			default:
-				// Forgetting deletes the record: bindings apply again on sign-in.
-				next.Users = slices.DeleteFunc(next.Users, func(x auth.GuardUser) bool { return x.ID == u.ID })
+				// The record stays, and a sign-in stays refused for it: bindings don't
+				// reach a removed person until they are invited again.
+				u.Status, u.Roles = "removed", nil
 			}
 		}) {
 			return
@@ -662,7 +700,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			if in.Action == "clear-policy" {
 				// Managed users block clearing (TS refuses with policy_conflict);
 				// leave that refusal to ClearPolicy.
-				if len(next.Users) == 0 {
+				if next.Managed() == 0 {
 					next.Policy = nil
 				}
 				return
@@ -702,15 +740,20 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// checkAccessAuthority refuses a change that reaches past what the caller holds
-// (DESIGN §13.6, item 5a).
-func checkAccessAuthority(g *auth.Guard, holds []string, in *accessRequest) error {
+// prepareAccessChange names the provider on what needs one (DESIGN §13.6, item 5b), and
+// refuses a change that reaches past what the caller holds (item 5a).
+func prepareAccessChange(g *auth.Guard, holds []string, identity *auth.Identity, in *accessRequest) error {
 	switch in.Action {
 	case "configure-cloudflare", "upsert-oidc", "upsert-github", "upsert-magic-link":
 		return g.CheckSignInChange(holds, in.Permissions)
 	case "remove-registration", "disable", "configure-email-delivery", "disable-email-delivery":
 		return g.CheckSignInChange(holds, nil)
 	case "invite-user":
+		issuer, err := auth.InviteIssuer(in.Issuer, in.Email, g.Issuers, identity)
+		if err != nil {
+			return err
+		}
+		in.Issuer = issuer
 		return g.CheckGrantRoles(holds, in.Roles)
 	case "replace-user-roles":
 		if err := g.CheckUser(holds, in.Email); err != nil {
@@ -720,6 +763,15 @@ func checkAccessAuthority(g *auth.Guard, holds []string, in *accessRequest) erro
 	case "enable-user", "disable-user", "remove-user":
 		return g.CheckUser(holds, in.Email)
 	case "apply-policy":
+		if err := in.Policy.BindIssuers(g.Issuers, identity); err != nil {
+			return err
+		}
+		// With no provider at all, the answer is that one is needed first.
+		if len(g.Issuers) > 0 {
+			if err := g.CheckBindingIssuers(in.Policy); err != nil {
+				return err
+			}
+		}
 		return g.CheckPolicyChange(holds, in.Policy)
 	case "clear-policy":
 		return g.CheckPolicyChange(holds, nil)
@@ -739,6 +791,7 @@ type accessRequest struct {
 	Email            string             `json:"email"`
 	Roles            []string           `json:"roles"`
 	SendEmail        bool               `json:"sendEmail"`
+	Issuer           string             `json:"issuer"`
 	Policy           *auth.Policy       `json:"policy"`
 	ExpectedRevision *string            `json:"expectedPolicyRevision"`
 	Identity         *auth.Identity     `json:"identity"`
@@ -765,7 +818,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		"configure-email-delivery": {"config"},
 		"disable-email-delivery":   {},
 		"test-email-delivery":      {"to"},
-		"invite-user":              {"email", "roles", "sendEmail"},
+		"invite-user":              {"email", "roles", "sendEmail", "issuer"},
 		"replace-user-roles":       {"email", "roles"},
 		"enable-user":              {"email"},
 		"disable-user":             {"email"},

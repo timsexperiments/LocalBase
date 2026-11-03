@@ -219,7 +219,7 @@ func (g *Guard) CheckGrantRoles(holds, roles []string) error {
 // CheckUser judges acting on a managed person. An unknown person is left for the call
 // that acts on them to refuse.
 func (g *Guard) CheckUser(holds []string, email string) error {
-	if u := g.User(email); u != nil && len(Missing(holds, g.userReach(u))) > 0 {
+	if u := g.User(email); u != nil && u.Status != "removed" && len(Missing(holds, g.userReach(u))) > 0 {
 		return ErrWiderUser
 	}
 	return nil

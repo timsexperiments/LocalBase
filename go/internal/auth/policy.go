@@ -28,7 +28,9 @@ type Role struct {
 	Permissions []string `json:"permissions"`
 }
 
-// Binding grants a role to a subject, an email or an email domain.
+// Binding grants a role to a subject, an email or an email domain. Issuer is the sign-in
+// provider it trusts: a subject belongs to one, and an email or domain binding names the
+// one that vouches for the address. An email or domain binding without one matches nobody.
 type Binding struct {
 	Kind    string `json:"kind"` // subject | email | email-domain
 	Role    string `json:"role"`
@@ -50,16 +52,18 @@ func (b Binding) MarshalJSON() ([]byte, error) {
 		}{b.Kind, b.Role, b.Issuer, b.Subject})
 	case "email":
 		return json.Marshal(struct {
-			Kind  string `json:"kind"`
-			Role  string `json:"role"`
-			Email string `json:"email"`
-		}{b.Kind, b.Role, b.Email})
+			Kind   string `json:"kind"`
+			Role   string `json:"role"`
+			Email  string `json:"email"`
+			Issuer string `json:"issuer,omitempty"`
+		}{b.Kind, b.Role, b.Email, b.Issuer})
 	}
 	return json.Marshal(struct {
 		Kind   string `json:"kind"`
 		Role   string `json:"role"`
 		Domain string `json:"domain"`
-	}{b.Kind, b.Role, b.Domain})
+		Issuer string `json:"issuer,omitempty"`
+	}{b.Kind, b.Role, b.Domain, b.Issuer})
 }
 
 // Policy is the access control configuration.
@@ -89,6 +93,10 @@ func ValidEmail(s string) string {
 		return ""
 	}
 	return strings.ToLower(s)
+}
+
+func validBoundIssuer(issuer string) bool {
+	return issuer == "" || (len(issuer) <= 2048 && validIssuer(issuer))
 }
 
 // Normalize validates a policy and normalizes emails, domains and
@@ -137,12 +145,12 @@ func (p *Policy) Normalize() error {
 				return fmt.Errorf("bindings.%d: invalid subject binding", i)
 			}
 		case "email":
-			if b.Email = ValidEmail(b.Email); b.Email == "" || b.Issuer != "" || b.Domain != "" {
+			if b.Email = ValidEmail(b.Email); b.Email == "" || b.Domain != "" || !validBoundIssuer(b.Issuer) {
 				return fmt.Errorf("bindings.%d: invalid email binding", i)
 			}
 		case "email-domain":
 			b.Domain = strings.ToLower(b.Domain)
-			if !domainRe.MatchString(b.Domain) || len(b.Domain) > 253 || b.Issuer != "" || b.Email != "" {
+			if !domainRe.MatchString(b.Domain) || len(b.Domain) > 253 || b.Email != "" || !validBoundIssuer(b.Issuer) {
 				return fmt.Errorf("bindings.%d: invalid domain binding", i)
 			}
 		default:
@@ -222,22 +230,34 @@ func LoadPolicy(ctx context.Context, db *sql.DB) (*Policy, error) {
 	for rows.Next() {
 		var id string
 		var r Role
-		rows.Scan(&id, &r.Name, &r.Description)
+		if err := rows.Scan(&id, &r.Name, &r.Description); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		names[id] = r.Name
 		ids = append(ids, id)
 		roles = append(roles, r)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	perms := map[string][]string{}
 	if rows, err = db.QueryContext(ctx, `SELECT role_id, permission FROM auth_role_permissions`); err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var id, perm string
-		rows.Scan(&id, &perm)
+		if err := rows.Scan(&id, &perm); err != nil {
+			rows.Close()
+			return nil, err
+		}
 		perms[names[id]] = append(perms[names[id]], perm)
 	}
 	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	for i := range roles {
 		roles[i].Permissions = Canonical(perms[roles[i].Name])
 	}
@@ -251,7 +271,9 @@ func LoadPolicy(ctx context.Context, db *sql.DB) (*Policy, error) {
 		defer rows.Close()
 		for rows.Next() {
 			var roleID, a, b string
-			rows.Scan(&roleID, &a, &b)
+			if err := rows.Scan(&roleID, &a, &b); err != nil {
+				return err
+			}
 			p.Bindings = append(p.Bindings, build(names[roleID], a, b))
 		}
 		return rows.Err()
@@ -261,13 +283,15 @@ func LoadPolicy(ctx context.Context, db *sql.DB) (*Policy, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT role_id, email, '' FROM auth_email_role_bindings`, func(r, a, _ string) Binding {
-		return Binding{Kind: "email", Role: r, Email: a}
+	if err := scan(`SELECT b.role_id, b.email, COALESCE(i.issuer, '') FROM auth_email_role_bindings b
+		LEFT JOIN go_binding_issuers i ON i.kind = 'email' AND i.role_id = b.role_id AND i.value = b.email`, func(r, a, issuer string) Binding {
+		return Binding{Kind: "email", Role: r, Email: a, Issuer: issuer}
 	}); err != nil {
 		return nil, err
 	}
-	if err := scan(`SELECT role_id, domain, '' FROM auth_domain_role_bindings`, func(r, a, _ string) Binding {
-		return Binding{Kind: "email-domain", Role: r, Domain: a}
+	if err := scan(`SELECT b.role_id, b.domain, COALESCE(i.issuer, '') FROM auth_domain_role_bindings b
+		LEFT JOIN go_binding_issuers i ON i.kind = 'email-domain' AND i.role_id = b.role_id AND i.value = b.domain`, func(r, a, issuer string) Binding {
+		return Binding{Kind: "email-domain", Role: r, Domain: a, Issuer: issuer}
 	}); err != nil {
 		return nil, err
 	}
@@ -332,7 +356,7 @@ func ApplyPolicy(ctx context.Context, st *store.Store, p *Policy) error {
 		}
 	}
 	for _, q := range []string{`DELETE FROM auth_subject_role_bindings`, `DELETE FROM auth_email_role_bindings`,
-		`DELETE FROM auth_domain_role_bindings`, `DELETE FROM auth_role_permissions`} {
+		`DELETE FROM auth_domain_role_bindings`, `DELETE FROM go_binding_issuers`, `DELETE FROM auth_role_permissions`} {
 		if _, err := tx.ExecContext(ctx, q); err != nil {
 			return err
 		}
@@ -359,11 +383,16 @@ func ApplyPolicy(ctx context.Context, st *store.Store, p *Policy) error {
 			_, err = tx.ExecContext(ctx, `INSERT INTO auth_subject_role_bindings (id, role_id, issuer, subject) VALUES (?, ?, ?, ?)`,
 				bindingID(b.Kind, roleID, b.Issuer, b.Subject), roleID, b.Issuer, b.Subject)
 		case "email":
-			_, err = tx.ExecContext(ctx, `INSERT INTO auth_email_role_bindings (id, role_id, email) VALUES (?, ?, ?)`,
-				bindingID(b.Kind, roleID, b.Email), roleID, b.Email)
+			// One row per address and role; each provider vouching for it adds a name.
+			if _, err = tx.ExecContext(ctx, `INSERT INTO auth_email_role_bindings (id, role_id, email) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
+				bindingID(b.Kind, roleID, b.Email), roleID, b.Email); err == nil {
+				err = nameBindingIssuer(ctx, tx, b.Kind, roleID, b.Email, b.Issuer)
+			}
 		case "email-domain":
-			_, err = tx.ExecContext(ctx, `INSERT INTO auth_domain_role_bindings (id, role_id, domain) VALUES (?, ?, ?)`,
-				bindingID(b.Kind, roleID, b.Domain), roleID, b.Domain)
+			if _, err = tx.ExecContext(ctx, `INSERT INTO auth_domain_role_bindings (id, role_id, domain) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`,
+				bindingID(b.Kind, roleID, b.Domain), roleID, b.Domain); err == nil {
+				err = nameBindingIssuer(ctx, tx, b.Kind, roleID, b.Domain, b.Issuer)
+			}
 		}
 		if err != nil {
 			return err
@@ -378,6 +407,14 @@ func ApplyPolicy(ctx context.Context, st *store.Store, p *Policy) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func nameBindingIssuer(ctx context.Context, tx *sql.Tx, kind, roleID, value, issuer string) error {
+	if issuer == "" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES (?, ?, ?, ?)`, kind, roleID, value, issuer)
+	return err
 }
 
 // ClearPolicy removes the policy; managed users block it.
@@ -396,7 +433,7 @@ func ClearPolicy(ctx context.Context, st *store.Store) (bool, error) {
 		return false, &AccessError{"policy-conflict", "Cannot clear the browser access policy while managed users exist."}
 	}
 	for _, q := range []string{`DELETE FROM auth_subject_role_bindings`, `DELETE FROM auth_email_role_bindings`,
-		`DELETE FROM auth_domain_role_bindings`, `DELETE FROM auth_settings`, `DELETE FROM auth_roles`} {
+		`DELETE FROM auth_domain_role_bindings`, `DELETE FROM go_binding_issuers`, `DELETE FROM auth_settings`, `DELETE FROM auth_roles`} {
 		if _, err := tx.ExecContext(ctx, q); err != nil {
 			return false, err
 		}
@@ -452,9 +489,20 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		return nil, err
 	}
 	empty := &Decision{MatchedRoles: []string{}, Permissions: []string{}}
-	if si == nil && email != "" && claim {
-		var invited string
-		if err := tx.QueryRowContext(ctx, `SELECT user_id FROM auth_user_emails WHERE email = ?`, email).Scan(&invited); err == nil {
+	if si == nil && email != "" {
+		var invited, status string
+		var invitedBy sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT e.user_id, u.status, i.issuer FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id
+			LEFT JOIN go_invitation_issuers i ON i.user_id = e.user_id WHERE e.email = ?`, email).Scan(&invited, &status, &invitedBy)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		// A disabled or removed address stays out, whichever provider vouches for it.
+		if err == nil && status != "active" && status != "pending" {
+			return empty, tx.Commit()
+		}
+		// Only the provider a person was invited through can claim their record.
+		if err == nil && claim && invitedBy.Valid && invitedBy.String == id.Issuer {
 			ts := now()
 			if _, err := tx.ExecContext(ctx, `INSERT INTO auth_identities (id, user_id, issuer, subject, verified_email, created_at, last_seen_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, store.UUID(), invited, id.Issuer, id.Subject, email, ts, ts); err != nil {
@@ -495,7 +543,9 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		defer rows.Close()
 		for rows.Next() {
 			var r string
-			rows.Scan(&r)
+			if err := rows.Scan(&r); err != nil {
+				return err
+			}
 			roleIDs[r] = true
 		}
 		return rows.Err()
@@ -504,11 +554,13 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		return nil, err
 	}
 	if email != "" {
-		if err := collect(`SELECT role_id FROM auth_email_role_bindings WHERE email = ?`, email); err != nil {
+		if err := collect(`SELECT b.role_id FROM auth_email_role_bindings b JOIN go_binding_issuers i
+			ON i.kind = 'email' AND i.role_id = b.role_id AND i.value = b.email WHERE b.email = ? AND i.issuer = ?`, email, id.Issuer); err != nil {
 			return nil, err
 		}
 		if at := strings.LastIndex(email, "@"); at >= 0 {
-			if err := collect(`SELECT role_id FROM auth_domain_role_bindings WHERE domain = ?`, email[at+1:]); err != nil {
+			if err := collect(`SELECT b.role_id FROM auth_domain_role_bindings b JOIN go_binding_issuers i
+				ON i.kind = 'email-domain' AND i.role_id = b.role_id AND i.value = b.domain WHERE b.domain = ? AND i.issuer = ?`, email[at+1:], id.Issuer); err != nil {
 				return nil, err
 			}
 		}
@@ -525,8 +577,10 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 	var perms []string
 	for rid := range roleIDs {
 		var name string
-		if tx.QueryRowContext(ctx, `SELECT name FROM auth_roles WHERE id = ?`, rid).Scan(&name) == nil {
+		if err := tx.QueryRowContext(ctx, `SELECT name FROM auth_roles WHERE id = ?`, rid).Scan(&name); err == nil {
 			d.MatchedRoles = append(d.MatchedRoles, name)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
 		}
 		rows, err := tx.QueryContext(ctx, `SELECT permission FROM auth_role_permissions WHERE role_id = ?`, rid)
 		if err != nil {
@@ -534,10 +588,16 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		}
 		for rows.Next() {
 			var p string
-			rows.Scan(&p)
+			if err := rows.Scan(&p); err != nil {
+				rows.Close()
+				return nil, err
+			}
 			perms = append(perms, p)
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 	sort.Strings(d.MatchedRoles)
 	d.Permissions = Canonical(perms)

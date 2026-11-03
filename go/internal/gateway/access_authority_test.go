@@ -160,6 +160,56 @@ func TestAccessChangesWithinTheCallerStillWork(t *testing.T) {
 	f.access(f.owner, `{"action":"disable"}`, 200, "")
 }
 
+// Giving someone a role needs that role, even when the person is within the caller.
+func TestReRoleNeedsTheNewRole(t *testing.T) {
+	f := newAccessFixture(t)
+	_, delegate := f.key("delegate", 0, "access:manage", "access:read", "inference:chat")
+	f.access(delegate, `{"action":"replace-user-roles","email":"small@example.test","roles":["owner"]}`, 403, exceeds)
+	f.access(delegate, `{"action":"replace-user-roles","email":"small@example.test","roles":["admin","chat"]}`, 200, "")
+}
+
+// Someone already removed gets the usual answer, whatever a binding on their address says.
+func TestRemovedPersonIsNotFound(t *testing.T) {
+	f := newAccessFixture(t)
+	_, delegate := f.key("delegate", 0, "access:manage", "access:read", "inference:chat")
+	f.access(f.owner, policyRequest(f.revision(), allRoles, ownerBound+`,{"kind":"email","role":"owner","email":"gone@example.test"}`, "null"), 200, "")
+	f.access(f.owner, `{"action":"invite-user","email":"gone@example.test","roles":["chat"]}`, 201, "")
+	f.access(f.owner, `{"action":"remove-user","email":"gone@example.test"}`, 200, "")
+	f.access(delegate, `{"action":"disable-user","email":"gone@example.test"}`, 404, "managed_user_not_found")
+}
+
+// Editing a role needs what it holds before and what it holds after, each on its own.
+func TestRoleEditNeedsBothSides(t *testing.T) {
+	f := newAccessFixture(t)
+	_, delegate := f.key("delegate", 0, "access:manage", "access:read", "inference:chat")
+	withAdmin := ownerBound + `,{"kind":"email","role":"admin","email":"mine@example.test"}`
+	f.access(f.owner, policyRequest(f.revision(), allRoles, withAdmin, "null"), 200, "")
+	before := f.state()
+	// Before is within the caller, after isn't.
+	f.access(delegate, policyRequest(f.revision(), strings.Replace(allRoles, chatRole, `{"name":"chat","description":"","permissions":["inference:chat","keys:manage"]}`, 1), withAdmin, "null"), 403, exceeds)
+	// After is within the caller, before isn't.
+	f.access(delegate, policyRequest(f.revision(), strings.Replace(allRoles, wideRole, `{"name":"owner","description":"","permissions":["inference:chat"]}`, 1), withAdmin, "null"), 403, exceeds)
+	if f.state() != before {
+		t.Error("a refused edit changed something")
+	}
+	// Both within it, and it goes through.
+	f.access(delegate, policyRequest(f.revision(), strings.Replace(allRoles, chatRole, `{"name":"chat","description":"","permissions":["access:read"]}`, 1), withAdmin, "null"), 200, "")
+}
+
+// What a sign-in can grant includes the provider-wide permissions, even under a policy:
+// clearing the policy would switch them on.
+func TestSignInChangeNeedsTheProviderWidePermissions(t *testing.T) {
+	f := &accessFixture{keyFixture: newKeyFixture(t)}
+	_, f.owner = f.key("owner", 0, auth.Permissions...)
+	f.access(f.owner, strings.Replace(cloudflare, `"permissions":["inference:chat"]`, `"permissions":["models:manage"]`, 1), 200, "")
+	f.access(f.owner, policyRequest("null", chatRole+","+adminRole, `{"kind":"email","role":"admin","email":"mine@example.test"}`, "null"), 200, "")
+	// It holds every role in the policy and every permission it asks to set.
+	_, delegate := f.key("delegate", 0, "access:manage", "access:read", "inference:chat")
+	f.access(delegate, cloudflare, 403, exceeds)
+	_, wider := f.key("wider", 0, "access:manage", "access:read", "inference:chat", "models:manage")
+	f.access(wider, cloudflare, 200, "")
+}
+
 // A person's permissions are all they resolve to, not only the roles on their record.
 func TestAccessCountsEverythingAPersonResolvesTo(t *testing.T) {
 	f := newAccessFixture(t)
@@ -218,7 +268,7 @@ func TestAccessRulesThroughARealSession(t *testing.T) {
 	// Grow the boss role past the session, which is held to its role alone.
 	if err := auth.ApplyPolicy(context.Background(), f.st, &auth.Policy{
 		Roles:    []auth.Role{{Name: "boss", Permissions: []string{"access:manage", "keys:manage"}}, {Name: "holder", Permissions: []string{"access:manage", "access:read"}}},
-		Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com"}, {Kind: "email", Role: "holder", Email: "person@example.com"}},
+		Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com", Issuer: "https://idp.example.com"}, {Kind: "email", Role: "holder", Email: "person@example.com", Issuer: "https://idp.example.com"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -305,12 +355,45 @@ func TestKeyAndAccessChangesCannotRaceToNobody(t *testing.T) {
 		call(accessRoute, `{"action":"disable-user","email":"person@example.test"}`)
 	}()
 	wg.Wait()
-	g, err := auth.LoadGuard(ctx, f.st, nil)
+	cfg, err := auth.LoadAccess(f.s.Root.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := auth.LoadGuard(ctx, f.st, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !g.HasManager() {
 		t.Fatal("the two changes together left nobody able to manage access")
+	}
+}
+
+// The access page and API say how many rows name no provider, so someone can act on it.
+func TestAccessReportsWhatIsNotBound(t *testing.T) {
+	f := newAccessFixture(t)
+	ctx := context.Background()
+	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
+	count := func() any {
+		t.Helper()
+		var v map[string]any
+		json.Unmarshal(f.s.Call(ctx, host, "GET", accessRoute, "", nil).Body, &v)
+		return v["unboundBindings"]
+	}
+	if got := count(); got != nil {
+		t.Errorf("everything named: %v", got)
+	}
+	if _, err := f.st.DB.Exec(`DELETE FROM go_binding_issuers`); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != float64(1) {
+		t.Errorf("one binding named by nothing: %v", got)
+	}
+	// With no provider there is nothing to choose, so nothing to report.
+	if _, err := auth.DisableAccess(f.s.Root.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != nil {
+		t.Errorf("no provider: %v", got)
 	}
 }
 
@@ -325,5 +408,150 @@ func TestAccessRefusalsAreAudited(t *testing.T) {
 	}
 	if strings.Contains(f.logs.String(), "secret.person") {
 		t.Errorf("the log holds an email:\n%s", f.logs)
+	}
+}
+
+// Through the API, an address gets the provider that vouches for it: the only one there
+// is, or the one named. With several, nobody guesses.
+func TestAddressesNameTheirProvider(t *testing.T) {
+	f := &accessFixture{keyFixture: newKeyFixture(t)}
+	_, f.owner = f.key("owner", 0, auth.Permissions...)
+	const (
+		a        = "https://a.example.test"
+		b        = "https://b.example.test"
+		unnamed  = `{"kind":"email","role":"admin","email":"me@example.test"}`
+		onDomain = `{"kind":"email-domain","role":"chat","domain":"example.test"}`
+	)
+	oidcAt := func(id, issuer string) string {
+		return `{"action":"upsert-oidc","registration":{"kind":"oidc","id":"` + id + `","name":"P","issuer":"` + issuer + `","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat"]}`
+	}
+	roles := chatRole + "," + adminRole
+	// No provider: the answer stays that one is needed first, whatever is named.
+	f.access(f.owner, policyRequest("null", roles, unnamed, "null"), 409, "provider_not_configured")
+	named := `{"kind":"email","role":"admin","email":"me@example.test","issuer":"` + a + `"}`
+	f.access(f.owner, policyRequest("null", roles, named, "null"), 409, "provider_not_configured")
+	f.access(f.owner, `{"action":"invite-user","email":"x@example.test","roles":["chat"],"issuer":"`+a+`"}`, 409, "provider_not_configured")
+
+	// One provider: nothing to guess.
+	f.access(f.owner, oidcAt("a", a), 200, "")
+	out := f.access(f.owner, policyRequest("null", roles, unnamed+","+onDomain, "null"), 200, "")
+	if strings.Count(out, `"issuer":"`+a+`"`) != 2 {
+		t.Errorf("one provider: %s", out)
+	}
+	out = f.access(f.owner, `{"action":"invite-user","email":"first@example.test","roles":["chat"]}`, 201, "")
+	if !strings.Contains(out, `"issuer":"`+a+`"`) {
+		t.Errorf("an invitation with one provider: %s", out)
+	}
+	// A provider that isn't configured can't be named on anything new.
+	f.access(f.owner, policyRequest(f.revision(), roles, unnamed+`,{"kind":"email","role":"chat","email":"y@example.test","issuer":"`+b+`"}`, "null"), 400, "issuer_unknown")
+	f.access(f.owner, `{"action":"invite-user","email":"x@example.test","roles":["chat"],"issuer":"`+b+`"}`, 400, "issuer_unknown")
+
+	// Two providers: named or refused, in words that list them.
+	f.access(f.owner, oidcAt("b", b), 200, "")
+	out = f.access(f.owner, policyRequest(f.revision(), roles, named+`,{"kind":"email","role":"chat","email":"new@example.test"}`, "null"), 400, "issuer_required")
+	if !strings.Contains(out, a) || !strings.Contains(out, b) || !strings.Contains(out, "new@example.test") {
+		t.Errorf("message: %s", out)
+	}
+	out = f.access(f.owner, `{"action":"invite-user","email":"x@example.test","roles":["chat"]}`, 400, "issuer_required")
+	if !strings.Contains(out, a) || !strings.Contains(out, b) {
+		t.Errorf("message: %s", out)
+	}
+	f.access(f.owner, `{"action":"invite-user","email":"x@example.test","roles":["chat"],"issuer":"`+b+`"}`, 201, "")
+	f.access(f.owner, policyRequest(f.revision(), roles, named+`,{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"`+a+`"},{"kind":"email","role":"chat","email":"both@example.test","issuer":"`+a+`"},{"kind":"email","role":"chat","email":"both@example.test","issuer":"`+b+`"}`, "null"), 200, "")
+	// A person adding their own address gets the provider they signed in with.
+	me := &auth.Principal{Kind: "browser-session", ID: "browser:me", Permissions: auth.Permissions, Identity: &auth.Identity{Issuer: b, Subject: "me", VerifiedEmail: "starter@example.test"}}
+	body := policyRequest(f.revision(), roles, named+`,{"kind":"email","role":"admin","email":"starter@example.test"}`, "null")
+	res := f.s.Call(context.Background(), me, "POST", accessRoute, "application/json", []byte(body))
+	if res.Status != 200 || !strings.Contains(string(res.Body), `"email":"starter@example.test","issuer":"`+b+`"`) {
+		t.Errorf("your own address: %d %s", res.Status, res.Body)
+	}
+	// A binding whose provider has gone may stay, so an unrelated edit still works.
+	f.access(f.owner, `{"action":"remove-registration","registrationId":"b"}`, 200, "")
+	res = f.s.Call(context.Background(), me, "GET", accessRoute, "", nil)
+	var state struct {
+		Policy   json.RawMessage `json:"policy"`
+		Revision string          `json:"policyRevision"`
+	}
+	if err := json.Unmarshal(res.Body, &state); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(state.Policy), b) {
+		t.Fatalf("policy: %s", state.Policy)
+	}
+	f.access(f.owner, `{"action":"apply-policy","expectedPolicyRevision":"`+state.Revision+`","policy":`+string(state.Policy)+`}`, 200, "")
+}
+
+// Who can sign in is part of who can manage access: a change to providers can't leave
+// nobody, or take the caller's own access from under it.
+func TestSignInChangesCannotLockEveryoneOut(t *testing.T) {
+	f := &accessFixture{keyFixture: newKeyFixture(t)}
+	ctx := context.Background()
+	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
+	call := func(p *auth.Principal, body string) (int, string) {
+		res := f.s.Call(ctx, p, "POST", accessRoute, "application/json", []byte(body))
+		return res.Status, string(res.Body)
+	}
+	expect := func(p *auth.Principal, body string, status int, code string) {
+		t.Helper()
+		if got, out := call(p, body); got != status || !strings.Contains(out, code) {
+			t.Fatalf("%s: %d %s, want %d %s", body, got, out, status, code)
+		}
+	}
+	const (
+		a = "https://a.example.test"
+		b = "https://b.example.test"
+	)
+	reg := func(id, issuer string) string {
+		return `{"action":"upsert-oidc","registration":{"kind":"oidc","id":"` + id + `","name":"P","issuer":"` + issuer + `","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat"]}`
+	}
+	const lockedOut = "would_lock_out_admins"
+	expect(host, reg("a", a), 200, "")
+	expect(host, reg("b", b), 200, "")
+	expect(host, policyRequest("null", chatRole+","+adminRole, `{"kind":"email","role":"admin","email":"me@example.test","issuer":"`+a+`"}`, "null"), 200, "")
+	// The only manager signs in through a. Everything that takes a away is refused.
+	expect(host, `{"action":"remove-registration","registrationId":"a"}`, 409, lockedOut)
+	expect(host, reg("a", "https://moved.example.test"), 409, lockedOut)
+	expect(host, cloudflare, 409, lockedOut)
+	expect(host, `{"action":"disable"}`, 409, lockedOut)
+	if cfg, err := auth.LoadAccess(f.s.Root.Dir); err != nil || len(cfg.Issuers()) != 2 {
+		t.Fatalf("a refused change was written: %v %v", cfg.Issuers(), err)
+	}
+	// b isn't what the manager depends on.
+	expect(host, `{"action":"remove-registration","registrationId":"b"}`, 200, "")
+	// Removing the last provider, with no one else to manage, is refused the same way.
+	expect(host, `{"action":"remove-registration","registrationId":"a"}`, 409, lockedOut)
+	// A manager that needs no sign-in makes the same changes possible.
+	f.key("spare", 0, "access:manage")
+	expect(host, reg("b", b), 200, "")
+	expect(host, `{"action":"remove-registration","registrationId":"a"}`, 200, "")
+	expect(host, `{"action":"disable"}`, 200, "")
+}
+
+// A caller signed in through a provider can't remove the provider from under itself.
+func TestSignInChangeCannotLockOutTheCaller(t *testing.T) {
+	f := &accessFixture{keyFixture: newKeyFixture(t)}
+	ctx := context.Background()
+	const a, b = "https://a.example.test", "https://b.example.test"
+	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
+	me := &auth.Principal{Kind: "browser-session", ID: "browser:me", Permissions: auth.Permissions, Identity: &auth.Identity{Issuer: a, Subject: "me", VerifiedEmail: "me@example.test"}}
+	call := func(p *auth.Principal, body string) (int, string) {
+		res := f.s.Call(ctx, p, "POST", accessRoute, "application/json", []byte(body))
+		return res.Status, string(res.Body)
+	}
+	reg := func(id, issuer string) string {
+		return `{"action":"upsert-oidc","registration":{"kind":"oidc","id":"` + id + `","name":"P","issuer":"` + issuer + `","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat"]}`
+	}
+	for _, body := range []string{reg("a", a), reg("b", b),
+		policyRequest("null", chatRole+","+adminRole, `{"kind":"email","role":"admin","email":"me@example.test","issuer":"`+a+`"},{"kind":"email","role":"admin","email":"other@example.test","issuer":"`+b+`"}`, "null")} {
+		if status, out := call(host, body); status != 200 {
+			t.Fatalf("%d %s", status, out)
+		}
+	}
+	// Someone else can still manage through b, so only the caller's own access is at stake.
+	if status, out := call(me, `{"action":"remove-registration","registrationId":"a"}`); status != 409 || !strings.Contains(out, "would_lock_out_admins") || !strings.Contains(out, "your own access management") {
+		t.Errorf("%d %s", status, out)
+	}
+	if status, out := call(host, `{"action":"remove-registration","registrationId":"a"}`); status != 200 {
+		t.Errorf("someone else may: %d %s", status, out)
 	}
 }
