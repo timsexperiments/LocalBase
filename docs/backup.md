@@ -7,7 +7,7 @@ local-base --root ~/restored restore --dry-run <file>   # check a backup, change
 local-base --root ~/restored restore <file>       # restore it
 ```
 
-## A backup is a secret
+## Privacy: a backup is a secret
 
 By default it holds your Hugging Face token, OTLP headers, sign-in client secrets, SMTP password and download credentials, **in plain text, and it is not encrypted**. Anyone who can read the file can use them. The command says so every time.
 
@@ -75,6 +75,48 @@ local-base restore --undo
 **It starts nothing.** The settings carry their ports, so a backup restored beside a running gateway names that gateway's ports. It warns about any that are in use, by connecting to each and closing the connection: change them with `local-base config apply` before starting. `--no-port-probe` skips this, and says which ports it did not check.
 
 Files are created 0600 and directories 0700, owned by you, and the restored root passes the same checks a gateway runs at startup.
+
+## Limits
+
+- **A root that doesn't fit isn't backed up.** One file can be at most 8 GiB, and the whole backup 16 GiB and 20,000 files. `backup` says what went over, and keeps nothing.
+- **A file with a path over 512 bytes is left out,** and listed with what else was left out.
+- **Each backup is whole.** There's no incremental backup, and nothing deletes old backups for you.
+- **Models aren't in it,** so a restored root installs them again. Restore lists which.
+- **A newer backup can't go into an older LocalBase.** Restore refuses, and asks you to upgrade first.
+
+## What has been tested
+
+Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `09b7d106`.** Its schema check gave no false refusal, and `doctor` read the restored settings correctly. Later commits have not been through that run.
+
+**Not tested:**
+
+- A backup with its secrets on real data, including a real `ui-access.json`.
+- Custom backends and email delivery on real data. That install has neither, so only scratch data has been through them.
+- Restoring on a second computer.
+- Signing in with a real provider after a restore.
+- Installing a real model after a restore.
+
+## Troubleshooting
+
+| It says, or you see | What to do |
+| --- | --- |
+| `A gateway is running on <root>. Stop it first…` | Run the `stop` it names, then restore |
+| `<root> already holds a LocalBase root. To replace its settings, run this again with --replace…` | Add `--replace` if you mean it, or choose an empty `--root` |
+| `a restore did not finish`, from any command | A restore was interrupted. Run the `restore --undo` it names |
+| `the restore failed, and everything was put back: …` | Nothing changed. Fix what it names, then try again |
+| `the restore failed (…), and so did putting things back (…).` | Fix what it names, such as a full or failing disk, then run the `restore --undo` it names. Until then, every command refuses |
+| `Refusing to use <file>: other users can change it…` | If you trust the file, run the `chmod go-w` it names |
+| `Refusing to use <file>: another user owns it`, `it is a symbolic link` or `it has another hard link` | Restore reads only a plain file with one name that you own, because a backup decides who can sign in. If you trust the file, copy it to a new one |
+| `Refusing to use <root>: another user owns it.` | If the root is yours, run the `chown` it names. If you did not put it there, leave it |
+| `Refusing to restore as root…` | Run it as the user who will own the root |
+| `other users can reach <directory>, and a backup holds secrets.` | Run the `chmod 700` it names, or choose a place with `--output` |
+| `<file> already exists, and a backup never overwrites a file` | Choose another name with `--output` |
+| `This needs <n> bytes of disk, and <n> are free.` | Free up that much space |
+| `This backup would not restore, so it was not kept: …` | Fix what it names, which comes from the same checks `restore` makes |
+| `The backup is damaged`, or `… does not match its checksum.` | The file changed after it was written, and can't be repaired. Use another backup |
+| `The database holds what LocalBase does not make, so it was changed by something else: …` | Don't restore it unless you know what changed it, because restoring decides who can sign in and what runs as you |
+| `A newer LocalBase wrote this backup…` | Upgrade LocalBase, then restore |
+| `doctor` names a `.local-base-temporary-…` directory | A backup or restore was killed, and its files may hold secrets. The next backup or restore removes it, or run the `rm` that `doctor` prints |
 
 ## What this can't protect against
 
