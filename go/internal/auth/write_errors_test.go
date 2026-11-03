@@ -28,7 +28,7 @@ func invited(t *testing.T) *store.Store {
 	if err := ApplyPolicy(ctx, st, p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := InviteUser(ctx, st, "friend@example.com", []string{"chat"}); err != nil {
+	if _, err := InviteUser(ctx, st, "friend@example.com", []string{"chat"}, MagicIssuer(testOrigin)); err != nil {
 		t.Fatal(err)
 	}
 	return st
@@ -38,7 +38,7 @@ func invited(t *testing.T) *store.Store {
 func TestMagicLinkNotConsumedDoesNotSignIn(t *testing.T) {
 	ctx := context.Background()
 	st := invited(t)
-	token, _, err := IssueMagicLink(ctx, st, "friend@example.com")
+	token, _, err := IssueMagicLink(ctx, st, "friend@example.com", MagicIssuer(testOrigin))
 	if err != nil || token == "" {
 		t.Fatalf("issue: %q %v", token, err)
 	}
@@ -84,7 +84,7 @@ func TestDeleteSessionReportsFailure(t *testing.T) {
 func TestRevokeAndClearMagicLinksReportFailure(t *testing.T) {
 	ctx := context.Background()
 	st := invited(t)
-	token, _, err := IssueMagicLink(ctx, st, "friend@example.com")
+	token, _, err := IssueMagicLink(ctx, st, "friend@example.com", MagicIssuer(testOrigin))
 	if err != nil {
 		t.Fatal(err)
 	}
