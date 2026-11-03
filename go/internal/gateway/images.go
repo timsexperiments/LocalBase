@@ -216,7 +216,7 @@ func promptWithTuning(prompt string, t imageTuning, lora *imageLora) string {
 	}
 	o := make(orderedJSON, len(extra))
 	for i, e := range extra {
-		o[i] = kvPair{e.k, e.v}
+		o[i] = kvPair(e)
 	}
 	// json.Marshal would HTML-escape the result; JSON.stringify does not.
 	b, _ := marshalNoEscape(o)

@@ -380,9 +380,7 @@ func resolveHF(ctx context.Context, repo, file string, req Request, profile *Pro
 			dir := path.Dir(f)
 			for i := 1; i <= n; i++ {
 				name := path.Join(dir, fmt.Sprintf("%s-%05d-of-%05d.gguf", m[1], i, n))
-				if strings.HasPrefix(name, "./") {
-					name = name[2:]
-				}
+				name = strings.TrimPrefix(name, "./")
 				if err := add(name, models.RoleWeights, true); err != nil {
 					return nil, fmt.Errorf("incomplete split set: %v", err)
 				}

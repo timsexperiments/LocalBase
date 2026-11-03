@@ -82,8 +82,6 @@ func (f Filters) match(e *Event) bool {
 		(f.RequestID == "" || e.RequestID == f.RequestID)
 }
 
-var archiveRe = regexp.MustCompile(`^events\.(\d+)\.jsonl$`)
-
 // paths lists the log files oldest first: archives 5..1, then the active file.
 func paths(rootDir string) []string {
 	dir := filepath.Join(rootDir, "logs")
