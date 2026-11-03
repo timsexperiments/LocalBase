@@ -1,5 +1,7 @@
 # API overview
 
+To point an existing tool at LocalBase, see [connect an app](connect.md).
+
 The gateway listens on `http://127.0.0.1:2273` by default. Send an API key from `local-base keys create` as `Authorization: Bearer <key>`. Errors use the OpenAI envelope: `{"error":{"message","type","param","code"}}`.
 
 ## OpenAI-compatible
@@ -24,6 +26,6 @@ The gateway listens on `http://127.0.0.1:2273` by default. Send an API key from 
 | `/_localbase/runs` and below | Detached runs |
 | `/_localbase/api-keys`, `/_localbase/access-management`, `/_localbase/voices`, `/_localbase/backends`, `/_localbase/model-imports` | Administration |
 
-`/_localbase/` routes aren't part of the [stable `/v1` API](versioning.md) and can change between releases. See the [host and admission API](host-api.md).
+`/_localbase/` routes aren't part of the [stable `/v1` API](versioning.md) and can change between releases. A running gateway describes both at `GET /openapi.json`, with no credentials needed. See the [host and admission API](host-api.md).
 
 See [API details](api-details.md) for request and response contracts, and `go/DESIGN.md` §21 for detached runs.
