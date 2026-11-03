@@ -70,6 +70,20 @@ Latency figures are successes only. A detached run's figure is its whole life.
 `worker spread` is the least over the most successes among one class's workers,
 so 1.00 is perfectly even.
 
+Runs of four or more checkpoints also report each resource's change per cycle, a
+least-squares fit that leaves out warm-up. The budgets only catch a leak once it
+is large; the slope shows a small one as a number. It does not fail a run, because
+over a short run a slope can be a plateau still settling.
+
+### Open questions
+
+- **RSS and threads over a long run.** In the first 30-minute soak (macOS, 18
+  cycles, 2026-11-02), goroutines and descriptors never moved and heap was flat
+  from cycle 3, while RSS rose about 3.5 MiB from cycle 2 to cycle 18 (64.3 to
+  67.8 MiB) and threads went 14 to 16. That is inside the budgets, but 28 minutes
+  cannot tell a plateau from a very slow leak. The weekly long run should answer
+  it; until then this is open, not a pass.
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
@@ -114,27 +128,44 @@ Two things differ from macOS, and both are expected:
   frees memory, so that wait always runs out and `inference_queue_timeout` shows
   up. A real host would usually settle sooner; how much sooner has not been measured.
 
-## Real-model checks still to run
+## Real-model checks
 
-The chaos tests use fake backends, so these questions about the real runtimes are
-open. **Do not run them without a window from the operator**, who first checks
-that the live gateway is idle (`/health`) and how much memory is free.
+The chaos tests use fake backends, so these questions were checked against the real
+runtime on 2026-11-02, in a window from the operator: `llama-server` 0.7.0-dev
+(build 11671, commit `ba3c05f71`), `Qwen3-Embedding-0.6B`, from APFS clones, context
+2048, one slot, a 1.64 GiB plan.
 
-**Limits:** the smallest installed model, `Qwen3-Embedding-0.6B` (0.6 GiB file),
-about 10 minutes, ports 29000-29499. Everything runs from APFS clones in a scratch
-directory (`cp -c -R`); never run anything from the live root. Stop at once if the
-live gateway becomes busy. Stop processes by exact PID, then remove the scratch
-directory and confirm nothing is running from it.
-
-| # | Question | How | Record |
+| # | Question | Answer | Evidence |
 |---|---|---|---|
-| 1 | Does `llama-server` exit when its port is taken, and does it load the model first? | Hold a port with `nc -l 127.0.0.1 <port>`, then start it on that port under `/usr/bin/time -l`. | Exit code, seconds to exit, peak memory (a peak near the model's size means it loaded weights before failing) |
-| 2 | Does an orphan answer `/health`? | Run a scratch gateway on the clones, load the model with one request, `kill -9` the gateway, then `curl` the backend's `/health` and `/props`. | Status, `model_path`, parent PID |
-| 3 | Does an orphan survive its next log line? Its stdout and stderr pipes lost their reader when the gateway died, so a write may raise SIGPIPE. | After step 2, send `/v1/embeddings` straight to the backend, then check whether it is alive. Repeat a few times, and once with no requests for 60 s. | Answered or not, alive or not, exit signal |
-| 4 | What does an orphan cost in memory? | `footprint -p <pid>` and `vm_stat`: before loading, loaded, orphaned at +60 s, after killing it. | Each figure, and whether the host's available figure shows the orphan |
-| 5 | What does the successor see? | With the orphan alive, restart the scratch gateway on the same root and port, and send one request for this model and one for a second small model if the window allows. | Which process answered, whether the new backend exited, whether admission refused |
-| 6 | Do the media runtimes behave the same? | Repeat 1 to 3 for `whisper-server`, and `sd-server` or `tts-server` if the window allows. | As above |
+| 1 | Does `llama-server` exit when its port is taken, and does it load the model first? | It exits without loading. | Exit 1 in 0.09 s (3 s on a cold first run), `couldn't bind HTTP server socket`, no load lines, 217 MB peak footprint. |
+| 2 | Does an orphan answer `/health`? | Yes. | After the gateway's SIGKILL: parent pid 1, `/health` 200, `/props` names its model. |
+| 3 | Does an orphan survive its next log line, now that its pipes have no reader? | Yes. | 6 requests and 60 s idle, all answered. A process with its pipes' readers killed: 3 requests answered, still alive. Whether it ignores SIGPIPE or wrote nothing was not determined. |
+| 4 | What does an orphan cost in memory? | It stays resident, and the gateway has no record of it. | RSS 993 MB, unchanged at +60 s; `phys_footprint` 474 then 295 MB. The host's available figure was too noisy to measure it closely. |
+| 5 | What does a successor see? | What the fake showed. | `runtime.ready` 1 ms after `runtime.starting`, from the orphan's health; the new process exits with status 1 within about 60 ms; the request gets a 200 from the orphan; unload answers 404 `model_not_loaded`. |
 
-Afterward: put the results here, make the fake backend behave as the real one does
-(for example, die on a closed pipe if step 3 says so), and rerun
-`TestGatewayKilledOutright` against the fix.
+The fake backend's bind failure matches, so `TestGatewayKilledOutright` is a fair test
+of this path.
+
+**Not checked on a real runtime:** a request for a different model answered by an
+orphan (the window covered one model), the media runtimes (`whisper-server`,
+`sd-server`, `tts-server`), and memory at a large model's scale.
+
+**To run more of these:** only in a window from the operator, who first checks that
+the live gateway is idle. Work from clones in a scratch directory, never from the live
+root. Check live `/health` and free memory (free + speculative + inactive pages) just
+before starting and throughout, and stop at once if the live state changes or free
+memory falls under the agreed floor. Print the plan the gateway will load before
+loading it, and stop if it is over the agreed size: a model's default plan can be far
+larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
+
+**Waiting for the next window: does a real backend use more memory with every request?**
+Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
+on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
+from a leak. The plan is about 200 sequential requests to a small model on a scratch
+gateway on a Mac, with the same conditions as above, recording the backend's RSS and
+available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
+repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
+in recent `llama-server` builds): if it does, a run with the cache off separates the two.
+The plan must fit the agreed size, so the context will be far smaller than the one observed
+and the platform differs. A flat result here would not clear the Linux case; say so if
+that is the result.

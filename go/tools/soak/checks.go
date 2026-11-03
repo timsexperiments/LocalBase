@@ -65,7 +65,9 @@ func (s *soak) finalChecks() {
 func copyEvidence(out string, paths []string) {
 	for i, p := range paths {
 		if b, err := os.ReadFile(p); err == nil {
-			os.WriteFile(fmt.Sprintf("%s/race-%d.txt", out, i), b, 0o600)
+			if err := os.WriteFile(fmt.Sprintf("%s/race-%d.txt", out, i), b, 0o600); err != nil {
+				fmt.Fprintln(os.Stderr, "soak: could not keep the race evidence:", err)
+			}
 		}
 	}
 }
