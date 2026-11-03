@@ -10,7 +10,9 @@ cd "$(dirname "$0")/.." || exit 2
 . tools/disk-guard.sh
 disk_guard e2e-kill-check
 cases=${*:-sigterm sigkill deadline}
-base=$(mktemp -d "${TMPDIR:-/tmp}/lbe2e-kill-XXXXXX") || exit 2
+parent=${LOCALBASE_E2E_SCRATCH:-${TMPDIR:-/tmp}}
+mkdir -p "$parent" || exit 2
+base=$(mktemp -d "$parent/lbe2e-kill-XXXXXX") || exit 2
 echo "results under $base"
 failed=0
 

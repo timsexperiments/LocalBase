@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.." || exit 2
 . tools/disk-guard.sh
 disk_guard e2e-manifest-check
 command -v bun >/dev/null 2>&1 || { echo "e2e-manifest-check: needs bun" >&2; exit 2; }
-out=${TMPDIR:-/tmp}/localbase-e2e/manifest-check
+out=${LOCALBASE_E2E_SCRATCH:-${TMPDIR:-/tmp}}/localbase-e2e/manifest-check
 mkdir -p "$out" || exit 2
 export E2E_PAGES=signin,models E2E_WIDTHS=390 E2E_THEMES=light
 

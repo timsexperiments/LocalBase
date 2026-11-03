@@ -44,6 +44,9 @@ const PAGES = ALL_PAGES.filter(([n]) => !list("E2E_PAGES") || list("E2E_PAGES")!
 // --- DevTools ---------------------------------------------------------------------------
 
 const version = await (await fetch(`${cdpBase}/json/version`)).json();
+// The driver checked the files it was pointed at, so this is what those files say they are.
+const pinned = process.env.E2E_CHROME_VERSION;
+if (pinned && !String(version.Browser).endsWith(`/${pinned}`)) { console.error(`the suite stopped: Chrome says it is ${version.Browser}, and the pin is ${pinned}`); process.exit(2); }
 const ws = new WebSocket(version.webSocketDebuggerUrl);
 await new Promise((r, j) => { ws.addEventListener("open", r, { once: true }); ws.addEventListener("error", j, { once: true }); });
 // With no browser there is nothing left to check, and nothing here should linger.
@@ -722,6 +725,10 @@ function report(selfTest: any, wallMs: number) {
   const failed = journeys.filter((j) => !j.ok);
   let md = `# Browser suite: ${m.missing.length ? "INCOMPLETE" : failed.length || findings.length ? "FINDINGS" : "PASS"}\n\n`;
   md += `Headless ${version.Browser}, fake backends, ${(wallMs / 1000).toFixed(0)} s. ${journeys.length - failed.length} of ${journeys.length} journeys pass; ${findings.length} ${findings.length === 1 ? "finding" : "findings"} across ${PAGES.length} pages x ${WIDTHS.length} widths x ${THEMES.length} themes (${cells.size} cells).\n\n`;
+  md += process.env.E2E_CHROME_SHA256
+    ? `Chrome ${process.env.E2E_CHROME_VERSION}: archive sha256 \`${process.env.E2E_CHROME_SHA256}\` matches the pin, and all ${process.env.E2E_CHROME_FILES} unpacked files match the archive, checked before it started.\n\n`
+    : `Chrome: ${version.Browser}, not a pinned one, so its version floats and nothing was checked.\n\n`;
+  md += process.env.E2E_AXE_SHA256 ? `axe-core: tarball sha256 \`${process.env.E2E_AXE_SHA256}\` matches the pin, and the script matches the tarball.\n\n` : "";
   md += `## What ran\n\n${m.ran} checks recorded, ${m.declared} journeys declared. **Missing: ${m.missing.length}.**\n`;
   for (const x of m.missing.slice(0, 40)) md += `- ${x}\n`;
   if (m.missing.length > 40) md += `- and ${m.missing.length - 40} more; see findings.json\n`;
@@ -766,7 +773,7 @@ function report(selfTest: any, wallMs: number) {
     if (sorted.length > 120) md += `- and ${sorted.length - 120} more; see findings.json\n`;
   }
   writeFileSync(`${out}/result.md`, md);
-  writeFileSync(`${out}/findings.json`, JSON.stringify({ journeys, findings, manifest: m, walks, sheetRuns, cells: Object.fromEntries(cells), widths: WIDTHS, themes: THEMES, pages: PAGES.map(([n, p]) => ({ name: n, path: p })), overflowSelfTest: selfTest }, null, 1));
+  writeFileSync(`${out}/findings.json`, JSON.stringify({ journeys, findings, chrome: { browser: version.Browser, pinned: process.env.E2E_CHROME_VERSION ?? null, archiveSha256: process.env.E2E_CHROME_SHA256 ?? null, files: Number(process.env.E2E_CHROME_FILES ?? 0) }, axeSha256: process.env.E2E_AXE_SHA256 ?? null, manifest: m, walks, sheetRuns, cells: Object.fromEntries(cells), widths: WIDTHS, themes: THEMES, pages: PAGES.map(([n, p]) => ({ name: n, path: p })), overflowSelfTest: selfTest }, null, 1));
   console.log(md.split("## Findings\n")[0]);
   console.log(`findings ${findings.length}, failed journeys ${failed.length}, missing ${m.missing.length}`);
   for (const x of m.missing.slice(0, 40)) console.log(`missing: ${x}`);

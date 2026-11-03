@@ -227,7 +227,16 @@ checked against its sha256 and never installed, so that every run checks the sam
 platform with no pin, such as linux/arm64, falls back to an installed Chrome. axe-core comes the
 same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
 ports from the lab's block. Results and captures go to a new directory under
-`$TMPDIR/localbase-e2e`, or `-out <dir>`.
+`$TMPDIR/localbase-e2e`, or `-out <dir>`. `LOCALBASE_E2E_SCRATCH` moves that default and the run's
+scratch out of `$TMPDIR`, so that clearing up never means reaching outside a directory of your own.
+
+**The cache is checked on every run, before anything from it runs.** The archive must match its pin, and
+each unpacked file must match the archive, so a changed or half-written file stops the run at the first
+mismatch, with exit 2. The checksum and version go at the top of `result.md`, and the suite stops if
+Chrome reports a version other than the pin. A Chrome from `LBGO_CHROME` has nothing to match, and
+`result.md` says so. A failed or stopped fetch leaves nothing behind. Its working directories have fixed
+names so a trap can remove them by name, so two runs fetching into one cache at the same moment can
+collide. That fails closed: nothing is used until its checksum matches.
 
 Exit 0 means everything passed, exit 1 means findings about the pages (in `result.md`, with captures),
 exit 2 means the suite itself could not run, exit 4 means it ran and something it should have checked has
