@@ -4160,3 +4160,5 @@ accelerator bytes against the GPU limit.
 
 `/app/strip`, which every visible page polls, is not traced and logs only on failure,
 like `/health`.
+
+`memory.settling` is true while the state isn't healthy and normal samples are counting toward recovery, about 4.5 s after memory returns, and absent otherwise. Recovery itself is unchanged. It reads the same state admission refuses on, so it clears exactly when refusals for pressure stop.
