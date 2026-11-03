@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -78,6 +79,8 @@ type Server struct {
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runManager
+	// anonLog keeps what requests with no credential write to the log small.
+	anonLog *obs.Sampler
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
@@ -89,6 +92,12 @@ type Server struct {
 	mux      *http.ServeMux
 	routes   []string // every registered pattern, for the OpenAPI drift test
 }
+
+// What requests with no credential may write to the log.
+const (
+	anonymousLogEvery = time.Minute
+	anonymousLogBurst = 20
+)
 
 func New(s *Server) *Server {
 	s.started = time.Now()
@@ -103,6 +112,7 @@ func New(s *Server) *Server {
 		runsDir = filepath.Join(rootDir, "runs")
 	}
 	s.runs = newRunManager(s, runsDir)
+	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
 	go s.runs.janitor()
 	mux := newRouteMux()
 	mux.HandleFunc("/health", s.health)
@@ -398,8 +408,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(auth); i += 2 {
 			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
 		}
+		now := time.Now()
+		if n := s.anonLog.Flush(now); n > 0 {
+			s.Log.Warn("Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
+				"count", n, "interval_seconds", int(s.anonLog.Every.Seconds()))
+		}
 		if quietRoute(label, r.URL.Path) && status < 400 {
 			return // successful probes and polls are not logged
+		}
+		if !s.NoAuth && status < 500 && (rec.auth == nil || rec.auth.Kind == "anonymous") && !s.anonLog.Allow(now) {
+			return // anyone can send these, so a flood can't be what fills the log
 		}
 		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
 		attrs := []any{"event", "http.request", "category", "http", "request_id", id,

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -56,7 +57,9 @@ type Browser struct {
 	cfJWKS *JWKS
 	oidc   map[string]*oidcRuntime
 	mu     sync.Mutex
-	states map[string]loginState
+	// failedLog keeps what failed sign-ins write to the log small.
+	failedLog *obs.Sampler
+	states    map[string]loginState
 }
 
 type oidcRuntime struct {
@@ -84,7 +87,7 @@ type loginState struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
+	b := &Browser{failedLog: &obs.Sampler{Every: time.Minute, Burst: 20}, Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
 		oidc: map[string]*oidcRuntime{}, states: map[string]loginState{}}
 	if cfg == nil {
@@ -468,7 +471,9 @@ func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	id, owner, err := b.exchange(r.Context(), rt, code, state)
 	if err != nil {
-		b.Log.Warn("OpenID Connect sign-in failed.", "event", "auth.signin-failed", "error", err.Error())
+		if now := time.Now(); b.failedLog.Allow(now) { // anyone can start a sign-in and fail it
+			b.Log.Warn("OpenID Connect sign-in failed.", "event", "auth.signin-failed", "error", err.Error(), "held_back", b.failedLog.Flush(now))
+		}
 		failed()
 		return
 	}
