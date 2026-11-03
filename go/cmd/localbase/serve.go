@@ -31,6 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
@@ -385,6 +386,10 @@ func serve(c *cli.Ctx) (any, error) {
 		srv.Usage = rec
 		stopUsage = rec.Start()
 	}
+	// The daily check is off by default, and this makes no request unless it is on.
+	srv.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
+	stopUpdates := srv.Updates.Start()
+	defer stopUpdates()
 	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
 	// started with, clearing a matching pending restart (TS serve).
