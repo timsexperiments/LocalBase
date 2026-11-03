@@ -116,6 +116,7 @@ var (
 		".localbase-root.json":  "Restore makes its own, since a marker names one root",
 		"local-base.db-wal":     "Part of the database, which is copied whole",
 		"local-base.db-shm":     "Part of the database, which is copied whole",
+		"local-base.db-journal": "SQLite's record of a write in progress. The copy holds only finished writes",
 		root.RestoreJournalName: "Left by a restore that did not finish",
 	}
 	// rowsLeftOut are rows that are not settings. They are dropped when a backup is written and
@@ -468,6 +469,9 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	dbPath := o.Root.DB()
 	if _, err := os.Lstat(dbPath); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
+	}
+	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
 	}
 	files, left, err := survey(o.Root.Dir)
 	if err != nil {
