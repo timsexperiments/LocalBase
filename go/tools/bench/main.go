@@ -180,7 +180,7 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	return os.WriteFile(path, append(b, '\n'), 0o600)
 }
 
 // start runs a gateway with the fake backend answering at once.
@@ -193,7 +193,9 @@ func (b *bench) start(name string) (*lab.Gateway, *lab.Client, error) {
 }
 
 func stopGateway(g *lab.Gateway) {
-	g.Stop(30 * time.Second)
+	if _, err := g.Stop(30 * time.Second); err != nil {
+		fmt.Fprintln(os.Stderr, "bench: the gateway did not stop cleanly:", err)
+	}
 }
 
 func (b *bench) binarySize() error {
@@ -207,7 +209,7 @@ func (b *bench) binarySize() error {
 }
 
 func (b *bench) startupAndIdle() error {
-	g, c, err := b.start("startup")
+	g, _, err := b.start("startup")
 	if err != nil {
 		return err
 	}
@@ -226,7 +228,7 @@ func (b *bench) startupAndIdle() error {
 	}
 	defer stopGateway(g)
 	b.add("startup, existing root", "ms", ms(lab.Percentile(lab.Sorted(restarts), 50)))
-	c = lab.NewClient(g.Base)
+	c := lab.NewClient(g.Base)
 	// Idle: running, with no model loaded and no client connected.
 	time.Sleep(time.Second)
 	s, err := g.Settled(b.ctx)
@@ -355,7 +357,9 @@ func (b *bench) idleConnections() error {
 		if _, err := io.WriteString(c, request); err != nil {
 			return err
 		}
-		c.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err := c.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			return err
+		}
 		if _, err := c.Read(buf); err != nil {
 			return fmt.Errorf("connection %d: %w", i, err)
 		}
@@ -383,7 +387,7 @@ func (b *bench) keyScaling() error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 	sample := func() ([]time.Duration, error) {
 		n := b.samples(500, 100)
 		out := make([]time.Duration, 0, n)
