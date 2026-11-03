@@ -1,5 +1,7 @@
 # Upgrading and rolling back
 
+This page uses the install script. There's also a [`local-base upgrade` command](upgrade-command.md), but it isn't usable until a release signing key exists. Its `--check` works today.
+
 ## Upgrade
 
 Run the [install script](install.md) again, then apply the new binary:
