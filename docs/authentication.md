@@ -280,16 +280,25 @@ the scope, and keys created with explicit scopes, do not receive it; add it with
 `keys scopes`.
 
 Keys that administer LocalBase need explicit management scopes. Ordinary
-inference keys do not receive them.
+inference keys do not receive them. Give a key only what its job needs. A key that
+installs models for a deployment needs only this:
+
+```bash
+local-base --non-interactive --json keys create \
+  --name model-installer \
+  --scopes 'models:read,models:manage'
+```
+
+A key holding `access:manage`, `keys:manage` and `models:manage` together is an
+admin key: it can change who has access to LocalBase, make other keys, and decide
+what this computer downloads and runs. Create one only if a piece of automation
+does all three, and keep it with that automation:
 
 ```bash
 local-base --non-interactive --json keys create \
   --name automation-admin \
   --scopes 'access:read,access:manage,keys:read,keys:manage,models:read,models:manage'
 ```
-
-A key like this can change who has access to LocalBase and what it runs. Give it only
-to the automation that needs it.
 
 Key creation is a bootstrap operation, not a replay-safe declaration. Names are
 labels and are not unique. Do not run `keys create` on every deployment. Create
