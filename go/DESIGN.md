@@ -614,6 +614,8 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- With several sign-in providers, a binding or invitation that names none answers
+  400 `issuer_required`, where TS accepts the request (§13.6, item 5b).
 
 ### M1 (done 2026-10-19)
 
@@ -1205,7 +1207,8 @@ Deliberate status changes to verify against the live clients at cutover:
    - **Naming one.** The API and `local-base access` take `issuer` on a binding or
      an invitation. Without it, a person adding their own address gets the provider
      they signed in with, and otherwise the only provider configured is used. With
-     several it answers 400 `issuer_required`, listing them; it never guesses. A new
+     several it answers 400 `issuer_required`, listing them; it never guesses, which
+     is a deliberate difference from TS, where the request succeeds. A new
      binding or invitation can't name a provider that isn't configured: 400
      `issuer_unknown`. A binding already there may stay, and matches nobody until
      its provider returns.
