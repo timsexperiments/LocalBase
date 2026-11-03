@@ -227,7 +227,7 @@ func stderrFixture(t *testing.T, size int) (root, active, archive string) {
 
 func TestBoundServiceStderr(t *testing.T) {
 	// Nothing captured: nothing to do.
-	root, active, archive := stderrFixture(t, -1)
+	root, _, archive := stderrFixture(t, -1)
 	if err := BoundServiceStderr(root); err != nil {
 		t.Errorf("missing: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestBoundServiceStderr(t *testing.T) {
 		t.Error("archive from nothing")
 	}
 	// At the limit: left alone.
-	root, active, archive = stderrFixture(t, maxServiceStderr)
+	root, active, archive := stderrFixture(t, maxServiceStderr)
 	if err := BoundServiceStderr(root); err != nil {
 		t.Fatal(err)
 	}

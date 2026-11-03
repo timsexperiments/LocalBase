@@ -282,10 +282,10 @@ func RecordStartRefusal(rootDir string, cause *UnsafeFileError, now time.Time) b
 	}
 	dir := filepath.Dir(startRefusalPath(rootDir))
 	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
-		os.Mkdir(dir, 0o700) // a first start refused before anything made it
+		_ = os.Mkdir(dir, 0o700) // a first start refused before anything made it; checked next
 	}
 	if info, err := os.Lstat(dir); err == nil && info.IsDir() {
-		WritePrivateAtomic(startRefusalPath(rootDir), b)
+		_ = WritePrivateAtomic(startRefusalPath(rootDir), b) // a note for doctor: the refusal itself stands
 	}
 	return true
 }
@@ -313,7 +313,7 @@ func LogStartRefusal(rootDir string, logsDir string, cause *UnsafeFileError) {
 	if err != nil {
 		return
 	}
-	defer sink.Close()
+	defer func() { _ = sink.Close() }()
 	slog.New(NewHandler(sink, slog.LevelInfo)).Error("The gateway refused to start: "+cause.Error(),
 		"event", "gateway.start-refused", "category", "runtime", "path", cause.Path, "problem", cause.Problem)
 }

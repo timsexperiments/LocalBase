@@ -128,7 +128,7 @@ func (m *management) persist(force bool) {
 	if os.MkdirAll(filepath.Dir(m.path), 0o700) != nil {
 		return
 	}
-	obs.WritePrivateAtomic(m.path, b)
+	obs.WarnRefusedWrite(nil, obs.WritePrivateAtomic(m.path, b))
 }
 
 func i64(v int64) *int64 { return &v }
