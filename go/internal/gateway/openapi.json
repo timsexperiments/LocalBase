@@ -1571,7 +1571,8 @@
       },
       "post": {
         "operationId": "startModelImport",
-        "summary": "Resolve an import source, or start the import",
+        "summary": "Resolve an import source, start the import, or cancel it",
+        "description": "Cancelling differs from cancelling an install, on purpose. An import is identified by its `job`, and cancelling removes what it downloaded, because its source may change between tries. An install is identified by `modelId` and keeps its partial file, because a pinned checksum makes resuming safe.",
         "tags": ["Model management"],
         "x-localbase-permission": "models:manage",
         "x-localbase-stability": "unstable",
@@ -1580,30 +1581,43 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "action": {"type": "string", "enum": ["resolve", "start"]},
-                  "source": {
-                    "type": "string",
-                    "minLength": 1,
-                    "description": "A repository reference, a direct URL, or a path on the gateway's computer."
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {"type": "string", "enum": ["resolve", "start"]},
+                      "source": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "A repository reference, a direct URL, or a path on the gateway's computer."
+                      },
+                      "files": {"type": "array", "items": {"type": "string"}},
+                      "revision": {"type": "string"},
+                      "sha256": {"type": "string"},
+                      "authProfile": {"type": "string"},
+                      "task": {
+                        "type": "string",
+                        "enum": ["chat", "embeddings", "decision", "image", "video", "speech", "transcription"]
+                      },
+                      "backend": {"type": "string", "description": "`auto`, or a registered backend's id."},
+                      "id": {"type": "string"},
+                      "name": {"type": "string"},
+                      "allowHttp": {"type": "boolean"},
+                      "confirmCustomSource": {"type": "boolean"}
+                    },
+                    "required": ["action", "source"],
+                    "additionalProperties": false
                   },
-                  "files": {"type": "array", "items": {"type": "string"}},
-                  "revision": {"type": "string"},
-                  "sha256": {"type": "string"},
-                  "authProfile": {"type": "string"},
-                  "task": {
-                    "type": "string",
-                    "enum": ["chat", "embeddings", "decision", "image", "video", "speech", "transcription"]
-                  },
-                  "backend": {"type": "string", "description": "`auto`, or a registered backend's id."},
-                  "id": {"type": "string"},
-                  "name": {"type": "string"},
-                  "allowHttp": {"type": "boolean"},
-                  "confirmCustomSource": {"type": "boolean"}
-                },
-                "required": ["action", "source"],
-                "additionalProperties": false
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": {"const": "cancel"},
+                      "job": {"type": "string", "minLength": 1, "description": "The id `start` answered with."}
+                    },
+                    "required": ["action", "job"],
+                    "additionalProperties": false
+                  }
+                ]
               }
             }
           },
@@ -1611,19 +1625,28 @@
         },
         "responses": {
           "200": {
-            "description": "`resolve`: what would be downloaded.",
+            "description": "`resolve`: what would be downloaded. `cancel`: the job, usually still `running` for a moment.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "plan": {"$ref": "#/components/schemas/ImportPlan"},
-                    "recommendation": {"$ref": "#/components/schemas/BackendRecommendation"}
-                  },
-                  "required": ["plan", "recommendation"]
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "plan": {"$ref": "#/components/schemas/ImportPlan"},
+                        "recommendation": {"$ref": "#/components/schemas/BackendRecommendation"}
+                      },
+                      "required": ["plan", "recommendation"]
+                    },
+                    {"$ref": "#/components/schemas/ImportJob"}
+                  ]
                 }
               }
             }
+          },
+          "404": {
+            "description": "`cancel`: no import with that id (`import_not_found`).",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
           },
           "202": {
             "description": "`start`: the import is running.",
@@ -4933,7 +4956,7 @@
         "description": "An import running in the gateway. It never holds header values, tokens or signed URLs.",
         "properties": {
           "id": {"type": "string"},
-          "state": {"type": "string", "enum": ["running", "done", "failed"]},
+          "state": {"type": "string", "enum": ["running", "done", "failed", "cancelled"]},
           "progress": {
             "type": "object",
             "properties": {
@@ -4944,7 +4967,9 @@
             },
             "required": ["phase", "done", "total"]
           },
-          "error": {"type": "string"},
+          "error": {"type": "string", "description": "What went wrong. A cancelled job has none."},
+          "errorCode": {"type": "string", "description": "A stable code, when there is one. A cancelled job has `import_cancelled`."},
+          "detail": {"type": "string", "description": "What happened, when it was not a failure."},
           "model": {
             "type": "object",
             "properties": {
