@@ -193,14 +193,16 @@
 <div data-decisions class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
   {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "decision" "Filter" "decisions" "CanGet" .CanManage)}}{{else}}
   <form id="decide" hx-boost="false" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
-    <fieldset class="decide-types">
-      <legend class="sr-only">Question type</legend>
-      <label><input type="radio" name="decide-type" value="choice" class="sr-only" checked>Pick one</label>
-      <label><input type="radio" name="decide-type" value="noul" class="sr-only">Yes or no</label>
-      <label><input type="radio" name="decide-type" value="score" class="sr-only">Rate</label>
-    </fieldset>
     <p id="decide-error" role="alert" class="decide-error" hidden></p>
-    <div data-form-open class="mt-3 grid gap-3">
+    <div data-form-open class="decide-form">
+      <label class="grid gap-1"><span class="font-semibold">Question</span>
+        <textarea id="lab-prompt" class="input decide-question-field" name="question" rows="2" required maxlength="2000" placeholder="What do you want to ask?" autocomplete="off" data-grow></textarea></label>
+      <fieldset class="decide-types">
+        <legend class="sr-only">Question type</legend>
+        <label><input type="radio" name="decide-type" value="choice" class="sr-only" checked>Pick one</label>
+        <label><input type="radio" name="decide-type" value="noul" class="sr-only">Yes or no</label>
+        <label><input type="radio" name="decide-type" value="score" class="sr-only">Rate</label>
+      </fieldset>
       <label class="grid gap-1"><span class="font-semibold" data-situation-title>Situation</span>
         <textarea id="decide-situation" class="input min-h-20" rows="3" autocomplete="off"></textarea></label>
       <div data-batch-tools class="flex flex-wrap items-center gap-2" hidden>
@@ -216,23 +218,26 @@
       <div><button type="button" class="btn btn-quiet" data-code aria-haspopup="dialog">View code</button></div>
     </div>
     <div data-form-summary class="decide-form-summary" hidden>
-      <div class="min-w-0 flex-1">
-        <p class="truncate" data-summary-situation></p>
-        <p class="truncate text-sm text-muted" data-summary-options></p>
-      </div>
-      <button type="button" class="btn btn-quiet shrink-0" data-edit>Edit</button>
+      <h2 class="decide-question" data-summary-question></h2>
+      <p class="decide-quote" data-summary-situation></p>
+      <p class="text-sm text-muted empty:hidden" data-summary-options></p>
     </div>
-    <div data-result class="mt-3" hidden></div>
+    <div data-result class="decide-result" hidden></div>
     <div data-batch class="mt-3" hidden></div>
+    <p class="decide-keep">Questions stay in this browser, so they aren’t in Recent. This tab keeps the last one until you close it.</p>
     <div class="lab-dock-spacer" aria-hidden="true"></div>
     <div class="lab-dock" data-docked>
-      <div class="composer-box lab-box">
-        <div class="lab-chips">
-          <button type="button" class="chip lab-chip gap-1" data-open-sheet="decide-template" data-template-chip aria-haspopup="dialog"><span class="font-normal text-muted">Template</span> <span data-value>None</span></button>
-          <button type="button" class="chip lab-chip gap-1" data-batch-chip aria-pressed="false"><span class="font-normal text-muted">Batch</span> <span data-value>Off</span></button>
+      <div class="decide-actionbar" data-bar-form>
+        <div class="lab-chips min-w-0 flex-1 px-0">
+          <button type="button" class="chip lab-chip decide-chip-long" data-open-sheet="decide-template" data-template-chip aria-haspopup="dialog"><span class="truncate" data-value>Examples</span></button>
+          <button type="button" class="chip lab-chip gap-1" data-batch-chip aria-pressed="false">Batch<span data-value></span></button>
           {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         </div>
-        {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask a question" "Action" "Decide" "Scripted" true)}}
+        <button type="submit" class="btn btn-primary shrink-0" disabled>Decide</button>
+      </div>
+      <div class="decide-actionbar" data-bar-answer hidden>
+        <button type="button" class="btn btn-quiet flex-1" data-edit>Edit</button>
+        <button type="button" class="btn btn-primary flex-1" data-again>Ask another</button>
       </div>
       {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
     </div>
@@ -240,7 +245,7 @@
   <p id="decide-said" class="sr-only" role="status"></p>
 
   <dialog id="decide-template" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="decide-template-title">
-    {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Template")}}
+    {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Examples")}}
     <p class="px-5 pb-2 text-sm text-muted">Fills in the question. Nothing runs until you send it.</p>
     <ul class="list-group mx-4 mb-3" data-templates></ul>
     <div data-saved-box hidden>

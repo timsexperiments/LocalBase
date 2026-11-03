@@ -17,7 +17,7 @@ const blankForm = () => ({
   situation: "",
   batch: false,
   choice: [{ name: "", note: "" }, { name: "", note: "" }],
-  score: ["low", "medium", "high"].map((name) => ({ name, note: "" })),
+  score: ["Low", "Medium", "High"].map((name) => ({ name, note: "" })),
 });
 
 const state = { form: blankForm(), collapsed: false, one: null, rows: null, filter: "all" };
@@ -95,8 +95,8 @@ function renderForm() {
   $("#decide-situation").rows = f.batch ? 6 : 3;
   $("[data-batch-tools]").hidden = !f.batch;
   $("[data-batch-chip]").setAttribute("aria-pressed", String(f.batch));
-  $("[data-batch-chip] [data-value]").textContent = f.batch ? "On" : "Off";
-  $("[data-template-chip] [data-value]").textContent = allTemplates().find((t) => t.id === f.template)?.name ?? "None";
+  $("[data-batch-chip] [data-value]").textContent = f.batch ? "on" : "";
+  $("[data-template-chip] [data-value]").textContent = allTemplates().find((t) => t.id === f.template)?.name ?? "Examples";
   renderCount();
   renderOptions();
   renderCollapse();
@@ -118,8 +118,11 @@ function renderCollapse() {
   if (!state.collapsed) return;
   const names = f.type === "noul" ? "Yes or no" : namedOptions(f[f.type]).map((o) => o.name).join(", ");
   const rows = f.batch ? situations(f.situation).length : 0;
-  $("[data-summary-situation]").textContent = f.batch ? (rows === 1 ? "1 situation" : `${rows} situations`) : excerpt(f.situation.trim()) || "No situation given";
-  $("[data-summary-options]").textContent = names;
+  const said = excerpt(f.situation.trim());
+  $("[data-summary-question]").textContent = f.question.trim();
+  $("[data-summary-situation]").textContent = f.batch ? (rows === 1 ? "1 situation" : `${rows} situations`) : said && `“${said}”`;
+  // A single answer lists the options as its odds; a batch has no one answer to do that.
+  $("[data-summary-options]").textContent = f.batch ? names : "";
 }
 
 function showProblem(found) {
@@ -297,16 +300,34 @@ function startBatch() {
 }
 
 // --- the answer ---------------------------------------------------------------
+// A row in the order it reads: the answer, its track, its number. Equal tracks, so the numbers line up.
 function bars(read) {
   return el("ul", { class: "decide-bars" },
     ...read.rows.map((row) => {
       const fill = el("i", {});
       fill.style.width = `${Math.max(row.p * 100, 0.5)}%`;
       return el("li", { class: row.top ? "decide-bar decide-bar-top" : "decide-bar" },
-        el("span", { class: "decide-bar-label" }, el("span", { class: "min-w-0 break-words" }, row.label), el("span", { class: "shrink-0" }, row.text)),
+        el("span", { class: "decide-bar-name" }, row.label),
         el("span", { class: "decide-track", "aria-hidden": "true" }, fill),
+        el("span", { class: "decide-bar-odds" }, row.text),
       );
     }),
+  );
+}
+
+// While it decides: the answer's own shape, with its names and no numbers yet.
+function pending(status) {
+  const f = state.form;
+  const names = f.type === "noul" ? ["Yes", "No"] : namedOptions(f[f.type]).map((o) => o.name);
+  return el("article", { class: "decide-read", "aria-busy": "true" },
+    el("div", { class: "flex items-center justify-between gap-2" },
+      el("p", { class: "decide-word" }, status === "waiting" ? "Waiting to start…" : "Deciding…"),
+      el("button", { type: "button", class: "btn btn-quiet", "data-stop": "" }, "Stop"),
+    ),
+    el("span", { class: "skeleton decide-verdict-place", "aria-hidden": "true" }),
+    el("ul", { class: "decide-bars", "aria-hidden": "true" },
+      ...names.slice(0, 8).map((name) => el("li", { class: "decide-bar" }, el("span", { class: "decide-bar-name" }, name), el("span", { class: "decide-track" }), el("span", { class: "decide-bar-odds" }))),
+    ),
   );
 }
 
@@ -316,15 +337,7 @@ function renderOne() {
   box.hidden = !one;
   if (!one) return box.replaceChildren();
   if (one.status === "waiting" || one.status === "deciding") {
-    box.replaceChildren(
-      el("div", { class: "decide-card", "aria-busy": "true" },
-        el("div", { class: "flex items-center justify-between gap-2" },
-          el("p", { class: "font-bold" }, one.status === "waiting" ? "Waiting to start…" : "Deciding…"),
-          el("button", { type: "button", class: "btn btn-quiet", "data-stop": "" }, "Stop"),
-        ),
-        el("div", { class: "mt-3 grid gap-3", "aria-hidden": "true" }, ...[0, 1, 2].map(() => el("span", { class: "skeleton block h-9 rounded-lg" }))),
-      ),
-    );
+    box.replaceChildren(pending(one.status));
     return;
   }
   if (one.status === "failed") {
@@ -338,13 +351,14 @@ function renderOne() {
   }
   const read = one.read;
   box.replaceChildren(
-    el("article", { class: "decide-card" },
+    el("article", { class: "decide-read" },
       el("p", { class: `decide-word decide-word-${read.band}` }, read.word),
-      el("p", { class: "decide-verdict" }, el("span", { class: "min-w-0 break-words" }, read.verdict), " ", el("span", { class: "decide-odds" }, read.odds)),
+      el("p", { class: "decide-verdict" }, read.verdict),
+      read.note ? el("p", { class: "decide-note" }, read.note) : null,
       bars(read),
-      el("p", { class: "mt-3 text-sm text-muted" }, STANDING_LINE),
+      el("p", { class: "decide-standing" }, STANDING_LINE),
       howToRead(),
-      el("div", { class: "lab-item-foot mt-2" },
+      el("div", { class: "decide-actions" },
         el("button", { type: "button", class: "btn btn-quiet", "data-copy-json": "" }, "Copy JSON"),
         el("button", { type: "button", class: "btn btn-quiet", "data-code": "", "aria-haspopup": "dialog" }, "View code"),
         el("button", { type: "button", class: "btn btn-quiet", "data-save": "" }, "Save example"),
@@ -562,8 +576,16 @@ function download(text) {
 // --- wiring -----------------------------------------------------------------------
 // One thing at a time: Stop is on screen while it runs.
 function syncBusy() {
+  const busy = !!stopCurrent || batchRunning;
   const send = document.querySelector("#decide .lab-dock button[type=submit]");
-  if (send) send.disabled = !!stopCurrent;
+  if (send) send.disabled = busy;
+  // The bar asks for a question, then offers what comes after an answer. While it decides, Stop is
+  // beside its state, and the bar has nothing to offer.
+  const form = $("[data-bar-form]"), answer = $("[data-bar-answer]");
+  if (form) form.hidden = state.collapsed;
+  if (answer) answer.hidden = !state.collapsed || busy;
+  const dock = form?.closest("[data-docked]");
+  if (dock) dock.hidden = state.collapsed && busy;
 }
 
 function update() {
@@ -653,8 +675,17 @@ function onClick(event) {
   } else if (t.matches("[data-edit]")) {
     state.collapsed = false;
     renderCollapse();
+    syncBusy();
     persist();
-    $("#decide-situation").focus();
+    document.getElementById("lab-prompt").focus();
+  } else if (t.matches("[data-again]")) {
+    // The next question, with the same type and options: often the same thing, asked of something new.
+    Object.assign(state.form, { question: "", situation: "", template: "", batch: false });
+    state.collapsed = false;
+    state.one = null;
+    state.rows = null;
+    update();
+    document.getElementById("lab-prompt").focus();
   } else if (t.matches("[data-stop]") || t.matches("[data-batch-stop]")) {
     stopCurrent?.();
   } else if (t.matches("[data-batch-continue]")) {

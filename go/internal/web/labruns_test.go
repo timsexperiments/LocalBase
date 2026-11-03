@@ -399,7 +399,7 @@ func TestDecisionsPage(t *testing.T) {
 	body := get(u, "/app/studio/decisions").Body.String()
 	main := mainRe.FindString(body)
 	for _, want := range []string{`id="decide"`, `name="decide-type" value="choice"`, `name="decide-type" value="noul"`, `name="decide-type" value="score"`,
-		`data-open-sheet="decide-template"`, `name="question"`, `name="model" value="clef-flash-q4_k_m"`, `id="decide-code"`, `aria-label="Decide"`} {
+		`data-open-sheet="decide-template"`, `name="question"`, `name="model" value="clef-flash-q4_k_m"`, `id="decide-code"`, `>Decide</button>`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}

@@ -2,7 +2,7 @@
 //
 //   bun test go/tools/jstest
 import { describe, expect, test } from "bun:test";
-import { BANDS, band, batchCSV, buildRequest, csvCell, curlSnippet, jsSnippet, needsReview, percent, problem, readAnswer, situations } from "../../internal/web/static/js/decision-read.js";
+import { BANDS, BAND_NOTES, band, batchCSV, buildRequest, csvCell, curlSnippet, jsSnippet, needsReview, percent, problem, readAnswer, situations } from "../../internal/web/static/js/decision-read.js";
 
 describe("band", () => {
   // Provisional, measured on one model (DESIGN §22.17).
@@ -55,6 +55,24 @@ describe("readAnswer", () => {
   });
   test("percent", () => {
     expect([percent(0.72), percent(0.002), percent(0.998), percent(0), percent(1)]).toEqual(["72%", "under 1%", "over 99%", "0%", "100%"]);
+  });
+});
+
+describe("what a read asks of the person", () => {
+  const read = (probabilities) => readAnswer({ type: "choice", probabilities }, "clef-flash-q4_k_m");
+  test("a close call and an unsure read say to look, and name no rate", () => {
+    const close = read({ a: 0.52, b: 0.44, c: 0.04 });
+    expect(close.note).toContain("a person’s look");
+    expect(close.rows.filter((r) => r.top).map((r) => r.label)).toEqual(["a", "b"]);
+    expect(read({ a: 0.41, b: 0.33, c: 0.26 }).note).toContain("a person’s look");
+  });
+  test("a clear answer leads alone, with no note", () => {
+    const strong = read({ a: 0.91, b: 0.06, c: 0.03 });
+    expect(strong.note).toBe("");
+    expect(strong.rows.filter((r) => r.top).map((r) => r.label)).toEqual(["a"]);
+  });
+  test("no note claims accuracy", () => {
+    for (const note of Object.values(BAND_NOTES)) expect(note).not.toMatch(/accura|correct|right|reliab|%|\d/i);
   });
 });
 
