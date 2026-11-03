@@ -5712,7 +5712,7 @@ and 0700, so it passes either way.
 
 - **Bindings and invitations stay in a backup, with or without secrets.** They aren't secrets, and leaving them out would silently change who gets which role. An invitation holds no token: it is a `pending` user. The only token is the magic-link one, which is already left out.
 - **With `--exclude-secrets`,** a provider's bindings stay and do nothing until a provider with the same issuer is added again. The manifest and the report say so per issuer: `https://accounts.example.com: 1 role bindings, 1 invitations, inactive until this provider is added back`.
-- **On every restore,** bindings and invitations are shown per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
+- **On every restore,** bindings and invitations are counted per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
 - **Rows that name no issuer get their own line,** because a root that hasn't started since E2, or a backup of one, can hold them. With one provider, they adopt it at the next start. With several, they grant nothing until `local-base access bindings adopt --issuer <issuer>`, and the gateway still starts. With none, whichever provider is added next takes them, which matters most with `--exclude-secrets`.
 - **A restore refuses a file** with a `go_binding_issuers` row that matches no binding or role, a `kind` other than `email` or `email-domain`, or a `go_invitation_issuers` row whose user doesn't exist or whose issuer fails the format check. `LoadPolicy` ignores such orphans, and one could otherwise sit unseen and bind when a matching row is added later. Bindings it does load get its own check.
 - **With `--replace`,** bindings withdrawn since the backup would come back, since E2 keeps no record of them. The report lists them per issuer, comparing by role name, because a role's id doesn't survive a policy being applied.
@@ -5775,6 +5775,7 @@ made yourself. Each line goes when its fix is in the tree.
 
 - A file can give permissions that neither the report nor the access policy shows.
 - The report leaves out a provider's exact issuer, what everyone who signs in gets, the origin and the SMTP host.
+- The report only counts role bindings. It doesn't say who they're for or what the role gives.
 - The report prints the file's text as it is, terminal escape codes included.
 - With `--replace`, a rotated key goes back to its older secret, and the report doesn't say so. Rotating it again ends the older one.
 - The manifest's list of secrets and its commands to put them back are printed as the file gives them.
