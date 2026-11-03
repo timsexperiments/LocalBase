@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
@@ -26,11 +25,6 @@ func doctorCommand() *cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			// Read-only, doctor cannot undo that write, and would report defaults as the
-			// configuration: anything it says below would be wrong.
-			if msg := backup.UnfinishedWrite(context.Background(), e.Root.Dir); msg != "" {
-				return nil, errors.New(msg)
-			}
 			if err := applyEnvOverrides(e.Config); err != nil {
 				return nil, err
 			}
