@@ -34,7 +34,10 @@ async function load(answer: () => Promise<{ ok: boolean }>) {
   for (const fn of listeners.click ?? []) {
     await fn({ target: { closest: (s: string) => (s === "[data-logout]" ? button : null) } });
   }
-  return { button, assigned, noticeEl };
+  const fire = async (name: string, detail: unknown = {}) => {
+    for (const fn of listeners[name] ?? []) await fn({ detail });
+  };
+  return { button, assigned, noticeEl, fire };
 }
 
 // `bun test` runs every file in one process, so the stubs must not outlive each test.
@@ -59,11 +62,16 @@ describe("signing out", () => {
     expect(JSON.stringify(noticeEl)).toContain("We couldn’t sign you out");
   });
 
-  test("no answer at all doesn't either", async () => {
-    const { assigned, button } = await load(async () => {
+  test("no answer at all doesn't either, and says they're still signed in", async () => {
+    const { assigned, button, noticeEl, fire } = await load(async () => {
       throw new Error("offline");
     });
     expect(assigned).toEqual([]);
     expect(button.disabled).toBe(false);
+    const said = "Can’t reach LocalBase, so we couldn’t sign you out. You’re still signed in.";
+    expect(JSON.stringify(noticeEl)).toContain(said);
+    // A background request failing the same way doesn't replace it.
+    await fire("htmx:sendError");
+    expect(JSON.stringify(noticeEl)).toContain(said);
   });
 });
