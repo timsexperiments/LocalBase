@@ -238,7 +238,32 @@ func (s *Server) referencedModels() map[string]bool {
 	return out
 }
 
-func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, referenced map[string]bool) string {
+// heldModels are the models a runtime has loaded or is loading right now. A
+// configured default that is not loaded is not among them, unlike
+// referencedModels.
+func (s *Server) heldModels() map[string]bool {
+	out := map[string]bool{}
+	if s.LLM != nil {
+		for _, id := range s.LLM.LoadedOrLoading() {
+			out[id] = true
+		}
+	}
+	for _, svc := range []*runtime.Service{s.STT, s.TTS, s.Image} {
+		if svc != nil {
+			if id := svc.Running(); id != "" {
+				out[id] = true
+			}
+		}
+	}
+	return out
+}
+
+// installConflict says why installing spec could disturb a model in use: a
+// runtime holds one of its files, or a selected or active model that could be
+// loaded at any moment shares them. A selected model with files missing cannot
+// be loaded, so it blocks nothing; TS refuses it too, which on a fresh root
+// leaves the default model impossible to install (DESIGN 13.6, item 10).
+func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, held map[string]bool) string {
 	targets := map[string]bool{}
 	for _, p := range s.artifactPaths(spec) {
 		targets[p] = true
@@ -256,7 +281,8 @@ func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, referenc
 		if !overlaps {
 			continue
 		}
-		if slices.Contains(cfg.Selected[other.Kind], other.ModelID) || cfg.Active[other.Kind] == other.ModelID || referenced[other.ModelID] {
+		configured := slices.Contains(cfg.Selected[other.Kind], other.ModelID) || cfg.Active[other.Kind] == other.ModelID
+		if held[other.ModelID] || (configured && s.mayBeInstalled(other)) {
 			if other.ModelID == spec.ModelID {
 				return "Disable this model and wait for the runtime to release it before installing."
 			}
@@ -266,9 +292,42 @@ func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, referenc
 	return ""
 }
 
+// mayBeInstalled is true unless the model is known to have files missing; a
+// model that cannot be inspected counts as installed, which refuses the install.
+func (s *Server) mayBeInstalled(spec *catalog.Spec) bool {
+	f, err := s.inspectModel(spec)
+	return err != nil || f.installed
+}
+
+// disableDefaultMessage is the refusal for disabling the active LLM. It names a
+// way out that works from this state.
+func (s *Server) disableDefaultMessage(spec *catalog.Spec) string {
+	for _, other := range s.Catalog.All() {
+		if other.Kind == "llm" && other.ModelID != spec.ModelID && conf.CanBeDefaultLLM(other) && !s.missingFiles(other) {
+			return "Activate another LLM before disabling the default."
+		}
+	}
+	if s.missingFiles(spec) {
+		return "Install another LLM first. It becomes the default, and this one can then be disabled."
+	}
+	return "This is the only LLM installed, and one must stay the default. Install another LLM and activate it, then disable this one."
+}
+
+// missingFiles is true only when the model is known not to be installed.
+func (s *Server) missingFiles(spec *catalog.Spec) bool { return !s.mayBeInstalled(spec) }
+
+// activateFirstInstall makes a freshly installed chat model the default when the
+// current default cannot run, so a finished install leaves chat usable.
+func (s *Server) activateFirstInstall(spec *catalog.Spec) error {
+	return s.updateConfig(func(c *store.Config) error {
+		conf.ActivateFirstInstall(c, spec, s.Catalog, func(other *catalog.Spec) bool { return !s.missingFiles(other) })
+		return nil
+	})
+}
+
 func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 	cfg := s.LLM.Config()
-	referenced := s.referencedModels()
+	held := s.heldModels()
 	m := s.mgmt
 	m.mu.Lock()
 	installing := m.installing
@@ -298,7 +357,7 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 		}
 		available := storageAt(s.modelsDir(spec.Kind)).AvailableBytes
 		eligibility := conf.Ineligible(spec, cfg.AllowExperimental)
-		conflict := s.installConflict(cfg, spec, referenced)
+		conflict := s.installConflict(cfg, spec, held)
 		switch {
 		case eligibility != "":
 			reason = eligibility
@@ -427,8 +486,9 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 			}
 			switch action {
 			case "activate":
+				// One idempotent call: an installed model needs no enable first.
 				if !slices.Contains(selected, modelID) {
-					return &mgmtError{"conflict", "Enable the model before activating it."}
+					c.Selected[kind] = append(selected, modelID)
 				}
 				c.Active[kind] = modelID
 			case "enable":
@@ -438,7 +498,7 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 			case "disable":
 				if c.Active[kind] == modelID {
 					if kind == "llm" {
-						return &mgmtError{"conflict", "Activate another LLM before disabling the default."}
+						return &mgmtError{"conflict", s.disableDefaultMessage(spec)}
 					}
 					c.Active[kind] = ""
 				}
@@ -484,7 +544,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			if _, err := safeFile(s.Root.Dir, filepath.Join(dir, ".checksums.json")); err != nil {
 				return err
 			}
-			if c := s.installConflict(fresh, spec, s.referencedModels()); c != "" {
+			if c := s.installConflict(fresh, spec, s.heldModels()); c != "" {
 				return &mgmtError{"conflict", c}
 			}
 			facts, err := s.inspectModel(spec)
@@ -535,6 +595,13 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			}})
 			return err
 		})
+		// Before the operation reads complete: complete means ready to use. The
+		// files are good either way, so a failure here does not fail the install.
+		if err == nil {
+			if aerr := s.activateFirstInstall(spec); aerr != nil {
+				s.Log.Error("Could not make the installed model the default.", "event", "models.activate-failed", "model_id", spec.ModelID, "error", aerr.Error())
+			}
+		}
 		m.mu.Lock()
 		switch {
 		case err == nil:
