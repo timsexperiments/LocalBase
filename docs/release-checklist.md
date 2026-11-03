@@ -24,6 +24,7 @@ Drafted for the owner; the recommendations are proposals, not decisions.
 | **DCO** | No sign-off, inbound = outbound, as drafted; or require sign-off and enforce it in CI | No sign-off |
 | **`good first issue` issues** | Create the proposed list; change it; or none yet | Create it after 0.2.0 ships, when contributors can use a release |
 | **TypeScript retirement date** | A gate; or a fixed date. See [retirement](typescript-retirement.md) | The gate. A date adds nothing while its checks are open |
+| **Release signing key** | Create an Ed25519 key for `checksums.txt.sig`, kept as a repository secret; or ship without one, in which case `local-base upgrade` stays unusable (#492) and only `--check` works | Create it before 0.2.0 if `upgrade` ships with it. Otherwise say plainly that upgrades use the install script |
 | **Video, microphone and NVIDIA verification** | Each one can block the release, or ship as documented as unverified | Microphone and real-phone checks block, because they cover what people use first. Run video if a 25.6 GiB window comes up, otherwise ship it marked unverified. NVIDIA doesn't block, because the docs say it isn't qualified |
 
 ## Merge order
