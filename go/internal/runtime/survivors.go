@@ -26,11 +26,22 @@ import (
 // backendRecord says what was started, in enough detail to tell it from a later
 // process that was given the same pid.
 type backendRecord struct {
+	// Root is the root that started it. A copied root carries its source's records,
+	// which would otherwise pass every check against the source's live backends.
+	Root      string `json:"root"`
 	Runtime   string `json:"runtime"`
 	PID       int    `json:"pid"`
 	StartTime string `json:"startTime"`
 	Exe       string `json:"exe"`
 	Port      int    `json:"port"`
+}
+
+// canonicalRoot resolves links, so one root always compares equal to itself.
+func canonicalRoot(root string) string {
+	if p, err := filepath.EvalSymlinks(root); err == nil {
+		return p
+	}
+	return filepath.Clean(root)
 }
 
 func backendRecordsDir(root string) string { return filepath.Join(root, "runtime", "backends") }
@@ -73,7 +84,7 @@ func recordBackend(root, runtimeName string, port int, p *Process, log *slog.Log
 			"runtime", runtimeName, "pid", p.PID())
 		return
 	}
-	b, err := json.Marshal(backendRecord{Runtime: runtimeName, PID: p.PID(), StartTime: start, Exe: exe, Port: port})
+	b, err := json.Marshal(backendRecord{Root: canonicalRoot(root), Runtime: runtimeName, PID: p.PID(), StartTime: start, Exe: exe, Port: port})
 	if err == nil {
 		dir := backendRecordsDir(root)
 		if err = os.MkdirAll(dir, 0o700); err == nil {
@@ -110,7 +121,7 @@ func SweepBackends(root string, log *slog.Logger) int {
 			continue
 		}
 		var rec backendRecord
-		if json.Unmarshal(b, &rec) != nil || rec.PID <= 1 {
+		if json.Unmarshal(b, &rec) != nil || rec.PID <= 1 || rec.Root != canonicalRoot(root) {
 			_ = os.Remove(path)
 			continue
 		}
