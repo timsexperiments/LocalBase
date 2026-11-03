@@ -70,6 +70,10 @@ func main() {
 		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
 	}
 	for _, b := range list {
+		if b == tidyStep {
+			tidy(*dir)
+			continue
+		}
 		if branch, from, ok := parsePick(b); ok {
 			ref := "origin/" + prefix + branch
 			if picked(*dir, ref, from) {
@@ -113,17 +117,7 @@ func main() {
 		check(run(*dir, "git", "commit", "-q", "-m", msg))
 		fmt.Printf("merged  %s (conflicts resolved)\n", b)
 	}
-	removed, err := tidyDesign(filepath.Join(*dir, "go", "DESIGN.md"))
-	check(err)
-	check(run(filepath.Join(*dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
-	check(run(filepath.Join(*dir, "go"), "tools/tailwind.sh"))
-	if out, _ := exec.Command("git", "-C", *dir, "status", "--porcelain").Output(); len(out) > 0 {
-		check(run(*dir, "git", "add", "-A"))
-		check(run(*dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
-	}
-	if removed > 0 {
-		fmt.Printf("removed %d repeats from DESIGN\n", removed)
-	}
+	tidy(*dir)
 	// The differential runs the TS gateway from this tree, and a worktree starts
 	// with no node_modules: without them TS never becomes healthy.
 	if _, err := exec.LookPath("bun"); err != nil {
@@ -282,6 +276,26 @@ func picked(dir, ref, from string) bool {
 		}
 	}
 	return true
+}
+
+// tidyStep in order.txt tidies there as well as at the end: a pull request built on an earlier
+// tree merges cleanly only into a DESIGN that has already lost its repeats, and otherwise
+// brings them back in a form the last tidy cannot recognize.
+const tidyStep = "tidy"
+
+// tidy drops the repeats merging leaves in DESIGN and rebuilds what is generated.
+func tidy(dir string) {
+	removed, err := tidyDesign(filepath.Join(dir, "go", "DESIGN.md"))
+	check(err)
+	check(run(filepath.Join(dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
+	check(run(filepath.Join(dir, "go"), "tools/tailwind.sh"))
+	if out, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output(); len(out) > 0 {
+		check(run(dir, "git", "add", "-A"))
+		check(run(dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
+	}
+	if removed > 0 {
+		fmt.Printf("removed %d repeats from DESIGN\n", removed)
+	}
 }
 
 // parsePick reads "pick <branch> <from>": a branch built on an earlier integration tree,

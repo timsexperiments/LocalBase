@@ -154,8 +154,11 @@ func describeBindings(ctx context.Context, content string) ([]IssuerLine, auth.U
 	}
 	defer db.Close()
 	// A database from before bindings named a provider has no such tables yet.
-	if !hasTable(ctx, db, "go_binding_issuers") || !hasTable(ctx, db, "go_invitation_issuers") {
-		return nil, none, nil
+	for _, table := range []string{"go_binding_issuers", "go_invitation_issuers"} {
+		present, err := tableExists(ctx, db, table)
+		if err != nil || !present {
+			return nil, none, err
+		}
 	}
 	access, err := auth.LoadAccess(content)
 	if err != nil {
@@ -185,7 +188,10 @@ func unboundNote(u auth.UnboundCount, access *auth.BrowserAccess) string {
 // policy being applied, along with the issuer each trusts.
 func bindingKeys(ctx context.Context, db *sql.DB) (map[string]string, error) {
 	out := map[string]string{}
-	withIssuers := hasTable(ctx, db, "go_binding_issuers")
+	withIssuers, err := tableExists(ctx, db, "go_binding_issuers")
+	if err != nil {
+		return nil, err
+	}
 	read := func(query, kind string) error {
 		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
@@ -223,8 +229,9 @@ func bindingKeys(ctx context.Context, db *sql.DB) (map[string]string, error) {
 // returningBindings counts, per issuer, the bindings a backup holds and the target no longer does.
 // Nothing records that a binding was withdrawn, so it can only be reported, not kept withdrawn.
 func returningBindings(ctx context.Context, staged, target *sql.DB) ([]IssuerLine, error) {
-	if !hasTable(ctx, target, "auth_email_role_bindings") {
-		return nil, nil
+	present, err := tableExists(ctx, target, "auth_email_role_bindings")
+	if err != nil || !present {
+		return nil, err
 	}
 	backed, err := bindingKeys(ctx, staged)
 	if err != nil {
