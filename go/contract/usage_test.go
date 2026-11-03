@@ -166,7 +166,7 @@ func TestCLIUsageNoIdentity(t *testing.T) {
 func writeOwner(t *testing.T, rootDir string, pid int, host string, port int) {
 	t.Helper()
 	dir := filepath.Join(rootDir, "runtime", "gateway.lock")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := mustMkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	canon, err := root.Canonical(rootDir)
@@ -174,7 +174,7 @@ func writeOwner(t *testing.T, rootDir string, pid int, host string, port int) {
 		t.Fatal(err)
 	}
 	b, _ := json.Marshal(map[string]any{"version": 2, "pid": pid, "root": canon, "host": host, "port": port, "instanceToken": "planted-token"})
-	if err := os.WriteFile(filepath.Join(dir, "owner.json"), b, 0o600); err != nil {
+	if err := mustWriteFile(filepath.Join(dir, "owner.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -240,8 +240,12 @@ func TestCLIUsageRefusesWithoutTheGateway(t *testing.T) {
 		rootDir := newUsageRoot(t)
 		plantUsage(t, rootDir, event)
 		dir := filepath.Join(rootDir, "runtime", "gateway.lock")
-		os.MkdirAll(dir, 0o700)
-		os.WriteFile(filepath.Join(dir, "owner.json"), []byte("not json"), 0o600)
+		if err := mustMkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustWriteFile(filepath.Join(dir, "owner.json"), []byte("not json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		for _, w := range writes {
 			res := runCLI(t, "go", rootDir, w...)
 			if res.code != 1 || !strings.Contains(res.stdout+res.stderr, "Nothing changed") {
@@ -367,7 +371,7 @@ func TestUsageOutOfDiagnostics(t *testing.T) {
 	rootDir := newUsageRoot(t)
 	const principal, model = "key_PLANTEDUSAGEPRINCIPAL", "PLANTEDUSAGEMODEL"
 	plantUsage(t, rootDir, usage.Event{Kind: "api-key", Principal: principal, Route: "chat", Model: model, Status: 200, At: time.Now()})
-	out := filepath.Join(t.TempDir(), "bundle.zip")
+	out := filepath.Join(scratchDir(t), "bundle.zip")
 	if res := runCLI(t, "go", rootDir, "diagnostics", "--output", out); res.code != 0 {
 		t.Fatalf("diagnostics: %d %s", res.code, res.stderr)
 	}
