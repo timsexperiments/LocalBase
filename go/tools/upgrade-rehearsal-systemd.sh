@@ -26,7 +26,7 @@ GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -o "$work/upgrade-rehearsal" ./to
 docker run -d --name "$name" --platform "linux/$arch" --privileged --cgroupns=private \
   --tmpfs /run --tmpfs /run/lock --tmpfs /tmp "$tag" >/dev/null || exit 1
 for _ in $(seq 1 60); do
-  state=$(docker exec "$name" systemctl is-system-running --wait 2>&1)
+  state=$(docker exec "$name" timeout 120 systemctl is-system-running --wait 2>&1)
   case "$state" in running|degraded) break ;; esac
   sleep 1
 done
@@ -36,7 +36,7 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 docker exec "$name" loginctl enable-linger lb
-docker exec "$name" systemctl start user@1000.service
+docker exec "$name" timeout 120 systemctl start user@1000.service
 for _ in $(seq 1 90); do
   docker exec "$name" systemctl is-active --quiet user@1000.service && break
   sleep 1

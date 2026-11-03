@@ -169,7 +169,8 @@ func survey(rootDir string) (files []string, left []NotIncluded, err error) {
 	}
 	sizeOf := func(p string) int64 {
 		var total int64
-		filepath.WalkDir(p, func(_ string, d fs.DirEntry, err error) error {
+		// An estimate for the report: what can't be read counts as nothing, and the walk never stops.
+		_ = filepath.WalkDir(p, func(_ string, d fs.DirEntry, err error) error {
 			if err == nil && d.Type().IsRegular() {
 				if info, err := d.Info(); err == nil {
 					total += info.Size()
@@ -242,7 +243,7 @@ func newTemporary(dir, kind string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.Chmod(path, 0o700); err != nil {
+	if err := os.Chmod(path, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 		os.RemoveAll(path)
 		return "", err
 	}
@@ -400,7 +401,7 @@ func destination(o Options) (string, []string, error) {
 				if err := os.Mkdir(dir, 0o700); err != nil {
 					return "", nil, err
 				}
-				if err := os.Chmod(dir, 0o700); err != nil {
+				if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // G302: a directory needs its execute bit; 0700 is owner only.
 					return "", nil, err
 				}
 			}

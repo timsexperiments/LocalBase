@@ -512,3 +512,46 @@ func TestImports(t *testing.T) {
 		}
 	}
 }
+
+// closedStore is a store that fails every statement, as a full or locked disk would.
+func closedStore(t *testing.T) *store.Store {
+	t.Helper()
+	bad, err := store.Open(filepath.Join(t.TempDir(), "closed.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad.Close()
+	return bad
+}
+
+func TestStartSaysWhenTheFirstPruneFails(t *testing.T) {
+	var logs bytes.Buffer
+	r, _ := newRecorder(t, &logs)
+	r.st = closedStore(t)
+	r.Start()() // stop waits for the goroutine, so reading the logs after this is safe
+	if !strings.Contains(logs.String(), "usage.prune-failed") {
+		t.Errorf("a prune that failed on start left no line: %q", logs.String())
+	}
+}
+
+// Flush's own line says the counts are kept in memory. On the way out that stops being true.
+func TestStopSaysWhenTheLastWriteLosesCounts(t *testing.T) {
+	var logs bytes.Buffer
+	r, _ := newRecorder(t, &logs)
+	r.Add(event(200, time.Millisecond))
+	r.st = closedStore(t)
+	r.Start()()
+	if !strings.Contains(logs.String(), "usage.last-flush-failed") {
+		t.Errorf("counts lost on stop left no line: %q", logs.String())
+	}
+}
+
+func TestStopIsQuietWhenTheLastWriteWorks(t *testing.T) {
+	var logs bytes.Buffer
+	r, _ := newRecorder(t, &logs)
+	r.Add(event(200, time.Millisecond))
+	r.Start()()
+	if strings.Contains(logs.String(), "failed") {
+		t.Errorf("nothing failed, but: %q", logs.String())
+	}
+}

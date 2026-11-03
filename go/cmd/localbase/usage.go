@@ -72,12 +72,14 @@ func runUsage(c *cli.Ctx, e *env) (any, error) {
 	}
 	report.Scope = "all"
 	if !c.Global.JSON {
-		printUsage(c, report)
+		if err := printUsage(c, report); err != nil {
+			return nil, err
+		}
 	}
 	return report, nil
 }
 
-func printUsage(c *cli.Ctx, r *usage.Report) {
+func printUsage(c *cli.Ctx, r *usage.Report) error {
 	if r.Totals.Requests == 0 {
 		c.Info("No requests in this period.")
 	} else {
@@ -112,7 +114,9 @@ func printUsage(c *cli.Ctx, r *usage.Report) {
 			}
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", who, model, route, count(g.Requests), count(g.Failed+g.Refused), count(g.InputTokens), count(g.OutputTokens), p95)
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			return fmt.Errorf("could not write the usage table: %w", err)
+		}
 	}
 	c.Info("")
 	state := "on"
@@ -121,6 +125,7 @@ func printUsage(c *cli.Ctx, r *usage.Report) {
 	}
 	c.Info("Recording is %s. Totals are kept for %d days.", state, r.RetentionDays)
 	c.Info("%s.", usageNote)
+	return nil
 }
 
 // principalLabel is a key's name and id, or an opaque id: there is no name for a browser

@@ -240,12 +240,12 @@ func packRelease(archive, binary, goos, goarch string) error {
 		return err
 	}
 	name := upgrade.AssetBinary(goos, goarch)
-	if err := os.WriteFile(filepath.Join(staging, name), body, 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(staging, name), body, 0o755); err != nil { //nolint:gosec // G306: the packaged program has to run.
 		return err
 	}
 	names := []string{"./" + name}
 	for _, extra := range []string{"LICENSE", "README.md", "THIRD_PARTY_NOTICES.txt"} {
-		if err := os.WriteFile(filepath.Join(staging, extra), []byte("A rehearsal placeholder.\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(staging, extra), []byte("A rehearsal placeholder.\n"), 0o600); err != nil {
 			return err
 		}
 		names = append(names, "./"+extra)
@@ -326,7 +326,7 @@ func buildKit(kit, goos, goarch string) error {
 		return err
 	}
 	broken := filepath.Join(kit, "local-base-broken")
-	if err := os.WriteFile(broken, []byte(brokenBinary(brokenVersion)), 0o755); err != nil {
+	if err := os.WriteFile(broken, []byte(brokenBinary(brokenVersion)), 0o755); err != nil { //nolint:gosec // G306: the broken release has to run, to fail its check.
 		return err
 	}
 	if err := publish(kit, newVersion, filepath.Join(kit, "local-base-new"), goos, goarch, priv); err != nil {
@@ -343,11 +343,14 @@ func serveReleases(kit string, latest *string, port int) (*http.Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v" + *latest, "html_url": "https://example.test/v" + *latest})
+		// If this can't be written, the upgrade under test fails its check, and the drill reports that.
+		_ = json.NewEncoder(w).Encode(map[string]string{"tag_name": "v" + *latest, "html_url": "https://example.test/v" + *latest})
 	})
 	mux.Handle("/files/", http.StripPrefix("/files/", http.FileServer(http.Dir(filepath.Join(kit, "releases")))))
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go srv.Serve(l)
+	// Serve always returns an error, and on the way out it's ErrServerClosed. If it dies early, the
+	// drill's next request fails and says so.
+	go func() { _ = srv.Serve(l) }()
 	return srv, nil
 }
 
@@ -488,7 +491,7 @@ func (d *drill) installOld() {
 	if err := os.MkdirAll(filepath.Dir(d.bin), 0o700); err != nil {
 		d.stop(err.Error())
 	}
-	if err := os.WriteFile(d.bin+".new", b, 0o755); err != nil {
+	if err := os.WriteFile(d.bin+".new", b, 0o755); err != nil { //nolint:gosec // G306: the program under test has to run.
 		d.stop(err.Error())
 	}
 	if err := os.Rename(d.bin+".new", d.bin); err != nil {
@@ -500,7 +503,7 @@ func (d *drill) fixture() {
 	fake := filepath.Join(d.work, "fake-backend")
 	b, err := os.ReadFile(filepath.Join(d.kit, "fake-backend"))
 	if err == nil {
-		err = os.WriteFile(fake, b, 0o755)
+		err = os.WriteFile(fake, b, 0o755) //nolint:gosec // G306: the fake backend has to run.
 	}
 	if err != nil {
 		d.stop(err.Error())
@@ -574,7 +577,8 @@ func (d *drill) status() status {
 		Data status `json:"data"`
 	}
 	_, out, _ := d.lb("--json", "status")
-	json.Unmarshal([]byte(out), &wrapped)
+	// A status that can't be read stays empty, and no check accepts an empty status.
+	_ = json.Unmarshal([]byte(out), &wrapped)
 	return wrapped.Data
 }
 
@@ -608,7 +612,8 @@ func served() string {
 	}
 	defer resp.Body.Close()
 	var h struct{ Version string }
-	json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&h)
+	// An answer that can't be read gives no version, and no check accepts that.
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&h)
 	return h.Version
 }
 
@@ -682,6 +687,14 @@ func (d *drill) run() {
 	d.guard()
 }
 
+// removeOrSay is for a run that is already failing: the removal's own failure still has to show,
+// or a throwaway service stays behind with nothing saying so.
+func removeOrSay(work string, m service.Metadata, id identity) {
+	if err := remove(work, m, id); err != nil {
+		fmt.Fprintln(os.Stderr, "upgrade-rehearsal: removal:", err)
+	}
+}
+
 // remove undoes a run: through the binary if it can, and through the manager for this one label
 // if it cannot. identify and refusals have passed by the time this runs.
 func remove(work string, m service.Metadata, id identity) error {
@@ -693,16 +706,17 @@ func remove(work string, m service.Metadata, id identity) error {
 			fmt.Printf("uninstall through the binary failed, using the manager: %v\n%s", err, out)
 		}
 	}
+	// The uninstall above has usually removed these already, so failing here is the normal case.
 	if m.Manager == "launchd" {
-		exec.Command("launchctl", "bootout", "gui/"+strconv.Itoa(os.Getuid())+"/"+m.ServiceID).Run()
+		_ = exec.Command("launchctl", "bootout", "gui/"+strconv.Itoa(os.Getuid())+"/"+m.ServiceID).Run()
 	} else {
-		exec.Command("systemctl", "--user", "disable", "--now", m.UnitName).Run()
+		_ = exec.Command("systemctl", "--user", "disable", "--now", m.UnitName).Run()
 	}
 	if err := os.Remove(m.DefinitionPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if m.Manager != "launchd" {
-		exec.Command("systemctl", "--user", "daemon-reload").Run()
+		_ = exec.Command("systemctl", "--user", "daemon-reload").Run() // Nothing here depends on it: the unit is already removed.
 	}
 	return os.RemoveAll(work)
 }
@@ -801,14 +815,14 @@ func mainCode() int {
 		d.kit = filepath.Join(id.work, "kit")
 		fmt.Println("== building the kit: a throwaway key, two binaries, a broken release")
 		if err := buildKit(d.kit, goruntime.GOOS, goruntime.GOARCH); err != nil {
-			remove(id.work, m, id)
+			removeOrSay(id.work, m, id)
 			fmt.Fprintln(os.Stderr, "upgrade-rehearsal:", err)
 			return 1
 		}
 	}
 	srv, err := serveReleases(d.kit, &d.latest, d.ports.release)
 	if err != nil {
-		remove(id.work, m, id)
+		removeOrSay(id.work, m, id)
 		fmt.Fprintln(os.Stderr, "upgrade-rehearsal:", err)
 		return 1
 	}
@@ -831,7 +845,7 @@ func mainCode() int {
 	// An interrupt ends the command in progress and stops the drill at its next step, so
 	// nothing is still running when the removal starts.
 	why := <-done
-	srv.Close()
+	_ = srv.Close() // The drill is over, and the listener goes with the process either way.
 
 	fmt.Println("== removing the throwaway service")
 	if err := remove(id.work, m, id); err != nil {
