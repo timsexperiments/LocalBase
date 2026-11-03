@@ -493,7 +493,6 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		res.Release()
 		return nil, fail(err)
 	}
-	res.Materialize(proc.PID())
 	base := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
 	budget := s.d.Startup
 	if cmd.startup > 0 {
@@ -506,6 +505,7 @@ func (s *Service) start(t *Target, demand memory.Demand, parent *otlp.Span) (*sv
 		res.Release()
 		return nil, fail(err)
 	}
+	res.Materialize(proc.PID())
 	s.d.Log.InfoContext(ctx, cmd.name+" is ready for "+t.ModelID+".", "event", "runtime.ready", "runtime", s.d.Modality, "model_id", t.ModelID, "pid", proc.PID())
 	sampling, stopSampling := context.WithCancel(context.Background())
 	return &svcBackend{modelID: t.ModelID, target: t, proc: proc, res: res, baseURL: base, sampling: sampling, stopSampling: stopSampling}, nil
