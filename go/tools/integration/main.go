@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -59,7 +60,11 @@ func main() {
 	for _, b := range list {
 		if branch, from, ok := parsePick(b); ok {
 			ref := "origin/" + prefix + branch
-			cmdErr := exec.Command("git", "-C", *dir, "cherry-pick", "--empty=drop", from+".."+ref).Run()
+			if picked(*dir, ref, from) {
+				fmt.Printf("have    %s\n", branch)
+				continue
+			}
+			cmdErr := exec.Command("git", "-C", *dir, "cherry-pick", "--empty=drop", "--first-parent", "--no-merges", from+".."+ref).Run()
 			for cmdErr != nil && exec.Command("git", "-C", *dir, "rev-parse", "--verify", "-q", "CHERRY_PICK_HEAD").Run() == nil {
 				left, err := resolve(*dir)
 				check(err)
@@ -230,9 +235,21 @@ func sameTitle(a, b []byte) bool {
 	return x != nil && y != nil && bytes.Equal(x[1], y[1])
 }
 
-// parsePick reads "pick <branch> <from>": a branch built on an earlier integration
-// tree, whose own commits (from..branch) are replayed. A merge would bring that old
-// tree's history back in.
+// picked reports whether a -resume has already replayed this branch: the tree holds a
+// commit with the subject of its newest own commit.
+func picked(dir, ref, from string) bool {
+	tip, err := exec.Command("git", "-C", dir, "log", "-1", "--first-parent", "--no-merges", "--format=%s", from+".."+ref).Output()
+	subject := strings.TrimSpace(string(tip))
+	if err != nil || subject == "" {
+		return false
+	}
+	out, err := exec.Command("git", "-C", dir, "log", "--format=%s", "-400").Output()
+	return err == nil && slices.Contains(strings.Split(string(out), "\n"), subject)
+}
+
+// parsePick reads "pick <branch> <from>": a branch built on an earlier integration tree,
+// or stacked on such a branch, whose own commits (from..branch along its first parents,
+// merges left out) are replayed. A merge would bring that old tree's history back in.
 func parsePick(line string) (branch, from string, ok bool) {
 	f := strings.Fields(line)
 	if len(f) != 3 || f[0] != "pick" {
