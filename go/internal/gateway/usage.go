@@ -213,9 +213,9 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, report)
 }
 
-// usageInstanceToken: this machine's CLI, holding the token from the root's lock file, on a
-// request that passes the loopback rule (DESIGN §32.4). It is good for changes only.
-func (s *Server) usageInstanceToken(r *http.Request) bool {
+// localCLI: this machine's CLI, holding the token from the root's lock file, on a request that
+// passes the loopback rule (DESIGN §32.4). It is good for changes only.
+func (s *Server) localCLI(r *http.Request) bool {
 	token := r.Header.Get("X-Localbase-Instance-Token")
 	if token == "" || s.Root == nil || auth.IsBrowser(r) || !auth.LocalRequest(r) {
 		return false
@@ -227,7 +227,7 @@ func (s *Server) usageInstanceToken(r *http.Request) bool {
 func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 	actorKind, actorID := "cli", ""
 	if r.Header.Get("X-Localbase-Instance-Token") != "" {
-		if !s.usageInstanceToken(r) {
+		if !s.localCLI(r) {
 			unauthorized(w, r)
 			return
 		}

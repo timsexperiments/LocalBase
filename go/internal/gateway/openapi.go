@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"sync"
+
+	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 // The API described for tools: DESIGN §30. The document is edited by hand, and
@@ -19,7 +21,7 @@ var openAPISource []byte
 const openAPIVersionMark = "set-when-served"
 
 var openAPIServed = sync.OnceValues(func() ([]byte, string) {
-	body := bytes.Replace(openAPISource, []byte(`"version": "`+openAPIVersionMark+`"`), []byte(`"version": "`+Version+`"`), 1)
+	body := bytes.Replace(openAPISource, []byte(`"version": "`+openAPIVersionMark+`"`), []byte(`"version": "`+version.Version+`"`), 1)
 	sum := sha256.Sum256(body)
 	return body, `"` + hex.EncodeToString(sum[:16]) + `"`
 })
