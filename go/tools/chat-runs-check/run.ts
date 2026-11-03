@@ -237,6 +237,8 @@ await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
 check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
 for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
+// Announced once the swap settles, a moment after the words are on screen.
+for (let i = 0; i < 20 && !(await ev(`document.getElementById("running-status").textContent`)); i++) await sleep(100);
 const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
 check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
@@ -842,7 +844,7 @@ const measure = `(() => {
   const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const out = [];
   const seen = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  for (const el of document.querySelectorAll(".composer-box, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
+  for (const el of document.querySelectorAll(".composer-box:focus-within, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
     if (!seen(el) || parseFloat(getComputedStyle(el).borderTopWidth) === 0) continue;
     const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
     if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));

@@ -200,7 +200,7 @@
     @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-bound bg-surface p-3;
   }
   .composer-box {
-    @apply rounded-3xl border border-[var(--lb-edge)] bg-surface focus-within:outline-2 focus-within:outline-accent;
+    @apply rounded-3xl border border-bound bg-surface focus-within:border-[var(--lb-edge)] focus-within:outline-2 focus-within:outline-accent;
   }
   /* A borderless round icon button (chat header and composer). */
   .icon-btn {
@@ -487,8 +487,9 @@
       @apply mb-1;
     }
   }
+  /* A long refusal scrolls inside itself: it never pushes the tab bar off a short screen. */
   [data-error-box] {
-    @apply max-h-[50dvh] overflow-y-auto;
+    @apply max-h-[38dvh] overflow-y-auto;
   }
   /* In Chat the chat's own Stop says it, and the pill would sit on the words or the composer.
      A run in another chat shows in the list of chats and on every other page. */
@@ -498,7 +499,7 @@
   .chat-hello {
     font-family: var(--lb-font-display);
     font-weight: var(--lb-weight-display);
-    font-size: var(--lb-size-hello);
+    font-size: 1.5rem;
     letter-spacing: var(--lb-tracking-display);
     line-height: 1.1;
   }
@@ -508,13 +509,13 @@
     @apply mx-auto flex min-h-full max-w-3xl flex-col px-4 pt-3 pb-4;
   }
   .chat-landing > * {
-    @apply mt-auto min-[1100px]:mb-auto;
+    @apply my-auto;
   }
   .chat-empty {
     @apply px-1;
   }
   .chat-suggest {
-    @apply mt-4 grid gap-1.5 min-[1100px]:grid-cols-3;
+    @apply mt-2 grid;
   }
   /* Too narrow for all of it, the model's name comes first; this one is in the picker too. */
   @media (max-width: 359px) {
@@ -528,17 +529,11 @@
   .list-link {
     @apply inline-flex min-h-11 items-center font-medium text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-50;
   }
-  /* A short screen shows two: a third would only be cut by the composer. */
-  @media (max-height: 620px) {
-    .chat-suggestion:nth-child(n + 3) {
-      @apply hidden;
-    }
-  }
   .tool-icon {
     @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted;
   }
   .chat-suggestion {
-    @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
+    @apply -mx-2 flex min-h-11 items-center rounded-lg px-2 py-1.5 text-left text-muted hover:bg-hover hover:text-ink;
   }
   .chat-model {
     @apply ml-1 flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-sm font-medium text-muted hover:bg-hover hover:text-ink;
@@ -724,6 +719,18 @@
   }
   .strip-advice .btn {
     @apply shrink-0;
+  }
+  .strip-advice-short {
+    @apply hidden;
+  }
+  /* On a phone's Chat, the page's room is for the conversation: one line and the way out. */
+  @media (max-width: 559px) {
+    .chat-strip .strip-advice-full {
+      @apply hidden;
+    }
+    .chat-strip .strip-advice-short {
+      @apply inline;
+    }
   }
   html[data-typing] .strip-advice {
     @apply hidden;
