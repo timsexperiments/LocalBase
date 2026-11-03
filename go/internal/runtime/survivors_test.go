@@ -144,8 +144,13 @@ func TestSweepIgnoresWhatIsAlreadyGone(t *testing.T) {
 	if n := SweepBackends(root, quietLog()); n != 0 {
 		t.Errorf("stopped %d", n)
 	}
-	if !pidAlive(1) {
-		t.Fatal("pid 1")
+	// A process whose identity cannot be read is not proof of anything: on Linux
+	// that is a root process seen by a normal user.
+	if os.Getuid() != 0 {
+		rec := backendRecord{PID: 1, StartTime: "x", Exe: "y"}
+		if sweepOne(rec) {
+			t.Error("swept pid 1")
+		}
 	}
 }
 
