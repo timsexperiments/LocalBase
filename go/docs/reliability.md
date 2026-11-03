@@ -107,6 +107,7 @@ replaces a model's real demand and admission decides the same on macOS and Linux
 ### Rules for a shared machine
 
 - Ports come from 29000-29499; `LOCALBASE_LAB_PORTS=<low>-<high>` moves the block.
+- Built tools go to `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE`; see `tools/README.md`.
 - A scratch directory holds everything. `HOME` points into it, proxies point
   nowhere, and the caller's `LOCALBASE_*` and token settings are removed.
 - The tools refuse a scratch path inside the installed root.

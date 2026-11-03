@@ -6,10 +6,11 @@
 #   tools/soak.sh -duration 30m     the full soak
 #   tools/soak.sh -smoke -race      against a race-detector gateway
 # LOCALBASE_SOAK_HARD_SECONDS overrides the watchdog (default 2700: 45 minutes).
+# LOCALBASE_TOOLS_CACHE says where the binary goes (default ~/.cache/localbase).
 set -u
 cd "$(dirname "$0")/.." || exit 2
 # Built to a fixed place and replaced by the next run, so there is nothing to clean up.
-bin=${XDG_CACHE_HOME:-$HOME/.cache}/localbase/soak
+bin=${LOCALBASE_TOOLS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase}/soak
 mkdir -p "${bin%/*}" || exit 2
 go build -o "$bin" ./tools/soak || exit 2
 GOMAXPROCS=2 perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nice -n 10 "$bin" "$@" &
