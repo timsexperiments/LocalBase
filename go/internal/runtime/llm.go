@@ -136,21 +136,25 @@ type waiter struct {
 type LLM struct {
 	d LLMDeps
 
-	mu        sync.Mutex
-	cfg       *store.Config
-	cur       *backend
-	starting  bool
-	active    int
-	queue     []*waiter
-	closed    bool
-	geometry  map[string]geometryEntry
-	probes    sync.WaitGroup
-	watches   sync.WaitGroup // backend watchers; each can end in a store write
-	switches  sync.WaitGroup // in-flight model switches; Close waits for them
-	failed    bool           // the last start failed and nothing runs
-	claimed   bool           // idle recovery is stopping the backend; hold requests
-	unloading string         // the model draining for an explicit unload (DESIGN §23)
-	chooser   defaultChooser // the fit-aware default chat model
+	mu       sync.Mutex
+	cfg      *store.Config
+	cur      *backend
+	starting bool
+	// cancelSwitch ends the switch in flight, install and start included, with a
+	// cause its waiters get. An eviction or a shutdown calls it, with mu held; a
+	// start that was ready just before finds out in install, also with mu held.
+	cancelSwitch context.CancelCauseFunc
+	active       int
+	queue        []*waiter
+	closed       bool
+	geometry     map[string]geometryEntry
+	probes       sync.WaitGroup
+	watches      sync.WaitGroup // backend watchers; each can end in a store write
+	switches     sync.WaitGroup // in-flight model switches; Close waits for them
+	failed       bool           // the last start failed and nothing runs
+	claimed      bool           // idle recovery is stopping the backend; hold requests
+	unloading    string         // the model draining for an explicit unload (DESIGN §23)
+	chooser      defaultChooser // the fit-aware default chat model
 }
 
 type geometryEntry struct {
@@ -420,9 +424,12 @@ func (m *LLM) pump() {
 		head.dispatching = true
 		head.dispatched = time.Now()
 		m.switches.Add(1)
+		ctx, cancel := context.WithCancelCause(context.Background())
+		m.cancelSwitch = cancel
 		go func(model, key string, parent *otlp.Span) {
 			defer m.switches.Done()
-			m.switchTo(model, key, parent)
+			defer cancel(nil)
+			m.switchTo(ctx, model, key, parent)
 		}(head.model, head.key, head.parent)
 		return
 	}
@@ -432,14 +439,15 @@ func (m *LLM) pump() {
 // current model were stopped, crediting it at most its measured footprint
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
-func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
+func (m *LLM) switchTo(ctx context.Context, modelID, key string, parent *otlp.Span) {
 	err := m.d.Recovery.retryAfterRecovery("llm", func() (memory.Demand, error) {
-		return m.doSwitch(modelID, key, parent)
+		return m.doSwitch(ctx, modelID, key, parent)
 	})
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.starting = false
-	m.failed = err != nil && m.cur == nil
+	m.cancelSwitch = nil
+	m.failed = err != nil && m.cur == nil && ctx.Err() == nil // an eviction is not a failed start
 	if err != nil {
 		for len(m.queue) > 0 && m.queue[0].model == modelID && m.queue[0].key == key {
 			m.fail(m.queue[0], err)
@@ -448,7 +456,7 @@ func (m *LLM) switchTo(modelID, key string, parent *otlp.Span) {
 	m.pump()
 }
 
-func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
+func (m *LLM) doSwitch(ctx context.Context, modelID, key string, parent *otlp.Span) (demand memory.Demand, err error) {
 	if m.d.BeforeSwitch != nil {
 		m.d.BeforeSwitch()
 	}
@@ -456,7 +464,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	// then the selection: an unselected or unavailable backend fails before
 	// the current model is stopped.
 	if m.d.Catalog.ByID(modelID) != nil {
-		if err := m.ensureInstalled(modelID); err != nil {
+		if err := m.ensureInstalled(ctx, modelID); err != nil {
 			return demand, err
 		}
 	}
@@ -465,7 +473,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 		return demand, err
 	}
 	if t == nil && m.d.Catalog.ByID(modelID) == nil {
-		if err := m.ensureInstalled(modelID); err != nil {
+		if err := m.ensureInstalled(ctx, modelID); err != nil {
 			return demand, err
 		}
 	}
@@ -487,7 +495,7 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 	prev := m.cur
 	m.mu.Unlock()
 	if prev != nil {
-		if err := m.d.Memory.CheckAdmission(context.Background(), demand, []string{"llm"}); err != nil {
+		if err := m.d.Memory.CheckAdmission(ctx, demand, []string{"llm"}); err != nil {
 			if prev.modelID != modelID {
 				logAdmissionRejected(m.d.Log, "llm", modalityComponents["llm"], err,
 					"stage", "switch-preflight", "from_model", prev.modelID, "to_model", modelID)
@@ -499,27 +507,35 @@ func (m *LLM) doSwitch(modelID, key string, parent *otlp.Span) (demand memory.De
 		m.stopBackend(prev, StopSwitch)
 		// Memory must settle before the new model starts; if it never does,
 		// the previous model is restored (TS rollBackRejectedSwitch).
-		if prev.modelID != modelID {
+		if prev.modelID != modelID && ctx.Err() == nil {
 			if err := settleAfterStop(m.d.Memory, demand); err != nil {
 				logRolledBack(m.d.Log, "llm", prev.modelID, modelID, true, err)
-				m.restore(prev, parent)
+				m.restore(ctx, prev, parent)
 				return demand, err
 			}
 		}
 	}
-	b, err := m.startBackend(modelID, spec, plan, demand, t, parent)
+	if ctx.Err() != nil {
+		return demand, context.Cause(ctx)
+	}
+	b, err := m.startBackend(ctx, modelID, spec, plan, demand, t, parent)
+	if ctx.Err() != nil && err != nil {
+		return demand, context.Cause(ctx) // ended on purpose: nothing comes back
+	}
 	if err != nil {
 		// A changed backend for the same model is not rolled back: the
 		// person chose it, and the old one must not answer in its place.
 		if prev != nil && prev.modelID != modelID {
 			m.d.Log.Warn("Switch failed; restoring the previous model.", "event", "runtime.switch-rollback",
 				"runtime", "llm", "model_id", modelID, "previous_model_id", prev.modelID, "error", err.Error())
-			m.restore(prev, parent)
+			m.restore(ctx, prev, parent)
 		}
 		return demand, err
 	}
 	b.key = key
-	m.install(b)
+	if err := m.install(ctx, b); err != nil {
+		return demand, err
+	}
 	// Only a chat model becomes the active LLM: a decision or embedding
 	// request must not make the next default a model that rejects chat.
 	if m.d.Activate != nil && (t == nil || !t.Imported) && m.isChat(modelID) {
@@ -536,12 +552,19 @@ func (m *LLM) SetConfig(cfg *store.Config) {
 	m.mu.Unlock()
 }
 
-func (m *LLM) install(b *backend) {
+// install makes a started backend current, unless its switch was ended meanwhile.
+func (m *LLM) install(ctx context.Context, b *backend) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		m.stopBackend(b, StopShutdown)
-		return
+		return ErrUnavailable
+	}
+	if ctx.Err() != nil {
+		m.mu.Unlock()
+		b.emergency.Store(true)
+		m.stopBackend(b, StopMemory)
+		return context.Cause(ctx)
 	}
 	m.cur = b
 	m.mu.Unlock()
@@ -561,6 +584,7 @@ func (m *LLM) install(b *backend) {
 			}
 		}()
 	}
+	return nil
 }
 
 // specFor is a model's catalog entry, unless it runs as an import.
@@ -621,7 +645,7 @@ func (m *LLM) admissionDemand(spec *catalog.Spec, plan *LLMPlan) memory.Demand {
 	return feed
 }
 
-func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target, parent *otlp.Span) (*backend, error) {
+func (m *LLM) startBackend(life context.Context, modelID string, spec *catalog.Spec, plan *LLMPlan, demand memory.Demand, t *Target, parent *otlp.Span) (*backend, error) {
 	ctx := otlp.WithSpan(context.Background(), parent)
 	fail := func(err error) error {
 		logStartFailed(m.d.Log, "llm", err)
@@ -633,7 +657,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	if !fileExists(plan.ModelPath) {
 		return nil, fail(fmt.Errorf("model file %s is not installed", filepath.Base(plan.ModelPath)))
 	}
-	name, bin, args, health, err := m.launchCommand(plan, t)
+	name, bin, args, health, err := m.launchCommand(life, plan, t)
 	if err != nil {
 		return nil, fail(err)
 	}
@@ -675,7 +699,7 @@ func (m *LLM) startBackend(modelID string, spec *catalog.Spec, plan *LLMPlan, de
 	}
 	base := "http://" + net.JoinHostPort(plan.Host, strconv.Itoa(plan.Port))
 	if err := spanned(m.d.Otel, ctx, "localbase.backend.model_load", name, func() error {
-		return proc.WaitHealthy(context.Background(), base+health, budget)
+		return proc.WaitHealthy(life, base+health, budget)
 	}); err != nil {
 		proc.Stop(stopGrace)
 		res.Release()
@@ -772,6 +796,9 @@ func (m *LLM) EmergencyStop(reason error) {
 	for len(m.queue) > 0 {
 		m.fail(m.queue[0], reason)
 	}
+	if m.cancelSwitch != nil {
+		m.cancelSwitch(reason)
+	}
 	m.mu.Unlock()
 	if b != nil {
 		m.stopBackend(b, StopMemory)
@@ -785,6 +812,9 @@ func (m *LLM) Close() {
 	m.closed = true
 	for len(m.queue) > 0 {
 		m.fail(m.queue[0], ErrUnavailable)
+	}
+	if m.cancelSwitch != nil {
+		m.cancelSwitch(ErrUnavailable)
 	}
 	m.mu.Unlock()
 	// A switch in flight finishes (and sees closed) before the backend stops,
@@ -823,7 +853,7 @@ func (e *NotInstalledError) Error() string {
 
 // ensureInstalled checks the model's files (sizes, no hashing) before the
 // current model is touched, and installs them when allowed.
-func (m *LLM) ensureInstalled(modelID string) error {
+func (m *LLM) ensureInstalled(ctx context.Context, modelID string) error {
 	installed := false
 	if spec := m.d.Catalog.ByID(modelID); spec != nil {
 		installed, _ = spec.Installation(m.d.ModelsDir)
@@ -836,7 +866,7 @@ func (m *LLM) ensureInstalled(modelID string) error {
 	if m.d.Install == nil {
 		return &NotInstalledError{ModelID: modelID}
 	}
-	return m.d.Install(context.Background(), modelID)
+	return m.d.Install(ctx, modelID)
 }
 
 // Snapshot is the runtime's lifecycle state for health and metadata.
@@ -897,10 +927,10 @@ func (m *LLM) Snapshot() Snapshot {
 }
 
 // restore starts the previous model again after a switch failed.
-func (m *LLM) restore(prev *backend, parent *otlp.Span) {
-	if rb, err := m.startBackend(prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); err == nil {
+func (m *LLM) restore(ctx context.Context, prev *backend, parent *otlp.Span) {
+	if rb, err := m.startBackend(ctx, prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); err == nil {
 		rb.key = prev.key
-		m.install(rb)
+		_ = m.install(ctx, rb) // its only refusal is an ended switch, which already reported
 	}
 }
 
