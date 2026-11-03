@@ -31,7 +31,7 @@ local-base access login-link --revoke     # end every local session and unused l
 
 ## Letting someone else in
 
-The local session doesn't go through the sign-in policy, so this page's link keeps working whatever the policy says. Someone signing in through a provider does go through it, and with no permissions gets a page saying "This account has no access here", with the command that fixes it. See [troubleshooting](troubleshooting.md#sign-in). `local-base access policy starter --email <address>` gives one address every permission, and nobody else anything. Arrives with PR #530.
+The local session doesn't go through the sign-in policy, so this page's link keeps working whatever the policy says. Someone signing in through a provider does go through it, and with no permissions gets a page saying "This account has no access here", with the command that fixes it. See [troubleshooting](troubleshooting.md#sign-in). `local-base access policy starter --email <address>` gives one address every permission, and nobody else anything.
 
 ## What it protects against
 
