@@ -159,3 +159,55 @@ func TestCheckRealLogLines(t *testing.T) {
 		t.Errorf("within the slack: %v", err)
 	}
 }
+
+// A CPU-only build has no GPU to report on and prints no offload line. Zero offloaded
+// layers is what the plan says, so its silence is no mismatch: every CPU-only run used
+// to fail here, on a real Linux machine with no GPU.
+func TestCheckCPUPlanNeedsNoOffloadLine(t *testing.T) {
+	m := denseModel(10, 100*mib)
+	p, err := Resolve(m, 100*mib, Device{Platform: CPUOnly, HostAvailable: 8 << 30}, Request{Mode: Auto})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.GPULayers != 0 {
+		t.Fatalf("a CPU plan with %d GPU layers", p.GPULayers)
+	}
+	log := []byte("main: Available devices: (none)\nmain: model loaded\n")
+	if err := Check(log, p); err != nil {
+		t.Errorf("a CPU run with no offload line: %v", err)
+	}
+	// A report that contradicts the plan still fails.
+	if err := Check(syntheticLog(nil, 5, 11, 0), p); !mismatch(err) {
+		t.Errorf("5 layers offloaded on a CPU plan passed: %v", err)
+	}
+}
+
+// Fail closed stays for a plan that puts layers on the GPU: its build must report.
+func TestCheckGPUPlanStillNeedsTheOffloadLine(t *testing.T) {
+	m := denseModel(10, 100*mib)
+	five := 5
+	p, err := Resolve(m, 100*mib, Device{Platform: Discrete, FreeVRAM: 8 << 30, HostAvailable: 8 << 30, GPULayers: true, CPUMoE: true},
+		Request{Mode: Custom, GPULayers: &five})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Check([]byte("no report here\n"), p); !mismatch(err) || !strings.Contains(err.Error(), "did not report") {
+		t.Errorf("a GPU plan with no offload line: %v", err)
+	}
+}
+
+// Lines from a real run: llama-server 0.7.0-dev build 11671, Metal, -ngl 20 -lv 4.
+func TestCheckRealVerbosityFourLines(t *testing.T) {
+	log, err := os.ReadFile("testdata/metal-20of29-lv4.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := Plan{Platform: Unified, GPULayers: 20, TotalLayers: 29, Args: []string{"-ngl", "20"}}
+	if err := Check(log, p); err != nil {
+		t.Errorf("the real log: %v", err)
+	}
+	p.GPULayers = 29
+	if err := Check(log, p); !mismatch(err) {
+		t.Errorf("20/29 passed a plan of 29: %v", err)
+	}
+}

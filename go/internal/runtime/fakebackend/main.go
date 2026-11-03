@@ -43,7 +43,7 @@ import (
 
 func main() {
 	host, port, model := "127.0.0.1", "8080", ""
-	ngl, cpuMoE := -1, 0
+	ngl, cpuMoE, verbosity := -1, 0, 3
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -59,6 +59,9 @@ func main() {
 		case "-m":
 			i++
 			model = args[i]
+		case "-lv":
+			i++
+			verbosity, _ = strconv.Atoi(args[i])
 		case "-ngl":
 			i++
 			ngl, _ = strconv.Atoi(args[i])
@@ -67,7 +70,11 @@ func main() {
 			cpuMoE, _ = strconv.Atoi(args[i])
 		}
 	}
-	placementLines(model, ngl, cpuMoE)
+	// As the real build (0.7.0-dev, build 11671): its default verbosity is 3, and the
+	// placement lines need 4.
+	if verbosity >= 4 {
+		placementLines(model, ngl, cpuMoE)
+	}
 	if ms, _ := strconv.Atoi(os.Getenv("FAKE_STARTUP_MS")); ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond) // a slow model load
 	}
@@ -266,6 +273,12 @@ func placementLines(model string, ngl, cpuMoE int) {
 	total := blocks + 1
 	if ngl < 0 || ngl > total {
 		ngl = total
+	}
+	// FAKE_NO_GPU_LINES: as a CPU-only llama.cpp build, which reports no devices and no
+	// offload. Seen on a real Linux machine with no GPU.
+	if os.Getenv("FAKE_NO_GPU_LINES") != "" {
+		fmt.Fprintln(os.Stderr, "main: Available devices: (none)")
+		return
 	}
 	fmt.Fprintf(os.Stderr, "load_tensors: offloaded %d/%d layers to GPU\n", ngl, total)
 	compute := os.Getenv("FAKE_COMPUTE_MIB")

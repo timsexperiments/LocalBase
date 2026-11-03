@@ -142,6 +142,8 @@ type LLMPlan struct {
 	// nil without placement planning. PlacedAt is when it was resolved.
 	Placement *placement.Plan
 	PlacedAt  time.Time
+	// LogPlacement asks the backend for the lines the placement check reads.
+	LogPlacement bool
 	// PlacementRequest is the stored choice the placement was resolved from.
 	PlacementRequest placement.Request
 }
@@ -352,7 +354,12 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 			a = append(a, "--flash-attn", "auto")
 		}
 	default:
-		a = append(a, "--jinja", "--embeddings", "--flash-attn", "on")
+		a = append(a, "--jinja")
+		// On a Mac this crashes the first chat with no layers on the GPU.
+		if !(darwinArm64 && p.Placement != nil && p.Placement.GPULayers == 0) {
+			a = append(a, "--embeddings")
+		}
+		a = append(a, "--flash-attn", "on")
 	}
 	a = append(a, "--cache-type-k", p.KVType, "--cache-type-v", p.KVType, "--cache-ram", strconv.Itoa(p.PromptCacheMiB))
 	if !p.Embedding && !p.Decision {
@@ -360,6 +367,9 @@ func (p *LLMPlan) Args(darwinArm64 bool) []string {
 	}
 	if p.Placement != nil {
 		a = append(a, p.Placement.Args...) // --n-cpu-moe / -ngl (DESIGN §20)
+	}
+	if p.LogPlacement {
+		a = append(a, "-lv", "4") // the startup check reads lines printed only from this level
 	}
 	return a
 }
