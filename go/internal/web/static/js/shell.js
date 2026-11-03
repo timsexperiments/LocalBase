@@ -138,6 +138,20 @@ document.addEventListener("htmx:historyRestore", () => announced.clear());
 document.addEventListener("htmx:beforeRequest", (event) => {
   const elt = event.detail.elt;
   if (elt?.hasAttribute?.("data-poll") && elt.querySelector("dialog[open]")) event.preventDefault();
+  // The strip has nothing to say to a page nobody is looking at.
+  if (elt?.hasAttribute?.("data-strip") && document.hidden) event.preventDefault();
+});
+// The strip when the computer can't be reached: same place, same shape, and it says so.
+// The next refresh that works redraws it.
+document.addEventListener("htmx:sendError", (event) => {
+  const elt = event.detail.elt;
+  if (!elt?.hasAttribute?.("data-strip")) return;
+  const strip = elt.querySelector(".strip");
+  strip?.classList.add("strip-off");
+  const word = elt.querySelector("[data-strip-word]");
+  if (word) word.textContent = "Can’t reach this computer";
+  const free = elt.querySelector("[data-strip-free]");
+  if (free) free.textContent = "";
 });
 announceChanges();
 
