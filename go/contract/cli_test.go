@@ -120,8 +120,10 @@ func normalize(t *testing.T, s, root string) any {
 }
 
 type cliCase struct {
-	args []string
-	skip func(path string) bool
+	// goArgs replaces args on Go, for a flag TS does not have. An issuer in the answer is then Go's own.
+	goArgs []string
+	args   []string
+	skip   func(path string) bool
 }
 
 func twinRoots(t *testing.T) (string, string) {
@@ -133,14 +135,20 @@ func twinRoots(t *testing.T) (string, string) {
 func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 	t.Helper()
 	ts := runCLI(t, "ts", roots[0], c.args...)
-	gr := runCLI(t, "go", roots[1], c.args...)
+	goArgs := c.args
+	if c.goArgs != nil {
+		goArgs = c.goArgs
+	}
+	gr := runCLI(t, "go", roots[1], goArgs...)
 	label := strings.Join(c.args, " ")
 	if ts.code != gr.code {
 		t.Errorf("%s: exit ts=%d go=%d\nts: %s%s\ngo: %s%s", label, ts.code, gr.code, ts.stdout, ts.stderr, gr.stdout, gr.stderr)
 		return
 	}
 	a, b := normalize(t, ts.stdout, roots[0]), normalize(t, gr.stdout, roots[1])
-	skip := func(p string) bool { return strings.HasSuffix(p, ".prefix") || (c.skip != nil && c.skip(p)) }
+	skip := func(p string) bool {
+		return strings.HasSuffix(p, ".prefix") || (c.goArgs != nil && strings.HasSuffix(p, ".issuer")) || (c.skip != nil && c.skip(p))
+	}
 	if d := diffJSON("", a, b, skip); len(d) > 0 {
 		if len(d) > 20 {
 			d = append(d[:20], "...")
