@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,7 @@ const (
 	AgainstDiffers    = "differs"    // the root has something else, in ThisRoot
 	AgainstNew        = "new"        // the root has none
 	AgainstUnreadable = "unreadable" // the root's can't be read, which says nothing about what it has
+	AgainstGone       = "gone"       // the root has it and the backup doesn't
 )
 
 // Line is one thing a restore would decide, and what the root being replaced has instead. Value comes
@@ -109,26 +111,55 @@ func readSignIn(ctx context.Context, dir string, db *sql.DB) signInValues {
 	if email != nil {
 		v.mail = fmt.Sprintf("%s:%d", email.Host, email.Port)
 	}
-	var policy *auth.Policy
+	var policy bool
+	var fromPolicy []string
 	if db != nil {
-		policy, v.policyErr = auth.LoadPolicy(ctx, db)
+		policy, fromPolicy, v.policyErr = readEveryone(ctx, db)
 	}
 	switch {
-	case policy == nil && access != nil:
+	case !policy && access != nil:
 		v.everyone = access.Permissions
-	case policy != nil:
+	case policy:
 		if access != nil {
 			v.ifRemoved = access.Permissions
 		}
-		if policy.DefaultRole != nil {
-			for _, role := range policy.Roles {
-				if role.Name == *policy.DefaultRole {
-					v.everyone = role.Permissions
-				}
-			}
-		}
+		v.everyone = fromPolicy
 	}
 	return v
+}
+
+// readEveryone says whether there's an access policy, and what it gives anyone who signs in. It reads
+// only the tables that decide that, as auth.LoadPolicy does, since that also reads tables a root last
+// opened by an older version doesn't have yet.
+func readEveryone(ctx context.Context, db *sql.DB) (policy bool, everyone []string, err error) {
+	present, err := tablesExist(ctx, db, "auth_settings", "auth_roles", "auth_role_permissions")
+	if err != nil || !present {
+		return false, nil, err
+	}
+	var defaultRole sql.NullString
+	err = db.QueryRowContext(ctx, `SELECT default_role_id FROM auth_settings WHERE id = 'default'`).Scan(&defaultRole)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	if !defaultRole.Valid {
+		return true, nil, nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT p.permission FROM auth_role_permissions p JOIN auth_roles r ON r.id = p.role_id WHERE r.id = ?`, defaultRole.String)
+	if err != nil {
+		return false, nil, err
+	}
+	defer func() { _ = rows.Close() }() // read-only, and rows.Err below has the answer
+	for rows.Next() {
+		var permission string
+		if err := rows.Scan(&permission); err != nil {
+			return false, nil, err
+		}
+		everyone = append(everyone, permission)
+	}
+	return true, auth.Canonical(everyone), rows.Err()
 }
 
 func joined(perms []string) string {

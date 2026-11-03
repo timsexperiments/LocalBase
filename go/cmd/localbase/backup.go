@@ -349,7 +349,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	}
 	printSignIn(c, rep.SignIn)
 	printIssuers(c, rep.Issuers)
-	printGrants(c, rep.Grants)
+	printGrants(c, rep.Grants, rep.RolesGone)
 	if rep.UnboundNote != "" {
 		c.Info("%s", rep.UnboundNote)
 	}
@@ -404,12 +404,20 @@ func printSignIn(c *cli.Ctx, s *backup.SignIn) {
 // come first, so this can't bury them, and --json has them all.
 const maxGrantLines = 50
 
-// printGrants says what each role gives and who has it, by name.
-func printGrants(c *cli.Ctx, grants []backup.Grant) {
-	if len(grants) == 0 {
+// printGrants says what each role gives and who has it, by name. Roles the root would lose come first.
+func printGrants(c *cli.Ctx, grants, gone []backup.Grant) {
+	if len(grants)+len(gone) == 0 {
 		return
 	}
 	c.Info("What each role gives, and who has it:")
+	for _, g := range gone {
+		gives := g.Gives.Value
+		if gives == "" {
+			gives = "nothing"
+		}
+		c.Info("  No longer a role here: %s (this root gives %s)", g.Role, gives)
+		printWho(c, g.Who)
+	}
 	for _, g := range grants {
 		gives := g.Gives
 		if gives.Value == "" {
@@ -426,23 +434,41 @@ func printGrants(c *cli.Ctx, grants []backup.Grant) {
 		case len(g.Who) == 0:
 			c.Info("    nobody")
 		}
-		for _, l := range g.Who[:min(len(g.Who), maxGrantLines)] {
-			c.Info("    %s", l.Text("has"))
+		printWho(c, g.Who)
+	}
+}
+
+// printWho lists who has a role, up to the cap, and says how many it didn't print and what's changing
+// for them.
+func printWho(c *cli.Ctx, who []backup.Line) {
+	for _, l := range who[:min(len(who), maxGrantLines)] {
+		if l.Against == backup.AgainstGone {
+			c.Info("    no longer has this role: %s", l.Value)
+			continue
 		}
-		if hidden := g.Who[min(len(g.Who), maxGrantLines):]; len(hidden) > 0 {
-			newOnes := 0
-			for _, l := range hidden {
-				if l.Against == backup.AgainstNew {
-					newOnes++
-				}
-			}
-			more := fmt.Sprintf("and %d more", len(hidden))
-			if newOnes > 0 {
-				more += fmt.Sprintf(", %d of them new", newOnes)
-			}
-			c.Info("    %s. All of them: restore --dry-run --json", more)
+		c.Info("    %s", l.Text("has"))
+	}
+	hidden := who[min(len(who), maxGrantLines):]
+	if len(hidden) == 0 {
+		return
+	}
+	newOnes, leaving := 0, 0
+	for _, l := range hidden {
+		switch l.Against {
+		case backup.AgainstNew:
+			newOnes++
+		case backup.AgainstGone:
+			leaving++
 		}
 	}
+	more := fmt.Sprintf("and %d more", len(hidden))
+	if newOnes > 0 {
+		more += fmt.Sprintf(", %d of them new", newOnes)
+	}
+	if leaving > 0 {
+		more += fmt.Sprintf(", %d of them losing this role", leaving)
+	}
+	c.Info("    %s. All of them: restore --dry-run --json", more)
 }
 
 func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {

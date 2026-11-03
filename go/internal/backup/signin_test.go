@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // crafted makes a backup of a real root, with changes made to one file in it, and returns the backup.
@@ -315,5 +318,114 @@ func TestTheSignInReportHoldsNoSecrets(t *testing.T) {
 		if strings.Contains(string(b), secret) {
 			t.Errorf("it holds %q: %s", secret, b)
 		}
+	}
+}
+
+// What everyone gets, read from only the tables that decide it, matches the policy the gateway loads.
+func TestWhatEveryoneGetsMatchesThePolicy(t *testing.T) {
+	ctx := context.Background()
+	role := `INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('m', 'member', 'x', 'x', 'x')`
+	for name, rows := range map[string][]string{
+		"no policy":      nil,
+		"no default":     {`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', NULL, 'x')`},
+		"a default":      {role, `INSERT INTO auth_role_permissions (role_id, permission) VALUES ('m', 'models:read'), ('m', 'inference:chat')`, `INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'm', 'x')`},
+		"it gives none":  {role, `INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'm', 'x')`},
+		"it isn't there": {`PRAGMA foreign_keys=OFF`, `INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'ghost', 'x')`, `INSERT INTO auth_role_permissions (role_id, permission) VALUES ('ghost', 'keys:manage')`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st, err := store.Open(filepath.Join(dir(t), "local-base.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer st.Close()
+			st.DB.SetMaxOpenConns(1)
+			for _, stmt := range rows {
+				if _, err := st.DB.Exec(stmt); err != nil {
+					t.Fatalf("%s: %v", stmt, err)
+				}
+			}
+			policy, err := auth.LoadPolicy(ctx, st.DB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			if policy != nil && policy.DefaultRole != nil {
+				for _, r := range policy.Roles {
+					if r.Name == *policy.DefaultRole {
+						want = r.Permissions
+					}
+				}
+			}
+			has, got, err := readEveryone(ctx, st.DB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if has != (policy != nil) || strings.Join(got, ",") != strings.Join(want, ",") {
+				t.Errorf("policy %v, gets %v; the gateway says policy %v, gets %v", has, got, policy != nil, want)
+			}
+		})
+	}
+}
+
+// A root last opened by an older version lacks tables added since. What it has is still read.
+func TestWhatEveryoneGetsIsReadWithoutTheNewerTables(t *testing.T) {
+	st, err := store.Open(filepath.Join(dir(t), "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for _, stmt := range []string{
+		`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('m', 'member', 'x', 'x', 'x')`,
+		`INSERT INTO auth_role_permissions (role_id, permission) VALUES ('m', 'models:read')`,
+		`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'm', 'x')`,
+		`DROP TABLE go_binding_issuers`,
+		`DROP TABLE go_invitation_issuers`,
+	} {
+		if _, err := st.DB.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	has, got, err := readEveryone(context.Background(), st.DB)
+	if err != nil || !has || strings.Join(got, ",") != "models:read" {
+		t.Errorf("%v, %v, %v", has, got, err)
+	}
+}
+
+// Without each of the tables that decide it there's no policy, and that isn't a failed read.
+func TestWhatEveryoneGetsWithoutTheTablesThatDecideIt(t *testing.T) {
+	for _, table := range []string{"auth_settings", "auth_roles", "auth_role_permissions"} {
+		t.Run(table, func(t *testing.T) {
+			st, err := store.Open(filepath.Join(dir(t), "local-base.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer st.Close()
+			if _, err := st.DB.Exec(`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', NULL, 'x')`); err != nil {
+				t.Fatal(err)
+			}
+			st.DB.SetMaxOpenConns(1)
+			for _, stmt := range []string{`PRAGMA foreign_keys=OFF`, `DROP TABLE ` + table} {
+				if _, err := st.DB.Exec(stmt); err != nil {
+					t.Fatalf("%s: %v", stmt, err)
+				}
+			}
+			has, got, err := readEveryone(context.Background(), st.DB)
+			if err != nil || has || len(got) != 0 {
+				t.Errorf("%v, %v, %v", has, got, err)
+			}
+		})
+	}
+}
+
+func TestAFailedReadOfWhatEveryoneGetsIsAnError(t *testing.T) {
+	st, err := store.Open(filepath.Join(dir(t), "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readEveryone(context.Background(), st.DB); err == nil {
+		t.Error("no error from a database that can't be read")
 	}
 }

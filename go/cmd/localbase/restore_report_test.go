@@ -19,7 +19,7 @@ const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"
 // keepLetters are the only fields that keep letters from another alphabet: names a person gave, and
 // the path they typed. Everything else in the report is judged by eye, so it shows them as escapes.
 // Adding a field to the report keeps this safe by default. Adding one here is a decision.
-var keepLetters = []string{"Report.Target", "Report.Cautions", "Report.Grants.Role",
+var keepLetters = []string{"Report.Target", "Report.Cautions", "Report.Grants.Role", "Report.RolesGone.Role",
 	"Report.KeysKept.Name", "Report.KeysLeftOut.Name", "Report.KeysBroughtBack.Name", "Report.KeysLost.Name", "Report.KeysActive.Name", "Report.KeysHeldBack.Name"}
 
 // keepsLetters says whether a path from plantInto is one of those, whatever its list index.
@@ -168,6 +168,9 @@ func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 	for i := range rep.Grants {
 		rep.Grants[i].Role = "role"
 	}
+	for i := range rep.RolesGone {
+		rep.RolesGone[i].Role = "role"
+	}
 	var out bytes.Buffer
 	c := &cli.Ctx{Stdout: &out, Stderr: &out}
 	printRestoreReport(c, rep)
@@ -183,7 +186,7 @@ func TestOnlyThoseFieldsKeepTheirLetters(t *testing.T) {
 func TestAFieldThatKeepsItsLettersDoes(t *testing.T) {
 	rep, _ := plantedReport(t)
 	safe := printable(rep)
-	for _, got := range []string{safe.Target, safe.KeysKept[0].Name, safe.KeysLost[0].Name, safe.Cautions[0], safe.Grants[0].Role} {
+	for _, got := range []string{safe.Target, safe.KeysKept[0].Name, safe.KeysLost[0].Name, safe.KeysHeldBack[0].Name, safe.Cautions[0], safe.Grants[0].Role, safe.RolesGone[0].Role} {
 		if !strings.HasSuffix(got, "\u0430") {
 			t.Errorf("%q", got)
 		}
@@ -201,6 +204,9 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"a role":                rep.Grants[1].Role,
 		"what a role gives":     rep.Grants[1].Gives.Value,
 		"who has a role":        rep.Grants[1].Who[1].Value,
+		"a role going":          rep.RolesGone[1].Role,
+		"what it gave":          rep.RolesGone[1].Gives.Value,
+		"who had it":            rep.RolesGone[1].Who[1].Value,
 		"a way of signing in":   rep.SignIn.Who[1].Value,
 		"what it's named":       rep.SignIn.Who[1].Named,
 		"a way that goes":       rep.SignIn.Goes[1].Value,
