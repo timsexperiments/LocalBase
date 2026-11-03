@@ -33,7 +33,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Unit tests
-        run: go test -race ./internal/... ./cmd/...
+        run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal
       - name: Compiled CSS is current
         run: tools/tailwind.sh --check
       - name: Contract suite against the Go gateway
@@ -68,7 +68,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Unit tests
-        run: go test -race ./internal/... ./cmd/...
+        run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal
       - name: Contract suite against the Go gateway
         env:
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
