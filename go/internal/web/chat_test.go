@@ -32,7 +32,7 @@ func TestAppOpensChat(t *testing.T) {
 func TestChatWithoutReadyModel(t *testing.T) {
 	w := get(New(Deps{NoAuth: true}), "/app/chat")
 	body := w.Body.String()
-	for _, want := range []string{`role="log"`, `aria-live="off"`, `id="chat-status" role="status"`, "No chat model is ready",
+	for _, want := range []string{`role="log"`, `aria-live="off"`, `id="chat-status" role="status"`, "You need a model first",
 		`href="/app/models"`, `id="chat-models">[]</script>`, "js/chat.js", "interactive-widget=resizes-content", `hx-boost="false"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
