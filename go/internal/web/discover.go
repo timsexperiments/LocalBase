@@ -286,7 +286,9 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 	if q == "" {
 		filter := taskFilter(r)
 		rows, tasks := u.catalogRows(filter)
-		data["Catalog"], data["Tasks"] = u.withForecast(r, rows), tasks
+		rows = u.withForecast(r, rows)
+		data["Catalog"], data["Tasks"] = rows, tasks
+		data["AnyForecast"] = slices.ContainsFunc(rows, func(x CatalogRow) bool { return x.Forecast })
 		data["Filter"] = filter
 		// Nothing to chat with yet: the smallest that fits comes before anything to search.
 		if canManage && !u.hasChatModel() {

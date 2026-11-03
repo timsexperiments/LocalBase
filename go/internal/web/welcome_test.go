@@ -366,4 +366,13 @@ func TestForecastIgnoresAGuess(t *testing.T) {
 	if got[0].Forecast || got[0].Fit != "fits" || got[0].UsesBytes != 0 {
 		t.Errorf("a guess was used: %+v", got[0])
 	}
+	// On screen: no figure, no fit words, and no claim of having looked at memory.
+	for _, path := range []string{"/app/welcome/choose", "/app/models/get"} {
+		body := get(u, path).Body.String()
+		for _, not := range []string{"Uses about", "Uses less", "Fits now", "Fits this computer", "fits this computer", "tight fit", "Fit unknown", "Based on memory", "based on memory"} {
+			if strings.Contains(body, not) {
+				t.Errorf("%s says %q on a guess", path, not)
+			}
+		}
+	}
 }

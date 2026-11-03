@@ -242,6 +242,8 @@ else {
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
   await sleep(600);
   check((await ev(`document.querySelector("#voice-list [data-play]").getAttribute("aria-pressed")`)) === "true", "Play shows as pressed while it plays");
+  // Leave nothing behind: a root holds a limited number of voices.
+  await ev(`(async () => { const list = await (await fetch("/app/api/_localbase/voices", { headers: { "x-localbase-ui": "1" } })).json(); const v = (list.data ?? []).find((x) => x.name === ${JSON.stringify(voiceName)}); if (v) await fetch("/app/api/_localbase/voices/" + v.id, { method: "DELETE", headers: { "x-localbase-ui": "1" } }); })()`);
 }
 // --- Decisions (DESIGN §22.17) --------------------------------------------------
 await nav("/app/studio/decisions");

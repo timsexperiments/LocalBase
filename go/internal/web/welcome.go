@@ -171,7 +171,8 @@ func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string
 	choices := u.welcomeChoices(r)
 	picked := slices.IndexFunc(choices, func(c welcomeChoice) bool { return c.Pick })
 	diskShort := len(choices) > 0 && !slices.ContainsFunc(choices, func(c welcomeChoice) bool { return !c.TooBigDisk })
-	data := map[string]any{"Step": "choose", "Choices": choices, "Failure": failure, "DiskShort": diskShort,
+	anyForecast := slices.ContainsFunc(choices, func(c welcomeChoice) bool { return c.Forecast })
+	data := map[string]any{"Step": "choose", "Choices": choices, "Failure": failure, "DiskShort": diskShort, "AnyForecast": anyForecast,
 		"SmallRule": "5 GB", "CanManage": u.caller(r).Can("models:manage")}
 	if picked >= 0 {
 		data["Picked"] = choices[picked]

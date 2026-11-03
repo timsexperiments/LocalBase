@@ -21,7 +21,7 @@
   <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
   <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
-    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if .Forecast}}{{if eq .Fit "fits"}} · fits now{{else if eq .Fit "close-others"}} · close other apps first{{else if eq .Fit "wont-fit"}} · too big for this computer{{end}}{{else if eq .Fit "fits"}} · fits this computer{{else if eq .Fit "tight"}} · tight fit{{else if eq .Fit "wont-fit"}} · needs more memory{{end}}</span>
+    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if .Forecast}}{{if eq .Fit "fits"}} · fits now{{else if eq .Fit "close-others"}} · close other apps first{{else if eq .Fit "wont-fit"}} · too big for this computer{{end}}{{else if eq .Fit "wont-fit"}} · needs more memory{{else if .Installed}}{{if eq .Fit "fits"}} · fits this computer{{else if eq .Fit "tight"}} · tight fit{{end}}{{end}}</span>
   </a>
   <span class="shrink-0" id="cat-{{.ID}}-action">
   {{if .Installed}}<span class="pill pill-ok">Installed</span>
