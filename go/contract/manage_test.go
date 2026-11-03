@@ -152,6 +152,11 @@ func runManageScript(t *testing.T, tg *Target) []manageResult {
 		}
 		body := strings.NewReplacer("{{key}}", key, "{{rev}}", rev).Replace(s.body)
 		r := do(t, s.method, tg.BaseURL+s.path, h, body)
+		if r.Status == 400 && strings.Contains(string(r.Body), `"issuer_required"`) {
+			// With several providers Go wants to know which one vouches for an address, and TS
+			// has no such field (DESIGN §13.6, item 5b). What follows is still compared.
+			r = do(t, s.method, tg.BaseURL+s.path, h, withIssuer(body))
+		}
 		if r.Header.Get("Cache-Control") != "no-store" && r.Status != 405 && !(s.path == hfPath && r.Status < 404 && r.Status > 400) {
 			t.Errorf("%s %s %s: Cache-Control %q", s.method, s.path, s.body, r.Header.Get("Cache-Control"))
 		}
@@ -202,6 +207,13 @@ func TestDifferentialManagement(t *testing.T) {
 				targets[0].Name, ra.status, ra.raw, targets[1].Name, rb.status, rb.raw, diffs)
 		}
 	}
+}
+
+// withIssuer names a provider on the bindings and the invitation a request carries.
+func withIssuer(body string) string {
+	const issuer = `"issuer":"https://accounts.google.com",`
+	return strings.NewReplacer(`"kind":"email",`, `"kind":"email",`+issuer, `"kind":"email-domain",`, `"kind":"email-domain",`+issuer,
+		`"action":"invite-user",`, `"action":"invite-user",`+issuer).Replace(body)
 }
 
 // maskKeys hides key prefixes and orders key lists by name: fixture keys
