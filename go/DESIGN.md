@@ -4944,3 +4944,202 @@ tools/upgrade-rehearsal-systemd.sh             # the same, under systemd in a di
 **Depends on:** #406 (the version), #414 (the release), the signing key, and the OSS thread's workflow step.
 
 **Rollback of this feature:** an older binary has no `upgrade` command and ignores its `go_settings` keys. `go_schema` is unchanged.
+
+## 34. Backup and restore (design addendum, 2026-11-02)
+
+A root holds what took time to set up: keys, roles, sign-in providers, custom catalog entries and
+backends, custom voices. Today the only way to keep that is to copy the directory by hand, which
+copies logs, gigabytes of models and a live database, and which a later check may refuse.
+
+**A backup is a secret.** By default it holds the Hugging Face token, the OTLP headers, sign-in
+client secrets, the SMTP password and download credentials, in plain text. It is also a set of
+instructions: restoring one decides who can sign in and which programs run as you. So it is a
+private file, never leaves the computer through LocalBase, and is restored only from a file you
+own. The CLI and the docs say so every time.
+
+**CLI only.** No route, no page and no upload, in this version or as a later option: a route would
+hand every secret to whoever holds one permission, over HTTP.
+
+### 34.1 What is and is not in a backup
+
+Nothing is left out silently. Every entry of a root is in one of the two tables below, and anything
+a root holds that neither table names is listed as `not included: unknown` in the CLI output and the
+manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry neither table names.
+
+**Included:**
+
+| What | From | Secrets in it |
+|---|---|---|
+| Settings, API keys, users, roles, policies, identities, imported models, backend and placement choices, custom voice records, usage totals | `local-base.db`, copied with `VACUUM INTO` | Hugging Face token, OTLP headers. **API keys are hashes only:** a restored root accepts the same keys, and no key can be read back |
+| Sign-in providers | `ui-access.json` | OIDC and GitHub client secrets |
+| Email delivery | `email-delivery.json` | SMTP password |
+| Download credentials | `credentials/auth-profiles.json` | Header values |
+| Catalog entries and custom backends | `catalog.d/`, `backends.d/` | None, but a backend names a program (34.4) |
+| Custom voices | `voices/` | Not secrets, but recordings of a person's voice |
+
+**Not included**, each listed with its size:
+
+| What | Why |
+|---|---|
+| `models/` | Large, and downloaded again. Restore lists which to install, with the command |
+| `runs/` | Replies in progress. No prompt or reply ever goes in a backup |
+| `logs/` | Not settings, and they stay on the computer they describe |
+| `bin/` | Downloaded again, and programs should not travel in a data file |
+| `runtime/`, `service/` | Tied to this machine and this process. `ui-csrf.key` regenerates, `start` rewrites the service |
+| `cache/`, `catalog-feed.json` | Caches that are fetched again. Whether a feed URL needs keeping is checked when this is built |
+| The root marker, the lock | `restore` makes its own |
+| Rows: `auth_browser_sessions`, `local_sessions`, `local_login_links`, `auth_magic_link_tokens` | **A restore signs everyone out.** Bringing back old sessions would undo a sign-out |
+| Rows: `model_observed_memory`, `model_runtime_capabilities` | Measured on one machine. Measured again on the next load |
+| Rows: `config_activation` | A restart that was pending on another gateway |
+
+Models may become an option later. Nothing here depends on that, and it is not built now.
+
+### 34.2 `--exclude-secrets`
+
+Feasible, and a real option: `local-base backup --exclude-secrets`.
+
+It works on the copy, never on the root. It clears `config.hf_token` and `config.otel_headers`, then
+runs `VACUUM INTO` again so the old values are not left in free pages.
+
+**A file with a secret is reduced to what still validates,** because a blank secret would stop the
+gateway: `auth.LoadAccess` refuses a `client-secret-basic` registration with no secret, and a
+refused file stops `serve`.
+
+| File | What happens |
+|---|---|
+| `ui-access.json` | A registration that needs a secret is removed. If no registration is left, the file is left out and the root starts with local sign-in only |
+| `email-delivery.json` | Left out if it has a password |
+| `credentials/auth-profiles.json` | Header values removed. A profile with none left is removed |
+
+The manifest's `secretsRemoved` names each one and the command that puts it back, never a value.
+`restore` prints that list. `TestRestoreWithoutSecretsStarts` starts a gateway on the result.
+
+**It does not anonymise.** It still holds users' email addresses, API key hashes, voice recordings
+and usage totals. The docs and the CLI say so.
+
+### 34.3 `local-base backup`
+
+```text
+local-base backup [--output <file>] [--exclude-secrets] [--dry-run] [--json]
+```
+
+- **Default place:** `<root>-backups/local-base-<UTC time>.lbbackup`, so `~/.local/share/local-base-backups/`: a **0600 file in a 0700 directory**, beside the root and not in it, so `uninstall` leaves it and a backup never holds a backup.
+- **`--output`:** the file is always 0600. Refuses a path inside the root, a directory other users can write to, and an existing file: it never overwrites. A directory other users can read gets a warning.
+- **It starts with `root.Open`,** so a root that fails the checks of #494 is refused with their message. Files are read through `OpenOwnedRegular` (#449), so a planted link or another user's file stops the backup and names the file. It is never skipped.
+- **The gateway may be running.** `VACUUM INTO` is a consistent copy and blocks no reader. A setting changed during the backup may appear in the database and not in a JSON file, or the reverse. For an exact copy, stop the gateway first. It holds the root's operation lease, so no CLI change interleaves.
+- **Written whole or not at all:** to a private temporary name in the same directory, synced, then linked into place, which fails if the name now exists.
+- **`--dry-run`** prints the same report and writes nothing.
+- **No network, ever.** The package imports neither `net` nor `net/http`, and a test reads its imports.
+- **Logged:** `backup.created` with sizes and `secretsIncluded`, never a path outside the root or a value. The audit log does not name what is in it.
+
+**It always says, including with `--json` (on stderr, and as `warning`):**
+
+```text
+This backup holds these secrets in plain text: Hugging Face token, OIDC client secret (google).
+Anyone who can read this file can use them. Keep it like a password; LocalBase never uploads it.
+```
+
+With no secrets in the root or with `--exclude-secrets`, the first line says none are included and
+the second says what the file still holds.
+
+### 34.4 The file
+
+Version 1 is a gzipped tar. `manifest.json` is the first entry, then `files/<path>`:
+
+```json
+{ "format": "localbase.backup/v1", "createdAt": "2026-11-02T20:00:00Z", "version": "0.3.0",
+  "goSchema": 1, "migrations": 16, "secrets": "included",
+  "secretNames": ["hf-token", "oidc:google"], "secretsRemoved": [],
+  "files": [{ "path": "local-base.db", "size": 266240, "sha256": "…" }],
+  "notIncluded": [{ "what": "models/", "why": "…", "bytes": 3013027808 }],
+  "rowsLeftOut": ["auth_browser_sessions"], "modelsToInstall": ["…"] }
+```
+
+**It holds no path, hostname or user name.** `config.root` is blanked in the copy and set by restore,
+since a database that names another root is refused at open.
+
+**Not encrypted in version 1.** The standard library has the parts, but a passphrase format of our
+own is one more thing to get wrong, and the operator's rule is a private file. The docs say to use
+disk encryption, or `age` or `gpg` before moving a backup anywhere.
+
+**The checksums find damage, not tampering.** Nothing signs a backup, which is why 34.5 step 1 and
+the program list exist.
+
+### 34.5 `local-base restore`
+
+```text
+local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json]
+```
+
+**First it changes nothing,** and any refusal leaves the root as it was:
+
+1. **The file.** It must be yours, a plain file, and not writable by others (`OpenOwnedRegular`). Running as root is refused, since it would leave files the owner can't read.
+2. **The contents, into a private staging directory beside the target** (0700, same filesystem):
+   - `manifest.json` comes first, in a format this binary knows. A newer format is refused and says which version it needs.
+   - Every entry is a regular file with a clean relative path on the 34.1 list, once. Links, devices, `../` and anything else are refused. Tar modes and owners are ignored.
+   - Size and hash match the manifest. Limits hold while reading, so a small file can't expand without end.
+   - The database passes `PRAGMA integrity_check`. A newer `go_schema` or migration is refused, as a newer database always is. An older one migrates on open, as usual.
+   - `ui-access.json`, `email-delivery.json`, profiles, backends and catalog entries pass the validators the gateway uses, and each voice file matches its row.
+3. **The report.** What it holds, secrets or not, and **each custom backend's program, by full path**: a restored backend runs that program as you when its model loads. Also sign-in providers, the number of keys and users, models to install, and secrets to re-enter. A backend whose program doesn't exist here gets a line and stays registered.
+4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
+5. **The target.**
+   - A gateway on the root, or a lock it can't read, refuses: `stop it first: local-base stop`. A stale lock is cleared as usual. It takes the operation lease and the gateway lock and holds both to the end, so a service manager can't start one midway.
+   - A root another user owns, or one that fails the checks of #494, refuses with their message.
+   - An existing directory that isn't an empty one or a LocalBase root refuses, always. `--replace` does not change this.
+   - A root with data refuses unless `--replace` is given.
+   - The parent directory being writable by others gets a warning (34.7).
+6. **It asks.** `--yes` skips asking, and `--json` needs it.
+
+**Then it changes things:**
+
+7. **Absent or empty target:** the staging directory is renamed to the root, one atomic step.
+8. **`--replace`:** only what a backup holds is replaced. `models/`, `logs/`, `bin/` and the rest stay.
+   - A journal goes in first, `<root>/.restore-journal.json`, listing every move.
+   - Old files move to `<root>/.before-restore-<time>/`, 0700. New ones move in, with the database last. Then the journal is removed.
+   - **A failure puts everything back.** A crash leaves the journal, and `root.Open` then refuses every command with one line: `A restore did not finish. Run: local-base restore --undo`.
+   - On success the old files stay, and it prints the path and the `rm -rf` line, because they hold secrets too. Nothing is deleted without being asked.
+9. **Before anything is used:** `config.root` is set to the target. Every file is 0600 and every directory 0700, owned by the current user, whatever the umask or the archive says.
+10. **The same checks a gateway gets:** `root.Open`, `obs.CheckRootFiles` and opening the store with its migrations. A failure undoes the restore (step 8) and reports both.
+11. **It starts nothing.** It prints what's next: `local-base start`, models to install, secrets to re-enter, that everyone must sign in again, and that existing API keys work again.
+
+**Ports travel with the settings,** so a backup restored beside a running gateway names that
+gateway's ports. It says which restored ports are in use and gives the `config apply` line. This is
+how a scratch root once reached the live backend, so `TestRestoreWarnsAboutBusyPorts` covers it.
+
+`root.Open` is in Security's #494. The one-line journal check goes in after that merges, and they
+have been told.
+
+### 34.6 Tests, first
+
+All of these use scratch roots, plain files and no real models. Contract tests use the guarded helpers.
+
+- `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway, with every entry in one table.
+- `TestBackupRestoreRoundTrip`: **a restore into a scratch root, with a gateway started on it.** Keys authenticate, roles and policies hold, catalog entries and backends are listed, voices play back by hash, and everyone is signed out.
+- `TestBackupHoldsSecretsOrNot`: planted secrets are found in the raw bytes of a full backup, proving the scan works, and in no byte of an `--exclude-secrets` one, gunzipped, including database free pages.
+- `TestRestoreWithoutSecretsStarts`: a gateway starts, and `secretsRemoved` matches what is gone.
+- `TestBackupNeverHoldsPrompts`: planted text in `runs/` and `logs/` appears nowhere.
+- `TestBackupModes`: the file 0600, the default directory 0700, under a 0000 and a 0077 umask. No overwrite, no output inside the root, no directory others can write to.
+- `TestBackupRefusesUnsafeRoot`: a root #494 refuses, and a planted link in `catalog.d/`, `backends.d/` and `voices/`.
+- `TestBackupWhileServing`: a consistent database while writes continue. `-race -count=20`.
+- `TestBackupNoNetwork`: the imports, read from the package.
+- `TestRestoreRefusesBadFiles`: a table of a truncated file, a wrong hash, an extra or duplicate entry, a link, `../`, an absolute path, a device, a newer format, a newer schema, an expanding file, a corrupt database, an invalid `ui-access.json`, a backend that fails validation, and another user's file. For each, the target is byte-identical afterwards.
+- `TestRestoreRefusesRunningGateway`, `TestRestoreRefusesOtherOwner` (with the owner hook of #494, and in a container as a second real user), `TestRestoreRefusesRoot` (container, uid 0), `TestRestoreRefusesForeignDirectory`.
+- `TestRestoredRootPassesEveryCheck`: modes and owners on every path, and `root.Open`, `CheckRootFiles` and `doctor` clean, under each umask.
+- `TestRestoreDryRunWritesNothing`: a tree hash of the target and the parent, before and after.
+- `TestRestoreReplace`: only the 34.1 entries change, `models/` keeps its inode, and the old files are kept.
+- `TestRestoreCrash`: a failure injected at every move. Each leaves a root that refuses with the one line, and `--undo` returns it byte for byte.
+- `TestRestoreNamesPrograms`: every custom backend's program in the report, in text and JSON.
+- `TestRestoreWarnsAboutBusyPorts`.
+- `TestBackupRestoreCLI`: the secret warning always appears, and `--json` needs `--yes`.
+
+**Not verifiable by tests:** restoring on a second real computer, or from a backup of the live root.
+The operator can run one against a clone, if wanted.
+
+### 34.7 Residual risks, accepted in the threat model (§36)
+
+- **Plaintext secrets at rest:** a backup holds the same secrets a root holds, and anyone who can read it can use them.
+- **A writable parent directory can swap the root,** or the backups directory beside it; owner and mode checks do not protect against that.
+
+**Rollback of this feature:** two new commands and one new file format. `go_schema` is unchanged, and
+an older binary ignores `.before-restore-*`. It would not know a journal, so a restore that crashed
+must be undone with the version that made it.
