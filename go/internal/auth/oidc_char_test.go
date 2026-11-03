@@ -149,7 +149,7 @@ func TestOIDCUnauthorizedEmail(t *testing.T) {
 		f.claims = claims
 		resp := login(t, b, f, nil)
 		if resp.StatusCode != http.StatusForbidden || cookieNamed(resp, SessionCookie) != nil {
-			t.Errorf("%s: %d, session %v", name, resp.StatusCode, cookieNamed(resp, SessionCookie))
+			t.Errorf("%s: %d, session given: %v", name, resp.StatusCode, cookieNamed(resp, SessionCookie) != nil)
 		}
 	}
 }
