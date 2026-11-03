@@ -1,0 +1,9 @@
+# The Chrome tools/e2e.sh fetches, into a scratch cache only, never system-wide. Verified by
+# sha256. In a path, + stands for a space.
+chrome-version 156.0.8078.80
+chrome-darwin-arm64-url https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/mac-arm64/chrome-mac-arm64.zip
+chrome-darwin-arm64-sha256 8bc590d1b1acac042a000234c768f31830f25a3983a83ed5e067114c87c4cad1
+chrome-darwin-arm64-path chrome-mac-arm64/Google+Chrome+for+Testing.app/Contents/MacOS/Google+Chrome+for+Testing
+chrome-linux-amd64-url https://storage.googleapis.com/chrome-for-testing-public/156.0.8078.80/linux64/chrome-linux64.zip
+chrome-linux-amd64-sha256 b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7
+chrome-linux-amd64-path chrome-linux64/chrome

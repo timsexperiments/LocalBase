@@ -201,3 +201,77 @@ with the backend's own RSS as the primary measure and system memory beside it. A
 +2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
 on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
 flat result here would not clear the Linux case.
+
+Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
+on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
+from a leak. The plan is about 200 sequential requests to a small model on a scratch
+gateway on a Mac, with the same conditions as above, recording the backend's RSS and
+available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
+repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
+in recent `llama-server` builds): if it does, a run with the cache off separates the two.
+The plan must fit the agreed size, so the context will be far smaller than the one observed
+and the platform differs. A flat result here would not clear the Linux case; say so if
+that is the result.
+
+## The browser suite
+
+```
+make e2e                              # about a minute
+E2E_PART=journeys tools/e2e.sh        # the journeys alone, under a minute
+E2E_PAGES=chat,studio E2E_WIDTHS=390 E2E_THEMES=dark tools/e2e.sh
+```
+
+Run from `go/`. It needs `bun`. Chrome comes from `LBGO_CHROME`, or else the Chrome for Testing pinned
+in `tools/e2e/pins` is fetched into a cache (`LOCALBASE_E2E_CACHE`, default `~/.cache/localbase-e2e`),
+checked against its sha256 and never installed, so that every run checks the same browser. Only a
+platform with no pin, such as linux/arm64, falls back to an installed Chrome. axe-core comes the
+same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
+ports from the lab's block. Results and captures go to a new directory under
+`$TMPDIR/localbase-e2e`, or `-out <dir>`.
+
+Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), and exit 2 means
+the suite itself could not run.
+
+**Journeys** sign in with a first-run link from `local-base access login-link`, check it works once,
+hold a first chat, stop a stream, keep HTML in a reply inert, use Image, Speech, Transcribe and
+Decisions, and then break things: too little memory, a backend killed mid-reply, every session
+ended. The driver's small control endpoint does what a page cannot, such as changing the host's memory.
+
+**The matrix** runs every page at 320, 360, 390, 430, 768 and 1280 px in light and dark:
+
+- **Overflow.** `scrollWidth` and `clientWidth` are compared with the width asked for. `innerWidth` is
+  not used: in mobile emulation it can grow with the content, so `scrollWidth - innerWidth` can read 0 on
+  a page that overflows. A self-test plants a 1200 px element and requires the check to catch it.
+- **axe-core**, WCAG 2.0, 2.1 and 2.2 A and AA, and any exception or 5xx on the page.
+
+Per page, at 390 and 1280 px:
+
+- **Keyboard and focus.** Tab reaches every visible control with no trap. A radio group is one stop, a
+  closed `<details>` holds none, and a tabindex of -1 is out of the order on purpose. Focus is on screen,
+  the middle of the control is not covered, and focusing it changes how it looks: the control is read
+  focused and then blurred, along with its pseudo-elements, up to three boxes around it (a composer
+  shows focus on its frame) and the element after it (a hidden checkbox styles its neighbour).
+- **Sheets.** Enter opens one, focus moves in and stays in, Escape closes it, and focus returns to what
+  opened it.
+- **Reduced motion.** Nothing keeps animating when reduced motion is asked for.
+
+**Every check is shown a page that breaks it.** Before the matrix, the suite plants an overflow, an
+exception, an image with no alt text, a control with no focus style, one Tab cannot reach, a trap, a
+control off screen, one under a cover, an opener that does nothing, a sheet that lets focus out and
+ignores Escape, one that returns focus to the wrong place, and a spinning element under reduced motion.
+If a check misses its plant the suite stops with exit 2, since a clean matrix would mean nothing.
+`result.md` lists what was proved. A new check needs a plant of its own.
+
+**Waiting.** Everything waits on the page's state through `until`, which polls and, if the state never
+comes, fails with a screenshot, the address and the console. There are no fixed sleeps and no retries, so a
+flaky check fails loudly.
+
+**Adding to it.** A new page goes in `ALL_PAGES` in `tools/e2e/run.ts`. A new journey is an
+`await journey("what a person sees", async () => { ... })`: use `until` to wait, and `need` to assert.
+
+Not covered: video generation, installing a first model from an empty root (no chat model means the
+welcome page's install flow), voice recording, an identity provider's sign-in, Safari and Firefox, and
+real devices. The focus check shows that something changes, not that the change has enough contrast;
+the buttons inside a native audio or video player are taken on trust; the keyboard, sheet and motion
+checks run in the light theme on the page as it first loads, so a sheet's own contents, a result on the
+page and a state reached by using it get axe and overflow only where a journey or a sheet reaches them.
