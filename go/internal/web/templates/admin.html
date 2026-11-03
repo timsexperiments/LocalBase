@@ -40,7 +40,7 @@
 {{define "perm-picker"}}
 <div class="grid gap-3 min-[600px]:grid-cols-2">
   {{range .Groups}}
-  <fieldset class="grid content-start gap-1 rounded-xl border border-line p-3">
+  <fieldset class="grid content-start gap-1 rounded-xl border border-bound p-3">
     <legend class="px-1 text-sm font-semibold">{{.Label}}</legend>
     {{range .Perms}}
     <label class="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" class="size-4 accent-[var(--lb-accent)]" name="{{$.Name}}" value="{{.ID}}" {{if .Checked}}checked{{end}} {{if $.Disabled}}disabled{{end}}><code>{{.ID}}</code></label>
@@ -56,7 +56,7 @@
 <section class="group-card" aria-labelledby="people-title">
   <h2 id="people-title" class="group-title">People</h2>
   <ul class="mt-2 grid gap-2">
-    {{range $s.Users}}<li class="rounded-xl border border-line p-3"><span class="font-semibold wrap-anywhere">{{.Email}}</span><span class="block text-sm text-muted">{{.Status}} · {{with .Roles}}{{range $i, $r := .}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}No roles{{end}}</span></li>
+    {{range $s.Users}}<li class="rounded-xl border border-bound p-3"><span class="font-semibold wrap-anywhere">{{.Email}}</span><span class="block text-sm text-muted">{{.Status}} · {{with .Roles}}{{range $i, $r := .}}{{if $i}}, {{end}}{{$r}}{{end}}{{else}}No roles{{end}}</span></li>
     {{else}}<li class="text-sm text-muted">No managed users.</li>{{end}}
   </ul>
 </section>
@@ -64,7 +64,7 @@
   <h2 id="roles-title" class="group-title">Roles</h2>
   <p class="mt-1 text-sm text-muted">Default: {{with $s.Policy}}{{with .DefaultRole}}{{.}}{{else}}No default role{{end}}{{else}}No default role{{end}}</p>
   <ul class="mt-2 grid gap-2">
-    {{range $s.Roles}}<li class="rounded-xl border border-line p-3"><span class="font-semibold">{{.Name}}</span>{{with .Description}}<span class="block text-sm">{{.}}</span>{{end}}<span class="block text-xs text-muted wrap-anywhere">{{with .Permissions}}{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{else}}No permissions{{end}}</span></li>
+    {{range $s.Roles}}<li class="rounded-xl border border-bound p-3"><span class="font-semibold">{{.Name}}</span>{{with .Description}}<span class="block text-sm">{{.}}</span>{{end}}<span class="block text-xs text-muted wrap-anywhere">{{with .Permissions}}{{range $i, $p := .}}{{if $i}}, {{end}}{{$p}}{{end}}{{else}}No permissions{{end}}</span></li>
     {{else}}<li class="text-sm text-muted">No roles configured.</li>{{end}}
   </ul>
 </section>
@@ -113,7 +113,7 @@
   </div>
   <ul class="mt-3 grid gap-3">
     {{range .Users}}
-    <li class="rounded-xl border border-line p-3">
+    <li class="rounded-xl border border-bound p-3">
       <form class="grid gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="section" value="people"><input type="hidden" name="email" value="{{.Email}}">
         <div class="flex flex-wrap items-start justify-between gap-2">
@@ -151,7 +151,7 @@
   </div>
   <ul class="mt-3 grid gap-3 lg:grid-cols-2">
     {{range $i, $role := .RoleViews}}
-    <li class="rounded-xl border border-line p-3">
+    <li class="rounded-xl border border-bound p-3">
       <form class="grid gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="section" value="people"><input type="hidden" name="name" value="{{$role.Name}}">
         <p class="font-semibold">{{$role.Name}}</p>
@@ -199,7 +199,7 @@
   {{if and $cfg (eq $cfg.Provider.Kind "direct")}}
   <ul class="mt-3 grid gap-2" aria-label="Sign-in registrations">
     {{range $cfg.Provider.Registrations}}
-    <li class="rounded-xl border border-line p-3">
+    <li class="rounded-xl border border-bound p-3">
       <form class="flex flex-wrap items-start justify-between gap-2" hx-post="/app/admin/access" hx-target="#admin-section" hx-swap="outerHTML" hx-disabled-elt="find button">
         <input type="hidden" name="section" value="access"><input type="hidden" name="registrationId" value="{{.ID}}">
         <div class="min-w-0"><p class="font-semibold">{{.Name}}</p><p class="text-sm text-muted wrap-anywhere">{{.ID}} · {{if eq .Kind "oidc"}}{{.Issuer}}{{else if eq .Kind "github-oauth"}}GitHub OAuth{{else}}Email magic link{{end}}</p></div>

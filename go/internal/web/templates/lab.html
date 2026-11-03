@@ -307,7 +307,7 @@
   <p class="px-1 text-sm text-muted" data-voice-status aria-live="polite">{{if .VoiceClones}}A sample is made the first time you play it.{{else}}This model has its own voices. A sample is made the first time you play it.{{end}}</p>
 </div>
 {{end}}
-{{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>{{end}}
+{{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="4" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>{{end}}
 {{define "icon-play-small"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>{{end}}
 
 {{/* One result in the tray. While its run is active it polls itself. */}}
@@ -374,12 +374,13 @@
   {{if .Active}}<p class="lab-progress skeleton">{{.Message}}</p>
   <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>{{end}}
   {{if .Transcript}}
+  <h3 class="image-title px-2">{{firstWords .Transcript}}</h3>
   {{with .Source}}<audio controls preload="metadata" src="{{.}}" class="transcript-audio" data-transcript-audio></audio>{{end}}
   {{if .Translated}}<p class="px-2 text-sm text-muted">Check a translation before relying on it.</p>{{end}}
   <div class="flex flex-wrap items-center gap-1">
     <button type="button" class="btn btn-quiet rounded-full" data-copy-transcript>Copy</button>
     <button type="button" class="btn btn-quiet rounded-full" data-open-sheet="export-{{.ID}}" aria-haspopup="dialog">Export</button>
-    {{if .Segments}}<button type="button" class="btn btn-quiet rounded-full" data-toggle-times aria-pressed="true">Times</button>{{end}}
+    {{if .Segments}}<button type="button" class="btn btn-quiet rounded-full" data-toggle-times aria-pressed="true">Timestamps</button>{{end}}
   </div>
   <p class="hidden" data-transcript>{{.Transcript}}</p>
   {{if .Segments}}<div class="transcript-text" data-times>{{range .Segments}}
@@ -467,8 +468,8 @@
 </div>
 {{end}}
 
-{{define "icon-share"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m-4 4 4-4 4 4M6 12v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7"/></svg>{{end}}
-{{define "icon-download"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>{{end}}
+{{define "icon-share"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4.5M8 8l4-3.5L16 8M6 12.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-6.5"/></svg>{{end}}
+{{define "icon-download"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5V15M7.5 11l4.5 4.5 4.5-4.5M5 20h14"/></svg>{{end}}
 
 {{/* One batch in the gallery: tiles while it is made, then pictures that open
      a full-screen viewer. Polling replaces the whole item, so only a
@@ -550,7 +551,7 @@
 </dialog>
 {{end}}
 
-{{define "icon-forward"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>{{end}}
-{{define "icon-info"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>{{end}}
-{{define "icon-shuffle"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h4l10 10h4M3 17h4l3-3m4-4 3-3h4m-3-3 3 3-3 3m0 7 3 3-3 3"/></svg>{{end}}
-{{define "icon-repeat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3L20 9m0-5v5h-5M20 12a8 8 0 0 1-14 5.3L4 15m0 5v-5h5"/></svg>{{end}}
+{{define "icon-forward"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 5.5 6-5.5 6"/></svg>{{end}}
+{{define "icon-info"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg>{{end}}
+{{define "icon-shuffle"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h3.5L16.5 17H20M4 17h3.5l2.7-2.8M13.8 10l2.7-2.5H20M17.5 5 20 7.5 17.5 10M17.5 14.5 20 17l-2.5 2.5"/></svg>{{end}}
+{{define "icon-repeat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11.5V10a3 3 0 0 1 3-3h10.5M16 4.5 18.5 7 16 9.5M19 12.5V14a3 3 0 0 1-3 3H5.5M8 14.5 5.5 17 8 19.5"/></svg>{{end}}

@@ -135,3 +135,8 @@ describe("model_unloading", () => {
     await expect(read).rejects.toThrow("The model was being unloaded, so this didn’t run.");
   });
 });
+
+test("a model too large for this computer keeps the gateway's sentence", () => {
+  const message = "This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host.";
+  expect(endMessage({ status: "failed", error: { code: "model_too_large", message } })).toBe(message);
+});

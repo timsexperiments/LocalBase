@@ -2,7 +2,13 @@
 {{define "main"}}
 <section aria-labelledby="studio-title">
   <h1 id="studio-title" class="page-title">Studio</h1>
-  {{with .Strip}}<div class="mt-3">{{template "memory-strip" .}}</div>{{end}}
+
+  {{if .NoModels}}
+  <a href="/app/models/get" class="calm-banner">
+    <span class="min-w-0 flex-1"><span class="block font-semibold">Get a model to unlock Studio</span><span class="block text-sm text-muted">Each tool needs its own. They download to this computer.</span></span>
+    {{template "icon-chevron"}}
+  </a>
+  {{end}}
 
   <section aria-labelledby="recent-title" class="mt-4">
     <h2 id="recent-title" class="list-label mt-0">Recent</h2>
@@ -17,7 +23,7 @@
       {{end}}
     </ul>
     {{else}}
-    <p class="px-1 text-muted">What you make appears here for a while.</p>
+    <p class="px-1 text-muted">What you make stays here for 30 minutes, and videos for 15.</p>
     {{end}}
   </section>
 
@@ -40,7 +46,7 @@
 <span class="min-w-0 flex-1">
   <span class="block font-bold">{{.Name}}</span>
   <span class="block text-sm text-muted">{{.Line}}</span>
-  {{if eq .State "needs"}}<span class="pill pill-warn mt-1">Needs a model</span>
+  {{if eq .State "needs"}}<span class="pill mt-1">Needs a model</span>
   {{else if eq .State "denied"}}<span class="pill mt-1">Not on your account</span>
   {{else if .Last}}<span class="block truncate text-sm text-muted">{{with .LastAgo}}{{.}} · {{end}}{{.Last}}</span>{{end}}
 </span>

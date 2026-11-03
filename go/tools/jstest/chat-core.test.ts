@@ -176,5 +176,8 @@ describe("streamText", () => {
 test("stripThinking is not needed client-side but titles match", () => {
   expect(go.titleFrom("x".repeat(80))).toBe("x".repeat(60));
   expect(go.titleFrom("")).toBe("Attachments");
+  expect(go.titleFrom("Plan a three day trip with kids. Keep it cheap.")).toBe("Plan a three day trip");
+  expect(go.titleFrom("Why not?")).toBe("Why not");
+  expect(go.titleFrom("???")).toBe("???");
   expect(stripThinking("<think>a</think>b")).toBe("b");
 });
