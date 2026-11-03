@@ -367,7 +367,7 @@ Model administration requires `models:manage`; catalog reads require `models:rea
 Authentication administration uses two exact, always-authenticated endpoints:
 
 - `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
-- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
+- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions. A caller can only grant permissions it holds and act on keys within them (`docs/authentication.md`).
 
 Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Provider changes require a restart; policy and key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
 

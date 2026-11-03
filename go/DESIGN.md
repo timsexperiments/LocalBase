@@ -1122,19 +1122,55 @@ Deliberate status changes to verify against the live clients at cutover:
    `would_lock_out_admins` with a message:
    - for a change that disables or forgets the caller's own user record;
    - for a change that removes `access:manage` from the caller, including
-     an API key revoking itself or dropping `access:manage` from its own
-     scopes;
+     an API key dropping `access:manage` from its own scopes;
    - for a change that leaves no active principal with `access:manage`
      (people through roles, bindings or the default role, provider-wide
-     permissions without a policy, and active API keys).
+     permissions without a policy, and active API keys). Revoking a key
+     counts, and so does rotating someone else's: the new secret goes to the
+     caller, so whoever held the key loses it.
 
-   Where TS refuses for its own reason, such as clearing a policy that has
-   managed users, TS's status stays. `local-base access …` and `local-base
-   keys revoke` are the break-glass path: they apply the change and print
-   a warning when it leaves nobody able to manage access
-   (`TestCLIAccessRecovery`). Each admin change also logs
-   `audit.access-changed` or `audit.api-key-changed` with the actor and
-   target ids only (`TestAdminAuditRedaction`).
+   A key may revoke or rotate itself (item 5a). Where TS refuses for its own
+   reason, such as clearing a policy that has managed users, TS's status
+   stays. `local-base access …` and `local-base keys revoke` are the
+   break-glass path: they apply the change and print a warning when it leaves
+   nobody able to manage access (`TestCLIAccessRecovery`). Each admin change
+   also logs `audit.access-changed` or `audit.api-key-changed` with the actor
+   and target ids only, and each refused one `audit.access-refused` or
+   `audit.api-key-refused` (`TestAdminAuditRedaction`,
+   `TestKeyChangesAndRefusalsAreAudited`).
+
+5a. **Nobody hands out more than they hold** (operator decision). This applies
+   to `/_localbase/api-keys`, for every caller. A signed-in person holds what
+   their role gives them on that request, and a key holds its scopes.
+   - **Granting.** `create` and `set-scopes` give only permissions the caller
+     holds. Otherwise: 403 `exceeds_caller_permissions`, naming what is missing.
+   - **Acting on a key.** `rotate`, `revoke` and `set-scopes` work only on a key
+     whose permissions the caller all holds. Otherwise: the same code, not
+     naming what that key holds.
+   - **Expiry.** A key can't give anything a longer life than it has. A `create`,
+     a `rotate`, or a `set-scopes` that adds anything, past the calling key's
+     expiry answers 403 `exceeds_caller_expiry`. A person has no such limit: a
+     session's expiry ends the session, not the authority behind it.
+   - **One at a time.** Changes to keys and access hold one lock from their checks
+     through their write, and read what the caller holds again under it. Two
+     managers revoking each other can't both pass the last-manager check, and a
+     key that was narrowed or revoked while its request waited acts as it is now
+     (`TestManagersRevokingEachOtherLeaveOneStanding`,
+     `TestKeyChangeUsesWhatTheCallerHoldsNow`).
+   - **Your own key.** Rotating it answers 200 with the new secret. The old secret
+     stops at once, and that response is the only copy: if it is lost, use another
+     manager or `local-base keys rotate` on the host. Revoking it answers 200 with
+     the key's record, which is the last answer it gets, and is how a leaked key
+     is killed with itself. It is refused with 409 if it would leave nobody able
+     to manage access. A key without `access:manage` may narrow itself freely.
+   - **Not bound by this:** `local-base keys` and `local-base connect --create-key`
+     on the host, and the first key `configure` creates. They write to the store
+     directly, because having the machine is the authority behind all of this. A
+     caller with every permission is unaffected: `--no-auth`, `LOCALBASE_API_KEY`,
+     and a first-run local session (`TestKeysStillWorkForFirstRunAndHostCallers`).
+   - **Recovery.** Callers can only hand down, so nobody regrows a permission
+     through the API once its last holder is gone. The host commands are the way
+     back.
 
 6. **A request cut off by a memory emergency** (operator decision). As in
    TS, critical memory stops every runtime, including ones serving active
@@ -1436,10 +1472,14 @@ item 5.
    `/_localbase/api-keys` applies the same rules (see §13.6, item 5). Where TS has its own refusal (for
    example, clearing a policy that has managed users), TS's error stays.
    `local-base access` is the recovery path: it applies the change and warns
-   when nobody can manage access. Each successful admin change is logged as
+   when nobody can manage access. Each admin change is logged as
    `audit.access-changed` or `audit.api-key-changed`, with the action, the
-   actor kind and id (a hash for browser sessions) and the key id; never
-   emails, names or secrets. `auth.Guard` models the resolution
+   actor kind and id (a hash for browser sessions), the key id and, for a key,
+   the permissions it now has; never emails, names or secrets. Each refused
+   one is logged as `audit.access-refused` or `audit.api-key-refused`, with
+   the status and the reason code. What a refused caller sent is logged only
+   if it can hold nothing else: an action word and a well-formed key id.
+   `auth.Guard` models the resolution
    `ResolvePolicy` uses (`TestAccessLockout`); the differential script gives
    the provider-wide permissions `access:manage` before its policy clear, so
    both gateways still run the same steps.

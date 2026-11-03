@@ -334,6 +334,14 @@ The gateway checks `access:read`, `access:manage`, `keys:read`, or
 `keys:manage` for each operation. Provider responses omit client secrets.
 API-key creation and rotation return a new secret once.
 
+A caller can only hand out what it holds. A key or a signed-in person can grant
+only permissions they hold, and can rotate, revoke or change only keys whose
+permissions they all hold. A key with an expiry can't give anything a longer
+life than it has. These refusals answer 403 with `exceeds_caller_permissions`
+or `exceeds_caller_expiry`. A key can rotate or revoke itself; rotating returns
+the only copy of the new secret. The local CLI is not bound by these rules, and
+it is the way back if nobody is left who holds a permission.
+
 Use `local-base access show --json` to inspect non-secret provider state. If a
 provider is misconfigured, correct it with the local CLI and restart LocalBase.
 `local-base access disable` removes browser sign-in entirely; it does not enable
