@@ -2,8 +2,10 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -108,6 +110,9 @@ type Controller struct {
 	system  Reserve
 	bypass  bool
 	sampler func(ctx context.Context, pid int) (int64, bool)
+
+	viewMu   sync.Mutex
+	lastView *view
 
 	mu           sync.Mutex
 	reservations map[string]*reservation
@@ -217,13 +222,8 @@ func (c *Controller) CheckAdmission(ctx context.Context, d Demand, releasing []s
 	return c.evaluate(d, snap, rel, measured)
 }
 
-func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool, measured map[string]int64) error {
-	topo := c.host.Topology()
-	req := c.projected(d)
-	reserve := c.system.Bytes(topo.SystemCapacity)
-	base := &AdmissionError{PoolID: "system", RequestedBytes: req, ReserveBytes: reserve, Confidence: d.Confidence}
-
-	var pending, freed, resident int64
+// ledger totals the reservations as evaluate counts them, with c.mu held.
+func (c *Controller) ledger(releasing map[string]bool, measured map[string]int64) (pending, freed, resident int64) {
 	for id, r := range c.reservations {
 		if releasing[id] {
 			if r.resident {
@@ -240,6 +240,16 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 			pending += r.projected
 		}
 	}
+	return pending, freed, resident
+}
+
+func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool, measured map[string]int64) error {
+	topo := c.host.Topology()
+	req := c.projected(d)
+	reserve := c.system.Bytes(topo.SystemCapacity)
+	base := &AdmissionError{PoolID: "system", RequestedBytes: req, ReserveBytes: reserve, Confidence: d.Confidence}
+
+	pending, freed, resident := c.ledger(releasing, measured)
 	// reject attaches the figures behind the refusal (TS reject).
 	reject := func(e AdmissionError) *AdmissionError {
 		e.Diagnostics = c.diagnose(e.PoolID, d, snap, freed, pending, reserve)
@@ -371,8 +381,124 @@ func (c *Controller) transition() Transition {
 	return t
 }
 
-// Snapshot reads current host memory (for display; admission reads its own).
-func (c *Controller) Snapshot(ctx context.Context) Snapshot { return c.host.Snapshot(ctx) }
+// Snapshot reads host memory for display, at most once a second however many
+// pages poll it (it may spawn a process). Admission reads its own, always fresh.
+func (c *Controller) Snapshot(ctx context.Context) Snapshot { return c.reading(ctx).snap }
+
+// viewTTL bounds how often display reads sample the host.
+const viewTTL = time.Second
+
+// view is one shared display reading of the host and resident runtimes.
+type view struct {
+	at       time.Time
+	snap     Snapshot
+	measured map[string]int64
+}
+
+func (c *Controller) reading(ctx context.Context) *view {
+	c.viewMu.Lock()
+	defer c.viewMu.Unlock()
+	if c.lastView != nil && time.Since(c.lastView.at) < viewTTL {
+		return c.lastView
+	}
+	v := &view{snap: c.host.Snapshot(ctx), measured: map[string]int64{}}
+	if c.host.Topology().Unified && c.sampler != nil {
+		c.mu.Lock()
+		pids := map[string]int{}
+		for id, r := range c.reservations {
+			if r.resident && r.pid > 0 {
+				pids[id] = r.pid
+			}
+		}
+		c.mu.Unlock()
+		for id, pid := range pids {
+			if b, ok := c.sampler(ctx, pid); ok {
+				v.measured[id] = b
+			}
+		}
+	}
+	v.at = time.Now()
+	c.lastView = v
+	return v
+}
+
+// RuntimeMemory is what one runtime holds. MeasuredBytes is -1 when there is no
+// reading: it is starting, or this platform cannot sample it.
+type RuntimeMemory struct {
+	Runtime       string
+	PlannedBytes  int64
+	MeasuredBytes int64
+}
+
+// Runtimes lists every reservation, by runtime, from the shared reading.
+func (c *Controller) Runtimes(ctx context.Context) []RuntimeMemory {
+	v := c.reading(ctx)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]RuntimeMemory, 0, len(c.reservations))
+	for id, r := range c.reservations {
+		m := RuntimeMemory{Runtime: id, PlannedBytes: r.projected, MeasuredBytes: -1}
+		if b, ok := v.measured[id]; ok && r.resident {
+			m.MeasuredBytes = b
+		}
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Runtime < out[j].Runtime })
+	return out
+}
+
+// PressureState is the state admission refuses on (healthy, constrained or
+// critical): the host's reading compared with the reserve, with hysteresis.
+func (c *Controller) PressureState() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.state
+}
+
+// AdmissionPreview is what admitting a demand would decide now, changing nothing.
+type AdmissionPreview struct {
+	RequestedBytes int64
+	ReserveBytes   int64
+	// AvailableBytes counts what the releasing runtimes would free, less pending
+	// reservations; -1 when memory cannot be measured.
+	AvailableBytes int64
+	// PoolID is the pool a refusal was decided on; "system" when admitted.
+	PoolID string
+	Err    error
+}
+
+// Preview runs the same evaluate as a real admission on the shared reading, so
+// its verdict and figures cannot drift from a refusal's.
+func (c *Controller) Preview(ctx context.Context, d Demand, releasing []string) AdmissionPreview {
+	v := c.reading(ctx)
+	rel := map[string]bool{}
+	for _, id := range releasing {
+		rel[id] = true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	reserve := c.system.Bytes(c.host.Topology().SystemCapacity)
+	p := AdmissionPreview{RequestedBytes: c.projected(d), ReserveBytes: reserve, AvailableBytes: -1, PoolID: "system"}
+	if v.snap.Available >= 0 {
+		pending, freed, _ := c.ledger(rel, v.measured)
+		p.AvailableBytes = max(0, v.snap.Available+freed-pending)
+	}
+	if !c.bypass {
+		if err := c.evaluate(d, v.snap, rel, v.measured); err != nil {
+			p.Err = err
+			// A refusal's own figures: a GPU refusal counts accelerator bytes
+			// against the GPU limit, not the system pool.
+			var ae *AdmissionError
+			if errors.As(err, &ae) {
+				p.RequestedBytes, p.PoolID = ae.RequestedBytes, ae.PoolID
+				if ae.Permanent || ae.AvailableBytes > 0 {
+					p.AvailableBytes = ae.AvailableBytes
+				}
+			}
+		}
+	}
+	return p
+}
 
 // Headroom is what the system pool could admit now, after the reserve and
 // pending reservations, crediting the releasing runtimes as CheckAdmission
