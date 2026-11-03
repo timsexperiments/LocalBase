@@ -1138,7 +1138,7 @@ gateways with a real sd-server.
 | The same, for a video job | job `failed` with `insufficient_memory` | n/a | same: TS's job error codes have no `model_too_large`, and in both its message says to retry although that cannot help |
 | Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
 | Files not installed | 409 `model_install_consent_required` | none | same on the first request |
-| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
+| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing` | none | no equivalent (M3.5) |
 
 Deliberate status changes to verify against the live clients at cutover:
 
@@ -4587,6 +4587,8 @@ No test dependency is added: the project keeps one module dependency. All of the
 | `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
 | `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
 | `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
+| `TestOpenAPIListsEveryErrorCode` | a code the source can send, or the notes and pages name beside a status, isn't in the `ErrorCode` list; or the list holds a code nothing sends. `TestOpenAPIResponses` also checks each real answer's code against the list, which catches a code the scan can't see |
+| `TestOpenAPIRoutesNameOnlyListedCodes` | a route's answer names a code that isn't on the list |
 | `TestOpenAPIServed` | the answers in 30.1 change, or the served version is not `Version` |
 
 So a route added without documentation fails CI, and so does documentation without a route.
