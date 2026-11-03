@@ -186,7 +186,7 @@ func TestChatSheets(t *testing.T) {
 // a status region outside the swapped part.
 func TestRunningNow(t *testing.T) {
 	main := mainRe.FindString(get(shellUI(t, nil, ""), "/app/models/running").Body.String())
-	for _, want := range []string{`<h1 id="running-title" class="page-title">Running now</h1>`, `id="memory-title"`,
+	for _, want := range []string{`<h1 id="running-title" class="page-title">Running</h1>`, `id="memory-title"`,
 		`data-announce="Nothing is loaded." data-announce-into="running-status"`,
 		`<p id="running-status" class="sr-only" role="status" aria-live="polite"></p>`, "Nothing loaded"} {
 		if !strings.Contains(main, want) {
