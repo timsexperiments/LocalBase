@@ -425,6 +425,7 @@ func mustAppend(path string) (*os.File, error) {
 func mustMkdirAll(path string, perm os.FileMode) error { return mustGuard(guardedMkdirAll(path, perm)) }
 
 func mustChmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
+
 // mustSymlink plants a link in a scratch directory. Its target may be elsewhere.
 func mustSymlink(target, link string) error {
 	if err := mustGuard(checkWrite(filepath.Dir(link))); err != nil {
