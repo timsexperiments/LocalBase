@@ -31,7 +31,7 @@ type report struct {
 func (s *soak) report() *report {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	r := &report{Commit: gitCommit(), Platform: goruntime.GOOS + "/" + goruntime.GOARCH, Race: s.o.race, Cycles: s.cycles, Seed: s.o.seed,
+	r := &report{Commit: s.commit, Platform: goruntime.GOOS + "/" + goruntime.GOARCH, Race: s.o.race, Cycles: s.cycles, Seed: s.o.seed,
 		Duration: s.ended.Sub(s.began), Rows: s.rec.rows(), Points: s.points, Checks: s.checks, Violations: s.rec.violationList(), Drain: s.drain, CPU: s.cpu}
 	r.Verdict = "PASS"
 	if r.failed() {

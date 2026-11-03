@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -170,5 +171,29 @@ func TestRefusesTheInstalledRoot(t *testing.T) {
 	}
 	if err := refuseLive(t.TempDir()); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestParseProcStat(t *testing.T) {
+	line := "4242 (a (weird) name) S 99 1 1 0 -1 0 0 0 0 0 150 50 0 0 20 0 1 0 1 0 2000 0 0"
+	r, err := parseProcStat([]byte(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.ppid != 99 || r.state != "S" || r.cpu != 2 || r.rss != 2000*int64(os.Getpagesize()) {
+		t.Errorf("%+v", r)
+	}
+	if _, err := parseProcStat([]byte("4242 no parens")); err == nil {
+		t.Error("a line without a program name")
+	}
+}
+
+func TestProcessTableFindsThisProcess(t *testing.T) {
+	r, ok := rowOf(os.Getpid())
+	if !ok || r.rss <= 0 || r.command == "" {
+		t.Fatalf("%+v %v", r, ok)
+	}
+	if procs, err := procsUnder(filepath.Dir(r.command)); err != nil || len(procs) == 0 {
+		t.Errorf("procsUnder: %+v %v", procs, err)
 	}
 }
