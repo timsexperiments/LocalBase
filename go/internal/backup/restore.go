@@ -161,7 +161,8 @@ func checkTarget(target string, replace bool) (*targetState, error) {
 		if owner != nil {
 			pid = fmt.Sprintf(" (pid %d)", owner.PID)
 		}
-		return nil, refuse("A gateway%s is running on %s. Stop it first: local-base --root '%s' stop", pid, target, target)
+		// Restoring needs it stopped, so this names the command, and what else that does.
+		return nil, refuse("A gateway%s is running on %s. Stop it first: local-base --root %s stop. That also disables the service, until you run: local-base --root %s start", pid, target, quote(target), quote(target))
 	case "missing", "stale":
 	default:
 		return nil, refuse("The gateway lock on %s can't be read, so a gateway may be running: %s", target, detail)
@@ -197,11 +198,11 @@ func existingAncestor(p string) string {
 func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
 	staged, err := stageRestore(ctx, file, targetDir, replace)
 	if isBusy(err) {
-		retry := "local-base --root '" + targetDir + "' restore"
+		retry := "local-base --root " + quote(targetDir) + " restore"
 		if replace {
 			retry += " --replace"
 		}
-		return nil, refuse("%s", busyMessage(targetDir, retry+" '"+file+"'", err))
+		return nil, refuse("%s", busyMessage(targetDir, retry+" "+quote(file), err))
 	}
 	return staged, err
 }

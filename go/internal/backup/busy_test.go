@@ -4,8 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -114,8 +118,11 @@ func TestBackupOfADatabaseThatStaysBusySaysSo(t *testing.T) {
 		if !strings.Contains(said, retry) {
 			t.Errorf("doesn't give the command to run again, %s: %s", retry, said)
 		}
-		if !strings.Contains(said, "is busy") || !strings.Contains(said, "Try again") || !strings.Contains(said, " stop") {
+		if !strings.Contains(said, "is busy") || !strings.Contains(said, "Try again") {
 			t.Errorf("says: %s", said)
+		}
+		if strings.Contains(said, "' stop") {
+			t.Errorf("tells the person to run stop, which disables the service: %s", said)
 		}
 		if strings.Contains(said, "database is locked") || strings.Contains(said, "SQLITE_BUSY") {
 			t.Errorf("the raw error reaches the person: %s", said)
@@ -264,5 +271,51 @@ func TestSelectedModelsOfAnOlderDatabaseAreNone(t *testing.T) {
 	models, err := selectedModels(context.Background(), path)
 	if err != nil || len(models) != 0 {
 		t.Errorf("models %v, err %v", models, err)
+	}
+}
+
+// A path can hold a quote, and the command to run again still has to work when pasted.
+func TestRetryCommandSurvivesAQuoteInThePath(t *testing.T) {
+	r, _ := newRoot(t, filepath.Join(dir(t), "it's"))
+	holdLock(t, r.DB())
+	shortBusyWaits(t, 100*time.Millisecond)
+	_, err := Create(context.Background(), Options{Root: r, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), `it'\''s`) {
+		t.Errorf("says: %v", err)
+	}
+}
+
+// Stopping the service disables it. A message may only name that command if the person must run it,
+// and then it has to say so, and how to get the service back.
+func TestMessagesThatNameStopSayWhatItDoes(t *testing.T) {
+	paths, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	names := regexp.MustCompile(`local-base[^"]* stop\b`)
+	found := 0
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING || !names.MatchString(lit.Value) {
+				return true
+			}
+			found++
+			if !strings.Contains(lit.Value, "disables the service") || !strings.Contains(lit.Value, " start") {
+				t.Errorf("%s names stop without saying what it does: %s", fset.Position(lit.Pos()), lit.Value)
+			}
+			return true
+		})
+	}
+	if found == 0 {
+		t.Fatal("no message names stop, so this checks nothing. Restore refuses a running gateway, and says how to stop it")
 	}
 }
