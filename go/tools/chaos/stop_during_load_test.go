@@ -1,6 +1,9 @@
 package chaos
 
 import (
+	"encoding/json"
+	"errors"
+	"os/exec"
 	"syscall"
 	"testing"
 	"time"
@@ -88,5 +91,61 @@ func TestStopWithWedgedBackends(t *testing.T) {
 	}
 	if procs, err := workspace.Backends(); err != nil || len(procs) != 0 {
 		t.Errorf("a backend outlived the gateway: %+v %v", procs, err)
+	}
+}
+
+// A gateway stuck in its own stop still leaves: every backend killed at the deadline, then the
+// process out, within the limit, saying so. A detached run comes back as interrupted.
+func TestStopWhenTheGatewayIsStuck(t *testing.T) {
+	ctx, g, c := start(t, lab.Options{FakeEnv: []string{"LOCALBASE_LAB_STOP_STUCK=1"}})
+	mustChat(t, ctx, c, g, lab.ChatSmall)
+	key := g.Keys.Runs[0]
+	create := c.PostJSON(ctx, "/_localbase/runs/v1/chat/completions", key, chatBody(lab.ChatSmall, "fake:slow 2000"))
+	if create.Status != 202 {
+		t.Fatalf("create: %d %.300s", create.Status, create.Body)
+	}
+	var run runRecord
+	if err := json.Unmarshal(create.Body, &run); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1500 * time.Millisecond) // past its first checkpoint
+	began := time.Now()
+	if err := g.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-g.Done():
+	case <-time.After(45 * time.Second):
+		t.Fatal("still not stopped after 45 s")
+	}
+	took := time.Since(began)
+	t.Logf("left in %v", took.Round(100*time.Millisecond))
+	if took < 13*time.Second || took > serviceStopLimit-time.Second {
+		t.Errorf("left after %v, want about 13.5 s", took)
+	}
+	var exit *exec.ExitError
+	if err := g.ExitErr(); !errors.As(err, &exit) || exit.ExitCode() != 1 {
+		t.Errorf("exit: %v, want status 1", err)
+	}
+	for _, name := range []string{"gateway.stop-deadline", "gateway.stop-abandoned"} {
+		if len(events(t, g, name)) != 1 {
+			t.Errorf("%s wasn't logged once", name)
+		}
+	}
+	if procs, err := workspace.Backends(); err != nil || len(procs) != 0 {
+		t.Errorf("a backend outlived the gateway: %+v %v", procs, err)
+	}
+	g2, err := workspace.Start(ctx, lab.Options{Name: g.Opts.Name, Reuse: g, CtxSize: 8192})
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	t.Cleanup(func() { g2.Stop(30 * time.Second) })
+	view := lab.NewClient(g2.Base).Do(ctx, "GET", "/_localbase/runs/"+run.ID, key, "", nil)
+	var got runRecord
+	if view.Status != 200 || json.Unmarshal(view.Body, &got) != nil {
+		t.Fatalf("the run: %d %.300s", view.Status, view.Body)
+	}
+	if got.Status != "interrupted" || got.Reason != "gateway_restart" {
+		t.Errorf("a run across a stuck stop: status %q reason %q", got.Status, got.Reason)
 	}
 }

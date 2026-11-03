@@ -65,6 +65,10 @@ func nameBindingIssuers(st *store.Store, access *auth.BrowserAccess, log *slog.L
 	}
 }
 
+// stopStuck does nothing outside a localbase_lab build, where it can stand for a stop that never
+// returns, to test what happens then.
+var stopStuck = func() {}
+
 // How long a stop gets. Requests drain until stopDrainFor, every backend is killed at stopKillAt
 // if any is left, and the process leaves at stopExitAt whatever is still going: all inside the
 // 15 s launchd, systemd and `upgrade` allow.
@@ -508,6 +512,9 @@ func serve(c *cli.Ctx) (any, error) {
 	// is polite, one thing at a time, so this is what makes the limit true.
 	stopStarted := time.Now()
 	killBackends := time.AfterFunc(stopKillAt, func() {
+		// Runs first, if nothing got that far: a killed backend would have them end as failed,
+		// and what happened to them is that the gateway stopped.
+		srv.StopRuns(time.Second)
 		log.Error("The gateway ran out of time to stop, so every backend is being killed.", "event", "gateway.stop-deadline",
 			"backends", runtime.KillAllBackends())
 	})
@@ -517,6 +524,7 @@ func serve(c *cli.Ctx) (any, error) {
 		os.Exit(1)
 	})
 	defer giveUp.Stop()
+	stopStuck()
 	// A load in flight goes first: everything below would otherwise wait on it.
 	llm.StopLoads()
 	for _, s := range []*runtime.Service{stt, tts, image, videoService} {
