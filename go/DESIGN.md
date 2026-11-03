@@ -4490,11 +4490,17 @@ a result line for every `check()` in the script. **No real video model has run t
 - **What someone typed and never sent stays out of form restore.** A browser can put typed words back into a form when a
   page comes back from history, into whoever's page it now is. `autocomplete="off"` on every typed box is what stops it:
   removed from the prompts, B's box showed what A had typed, on Chrome 114 and 156. A test holds the attribute in place.
+- **Back shows nothing of the last person.** A browser can bring a page back exactly as it was, whoever is signed in now,
+  and without a word to the server. So a restored page is blanked at once, before anything else runs, and fetched again.
+  The shell does this for every page.
 - **A look preference stays per browser:** the viewer's mat says nothing about anyone.
 
 **Checks:** a real two-person sign-in on one profile, through a fake provider over TLS, on both browsers. It fails at the
 commit before this: B sees A's saved example and A's question, and gets A's prompt. Which pages hop with a prompt today
 is narrow: only Image's own Try again offers one, on Image itself, so that test plants the button and tests the key.
+Each Studio page also gets its own Back, once with the provider refusing and once with B signed in. A page that didn't
+come from the browser's cache fails that check as not exercised, because passing then says nothing about the page. What
+those checks read is the page's text and whether it's hidden, at the moment it returns. They can't see a painted frame.
 
 ### 27.3 What the landing's overflow taught
 
