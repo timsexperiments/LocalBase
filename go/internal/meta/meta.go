@@ -254,7 +254,7 @@ type Input struct {
 }
 
 // Project builds one model's metadata.
-func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
+func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, error) {
 	cfg := in.Config
 	dir := filepath.Join(in.RootDir, "models", spec.Kind)
 	installed, _ := spec.Installation(dir)
@@ -262,11 +262,17 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 	if in.CLI {
 		var peaks []store.ObservedPeak
 		if sha := spec.Primary().SHA256; sha != "" && in.Store != nil {
-			peaks, _ = in.Store.ObservedPeaks(ctx, spec.ModelID, sha)
+			var err error
+			if peaks, err = in.Store.ObservedPeaks(ctx, spec.ModelID, sha); err != nil {
+				return Model{}, &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err}
+			}
 		}
 		fit = runtime.FitFor(spec, in.MemoryGB, nil, peaks, feedPeaks(in.Catalog, spec))
 	} else {
-		fit = runtime.ModelFit(ctx, in.Store, in.Catalog, spec, dir, in.MemoryGB)
+		var err error
+		if fit, err = runtime.ModelFit(ctx, in.Store, in.Catalog, spec, dir, in.MemoryGB); err != nil {
+			return Model{}, err
+		}
 	}
 	res := runtime.CapabilitiesFor(ctx, in.Store, in.Catalog, spec, dir)
 	voices := in.Voices
@@ -352,7 +358,7 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) Model {
 	if in.Snapshot != nil && spec.Kind == "llm" && in.Snapshot.ModelID == spec.ModelID {
 		m.Device.Runtime = runtimeView(*in.Snapshot)
 	}
-	return m
+	return m, nil
 }
 
 func runtimeView(snap runtime.Snapshot) *Runtime {

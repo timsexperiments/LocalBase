@@ -64,7 +64,11 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			modelNotFound(w, r, id)
 			return
 		}
-		m := meta.Project(r.Context(), in, spec)
+		m, err := meta.Project(r.Context(), in, spec)
+		if err != nil {
+			readFailure(w, r, err)
+			return
+		}
 		if spec.Kind != "llm" || s.Placement == nil {
 			writeJSON(w, 200, m)
 			return
@@ -89,7 +93,12 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	var data []meta.Model
 	for _, spec := range s.Catalog.All() {
-		data = append(data, meta.Project(r.Context(), in, spec))
+		m, err := meta.Project(r.Context(), in, spec)
+		if err != nil {
+			readFailure(w, r, err)
+			return
+		}
+		data = append(data, m)
 	}
 	data = meta.Query(data, r.URL.Query())
 	topo := s.Memory.Topology()

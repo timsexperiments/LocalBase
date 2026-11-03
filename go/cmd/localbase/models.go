@@ -65,7 +65,7 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 		// be wrong, and exit 0.
 		st, err := store.OpenReadOnly(e.Root.DB())
 		if err != nil {
-			e.DatabaseProblem = &failedRead{"opening the database", err}
+			e.DatabaseProblem = &failedRead{Step: "opening the database", Err: err}
 		} else {
 			e.Store = st
 			if persisted {
@@ -125,7 +125,7 @@ func cliFit(e *env, s *catalog.Spec, memoryGB int) (*runtime.Fit, error) {
 	if sha := s.Primary().SHA256; sha != "" && e.Store != nil {
 		var err error
 		if peaks, err = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha); err != nil {
-			return nil, &failedRead{"reading the memory peaks seen for " + s.ModelID, err}
+			return nil, &failedRead{Step: "reading the memory peaks seen for " + s.ModelID, Err: err}
 		}
 	}
 	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s)), nil
@@ -138,7 +138,7 @@ func cliVoices(e *env, s *catalog.Spec) ([]store.Voice, error) {
 	}
 	voices, err := e.Store.Voices(context.Background())
 	if err != nil {
-		return nil, &failedRead{"reading the custom voices", err}
+		return nil, &failedRead{Step: "reading the custom voices", Err: err}
 	}
 	return voices, nil
 }
@@ -216,7 +216,11 @@ func modelsCatalog() *cli.Command {
 					continue
 				}
 				listed = append(listed, s)
-				rows = append(rows, meta.Project(context.Background(), in, s))
+				m, err := meta.Project(context.Background(), in, s)
+				if err != nil {
+					return nil, err
+				}
+				rows = append(rows, m)
 			}
 			rows = meta.QueryWithText(rows, q, func(m meta.Model) []string {
 				s := e.Catalog.ByID(m.ID)
@@ -557,8 +561,11 @@ func modelsShow() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			m := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
+			m, err := meta.Project(context.Background(), meta.Input{Store: e.Store, RootDir: e.Root.Dir, Config: e.Config, Catalog: e.Catalog,
 				MemoryGB: e.memoryGB(), Voices: voices, CLI: true}, s)
+			if err != nil {
+				return nil, err
+			}
 			isDefault := false
 			for _, k := range kinds {
 				isDefault = isDefault || e.Config.Active[k] == s.ModelID

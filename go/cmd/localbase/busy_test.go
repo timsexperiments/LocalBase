@@ -312,7 +312,7 @@ func TestSettingsThatCannotBeReadAreAnError(t *testing.T) {
 	defer st.Close()
 	_, err = persistedConfig(st)
 	var failed *failedRead
-	if !errors.As(err, &failed) || failed.step != "reading the saved settings" {
+	if !errors.As(err, &failed) || failed.Step != "reading the saved settings" {
 		t.Errorf("%v", err)
 	}
 }

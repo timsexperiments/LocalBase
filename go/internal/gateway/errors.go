@@ -10,6 +10,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 type apiError struct {
@@ -153,4 +154,16 @@ func modelTooLarge(w http.ResponseWriter, r *http.Request, ae *memory.AdmissionE
 	msg := fmt.Sprintf("This model requires about %s of %s, but only %s is available for %s (%s total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config.",
 		gib(ae.RequestedBytes), what, gib(ae.AvailableBytes), where, gib(ae.CapacityBytes))
 	writeError(w, r, 422, "invalid_request_error", "model_too_large", msg, strp("model"))
+}
+
+// readFailure answers a request for something it couldn't read: which step, and to try again. Nothing
+// goes on as if there were nothing there.
+func readFailure(w http.ResponseWriter, r *http.Request, err error) {
+	w.Header().Set("Retry-After", "5")
+	message := "A read from the database failed. Try again shortly."
+	var failed *store.ReadError
+	if errors.As(err, &failed) {
+		message = "Could not finish " + failed.Step + ". Try again shortly."
+	}
+	writeError(w, r, 503, "api_error", "service_unavailable", message, nil)
 }

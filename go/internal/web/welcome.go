@@ -71,9 +71,12 @@ type welcomeChoice struct {
 }
 
 // welcomeChoices lists the chat models.
-func (u *UI) welcomeChoices(r *http.Request) []welcomeChoice {
-	rows, _ := u.catalogRows("chat")
-	return chooseFrom(u.withForecast(r, rows), freeDisk(u.d.RootDir))
+func (u *UI) welcomeChoices(r *http.Request) ([]welcomeChoice, error) {
+	rows, _, err := u.catalogRows("chat")
+	if err != nil {
+		return nil, err
+	}
+	return chooseFrom(u.withForecast(r, rows), freeDisk(u.d.RootDir)), nil
 }
 
 // withForecast asks the gateway whether each model that isn't installed would fit right now. A
@@ -217,7 +220,11 @@ func (u *UI) renderChoose(w http.ResponseWriter, r *http.Request, failure string
 
 // renderChooseAsking draws choose, asking first about a model that may not fit.
 func (u *UI) renderChooseAsking(w http.ResponseWriter, r *http.Request, failure, ask string) {
-	choices := u.welcomeChoices(r)
+	choices, err := u.welcomeChoices(r)
+	if err != nil {
+		readFailed(w, err)
+		return
+	}
 	if ask != "" {
 		for i := range choices {
 			choices[i].Pick = choices[i].ID == ask
@@ -246,7 +253,12 @@ func (u *UI) welcomeGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A long download of something that may not load is worth one question.
-	if r.PostFormValue("anyway") != "1" && slices.ContainsFunc(u.welcomeChoices(r), func(c welcomeChoice) bool { return c.ID == id && c.MayNotFit != "" }) {
+	choices, err := u.welcomeChoices(r)
+	if err != nil {
+		readFailed(w, err)
+		return
+	}
+	if r.PostFormValue("anyway") != "1" && slices.ContainsFunc(choices, func(c welcomeChoice) bool { return c.ID == id && c.MayNotFit != "" }) {
 		u.renderChooseAsking(w, r, "", id)
 		return
 	}

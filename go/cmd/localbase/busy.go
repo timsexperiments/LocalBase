@@ -16,20 +16,13 @@ func explainError(err error) error {
 	}
 	var failed *failedRead
 	if errors.As(err, &failed) {
-		return &cli.ReasonedError{Err: fmt.Errorf("%s: %w", failed.step, &store.BusyError{Err: err}), Reason: "database_busy"}
+		return &cli.ReasonedError{Err: fmt.Errorf("%s: %w", failed.Step, &store.BusyError{Err: err}), Reason: "database_busy"}
 	}
 	return &cli.ReasonedError{Err: &store.BusyError{Err: err}, Reason: "database_busy"}
 }
 
-// failedRead is a read a command needed and couldn't do. It says which, so that nothing goes on as
-// if there were nothing there.
-type failedRead struct {
-	step string
-	err  error
-}
-
-func (e *failedRead) Error() string { return e.step + ": " + e.err.Error() }
-func (e *failedRead) Unwrap() error { return e.err }
+// failedRead is store.ReadError, under the name this package uses.
+type failedRead = store.ReadError
 
 // afterReadOpen is for tests: a writer that arrives just after the database opened.
 var afterReadOpen = func() {}
@@ -43,7 +36,7 @@ func persistedConfig(st *store.Store) (*store.Config, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, &failedRead{"reading the saved settings", err}
+		return nil, &failedRead{Step: "reading the saved settings", Err: err}
 	}
 	return cfg, nil
 }

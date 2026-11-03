@@ -285,14 +285,23 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Query": q, "Kind": kind, "Kinds": discoveryKinds, "CanManage": canManage}
 	if q == "" {
 		filter := taskFilter(r)
-		rows, tasks := u.catalogRows(filter)
+		rows, tasks, err := u.catalogRows(filter)
+		if err != nil {
+			readFailed(w, err)
+			return
+		}
 		rows = u.withForecast(r, rows)
 		data["Catalog"], data["Tasks"] = rows, tasks
 		data["AnyForecast"] = slices.ContainsFunc(rows, func(x CatalogRow) bool { return x.Forecast })
 		data["Filter"] = filter
 		// Nothing to chat with yet: the smallest that fits comes before anything to search.
 		if canManage && !u.hasChatModel() {
-			for _, c := range u.welcomeChoices(r) {
+			choices, err := u.welcomeChoices(r)
+			if err != nil {
+				readFailed(w, err)
+				return
+			}
+			for _, c := range choices {
 				if c.Pick {
 					row := c.CatalogRow
 					data["Recommended"] = &row

@@ -59,7 +59,7 @@ func permissionFor(kind string, spec *catalog.Spec) string {
 
 // ServedModels lists what the gateway routes to: per kind the active model
 // plus selected ones, filtered to what the principal may invoke (nil = all).
-func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
+func (s *Server) ServedModels(p *auth.Principal, only string) ([]Model, error) {
 	cfg := s.LLM.Config()
 	runningID, runningPlan, _ := s.LLM.Running()
 	var out []Model
@@ -77,7 +77,11 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 				continue
 			}
 			seen[id] = true
-			out = append(out, s.project(kind, id, spec, runningID, runningPlan))
+			m, err := s.project(kind, id, spec, runningID, runningPlan)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, m)
 		}
 	}
 	for _, e := range s.importedLLMs() {
@@ -90,7 +94,10 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 			continue
 		}
 		seen[id] = true
-		m := s.project("llm", id, nil, runningID, runningPlan)
+		m, err := s.project("llm", id, nil, runningID, runningPlan)
+		if err != nil {
+			return nil, err
+		}
 		m.Name = e.Model.Name
 		switch task {
 		case "embeddings":
@@ -103,7 +110,7 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 		}
 		out = append(out, m)
 	}
-	return out
+	return out, nil
 }
 
 // importedLLMs lists imported models the LLM runtime serves.
@@ -143,7 +150,7 @@ func (s *Server) importedTask(id string) string {
 	return ""
 }
 
-func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) Model {
+func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) (Model, error) {
 	m := Model{ID: id, Object: "model", Created: 1670000000, OwnedBy: "local-base"}
 	mod := defaultModalities[kind]
 	m.Architecture.Input, m.Architecture.Output = mod[0], mod[1]
@@ -175,9 +182,12 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 		}
 	}
 	if spec != nil {
-		m.Memory = s.fit(spec)
+		var err error
+		if m.Memory, err = s.fit(spec); err != nil {
+			return m, err
+		}
 	}
-	return m
+	return m, nil
 }
 
 func (s *Server) principalForListing(r *http.Request) *auth.Principal {
@@ -192,7 +202,11 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET")
 		return
 	}
-	data := s.ServedModels(s.principalForListing(r), "")
+	data, err := s.ServedModels(s.principalForListing(r), "")
+	if err != nil {
+		readFailure(w, r, err)
+		return
+	}
 	if data == nil {
 		data = []Model{}
 	}
@@ -212,7 +226,11 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET")
 		return
 	}
-	data := s.ServedModels(s.principalForListing(r), id)
+	data, err := s.ServedModels(s.principalForListing(r), id)
+	if err != nil {
+		readFailure(w, r, err)
+		return
+	}
 	if len(data) == 0 {
 		modelNotFound(w, r, id)
 		return
@@ -227,6 +245,6 @@ func (s *Server) capabilities(ctx context.Context, spec *catalog.Spec) runtime.R
 }
 
 // fit is a model's memory figure on this machine.
-func (s *Server) fit(spec *catalog.Spec) *runtime.Fit {
+func (s *Server) fit(spec *catalog.Spec) (*runtime.Fit, error) {
 	return runtime.ModelFit(context.Background(), s.Store, s.Catalog, spec, s.Root.ModelsDir(spec.Kind), s.MemoryGB)
 }

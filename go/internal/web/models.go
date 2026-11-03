@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -64,7 +65,7 @@ func (u *UI) installedBytes(s *catalog.Spec) int64 {
 	return total
 }
 
-func (u *UI) rows() []Row {
+func (u *UI) rows() ([]Row, error) {
 	cfg := u.d.LLM.Config()
 	runningID, _, active := u.d.LLM.Running()
 	var rows []Row
@@ -79,7 +80,11 @@ func (u *UI) rows() []Row {
 			Enabled: slices.Contains(cfg.Selected[s.Kind], s.ModelID) || cfg.Active[s.Kind] == s.ModelID,
 			Default: cfg.Active[s.Kind] == s.ModelID, Loaded: runningID == s.ModelID}
 		r.Busy = r.Loaded && active > 0
-		if f := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
+		f, err := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB())
+		if err != nil {
+			return nil, err
+		}
+		if f != nil {
 			r.MemoryGB, r.MemorySource = f.MinVramGB, f.Source
 		}
 		rows = append(rows, r)
@@ -97,7 +102,7 @@ func (u *UI) rows() []Row {
 		}
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-	return rows
+	return rows, nil
 }
 
 func btoi(b bool) int {
@@ -153,7 +158,11 @@ func presentTasks(tasks []string) []string {
 func (u *UI) library(w http.ResponseWriter, r *http.Request) {
 	filter := taskFilter(r)
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	all := u.rows()
+	all, err := u.rows()
+	if err != nil {
+		readFailed(w, err)
+		return
+	}
 	var shown []Row
 	var disk int64
 	var tasks []string
@@ -188,7 +197,7 @@ type CatalogRow struct {
 
 // catalogRows are the qualified models LocalBase can install here, by task,
 // those that fit first. Experimental runtimes stay out of the list.
-func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
+func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, err error) {
 	for _, s := range u.d.Catalog.All() {
 		if !s.Qualified() || s.ExperimentalRuntime {
 			continue
@@ -202,7 +211,11 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
 		for _, a := range s.Artifacts {
 			row.DownloadBytes += a.ExpectedSizeBytes
 		}
-		if f := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB()); f != nil {
+		f, err := runtime.ModelFit(context.Background(), u.d.Store, u.d.Catalog, s, filepath.Join(u.d.RootDir, "models", s.Kind), u.memoryGB())
+		if err != nil {
+			return nil, nil, err
+		}
+		if f != nil {
 			row.Fit, row.UsesBytes = f.Fit, f.DemandBytes
 		}
 		rows = append(rows, row)
@@ -217,7 +230,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string) {
 		}
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-	return rows, presentTasks(tasks)
+	return rows, presentTasks(tasks), nil
 }
 
 func (u *UI) running(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +388,11 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 	}
 	var peaks []store.ObservedPeak
 	if sha := s.Primary().SHA256; sha != "" {
-		peaks, _ = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha)
+		var err error
+		if peaks, err = u.d.Store.ObservedPeaks(r.Context(), s.ModelID, sha); err != nil {
+			readFailed(w, &store.ReadError{Step: "reading the memory peaks seen for " + s.ModelID, Err: err})
+			return
+		}
 	}
 	var place *placementView
 	if s.Kind == "llm" {
@@ -392,4 +409,16 @@ func firstWords(text string) string {
 		return strings.TrimRight(strings.Join(words, " "), " .,;:!?")
 	}
 	return strings.TrimRight(strings.Join(words[:6], " "), " .,;:!?") + "…"
+}
+
+// readFailed answers a page that needed a read it couldn't do: which one, and to try again. Nothing
+// is shown as if there were nothing there.
+func readFailed(w http.ResponseWriter, err error) {
+	message := "A read from the database failed. Try again in a moment."
+	var failed *store.ReadError
+	if errors.As(err, &failed) {
+		message = "Could not finish " + failed.Step + ". Try again in a moment."
+	}
+	w.Header().Set("Retry-After", "5")
+	http.Error(w, message, http.StatusServiceUnavailable)
 }
