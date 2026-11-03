@@ -12,7 +12,7 @@ It's one Go binary with no other dependencies to install. Your prompts and outpu
 
 ## Quickstart
 
-**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and speech failed to start there.
+**macOS on Apple Silicon is the tested path.** Linux x86-64 without a GPU is under investigation: in testing, chat and speech failed to start there. See [what runs where](docs/platforms.md).
 
 ```sh
 # 1. Install. The script verifies checksums, never uses sudo and installs to ~/.local/bin.
@@ -51,6 +51,8 @@ go build -o local-base ./cmd/localbase
 ```
 
 ## Platforms and hardware
+
+See [what runs where](docs/platforms.md) for what has actually been run.
 
 | Platform | LocalBase runs | Runtimes it can download | Status |
 | --- | --- | --- | --- |

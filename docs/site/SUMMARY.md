@@ -5,6 +5,7 @@
 # Get started
 
 - [Install](install.md)
+- [What runs where](platforms.md)
 - [Quickstart](quickstart.md)
 - [First-run sign-in](first-run-sign-in.md)
 - [Connect an app](connect.md)
