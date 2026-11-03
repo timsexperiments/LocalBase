@@ -27,21 +27,27 @@ const (
 type Sink struct {
 	mu   sync.Mutex
 	dir  string
+	name string // the file is <name>.jsonl and its archives <name>.N.jsonl
 	f    *os.File
 	size int64
 	// Also writes each line here when set (foreground serve's stderr).
 	Mirror io.Writer
+	// audit holds audit.* events too, in a file nothing else writes, so a flood of other
+	// events can't push them out. Opened when the first one arrives.
+	audit *Sink
 }
+
+const auditPrefix = "audit."
 
 func OpenSink(dir string) (*Sink, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	s := &Sink{dir: dir}
+	s := &Sink{dir: dir, name: "events"}
 	return s, s.open()
 }
 
-func (s *Sink) path() string { return filepath.Join(s.dir, "events.jsonl") }
+func (s *Sink) path() string { return filepath.Join(s.dir, s.name+".jsonl") }
 
 func (s *Sink) open() error {
 	f, err := OpenOwnedRegular(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY)
@@ -60,9 +66,9 @@ func (s *Sink) open() error {
 func (s *Sink) rotate() error {
 	s.f.Close()
 	for i := archives - 1; i >= 1; i-- {
-		os.Rename(filepath.Join(s.dir, fmt.Sprintf("events.%d.jsonl", i)), filepath.Join(s.dir, fmt.Sprintf("events.%d.jsonl", i+1)))
+		os.Rename(filepath.Join(s.dir, fmt.Sprintf("%s.%d.jsonl", s.name, i)), filepath.Join(s.dir, fmt.Sprintf("%s.%d.jsonl", s.name, i+1)))
 	}
-	os.Rename(s.path(), filepath.Join(s.dir, "events.1.jsonl"))
+	os.Rename(s.path(), filepath.Join(s.dir, s.name+".1.jsonl"))
 	return s.open()
 }
 
@@ -81,9 +87,31 @@ func (s *Sink) Write(line []byte) {
 	}
 }
 
+// writeAudit keeps a line in the audit file as well.
+func (s *Sink) writeAudit(line []byte) {
+	s.mu.Lock()
+	if s.audit == nil {
+		a := &Sink{dir: s.dir, name: "audit"}
+		if a.open() != nil {
+			s.mu.Unlock()
+			return // the line is in the main log; the next one tries again
+		}
+		s.audit = a
+	}
+	a := s.audit
+	s.mu.Unlock()
+	a.Write(line)
+}
+
 func (s *Sink) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.audit != nil {
+		if err := s.audit.Close(); err != nil {
+			s.f.Close()
+			return err
+		}
+	}
 	return s.f.Close()
 }
 
@@ -253,6 +281,9 @@ func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 		return err
 	}
 	h.sink.Write(append(line, '\n'))
+	if name, _ := ev["eventName"].(string); strings.HasPrefix(name, auditPrefix) {
+		h.sink.writeAudit(append(line, '\n'))
+	}
 	if !localOnly && h.hooks != nil && h.hooks.Export != nil {
 		h.hooks.Export(line)
 	}
