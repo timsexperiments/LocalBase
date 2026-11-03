@@ -1,10 +1,11 @@
 # Project Guidelines
 
-- **Package Management & Execution**: Only ever use `bun` (never `pnpm`, `npm`, or `yarn`) for package installation, scripting, and compilation in this repository.
+- **Where Work Goes**: New work goes in `go/`. `src/` is the legacy TypeScript version; change it only for a fix the rollback path needs or a catalog or runtime pin the Go sync still reads.
+- **Package Management & Execution**: Go code uses the Go toolchain. Use only `bun` (never `pnpm`, `npm`, or `yarn`) for the JavaScript and TypeScript tooling in this repository.
 - **Consistent Code Style**: Follow established repository naming and code style when adding or changing code. Keep related declarations consistent and resolve nearby inconsistencies when the change remains focused.
 - **Contributor-Focused Writing**: Write comments and documentation for future contributors, including engineers and AI agents. Explain only durable context that helps readers understand intent, constraints, or non-obvious behavior. Do not mention prior conversations, implementation narratives, or temporary decision history. Runbooks may document specific incidents and observed errors when operationally useful.
 - **Concise Documentation**: Keep comments and documentation succinct. Remove or consolidate text that repeats the code, nearby documentation, or other tests.
 - **Intentional Testing**: Test core business behavior and meaningful boundaries. Prefer reusable fixtures and in-memory SQLite databases for stateful behavior. Use focused mocks only when they isolate a specific external boundary.
 - **Nonredundant Test Coverage**: Before adding tests, inspect existing coverage and extend or consolidate it where practical. Avoid duplicate assertions and tests that only restate implementation details.
-- **Pre-Release Compatibility**: Do not preserve obsolete configuration, database, API, or file formats unless explicitly requested. Prefer the clean current design; reset or uninstall is the supported transition while the project remains pre-release.
+- **Data Compatibility**: Existing data directories must keep working. Keep the database schema and drizzle journal compatible so a rollback stays a binary swap, and call out any on-disk or API change in the changelog. Do not keep obsolete options or formats that no released version or supported rollback path needs.
 - **Standalone Distribution**: Distributed CLI binaries must not depend on shells, general-purpose host utilities, or local compiler toolchains. Build native runtimes only in CI from pinned, verified sources and package them as intentional release artifacts.

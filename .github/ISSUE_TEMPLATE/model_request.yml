@@ -1,0 +1,39 @@
+name: Model support request
+description: Ask for a model to be added to the catalog, or for help running one.
+labels: [model-request]
+body:
+  - type: markdown
+    attributes:
+      value: The built-in catalog is deliberately small, and each model is tested on real hardware. You can already run most GGUF models through an import or [your own catalog entry](https://github.com/timsexperiments/LocalBase/blob/main/docs/user-catalog.md).
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: A link to the exact repository and revision.
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Type
+      options: [Chat, Embeddings, Decisions, Speech to text, Text to speech, Image, Video]
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this model?
+      description: What can it do that the catalog can't?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What did you try?
+      description: Did an import work? Include `local-base doctor` output and any error.
