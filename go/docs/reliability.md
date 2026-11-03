@@ -237,6 +237,11 @@ hold a first chat, stop a stream, keep HTML in a reply inert, use Image, Speech,
 Decisions, and then break things: too little memory, a backend killed mid-reply, every session
 ended. The driver's small control endpoint does what a page cannot, such as changing the host's memory.
 
+After memory comes back, chat goes on refusing for about 4.6 s while the strip already shows it free. That
+is intended: recovery takes three normal samples at a 2 s poll (`recoverySamples` in
+`internal/memory/controller.go`), so that one good reading does not undo the hysteresis. The journey
+allows 30 s, and prints the time it measured.
+
 **The matrix** runs every page at 320, 360, 390, 430, 768 and 1280 px in light and dark:
 
 - **Overflow.** `scrollWidth` and `clientWidth` are compared with the width asked for. `innerWidth` is
