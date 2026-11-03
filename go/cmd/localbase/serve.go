@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,6 +76,7 @@ func serveCommand() *cli.Command {
 		flag("tts", "Enable speech generation (--no-tts disables it)"),
 		flag("image", "Enable image generation (--no-image disables it)"),
 		flag("video", "Enable video generation runtime (--no-video disables it)"),
+		opt("runtime-port-base", "<port>", "First of five backend ports in a row: LLM, STT, TTS, image, video (for a second gateway on this computer). A --<runtime>-port flag wins"),
 		opt("llm-host", "<host>", "llama-server host"), opt("llm-port", "<port>", "llama-server port"),
 		opt("stt-host", "<host>", "whisper-server host"), opt("stt-port", "<port>", "whisper-server port"),
 		opt("image-host", "<host>", "sd-server host"), opt("image-port", "<port>", "sd-server port"),
@@ -108,6 +110,17 @@ func intOpt(c *cli.Ctx, name string, lo, hi int) (int, error) {
 	return n, nil
 }
 
+// runtimePortOrder is the order of --runtime-port-base's block.
+var runtimePortOrder = []string{"llm", "stt", "tts", "image", "video"}
+
+// runtimePort is a runtime's port in the block from base, or configured with no base.
+func runtimePort(base int, runtime string, configured int) int {
+	if base <= 0 {
+		return configured
+	}
+	return base + slices.Index(runtimePortOrder, runtime)
+}
+
 func serve(c *cli.Ctx) (any, error) {
 	port, err := intOpt(c, "port", 1, 65535)
 	if err != nil {
@@ -116,6 +129,13 @@ func serve(c *cli.Ctx) (any, error) {
 	llmPort, err := intOpt(c, "llm-port", 1, 65535)
 	if err != nil {
 		return nil, err
+	}
+	portBase, err := intOpt(c, "runtime-port-base", 1, 65535-(len(runtimePortOrder)-1))
+	if err != nil {
+		return nil, err
+	}
+	if !c.Has("llm-port") {
+		llmPort = runtimePort(portBase, "llm", llmPort)
 	}
 	ctxSize, err := intOpt(c, "ctx-size", 2048, 2_147_483_647)
 	if err != nil {
@@ -295,9 +315,9 @@ func serve(c *cli.Ctx) (any, error) {
 			if err != nil {
 				return "", 0, err
 			}
-			port = p
+			return host, p, nil
 		}
-		return host, port, nil
+		return host, runtimePort(portBase, name, port), nil
 	}
 	binaries := map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER"), "tts-server": os.Getenv("LOCALBASE_TTS_SERVER"),
 		"crispasr": os.Getenv("LOCALBASE_CRISPASR"), "sd-server": os.Getenv("LOCALBASE_SD_SERVER")}
