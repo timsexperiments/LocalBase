@@ -4443,6 +4443,16 @@ result, a tile that settles and keeps the strip's place, and the seeded landing 
 really chooses: each of the five tools offers only what is on disk, and half a model isn't one. On
 the pages before this change it failed for all five.
 
+### 27.2a The pill and a video's size
+
+- **A pill leads somewhere.** A form's run has no recorded place, so it now goes by what the run is. It
+  doesn't show on the result's own page, or on the landing for what Recent shows.
+- **It covers nothing.** It is a bar on its own ground above the tab bar or the prompt, and pages keep
+  room. Before, it floated over rows and, at z-30, over a tool's prompt.
+- **A finished video fits one phone screen** with its heading and actions, by leaving room for the fixed
+  parts rather than taking a share of the screen: a share of 60% left no room at 740 px tall. Below
+  about 660 px the player stops at 9rem, so the end of the card can need a scroll.
+
 ### 27.3 What the landing's overflow taught
 
 - **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and

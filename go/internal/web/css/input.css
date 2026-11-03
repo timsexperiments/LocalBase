@@ -1091,8 +1091,22 @@
   .lab-item-video {
     @apply self-start;
   }
+  /* On a phone the player leaves room for what's around it: the strip, the title and heading above,
+     the caption and actions below, then the prompt and the tab bar. Fixed parts are in rem, so this
+     follows the screen, and the whole result is on one screen without scrolling. */
   .video-frame {
-    @apply mx-auto max-h-[60dvh] max-w-full min-h-0;
+    @apply mx-auto max-w-full min-h-0 object-contain;
+    max-height: max(9rem, calc(100dvh - 29rem));
+  }
+  @media (max-width: 767px) {
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .video-frame {
+      max-height: max(9rem, calc(100dvh - 32.5rem));
+    }
+  }
+  @media (min-width: 768px) {
+    .video-frame {
+      max-height: 60dvh;
+    }
   }
   video.video-frame {
     @apply block;

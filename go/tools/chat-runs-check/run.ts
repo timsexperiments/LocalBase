@@ -867,6 +867,66 @@ if (imageModel) {
   }
 }
 
+// --- The last thing on a page can be reached, with a run elsewhere (DESIGN §27) ------------------
+// Scrolls to the end and asks the browser what is really at the last control's centre, with the
+// pill showing and with the prompt where the page has one. A video keeps running for Image and
+// Models; slow pictures do for Video, where a video's own run shows no pill.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/video");
+const canVideo = await ev(`!!document.querySelector("#lab-prompt") && !!document.querySelector("form input[name=model]")`);
+const pictureModel = await (async () => { await nav("/app/studio/image"); return ev(`document.querySelector("form input[name=model]")?.value ?? ""`); })();
+if (canVideo && pictureModel) {
+  const activeRuns = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
+  const lastControl = `(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+    const shown = [...document.querySelectorAll("main.page a[href], main.page button, main.page summary, main.page input:not([type=hidden]), main.page textarea, main.page select")].filter((n) => { const r = n.getBoundingClientRect(); return r.width > 1 && r.height > 1 && !n.closest("[data-docked], dialog:not([open]), [hidden], .sr-only") && getComputedStyle(n).visibility !== "hidden"; });
+    const last = shown.at(-1), r = last.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, at = document.elementFromPoint(x, y);
+    const pill = document.querySelector("[data-run-pill=dock]");
+    return { what: (last.getAttribute("aria-label") || last.textContent || last.tagName).trim().slice(0, 28), bottom: Math.round(r.bottom), height: innerHeight, reached: !!at && (at === last || last.contains(at) || at.contains(last)), at: at?.className?.toString().slice(0, 28) ?? null, pill: !pill.hidden && pill.getBoundingClientRect().height > 0 };
+  })()`;
+  await nav("/app/studio/video");
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = "fake:slow still going"; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items video, #lab-items .lab-progress")].length > 0`)); i++) await sleep(150);
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    for (const path of ["/app/studio/image", "/app/models"]) {
+      await nav(path);
+      for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-run-pill=dock]").hidden`)); i++) await sleep(150);
+      await sleep(150);
+      const end = await ev(lastControl);
+      check(end.pill && end.reached, `at ${width}, ${path}: the last control is reachable, with the pill showing: ${JSON.stringify(end)}`);
+    }
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  await ev(`document.querySelector('#lab-items [hx-post$="/cancel"]')?.click()`);
+  for (let i = 0; i < 40 && (await ev(`!!document.querySelector('#lab-items [hx-post$="/cancel"]')`)); i++) await sleep(150);
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    for (let i = 0; i < 120 && (await ev(activeRuns)); i++) await sleep(150);
+    await nav("/app/studio/video");
+    await ev(`(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: ${JSON.stringify(pictureModel)} }) }); })()`);
+    await nav("/app/studio/video");
+    for (let i = 0; i < 30 && (await ev(`document.querySelector("[data-run-pill=dock]").hidden`)); i++) await sleep(150);
+    await sleep(150);
+    const end = await ev(lastControl);
+    check(end.pill && end.reached, `at ${width}, /app/studio/video: the last control is reachable, with the pill showing: ${JSON.stringify(end)}`);
+  }
+  for (let i = 0; i < 120 && (await ev(activeRuns)); i++) await sleep(150);
+}
+
+// --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/video");
+if (await ev(`!!document.querySelector("#lab-items video")`)) {
+  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/video");
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = document.getElementById("results-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
+  }
+}
+
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio");
