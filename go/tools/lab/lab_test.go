@@ -140,22 +140,35 @@ func TestParseCPUTime(t *testing.T) {
 	}
 }
 
+// No real sockets: whether a real port is free depends on whatever else is running on
+// the machine, which may well be a lab.
 func TestPortBlock(t *testing.T) {
-	t.Setenv("LOCALBASE_LAB_PORTS", "29000-29004")
-	b := newPortBlock()
+	const busy = 29102
+	b := &portBlock{low: 29100, high: 29104, taken: map[int]bool{}, free: func(p int) bool { return p != busy }}
 	got, err := b.take(3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	seen := map[int]bool{}
 	for _, p := range got {
-		if p < 29000 || p > 29004 || seen[p] {
-			t.Errorf("port %d: out of the block or repeated (%v)", p, got)
+		if p < 29100 || p > 29104 || p == busy || seen[p] {
+			t.Errorf("port %d: out of the block, busy or repeated (%v)", p, got)
 		}
 		seen[p] = true
 	}
-	if _, err := b.take(3); err == nil {
-		t.Error("the block has only five")
+	if _, err := b.take(2); err == nil {
+		t.Error("the block has only four free ports, and three are taken")
+	}
+}
+
+func TestPortBlockFromEnvironment(t *testing.T) {
+	t.Setenv("LOCALBASE_LAB_PORTS", "29100-29104")
+	if b := newPortBlock(); b.low != 29100 || b.high != 29104 {
+		t.Errorf("block %d-%d", b.low, b.high)
+	}
+	t.Setenv("LOCALBASE_LAB_PORTS", "nonsense")
+	if b := newPortBlock(); b.low != defaultPortLow || b.high != defaultPortHigh {
+		t.Errorf("a bad value gave block %d-%d", b.low, b.high)
 	}
 }
 

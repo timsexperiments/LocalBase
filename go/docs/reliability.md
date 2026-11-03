@@ -107,6 +107,10 @@ full-disk tests make a small disk image; elsewhere they need a small tmpfs named
 
 Clock jumps are simulated by writing stored times into checkpoints and keys. The system
 clock is never moved, so timers running through a real jump are not tested.
+  A second run, at `91462a35` on the integration tree before its rebuild (macOS, 18
+  cycles), rose from 61.1 to 78.5 MiB by cycle 7 and then only to 79.1 by cycle 18, with
+  threads 12 to 15. That looks like a plateau, but it is one run. The weekly 2-hour run is
+  the real answer.
 
 ## The lab
 
@@ -131,6 +135,7 @@ replaces a model's real demand and admission decides the same on macOS and Linux
 ### Rules for a shared machine
 
 - Ports come from 29000-29499; `LOCALBASE_LAB_PORTS=<low>-<high>` moves the block.
+- Built tools go to `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE`; see `tools/README.md`.
 - A scratch directory holds everything. `HOME` points into it, proxies point
   nowhere, and the caller's `LOCALBASE_*` and token settings are removed.
 - The tools refuse a scratch path inside the installed root.
@@ -181,3 +186,15 @@ before starting and throughout, and stop at once if the live state changes or fr
 memory falls under the agreed floor. Print the plan the gateway will load before
 loading it, and stop if it is over the agreed size: a model's default plan can be far
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
+
+**Waiting for the next window: does a real backend use more memory with every request?**
+Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
+on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
+from a leak. The plan is about 200 sequential requests to a small model on a scratch
+gateway on a Mac, with the same conditions as above, recording the backend's RSS and
+available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
+repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
+in recent `llama-server` builds): if it does, a run with the cache off separates the two.
+The plan must fit the agreed size, so the context will be far smaller than the one observed
+and the platform differs. A flat result here would not clear the Linux case; say so if
+that is the result.

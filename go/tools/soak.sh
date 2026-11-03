@@ -6,14 +6,14 @@
 #   tools/soak.sh -duration 30m     the full soak
 #   tools/soak.sh -smoke -race      against a race-detector gateway
 # LOCALBASE_SOAK_HARD_SECONDS overrides the watchdog (default 2700: 45 minutes).
+# LOCALBASE_TOOLS_CACHE says where the binary goes (default ~/.cache/localbase).
 set -u
 cd "$(dirname "$0")/.." || exit 2
-work=$(mktemp -d "${TMPDIR:-/tmp}/lbsoak-XXXXXX") || exit 2
-if ! go build -o "$work/soak" ./tools/soak; then
-  rm -rf "$work"
-  exit 2
-fi
-GOMAXPROCS=2 perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nice -n 10 "$work/soak" "$@" &
+# Built to a fixed place and replaced by the next run, so there is nothing to clean up.
+bin=${LOCALBASE_TOOLS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase}/soak
+mkdir -p "${bin%/*}" || exit 2
+go build -o "$bin" ./tools/soak || exit 2
+GOMAXPROCS=2 perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' nice -n 10 "$bin" "$@" &
 pid=$!
 stop() { kill -TERM -- "-$pid" 2>/dev/null; }
 trap stop INT TERM HUP
@@ -36,5 +36,4 @@ while kill -0 "$pid" 2>/dev/null; do
 done
 kill "$watchdog" 2>/dev/null
 wait "$watchdog" 2>/dev/null
-rm -rf "$work"
 exit "$status"
