@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -13,14 +16,18 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
+// openAuditSink is a variable so that a test can make it fail.
+var openAuditSink = obs.OpenSink
+
 // auditCLI writes one audit event to the root's log, as the gateway does. Failing to log
 // does not stop the command, which has already made its change, but it does say so: a
 // missing record should not be invisible. Attributes are ids only.
 func auditCLI(e *env, msg string, attrs ...any) {
 	fail := func(err error) {
-		fmt.Fprintf(os.Stderr, "Warning: this change was made, but its audit record could not be written: %v\n", err)
+		e.auditFailure = auditFailureClass(err)
+		fmt.Fprintf(os.Stderr, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", e.auditFailure, e.Root.LogsDir())
 	}
-	sink, err := obs.OpenSink(e.Root.LogsDir())
+	sink, err := openAuditSink(e.Root.LogsDir())
 	if err != nil {
 		fail(err)
 		return
@@ -30,7 +37,27 @@ func auditCLI(e *env, msg string, attrs ...any) {
 	r.Add(attrs...)
 	if err := obs.NewHandler(sink, slog.LevelInfo).Handle(context.Background(), r); err != nil {
 		fail(err)
+		return
 	}
+	if err := sink.WriteErr(); err != nil {
+		fail(err)
+	}
+}
+
+// auditFailureClass names what went wrong from a short list. An error's own text is never
+// shown, as it can hold anything: the warning goes to a terminal and to whatever captures it.
+func auditFailureClass(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return "permission-denied"
+	case errors.Is(err, syscall.ENOSPC), errors.Is(err, syscall.EDQUOT):
+		return "disk-full"
+	case errors.Is(err, fs.ErrNotExist):
+		return "missing"
+	case errors.Is(err, syscall.ENOTDIR), errors.Is(err, syscall.EISDIR):
+		return "not-a-file"
+	}
+	return "write-failed"
 }
 
 // auditChange records a change made from the command line, in the line the route for the

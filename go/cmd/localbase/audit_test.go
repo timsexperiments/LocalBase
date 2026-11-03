@@ -3,18 +3,23 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -244,6 +249,9 @@ func TestAccessCommandsAreAudited(t *testing.T) {
 			s.after(data)
 		}
 		ran[s.command] = true
+		if _, ok := data["auditWritten"]; ok {
+			t.Errorf("%s: auditWritten is only for a failure: %v", s.command, data)
+		}
 		lines := auditLines(t, root)
 		if len(lines) != before+1 {
 			t.Errorf("%s: %d new audit lines, want 1", s.command, len(lines)-before)
@@ -293,39 +301,119 @@ func TestAccessCommandsAreAudited(t *testing.T) {
 	}
 }
 
-// A record that can't be written doesn't stop the command, and doesn't go unmentioned.
-func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
-	t.Setenv("LOCALBASE_ROOT", "")
-	root := filepath.Join(t.TempDir(), "root")
-	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
-		t.Fatalf("configure: %s", out)
-	}
-	logs := filepath.Join(root, "logs")
-	if err := os.RemoveAll(logs); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(logs, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
+// captureStderr runs f and returns what it wrote to the process's stderr.
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	stderr := os.Stderr
 	os.Stderr = w
-	code, out := runApp(t, "--root", root, "--json", "keys", "create", "--name", "k")
+	f()
 	os.Stderr = stderr
 	w.Close()
-	var said strings.Builder
-	sc := bufio.NewScanner(r)
-	for sc.Scan() {
-		said.WriteString(sc.Text())
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return string(b)
+}
+
+// A record that can't be written doesn't stop the command, and doesn't go unmentioned: on
+// stderr, and in the result for a program reading --json.
+func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	for _, tc := range []struct {
+		name, class string
+		breakIt     func(t *testing.T, root string)
+	}{
+		{"the logs folder is a file", "not-a-file", func(t *testing.T, root string) {
+			logs := filepath.Join(root, "logs")
+			if err := os.RemoveAll(logs); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(logs, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"only the audit file can't be opened", "write-failed", func(t *testing.T, root string) {
+			if err := os.MkdirAll(filepath.Join(root, "logs", "audit.jsonl"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(tmp, "root")
+			if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
+				t.Fatalf("configure: %s", out)
+			}
+			tc.breakIt(t, root)
+			var code int
+			var out string
+			said := captureStderr(t, func() { code, out = runApp(t, "--root", root, "--json", "keys", "create", "--name", "k") })
+			if code != 0 {
+				t.Errorf("the key was made, so the command should succeed: %d", code)
+			}
+			if want := "Warning: this change was made, but its audit record could not be written: " + tc.class + " (" + filepath.Join(root, "logs") + ")\n"; said != want {
+				t.Errorf("stderr: %q, want %q", said, want)
+			}
+			var env struct {
+				OK   bool           `json:"ok"`
+				Data map[string]any `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(strings.Split(strings.TrimSpace(out), "\n")[0]), &env); err != nil {
+				t.Fatal(err)
+			}
+			if !env.OK || env.Data["auditWritten"] != false || env.Data["auditError"] != tc.class {
+				t.Errorf("auditWritten %v, auditError %v, ok %v", env.Data["auditWritten"], env.Data["auditError"], env.OK)
+			}
+		})
+	}
+}
+
+// Whatever an error's text holds, it isn't repeated.
+func TestAnAuditWarningNeverRepeatsTheError(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	const planted = "PLANTED_secret_in_an_error_7d1e0c"
+	defer func(open func(string) (*obs.Sink, error)) { openAuditSink = open }(openAuditSink)
+	openAuditSink = func(string) (*obs.Sink, error) {
+		return nil, &fs.PathError{Op: "open", Path: "/" + planted, Err: fs.ErrPermission}
+	}
+	var code int
+	var out string
+	said := captureStderr(t, func() { code, out = runApp(t, "--root", root, "--json", "keys", "create", "--name", "k") })
 	if code != 0 {
-		t.Errorf("the key was made, so the command should succeed: %d %s", code, out)
+		t.Errorf("exit status %d", code)
 	}
-	if !strings.Contains(said.String(), "its audit record could not be written") {
-		t.Errorf("stderr: %q", said.String())
+	if !strings.Contains(said, "permission-denied") || !strings.Contains(out, `"auditError":"permission-denied"`) {
+		t.Errorf("stderr %q; the result has no class", said)
+	}
+	if strings.Contains(said, planted) || strings.Contains(out, planted) {
+		t.Error("the warning repeats the error's text")
+	}
+}
+
+// A class is only ever from the short list.
+func TestAuditFailureClass(t *testing.T) {
+	for want, err := range map[string]error{
+		"permission-denied": &fs.PathError{Op: "open", Path: "x", Err: syscall.EACCES},
+		"disk-full":         &fs.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC},
+		"missing":           fs.ErrNotExist,
+		"not-a-file":        &fs.PathError{Op: "mkdir", Path: "x", Err: syscall.ENOTDIR},
+		"write-failed":      errors.New("PLANTED_anything_else"),
+	} {
+		if got := auditFailureClass(err); got != want {
+			t.Errorf("%v: %q, want %q", err, got, want)
+		}
 	}
 }
 

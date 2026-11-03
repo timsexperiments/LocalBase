@@ -25,11 +25,12 @@ const (
 
 // Sink is a rotating, private JSONL file. Safe for concurrent use.
 type Sink struct {
-	mu   sync.Mutex
-	dir  string
-	name string // the file is <name>.jsonl and its archives <name>.N.jsonl
-	f    *os.File
-	size int64
+	lastErr error // see WriteErr
+	mu      sync.Mutex
+	dir     string
+	name    string // the file is <name>.jsonl and its archives <name>.N.jsonl
+	f       *os.File
+	size    int64
 	// Also writes each line here when set (foreground serve's stderr).
 	Mirror io.Writer
 	// audit holds audit.* events too, in a file nothing else writes, so a flood of other
@@ -77,10 +78,14 @@ func (s *Sink) Write(line []byte) {
 	defer s.mu.Unlock()
 	if s.size+int64(len(line)) > rotateBytes {
 		if err := s.rotate(); err != nil {
+			s.lastErr = err
 			return
 		}
 	}
-	n, _ := s.f.Write(line)
+	n, err := s.f.Write(line)
+	if err != nil {
+		s.lastErr = err
+	}
 	s.size += int64(n)
 	if s.Mirror != nil {
 		s.Mirror.Write(line)
@@ -92,7 +97,8 @@ func (s *Sink) writeAudit(line []byte) {
 	s.mu.Lock()
 	if s.audit == nil {
 		a := &Sink{dir: s.dir, name: "audit"}
-		if a.open() != nil {
+		if err := a.open(); err != nil {
+			s.lastErr = err
 			s.mu.Unlock()
 			return // the line is in the main log; the next one tries again
 		}
@@ -101,6 +107,17 @@ func (s *Sink) writeAudit(line []byte) {
 	a := s.audit
 	s.mu.Unlock()
 	a.Write(line)
+}
+
+// WriteErr is the last failure to write a line here or to the audit file, for a short-lived
+// writer that has one record to answer for. A gateway's log reports its own outages.
+func (s *Sink) WriteErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastErr != nil || s.audit == nil {
+		return s.lastErr
+	}
+	return s.audit.WriteErr()
 }
 
 func (s *Sink) Close() error {
