@@ -190,7 +190,7 @@ type App struct {
 	Root           *Command
 	// ExplainError may replace a command's failure with one that says it in plain words, before
 	// it is printed. It is the one place a failure every command can hit gets explained.
-	ExplainError func(err error, c *Ctx) error
+	ExplainError func(err error) error
 	// Default runs when no command is given (TS: configure).
 	Default string
 	Stdout  io.Writer
@@ -284,7 +284,7 @@ func (a *App) Run(args []string) int {
 			return a.fail(g.JSON, "invalid_input", ie.Message, cmd.inputExit(), cmd, path)
 		}
 		if a.ExplainError != nil {
-			err = a.ExplainError(err, ctx)
+			err = a.ExplainError(err)
 		}
 		reason := ""
 		var re *ReasonedError

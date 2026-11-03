@@ -31,7 +31,7 @@ A failed install prints a reason. See [install failures](install-failures.md).
 
 ## A busy database
 
-`The database is busy: the gateway or another command is writing to it` means something else held the database for longer than the 5 seconds a command waits. Try again in a moment. If it keeps happening, stop the gateway with the command it gives, and try again. With `--json`, the error has the reason `database_busy`.
+`The database is busy: the gateway or another command is writing to it` means something else held the database for longer than the 5 seconds a command waits. Try again in a moment. If it keeps happening, stop the gateway, or whatever else is writing, and try again. With `--json`, the error has the reason `database_busy`.
 
 ## Queues
 

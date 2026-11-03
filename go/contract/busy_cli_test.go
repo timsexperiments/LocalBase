@@ -45,8 +45,8 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 		if !strings.Contains(r.stderr, "is busy") || !strings.Contains(r.stderr, "Try again") {
 			t.Errorf("%s doesn't say what to do: %s", c, r.stderr)
 		}
-		if !strings.Contains(r.stderr, "--root '"+e.root+"' stop") {
-			t.Errorf("%s doesn't name this root: %s", c, r.stderr)
+		if strings.Contains(r.stderr, " stop") && strings.Contains(r.stderr, "local-base") {
+			t.Errorf("%s tells the person to run stop, which disables the service: %s", c, r.stderr)
 		}
 	}
 	// A script gets the same, with a reason it can branch on.

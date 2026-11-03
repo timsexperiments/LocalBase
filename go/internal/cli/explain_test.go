@@ -11,19 +11,19 @@ func TestExplainErrorChangesWhatAFailureSays(t *testing.T) {
 	failing := errors.New("raw failure")
 	app := func(run error, out, errw *bytes.Buffer) *App {
 		return &App{Name: "x", Version: "1", Stdout: out, Stderr: errw,
-			ExplainError: func(err error, c *Ctx) error {
+			ExplainError: func(err error) error {
 				if errors.Is(err, failing) {
-					return &ReasonedError{Err: errors.New("plain words for " + c.Global.Root), Reason: "named"}
+					return &ReasonedError{Err: errors.New("plain words"), Reason: "named"}
 				}
 				return err
 			},
 			Root: &Command{Sub: []*Command{{Name: "go", Run: func(*Ctx) (any, error) { return nil, run }}}}}
 	}
 	var out, errw bytes.Buffer
-	if code := app(failing, &out, &errw).Run([]string{"--root", "/r", "go"}); code != 1 {
+	if code := app(failing, &out, &errw).Run([]string{"go"}); code != 1 {
 		t.Errorf("exit %d", code)
 	}
-	if said := errw.String(); !strings.Contains(said, "plain words for /r") || !strings.Contains(said, "Reason: named") || strings.Contains(said, "raw failure") {
+	if said := errw.String(); !strings.Contains(said, "plain words") || !strings.Contains(said, "Reason: named") || strings.Contains(said, "raw failure") {
 		t.Errorf("says: %s", said)
 	}
 	out.Reset()

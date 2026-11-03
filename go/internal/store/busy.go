@@ -12,7 +12,7 @@ import (
 type BusyError struct{ Err error }
 
 func (e *BusyError) Error() string {
-	return "The database is busy: the gateway or another command is writing to it. Try again in a moment."
+	return "The database is busy: the gateway or another command is writing to it. Try again in a moment. If it keeps happening, stop the gateway, or whatever else is writing."
 }
 
 func (e *BusyError) Unwrap() error { return e.Err }

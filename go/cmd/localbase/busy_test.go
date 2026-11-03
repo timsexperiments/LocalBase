@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
@@ -73,7 +74,15 @@ func TestReadEnvStopsWhenTheDatabaseTurnsBusy(t *testing.T) {
 
 func TestExplainErrorOnlyChangesABusyDatabase(t *testing.T) {
 	other := errors.New("something else")
-	if got := explainError(other, &cli.Ctx{}); got != other {
+	if got := explainError(other); got != other {
 		t.Errorf("another failure became: %v", got)
+	}
+}
+
+// Stopping the service disables it, which is far too much to suggest for a lock that will pass.
+func TestABusyDatabaseNamesNoCommandToRun(t *testing.T) {
+	said := (&store.BusyError{}).Error()
+	if strings.Contains(said, "local-base") {
+		t.Errorf("says: %s", said)
 	}
 }

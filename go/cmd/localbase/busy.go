@@ -2,23 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // explainError says a busy database in plain words, whichever command met it.
-func explainError(err error, c *cli.Ctx) error {
+func explainError(err error) error {
 	if !store.IsBusy(err) {
 		return err
 	}
-	busy := &store.BusyError{Err: err}
-	return &cli.ReasonedError{
-		Err:    fmt.Errorf("%s If it keeps happening, stop the gateway first: local-base --root '%s' stop", busy.Error(), root.Resolve(c.Global.Root)),
-		Reason: "database_busy",
-	}
+	return &cli.ReasonedError{Err: &store.BusyError{Err: err}, Reason: "database_busy"}
 }
 
 // afterReadOpen is for tests: a writer that arrives just after the database opened.
