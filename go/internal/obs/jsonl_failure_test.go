@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -418,6 +419,17 @@ func TestAPlantedLinkDoesNotPutThePathInAComplaint(t *testing.T) {
 	}
 	if !strings.Contains(complaints.String(), "what someone did") {
 		t.Errorf("the line was lost: %q", complaints)
+	}
+}
+
+// doctor is where someone decides whether to act, so a copy on stderr doesn't read as safe.
+func TestDescribeSaysHowLongTheStderrCopyLasts(t *testing.T) {
+	line := LogOutage{Log: "audit", OnStderr: 2}.Describe(time.Now())
+	if !strings.Contains(line, "2 kept only in the service's stderr") {
+		t.Errorf("%q", line)
+	}
+	if survives := strings.Contains(line, "newest 1 MiB survives the next start"); survives != (goruntime.GOOS == "darwin") {
+		t.Errorf("%q", line)
 	}
 }
 

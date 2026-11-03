@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -73,6 +74,9 @@ func (o LogOutage) Describe(now time.Time) string {
 	line += fmt.Sprintf(". %d events lost", o.Dropped)
 	if o.OnStderr > 0 {
 		line += fmt.Sprintf(", %d kept only in the service's stderr", o.OnStderr)
+		if goruntime.GOOS == "darwin" {
+			line += ", of which only the newest 1 MiB survives the next start"
+		}
 	}
 	return line + "."
 }
