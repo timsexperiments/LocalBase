@@ -6,6 +6,7 @@
 # and dark. The pinned axe-core is cached in go/.cache, verified by sha256,
 # and injected over the DevTools protocol only for the test.
 #   tools/axe-check.sh http://127.0.0.1:<port>   (a --no-auth gateway)
+#   AXE_COOKIE=name=value tools/axe-check.sh ...  (a gateway with sign-in on, as that session)
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 base=${1:?usage: axe-check.sh <base-url>}
