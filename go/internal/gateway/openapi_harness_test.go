@@ -68,6 +68,7 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { noWriterLeft(t, st) })
 	// The import checks use a local file, which is opt-in over the API.
 	if err := st.SetSetting(context.Background(), store.LocalPathImportsKey, "on"); err != nil {
 		t.Fatal(err)
