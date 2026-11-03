@@ -560,7 +560,6 @@ func (c oaClient) doBody(reqBody, method, path string, headers ...string) (int, 
 func TestOpenAPIMethods(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
@@ -612,7 +611,6 @@ func TestOpenAPIMethods(t *testing.T) {
 func TestOpenAPIPermissions(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	ctx := t.Context()
 	keys := map[string]string{}
 	keyWith := func(scopes []string) string {
@@ -680,7 +678,6 @@ func firstBytes(b []byte) string {
 func TestOpenAPIKeysRefusedFromPages(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	_, key, err := s.Store.CreateAPIKey(t.Context(), "k", auth.DefaultKeyScopes)
 	if err != nil {
 		t.Fatal(err)
@@ -791,7 +788,6 @@ func TestOpenAPIResponses(t *testing.T) {
 	t.Setenv("HF_TOKEN", "")
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth = false
 	ctx := t.Context()
 	self, key, err := s.Store.CreateAPIKey(ctx, "all", auth.Permissions)
 	if err != nil {
@@ -1465,9 +1461,7 @@ func openAPIHub(t *testing.T) *httptest.Server {
 }
 
 func TestOpenAPIServed(t *testing.T) {
-	ts := openAPIGateway(t)
-	s := runServer(ts)
-	s.NoAuth = false // no credential needed, with authentication on
+	ts := openAPIGateway(t) // no credential is needed, with authentication on
 	c := oaClient{t, ts.URL, ""}
 	status, _, body, hdr := c.do("GET", "/openapi.json")
 	if status != 200 {
