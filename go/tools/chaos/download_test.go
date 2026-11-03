@@ -333,7 +333,7 @@ func TestDownloadResumeAgainstBadServer(t *testing.T) {
 // only an idle limit can. Until one exists the install runs forever, and because
 // one install runs at a time, it blocks every other install until a restart.
 func TestDownloadStalled(t *testing.T) {
-	knownBug(t, "a stalled download has no idle limit and blocks other installs")
+	knownBug(t, noPRYet, "a stalled download has no idle limit and blocks other installs")
 	const limit = 90 * time.Second
 	data := modelBytes(4 << 20)
 	a := serveArtifact(t, data)
@@ -452,7 +452,7 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 // takes that lock itself while the install is failing. The release then cannot
 // get it, every time, as on a disk with no room at all.
 func TestDiskFullDuringDownload(t *testing.T) {
-	knownBug(t, "a full disk wedges the root's operation lease until a restart (#484)")
+	knownBug(t, 484, "a full disk wedges the root's operation lease until a restart")
 	disk := smallDisk(t)
 	data := modelBytes(32 << 20)
 	release := make(chan struct{})

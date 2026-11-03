@@ -84,6 +84,30 @@ over a short run a slope can be a plateau still settling.
   cannot tell a plateau from a very slow leak. The weekly long run should answer
   it; until then this is open, not a pass.
 
+## Chaos
+
+```
+make chaos          # about 40 s; skips tests of open bugs
+make chaos-all      # includes them
+make known-bugs     # fails if a skip names a merged pull request, or none
+```
+
+`tools/chaos` breaks a real gateway on purpose, one test and one gateway at a time:
+backends killed mid-stream and mid-request, crash loops, the gateway itself killed, a
+locked and a damaged database, runs across a kill among damaged checkpoints, stored
+times from another clock, dropped and corrupt downloads, a stalled peer, a full disk,
+huge, slow and malformed requests, and a thousand keys and sessions.
+
+A test of an open bug starts with `knownBug(t, <pr>, "...")`, naming the pull request
+that fixes it. That fix removes the line.
+
+`LOCALBASE_CHAOS_RACE=1` builds the gateway with the race detector. On macOS the
+full-disk tests make a small disk image; elsewhere they need a small tmpfs named by
+`LOCALBASE_CHAOS_SMALL_DISK`, and skip without one.
+
+Clock jumps are simulated by writing stored times into checkpoints and keys. The system
+clock is never moved, so timers running through a real jump are not tested.
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
