@@ -264,9 +264,10 @@ local-base restart
 ```
 
 OIDC, GitHub, and magic-link registrations can coexist on the same sign-in
-page. The first registration receives the default browser permissions. Later
-additions preserve the configured permissions unless `--permissions` is
-supplied. Use the matching provider's `list` and `remove` commands. Removing
+page. The first registration gives nothing to whoever signs in, unless
+`--permissions` says otherwise; `local-base access policy starter --email <address>`
+gives one address everything. Later additions preserve the configured permissions
+unless `--permissions` is supplied. Use the matching provider's `list` and `remove` commands. Removing
 the last registration disables browser access.
 
 Native email sign-in uses the SMTP configuration described in

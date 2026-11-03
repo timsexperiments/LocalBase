@@ -1223,6 +1223,27 @@ Deliberate status changes to verify against the live clients at cutover:
    - `auth.Guard` models this, including that a removed person stays refused, and
      `TestGuardAgreesWithSignIn` compares it with real sign-in.
 
+5c. **Signing in gives nothing unless someone said so** (operator decision). Anyone may
+   hold an account with a public provider, and LocalBase has no allow-list of its own.
+   - **No default permissions.** A provider added without `--permissions` gives nothing.
+     A configuration that already has them keeps them, so nothing changes silently.
+   - **The starter policy has no default role.** It binds one address to `admin`, and
+     keeps `member` as a role bound to nobody. `local-base access policy starter --email <address>`
+     applies it from the host, and only the host: no API route does.
+   - **No permissions, no session.** A sign-in that resolves to nothing gets a page saying
+     so, and no session row, so nothing is kept about them. The page gives whoever runs this
+     LocalBase one next step: `policy starter` if there is no policy yet, `users invite` if there
+     is. Authorizing also claims an invitation, so a first sign-in counts. Cloudflare Access
+     has no session of ours: there, a request with no permissions gets the forbidden pages.
+   - **A default role stays possible,** as a choice. `local-base doctor`, `local-base status`,
+     the access page and `access policy apply` say what it means: "Anyone who can sign in
+     through <provider> gets: …". The same goes for provider-wide permissions with no policy.
+   - **Sign-ins are on record.** `auth.signin` has the hashed id and the roles, and
+     `auth.signin-denied` the hashed id, never an address. The access page lists who has a
+     live session, for those who can read access management.
+   - **The first-run local session** (§28) doesn't go through any of this, and holds every
+     permission.
+
 6. **A request cut off by a memory emergency** (operator decision). As in
    TS, critical memory stops every runtime, including ones serving active
    requests. TS answers such a request 502 `upstream_error`, or ends its

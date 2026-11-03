@@ -50,8 +50,17 @@ environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
-The examples grant `models:manage` intentionally. Omit `--permissions` to use
-the safer defaults, which allow chat and model discovery only.
+The examples grant `models:manage` intentionally. Without `--permissions`, signing in
+gives nothing until a policy or an invitation says otherwise. Be careful with
+permissions for everyone: anyone who holds an account with your provider can
+sign in, which for a public provider may be anyone at all.
+
+To give yourself access, name your address. It gets every permission, and nobody
+else gets anything:
+
+```bash
+local-base --non-interactive --json access policy starter --email you@example.com
+```
 
 Each registration has a stable ID and display name. Repeat the command with a
 different ID to add another provider; using an existing ID updates it. With
@@ -137,6 +146,11 @@ Email delivery cannot be disabled while the registration exists.
 Provider permissions apply to every verified browser user unless a local access
 policy is configured. A policy maps verified identities to named roles. Email
 bindings only match provider-verified email claims.
+
+A default role gives its permissions to everyone who signs in, whoever they are.
+It is a deliberate choice, and `local-base doctor`, `local-base status` and the
+access page say what it means. Someone with no permissions gets no session, and
+a page telling them so.
 
 Email and domain bindings trust one sign-in provider, so a provider you add
 later can't claim someone's address and take their role. With one provider
