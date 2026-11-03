@@ -206,7 +206,7 @@ func TestInstallCancelCommand(t *testing.T) {
 		t.Errorf("again: %d %s %v", again.code, again.stdout, err)
 	}
 	logged, err := os.ReadFile(filepath.Join(e.root, "logs", "events.jsonl"))
-	if err != nil || !strings.Contains(string(logged), `"audit.models-changed"`) || !strings.Contains(string(logged), `"actor_kind":"local-cli"`) {
+	if err != nil || !strings.Contains(string(logged), `"audit.models-changed"`) || !strings.Contains(string(logged), `"actor_kind":"cli"`) {
 		t.Errorf("no audit of the cancel: %v", err)
 	}
 	if help := e.cli(nil, "models", "cancel", "--help"); help.code != 0 || !strings.Contains(help.stdout, "Stop an install") {

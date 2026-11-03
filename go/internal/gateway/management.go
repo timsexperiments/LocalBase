@@ -754,7 +754,7 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	if action == "cancel" {
 		op, err = s.stopInstall(modelID)
 		if err == nil {
-			actor, actorID := "local-cli", ""
+			actor, actorID := "cli", ""
 			if p.Authenticated() {
 				actor, actorID = p.Kind, p.ID
 			}

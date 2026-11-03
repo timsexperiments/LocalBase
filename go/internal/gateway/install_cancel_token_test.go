@@ -85,7 +85,7 @@ func TestACancelFromTheCommandLineIsAudited(t *testing.T) {
 	for _, line := range strings.Split(logs.String(), "\n") {
 		if strings.Contains(line, `"audit.models-changed"`) {
 			found = true
-			for _, want := range []string{`"actor_kind":"local-cli"`, `"action":"cancel"`, `"target_id":"` + model + `"`} {
+			for _, want := range []string{`"actor_kind":"cli"`, `"action":"cancel"`, `"target_id":"` + model + `"`} {
 				if !strings.Contains(line, want) {
 					t.Errorf("%s lacks %s", line, want)
 				}
