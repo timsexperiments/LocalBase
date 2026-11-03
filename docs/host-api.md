@@ -33,6 +33,7 @@ Needs `models:read`.
 | `runtimes[].source` | `measured`, or `planned` while starting or where the platform can't sample it, which is Linux today |
 | `memory.other` | Total minus available minus LocalBase, clamped at 0. `null` if total or available is unknown. Includes what the system holds |
 | `memory.pressure` | `healthy`, `constrained`, `critical` or `null`. It's the state admission refuses on, from available memory against the reserve, not a macOS pressure API |
+| `memory.settling` | `true` while memory has recovered but `pressure` hasn't yet, so requests can still be refused for memory. Absent otherwise. It clears exactly when those refusals stop, so wait for it to clear before telling someone to retry. A rising `available` alone doesn't mean that. |
 | `activity.busy` | True when any type has a request in flight or queued, or a detached run hasn't finished |
 
 `memory` covers the system pool. On a discrete GPU, VRAM isn't in it.

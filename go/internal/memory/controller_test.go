@@ -181,3 +181,37 @@ func TestResidentCountsOnlyInLaterSamples(t *testing.T) {
 		t.Errorf("a later sample: %v", err)
 	}
 }
+
+// Settling says memory has recovered but admission is still refusing. It ends exactly
+// when admission stops refusing for pressure, never before.
+func TestSettlingMatchesRefusals(t *testing.T) {
+	c, h := newTestController(30)
+	if c.Settling() {
+		t.Error("settling while healthy")
+	}
+	h.avail = int64(1 * float64(GiB))
+	c.Poll(context.Background())
+	if c.PressureState() == "healthy" || c.Settling() {
+		t.Fatalf("low memory: state %s, settling %v", c.PressureState(), c.Settling())
+	}
+	h.avail = int64(48 * float64(GiB))
+	refused := func() bool {
+		return reason(c.CheckAdmission(context.Background(), demand(1), nil)) == "memory-pressure"
+	}
+	for i := 0; i < recoverySamples-1; i++ {
+		c.Poll(context.Background())
+		if !c.Settling() {
+			t.Errorf("sample %d: not settling while %s", i, c.PressureState())
+		}
+		if !refused() {
+			t.Errorf("sample %d: admitted while settling", i)
+		}
+	}
+	c.Poll(context.Background())
+	if c.Settling() || c.PressureState() != "healthy" {
+		t.Errorf("recovered: state %s, settling %v", c.PressureState(), c.Settling())
+	}
+	if refused() {
+		t.Error("still refused after settling cleared")
+	}
+}
