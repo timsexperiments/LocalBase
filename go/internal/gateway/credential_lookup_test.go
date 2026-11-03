@@ -145,7 +145,7 @@ func TestASessionLookupFailureIsNotSignedOut(t *testing.T) {
 				if r.status == 503 {
 					saw503++
 				}
-				if r.status == 503 && strings.HasPrefix(path, "/app/chat") && !strings.Contains(r.body, "We can’t check your sign-in right now") {
+				if r.status == 503 && strings.HasPrefix(path, "/app/chat") && (!strings.Contains(r.body, "We can’t check your sign-in right now") || !strings.Contains(r.body, "<title>Can’t check your sign-in · LocalBase</title>")) {
 					t.Errorf("GET %s: %.300q", path, r.body)
 				}
 			}
