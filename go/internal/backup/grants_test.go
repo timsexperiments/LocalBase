@@ -50,7 +50,7 @@ func TestEachWayOfHavingARoleIsNamed(t *testing.T) {
 		want string
 	}{
 		{"a subject", []string{`INSERT INTO auth_subject_role_bindings (id, role_id, issuer, subject) VALUES ('b', 'owner', '` + issuerA + `', 'someone')`},
-			"someone at " + issuerA},
+			"subject someone at " + issuerA},
 		{"an address", []string{`INSERT INTO auth_email_role_bindings (id, role_id, email) VALUES ('b', 'owner', 'a@example.com')`,
 			`INSERT INTO go_binding_issuers (kind, role_id, value, issuer) VALUES ('email', 'owner', 'a@example.com', '` + issuerA + `')`},
 			"a@example.com, signing in through " + issuerA},
@@ -61,7 +61,7 @@ func TestEachWayOfHavingARoleIsNamed(t *testing.T) {
 			"anyone at example.com, signing in through " + issuerA},
 		{"someone who has signed in", append(person("u", "active"),
 			`INSERT INTO auth_identities (id, user_id, issuer, subject, verified_email, created_at, last_seen_at) VALUES ('i', 'u', '`+issuerA+`', 'them', NULL, 'x', 'x')`),
-			"them at " + issuerA},
+			"subject them at " + issuerA},
 		{"someone invited", append(person("u", "pending"),
 			`INSERT INTO go_invitation_issuers (user_id, issuer) VALUES ('u', '`+issuerA+`')`),
 			"u@example.com, invited, signing in through " + issuerA},
@@ -88,6 +88,16 @@ func TestSomeoneWhoCannotUseARoleIsNotListed(t *testing.T) {
 		if len(g[0].Who) != 0 {
 			t.Errorf("%s: %+v", status, g[0].Who)
 		}
+	}
+}
+
+// A strong role with nobody bound to it isn't harmless if it's the default, so it says so.
+func TestTheDefaultRoleIsMarked(t *testing.T) {
+	g := grantsIn(t,
+		`INSERT INTO auth_roles (id, name, description, created_at, updated_at) VALUES ('member', 'member', 'x', 'x', 'x')`,
+		`INSERT INTO auth_settings (id, default_role_id, updated_at) VALUES ('default', 'member', 'x')`)
+	if len(g) != 2 || g[0].Role != "member" || !g[0].Default || g[1].Role != "owner" || g[1].Default {
+		t.Errorf("%+v", g)
 	}
 }
 
@@ -146,10 +156,10 @@ func TestSomeoneNewToARoleIsMarked(t *testing.T) {
 		`INSERT INTO auth_subject_role_bindings (id, role_id, issuer, subject) VALUES ('b2', 'owner', 'https://z.example.com', 'zz-added')`)
 	rep := stageReport(t, bad, root, true)
 	g := rep.Grants[0]
-	if len(g.Who) != 2 || g.Who[0].Value != "zz-added at https://z.example.com" || g.Who[0].Against != AgainstNew {
+	if len(g.Who) != 2 || g.Who[0].Value != "subject zz-added at https://z.example.com" || g.Who[0].Against != AgainstNew {
 		t.Fatalf("%+v", g.Who)
 	}
-	if g.Who[1].Value != "the-owner at "+issuerA || g.Who[1].Against != "" {
+	if g.Who[1].Value != "subject the-owner at "+issuerA || g.Who[1].Against != "" {
 		t.Errorf("%+v", g.Who[1])
 	}
 	if !caution(rep, grantsChangedCaution) {

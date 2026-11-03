@@ -382,16 +382,32 @@ func printGrants(c *cli.Ctx, grants []backup.Grant) {
 		if gives.Value == "" {
 			gives.Value = "nothing"
 		}
-		c.Info("  %s: %s", g.Role, gives.Text("gives"))
-		if len(g.Who) == 0 {
+		line := gives.Text("gives")
+		if g.Default {
+			line += " (everyone who signs in through a provider has this)"
+		}
+		c.Info("  %s: %s", g.Role, line)
+		switch {
+		case len(g.Who) == 0 && g.Default:
+			c.Info("    nobody else")
+		case len(g.Who) == 0:
 			c.Info("    nobody")
 		}
-		for i, l := range g.Who {
-			if i == maxGrantLines {
-				c.Info("    and %d more", len(g.Who)-maxGrantLines)
-				break
+		for _, l := range g.Who[:min(len(g.Who), maxGrantLines)] {
+			c.Info("    %s", place(l).Text("has"))
+		}
+		if hidden := g.Who[min(len(g.Who), maxGrantLines):]; len(hidden) > 0 {
+			newOnes := 0
+			for _, l := range hidden {
+				if l.Against == backup.AgainstNew {
+					newOnes++
+				}
 			}
-			c.Info("    %s", l.Text("has"))
+			more := fmt.Sprintf("and %d more", len(hidden))
+			if newOnes > 0 {
+				more += fmt.Sprintf(", %d of them new", newOnes)
+			}
+			c.Info("    %s. All of them: restore --dry-run --json", more)
 		}
 	}
 }

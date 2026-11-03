@@ -14,7 +14,9 @@ type Grant struct {
 	Role string `json:"role"`
 	// Gives is the role's permissions, set against what this root's role of that name gives.
 	Gives Line `json:"gives"`
-	// Who is everyone the role reaches, those new to this root first.
+	// Default says everyone who signs in through a provider has this role.
+	Default bool `json:"default,omitempty"`
+	// Who is everyone else the role reaches, those new to this root first.
 	Who []Line `json:"who"`
 }
 
@@ -87,7 +89,7 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 		line  func(v []string) string
 	}{
 		{`SELECT role_id, subject, issuer FROM auth_subject_role_bindings`,
-			func(v []string) string { return v[1] + " at " + v[2] }},
+			func(v []string) string { return "subject " + v[1] + " at " + v[2] }},
 		{`SELECT b.role_id, b.email, i.issuer FROM auth_email_role_bindings b
 			LEFT JOIN go_binding_issuers i ON i.kind = 'email' AND i.role_id = b.role_id AND i.value = b.email`,
 			func(v []string) string { return v[1] + through(v[2]) }},
@@ -96,7 +98,7 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 			func(v []string) string { return "anyone at " + v[1] + through(v[2]) }},
 		{`SELECT ur.role_id, a.subject, a.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
 			JOIN auth_identities a ON a.user_id = u.id WHERE u.status IN ('active', 'pending')`,
-			func(v []string) string { return v[1] + " at " + v[2] }},
+			func(v []string) string { return "subject " + v[1] + " at " + v[2] }},
 		{`SELECT ur.role_id, e.email, i.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
 			JOIN auth_user_emails e ON e.user_id = u.id LEFT JOIN go_invitation_issuers i ON i.user_id = u.id
 			WHERE u.status IN ('active', 'pending') AND NOT EXISTS (SELECT 1 FROM auth_identities a WHERE a.user_id = u.id)`,
@@ -106,9 +108,13 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 			return nil, err
 		}
 	}
+	defaultRole := ""
+	if err := each(`SELECT default_role_id FROM auth_settings WHERE id = 'default'`, func(v []string) { defaultRole = v[0] }); err != nil {
+		return nil, err
+	}
 	out := make([]Grant, 0, len(roles))
-	for _, r := range roles {
-		g := Grant{Role: r.name, Gives: Line{Value: joined(r.perms)}, Who: []Line{}}
+	for id, r := range roles {
+		g := Grant{Role: r.name, Gives: Line{Value: joined(r.perms)}, Default: id == defaultRole, Who: []Line{}}
 		for line := range r.who {
 			g.Who = append(g.Who, Line{Value: line})
 		}

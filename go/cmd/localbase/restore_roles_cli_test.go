@@ -34,7 +34,7 @@ func TestARestoreReportSaysWhatEachRoleGivesAndWhoHasIt(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("restore: %s", out)
 	}
-	want := "What each role gives, and who has it:\n  owner: access:manage, keys:manage\n    someone at https://accounts.example.com\n"
+	want := "What each role gives, and who has it:\n  owner: access:manage, keys:manage\n    subject someone at https://accounts.example.com\n"
 	if !strings.Contains(out, want) {
 		t.Errorf("no %q in:\n%s", want, out)
 	}

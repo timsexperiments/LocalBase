@@ -136,18 +136,24 @@ func grantLines(grants []backup.Grant) string {
 func TestTheRoleLinesRead(t *testing.T) {
 	got := grantLines([]backup.Grant{
 		{Role: "chat", Gives: backup.Line{Value: "inference:chat"}, Who: []backup.Line{}},
-		{Role: "empty", Who: []backup.Line{{Value: "someone at https://x.example"}}},
+		{Role: "empty", Who: []backup.Line{{Value: "subject 1234 at https://x.example"}}},
+		{Role: "member", Gives: backup.Line{Value: "models:read"}, Default: true, Who: []backup.Line{}},
 		{Role: "owner", Gives: backup.Line{Value: "access:manage, keys:manage", Against: backup.AgainstDiffers, ThisRoot: "access:manage"},
-			Who: []backup.Line{{Value: "added at https://x.example", Against: backup.AgainstNew}, {Value: "a@example.com, signing in through https://x.example"}}},
+			Who: []backup.Line{{Value: "subject 1234 at https://x.example", Against: backup.AgainstNew}, {Value: "a@example.com, signing in through https://x.example"}}},
+		{Role: "shared", Gives: backup.Line{Value: "models:read"}, Default: true, Who: []backup.Line{{Value: "b@example.com, once a sign-in provider is chosen"}}},
 	})
 	want := `What each role gives, and who has it:
   chat: inference:chat
     nobody
   empty: nothing
-    someone at https://x.example
+    subject 1234 at https://x.example
+  member: models:read (everyone who signs in through a provider has this)
+    nobody else
   owner: access:manage, keys:manage (this root gives access:manage)
-    added at https://x.example (new to this root)
+    subject 1234 at https://x.example (new to this root)
     a@example.com, signing in through https://x.example
+  shared: models:read (everyone who signs in through a provider has this)
+    b@example.com, once a sign-in provider is chosen
 `
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -157,17 +163,34 @@ func TestTheRoleLinesRead(t *testing.T) {
 	}
 }
 
-// A long list says how many it didn't print, and whoever's new came first.
+// A long list says how many it didn't print, and how many of those are new, and where to see them.
 func TestALongRoleSaysHowManyMore(t *testing.T) {
 	who := []backup.Line{{Value: "added", Against: backup.AgainstNew}}
 	for range maxGrantLines + 9 {
 		who = append(who, backup.Line{Value: "someone"})
 	}
+	who = append(who, backup.Line{Value: "late", Against: backup.AgainstNew}, backup.Line{Value: "later", Against: backup.AgainstNew})
 	got := grantLines([]backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"}, Who: who}})
-	if !strings.Contains(got, "    added (new to this root)\n") || !strings.HasSuffix(got, "    and 10 more\n") {
+	if !strings.Contains(got, "    added (new to this root)\n") {
 		t.Errorf("%s", got)
+	}
+	if !strings.HasSuffix(got, "    and 12 more, 2 of them new. All of them: restore --dry-run --json\n") {
+		t.Errorf("%s", got[max(0, len(got)-200):])
 	}
 	if n := strings.Count(got, "\n    "); n != maxGrantLines+1 {
 		t.Errorf("%d lines", n)
+	}
+	got = grantLines([]backup.Grant{{Role: "owner", Who: who[1 : maxGrantLines+2]}})
+	if !strings.HasSuffix(got, "    and 1 more. All of them: restore --dry-run --json\n") {
+		t.Errorf("%s", got[max(0, len(got)-200):])
+	}
+}
+
+// Who has a role is judged by eye too, so a lookalike in it is shown for what it is.
+func TestALookalikeInWhoHasARoleIsShownForWhatItIs(t *testing.T) {
+	got := grantLines([]backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"},
+		Who: []backup.Line{{Value: "subject 1 at https://\u0430ccounts.example.com"}}}})
+	if !strings.Contains(got, `subject 1 at https://\u0430ccounts.example.com`) {
+		t.Errorf("%s", got)
 	}
 }
