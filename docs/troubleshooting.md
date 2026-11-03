@@ -29,6 +29,10 @@ A failed install prints a reason. See [install failures](install-failures.md).
 
 `400 remote_media_not_allowed` means a content part named a web address. Send the content itself: `image_url.url` must be a `data:` URL, and audio and files must hold base64, an id or a `data:` URL. A client that replays its history has to replace an address in an earlier message too. See [API details](api-details.md#image-and-video-inputs).
 
+## A busy database
+
+`The database is busy: the gateway or another command is writing to it` means something else held the database for longer than the 5 seconds a command waits. Try again in a moment. If it keeps happening, stop the gateway with the command it gives, and try again. With `--json`, the error has the reason `database_busy`.
+
 ## Queues
 
 `429 inference_queue_full` and `429 inference_queue_timeout` mean too many requests are waiting for one model type. Retry after `Retry-After`, or raise `--inference-queue-capacity` and `--inference-queue-timeout-ms` on `serve`. See [operations](operations.md).

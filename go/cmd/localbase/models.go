@@ -48,11 +48,19 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 		return nil, err
 	}
 	if _, err := os.Stat(e.Root.DB()); err == nil {
-		if st, err := store.OpenReadOnly(e.Root.DB()); err == nil {
+		// With no usable database the defaults stand in, but a busy one has settings: reporting
+		// defaults as if they were those would be wrong, and exit 0.
+		st, err := store.OpenReadOnly(e.Root.DB())
+		if store.IsBusy(err) {
+			return nil, err
+		}
+		if err == nil {
 			e.Store = st
 			if persisted {
-				if cfg, err := st.LoadConfig(context.Background()); err == nil {
-					e.Config = cfg
+				afterReadOpen()
+				if e.Config, err = persistedConfig(st); err != nil {
+					_ = st.Close() // Read-only.
+					return nil, err
 				}
 			}
 		}

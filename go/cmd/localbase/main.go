@@ -27,6 +27,7 @@ func app() *cli.App {
 		VersionDetails: func() any { return version.Get() },
 		Summary:        "Local AI installer, manager, and OpenAI-compatible gateway",
 		Default:        "configure",
+		ExplainError:   explainError,
 		Root:           &cli.Command{Sub: commands},
 	}
 }
