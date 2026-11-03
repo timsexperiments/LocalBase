@@ -166,6 +166,11 @@ rebase or merge from main is needed. GitHub reports #403 `MERGEABLE`/`CLEAN`.
 
 ## 4. Migration and rollback
 
+**Backends across the upgrade.** The first start of a build with §29 finds no backend records,
+so it cannot stop what an older gateway left running. The deploy procedure stops the old gateway
+cleanly first, which closes that gap. If a backend does survive, the new gateway refuses its port
+with an error naming it, and that backend has to be stopped by hand.
+
 **Schema.** `goSchemaVersion` stays 1 (`TestGoSchemaVersionForRollback`). The drizzle
 journal is unchanged, so rollback stays a binary swap. Go tables are `go_schema`,
 `imported_models`, `model_backend_selections`, `go_settings` and `model_placements`;
