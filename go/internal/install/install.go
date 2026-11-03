@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 
 	_ "modernc.org/sqlite"
@@ -268,7 +269,7 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 	if offset > 0 {
 		req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
 	}
-	resp, err := client.Do(req)
+	resp, err := idle.Do(client, req, idle.Timeout())
 	if err != nil {
 		removeIfEmpty(partial)
 		return err
