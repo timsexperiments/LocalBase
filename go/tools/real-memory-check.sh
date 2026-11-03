@@ -315,6 +315,9 @@ while [ "$n" -lt "$REQUESTS" ]; do
       REAL=$(demand_mib "$W/gw.log")
       log "backend $BACKEND; the real start's plan: $(starting "$W/gw.log")"
       log "backend args: $(ps -o command= -p "$BACKEND" | sed "s|$W|<scratch>|g" | cut -c1-300)"
+      # Read once, from ps: does the backend ignore SIGPIPE? (Bit 13, for an orphan's next log line.)
+      mask=$(ps -o sigignore= -p "$BACKEND" | tr -d ' ')
+      log "backend's ignored signals: ${mask:-unknown}; SIGPIPE ignored: $(perl -e 'my $m = hex($ARGV[0] // ""); print(($m & (1 << 12)) ? "yes" : "no")' "${mask:-0}")"
       if [ "${REAL:-0}" -gt "$PLAN_LIMIT_MIB" ]; then log "ABORT: the real start's plan is $REAL MiB, over the limit"; exit 6; fi
     fi
   fi
