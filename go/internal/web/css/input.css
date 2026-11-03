@@ -1272,12 +1272,13 @@
       @apply w-auto;
     }
   }
-  /* A strip that runs to the screen's edge, so the next one shows. It scrolls by itself. */
   .studio-recent-head {
     @apply mb-2 flex items-baseline justify-between gap-3;
   }
+  /* On a phone the shelf runs to the screen's edge, so the next one shows. Wider, the page's
+     gutter is larger, so it ends on the content's edge. Only the shelf scrolls. */
   .studio-recent {
-    @apply -mx-4 flex snap-x gap-3 overflow-x-auto scroll-px-4 px-4 pb-1;
+    @apply -mx-4 flex snap-x gap-3 overflow-x-auto scroll-px-4 px-4 pb-1 min-[768px]:mx-0 min-[768px]:scroll-px-0 min-[768px]:px-0;
     scrollbar-width: none;
   }
   .studio-recent > li {

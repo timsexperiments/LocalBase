@@ -4438,5 +4438,21 @@ own notes are in §22.15 to §22.20, and this says what v2 changed about them.
   pictures are as colorful as they are.
 
 **Checks:** `TestStudioLanding`, `TestStudioTile`, and `tools/chat-runs-check.sh` (words on a
-result, a tile that settles and keeps the strip's place).
+result, a tile that settles and keeps the strip's place, and the seeded landing at 320, 360, 390,
+430, 768 and 1280). `contract/studio_models_test.go` runs the real binary from the defaults `init`
+really chooses: each of the five tools offers only what is on disk, and half a model isn't one. On
+the pages before this change it failed for all five.
+
+### 27.3 What the landing's overflow taught
+
+- **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and
+  with no positioned parent inside the shelf it counted against the page: 636 px wide at 320. So a
+  tile is `relative`. Any shelf holding hidden text needs the same.
+- **Compare with `clientWidth`, never `innerWidth`.** Under mobile emulation `innerWidth` grows with
+  an overflowing page, so `scrollWidth > innerWidth` can't fail. Ten checks did that, and hid this.
+- **A check must be able to fail.** "Keeps its place" first passed at scroll position 0, so it runs
+  at 320 with enough results to scroll, and asserts that it did. Snapping also moves a position
+  between tiles, so it scrolls to a tile.
+- **Real pictures vary.** Captures use pictures a real model made and a quiet video fixture, so
+  sheets are judged on the design. Real media is as colorful as it is.
 
