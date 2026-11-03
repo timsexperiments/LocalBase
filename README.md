@@ -97,7 +97,7 @@ Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-sessio
 
 ## Documentation
 
-- [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md)
+- [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md), and [the upgrade command](docs/upgrade-command.md)
 - [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
 - [Connect an app](docs/connect.md)
 - [Usage and activity](docs/usage.md)

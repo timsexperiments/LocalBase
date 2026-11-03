@@ -9,6 +9,7 @@ LocalBase has **no telemetry by default**. Your prompts and outputs stay on your
 | Hugging Face | When you install or search for a model | Your IP address and the model you asked for. Your token, if you set one |
 | GitHub and the FFmpeg build hosts | When a runtime is first needed | Your IP address and which runtime |
 | `raw.githubusercontent.com` | Fetching the catalog feed, about once a day while running | Your IP address. Turn it off with `local-base models feed use off` |
+| `api.github.com` | Only if you run `local-base upgrade --check`, or turn on the daily check, which is off by default | One `GET` with `Accept` and `User-Agent: local-base`, so your IP address. No version, machine ID, usage or token |
 | Your identity provider, or your SMTP server | Only if you configure sign-in | What sign-in needs |
 | Your OTLP collector | Only if you configure it | See below |
 
