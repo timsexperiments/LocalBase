@@ -119,6 +119,31 @@ func leadingNumber(s string) string {
 	return s[:end]
 }
 
+// cpuContextCeiling and cpuSlots are the automatic launch where only the CPU can run a
+// model: a large context costs memory and is slow to fill, and slots divide a small
+// machine's speed. A context or slot count someone set is not affected.
+func cpuContextCeiling(memoryGB float64) int {
+	switch {
+	case memoryGB <= 8:
+		return 4096
+	case memoryGB <= 16:
+		return 16384
+	case memoryGB <= 32:
+		return 32768
+	}
+	return 65536
+}
+
+func cpuSlots(memoryGB float64) int {
+	switch {
+	case memoryGB <= 16:
+		return 1
+	case memoryGB <= 32:
+		return 2
+	}
+	return MaxParallelSlots
+}
+
 // LLMPlan is everything needed to launch and admit llama-server.
 type LLMPlan struct {
 	ModelID        string
@@ -162,11 +187,13 @@ type ContextBudget struct {
 
 // PlanInput carries config and host facts into PlanLLM.
 type PlanInput struct {
-	Config      *store.Config
-	Spec        *catalog.Spec // nil for an uncatalogued file
-	ModelID     string
-	ModelsDir   string
-	MemoryGB    float64
+	Config    *store.Config
+	Spec      *catalog.Spec // nil for an uncatalogued file
+	ModelID   string
+	ModelsDir string
+	MemoryGB  float64
+	// CPUOnly: nothing here can take layers, so a chat model gets a launch scaled to memory.
+	CPUOnly     bool
 	CtxOverride int // serve --ctx-size; 0 = none
 	Port        int
 	// ReadHeader reads the GGUF geometry; false skips file reads (listing).
@@ -234,6 +261,10 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 
 	// Context: override > explicit ceiling > min(recommended, ceiling).
 	recommended := RecommendedContext(spec, in.MemoryGB)
+	scaled := in.CPUOnly && !p.Embedding && !p.Decision
+	if scaled {
+		recommended = min(recommended, cpuContextCeiling(in.MemoryGB))
+	}
 	ctx := min(recommended, cfg.CtxSize)
 	if cfg.CtxMode == "explicit" {
 		ctx = cfg.CtxSize
@@ -267,6 +298,10 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 	par, err := AllocateParallel(cfg.Parallel, in.MemoryGB, float64(p.ArtifactBytes)/float64(memory.GiB), window, kvGB)
 	if err != nil {
 		return nil, err
+	}
+	if scaled && par.IsAuto {
+		par.Slots = min(par.Slots, cpuSlots(in.MemoryGB))
+		par.ContextPerSlot = window / par.Slots
 	}
 	p.CtxSize = window
 	if p.Decision {

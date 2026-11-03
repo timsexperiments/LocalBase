@@ -243,7 +243,7 @@ func (m *LLM) planFor(modelID string, t *Target) (*LLMPlan, error) {
 		if err != nil {
 			return nil, err
 		}
-		in := PlanInput{Config: m.Config(), ModelID: modelID, ModelsDir: t.Dir, ModelFile: w, MemoryGB: m.d.MemoryGB,
+		in := PlanInput{CPUOnly: m.cpuOnly(t), Config: m.Config(), ModelID: modelID, ModelsDir: t.Dir, ModelFile: w, MemoryGB: m.d.MemoryGB,
 			CtxOverride: m.d.CtxOverride, Port: m.port(), Task: t.task(), Geometry: m.geometryFor(filepath.Join(t.Dir, w))}
 		if p := t.projector(); p != "" {
 			in.Projector = filepath.Join(t.Dir, p)
@@ -264,7 +264,7 @@ func (m *LLM) planFor(modelID string, t *Target) (*LLMPlan, error) {
 	if m.d.ModelFileOverride != "" && modelID == m.Config().Active["llm"] {
 		override, file = m.d.ModelFileOverride, m.d.ModelFileOverride
 	}
-	return PlanLLM(PlanInput{Config: m.Config(), Spec: spec, ModelID: modelID, ModelsDir: m.d.ModelsDir,
+	return PlanLLM(PlanInput{CPUOnly: m.cpuOnly(t), Config: m.Config(), Spec: spec, ModelID: modelID, ModelsDir: m.d.ModelsDir,
 		MemoryGB: m.d.MemoryGB, CtxOverride: m.d.CtxOverride, Port: m.port(),
 		ModelFile: override,
 		Geometry:  m.geometryFor(filepath.Join(m.d.ModelsDir, file))})

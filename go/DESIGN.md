@@ -2519,6 +2519,10 @@ VRAM, the planner reproduces from the header alone:
   the DFS-owned queue with the user. This repo ships the code and the tests
   with synthetic fixtures only.
 
+### 20.4a The automatic launch on a CPU-only computer
+
+Where nothing can take layers on a GPU, a chat model's automatic launch scales with total memory: up to 8 GB, a 4,096-token context and 1 slot; up to 16 GB, 16,384 and 1; up to 32 GB, 32,768 and 2; above that a 65,536 ceiling. A 16 GB machine was otherwise given 131,072 tokens and 4 slots. An explicit context or slot count, `serve --ctx-size`, a computer with a GPU, and an embedding or decision model are not affected. The planner, `models show` and admission all read this one plan.
+
 ### 20.5 Startup placement check (fail closed)
 
 The llama-server output is read as bytes; a strict UTF-8 decode once
