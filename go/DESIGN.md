@@ -632,6 +632,8 @@ Deliberate differences the contract suite found and kept:
   emits a malformed stream in practice.
 - Crash recovery is lazy: an exited backend is cleared, and the next request
   starts it again. TS restarts in the background with bounded backoff.
+- A structured output schema whose references loop, or with over 1024 ways through
+  its alternatives, answers 400 `unsupported_json_schema` (§31.5).
 - A health answer counts only from the spawned child's process group, and the port check runs before every backend start (§29). TS checks ports in its startup preflight (`startup-preflight.ts`).
 - A tool-call delta with an index outside 0-127, or a fractional one, stays out of a run's accumulated `output`. The stream still carries it. Runs are Go-only (§21), so TS has no matching route.
 - `GET /_localbase/runs/{id}/events` answers `400 invalid_event_cursor` for a negative, text or overflowing `Last-Event-ID` or `?after=`. Runs are Go-only (§21), so TS has no matching route; this changes earlier Go behaviour, where text meant 0.
@@ -4896,6 +4898,25 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+### 31.5 What a structured output schema can cost
+
+A schema is a small request that can ask for a lot of work, from the gateway's check of the answer
+and from the backend that turns it into a grammar. A chat key can send one.
+
+- **References must consume something.** A `$ref` or an `anyOf` looks at no more of the answer, unlike
+  a property or an item. References that come back to themselves that way answer 400
+  `unsupported_json_schema`. Recursion through a property or an item stays allowed, since it ends when
+  the answer does.
+- **At most 1024 ways through a schema's alternatives,** from any point in it. Alternatives that name
+  each other multiply, so a few hundred bytes could otherwise mean more ways than a check could ever
+  finish. Over that answers the same 400.
+- **The check of an answer stops.** It takes at most 2,000,000 steps and goes 1000 steps deep. An answer it
+  can't finish checking counts as not matching: 502 `structured_output_validation_failed`. Ordinary answers
+  are nowhere near this, since a step is one value against one schema.
+
+These hold before a model is looked up. `FuzzStructuredOutput` runs its seeds in `go test`, and
+`tools/fuzz.sh` searches on demand.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
