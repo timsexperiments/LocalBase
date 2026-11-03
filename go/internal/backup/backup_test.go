@@ -121,6 +121,7 @@ func newRoot(t *testing.T, parent string) (*root.Root, string) {
 		"inputModalities": []string{"text"}, "outputModalities": []string{"text"}, "contextWindowTokens": 4096, "capabilities": []string{"text-generation"},
 		"commercialStatus": "open", "catch": "Test.", "notes": "Test."})
 	write(t, filepath.Join(r.Dir, "catalog.d", "my-model.json"), string(entry))
+	write(t, filepath.Join(r.Dir, "catalog.d", ".former-built-ins"), "an-old-model\nanother-old-model\n")
 	write(t, filepath.Join(r.Dir, "runs", "run_1.json"), `{"reply":"PLANTED_REPLY"}`)
 	write(t, filepath.Join(r.Dir, "logs", "events.jsonl"), `{"PLANTED_LOG":1}`+"\n")
 	write(t, filepath.Join(r.Dir, "models", "llm", "a.gguf"), "PLANTED_MODEL")
@@ -521,6 +522,138 @@ func TestBackupLeavesNoFreePages(t *testing.T) {
 	}
 }
 
+// The first run on a real root found a file backup kept and restore refused, so a backup that could
+// never be restored. This holds every kind of thing a real root holds, by the list from that run.
+func TestRealRootRoundTrip(t *testing.T) {
+	r, secret := newRoot(t, dir(t))
+	catalogDir := filepath.Join(r.Dir, "catalog.d")
+	// A patch of a built-in entry is a real catalog.d file, and isn't a whole entry.
+	cat, err := catalog.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtin := cat.Models[0].ModelID
+	write(t, filepath.Join(catalogDir, builtin+".json"), `{"modelId":"`+builtin+`","notes":"My note."}`)
+	// Entries the gateway reads past, and things nothing reads.
+	write(t, filepath.Join(catalogDir, "broken.json"), `{not json`)
+	write(t, filepath.Join(catalogDir, "incomplete.json"), `{"modelId":"nothing-else-here"}`)
+	write(t, filepath.Join(catalogDir, "notes.txt"), "mine")
+	write(t, filepath.Join(catalogDir, ".DS_Store"), "x")
+	write(t, filepath.Join(catalogDir, "half.json.123.tmp"), "x")
+	write(t, filepath.Join(r.Dir, "backends.d", "broken.json"), `{"schema":"nope"}`)
+	write(t, filepath.Join(r.Dir, "backends.d", "wrong-name.json"), `{"schema":"localbase.backend/v1","id":"another","name":"A","engine":"e","adapter":"process-openai/v1","tasks":["chat"],"capabilities":[],"formats":["gguf"],"architectures":{},"platforms":[{"os":"linux","arch":"arm64","accelerator":"cpu"}],"launch":{"command":"/bin/sh","args":["{port}"],"memory":{"weightsFactor":1,"overheadGb":0,"assumption":"none"}}}`)
+	write(t, filepath.Join(r.Dir, "backends.d", "README"), "mine")
+	write(t, filepath.Join(r.Dir, "voices", "stray.txt"), "mine")
+	write(t, filepath.Join(r.Dir, "catalog-feed.json"), `{"url":"https://feed.example.com"}`)
+	write(t, filepath.Join(r.Dir, "cache", "x"), "x")
+	write(t, filepath.Join(r.Dir, "bin", "runtimes", "llama-server"), "x")
+	write(t, filepath.Join(r.Dir, "logs", "service-stderr.log"), "x")
+
+	// A dry run gives the answer a real run gives.
+	if _, err := Create(context.Background(), Options{Root: r, DryRun: true, Output: filepath.Join(dir(t), "b"+Extension)}); err != nil {
+		t.Fatalf("dry run: %v", err)
+	}
+	res := create(t, r, false)
+	left := map[string]NotIncluded{}
+	for _, n := range res.Manifest.NotIncluded {
+		left[n.What] = n
+	}
+	for _, what := range []string{"catalog.d/broken.json", "catalog.d/incomplete.json", "backends.d/broken.json", "backends.d/wrong-name.json"} {
+		if !strings.Contains(left[what].Why, "ignores it") {
+			t.Errorf("%s should be left out because it is ignored: %+v", what, left[what])
+		}
+	}
+	for _, what := range []string{"catalog.d/notes.txt", "catalog.d/.DS_Store", "backends.d/README", "voices/stray.txt"} {
+		if !left[what].Unknown {
+			t.Errorf("%s should be listed as unknown: %+v", what, left[what])
+		}
+	}
+	if left["catalog.d/half.json.123.tmp"].Why == "" {
+		t.Error("a temporary file should be listed")
+	}
+	held := map[string]bool{}
+	for _, f := range res.Manifest.Files {
+		held[f.Path] = true
+	}
+	for _, want := range []string{"catalog.d/.former-built-ins", "catalog.d/my-model.json", "catalog.d/" + builtin + ".json", "backends.d/custom.json", "voices/" + voiceID + ".wav", "ui-access.json", "email-delivery.json", "credentials/auth-profiles.json", "local-base.db"} {
+		if !held[want] {
+			t.Errorf("%s should be in the backup: %v", want, held)
+		}
+	}
+
+	target := filepath.Join(dir(t), "restored")
+	restore(t, res.Output, target, false)
+	if b, err := os.ReadFile(filepath.Join(target, "catalog.d", ".former-built-ins")); err != nil || string(b) != "an-old-model\nanother-old-model\n" {
+		t.Errorf("the adoption log: %q %v", b, err)
+	}
+	if _, err := root.Open(target); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := catalog.Load(filepath.Join(target, "catalog.d"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.Diagnostics) != 0 {
+		t.Errorf("the restored catalog has problems: %+v", restored.Diagnostics)
+	}
+	if s := restored.ByID(builtin); s == nil || !strings.Contains(s.Notes, "My note.") {
+		t.Errorf("the patch should survive: %+v", s)
+	}
+	st, err := store.Open(filepath.Join(target, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if k, err := st.ResolveAPIKey(context.Background(), secret); err != nil || k == nil {
+		t.Errorf("the key should work: %v %v", k, err)
+	}
+}
+
+// Whatever else goes wrong, a backup its own restore would refuse is never kept or reported.
+func TestBackupRefusesWhatItCouldNotRestore(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	// The database names a recording the root no longer has.
+	p, _ := voices.Path(r.Dir, voiceID)
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	places := dir(t)
+	before := tree(t, filepath.Dir(r.Dir), filepath.Base(r.Dir))
+	for _, dry := range []bool{false, true} {
+		out := filepath.Join(places, "b"+Extension)
+		res, err := Create(context.Background(), Options{Root: r, Output: out, DryRun: dry})
+		if err == nil || !strings.Contains(err.Error(), "would not restore") || !strings.Contains(err.Error(), voiceID) {
+			t.Fatalf("dry run %v: %v %+v", dry, err, res)
+		}
+		if _, err := os.Stat(out); !os.IsNotExist(err) {
+			t.Errorf("dry run %v left a file: %v", dry, err)
+		}
+		entries, _ := os.ReadDir(places)
+		if len(entries) != 0 {
+			t.Errorf("dry run %v left %v", dry, entries)
+		}
+		if after := tree(t, filepath.Dir(r.Dir), filepath.Base(r.Dir)); after != before {
+			t.Errorf("dry run %v left something beside the root:\n%s", dry, after)
+		}
+	}
+}
+
+func TestRestoreRefusesABadAdoptionLog(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	e := read(t, create(t, r, false).Output)
+	for i := range e {
+		if e[i].header.Name == filesPrefix+formerLog {
+			e[i].body = []byte("not an id, this is a sentence\n")
+		}
+	}
+	reseal(t, e)
+	crafted := filepath.Join(dir(t), "crafted"+Extension)
+	pack(t, crafted, e)
+	if _, err := Stage(context.Background(), crafted, filepath.Join(dir(t), "target"), false); err == nil || !strings.Contains(err.Error(), "not a list of ids") {
+		t.Fatal(err)
+	}
+}
+
 func TestBackupListsWhatItDoesNotKnow(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	write(t, filepath.Join(r.Dir, "something-new", "file"), "x")
@@ -694,6 +827,16 @@ func TestRestoreRefusesBadFiles(t *testing.T) {
 		}, "can't hold"},
 		"an absolute path": {func(t *testing.T, e []entry) []entry {
 			e = append(e, regular(filesPrefix+"/etc/escape", "x"))
+			reseal(t, e)
+			return e
+		}, "can't hold"},
+		"a dotfile that isn't the adoption log": {func(t *testing.T, e []entry) []entry {
+			e = append(e, regular(filesPrefix+"catalog.d/.hidden", "x"))
+			reseal(t, e)
+			return e
+		}, "can't hold"},
+		"a program in a catalog directory": {func(t *testing.T, e []entry) []entry {
+			e = append(e, regular(filesPrefix+"backends.d/run.sh", "#!/bin/sh"))
 			reseal(t, e)
 			return e
 		}, "can't hold"},

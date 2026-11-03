@@ -20,6 +20,8 @@ By default it holds your Hugging Face token, OTLP headers, sign-in client secret
 
 Nothing is left out silently: `backup` lists everything it leaves out, with its size and why, and that list is in the file too.
 
+**A backup is checked before it is kept.** `backup` reads the file back with the same checks `restore` makes, and if restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work and keeps nothing.
+
 | Included | Secrets in it |
 |---|---|
 | Settings, API keys, users, roles, policies, imported models, backend choices, voice records, usage totals (the database) | Hugging Face token, OTLP headers. **API keys are hashes only**, so they can't be read back, and a restored root accepts the same keys |

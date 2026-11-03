@@ -24,9 +24,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 const (
@@ -38,6 +41,9 @@ const (
 	manifestEntry = "manifest.json"
 	filesPrefix   = "files/"
 	beforePrefix  = ".before-restore-"
+	// formerLog is the one name in those directories that isn't a JSON entry: the ids of former
+	// built-ins already kept as entries, so that removing one sticks.
+	formerLog = "catalog.d/.former-built-ins"
 
 	// SignOutLine and RevokedLine are said before a restore asks, and are in every manifest.
 	SignOutLine = "A restore signs everyone out. API keys keep working."
@@ -167,41 +173,39 @@ func survey(rootDir string) (files []string, left []NotIncluded, err error) {
 	unknown := func(rel string, p string) {
 		left = append(left, NotIncluded{What: rel, Why: "Not something this version knows, so it is not copied", Bytes: sizeOf(p), Unknown: true})
 	}
+	ignored, err := ignoredByTheGateway(rootDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	// listed sorts one file of a directory a backup holds from: the same rule restore uses.
+	listed := func(rel, p string, entry fs.DirEntry) {
+		switch {
+		case strings.HasSuffix(entry.Name(), ".tmp"):
+			left = append(left, NotIncluded{What: rel, Why: "A temporary file", Bytes: sizeOf(p)})
+		case !holdable(rel):
+			unknown(rel, p)
+		case entry.Type()&fs.ModeSymlink != 0:
+			// It stays on the list, so that reading it refuses, and says so.
+			files = append(files, rel)
+		case ignored[rel] != "":
+			left = append(left, NotIncluded{What: rel, Why: "LocalBase ignores it, and a restore would refuse it: " + ignored[rel], Bytes: sizeOf(p)})
+		default:
+			files = append(files, rel)
+		}
+	}
 	for _, e := range entries {
 		name, p := e.Name(), filepath.Join(rootDir, e.Name())
 		switch {
-		case name == "credentials":
+		case name == "credentials" || contains(includedDirs, name):
 			inner, err := os.ReadDir(p)
 			if err != nil {
 				return nil, nil, err
 			}
 			for _, c := range inner {
-				rel := "credentials/" + c.Name()
-				if rel == "credentials/auth-profiles.json" {
-					files = append(files, rel)
-				} else {
-					unknown(rel, filepath.Join(p, c.Name()))
-				}
+				listed(name+"/"+c.Name(), filepath.Join(p, c.Name()), c)
 			}
 		case contains(includedFiles, name):
 			files = append(files, name)
-		case contains(includedDirs, name):
-			inner, err := os.ReadDir(p)
-			if err != nil {
-				return nil, nil, err
-			}
-			for _, c := range inner {
-				rel := name + "/" + c.Name()
-				switch {
-				case strings.HasSuffix(c.Name(), ".tmp"):
-					left = append(left, NotIncluded{What: rel, Why: "A temporary file", Bytes: sizeOf(filepath.Join(p, c.Name()))})
-				case c.IsDir():
-					unknown(rel, filepath.Join(p, c.Name()))
-				default:
-					// A link stays on this list, so that reading it refuses, and says so.
-					files = append(files, rel)
-				}
-			}
 		case strings.HasPrefix(name, beforePrefix):
 			left = append(left, NotIncluded{What: name, Why: "Old files from an earlier restore. They hold secrets, and a backup must not carry them on", Bytes: sizeOf(p)})
 		default:
@@ -219,6 +223,69 @@ func survey(rootDir string) (files []string, left []NotIncluded, err error) {
 	sort.Strings(files)
 	sort.Slice(left, func(i, j int) bool { return left[i].What < left[j].What })
 	return files, left, nil
+}
+
+// holdable is every path a backup may hold, for writing one and for reading one. They must not
+// disagree: a file one writes and the other refuses makes a backup that can never be restored.
+// Each directory holds only what its reader reads. Anything else there is listed as unknown.
+func holdable(rel string) bool {
+	if len(rel) == 0 || len(rel) > maxPathLength || strings.ContainsAny(rel, "\\\x00\r\n") || path.IsAbs(rel) || path.Clean(rel) != rel {
+		return false
+	}
+	if contains(includedFiles, rel) || rel == formerLog {
+		return true
+	}
+	dir, name := path.Split(rel)
+	switch strings.TrimSuffix(dir, "/") {
+	case "catalog.d", "backends.d":
+		return strings.HasSuffix(name, ".json") && !strings.HasPrefix(name, ".")
+	case "voices":
+		id, wav := strings.CutSuffix(name, ".wav")
+		return wav && voices.IDPattern.MatchString(id)
+	}
+	return false
+}
+
+// backendProblem is why a custom backend's file is not usable, or nil. The gateway skips such a
+// file, and a restore refuses it.
+func backendProblem(file string, builtin *backends.Registry) (*backends.Definition, error) {
+	d, err := backends.ReadCustom(file)
+	if err != nil {
+		return nil, err
+	}
+	if filepath.Base(file) != d.ID+".json" {
+		return nil, fmt.Errorf("it should be named %s.json", d.ID)
+	}
+	if builtin.Get(d.ID) != nil {
+		return nil, fmt.Errorf("it has the id of a built-in backend, %s", d.ID)
+	}
+	return d, nil
+}
+
+// ignoredByTheGateway is what the gateway reads past, by path, with why. A real root can hold a
+// broken entry for years, since the gateway only reports it. A backup leaves it out and says so.
+func ignoredByTheGateway(rootDir string) (map[string]string, error) {
+	out := map[string]string{}
+	cat, err := catalog.Load(filepath.Join(rootDir, "catalog.d"))
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range cat.Diagnostics {
+		if d.Tier == "user" && d.Path != "" {
+			out["catalog.d/"+filepath.Base(d.Path)] = d.Message
+		}
+	}
+	builtin, err := backends.Load("")
+	if err != nil {
+		return nil, err
+	}
+	files, _ := filepath.Glob(filepath.Join(backends.Dir(rootDir), "*.json"))
+	for _, file := range files {
+		if _, err := backendProblem(file, builtin); err != nil {
+			out["backends.d/"+filepath.Base(file)] = err.Error()
+		}
+	}
+	return out, nil
 }
 
 func contains(list []string, v string) bool {
@@ -341,21 +408,14 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 		return nil, err
 	}
 	res := &Result{Output: out, DryRun: o.DryRun, Warning: Warning(m), Cautions: cautions, Manifest: m}
-	if o.DryRun {
-		for _, rel := range files {
-			if _, dropped := secrets.dropped[rel]; dropped {
-				continue
-			}
-			info, err := os.Lstat(filepath.Join(o.Root.Dir, filepath.FromSlash(rel)))
-			if err != nil {
-				return nil, err
-			}
-			m.Files = append(m.Files, File{Path: rel, Size: info.Size()})
-		}
-		return res, nil
-	}
 
-	stage, err := os.MkdirTemp(filepath.Dir(out), ".lbbackup-")
+	// A dry run does all of this too, so that its answer can be believed, and keeps nothing. It
+	// works beside the root, since the place it would write may not exist yet.
+	place := filepath.Dir(out)
+	if o.DryRun {
+		place = filepath.Dir(o.Root.Dir)
+	}
+	stage, err := os.MkdirTemp(place, ".lbbackup-")
 	if err != nil {
 		return nil, err
 	}
@@ -413,15 +473,43 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	if err := writeArchive(ctx, archive, content, m); err != nil {
 		return nil, err
 	}
-	if err := place(archive, out); err != nil {
-		return nil, err
+	// The real defence against backup and restore disagreeing: a file its own restore would refuse
+	// is never kept, or reported as a backup.
+	if err := selfCheck(ctx, archive, stage); err != nil {
+		return nil, fmt.Errorf("This backup would not restore, so it was not kept: %w", err)
 	}
-	info, err := os.Stat(out)
+	info, err := os.Stat(archive)
 	if err != nil {
 		return nil, err
 	}
 	res.Bytes = info.Size()
+	if o.DryRun {
+		return res, nil
+	}
+	if err := placeFile(archive, out); err != nil {
+		return nil, err
+	}
 	return res, nil
+}
+
+// selfCheck reads a finished backup the way a restore does, into a directory that goes with the
+// stage, with every check a restore makes before it changes anything.
+func selfCheck(ctx context.Context, archive, stage string) error {
+	in, err := os.Open(archive)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	dir := filepath.Join(stage, "selfcheck")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return err
+	}
+	m, err := extract(ctx, in, dir)
+	if err != nil {
+		return err
+	}
+	_, err = validate(ctx, dir, filepath.Join(stage, "would-be-root"), m, &targetState{newRoot: true})
+	return err
 }
 
 // writePrivate writes a new file that is 0600 from its first moment, whatever the umask.
@@ -508,9 +596,9 @@ func writeArchive(ctx context.Context, archive, content string, m *Manifest) err
 	return out.Sync()
 }
 
-// place puts a finished backup at its name, and never over another file. A link fails if the
+// placeFile puts a finished backup at its name, and never over another file. A link fails if the
 // name is taken; a filesystem without links gets an exclusive copy instead.
-func place(archive, out string) error {
+func placeFile(archive, out string) error {
 	err := os.Link(archive, out)
 	if err == nil {
 		return nil

@@ -14,7 +14,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -240,22 +239,10 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 }
 
 var (
-	sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	newerRe   = regexp.MustCompile(`^localbase\.backup/v[0-9]+$`)
+	sha256Hex  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	newerRe    = regexp.MustCompile(`^localbase\.backup/v[0-9]+$`)
+	formerIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
-
-// allowedPath is every path a backup may hold, and nothing is taken from the manifest's word.
-func allowedPath(rel string) bool {
-	if len(rel) == 0 || len(rel) > maxPathLength || strings.ContainsAny(rel, "\\\x00\r\n") || path.IsAbs(rel) || path.Clean(rel) != rel {
-		return false
-	}
-	if contains(includedFiles, rel) {
-		return true
-	}
-	dir, name := path.Split(rel)
-	dir = strings.TrimSuffix(dir, "/")
-	return contains(includedDirs, dir) && name != "" && !strings.HasPrefix(name, ".") && !strings.Contains(name, "/")
-}
 
 func readManifest(tr *tar.Reader) (*Manifest, error) {
 	h, err := tr.Next()
@@ -303,7 +290,7 @@ func checkManifestFiles(m *Manifest) (map[string]File, int64, error) {
 	byPath := map[string]File{}
 	var total int64
 	for _, f := range m.Files {
-		if !allowedPath(f.Path) {
+		if !holdable(f.Path) {
 			return nil, 0, refuse("The backup lists a file a backup can't hold: %q.", f.Path)
 		}
 		if _, dup := byPath[f.Path]; dup {
@@ -625,15 +612,9 @@ func checkBackends(dir string) ([]Program, error) {
 	}
 	var out []Program
 	for _, e := range files {
-		d, err := backends.ReadCustom(filepath.Join(backends.Dir(dir), e.Name()))
+		d, err := backendProblem(filepath.Join(backends.Dir(dir), e.Name()), builtin)
 		if err != nil {
 			return nil, refuse("The backend %s in this backup is not valid: %v", e.Name(), err)
-		}
-		if e.Name() != d.ID+".json" {
-			return nil, refuse("The backend %s in this backup should be named %s.json.", e.Name(), d.ID)
-		}
-		if builtin.Get(d.ID) != nil {
-			return nil, refuse("The backend %s in this backup has the id of a built-in backend.", e.Name())
 		}
 		_, statErr := os.Stat(d.Launch.Command)
 		out = append(out, Program{Backend: d.ID, Command: append([]string{d.Launch.Command}, d.Launch.Args...), Exists: statErr == nil})
@@ -644,22 +625,24 @@ func checkBackends(dir string) ([]Program, error) {
 // checkCatalog is what opening the root will do, so a root that would refuse every command is
 // caught here.
 func checkCatalog(dir string, cfg *store.Config) error {
-	files, err := os.ReadDir(filepath.Join(dir, "catalog.d"))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(formerLog))); err == nil {
+		for _, id := range strings.Split(string(b), "\n") {
+			if id = strings.TrimSpace(id); id != "" && !formerIDRe.MatchString(id) {
+				return refuse("%s in this backup is not a list of ids.", formerLog)
+			}
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
-	}
-	for _, e := range files {
-		b, err := os.ReadFile(filepath.Join(dir, "catalog.d", e.Name()))
-		if err != nil {
-			return err
-		}
-		if _, err := catalog.DecodeSpec(b); err != nil {
-			return refuse("The catalog entry %s in this backup is not valid: %v", e.Name(), err)
-		}
 	}
 	cat, err := catalog.LoadRoot(dir, nil)
 	if err != nil {
 		return refuse("The catalog in this backup is not valid: %v", err)
+	}
+	// The gateway only reports a bad entry. A backup leaves them out, so one here was put there.
+	for _, d := range cat.Diagnostics {
+		if d.Tier == "user" {
+			return refuse("The catalog entry %s in this backup is not valid: %s", filepath.Base(d.Path), d.Message)
+		}
 	}
 	if cfg == nil {
 		return nil
