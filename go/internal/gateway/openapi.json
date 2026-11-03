@@ -2628,6 +2628,62 @@
         }
       }
     },
+    "/_localbase/update": {
+      "get": {
+        "operationId": "getUpdateCheck",
+        "summary": "Whether a newer version is known",
+        "tags": ["Host"],
+        "description": "Reads what is stored, and makes no request. The check is off by default.",
+        "x-localbase-permission": "models:read",
+        "x-localbase-stability": "unstable",
+        "responses": {
+          "200": {
+            "description": "What is stored.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateState"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "405": {"$ref": "#/components/responses/MethodNotAllowed"},
+          "501": {"$ref": "#/components/responses/NotConfigured"}
+        }
+      },
+      "post": {
+        "operationId": "setUpdateCheck",
+        "summary": "Turn the daily check on or off",
+        "tags": ["Host"],
+        "description": "`access:manage` also works. On, the gateway makes one request a day to GitHub, sending nothing about this computer. Nothing here installs anything.",
+        "x-localbase-permission": "system:manage",
+        "x-localbase-stability": "unstable",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"action": {"const": "set-check"}, "enabled": {"type": "boolean"}},
+                "required": ["action", "enabled"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "description": "At most 4 KiB."
+        },
+        "responses": {
+          "200": {
+            "description": "Done.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateState"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "405": {"$ref": "#/components/responses/MethodNotAllowed"},
+          "413": {"$ref": "#/components/responses/TooLarge"},
+          "501": {"$ref": "#/components/responses/NotConfigured"},
+          "503": {"$ref": "#/components/responses/Unavailable"}
+        },
+        "x-localbase-or-permission": ["access:manage"]
+      }
+    },
     "/_localbase/usage": {
       "get": {
         "operationId": "getUsage",
@@ -5691,6 +5747,23 @@
         },
         "required": ["file"],
         "additionalProperties": true
+      },
+      "UpdateState": {
+        "type": "object",
+        "description": "What is stored. Reading asks nobody.",
+        "properties": {
+          "object": {"const": "localbase.update"},
+          "enabled": {"type": "boolean"},
+          "current": {"type": "string"},
+          "latest": {
+            "type": ["string", "null"],
+            "description": "The newest release this gateway has seen, when the check is on."
+          },
+          "url": {"type": ["string", "null"]},
+          "checkedAt": {"type": ["string", "null"], "format": "date-time"},
+          "updateAvailable": {"type": "boolean", "description": "Only with the check on, and only on a release build."}
+        },
+        "required": ["object", "enabled", "current", "latest", "url", "checkedAt", "updateAvailable"]
       },
       "UsageReport": {
         "type": "object",
