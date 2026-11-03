@@ -75,7 +75,13 @@ func run(out, chrome, axe string, keep bool) (code int) {
 		}
 		w.Close()
 	}()
-	time.AfterFunc(hard+30*time.Second, func() {
+	// The last resort, for a suite stuck past its deadline. tools/e2e-kill-check.sh brings it
+	// forward to show that it leaves nothing running.
+	forceExit := hard + 30*time.Second
+	if v, err := strconv.Atoi(os.Getenv("LOCALBASE_E2E_FORCE_EXIT_SECONDS")); err == nil && v > 0 {
+		forceExit = time.Duration(v) * time.Second
+	}
+	time.AfterFunc(forceExit, func() {
 		fmt.Fprintln(os.Stderr, "e2e: hard deadline passed; stopping everything")
 		w.KillStray()
 		os.Exit(2)

@@ -29,3 +29,7 @@ bench-compare: ## The same, then compare with the recorded baseline for this pla
 .PHONY: e2e
 e2e: ## The browser suite in headless Chrome, against fake backends; about a minute
 	tools/e2e.sh
+
+.PHONY: e2e-kill-check
+e2e-kill-check: ## Show the browser suite leaves nothing running however it ends; about a minute
+	tools/e2e-kill-check.sh
