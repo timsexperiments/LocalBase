@@ -83,7 +83,7 @@ func (o *Object) Keys() []string {
 func Parse(b []byte) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
-	v, err := parseValue(dec)
+	v, err := parseValue(dec, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -93,13 +93,22 @@ func Parse(b []byte) (any, error) {
 	return v, nil
 }
 
-func parseValue(dec *json.Decoder) (any, error) {
+// maxParseDepth is how deeply a document may nest. Parsing recurses, and a stack overflow ends the
+// process, since recover can't catch it. Nothing this reads comes close to this.
+const maxParseDepth = 1000
+
+var errTooDeep = errors.New("nested too deeply")
+
+func parseValue(dec *json.Decoder, depth int) (any, error) {
 	t, err := dec.Token()
 	if err != nil {
 		return nil, err
 	}
 	switch v := t.(type) {
 	case json.Delim:
+		if depth >= maxParseDepth {
+			return nil, errTooDeep
+		}
 		switch v {
 		case '{':
 			o := NewObject()
@@ -108,7 +117,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				val, err := parseValue(dec)
+				val, err := parseValue(dec, depth+1)
 				if err != nil {
 					return nil, err
 				}
@@ -119,7 +128,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 		case '[':
 			arr := []any{}
 			for dec.More() {
-				val, err := parseValue(dec)
+				val, err := parseValue(dec, depth+1)
 				if err != nil {
 					return nil, err
 				}

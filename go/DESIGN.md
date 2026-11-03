@@ -4896,6 +4896,14 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+
+### 31.10 How deep a document may nest
+
+The parser for feeds and catalogs recurses, and a document that nests deeply enough overflows the stack. That ends the
+process, because `recover` can't catch it, and a feed comes from elsewhere and can be 8 MiB. A document may nest 1000
+levels. Past that it's refused like any other that isn't valid, so a bad feed stays a bad feed and the last good one
+stays in use. `tools/fuzz.sh` has `FuzzParse`, which `go test` runs on its seeds.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
