@@ -35,3 +35,26 @@ func Printable(s string) string {
 func needsEscape(r rune) bool {
 	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
+
+// PrintableASCII is Printable for a value a person judges by its letters, like an address. A letter
+// from another alphabet can make one address look like another, so anything outside ASCII shows as
+// an escape as well. A real internationalised address does too, which is the right trade where
+// someone is deciding whether to trust it.
+func PrintableASCII(s string) string {
+	s = Printable(s)
+	if !strings.ContainsFunc(s, func(r rune) bool { return r > unicode.MaxASCII }) {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r <= unicode.MaxASCII:
+			b.WriteRune(r)
+		case r <= 0xffff:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			fmt.Fprintf(&b, `\U%08x`, r)
+		}
+	}
+	return b.String()
+}
