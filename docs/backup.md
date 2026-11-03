@@ -62,7 +62,7 @@ Restore checks the whole file before changing anything. It refuses a file you do
 - **Every custom backend's whole command line.** These run as you when their model loads.
 - **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
 - **Some of the settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
-- **Who gets a role through a binding, by sign-in provider,** and what names no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
+- **How many role bindings and invitations each sign-in provider has,** and how many name no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
 - **With `--replace`, what comes back:** keys, users and role bindings the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says. A new root has nothing to compare with, and neither does a database that can't be read, which the report says. In either case, check `local-base keys list` afterwards.
 
 **An older backup can still bring back a leaked key's secret.** The comparison looks at whether a key is revoked, not at its secret:
@@ -136,6 +136,7 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 - **A backup someone else made or changed.** Nothing signs a backup, and the checksums find damage, not tampering. Restore's checks catch some changes, not all of them, and a file made to mislead can pass them:
   - **It can give someone permissions the report doesn't show,** and that the access policy doesn't list afterwards.
   - **The report leaves out things that decide who can sign in or where data goes:** a sign-in provider's exact issuer (it prints the name the file gives it), what everyone who signs in gets, the origin, the SMTP host, a download credential's origins, a catalog entry's source, and the `update.*` and `speech.provenance-marking` settings.
+  - **It only counts role bindings.** It doesn't say who they're for or what the role gives, so a file adding its own account to a strong role shows up as a higher count.
   - **It prints what the file says as it is,** terminal escape codes included, so a value can change or hide lines of the report on your screen, including the commands that run as you.
   - **Part of the report is only what the file claims:** which secrets it holds, and the command it gives to put each one back. Don't run a command printed from a file you didn't make.
   - **The database check doesn't compare all of a table's definition,** such as its `CHECK` constraints, so a changed table can pass and make later commands fail, including `keys revoke`.
