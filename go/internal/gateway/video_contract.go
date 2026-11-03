@@ -314,7 +314,7 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 			required = e.Diagnostics.Requested
 		}
 		resident := e.RequestedBytes - required
-		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Unload other models and retry.",
+		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Free memory from a loaded model, then try again.",
 			gibText(required), gibText(resident), gibText(e.AvailableBytes))
 	}
 	pool := "memory"

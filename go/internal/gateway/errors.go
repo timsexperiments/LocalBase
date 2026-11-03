@@ -130,7 +130,7 @@ func runtimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 				float64(ae.RequestedBytes)/float64(memory.GiB), float64(ae.AvailableBytes)/float64(memory.GiB), float64(ae.ReserveBytes)/float64(memory.GiB))
 		}
 		if ae.PoolID == "gpu-working-set" && !ae.Permanent {
-			msg = fmt.Sprintf("This model needs more GPU memory than the %.1f GiB working-set limit leaves beside the models already loaded. Retry once another model is idle or unloaded.", float64(ae.AvailableBytes)/float64(memory.GiB))
+			msg = fmt.Sprintf("This model needs more GPU memory than the %.1f GiB working-set limit leaves beside the models already loaded. Retry once another model is idle, or free memory from one.", float64(ae.AvailableBytes)/float64(memory.GiB))
 		}
 		writeError(w, r, 503, "api_error", "insufficient_memory", msg, nil)
 	case errors.Is(err, r.Context().Err()) && r.Context().Err() != nil:

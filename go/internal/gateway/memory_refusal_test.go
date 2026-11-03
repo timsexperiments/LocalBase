@@ -133,9 +133,6 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		"This model is being unloaded.", // model_unloading: a state
 		"or unload with waiting.",       // about the API call that was just made
 		"Model unload",                  // the name of that service
-		// Not reworded yet: both wait for the operator's yes, as public strings do.
-		"Unload other models and retry.",
-		"another model is idle or unloaded.",
 	}
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -170,5 +167,14 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		if !strings.Contains(text, "Free memory from a loaded model") {
 			t.Errorf("%q", text)
 		}
+	}
+	working := videoMemoryMessage(&memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"})
+	if !strings.Contains(working, "Free memory from a loaded model, then try again.") {
+		t.Errorf("%q", working)
+	}
+	rec := httptest.NewRecorder()
+	runtimeError(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"}, "m", "Inference")
+	if !strings.Contains(rec.Body.String(), "Retry once another model is idle, or free memory from one.") {
+		t.Errorf("%s", rec.Body.String())
 	}
 }

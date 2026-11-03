@@ -1197,7 +1197,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough GPU working set to start the video runtime alongside the models already loaded: it needs 20.0 GiB, other loaded models use 30.0 GiB, and the GPU working-set limit is 48.0 GiB. Unload other models and retry."
+        "message": "Not enough GPU working set to start the video runtime alongside the models already loaded: it needs 20.0 GiB, other loaded models use 30.0 GiB, and the GPU working-set limit is 48.0 GiB. Free memory from a loaded model, then try again."
       }
     },
     "failed-consent": {
