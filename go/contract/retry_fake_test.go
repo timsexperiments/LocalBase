@@ -2,15 +2,19 @@ package contract
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// TestDifferentialRetrySemanticsFake is TestDifferentialRetrySemantics without a real sd-server, so
-// that it runs in CI: a fake that refuses to start while a file exists, and then starts. A failed
+// TestDifferentialRetrySemanticsFake is TestDifferentialRetrySemantics without a real backend, so that
+// it runs in CI: a fake whisper-server that refuses to start while a file exists, and then starts. It
+// is transcription, not images, because a CI runner has too little free memory to admit an image
+// model's estimate even with no reserve, and transcription goes through the same failed-start path. A failed
 // start is transient on both gateways: 503 with Retry-After on each repeat, with the same envelope.
 // Once the fault is gone, Go's next request works, because it retries the start. The reserve is off,
 // so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
@@ -47,21 +51,29 @@ func TestDifferentialRetrySemanticsFake(t *testing.T) {
 		if err := mustWriteFile(broken, []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		script := filepath.Join(bin, "sd-server")
+		script := filepath.Join(bin, "whisper-server")
 		if err := mustWriteFile(script, []byte(fmt.Sprintf("#!/bin/sh\n[ -e %q ] && exit 3\nexec %q \"$@\"\n", broken, fake)), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		// Go is told where it is; TS finds a user-managed one on PATH.
-		tg, err := launchEnv(impl, []string{"LOCALBASE_SD_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")})
+		tg, err := launchEnv(impl, []string{"LOCALBASE_WHISPER_SERVER=" + script, "PATH=" + bin + ":" + os.Getenv("PATH")})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer tg.stop()
 		ask := func() *Resp {
+			var b strings.Builder
+			mw := multipart.NewWriter(&b)
+			_ = mw.WriteField("model", "whisper-base-en-q8_0")
+			fw, err := mw.CreateFormFile("file", "a.wav")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _ = fw.Write([]byte("RIFF\x24\x00\x00\x00WAVEfmt "))
+			_ = mw.Close()
 			h := bearer(tg.Key)
-			h["Content-Type"] = "application/json"
-			return do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
-				`{"model":"dreamshaper-8-lcm","prompt":"a","size":"256x256","response_format":"b64_json"}`)
+			h["Content-Type"] = mw.FormDataContentType()
+			return do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
 		}
 		var a answer
 		for i := 1; i <= 2; i++ {
