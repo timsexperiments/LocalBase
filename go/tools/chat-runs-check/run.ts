@@ -422,6 +422,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
 // Real Tab presses, as Reliability's suite found this: focus on a control left only its top edge above
 // the dock. At each width, in the form and on an answer.
 await nav("/app/studio/decisions");
+if (!(await ev(`!!document.getElementById("decide")`))) console.log("skip decision answers (no decision model selected)");
 if (await ev(`!!document.getElementById("decide")`)) {
   const pressTab = async () => {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
@@ -921,6 +922,7 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
   await nav("/app/studio");
   const planted = await ev(`(async () => { const n = document.createElement("div"); n.style.cssText = "width:1200px;height:1px"; document.querySelector("main").append(n); await new Promise((r) => requestAnimationFrame(r)); const d = document.documentElement, caught = d.scrollWidth > d.clientWidth; n.remove(); return { caught, inner: innerWidth, client: d.clientWidth }; })()`);
   check(planted.caught, `the width measure catches a planted 1200 px element: ${JSON.stringify(planted)}`);
+  if (hasResults < 4) console.log("skip the landing with results (fewer than four results)");
   if (hasResults >= 4) for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
     await nav("/app/studio");
@@ -933,6 +935,7 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
 // --- The picture viewer inspects, frames and gives back your place (DESIGN §27.5) ----------------
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/image");
+if ((await ev(`document.querySelectorAll(".image-open").length`)) < 2) console.log("skip the viewer (fewer than two pictures)");
 if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
   const inViewer = `(() => { const d = document.querySelector("dialog.viewer[open]"), st = d.querySelector(".viewer-stage"), b = d.querySelector("[data-view-zoom]"), m = d.querySelector("[data-view-mat]"), img = d.querySelector(".viewer-img"); return { id: d.id, zoomed: st.classList.contains("viewer-zoomed"), wider: st.scrollWidth > st.clientWidth, left: st.scrollLeft, pressed: b.getAttribute("aria-pressed"), label: b.getAttribute("aria-label"), mat: m.getAttribute("aria-pressed"), matLabel: m.getAttribute("aria-label"), ground: getComputedStyle(img).backgroundColor, hint: getComputedStyle(d.querySelector(".viewer-hint")).display }; })()`;
   const press = async (key, code, vk) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(120); };
@@ -1081,6 +1084,7 @@ if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/image");
 const imageModel = await ev(`document.querySelector("form input[name=model]")?.value ?? ""`);
+if (!imageModel) console.log("skip the pill (no picture model)");
 if (imageModel) {
   // Waits for what is running to end, then starts slow pictures, so the states below are really there.
   const anyActive = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
@@ -1132,6 +1136,7 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await nav("/app/studio/video");
 const canVideo = await ev(`!!document.querySelector("#lab-prompt") && !!document.querySelector("form input[name=model]")`);
 const pictureModel = await (async () => { await nav("/app/studio/image"); return ev(`document.querySelector("form input[name=model]")?.value ?? ""`); })();
+if (!(canVideo && pictureModel)) console.log("skip reaching the last control with a pill (needs a video and a picture model)");
 if (canVideo && pictureModel) {
   const activeRuns = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
   const lastControl = `(() => {
@@ -1175,15 +1180,76 @@ if (canVideo && pictureModel) {
 }
 
 // --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
+const settleVideoPage = async () => { for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items > li .video-actions")`)); i++) await sleep(150); };
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/video");
-if (await ev(`!!document.querySelector("#lab-items video")`)) {
-  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
+if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) console.log("skip finished video (no video model selected)");
+else {
+  // This section makes its own: earlier steps have removed theirs by now, and for a while it skipped without saying so.
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = "a quiet bay at dawn"; document.querySelector("form[aria-label='Make a video'] button[type=submit]").click(); })()`);
+  for (let i = 0; i < 160 && !(await ev(`!!document.querySelector("#lab-items video")`)); i++) await sleep(150);
+  check(await ev(`!!document.querySelector("#lab-items video")`), "a finished video is here for the checks below");
+  // The shortest phone can't hold it all on one screen (DESIGN §27.2a), so there a scroll has to reach the actions, uncovered.
+  await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  const shortest = await ev(`(async () => { const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), foot = item.querySelector(".lab-item-foot"), dock = document.querySelector("[data-docked]").getBoundingClientRect(); scrollTo(0, 0); const first = Math.round(foot.getBoundingClientRect().bottom); scrollBy(0, foot.getBoundingClientRect().bottom - dock.top + 12); await new Promise((r) => setTimeout(r, 150)); const r = foot.getBoundingClientRect(), a = foot.querySelector("a, button"), ar = a.getBoundingClientRect(), at = document.elementFromPoint(ar.left + ar.width / 2, ar.top + ar.height / 2); return { first, dockTop: Math.round(dock.top), after: Math.round(r.bottom), reached: !!at && (at === a || a.contains(at)), player: Math.round(item.querySelector("video").getBoundingClientRect().height) }; })()`);
+  check(shortest.after <= shortest.dockTop && shortest.reached && shortest.player >= 100, `at 320 by 568, a scroll reaches a video's actions, uncovered: ${JSON.stringify(shortest)}`);
+  for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     await nav("/app/studio/video");
-    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = document.getElementById("results-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    // With Share showing, as it does on a real phone. On a browser without it, #483's row fitted and on one with it, it wrapped.
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")); item.querySelector("[data-share]").hidden = false; const v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = item.querySelector(".image-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
     check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
   }
+  // A long title and a pill together are the tightest case: two lines of words, and another tool's run showing.
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  const long = "A long slow pan across a quiet harbour at first light, with gulls overhead and small boats rocking on the water";
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(long)}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  for (let i = 0; i < 80 && !(await ev(`!!document.querySelector("#lab-items > li video") && document.querySelector("#lab-items > li .image-title")?.textContent.startsWith("A long slow pan")`)); i++) await sleep(150);
+  const slowPictures = `(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a slow lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: "dreamshaper-8-lcm" }) }); })()`;
+  for (const [width, height] of [[360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/video");
+    await ev(slowPictures);
+    const pillOn = `(() => { const p = document.querySelector("[data-run-pill=dock]"); return !!p && !p.hidden && p.getBoundingClientRect().height > 0; })()`;
+    for (let i = 0; i < 100 && !(await ev(pillOn)); i++) await sleep(150);
+    const tight = await ev(`(() => { scrollTo(0, 0); const item = document.querySelector("#lab-items > li"), title = item.querySelector(".image-title"), share = item.querySelector("[data-share]"), bar = document.querySelector(".run-pill-dock").getBoundingClientRect(), line = parseFloat(getComputedStyle(title).lineHeight); share.hidden = false;
+      const acts = [...item.querySelectorAll(".lab-item-foot a, .lab-item-foot button")].filter((a) => a.getBoundingClientRect().width > 0), reach = (a) => { const r = a.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && (at === a || a.contains(at)); };
+      return { lines: Math.round(title.getBoundingClientRect().height / line), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, bottom: Math.round(Math.max(...acts.map((a) => a.getBoundingClientRect().bottom))), barTop: Math.round(bar.top), reached: acts.every(reach), pill: ${pillOn}, player: Math.round(item.querySelector("video").getBoundingClientRect().height) }; })()`);
+    check(tight.pill && tight.lines === 2 && tight.acts >= 5 && tight.rows === 1 && tight.bottom <= tight.barTop && tight.reached && tight.player >= 100, `at ${width}, with a two-line title, a pill and Share showing, every action is in one row and none is covered: ${JSON.stringify(tight)}`);
+    const left = await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.status === "queued" || x.status === "in_progress").map((x) => x.id))`);
+    for (const id of left ?? []) await ev(`fetch("/app/api/_localbase/runs/${id}/cancel", { method: "POST", headers: { "x-localbase-ui": "1" } }).then((r) => r.status)`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  // The icons, for a thumb: big enough, named for a screen reader, a long press shows the name and does nothing
+  // else, and a tap still works. A first visit teaches the pencil, which a tooltip can't on a phone.
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await nav("/app/studio/video");
+  await settleVideoPage();
+  const pencil = `document.querySelector("#lab-items > li .video-actions [aria-label='Edit prompt']")`;
+  const removeBtn = `document.querySelector("#lab-items > li .video-actions [aria-label='Remove this video']")`;
+  const icons = await ev(`[...document.querySelectorAll("#lab-items > li .video-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
+  check(icons.length >= 3 && icons.every((i) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
+  const centre = async (sel) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const count = `document.querySelectorAll("#lab-items > li").length`;
+  const itemsBefore = await ev(count);
+  const at = await centre(removeBtn);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+  await sleep(650);
+  const label = await ev(`document.querySelector(".icon-name")?.textContent ?? ""`);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(1300);
+  const held = await ev(`({ items: ${count}, left: !!document.querySelector(".icon-name") })`);
+  check(label === "Remove" && held.items === itemsBefore && !held.left, `a long press on Remove shows its name and removes nothing: ${JSON.stringify({ label, itemsBefore, ...held })}`);
+  await ev(`(() => { document.getElementById("lab-prompt").value = ""; })()`);
+  const tapAt = await centre(pencil);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [tapAt] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(500);
+  const tapped = await ev(`({ words: document.getElementById("lab-prompt").value.length, label: !!document.querySelector(".icon-name") })`);
+  check(tapped.words > 0 && !tapped.label, `a tap on the pencil still puts the words back, with no label: ${JSON.stringify(tapped)}`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
 }
 
 // A hidden tab would have made the checks above mean something else, so say if it happened.

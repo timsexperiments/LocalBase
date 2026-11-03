@@ -239,7 +239,7 @@ func TestLabVideo(t *testing.T) {
 	r = httptest.NewRequest("GET", "/app/lab/video/"+id, nil)
 	r.Header.Set("HX-Request", "true")
 	u.ServeHTTP(w, r)
-	if frag := w.Body.String(); !strings.Contains(frag, `<video controls playsinline preload="metadata" src="/app/lab/video/`+id+`/content"`) ||
+	if frag := w.Body.String(); !strings.Contains(frag, `<video controls playsinline preload="metadata" src="/app/lab/video/`+id+`/content#t=0.1"`) ||
 		strings.Contains(frag, "every 2s") {
 		t.Fatalf("completed fragment: %s", frag)
 	}

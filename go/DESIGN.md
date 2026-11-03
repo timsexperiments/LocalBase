@@ -4450,9 +4450,32 @@ the pages before this change it failed for all five.
   doesn't show on the result's own page, or on the landing for what Recent shows.
 - **It covers nothing.** It is a bar on its own ground above the tab bar or the prompt, and pages keep
   room. Before, it floated over rows and, at z-30, over a tool's prompt.
-- **A finished video fits one phone screen** with its heading and actions, by leaving room for the fixed
-  parts rather than taking a share of the screen: a share of 60% left no room at 740 px tall. Below
-  about 660 px the player stops at 9rem, so the end of the card can need a scroll.
+- **A finished video fits one phone screen** with its heading and actions from 360 up, by leaving room
+  for the fixed parts rather than taking a share of the screen: a share of 60% left no room at 740 px
+  tall. Below about 660 px the player stops at 9rem, so a scroll has to reach the actions, and they are
+  then uncovered. **This line claimed more at first:** the check for it skipped silently, because earlier
+  steps had removed the videos by then, and the row wrapped wherever Share showed (§27.2b has what fixed it).
+
+### 27.2b Video, led by your words
+
+- **A result reads like a picture's:** the words in the reading face, then its length and age, then the player.
+  There is no card round it, and space separates results. On a phone the words stop at two lines.
+- **While it runs,** the stage and Stop sit together above its place, which has the video's shape. The place says
+  how long so far, in words. That is what has happened, and it promises nothing about what is left, because the
+  API reports no steps. "It can take up to 10 minutes" is the model's limit, not a measurement, and past half of
+  it the line says this is taking a while.
+- **Make again leads,** with Save, Share, Edit prompt and Remove as icons, so all of them stay in one row down to
+  360 with Share showing. The first version let Remove wrap onto a second row, behind a pill. An icon is 44 px
+  and named for a screen reader. A tooltip can't help on a phone, so a first visit names Edit prompt, and a long
+  press shows an icon's name and does nothing else: holding Remove doesn't remove. If a reviewer finds the pencil
+  unclear, it goes back to the words.
+- **A first visit** asks what you'd like to see move, like Image, and says plainly that a video can take a while
+  and uses a lot of memory. It names no model.
+
+**Checks:** `tools/chat-runs-check.sh`: with a two-line title, a pill and Share showing, at 360 and 390, every
+action is in one row and none is covered; at 320 by 568 a scroll reaches them. This section makes its own video,
+and fails if it can't, because a guard that quietly stays off is a hole in every table: a check run now has to show
+a result line for every `check()` in the script. **No real video model has run through this page.**
 
 ### 27.3 What the landing's overflow taught
 

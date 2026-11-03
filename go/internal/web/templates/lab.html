@@ -9,6 +9,7 @@
   {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
   <section aria-labelledby="results-title" class="lab-results mt-4">
     {{if eq .Tab "image"}}<h2 id="results-title" class="sr-only">Pictures</h2>
+    {{else if eq .Tab "video"}}<h2 id="results-title" class="sr-only">Videos</h2>
     {{else if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
     {{template "lab-result" .}}
@@ -16,6 +17,7 @@
     <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
     {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
     {{if and (eq .Tab "image") .Items}}<p class="studio-keep">Pictures stay here for 30 minutes.</p>{{end}}
+    {{if and (eq .Tab "video") .Items}}<p class="studio-keep">Videos stay here for 15 minutes.</p>{{end}}
   </section>
   {{if .Ready}}<div class="lab-dock-spacer" aria-hidden="true"></div>{{end}}
   {{end}}
@@ -208,7 +210,7 @@
 </section>
 <script src="{{asset "js/lab.js"}}" type="module"></script>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
-<script src="{{asset "js/video.js"}}" type="module"></script>
+{{if eq .Tab "video"}}<script src="{{asset "js/video.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "speech"}}<script src="{{asset "js/speech.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "transcribe"}}<script src="{{asset "js/transcribe.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "decisions"}}<script src="{{asset "js/decisions.js"}}" type="module"></script>{{end}}
@@ -377,25 +379,29 @@
 {{/* A video job: its place in the final shape and its stage in words, then the
      player. Stop works at every stage. Never a made-up percentage. */}}
 {{define "video-item"}}
-<li id="run-{{.ID}}" class="lab-item lab-item-video"{{if .Active}} hx-get="/app/lab/video/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
-  {{if .Active}}<div class="lab-progress skeleton video-frame video-{{.Shape}}"><span class="px-3 text-center">{{.Message}}</span></div>
-  <p class="px-2 text-sm text-muted">{{if .Slow}}This is taking a while. It stops by itself at the model’s limit, or you can stop it now.{{else}}You can leave this page; it keeps going.{{end}}</p>
-  {{else if .Video}}<video controls playsinline preload="metadata" src="{{.Video}}" class="video-frame video-{{.Shape}} rounded-xl bg-black"></video>
-  {{else}}<p class="px-2 text-sm {{if eq .Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if eq .Status "failed"}} role="alert"{{end}}>{{.Message}}{{if .NeedsMemory}} <a class="font-semibold underline" href="/app/models/running">See what’s running</a>{{end}}</p>{{end}}
-  <div class="flex min-w-0 items-center gap-2 px-2">
-    {{with .Thumb}}<span class="video-thumb">{{template "result-image" (dict "Src" . "Alt" "Starting picture" "Class" "size-full object-cover" "Tool" "image")}}</span>{{end}}
-    <p class="min-w-0 text-muted"><span class="font-semibold text-ink">Video</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}}{{with .Ago}} <span class="text-sm">· {{.}}</span>{{end}}</p>
+<li id="run-{{.ID}}" class="image-run lab-item-video"{{if .Active}} hx-get="/app/lab/video/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
+  {{with .Caption}}<h3 class="image-title video-title">{{.}}</h3>{{end}}
+  {{if .Active}}
+  <div class="image-state">
+    <p class="min-w-0 flex-1 image-facts">{{if .Slow}}This is taking a while. It stops by itself at the model’s limit, or you can stop it now.{{else}}You can leave this page; it keeps going.{{with .Limit}} It can take up to {{.}}.{{end}}{{end}}</p>
+    <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/video/{{.ID}}/cancel" hx-target="#run-{{.ID}}" hx-swap="outerHTML">Stop</button>
   </div>
-  <div class="lab-item-foot">
-    {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/video/{{.ID}}/cancel" hx-target="#run-{{.ID}}" hx-swap="outerHTML">Stop</button>
-    {{else}}
-    {{with .Video}}<a class="icon-btn" href="{{.}}" download="video.mp4" aria-label="Save video">{{template "icon-download"}}</a>
-    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="video.mp4" aria-label="Share video" hidden>{{template "icon-share"}}</button>{{end}}
+  <div class="lab-progress {{if .Fresh}}skeleton{{end}} video-frame video-{{.Shape}}"><span class="text-center">{{.Message}}{{with .Elapsed}}<span class="mt-0.5 block text-xs font-normal text-muted">{{.}}</span>{{end}}</span></div>
+  {{else if .Video}}
+  <div class="video-facts">{{with .Thumb}}<span class="video-thumb">{{template "result-image" (dict "Src" . "Alt" "Starting picture" "Class" "size-full object-cover" "Tool" "image")}}</span>{{end}}<p class="image-facts">{{with .Length}}{{.}} · {{end}}{{.Ago}}</p></div>
+  <video controls playsinline preload="metadata" src="{{.Video}}#t=0.1" class="video-frame video-{{.Shape}} rounded-xl bg-black"></video>
+  {{else}}
+  <p class="image-facts {{if eq .Status "failed"}}text-danger{{end}}"{{if eq .Status "failed"}} role="alert"{{end}}>{{.Message}}{{if .NeedsMemory}} <a class="font-semibold underline" href="/app/models/running">See what’s running</a>{{end}}</p>
+  {{end}}
+  {{if not .Active}}
+  <div class="lab-item-foot video-actions">
     {{if .Again}}<button type="button" class="btn btn-quiet rounded-full" hx-post="/app/lab/video/{{.ID}}/again" hx-target="#lab-result" hx-swap="outerHTML">{{if .Video}}Make again{{else}}Try again{{end}}</button>{{end}}
-    {{with .Prompt}}<button type="button" class="btn btn-quiet rounded-full" data-fill="{{.}}">Edit prompt</button>{{end}}
-    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/video/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this video">{{template "icon-x"}}</button>
-    {{end}}
+    {{with .Video}}<a class="icon-btn" href="{{.}}" download="video.mp4" aria-label="Save video" title="Save">{{template "icon-download"}}</a>
+    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="video.mp4" aria-label="Share video" title="Share" hidden>{{template "icon-share"}}</button>{{end}}
+    {{with .Prompt}}<button type="button" class="icon-btn" data-fill="{{.}}" aria-label="Edit prompt" title="Edit prompt">{{template "icon-edit"}}</button>{{end}}
+    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/video/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this video" title="Remove">{{template "icon-x"}}</button>
   </div>
+  {{end}}
 </li>
 {{end}}
 
@@ -461,13 +467,18 @@
   </ul>
   <p class="mt-3 text-sm text-muted">Pictures keep going if you leave the page, and stay here for 30 minutes.</p>
 </div>
+{{else if eq . "video"}}<div class="lab-hello" data-lab-empty>
+  <p class="lab-hello-title">What would you like to see move?</p>
+  <ul class="lab-examples">
+    <li><button type="button" class="lab-example" data-fill="Waves rolling onto a quiet beach at sunset">Waves rolling onto a quiet beach</button></li>
+    <li><button type="button" class="lab-example" data-fill="A paper boat drifting down a rainy street">A paper boat drifting down a rainy street</button></li>
+    <li><button type="button" class="lab-example" data-fill="Steam rising from a cup of coffee by a window">Steam rising from a cup of coffee</button></li>
+  </ul>
+  <p class="mt-3 text-sm text-muted">A video can take a while and uses a lot of memory. It keeps going if you leave, and stays here for 15 minutes.</p>
+  <p class="lab-hello-icon"><span aria-hidden="true">{{template "icon-edit"}}</span><span><span class="font-semibold">Edit prompt</span> puts a video’s words back here to change.</span></p>
+</div>
 {{else}}<div class="lab-empty" data-lab-empty>
-  {{if eq . "video"}}<p>Describe a short scene. A video takes a few minutes and a lot of memory, and keeps going if you leave.</p>
-  <div class="mt-3 flex flex-wrap justify-center gap-2">
-    <button type="button" class="chip" data-fill="Waves rolling onto a quiet beach at sunset">Waves at sunset</button>
-    <button type="button" class="chip" data-fill="A paper boat drifting down a rainy street">A drifting paper boat</button>
-  </div>
-  {{else if eq . "speech"}}<p>Write a script, and hear it in the voice you choose. A long one is made in parts and joined.</p>
+  {{if eq . "speech"}}<p>Write a script, and hear it in the voice you choose. A long one is made in parts and joined.</p>
   <div class="mt-3 flex flex-wrap justify-center gap-2">
     <button type="button" class="chip" data-fill="Welcome back! Here is what is new today.">A friendly welcome</button>
     <button type="button" class="chip" data-fill="The quick brown fox jumps over the lazy dog.">The quick brown fox</button>
