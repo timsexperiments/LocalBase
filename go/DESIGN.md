@@ -4955,7 +4955,8 @@ copies logs, gigabytes of models and a live database, and which a later check ma
 client secrets, the SMTP password and download credentials, in plain text. It is also a set of
 instructions: restoring one decides who can sign in and which programs run as you. So it is a
 private file, never leaves the computer through LocalBase, and is restored only from a file you
-own. The CLI and the docs say so every time.
+own. The CLI and the docs say so every time. Reviewed by the operator on 2026-11-02, whose decisions
+are written in below.
 
 **CLI only.** No route, no page and no upload, in this version or as a later option: a route would
 hand every secret to whoever holds one permission, over HTTP.
@@ -5009,7 +5010,7 @@ refused file stops `serve`.
 |---|---|
 | `ui-access.json` | A registration that needs a secret is removed. If no registration is left, the file is left out and the root starts with local sign-in only |
 | `email-delivery.json` | Left out if it has a password |
-| `credentials/auth-profiles.json` | Header values removed. A profile with none left is removed |
+| `credentials/auth-profiles.json` | Left out. A profile holds nothing but its secret values. The manifest keeps each id, origin and header name |
 
 The manifest's `secretsRemoved` names each one and the command that puts it back, never a value.
 `restore` prints that list. `TestRestoreWithoutSecretsStarts` starts a gateway on the result.
@@ -5035,12 +5036,16 @@ local-base backup [--output <file>] [--exclude-secrets] [--dry-run] [--json]
 **It always says, including with `--json` (on stderr, and as `warning`):**
 
 ```text
-This backup holds these secrets in plain text: Hugging Face token, OIDC client secret (google).
-Anyone who can read this file can use them. Keep it like a password; LocalBase never uploads it.
+This file contains your secrets and is not encrypted: Hugging Face token, OIDC client secret (google).
+Anyone who can read it can use them. Keep it like a password; LocalBase never uploads it.
 ```
 
-With no secrets in the root or with `--exclude-secrets`, the first line says none are included and
-the second says what the file still holds.
+With `--exclude-secrets`, or no secrets in the root:
+
+```text
+This file leaves out your secrets and is not encrypted. It is not anonymised: it still holds
+users' email addresses, API key hashes, voice recordings and usage totals.
+```
 
 ### 34.4 The file
 
@@ -5080,7 +5085,7 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - Size and hash match the manifest. Limits hold while reading, so a small file can't expand without end.
    - The database passes `PRAGMA integrity_check`. A newer `go_schema` or migration is refused, as a newer database always is. An older one migrates on open, as usual.
    - `ui-access.json`, `email-delivery.json`, profiles, backends and catalog entries pass the validators the gateway uses, and each voice file matches its row.
-3. **The report.** What it holds, secrets or not, and **each custom backend's program, by full path**: a restored backend runs that program as you when its model loads. Also sign-in providers, the number of keys and users, models to install, and secrets to re-enter. A backend whose program doesn't exist here gets a line and stays registered.
+3. **The report, before it asks.** What it holds, secrets or not, and **each custom backend's program, by full path**: a restored backend runs that program as you when its model loads. **"A restore signs everyone out. API keys keep working."** Also sign-in providers, the number of keys and users, models to install, and secrets to re-enter. A backend whose program doesn't exist here gets a line and stays registered.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
 5. **The target.**
    - A gateway on the root, or a lock it can't read, refuses: `stop it first: local-base stop`. A stale lock is cleared as usual. It takes the operation lease and the gateway lock and holds both to the end, so a service manager can't start one midway.
@@ -5097,7 +5102,7 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - A journal goes in first, `<root>/.restore-journal.json`, listing every move.
    - Old files move to `<root>/.before-restore-<time>/`, 0700. New ones move in, with the database last. Then the journal is removed.
    - **A failure puts everything back.** A crash leaves the journal, and `root.Open` then refuses every command with one line: `A restore did not finish. Run: local-base restore --undo`.
-   - On success the old files stay, and it prints the path and the `rm -rf` line, because they hold secrets too. Nothing is deleted without being asked.
+   - **On success the old files stay, and they hold secrets too.** The directory is 0700, nothing in the gateway reads it, a backup lists it as not included, and `restore` ends by naming it with the command to delete it. Nothing is deleted without being asked.
 9. **Before anything is used:** `config.root` is set to the target. Every file is 0600 and every directory 0700, owned by the current user, whatever the umask or the archive says.
 10. **The same checks a gateway gets:** `root.Open`, `obs.CheckRootFiles` and opening the store with its migrations. A failure undoes the restore (step 8) and reports both.
 11. **It starts nothing.** It prints what's next: `local-base start`, models to install, secrets to re-enter, that everyone must sign in again, and that existing API keys work again.
@@ -5106,15 +5111,18 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
 gateway's ports. It says which restored ports are in use and gives the `config apply` line. This is
 how a scratch root once reached the live backend, so `TestRestoreWarnsAboutBusyPorts` covers it.
 
-`root.Open` is in Security's #494. The one-line journal check goes in after that merges, and they
-have been told.
+**Which checks a restored root must pass:** whatever #494 enforces. It refuses another user's files and
+anything other users can write, and it does not refuse group-writable files, because `serve` tightens
+those (#426). Restore writes 0600 and 0700, so it passes either way. The journal check in `root.Open`,
+which #494 also changes, is being agreed with Security.
 
 ### 34.6 Tests, first
 
 All of these use scratch roots, plain files and no real models. Contract tests use the guarded helpers.
 
 - `TestBackupClassifiesEveryRootEntry`: a root that has run a gateway, with every entry in one table.
-- `TestBackupRestoreRoundTrip`: **a restore into a scratch root, with a gateway started on it.** Keys authenticate, roles and policies hold, catalog entries and backends are listed, voices play back by hash, and everyone is signed out.
+- `TestBackupRestoresIntoFreshRootAndServes`, **the operator's test:** a backup taken from a scratch root restores into a fresh root, which passes `root.Open`'s owner checks and **serves a chat request with the fake backend.**
+- `TestBackupRestoreRoundTrip`: on that restored root, keys authenticate, roles and policies hold, catalog entries and backends are listed, voices match by hash, and everyone is signed out.
 - `TestBackupHoldsSecretsOrNot`: planted secrets are found in the raw bytes of a full backup, proving the scan works, and in no byte of an `--exclude-secrets` one, gunzipped, including database free pages.
 - `TestRestoreWithoutSecretsStarts`: a gateway starts, and `secretsRemoved` matches what is gone.
 - `TestBackupNeverHoldsPrompts`: planted text in `runs/` and `logs/` appears nowhere.
@@ -5126,16 +5134,17 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 - `TestRestoreRefusesRunningGateway`, `TestRestoreRefusesOtherOwner` (with the owner hook of #494, and in a container as a second real user), `TestRestoreRefusesRoot` (container, uid 0), `TestRestoreRefusesForeignDirectory`.
 - `TestRestoredRootPassesEveryCheck`: modes and owners on every path, and `root.Open`, `CheckRootFiles` and `doctor` clean, under each umask.
 - `TestRestoreDryRunWritesNothing`: a tree hash of the target and the parent, before and after.
-- `TestRestoreReplace`: only the 34.1 entries change, `models/` keeps its inode, and the old files are kept.
+- `TestRestoreReplace`: only the 34.1 entries change, `models/` keeps its inode, and the old files are kept in a 0700 directory that the last lines of output name, with the command to delete it.
+- `TestBeforeRestoreIsNeverRead`: planted text in `.before-restore-*` does not reach a backup, diagnostics or any API answer, and a gateway starts with it there.
 - `TestRestoreCrash`: a failure injected at every move. Each leaves a root that refuses with the one line, and `--undo` returns it byte for byte.
 - `TestRestoreNamesPrograms`: every custom backend's program in the report, in text and JSON.
 - `TestRestoreWarnsAboutBusyPorts`.
-- `TestBackupRestoreCLI`: the secret warning always appears, and `--json` needs `--yes`.
+- `TestBackupRestoreCLI`: the "not encrypted" line always appears, the sign-out line comes before the question, and `--json` needs `--yes`.
 
 **Not verifiable by tests:** restoring on a second real computer, or from a backup of the live root.
 The operator can run one against a clone, if wanted.
 
-### 34.7 Residual risks, accepted in the threat model (§36)
+### 34.7 Residual risks, accepted in the threat model (§36, reserved for the threat model, Security)
 
 - **Plaintext secrets at rest:** a backup holds the same secrets a root holds, and anyone who can read it can use them.
 - **A writable parent directory can swap the root,** or the backups directory beside it; owner and mode checks do not protect against that.
