@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -184,7 +183,7 @@ func TestNoRouteSetsTheImportOptIn(t *testing.T) {
 			}
 			for _, word := range []string{"PrivateImportsKey", "LocalPathImportsKey", store.PrivateImportsKey, store.LocalPathImportsKey} {
 				if bytes.Contains(b, []byte(word)) {
-					t.Error(fmt.Sprintf("%s mentions an opt-in's setting: %s", f, word))
+					t.Errorf("%s mentions an opt-in's setting: %s", f, word)
 				}
 			}
 		}
