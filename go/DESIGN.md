@@ -625,6 +625,7 @@ Deliberate differences the contract suite found and kept:
   `remote_media_not_allowed` (§13.6, item 13).
 - A sign-in provider added without `--permissions` gives nothing, where TS gives
   its default permissions (§13.6, item 5c).
+- `model_too_large` also tells the person what to change: a smaller context, or `memory.systemReserve`. TS's sentence stops at the smaller model. A CPU placement that cannot fit even on an idle computer answers this 422 too, instead of a retryable 503, and `models show` says "This machine" in admission's terms, reserve included.
 
 ### M1 (done 2026-10-19)
 
