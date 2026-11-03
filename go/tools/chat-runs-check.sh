@@ -7,7 +7,7 @@
 #   go build -o /tmp/fake/llama-server ./internal/runtime/fakebackend
 #   mkfile -n <size> <root>/models/llm/<the active model's file>   (sparse)
 #   LOCALBASE_LLAMA_SERVER=/tmp/fake/llama-server local-base --root <root> \
-#     serve --port <port> --no-auth --llm --no-stt --no-tts --no-image --no-video
+#     serve --port <port> --runtime-port-base <port+1> --no-auth --llm --no-stt --no-tts --no-image --no-video
 #   tools/chat-runs-check.sh http://127.0.0.1:<port>
 # Start a new gateway for each run. On one this script has already used, it fails at
 # "announces the change once" and "another tool's tray does not", in any browser.
