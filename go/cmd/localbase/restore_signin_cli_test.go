@@ -129,8 +129,65 @@ Everyone who signs in through a provider gets: nothing, unless a role gives it
 
 func grantLines(grants []backup.Grant) string {
 	var out bytes.Buffer
-	printGrants(&cli.Ctx{Stdout: &out, Stderr: &out}, grants)
+	printGrants(&cli.Ctx{Stdout: &out, Stderr: &out}, grants, nil)
 	return out.String()
+}
+
+// What would go, in the words a person reads, ahead of what stays.
+func TestTheLinesForWhatGoesRead(t *testing.T) {
+	var out bytes.Buffer
+	printGrants(&cli.Ctx{Stdout: &out, Stderr: &out},
+		[]backup.Grant{{Role: "owner", Gives: backup.Line{Value: "keys:manage"}, Who: []backup.Line{
+			{Value: "subject added at https://x.example", Against: backup.AgainstNew},
+			{Value: "subject leaving at https://x.example", Against: backup.AgainstGone},
+			{Value: "subject stays at https://x.example"}}}},
+		[]backup.Grant{
+			{Role: "support", Gives: backup.Line{Value: "models:read"}, Who: []backup.Line{{Value: "subject helper at https://x.example", Against: backup.AgainstGone}}},
+			{Role: "unused", Who: []backup.Line{}}})
+	want := `What each role gives, and who has it:
+  No longer a role here: support (this root gives models:read)
+    no longer has this role: subject helper at https://x.example
+  No longer a role here: unused (this root gives nothing)
+  owner: keys:manage
+    subject added at https://x.example (new to this root)
+    no longer has this role: subject leaving at https://x.example
+    subject stays at https://x.example
+`
+	if got := out.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// With no role left in the file, the section is still there, since it's all about what goes.
+func TestTheRoleSectionPrintsWhenOnlyRolesGo(t *testing.T) {
+	var out bytes.Buffer
+	printGrants(&cli.Ctx{Stdout: &out, Stderr: &out}, nil, []backup.Grant{{Role: "owner", Who: []backup.Line{}}})
+	if !strings.HasPrefix(out.String(), "What each role gives, and who has it:\n  No longer a role here: owner") {
+		t.Errorf("%s", out.String())
+	}
+}
+
+// A cap can't hide anyone losing a role without saying so, on a role that stays or one that goes.
+func TestALongListSaysHowManyAreLosingARole(t *testing.T) {
+	who := func() []backup.Line {
+		var lines []backup.Line
+		for range maxGrantLines {
+			lines = append(lines, backup.Line{Value: "someone", Against: backup.AgainstGone})
+		}
+		return append(lines, backup.Line{Value: "late", Against: backup.AgainstNew}, backup.Line{Value: "later", Against: backup.AgainstGone}, backup.Line{Value: "last", Against: backup.AgainstGone})
+	}
+	const more = "    and 3 more, 1 of them new, 2 of them losing this role. All of them: restore --dry-run --json\n"
+	var out bytes.Buffer
+	c := &cli.Ctx{Stdout: &out, Stderr: &out}
+	printGrants(c, []backup.Grant{{Role: "owner", Who: who()}}, nil)
+	if !strings.HasSuffix(out.String(), more) {
+		t.Errorf("on a role that stays: %s", out.String()[max(0, out.Len()-200):])
+	}
+	out.Reset()
+	printGrants(c, nil, []backup.Grant{{Role: "owner", Who: who()}})
+	if !strings.HasSuffix(out.String(), more) {
+		t.Errorf("on a role that goes: %s", out.String()[max(0, out.Len()-200):])
+	}
 }
 
 func TestTheRoleLinesRead(t *testing.T) {

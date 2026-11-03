@@ -16,7 +16,7 @@ type Grant struct {
 	Gives Line `json:"gives"`
 	// Default says everyone who signs in through a provider has this role.
 	Default bool `json:"default,omitempty"`
-	// Who is everyone else the role reaches, those new to this root first.
+	// Who is everyone else the role reaches, those new to this root or losing the role first.
 	Who []Line `json:"who"`
 }
 
@@ -25,7 +25,8 @@ const grantsChangedCaution = `This changes who has a role on this root. See "Wha
 
 // readGrants reads every role and who has it, from any database. A person counts only while they're
 // active or invited, since a role does nothing for anyone else. The text of each line is what's
-// compared, so the same person reached two ways shows as two lines, and the same way twice as one.
+// compared, so the same person reached two ways shows as two lines, and the same way twice as one. A
+// table this database doesn't have is one with no rows in it: see tablesExist.
 func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 	type role struct {
 		name  string
@@ -33,7 +34,10 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 		who   map[string]bool
 	}
 	roles := map[string]*role{}
-	each := func(query string, f func(values []string)) error {
+	each := func(tables []string, query string, f func(values []string)) error {
+		if present, err := tablesExist(ctx, db, tables...); err != nil || !present {
+			return err
+		}
 		rows, err := db.QueryContext(ctx, query)
 		if err != nil {
 			return err
@@ -60,13 +64,13 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 		}
 		return rows.Err()
 	}
-	err := each(`SELECT id, name FROM auth_roles`, func(v []string) {
+	err := each([]string{"auth_roles"}, `SELECT id, name FROM auth_roles`, func(v []string) {
 		roles[v[0]] = &role{name: v[1], who: map[string]bool{}}
 	})
 	if err != nil {
 		return nil, err
 	}
-	if err := each(`SELECT role_id, permission FROM auth_role_permissions`, func(v []string) {
+	if err := each([]string{"auth_role_permissions"}, `SELECT role_id, permission FROM auth_role_permissions`, func(v []string) {
 		if r := roles[v[0]]; r != nil {
 			r.perms = append(r.perms, v[1])
 		}
@@ -84,32 +88,46 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 		}
 		return ", signing in through " + issuer
 	}
+	// Which provider an address or an invitation belongs to is in tables of Go's own. Without them,
+	// it's none yet, and the person is still there.
+	bindingIssuers, invitationIssuers := "go_binding_issuers", "go_invitation_issuers"
+	if present, err := tableExists(ctx, db, bindingIssuers); err != nil {
+		return nil, err
+	} else if !present {
+		bindingIssuers = `(SELECT '' AS kind, '' AS role_id, '' AS value, '' AS issuer WHERE 0)`
+	}
+	if present, err := tableExists(ctx, db, invitationIssuers); err != nil {
+		return nil, err
+	} else if !present {
+		invitationIssuers = `(SELECT '' AS user_id, '' AS issuer WHERE 0)`
+	}
 	for _, q := range []struct {
-		query string
-		line  func(v []string) string
+		tables []string
+		query  string
+		line   func(v []string) string
 	}{
-		{`SELECT role_id, subject, issuer FROM auth_subject_role_bindings`,
+		{[]string{"auth_subject_role_bindings"}, `SELECT role_id, subject, issuer FROM auth_subject_role_bindings`,
 			func(v []string) string { return "subject " + v[1] + " at " + v[2] }},
-		{`SELECT b.role_id, b.email, i.issuer FROM auth_email_role_bindings b
-			LEFT JOIN go_binding_issuers i ON i.kind = 'email' AND i.role_id = b.role_id AND i.value = b.email`,
+		{[]string{"auth_email_role_bindings"}, `SELECT b.role_id, b.email, i.issuer FROM auth_email_role_bindings b
+			LEFT JOIN ` + bindingIssuers + ` i ON i.kind = 'email' AND i.role_id = b.role_id AND i.value = b.email`,
 			func(v []string) string { return v[1] + through(v[2]) }},
-		{`SELECT b.role_id, b.domain, i.issuer FROM auth_domain_role_bindings b
-			LEFT JOIN go_binding_issuers i ON i.kind = 'email-domain' AND i.role_id = b.role_id AND i.value = b.domain`,
+		{[]string{"auth_domain_role_bindings"}, `SELECT b.role_id, b.domain, i.issuer FROM auth_domain_role_bindings b
+			LEFT JOIN ` + bindingIssuers + ` i ON i.kind = 'email-domain' AND i.role_id = b.role_id AND i.value = b.domain`,
 			func(v []string) string { return "anyone at " + v[1] + through(v[2]) }},
-		{`SELECT ur.role_id, a.subject, a.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
+		{[]string{"auth_user_roles", "auth_users", "auth_identities"}, `SELECT ur.role_id, a.subject, a.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
 			JOIN auth_identities a ON a.user_id = u.id WHERE u.status IN ('active', 'pending')`,
 			func(v []string) string { return "subject " + v[1] + " at " + v[2] }},
-		{`SELECT ur.role_id, e.email, i.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
-			JOIN auth_user_emails e ON e.user_id = u.id LEFT JOIN go_invitation_issuers i ON i.user_id = u.id
+		{[]string{"auth_user_roles", "auth_users", "auth_user_emails", "auth_identities"}, `SELECT ur.role_id, e.email, i.issuer FROM auth_user_roles ur JOIN auth_users u ON u.id = ur.user_id
+			JOIN auth_user_emails e ON e.user_id = u.id LEFT JOIN ` + invitationIssuers + ` i ON i.user_id = u.id
 			WHERE u.status IN ('active', 'pending') AND NOT EXISTS (SELECT 1 FROM auth_identities a WHERE a.user_id = u.id)`,
 			func(v []string) string { return v[1] + ", invited" + through(v[2]) }},
 	} {
-		if err := each(q.query, func(v []string) { add(v[0], q.line(v)) }); err != nil {
+		if err := each(q.tables, q.query, func(v []string) { add(v[0], q.line(v)) }); err != nil {
 			return nil, err
 		}
 	}
 	defaultRole := ""
-	if err := each(`SELECT default_role_id FROM auth_settings WHERE id = 'default'`, func(v []string) { defaultRole = v[0] }); err != nil {
+	if err := each([]string{"auth_settings"}, `SELECT default_role_id FROM auth_settings WHERE id = 'default'`, func(v []string) { defaultRole = v[0] }); err != nil {
 		return nil, err
 	}
 	out := make([]Grant, 0, len(roles))
@@ -135,10 +153,10 @@ func liveGrants(ctx context.Context, target string) ([]Grant, error) {
 	return readGrants(ctx, db)
 }
 
-// compareGrants sets grants against what the root being replaced has, and says whether any differ. A
-// role or a person new to the root goes first in its list, so that nothing can bury them.
-func compareGrants(grants []Grant, live []Grant, liveErr error) bool {
-	changed := false
+// compareGrants sets grants against what the root being replaced has. It returns the roles that root
+// has and they don't, and says whether anything differs. Whoever is new to a role or losing it goes
+// first in its list, so that nothing can bury them.
+func compareGrants(grants []Grant, live []Grant, liveErr error) (gone []Grant, changed bool) {
 	for i := range grants {
 		g := &grants[i]
 		if liveErr != nil {
@@ -165,6 +183,12 @@ func compareGrants(grants []Grant, live []Grant, liveErr error) bool {
 				g.Who[k].Against, changed = AgainstNew, true
 			}
 		}
+		for _, l := range live[j].Who {
+			if !slices.ContainsFunc(g.Who, func(w Line) bool { return w.Value == l.Value }) {
+				g.Who = append(g.Who, Line{Value: l.Value, Against: AgainstGone})
+				changed = true
+			}
+		}
 		slices.SortStableFunc(g.Who, func(a, b Line) int {
 			switch {
 			case a.Against != "" && b.Against == "":
@@ -175,5 +199,18 @@ func compareGrants(grants []Grant, live []Grant, liveErr error) bool {
 			return 0
 		})
 	}
-	return changed
+	if liveErr != nil {
+		return nil, changed
+	}
+	for _, l := range live {
+		if slices.ContainsFunc(grants, func(g Grant) bool { return g.Role == l.Role }) {
+			continue
+		}
+		role := Grant{Role: l.Role, Gives: Line{Value: l.Gives.Value}, Who: []Line{}}
+		for _, w := range l.Who {
+			role.Who = append(role.Who, Line{Value: w.Value, Against: AgainstGone})
+		}
+		gone, changed = append(gone, role), true
+	}
+	return gone, changed
 }

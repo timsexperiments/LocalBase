@@ -98,9 +98,11 @@ type Report struct {
 	Providers []string      `json:"signInProviders"`
 	SignIn    *SignIn       `json:"signIn"`
 	Grants    []Grant       `json:"grants"`
-	Keys      KeyCounts     `json:"keys"`
-	Users     int           `json:"users"`
-	Ports     []int         `json:"ports"`
+	// RolesGone are the roles this root has and the backup doesn't.
+	RolesGone []Grant   `json:"rolesGone,omitempty"`
+	Keys      KeyCounts `json:"keys"`
+	Users     int       `json:"users"`
+	Ports     []int     `json:"ports"`
 	// Who a provider's bindings cover, by issuer, and those that name no provider.
 	Issuers     []IssuerLine      `json:"issuers"`
 	Unbound     auth.UnboundCount `json:"unbound"`
@@ -689,7 +691,9 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	if !state.newRoot && state.hasData {
 		live, liveErr := liveGrants(ctx, target)
-		if compareGrants(rep.Grants, live, liveErr) {
+		gone, changed := compareGrants(rep.Grants, live, liveErr)
+		rep.RolesGone = gone
+		if changed {
 			rep.Cautions = append(rep.Cautions, grantsChangedCaution)
 		}
 	}
