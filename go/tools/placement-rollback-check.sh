@@ -1,4 +1,5 @@
 #!/bin/bash
+. "$(dirname "$0")/test-ports.sh"
 # Rollback drill for the model_placements table (DESIGN §20.8 item 1): the
 # previous Go binary and TS 0.1.0 must start and serve against a database
 # that has the table, with go_schema still at version 1. A scratch root
@@ -15,8 +16,7 @@ root="$work/root"
 fails=0
 ok() { printf 'ok   %s\n' "$*"; }
 bad() { printf 'FAIL %s\n' "$*"; fails=$((fails + 1)); }
-pick() { while :; do p=$((24000 + RANDOM % 6000)); [ $p = 24173 ] && continue; [ $p -ge 25611 ] && [ $p -le 25613 ] && continue
-  lsof -nP -iTCP:$p -sTCP:LISTEN >/dev/null 2>&1 || { echo $p; return; }; done; }
+pick() { test_port_pick; }
 pids=()
 cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; sleep 1; rm -rf "$work"; }
 trap cleanup EXIT
