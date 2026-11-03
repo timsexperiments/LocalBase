@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"os"
 	"strconv"
@@ -89,6 +90,12 @@ func doctorCommand() *cli.Command {
 				}
 				c.Info("%s", line)
 				data["unsafeFiles"] = problems
+			}
+			if left := backup.Abandoned(e.Root.Dir); len(left) > 0 {
+				for _, path := range left {
+					c.Info("An interrupted backup or restore left private files at %s. They may hold secrets. To delete them: rm -rf '%s'", path, path)
+				}
+				data["interruptedWorkingFiles"] = left
 			}
 			return data, nil
 		}}

@@ -91,7 +91,12 @@ func maintenanceCommands() []*cli.Command {
 					return nil, err
 				}
 				c.Info("Removed all local-base managed data at %s", r.Dir)
-				return map[string]any{"removed": true, "root": r.Dir}, nil
+				out := map[string]any{"removed": true, "root": r.Dir}
+				if dir := backupsLeftBehind(r.Dir); dir != "" {
+					c.Info("Backups in %s were left behind. They hold secrets. To delete them: rm -rf '%s'", dir, dir)
+					out["backupsLeftBehind"] = dir
+				}
+				return out, nil
 			}},
 	}
 }
