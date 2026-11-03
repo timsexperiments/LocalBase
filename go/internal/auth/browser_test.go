@@ -42,6 +42,8 @@ type fakeIdP struct {
 	challenge string // from the authorization request
 	nonce     string
 	claims    map[string]any // overrides
+	// tamper replaces the signed token (a forged or corrupted one).
+	tamper func(token string, claims map[string]any) string
 }
 
 func newFakeIdP(t *testing.T) *fakeIdP {
@@ -78,7 +80,11 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 				claims[k] = v
 			}
 		}
-		json.NewEncoder(w).Encode(map[string]any{"id_token": f.sign(claims)})
+		token := f.sign(claims)
+		if f.tamper != nil {
+			token = f.tamper(token, claims)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"id_token": token})
 	})
 	return f
 }
