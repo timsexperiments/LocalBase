@@ -55,8 +55,8 @@ the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
 `--permissions` applies to everyone the provider accepts, and for a public issuer
-such as Google or GitHub that may be anyone with an account. Omit it to use the
-defaults, which allow chat and model discovery only.
+such as Google or GitHub that may be anyone with an account. Without it, signing in
+gives nothing until a policy or an invitation says otherwise.
 
 Never give everyone a provider accepts `models:manage`, `access:manage`,
 `keys:manage` or `system:manage`. These are powerful permissions: `models:manage`
@@ -65,11 +65,19 @@ decide who gets in and what they may do, and `system:manage` changes how the
 service itself behaves. Give them to named people, with a role and a binding, as
 in the policy below.
 
+To give yourself access, name your address. It gets every permission, and nobody
+else gets anything:
+
+```bash
+local-base --non-interactive --json access policy starter --email you@example.com
+```
+
 Each registration has a stable ID and display name. Repeat the command with a
 different ID to add another provider; using an existing ID updates it. With
 multiple registrations, `/app/login` presents a provider picker. Automation can
 list and remove registrations with `access oidc list` and
 `access oidc remove ID`.
+Removing the last registration disables browser access.
 
 OIDC discovery keeps this integration provider-neutral. Google, Microsoft
 Entra, Okta, Auth0, Keycloak, and other standards-compliant OIDC providers use
@@ -149,6 +157,11 @@ Email delivery cannot be disabled while the registration exists.
 Provider permissions apply to every verified browser user unless a local access
 policy is configured. A policy maps verified identities to named roles. Email
 bindings only match provider-verified email claims.
+
+A default role gives its permissions to everyone who signs in, whoever they are.
+It is a deliberate choice, and `local-base doctor`, `local-base status` and the
+access page say what it means. Someone with no permissions gets no session, and
+a page telling them so.
 
 Email and domain bindings trust one sign-in provider, so a provider you add
 later can't claim someone's address and take their role. With one provider

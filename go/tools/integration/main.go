@@ -44,20 +44,36 @@ func main() {
 	push := flag.Bool("push", false, "force-push the result with a lease")
 	test := flag.Bool("test", false, "run gofmt, vet and the unit tests on the result")
 	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
+	auditOnly := flag.Bool("audit", false, "report what folded pull requests added that the tree no longer has, in the existing worktree")
 	flag.Parse()
+	useRerere()
 	list, err := readOrder(orderPath())
 	check(err)
 	check(run("", "git", "fetch", "-q", "origin"))
+	if *auditOnly {
+		intended, err := readIntended(filepath.Join(filepath.Dir(orderPath()), "intended.txt"))
+		check(err)
+		unexplained, report := audit(*dir, list, *base, intended)
+		for _, l := range report {
+			fmt.Println(l)
+		}
+		fmt.Printf("%d lines unexplained\n", unexplained)
+		if unexplained > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	if !*resume {
 		// Only ever removes this tool's own worktree.
 		_ = exec.Command("git", "worktree", "remove", "--force", *dir).Run()
 		check(run("", "git", "worktree", "prune"))
 		check(run("", "git", "worktree", "add", "-q", "--force", "-B", *target, *dir, "origin/"+*base))
 	}
-	for _, kv := range [][2]string{{"rerere.enabled", "true"}, {"rerere.autoupdate", "false"}} {
-		check(run(*dir, "git", "config", kv[0], kv[1]))
-	}
 	for _, b := range list {
+		if b == tidyStep {
+			tidy(*dir)
+			continue
+		}
 		if branch, from, ok := parsePick(b); ok {
 			ref := "origin/" + prefix + branch
 			if picked(*dir, ref, from) {
@@ -101,17 +117,7 @@ func main() {
 		check(run(*dir, "git", "commit", "-q", "-m", msg))
 		fmt.Printf("merged  %s (conflicts resolved)\n", b)
 	}
-	removed, err := tidyDesign(filepath.Join(*dir, "go", "DESIGN.md"))
-	check(err)
-	check(run(filepath.Join(*dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
-	check(run(filepath.Join(*dir, "go"), "tools/tailwind.sh"))
-	if out, _ := exec.Command("git", "-C", *dir, "status", "--porcelain").Output(); len(out) > 0 {
-		check(run(*dir, "git", "add", "-A"))
-		check(run(*dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
-	}
-	if removed > 0 {
-		fmt.Printf("removed %d repeats from DESIGN\n", removed)
-	}
+	tidy(*dir)
 	// The differential runs the TS gateway from this tree, and a worktree starts
 	// with no node_modules: without them TS never becomes healthy.
 	if _, err := exec.LookPath("bun"); err != nil {
@@ -272,6 +278,26 @@ func picked(dir, ref, from string) bool {
 	return true
 }
 
+// tidyStep in order.txt tidies there as well as at the end: a pull request built on an earlier
+// tree merges cleanly only into a DESIGN that has already lost its repeats, and otherwise
+// brings them back in a form the last tidy cannot recognize.
+const tidyStep = "tidy"
+
+// tidy drops the repeats merging leaves in DESIGN and rebuilds what is generated.
+func tidy(dir string) {
+	removed, err := tidyDesign(filepath.Join(dir, "go", "DESIGN.md"))
+	check(err)
+	check(run(filepath.Join(dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
+	check(run(filepath.Join(dir, "go"), "tools/tailwind.sh"))
+	if out, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output(); len(out) > 0 {
+		check(run(dir, "git", "add", "-A"))
+		check(run(dir, "git", "commit", "-q", "-m", "Tidy what the merges left"+trailer))
+	}
+	if removed > 0 {
+		fmt.Printf("removed %d repeats from DESIGN\n", removed)
+	}
+}
+
 // parsePick reads "pick <branch> <from>": a branch built on an earlier integration tree,
 // or stacked on such a branch, whose own commits (from..branch along its first parents,
 // merges left out) are replayed. A merge would bring that old tree's history back in.
@@ -281,6 +307,23 @@ func parsePick(line string) (branch, from string, ok bool) {
 		return "", "", false
 	}
 	return f[1], f[2], true
+}
+
+// useRerere turns rerere on for the git commands this tool runs, and only those. The repository
+// keeps it off, because all its worktrees share one config and one cache: a resolution recorded
+// here would otherwise be applied silently to another thread's merge. Off has to be said: git
+// turns it on by itself wherever a cache exists. tools/integration/rerere-env.sh is the same
+// thing for finishing a merge by hand, which is what records its resolution.
+func useRerere() {
+	for k, v := range map[string]string{
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "rerere.enabled",
+		"GIT_CONFIG_VALUE_0": "true",
+		"GIT_CONFIG_KEY_1":   "rerere.autoupdate",
+		"GIT_CONFIG_VALUE_1": "false",
+	} {
+		check(os.Setenv(k, v))
+	}
 }
 
 func orderPath() string {

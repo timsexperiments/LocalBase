@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
@@ -214,6 +215,12 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	manifest := object("schemaVersion", float64(1), "generatedAt", generatedAt, "version", version.Version,
 		"platform", object("os", goruntime.GOOS, "arch", nodeArch()), "hardware", hardware, "configuration", configuration,
 		"models", models, "service", service, "observability", observability, "logs", logs, "voices", voices)
+	// A bundle is how a damaged root gets reported, so it is still made, and says so: what it
+	// could not read from the database is marked unavailable above.
+	unfinished := backup.UnfinishedWrite(ctx, dir)
+	if unfinished != "" {
+		manifest.Set("database", unavailable("unfinished_write"))
+	}
 	entries := []zipEntry{
 		{"manifest.json", append(jsjson.Indent(manifest), '\n')},
 		{"logs/events.jsonl", logText.Bytes()},
@@ -227,6 +234,9 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	c.Info("Created diagnostics bundle: %s", path)
+	if unfinished != "" {
+		c.Info("%s", unfinished)
+	}
 	if stderr != nil {
 		c.Info("Service stderr: %d bytes captured at %s. It holds unredacted gateway crash output, so the bundle records only its size; review it before sharing.",
 			stderr.Bytes, stderr.Path)

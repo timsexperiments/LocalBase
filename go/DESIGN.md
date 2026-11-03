@@ -639,6 +639,10 @@ Deliberate differences the contract suite found and kept:
   `Retry-After`. TS answers 502 `upstream_error` (§13.6, item 10).
 - With several sign-in providers, a binding or invitation that names none answers
   400 `issuer_required`, where TS accepts the request (§13.6, item 5b).
+- A chat content part that names an address answers 400
+  `remote_media_not_allowed` (§13.6, item 13).
+- A sign-in provider added without `--permissions` gives nothing, where TS gives
+  its default permissions (§13.6, item 5c).
 - `model_too_large` also tells the person what to change: a smaller context, or `memory.systemReserve`. TS's sentence stops at the smaller model. A CPU placement that cannot fit even on an idle computer answers this 422 too, instead of a retryable 503, and `models show` says "This machine" in admission's terms, reserve included.
 - `POST /v1/embeddings` with a catalog chat model answers `400 unsupported_model_capability` without starting it. TS relays the backend's own error.
 - `POST /_localbase/model-management` also takes `{"modelId", "action":"cancel"}` for a running install, under the same `models:manage` check. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. There is no pause. Sent when no install of that model is running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded. TS has no cancel and answers this action 400.
@@ -1196,7 +1200,7 @@ gateways with a real sd-server.
 | The same, for a video job | job `failed` with `insufficient_memory` | n/a | same: TS's job error codes have no `model_too_large`, and in both its message says to retry although that cannot help |
 | Queue full or timed out | 429 `inference_queue_full`, `inference_queue_timeout` | 1 | same |
 | Files not installed | 409 `model_install_consent_required` | none | same on the first request |
-| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported` | none | no equivalent (M3.5) |
+| Launch can never work as configured | 409 `backend_not_selected`, `backend_unavailable`, `model_assets_missing` | none | no equivalent (M3.5) |
 
 Deliberate status changes to verify against the live clients at cutover:
 
@@ -1328,6 +1332,27 @@ Deliberate status changes to verify against the live clients at cutover:
    - `auth.Guard` models this, including that a removed person stays refused, and
      `TestGuardAgreesWithSignIn` compares it with real sign-in.
 
+5c. **Signing in gives nothing unless someone said so** (operator decision). Anyone may
+   hold an account with a public provider, and LocalBase has no allow-list of its own.
+   - **No default permissions.** A provider added without `--permissions` gives nothing.
+     A configuration that already has them keeps them, so nothing changes silently.
+   - **The starter policy has no default role.** It binds one address to `admin`, and
+     keeps `member` as a role bound to nobody. `local-base access policy starter --email <address>`
+     applies it from the host, and only the host: no API route does.
+   - **No permissions, no session.** A sign-in that resolves to nothing gets a page saying
+     so, and no session row, so nothing is kept about them. The page gives whoever runs this
+     LocalBase one next step: `policy starter` if there is no policy yet, `users invite` if there
+     is. Authorizing also claims an invitation, so a first sign-in counts. Cloudflare Access
+     has no session of ours: there, a request with no permissions gets the forbidden pages.
+   - **A default role stays possible,** as a choice. `local-base doctor`, `local-base status`,
+     the access page and `access policy apply` say what it means: "Anyone who can sign in
+     through <provider> gets: …". The same goes for provider-wide permissions with no policy.
+   - **Sign-ins are on record.** `auth.signin` has the hashed id and the roles, and
+     `auth.signin-denied` the hashed id, never an address. The access page lists who has a
+     live session, for those who can read access management.
+   - **The first-run local session** (§28) doesn't go through any of this, and holds every
+     permission.
+
 6. **A request cut off by a memory emergency** (operator decision). As in
    TS, critical memory stops every runtime, including ones serving active
    requests. TS answers such a request 502 `upstream_error`, or ends its
@@ -1421,6 +1446,20 @@ Deliberate status changes to verify against the live clients at cutover:
     keys on `/v1` are not affected. This is from reading the code; TS is not changed.
     `TestDifferentialUnlistedUser` pins it, with fake backends. **Rolling back to TS
     reopens the gap** (`docs/merge-readiness.md` §4).
+13. **A chat content part that names an address** (operator decision). A content
+   part carries its content. `image_url.url` must be a `data:` URL, and
+   `input_audio.data`, `file.file_data` and `file.file_id` must hold base64, an
+   id or a `data:` URL. Anything else answers 400 `remote_media_not_allowed`, with
+   `param` naming the first such field, before a model is looked up or loaded. The
+   code wins over anything else wrong with the request. It holds on every route
+   that takes chat: `/v1/chat/completions`, `/app/api` and detached runs, whose
+   request gets the same answer at creation and leaves no run. An address in an
+   earlier message refuses the whole request, so a client that replays its history
+   has to replace it. The chat page sends attachments as `data:` URLs
+   (`tools/jstest/remote-media.test.ts`), and `/v1/systemone` already takes only
+   those. Part types the gateway has never accepted stay `validation_failed`. If
+   fetching is ever wanted, it belongs behind an opt-in and the download guard
+   (§31.2), not in this check.
 
 Operator-run steps for the cutover rehearsal, which no automated test
 covers because they need a real service manager:
@@ -4976,6 +5015,8 @@ No test dependency is added: the project keeps one module dependency. All of the
 | `TestOpenAPIMethods` | a documented method gets 405 or `route_disabled`; an undocumented method does not get 405. The handlers that have never checked the method (TS parity) are listed by name |
 | `TestOpenAPIPermissions` | for each operation: no key does not get 401; a key with every permission but the documented one does not get 403; a key with only that one (and any `also-requires`) does get 401 or 403; a key lacking an `also-requires` does not get 403. It uses a real model id, since some routes look the id up first, and a valid body for the route that validates first |
 | `TestOpenAPIResponses` | a real response has a status the operation does not document, or a body its schema rejects (a small validator for the keywords the document uses) |
+| `TestOpenAPIListsEveryErrorCode` | a code the source can send, or the notes and pages name beside a status, isn't in the `ErrorCode` list; or the list holds a code nothing sends. `TestOpenAPIResponses` also checks each real answer's code against the list, which catches a code the scan can't see |
+| `TestOpenAPIRoutesNameOnlyListedCodes` | a route's answer names a code that isn't on the list |
 | `TestOpenAPIServed` | the answers in 30.1 change, or the served version is not `Version` |
 
 So a route added without documentation fails CI, and so does documentation without a route.
@@ -5494,6 +5535,10 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 
 **A backup is checked before it is kept.** After writing the file, `backup` reads it back with every check restore makes before changing anything. If its own restore would refuse it, it keeps nothing and says why. `--dry-run` does the same work, in a directory beside the root that it removes, so its answer can be believed. This came from the first run on a clone of the live root, where `backup` kept a file restore refused.
 
+**A write that never finished stops both commands, and its journal travels with its database.** This database uses a rollback journal, so `local-base.db-journal` exists during any write, and stays if a process is killed mid-write. A live writer holds a lock, so a backup reads straight past it and holds only finished writes. A journal left by a crash can't be read past: until SQLite plays it back the database's pages can't be trusted, and that takes opening it for writing, which `backup` and `restore --dry-run` must not do. So both refuse, change nothing, and name `status`, which opens the database for writing. `doctor` opens it read-only, so it can't. The journal is on `restore`'s list of what it moves. Left behind beside the restored database, SQLite would play it into that database and use it up, leaving both damaged. A target whose database can't be read for any other reason can still be replaced, since that may be why it's being replaced, but the report says nothing could be compared with it, instead of reading as if nothing were revoked.
+
+**A busy database is retried, then named, and never read as empty.** `backup` runs beside a live gateway, and a rollback journal lets a writer keep readers out while it commits, which can outlast SQLite's own 5 s wait. Each read of the live database is tried again for up to 60 s. If it stays busy, the command says the database is busy, gives the exact command to run again, changes nothing, leaves nothing behind, and names the step. A read that fails is an error: answering "no such table" would write a manifest with no migrations and no models to install, or read a root's revocations as none. `restore` refuses a busy target the same way, rather than reporting it as unreadable.
+
 **Working directories hold what a backup holds, secrets included.** Backup and restore each work in a directory named `.local-base-temporary-<backup|restore>-<pid>-<number>`, 0700 from its first moment, removed on every way out that can run anything: success, failure, an interrupt or a termination, including at restore's question. A kill can't clean up, so `doctor` names what one left, with the command to delete it, and the next backup or restore removes it and says so. A directory whose process is still running is left alone.
 
 **Included:**
@@ -5518,6 +5563,7 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 | `runtime/`, `service/` | Tied to this machine and this process. `ui-csrf.key` regenerates, `start` rewrites the service |
 | `cache/`, `catalog-feed.json` | Caches that are fetched again. Whether a feed URL needs keeping is checked when this is built |
 | The root marker, the lock | `restore` makes its own |
+| `local-base.db-wal`, `-shm`, `-journal` | SQLite's working files. The copy is made through SQLite, so it holds only finished writes |
 | Rows: `auth_browser_sessions`, `local_sessions`, `local_login_links`, `auth_magic_link_tokens` | **A restore signs everyone out.** Bringing back old sessions would undo a sign-out |
 | Rows: `model_observed_memory`, `model_runtime_capabilities` | Measured on one machine. Measured again on the next load |
 | Rows: `config_activation` | A restart that was pending on another gateway |
@@ -5708,7 +5754,10 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 
 **By hand, in a disposable container, as a second real user:** a restored root belongs to the user running it, restoring as root is refused, and so are another user's root, empty directory or backup file, and a backup to a directory others can write.
 
-**Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. The operator ran that at `f05052cb`, with secrets excluded: all five commands passed, with no false schema refusal on a database the TS build first wrote. A backup with its secrets has not had that run.
+- `TestABusyDatabaseIsNeverReadAsEmpty`, `TestBackupWaitsOutABusyDatabase`, `TestBackupOfADatabaseThatStaysBusySaysSo`, `TestRestoreOverABusyDatabaseRefuses`, `TestRestoreWaitsOutABusyDatabase`, `TestCopyWaitsOutABusyDatabase`, `TestCopyOfADatabaseThatStaysBusySaysWhere`, `TestRestoreThatTurnsBusyPartWayRefuses`, `TestNoFailedReadLooksLikeAbsent`, which fails on any read in this package that can answer "absent" for a failure, with its exceptions named, and `TestBackupWhileWriting`, whose writer has no pause on purpose and whose manifests are compared with a quiet one.
+- `TestBackupDuringAWriteHoldsOnlyWhatIsFinished`, `TestBackupOfACrashedRootSaysWhatToDo`, `TestRestoreOverACrashedRootSaysWhatToDo`, `TestRestoreKeepsAJournalWithItsDatabase`, `TestRestoreFailureAndCrashBringBackDatabaseAndJournal`, `TestRestoreOverAnUnreadableDatabaseSaysSo`, and with the real binary `TestCrashedRootIsRefusedUntilStatusRecoversIt`. The crash is real SQLite state: a copy's files, taken while a large transaction is open.
+
+**Not verifiable by tests:** restoring on a second real computer. A backup of a root the TS build made: its schema text comes from another writer, so **the schema check needs a run against a clone of the live root** before this is trusted on one. The operator ran that at `d4dcfa34`, with secrets excluded: all five commands passed, with no false schema refusal on a database the TS build first wrote. A backup with its secrets has not had that run. That clone had no journal, so the journal paths have run only in tests, on real SQLite files with no process actually killed.
 
 ### 34.7 Residual risks, accepted in the threat model (§36, reserved for the threat model, Security)
 

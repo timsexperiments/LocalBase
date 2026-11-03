@@ -49,7 +49,9 @@ func slowSource(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chunk := make([]byte, 16<<10)
-		for {
+		// Bounded, so a test that never stops it fails instead of filling the disk. It then
+		// holds the download open, so it never finishes before a test's cancel lands.
+		for sent := 0; sent < 64<<20; sent += len(chunk) {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}
@@ -58,6 +60,10 @@ func slowSource(t *testing.T) *httptest.Server {
 				return
 			}
 			time.Sleep(5 * time.Millisecond)
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(30 * time.Second):
 		}
 	}))
 	t.Cleanup(srv.Close)

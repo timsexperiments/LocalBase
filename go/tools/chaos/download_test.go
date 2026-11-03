@@ -433,17 +433,42 @@ func smallDisk(t *testing.T) string {
 	return mount
 }
 
-// fillDisk writes until the volume is full and returns how to free it.
+// The most a volume may hold for fillDisk to fill it, and so the most it will ever write. A
+// wrong LOCALBASE_CHAOS_SMALL_DISK must end in a failed test, not a full disk.
+const fillDiskLimit = 1 << 30
+
+// smallEnoughToFill says why dir is not on a small scratch volume, or nil if it is.
+func smallEnoughToFill(dir string) error {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return err
+	}
+	if size := st.Blocks * uint64(st.Bsize); size > fillDiskLimit {
+		return fmt.Errorf("%s is on a volume of %d MiB, and only a small scratch volume may be filled (at most %d MiB)", dir, size>>20, fillDiskLimit>>20)
+	}
+	return nil
+}
+
+// fillDisk writes until the small volume is full and returns how to free it.
 func fillDisk(t *testing.T, dir string) (free func()) {
 	t.Helper()
+	if err := smallEnoughToFill(dir); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "filler")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	block := bytes.Repeat([]byte{0xAA}, 1<<20)
+	written := 0
 	for {
-		if _, err := f.Write(block); err != nil {
+		if written >= fillDiskLimit {
+			t.Fatalf("wrote %d MiB and %s is still not full", written>>20, dir)
+		}
+		n, err := f.Write(block)
+		written += n
+		if err != nil {
 			if !errors.Is(err, syscall.ENOSPC) {
 				t.Fatalf("filling the disk: %v", err)
 			}
@@ -452,8 +477,10 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 	}
 	// Down to the last bytes, so nothing small slips in.
 	small := make([]byte, 4096)
-	for {
-		if _, err := f.Write(small); err != nil {
+	for written < fillDiskLimit {
+		n, err := f.Write(small)
+		written += n
+		if err != nil {
 			break
 		}
 	}
@@ -466,6 +493,33 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 				t.Errorf("freeing the disk: %v", err)
 			}
 		}
+	}
+}
+
+// fillDisk must refuse an ordinary directory, before writing anything to it.
+func TestFillDiskRefusesAnOrdinaryVolume(t *testing.T) {
+	dir := t.TempDir()
+	if err := smallEnoughToFill(dir); err == nil {
+		t.Skipf("%s really is on a small volume", dir)
+	}
+	if entries, err := os.ReadDir(dir); err != nil || len(entries) != 0 {
+		t.Errorf("wrote to it: %v %v", entries, err)
+	}
+}
+
+// And it fills a real small volume, within the limit, and frees it.
+func TestFillDiskFillsASmallVolume(t *testing.T) {
+	dir := smallDisk(t)
+	if err := smallEnoughToFill(dir); err != nil {
+		t.Fatal(err)
+	}
+	free := fillDisk(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "more"), make([]byte, 1<<20), 0o600); err == nil {
+		t.Error("a full volume took another MiB")
+	}
+	free()
+	if err := os.WriteFile(filepath.Join(dir, "more"), make([]byte, 1<<20), 0o600); err != nil {
+		t.Errorf("freed, it still refuses: %v", err)
 	}
 }
 

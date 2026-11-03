@@ -52,7 +52,10 @@ func TestCLIAccess(t *testing.T) {
 		{args: with("cloudflare", "--team-domain", "Bad", "--audience", "aud"), skip: msg},
 		{args: []string{"--json", "access", "cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "aud", "--origin", "http://x"}, skip: msg},
 		{args: with("cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "aud", "--permissions", "bogus"), skip: msg},
-		{args: with("cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "aud")},
+		// With no --permissions a new provider grants nothing on Go and TS's default on TS
+		// (DESIGN §13.6); given the same list, everything else must match.
+		{args: with("cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "aud"),
+			goArgs: with("cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "aud", "--permissions", "inference:chat,models:read")},
 		{args: []string{"--json", "access", "show"}},
 		{args: with("oidc", "add", "--id", "google", "--name", "Google", "--issuer", "https://accounts.google.com", "--client-id", "cid")},
 		{args: with("oidc", "add", "--id", "google", "--name", "Google", "--issuer", "https://accounts.google.com", "--client-id", "cid", "--client-secret-env", "MISSING_SECRET_VAR")},

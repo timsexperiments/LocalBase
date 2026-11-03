@@ -232,6 +232,8 @@ func maskKeys(v any) {
 	// Go records which sign-in provider vouches for an address (DESIGN §13.6, item 5b), so
 	// these are its own, and they change what the policy revision hashes.
 	delete(m, "unboundBindings")
+	delete(m, "openSignIn")
+	delete(m, "signedIn")
 	if _, ok := m["policyRevision"].(string); ok {
 		m["policyRevision"] = "<revision>"
 	}

@@ -16,15 +16,54 @@ import (
 
 type issue struct{ path, msg string }
 
-type checker struct{ issues []issue }
+type checker struct {
+	issues []issue
+	// remote is the first content part that names an address (see remoteMedia).
+	remote *issue
+}
 
 func (c *checker) fail(path, msg string) { c.issues = append(c.issues, issue{path, msg}) }
+
+// remoteMedia refuses a content part that names an address instead of carrying
+// its content. A backend may fetch what it is given, so an address stops here,
+// with a code of its own that wins over anything else wrong with the request.
+func (c *checker) remoteMedia(path, msg string) {
+	c.fail(path, msg)
+	if c.remote == nil {
+		c.remote = &issue{path, msg}
+	}
+}
+
+// isDataURL says whether a value carries its content as a data: URL. A
+// scheme's case does not matter (RFC 3986), as in decisionFileRe.
+func isDataURL(v string) bool { return len(v) >= 5 && strings.EqualFold(v[:5], "data:") }
+
+// holdsContent says whether a field that takes base64 or an id holds that, or a
+// data: URL. An address needs a character that neither base64 nor an id uses.
+func holdsContent(v string) bool {
+	if isDataURL(v) {
+		return true
+	}
+	for i := 0; i < len(v); i++ {
+		switch b := v[i]; {
+		case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':
+		case b == '+', b == '/', b == '=', b == '-', b == '_', b == '\r', b == '\n', b == ' ', b == '\t':
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 func (c *checker) ok() bool { return len(c.issues) == 0 }
 
 // reply writes the validation failure. The param is response_format when an
 // issue is under it, as TS reports it.
 func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
+	if c.remote != nil {
+		writeError(w, r, 400, "invalid_request_error", "remote_media_not_allowed", c.remote.msg, strp(c.remote.path))
+		return
+	}
 	parts := make([]string, len(c.issues))
 	var param *string
 	for i, is := range c.issues {
@@ -396,6 +435,9 @@ func (c *checker) userPart(p any, path string) {
 			c.fail(join(path, "image_url"), "Invalid input")
 			return
 		}
+		if url, _ := img["url"].(string); !isDataURL(url) {
+			c.remoteMedia(join(path, "image_url.url"), "This gateway does not fetch images from web addresses; send the image itself as a data: URL.")
+		}
 		if d, present := img["detail"]; present && d != "auto" && d != "low" && d != "high" {
 			c.fail(join(path, "image_url.detail"), `Invalid option: expected one of "auto"|"low"|"high"`)
 		}
@@ -404,12 +446,20 @@ func (c *checker) userPart(p any, path string) {
 		if !ok || !nonEmptyString(a["data"]) || (a["format"] != "wav" && a["format"] != "mp3") {
 			c.fail(join(path, "input_audio"), "Invalid input")
 		}
+		if data, _ := a["data"].(string); !holdsContent(data) {
+			c.remoteMedia(join(path, "input_audio.data"), "This gateway does not fetch audio from web addresses; send the audio itself as base64.")
+		}
 	case "file":
 		f, ok := part["file"].(map[string]any)
 		valid := ok && ((len(f) == 1 && nonEmptyString(f["file_id"])) ||
 			(len(f) == 2 && nonEmptyString(f["filename"]) && nonEmptyString(f["file_data"])))
 		if !valid {
 			c.fail(join(path, "file"), "Invalid input")
+		}
+		for _, field := range []string{"file_id", "file_data"} {
+			if v, _ := f[field].(string); !holdsContent(v) {
+				c.remoteMedia(join(path, "file."+field), "This gateway does not fetch files from web addresses; send the file itself as a data: URL.")
+			}
 		}
 	default:
 		c.fail(path, "Invalid input")

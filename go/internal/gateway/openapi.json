@@ -72,7 +72,9 @@
                     "users": {"type": "array", "items": {"$ref": "#/components/schemas/AccessUser"}},
                     "roles": {"type": "array", "items": {"$ref": "#/components/schemas/AccessRole"}},
                     "emailDelivery": {"anyOf": [{"$ref": "#/components/schemas/EmailDelivery"}, {"type": "null"}]},
-                    "unboundBindings": {"type": "integer", "minimum": 0, "description": "Bindings and invitations that name no provider, so grant nothing. Present when a provider is configured."}
+                    "unboundBindings": {"type": "integer", "minimum": 0, "description": "Bindings and invitations that name no provider, so grant nothing. Present when a provider is configured."},
+                    "openSignIn": {"type": "string", "description": "What anyone who can sign in gets without being named anywhere. Absent when that is nothing."},
+                    "signedIn": {"type": "array", "description": "Who has a live session, the latest first.", "items": {"type": "object", "properties": {"email": {"type": "string"}, "issuer": {"type": "string"}, "lastSeen": {"type": "string"}}, "required": ["issuer", "lastSeen"]}}
                   },
                   "required": ["config", "policy", "policyRevision", "users", "roles", "emailDelivery"]
                 }
@@ -507,7 +509,7 @@
             }
           },
           "400": {
-            "description": "The request is invalid: `validation_failed` or `role_not_found`.",
+            "description": "The request is invalid: `validation_failed`, `role_not_found`, or a binding with no sign-in provider or an unknown one (`issuer_required`, `issuer_unknown`).",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ManagementError"}}}
           },
           "404": {
@@ -1626,6 +1628,9 @@
           "description": "At most 64 KiB."
         },
         "responses": {
+          "409": {"description": "This model is already being imported (`import_running`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "429": {"description": "Too many imports at once (`import_busy`). See `Retry-After`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "507": {"description": "Not enough free disk space for this import (`import_no_space`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "200": {
             "description": "`resolve`: what would be downloaded. `cancel`: the job, usually still `running` for a moment.",
             "content": {
@@ -1675,7 +1680,7 @@
           "413": {"$ref": "#/components/responses/ManagementTooLarge"},
           "499": {"$ref": "#/components/responses/ManagementAborted"},
           "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/Forbidden"},
+          "403": {"description": "The key lacks the permission (`insufficient_permissions`), or this source isn't allowed: `import_private_address`, `import_address_refused`, `import_local_path` or `import_too_many_files`.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "405": {"$ref": "#/components/responses/MethodNotAllowed"},
           "503": {"$ref": "#/components/responses/Unavailable"}
         }
@@ -2582,6 +2587,7 @@
           }
         ],
         "responses": {
+          "400": {"description": "The event cursor isn't a whole number, 0 or more (`invalid_event_cursor`).", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
           "200": {
             "description": "Server-sent events.",
             "content": {
@@ -3200,7 +3206,16 @@
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "400": {"$ref": "#/components/responses/BadRequest"},
+          "400": {
+            "description": "The request is invalid: `validation_failed` and more specific codes, or `voice_not_supported` when this model can't use that voice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {"$ref": "#/components/responses/NotFound"},
           "405": {"$ref": "#/components/responses/MethodNotAllowed"},
           "409": {"$ref": "#/components/responses/Conflict"},
@@ -3286,6 +3301,7 @@
         "operationId": "createChatCompletion",
         "summary": "Chat, streaming, tools and structured output",
         "tags": ["Inference"],
+        "description": "A content part carries its content: one that names an address answers 400 `remote_media_not_allowed`, with `param` naming the first such field.",
         "x-localbase-permission": "inference:chat",
         "x-localbase-stability": "stable",
         "requestBody": {
@@ -3302,14 +3318,32 @@
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "400": {"$ref": "#/components/responses/BadRequest"},
+          "400": {
+            "description": "The request is invalid: `validation_failed` and more specific codes, `context_length_exceeded` when the input is more than one slot of the model's context can hold, or `remote_media_not_allowed` when a content part names a web address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {"$ref": "#/components/responses/NotFound"},
           "405": {"$ref": "#/components/responses/MethodNotAllowed"},
           "409": {"$ref": "#/components/responses/Conflict"},
           "413": {"$ref": "#/components/responses/TooLarge"},
           "422": {"$ref": "#/components/responses/ModelTooLarge"},
           "429": {"$ref": "#/components/responses/RateLimited"},
-          "502": {"$ref": "#/components/responses/BadGateway"},
+          "502": {
+            "description": "The backend failed or answered something unusable (`upstream_error`), or a finished reply didn't match the requested JSON Schema (`structured_output_validation_failed`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "503": {"$ref": "#/components/responses/Unavailable"}
         }
       }
@@ -3332,7 +3366,16 @@
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "400": {"$ref": "#/components/responses/BadRequest"},
+          "400": {
+            "description": "The request is invalid: `validation_failed` and more specific codes, or `context_length_exceeded` when the input is more than one slot of the model's context can hold.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {"$ref": "#/components/responses/NotFound"},
           "405": {"$ref": "#/components/responses/MethodNotAllowed"},
           "409": {"$ref": "#/components/responses/Conflict"},
@@ -3534,7 +3577,16 @@
           "409": {"$ref": "#/components/responses/Conflict"},
           "413": {"$ref": "#/components/responses/TooLarge"},
           "422": {"$ref": "#/components/responses/ModelTooLarge"},
-          "429": {"$ref": "#/components/responses/RateLimited"},
+          "429": {
+            "description": "A video job is already running (`video_job_busy`), or the queue is full or the wait timed out (`inference_queue_full`, `inference_queue_timeout`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "502": {"$ref": "#/components/responses/BadGateway"},
           "503": {"$ref": "#/components/responses/Unavailable"},
           "501": {"$ref": "#/components/responses/NotConfigured"}
@@ -3551,12 +3603,21 @@
         "x-localbase-stability": "stable",
         "responses": {
           "200": {
-            "description": "The job.",
+            "description": "The job. A failed job's `error.code` is `video_generation_failed`, or says why it couldn't run: `insufficient_memory`, `model_install_consent_required`, `model_hardware_ineligible` or `experimental_model_not_allowed`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoJob"}}}
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "404": {"$ref": "#/components/responses/NotFound"},
+          "404": {
+            "description": "No such job (`video_job_not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "405": {"$ref": "#/components/responses/MethodNotAllowed"}
         }
       },
@@ -3589,7 +3650,16 @@
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "404": {"$ref": "#/components/responses/NotFound"},
+          "404": {
+            "description": "No such job (`video_job_not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "405": {"$ref": "#/components/responses/MethodNotAllowed"}
         }
       }
@@ -3609,7 +3679,16 @@
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
           "403": {"$ref": "#/components/responses/Forbidden"},
-          "404": {"$ref": "#/components/responses/NotFound"},
+          "404": {
+            "description": "No such job (`video_job_not_found`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "405": {"$ref": "#/components/responses/MethodNotAllowed"}
         }
       }
@@ -3687,7 +3766,7 @@
         "headers": {"Allow": {"description": "The methods this route answers.", "schema": {"type": "string"}}}
       },
       "Conflict": {
-        "description": "It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`, `backend_task_unsupported`.",
+        "description": "It cannot run as configured, and retrying will not help: `model_install_consent_required`, `backend_not_selected`, `backend_unavailable`, `model_assets_missing`.",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
       },
       "Forbidden": {
@@ -3699,7 +3778,7 @@
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ManagementError"}}}
       },
       "ManagementForbidden": {
-        "description": "The key lacks the permission (`insufficient_permissions`, in the management shape). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).",
+        "description": "The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).",
         "content": {
           "application/json": {
             "schema": {
@@ -3717,7 +3796,7 @@
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ManagementError"}}}
       },
       "MethodNotAllowed": {
-        "description": "Wrong method; see the `Allow` header.",
+        "description": "Wrong method (`method_not_allowed`); see the `Allow` header.",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
       },
       "ModelTooLarge": {
@@ -3746,7 +3825,7 @@
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
       },
       "Unavailable": {
-        "description": "Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`).",
+        "description": "Try again: memory pressure (`insufficient_memory`), a restarting backend (`service_unavailable`), a model being unloaded (`model_unloading`), a failed start (`backend_startup_failed`), a backend that placed its work differently from the plan (`placement_mismatch`).",
         "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}},
         "headers": {"Retry-After": {"description": "Seconds to wait before retrying.", "schema": {"type": "integer"}}}
       }
@@ -4832,13 +4911,119 @@
                 "description": "The class of error: invalid_request_error, rate_limit_error, api_error or server_error."
               },
               "param": {"type": ["string", "null"], "description": "The request field at fault, when there is one."},
-              "code": {"type": ["string", "null"], "description": "A stable code. Branch on this."}
+              "code": {"type": ["string", "null"], "description": "A stable code, listed in `ErrorCode`. Branch on this."}
             },
             "required": ["message", "type", "param", "code"],
             "additionalProperties": true
           }
         },
         "required": ["error"]
+      },
+      "ErrorCode": {
+        "type": "string",
+        "description": "Every code this gateway's own routes answer with. `error.code` can also hold a code a backend sent, or null. A later version can add codes, so handle one you don't know by its HTTP status. Two can answer any route: `request_timeout` (408), when a request's body stops arriving, and `too_busy` (503), when there are too many open connections.",
+        "enum": [
+          "audio_silent",
+          "audio_too_large",
+          "audio_too_long",
+          "audio_too_short",
+          "backend_not_selected",
+          "backend_startup_failed",
+          "backend_unavailable",
+          "catalog_conflict",
+          "conflict",
+          "consent_required",
+          "context_length_exceeded",
+          "custom_source_unconfirmed",
+          "email_delivery_failed",
+          "email_delivery_in_use",
+          "email_delivery_not_configured",
+          "exceeds_caller_expiry",
+          "exceeds_caller_permissions",
+          "experimental_model_not_allowed",
+          "hf_token_invalid",
+          "hf_token_missing",
+          "hub_auth_required",
+          "hub_rate_limited",
+          "hub_rejected",
+          "hub_unavailable",
+          "import_address_refused",
+          "import_busy",
+          "import_cancelled",
+          "import_choose_file",
+          "import_local_path",
+          "import_no_space",
+          "import_not_found",
+          "import_private_address",
+          "import_running",
+          "import_task_required",
+          "import_timed_out",
+          "import_too_large",
+          "import_too_many_files",
+          "import_unresolved",
+          "inference_queue_full",
+          "inference_queue_timeout",
+          "insufficient_memory",
+          "insufficient_permissions",
+          "insufficient_storage",
+          "invalid_api_key",
+          "invalid_event_cursor",
+          "invalid_request",
+          "invalid_voice_name",
+          "issuer_required",
+          "issuer_unknown",
+          "key_not_found",
+          "managed_user_exists",
+          "managed_user_not_found",
+          "method_not_allowed",
+          "model_assets_missing",
+          "model_busy",
+          "model_hardware_ineligible",
+          "model_install_consent_required",
+          "model_loading",
+          "model_not_found",
+          "model_not_loaded",
+          "model_too_large",
+          "model_unloading",
+          "no_auth_request_refused",
+          "no_recipe",
+          "payload_too_large",
+          "placement_does_not_fit",
+          "placement_mismatch",
+          "placement_unsupported",
+          "policy_conflict",
+          "policy_not_configured",
+          "policy_revision_conflict",
+          "provider_not_configured",
+          "registration_not_found",
+          "remote_media_not_allowed",
+          "request_aborted",
+          "request_timeout",
+          "role_not_found",
+          "route_disabled",
+          "run_not_found",
+          "run_result_unavailable",
+          "service_unavailable",
+          "storage_unavailable",
+          "structured_output_validation_failed",
+          "too_busy",
+          "too_many_runs",
+          "ui_access_denied",
+          "unsafe_path",
+          "unsupported_audio_format",
+          "unsupported_media_type",
+          "unsupported_model_capability",
+          "upstream_error",
+          "validation_failed",
+          "video_generation_failed",
+          "video_job_busy",
+          "video_job_not_found",
+          "voice_limit_reached",
+          "voice_name_taken",
+          "voice_not_found",
+          "voice_not_supported",
+          "would_lock_out_admins"
+        ]
       },
       "FeedAnnotation": {
         "type": "object",
@@ -5168,7 +5353,7 @@
             "required": ["phase", "done", "total"]
           },
           "error": {"type": "string", "description": "What went wrong. A cancelled job has none."},
-          "errorCode": {"type": "string", "description": "A stable code, when there is one. A cancelled job has `import_cancelled`."},
+          "errorCode": {"type": "string", "description": "A stable code, when there is one: `import_no_space`, `import_too_large` or `import_timed_out`. A cancelled job has `import_cancelled`."},
           "detail": {"type": "string", "description": "What happened, when it was not a failure."},
           "model": {
             "type": "object",
@@ -5269,7 +5454,7 @@
           "error": {
             "type": "object",
             "properties": {
-              "code": {"type": "string", "description": "A stable code. Branch on this."},
+              "code": {"type": "string", "description": "A stable code, listed in `ErrorCode`. Branch on this."},
               "message": {"type": "string", "description": "What went wrong, for a person."}
             },
             "required": ["code", "message"]

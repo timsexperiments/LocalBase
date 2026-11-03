@@ -119,6 +119,7 @@ var (
 		".localbase-root.json":  "Restore makes its own, since a marker names one root",
 		"local-base.db-wal":     "Part of the database, which is copied whole",
 		"local-base.db-shm":     "Part of the database, which is copied whole",
+		"local-base.db-journal": "SQLite's record of a write in progress. The copy holds only finished writes",
 		root.RestoreJournalName: "Left by a restore that did not finish",
 	}
 	// rowsLeftOut are rows that are not settings. They are dropped when a backup is written and
@@ -462,6 +463,24 @@ func inside(p, dir string) bool {
 
 // Create writes a backup, or with DryRun says what it would hold.
 func Create(ctx context.Context, o Options) (*Result, error) {
+	res, err := createBackup(ctx, o)
+	if isBusy(err) {
+		retry := "local-base --root '" + o.Root.Dir + "' backup"
+		if o.DryRun {
+			retry += " --dry-run"
+		}
+		if o.ExcludeSecrets {
+			retry += " --exclude-secrets"
+		}
+		if o.Output != "" {
+			retry += " --output '" + o.Output + "'"
+		}
+		return nil, errors.New(busyMessage(o.Root.Dir, retry, err))
+	}
+	return res, err
+}
+
+func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
 	}
@@ -469,21 +488,39 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 	if _, err := os.Lstat(dbPath); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
 	}
+	// Any other failure here shows at the step that needs the data, with that step's name.
+	if err := retryBusy(ctx, func() error { return readableDatabase(ctx, dbPath) }); isUnfinishedWrite(err) {
+		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
+	}
 	files, left, err := survey(o.Root.Dir)
 	if err != nil {
 		return nil, err
 	}
-	secrets, err := readSecrets(ctx, o.Root.Dir, o.ExcludeSecrets)
-	if err != nil {
-		return nil, err
-	}
-	migrations, err := appliedMigrations(ctx, dbPath)
+	var (
+		secrets             *secretSet
+		migrations          int
+		rowsPresent, models []string
+	)
+	err = retryBusy(ctx, func() error {
+		var err error
+		if secrets, err = readSecrets(ctx, o.Root.Dir, o.ExcludeSecrets); err != nil {
+			return err
+		}
+		if migrations, err = appliedMigrations(ctx, dbPath); err != nil {
+			return err
+		}
+		if rowsPresent, err = presentRows(ctx, dbPath); err != nil {
+			return err
+		}
+		models, err = selectedModels(ctx, dbPath)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 	m := &Manifest{Format: Format, CreatedAt: o.Now.UTC().Format(time.RFC3339), Version: o.Version, GoSchema: store.GoSchemaVersion(),
 		Migrations: migrations, Secrets: "included", SecretNames: secrets.names, SecretsRemoved: secrets.removed, NotIncluded: left,
-		RowsLeftOut: presentRows(ctx, dbPath), Models: selectedModels(ctx, dbPath), RestoreRules: []string{SignOutLine, RevokedLine}}
+		RowsLeftOut: rowsPresent, Models: models, RestoreRules: []string{SignOutLine, RevokedLine}}
 	if o.ExcludeSecrets {
 		m.Secrets = "excluded"
 	}
