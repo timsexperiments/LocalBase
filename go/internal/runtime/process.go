@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
@@ -83,7 +85,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 			if len(line) > maxLogLine {
 				line = line[:maxLogLine]
 			}
-			log.Debug(line, "event", "runtime.output", "runtime", name)
+			log.Debug(redactOutputURLs(line), "event", "runtime.output", "runtime", name)
 		}
 	}
 	go drain(stdout)
@@ -150,6 +152,14 @@ func (p *Process) Stop(grace time.Duration) {
 		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		<-p.done
 	}
+}
+
+var outputURLRe = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.-]*://[^\s'"<>]+`)
+
+// redactOutputURLs takes credentials, query values and fragments out of URLs in a
+// backend's output. llama-server logs the image URLs requests send.
+func redactOutputURLs(line string) string {
+	return outputURLRe.ReplaceAllStringFunc(line, acquire.RedactURL)
 }
 
 // spanned runs fn inside a backend lifecycle span (TS supervisor

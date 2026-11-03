@@ -1,0 +1,5 @@
+0.00.339.995 I load_tensors: offloading output layer to GPU
+0.00.339.997 I load_tensors: offloading 19 repeating layers to GPU
+0.00.339.997 I load_tensors: offloaded 20/29 layers to GPU
+0.00.497.975 I sched_reserve:       MTL0 compute buffer size =    60.51 MiB
+0.00.497.978 I sched_reserve:        CPU compute buffer size =    69.52 MiB
