@@ -1,0 +1,12 @@
+[book]
+title = "LocalBase"
+description = "A self-hosted, OpenAI-compatible gateway for local AI models"
+language = "en"
+
+[build]
+create-missing = false
+
+[output.html]
+site-url = "/LocalBase/"
+git-repository-url = "https://github.com/timsexperiments/LocalBase"
+no-section-label = true

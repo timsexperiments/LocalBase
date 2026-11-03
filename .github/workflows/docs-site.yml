@@ -1,0 +1,76 @@
+name: Docs site
+
+# Pull requests build the site to catch breakage. Publishing stays off until a
+# maintainer enables GitHub Pages and sets the repository variable DOCS_PAGES_ENABLED
+# to true.
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "DEVELOPMENT.md"
+      - "ROADMAP.md"
+      - "CHANGELOG.md"
+      - "SECURITY.md"
+      - "scripts/docs-site.sh"
+      - ".github/workflows/docs-site.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "DEVELOPMENT.md"
+      - "ROADMAP.md"
+      - "CHANGELOG.md"
+      - "SECURITY.md"
+      - "scripts/docs-site.sh"
+      - ".github/workflows/docs-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache: false
+      - name: Install mdBook
+        run: scripts/bootstrap.sh mdbook
+      - name: Build
+        # On main every page has landed, so a missing one is an error.
+        run: scripts/docs-site.sh ${{ github.ref == 'refs/heads/main' && '--strict' || '' }} "$RUNNER_TEMP/site"
+      - name: Keep the site for publishing
+        if: github.ref == 'refs/heads/main' && vars.DOCS_PAGES_ENABLED == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+
+  publish:
+    if: github.ref == 'refs/heads/main' && vars.DOCS_PAGES_ENABLED == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
