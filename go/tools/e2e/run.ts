@@ -6,7 +6,7 @@
 // themes. E2E_PAGES, E2E_WIDTHS and E2E_THEMES narrow the matrix; E2E_PART picks
 // "journeys" or "matrix".
 const [cdpBase, base, control, out, axePath, wavPath] = process.argv.slice(2);
-const { mkdirSync, writeFileSync } = await import("node:fs");
+const { mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
 const captures = `${out}/captures`;
 mkdirSync(captures, { recursive: true });
 const list = (name: string) => process.env[name]?.split(",").filter(Boolean);
@@ -150,6 +150,22 @@ const ctl = async (path: string) => {
 const models = await (await fetch(`${control}/models`)).json();
 
 // --- findings ---------------------------------------------------------------------------
+
+// What ran. A check with no record fails the table: a section guarded off, a page that went
+// somewhere else, or a loop with nothing in it must not read as a pass. E2E_PLANT_OFF guards a
+// section off on purpose, and tools/e2e-manifest-check.sh requires that to fail.
+const ran = new Set<string>();
+const did = (...what: (string | number)[]) => { if (!selfTesting) ran.add(what.join("|")); };
+const planted = list("E2E_PLANT_OFF") ?? [];
+const off = (section: string) => planted.includes(section);
+const walks: { page: string; width: number; stops: number; reached: number; hidden: number; players: number }[] = [];
+const sheetRuns: { page: string; width: number; openers: number; checked: number; expanded: string[]; vanished: string[]; openBefore: number }[] = [];
+const offTarget: string[] = [];
+// The page may add to the address (chat adds its conversation), but must be the page asked for.
+const samePage = (want: string, here: string) => {
+  const w = new URL(want, "http://x"), h = new URL(here, "http://x");
+  return w.pathname === h.pathname && [...w.searchParams].every(([k, v]) => h.searchParams.get(k) === v);
+};
 
 type Finding = { kind: string; page: string; width?: number; theme?: string; detail: string; capture?: string };
 const findings: Finding[] = [];
@@ -443,6 +459,21 @@ async function checkTheChecks(t: Tab) {
   await sheets(t, "self-test", login, 1280, plant(`<button id="planted" data-open-sheet="elsewhere">Elsewhere</button><button id="other">Other</button><dialog id="sheet"><button>Inside</button></dialog>`, `p.addEventListener("click", () => { document.getElementById("other").focus(); document.getElementById("sheet").showModal(); });`));
   saw("focus returns from a sheet", "sheet", /focus does not return to the opener/);
 
+  // Something else expanded on the page says nothing about an opener that does nothing.
+  await sheets(t, "self-test", login, 1280, plant(`<button id="planted" data-open-sheet="dead">Dead</button><button aria-expanded="true">Something else</button>`));
+  saw("something else expanded excuses nothing", "sheet", /Enter did not open it/);
+  const own = await sheets(t, "self-test", login, 1280, plant(`<button id="planted" data-open-drawer="own" aria-expanded="false">Own</button>`, `p.addEventListener("click", () => p.setAttribute("aria-expanded", "true"));`));
+  if (own.expanded.length !== 1 || findings.length !== before) throw new Error(`an opener that expands itself was not recorded as that: ${JSON.stringify(own)} ${JSON.stringify(findings.slice(before)).slice(0, 300)}`);
+  proved.push("an opener's own expanded state is recorded");
+  // Only the first load has the opener, as if it went away between counting and its turn.
+  const gone = await sheets(t, "self-test", login, 1280, `if (!sessionStorage.plantedOnce) { sessionStorage.plantedOnce = "1"; ${plant(`<button id="planted" data-open-sheet="gone">Gone</button>`)} } else { sessionStorage.removeItem("plantedOnce"); }`);
+  if (gone.vanished.length !== 1) throw new Error(`an opener that went away was not recorded: ${JSON.stringify(gone)}`);
+  proved.push("an opener that went away is recorded");
+  const already = await sheets(t, "self-test", login, 1280, plant(`<button id="planted" data-open-sheet="already">Already</button><dialog open><button>Inside</button></dialog>`));
+  if (already.openBefore !== 1) throw new Error(`a dialog already open was not recorded: ${JSON.stringify(already)}`);
+  proved.push("a dialog already open is recorded");
+  findings.length = before;
+
   await t.metrics(1280, "light", true, false);
   await reducedMotion(t, "self-test", login, 1280, ADD_CSS("@keyframes planted{to{transform:rotate(360deg)}}#planted{animation:planted 1s linear infinite;width:10px;height:10px}") + ";" + plant(`<div id="planted"></div>`));
   saw("reduced motion", "reduced-motion", /planted/);
@@ -462,24 +493,29 @@ async function matrix(signedIn: Tab, signedOut: Tab) {
     for (const width of WIDTHS) for (const theme of THEMES) {
       await t.metrics(width, theme);
       t.problems = [];
-      await t.nav(path);
+      await t.nav(off("landing") && name === "models" ? "/app/settings" : path);
       // A redirect to sign-in would pass every check on the wrong page.
       if (auth && (await t.ev(`location.pathname.startsWith("/app/login") || !!document.querySelector(".welcome-title")?.textContent.includes("Sign in")`))) throw new Error(`${path} sent a signed-in browser to sign-in`);
       const cell = { overflow: 0, axe: 0, other: 0 };
       cells.set(cellKey(name, width, theme), cell);
-      const o = await t.ev(OVERFLOW(width));
+      const here = await t.ev(`location.pathname + location.search`);
+      if (!samePage(path, here)) offTarget.push(`page ${name} at ${width} ${theme}: asked for ${path}, and checked ${here}`);
+      const o = off("overflow") ? { over: 0, client: width } : await t.ev(OVERFLOW(width));
+      if (!off("overflow")) did("overflow", name, width, theme);
       if (o.over > 0 || o.client > width) {
         cell.overflow = Math.max(o.over, 1);
         findings.push({ kind: "overflow", page: name, width, theme, detail: `${o.over}px wider than the ${o.room} there is at ${width} (clientWidth ${o.client}, innerWidth ${o.inner}): ${o.wide.join("; ") || "no single element found"}`, capture: await t.capture(`overflow-${name}-${width}-${theme}`) });
       }
-      const violations = await axeScan(t);
+      const violations = off("axe") ? [] : await axeScan(t);
+      if (!off("axe")) did("axe", name, width, theme);
       if (violations.length) {
         cell.axe = violations.reduce((n: number, v: any) => n + v.nodes, 0);
         const shot = await t.capture(`axe-${name}-${width}-${theme}`);
         for (const v of violations) findings.push({ kind: `axe:${v.id}`, page: name, width, theme, detail: `${v.impact}: ${v.help} (${v.nodes} nodes): ${v.targets.join(", ")}`, capture: shot });
       }
       const expected = (p: string) => /HTTP 5\d\d/.test(p) || /exception/.test(p);
-      for (const p of t.problems.filter(expected)) { cell.other++; findings.push({ kind: "page-error", page: name, width, theme, detail: p, capture: await t.capture(`error-${name}-${width}-${theme}`) }); }
+      if (!off("errors")) did("page errors", name, width, theme);
+      for (const p of off("errors") ? [] : t.problems.filter(expected)) { cell.other++; findings.push({ kind: "page-error", page: name, width, theme, detail: p, capture: await t.capture(`error-${name}-${width}-${theme}`) }); }
     }
     console.log(`matrix ${name}: ${WIDTHS.length * THEMES.length} cells`);
     await perPage(t, name, path);
@@ -491,10 +527,10 @@ async function matrix(signedIn: Tab, signedOut: Tab) {
 async function perPage(t: Tab, name: string, path: string) {
   for (const width of WIDTHS.filter((w) => w === 390 || w === 1280)) {
     await t.metrics(width, "light", false, false);
-    await keyboard(t, name, path, width);
-    await sheets(t, name, path, width);
+    if (!off("keyboard")) await keyboard(t, name, path, width);
+    if (!off("sheets")) await sheets(t, name, path, width);
     await t.metrics(width, "light", true);
-    await reducedMotion(t, name, path, width);
+    if (!off("motion")) await reducedMotion(t, name, path, width);
   }
 }
 
@@ -548,7 +584,7 @@ async function keyboard(t: Tab, name: string, path: string, width: number, prepa
   const bad = new Map<string, string>();
   // Taken while the control has focus: by the end of the walk the page has scrolled away.
   const note = async (detail: string) => { if (!bad.has(detail) && bad.size < 8) bad.set(detail, await t.capture(`keyboard-${name}-${width}-${bad.size}`)); };
-  let firstStop = "", repeats = 0, last = "", edges = 0;
+  let firstStop = "", repeats = 0, last = "", edges = 0, hidden = 0, players = 0;
   // The page may have put focus mid-way, so a walk goes off the end once and comes round.
   const limit = Math.min(expected.length * 3 + 16, 150);
   for (let i = 0; i < limit; i++) {
@@ -571,12 +607,16 @@ async function keyboard(t: Tab, name: string, path: string, width: number, prepa
     repeats = key === last ? repeats + 1 : 0;
     last = key;
     if (s.id) reached.add(s.id);
+    if (s.sr) hidden++;
+    if (s.media) players++;
     // A native player keeps focus on itself while Tab walks its own buttons.
     if (repeats >= (s.media ? 12 : 2)) { await note(`trap: Tab stays on ${s.name}`); break; }
     if (!s.on && !s.sr) await note(`off screen when focused: ${s.name}`);
     if (!s.ring && !s.sr) await note(`no visible focus: ${s.name}`);
     if (s.covered && !s.sr) await note(`focus hidden under ${s.covered}: ${s.name}`);
   }
+  did("keyboard", name, width);
+  if (!selfTesting) walks.push({ page: name, width, stops: expected.length, reached: reached.size, hidden, players });
   const missed = expected.filter((e) => !reached.has(e));
   if (missed.length) {
     const names = await t.ev(`${JSON.stringify(missed.slice(0, 5))}.map((id) => { const e = document.querySelector('[data-e2e-id="' + id + '"]'); return e ? (${NAME})(e) : id; })`);
@@ -591,17 +631,24 @@ async function sheets(t: Tab, name: string, path: string, width: number, prepare
   await t.nav(path);
   if (prepare) await t.ev(prepare);
   const count = await t.ev(`(() => { const seen = ${SEEN}; return [...document.querySelectorAll(${JSON.stringify(OPENERS)})].filter(seen).length; })()`);
-  for (let i = 0; i < Math.min(count, 6); i++) {
+  did("sheets", name, width);
+  const run = { page: name, width, openers: count, checked: 0, expanded: [] as string[], vanished: [] as string[], openBefore: 0 };
+  if (!selfTesting) sheetRuns.push(run);
+  for (let i = 0; i < count; i++) {
     await t.nav(path);
     if (prepare) await t.ev(prepare);
     const opener = await t.ev(`(() => { const seen = ${SEEN}; const o = [...document.querySelectorAll(${JSON.stringify(OPENERS)})].filter(seen)[${i}]; if (!o) return ""; o.dataset.e2eOpener = "1"; o.focus(); return (${NAME})(o); })()`);
-    if (!opener) continue;
+    if (!opener) { run.vanished.push(`number ${i}`); continue; }
+    // A dialog already open would satisfy the wait below with no help from Enter.
+    if (await t.ev(`!!document.querySelector("dialog[open]")`)) run.openBefore++;
     const label = `${name} ${width} opener ${opener}`;
     const finding = async (detail: string) => findings.push({ kind: "sheet", page: name, width, detail: `${opener}: ${detail}`, capture: await t.capture(`sheet-${name}-${width}-${i}`) });
     await t.key("Enter");
     let opened = false;
     try { await t.until(`${label} to open`, `!!document.querySelector("dialog[open]")`, 2500); opened = true; } catch { /* a drawer that is no dialog on this width */ }
-    if (!opened) { if (await t.ev(`!!document.querySelector("[aria-expanded=true]")`)) continue; await finding("Enter did not open it"); continue; }
+    // Only its own state counts: anything else expanded on the page says nothing about this one.
+    if (!opened) { if (await t.ev(`document.querySelector("[data-e2e-opener]")?.getAttribute("aria-expanded") === "true"`)) { run.expanded.push(opener); continue; } await finding("Enter did not open it"); continue; }
+    run.checked++;
     if (!(await t.ev(`!!document.activeElement?.closest("dialog[open]") || document.activeElement?.matches("dialog[open]")`))) await finding("focus is not inside the sheet when it opens");
     let contained = true;
     for (let k = 0; k < 12 && contained; k++) {
@@ -613,23 +660,59 @@ async function sheets(t: Tab, name: string, path: string, width: number, prepare
     try { await t.until(`${label} to close on Escape`, `!document.querySelector("dialog[open]")`, 2500); } catch { await finding("Escape did not close it"); continue; }
     if (!(await t.ev(`document.activeElement?.dataset?.e2eOpener === "1"`))) await finding(`focus does not return to the opener when it closes (it is on ${await t.ev(`document.activeElement?.tagName.toLowerCase()`)})`);
   }
+  return run;
 }
 
 async function reducedMotion(t: Tab, name: string, path: string, width: number, prepare?: string) {
   await t.nav(path);
   if (prepare) await t.ev(prepare);
+  did("motion", name, width);
   const moving = await t.ev(`document.getAnimations().filter((a) => a.playState === "running" && (a.effect?.getComputedTiming().iterations === Infinity || a.effect?.getComputedTiming().duration > 200)).map((a) => (a.animationName ?? a.transitionProperty ?? "animation") + " on " + (a.effect?.target?.tagName?.toLowerCase() ?? "?") + (a.effect?.target?.className && a.effect.target.className.baseVal === undefined ? "." + String(a.effect.target.className).trim().split(/\\s+/)[0] : "")).slice(0, 5)`);
   if (moving.length) findings.push({ kind: "reduced-motion", page: name, width, detail: `still animating with reduced motion asked for: ${moving.join(", ")}`, capture: await t.capture(`motion-${name}-${width}`) });
 }
 
 // --- the report -------------------------------------------------------------------------
 
+const PROVED = ["page errors", "axe", "focus visibility", "Tab reachability", "keyboard trap", "focus off screen", "focus covered", "sheet opens", "focus moves into a sheet", "Tab stays in a sheet", "Escape closes a sheet", "focus returns from a sheet", "something else expanded excuses nothing", "an opener's own expanded state is recorded", "an opener that went away is recorded", "a dialog already open is recorded", "reduced motion"];
+
+// What should have run, from the source and the matrix, against what did.
+function manifest(selfTest: any, source: string) {
+  const missing: string[] = [];
+  const declared = [...source.matchAll(/await journey\("([^"]+)"/g)].map((m) => m[1]);
+  if (part !== "matrix") for (const j of declared) if (!journeys.some((r) => r.name === j)) missing.push(`journey: ${j}`);
+  if (part !== "journeys") {
+    for (const p of PROVED) if (!selfTest?.proved?.includes(p)) missing.push(`self-test: ${p}`);
+    missing.push(...offTarget);
+    for (const [name] of PAGES) {
+      for (const w of WIDTHS) for (const t of THEMES) for (const c of ["overflow", "axe", "page errors"]) if (!ran.has([c, name, w, t].join("|"))) missing.push(`${c}: ${name} at ${w} ${t}`);
+      for (const w of WIDTHS.filter((x) => x === 390 || x === 1280)) for (const c of ["keyboard", "sheets", "motion"]) if (!ran.has([c, name, w].join("|"))) missing.push(`${c}: ${name} at ${w}`);
+    }
+    for (const r of walks) if (!r.stops) missing.push(`keyboard: ${r.page} at ${r.width}: nothing to walk`);
+    for (const r of sheetRuns) for (const v of r.vanished) missing.push(`sheets: ${r.page} at ${r.width}: opener ${v} was gone when its turn came`);
+    for (const r of sheetRuns) if (r.openBefore) missing.push(`sheets: ${r.page} at ${r.width}: a dialog was already open before Enter, ${r.openBefore} times`);
+  }
+  return { missing, declared: declared.length, ran: ran.size };
+}
+
 function report(selfTest: any, wallMs: number) {
+  const source = readFileSync(import.meta.path, "utf8");
+  const m = manifest(selfTest, source);
   const byKind = new Map<string, number>();
   for (const f of findings) byKind.set(f.kind, (byKind.get(f.kind) ?? 0) + 1);
   const failed = journeys.filter((j) => !j.ok);
-  let md = `# Browser suite: ${failed.length || findings.length ? "FINDINGS" : "PASS"}\n\n`;
+  let md = `# Browser suite: ${m.missing.length ? "INCOMPLETE" : failed.length || findings.length ? "FINDINGS" : "PASS"}\n\n`;
   md += `Headless ${version.Browser}, fake backends, ${(wallMs / 1000).toFixed(0)} s. ${journeys.length - failed.length} of ${journeys.length} journeys pass; ${findings.length} ${findings.length === 1 ? "finding" : "findings"} across ${PAGES.length} pages x ${WIDTHS.length} widths x ${THEMES.length} themes (${cells.size} cells).\n\n`;
+  md += `## What ran\n\n${m.ran} checks recorded, ${m.declared} journeys declared. **Missing: ${m.missing.length}.**\n`;
+  for (const x of m.missing.slice(0, 40)) md += `- ${x}\n`;
+  if (m.missing.length > 40) md += `- and ${m.missing.length - 40} more; see findings.json\n`;
+  if (sheetRuns.length) {
+    md += `\nEvery sheet opener on each page: \`checked\` got the full check (focus in, Tab held, Escape, focus back). \`expanded\` opened by \`aria-expanded\` rather than as a dialog, so it got only the check that Enter opens it. A hidden stop is one a screen reader has and sight does not, and skips the on-screen, ring and covered checks. A player stop is a native player's own control, and is only allowed to hold focus longer before it counts as a trap.\n\n| page | width | Tab stops | hidden stops | player stops | openers | checked | expanded |\n|---|---:|---:|---:|---:|---:|---:|---|\n`;
+    for (const r of sheetRuns) {
+      const w = walks.find((x) => x.page === r.page && x.width === r.width);
+      md += `| ${r.page} | ${r.width} | ${w?.stops ?? "-"} | ${w?.hidden ?? "-"} | ${w?.players ?? "-"} | ${r.openers} | ${r.checked} | ${r.expanded.join(", ") || "-"} |\n`;
+    }
+  }
+  md += `\n`;
   md += `## Journeys\n\n| journey | result | ms |\n|---|---|---:|\n`;
   for (const j of journeys) md += `| ${j.name} | ${j.ok ? "pass" : "**FAIL**"} | ${j.ms} |\n`;
   for (const j of failed) md += `\n**${j.name}**\n\n\`\`\`\n${j.detail}\n\`\`\`\n`;
@@ -663,9 +746,11 @@ function report(selfTest: any, wallMs: number) {
     if (sorted.length > 120) md += `- and ${sorted.length - 120} more; see findings.json\n`;
   }
   writeFileSync(`${out}/result.md`, md);
-  writeFileSync(`${out}/findings.json`, JSON.stringify({ journeys, findings, cells: Object.fromEntries(cells), widths: WIDTHS, themes: THEMES, pages: PAGES.map(([n, p]) => ({ name: n, path: p })), overflowSelfTest: selfTest }, null, 1));
+  writeFileSync(`${out}/findings.json`, JSON.stringify({ journeys, findings, manifest: m, walks, sheetRuns, cells: Object.fromEntries(cells), widths: WIDTHS, themes: THEMES, pages: PAGES.map(([n, p]) => ({ name: n, path: p })), overflowSelfTest: selfTest }, null, 1));
   console.log(md.split("## Findings\n")[0]);
-  console.log(`findings ${findings.length}, failed journeys ${failed.length}`);
+  console.log(`findings ${findings.length}, failed journeys ${failed.length}, missing ${m.missing.length}`);
+  for (const x of m.missing.slice(0, 40)) console.log(`missing: ${x}`);
+  if (m.missing.length) return 4; // it ran, and did not check everything it says it checks
   return failed.length || findings.length ? 1 : 0;
 }
 
@@ -678,19 +763,20 @@ try {
   if (journeys.some((j) => !j.ok && /first-run link signs in/.test(j.name))) throw new Error("sign-in failed, so nothing else can run");
   if (part !== "matrix") {
     await firstChat();
-    await studio();
+    if (!off("studio")) await studio();
     await failures();
   }
   if (part !== "journeys") {
     const outside = await send("Target.createBrowserContext");
     const signedOut = await Tab.open(outside.browserContextId);
-    selfTest = { ...(await overflowSelfTest(signedOut)), proved: await checkTheChecks(signedOut) };
+    selfTest = { ...(await overflowSelfTest(signedOut)), proved: off("selftests") ? [] : await checkTheChecks(signedOut) };
     await matrix(main, signedOut);
   }
   code = report(selfTest, Date.now() - began);
 } catch (e: any) {
   console.error(`the suite stopped: ${e.message ?? e}`);
-  try { code = Math.max(report(selfTest, Date.now() - began), 2); } catch { code = 2; }
+  try { report(selfTest, Date.now() - began); } catch { /* the exit status says enough */ }
+  code = 2;
 }
 finished = true;
 ws.close();

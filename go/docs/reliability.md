@@ -230,7 +230,8 @@ ports from the lab's block. Results and captures go to a new directory under
 `$TMPDIR/localbase-e2e`, or `-out <dir>`.
 
 Exit 0 means everything passed, exit 1 means findings (in `result.md`, with captures), exit 2 means
-the suite itself could not run, and exit 3 means it refused to start under the free-disk floor
+the suite itself could not run, exit 4 means it ran and something it should have checked has no record
+of running, and exit 3 means it refused to start under the free-disk floor
 (`tools/disk-guard.sh`).
 
 **On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
@@ -282,6 +283,15 @@ control off screen, one under a cover, an opener that does nothing, a sheet that
 ignores Escape, one that returns focus to the wrong place, and a spinning element under reduced motion.
 If a check misses its plant the suite stops with exit 2, since a clean matrix would mean nothing.
 `result.md` lists what was proved. A new check needs a plant of its own.
+
+**What ran.** A plant shows a check can fail. It does not show the check ran, and a section guarded off
+reads the same as a clean one. So `result.md` opens with a table of what should have run against what
+did: every journey declared in the source, every self-test, overflow, axe and page errors for every cell,
+keyboard, sheets and motion for every page at 390 and 1280, and each page being the one asked for. Any
+gap is exit 4. It also counts, per page, the Tab stops, the openers, and how much each one got, so a page
+where a check passes because it found nothing to look at shows as a zero. `make e2e-manifest-check` guards
+each section off and requires the table to name it, and shows a narrow run with nothing guarded off has
+no gaps; about a minute.
 
 **Waiting.** Everything waits on the page's state through `until`, which polls and, if the state never
 comes, fails with a screenshot, the address and the console. There are no fixed sleeps and no retries, so a
