@@ -176,8 +176,12 @@ func modelsImportCommand() *cli.Command {
 			if plan.Task == "" {
 				return nil, cli.Inputf("the source does not say what the model does; choose --task (%s)", strings.Join(models.Tasks, ", "))
 			}
-			ctx, cancel := context.WithTimeout(ctx, acquire.ImportDeadline)
+			parent := ctx
+			ctx, cancel := context.WithTimeout(ctx, l.ImportLimits(ctx, plan))
 			defer cancel()
+			if err := l.PrepareImport(ctx, plan); err != nil {
+				return nil, err
+			}
 			last := ""
 			// Only publishing holds the root: a download can take hours.
 			fetched, err := acquire.Fetch(ctx, e.Root.Dir, plan, func(p acquire.Progress) {
@@ -194,17 +198,12 @@ func modelsImportCommand() *cli.Command {
 				}
 			})
 			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) && parent.Err() == nil {
+					return nil, errors.New("The import took too long and was stopped. Run it again to resume it. To allow longer, run: local-base configure --import-deadline-hours <hours>")
+				}
 				return nil, err
 			}
-			var res *acquire.Result
-			err = root.WithOperation(e.Root.Dir, "install model", func() (err error) {
-				res, err = fetched.Publish()
-				return err
-			})
-			if err != nil {
-				return nil, err
-			}
-			sel, err := l.SaveImport(ctx, res, backend)
+			res, sel, err := l.PublishImport(ctx, fetched, plan, backend)
 			if err != nil {
 				return nil, err
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // Job is an import running in the gateway. Its fields never contain header
@@ -50,12 +52,104 @@ var (
 	ErrImportRunning = errors.New("This model is already being imported.")
 )
 
+// How an import takes the root, and how long it waits between tries (tests change them).
+var (
+	withLease       = root.WithOperation
+	leaseRetryEvery = time.Second
+	// publishHook marks the steps of publishing, for a test to end the process there.
+	publishHook = func(string) {}
+)
+
+// underLease runs fn holding the root, for as long as ctx allows. By this point a
+// download may have taken hours, and something else holding the root for a while is no
+// reason to fail it.
+func (l *Library) underLease(ctx context.Context, fn func() error) error {
+	for {
+		err := withLease(l.Root.Dir, "install model", fn)
+		if !errors.Is(err, root.ErrOperationBusy) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(leaseRetryEvery):
+		}
+	}
+}
+
+// reclaim removes files under an imported model's directory that nothing records. A
+// process killed between moving the files into place and recording them leaves those:
+// no list shows them, so without this they would only block importing that id again.
+// They are never reused: another source may be importing the id now. Hold the root.
+func (l *Library) reclaim(ctx context.Context, id string) error {
+	dest := acquire.ImportedDir(l.Root.Dir, id)
+	if _, err := os.Stat(dest); err != nil {
+		return nil
+	}
+	recorded, err := l.Store.ImportedModels(ctx)
+	if err != nil {
+		return err
+	}
+	for _, m := range recorded {
+		if m.ID == id {
+			return nil // a real model: Fetch and Publish refuse to replace it
+		}
+	}
+	return os.RemoveAll(dest)
+}
+
+// PrepareImport clears what an earlier crash left of this import. Call it before Fetch.
+func (l *Library) PrepareImport(ctx context.Context, plan *acquire.Plan) error {
+	if _, err := os.Stat(acquire.ImportedDir(l.Root.Dir, plan.ID)); err != nil {
+		return nil
+	}
+	return l.underLease(ctx, func() error { return l.reclaim(ctx, plan.ID) })
+}
+
+// PublishImport moves a fetched import into place and records it, holding the root
+// across both, so a model is listed only once its files are all there. A kill between
+// the two leaves files nothing lists, which the next try removes (reclaim).
+func (l *Library) PublishImport(ctx context.Context, fetched *acquire.Fetched, plan *acquire.Plan, backend string) (*acquire.Result, backends.Selection, error) {
+	var res *acquire.Result
+	var sel backends.Selection
+	err := l.underLease(ctx, func() error {
+		if err := l.reclaim(ctx, plan.ID); err != nil {
+			return err
+		}
+		publishHook("before-publish")
+		var err error
+		if res, err = fetched.Publish(); err != nil {
+			return err
+		}
+		publishHook("after-publish")
+		// Once the files are in place, finish: a cancel from here on would leave them.
+		if sel, err = l.SaveImport(context.WithoutCancel(ctx), res, backend); err != nil {
+			return err
+		}
+		publishHook("after-record")
+		return nil
+	})
+	return res, sel, err
+}
+
+// ImportLimits gives a plan the limits this root sets, and says how long the import may
+// run. A value that can't be read counts as unset, so the defaults hold.
+func (l *Library) ImportLimits(ctx context.Context, plan *acquire.Plan) time.Duration {
+	if n, ok := l.Store.SettingInt(ctx, store.ImportMaxUnknownKey); ok {
+		plan.MaxUnknownBytes = int64(n) << 30
+	}
+	if n, ok := l.Store.SettingInt(ctx, store.ImportDeadlineKey); ok {
+		return time.Duration(n) * time.Hour
+	}
+	return acquire.ImportDeadline
+}
+
 // StartImport runs an import in the background. The download holds nothing a
 // configuration change or another import needs, since it can take hours: only
 // publishing takes the root's operation lease.
 func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logger) (string, error) {
 	job := &Job{ID: "imp_" + root.NewID(), State: "running", Started: time.Now(), Plan: plan}
-	ctx, cancel := context.WithTimeout(context.Background(), acquire.ImportDeadline)
+	ctx, cancel := context.WithTimeout(context.Background(), l.ImportLimits(context.Background(), plan))
 	job.cancel = cancel
 	l.jobs.mu.Lock()
 	if l.jobs.byID == nil {
@@ -87,23 +181,20 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 		defer cancel()
 		var model *models.Model
 		var sel backends.Selection
-		fetched, err := acquire.Fetch(ctx, l.Root.Dir, plan, func(p acquire.Progress) {
-			l.jobs.mu.Lock()
-			job.Progress = p
-			l.jobs.mu.Unlock()
-		})
+		var fetched *acquire.Fetched
+		err := l.PrepareImport(ctx, plan)
 		if err == nil {
-			err = root.WithOperation(l.Root.Dir, "install model", func() error {
-				res, err := fetched.Publish()
-				if err != nil {
-					return err
-				}
-				if sel, err = l.SaveImport(context.WithoutCancel(ctx), res, backend); err != nil {
-					return err
-				}
-				model = &res.Model
-				return nil
+			fetched, err = acquire.Fetch(ctx, l.Root.Dir, plan, func(p acquire.Progress) {
+				l.jobs.mu.Lock()
+				job.Progress = p
+				l.jobs.mu.Unlock()
 			})
+		}
+		if err == nil {
+			var res *acquire.Result
+			if res, sel, err = l.PublishImport(ctx, fetched, plan, backend); err == nil {
+				model = &res.Model
+			}
 		}
 		l.jobs.mu.Lock()
 		cancelled := job.cancelled
@@ -120,7 +211,7 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 			case cancelled:
 				job.Error, job.ErrorCode = "The import was cancelled.", acquire.CodeCancelled
 			case errors.Is(ctx.Err(), context.DeadlineExceeded):
-				job.Error, job.ErrorCode = "The import took too long and was stopped. Try again to resume it.", acquire.CodeTimedOut
+				job.Error, job.ErrorCode = "The import took too long and was stopped. Try again to resume it. Whoever runs this LocalBase can allow longer.", acquire.CodeTimedOut
 			case errors.As(err, &refused):
 				job.ErrorCode = refused.Code
 			}

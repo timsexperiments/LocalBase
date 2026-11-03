@@ -122,12 +122,12 @@ func Fetch(ctx context.Context, rootDir string, p *Plan, progress func(Progress)
 		if _, err := os.Stat(final); err != nil {
 			partial := final + ".partial"
 			if f.local != "" {
-				if err := copyFile(ctx, f.local, partial, newBudget(staging, f.SizeBytes), func(n int64) {
+				if err := copyFile(ctx, f.local, partial, p.budget(staging, f.SizeBytes), func(n int64) {
 					progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 				}); err != nil {
 					return nil, err
 				}
-			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, newBudget(staging, f.SizeBytes), func(n int64) {
+			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, p.budget(staging, f.SizeBytes), func(n int64) {
 				progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 			}); err != nil {
 				return nil, refusal(err, p.onHost)

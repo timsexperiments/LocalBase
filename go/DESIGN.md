@@ -4214,17 +4214,33 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
 | --- | --- | --- |
 | Free space, before starting | what the source claims, plus 2 GiB left free | Refused: 507 `import_no_space` |
 | Free space, while running (every 64 MiB) | 2 GiB left free | Stops and removes the file: `import_no_space` |
-| A file of unknown size | 256 GiB | Stops and removes the file: `import_too_large` |
+| A file of unknown size | 256 GiB (`configure --import-max-unknown-gib`) | Stops and removes the file: `import_too_large` |
 | Files in one import | 1024 | Refused: 403 `import_too_many_files` |
-| A whole import | 48 h | Stops and keeps the file to resume: `import_timed_out` |
+| A whole import | 48 h (`configure --import-deadline-hours`) | Stops and keeps the file to resume: `import_timed_out` |
 | Imports at once | 4, and one per model | 429 `import_busy`, 409 `import_running` |
 | A download nothing has touched | 7 days | Removed the next time anything opens the library |
 
-- **Only publishing holds the root.** `acquire.Fetch` downloads and checks with nothing held,
-  and `Fetched.Publish` runs under the lease.
+- **A larger model.** A file whose source states its size is limited only by free disk, so a
+  model of any size imports from a source that says how big it is. The 256 GiB limit is for a
+  source that doesn't. For a bigger file from such a source, the owner raises it on the host with
+  `local-base configure --import-max-unknown-gib <GiB>`. The limits apply to the next import.
+  A value that can't be read counts as unset, so the default holds, never no limit.
+- **Only publishing holds the root.** `acquire.Fetch` downloads and checks with nothing held.
+  `Library.PublishImport` moves the files into place and records the model under one lease,
+  so a model is listed only once its files are all there. If something else holds the root, it
+  waits for as long as the import may run, because hours of download may be behind it. A cancel
+  still stops it while it waits.
+- **A kill while publishing.** Before the move, the files stay in staging and the import resumes.
+  Between the move and the record, files sit under `models/imported/<id>` that no list shows. The
+  next import of that id removes them and downloads again; it can't reuse them, since another
+  source may be importing that id now. After the record, the model is listed and whole
+  (`TestKilledWhilePublishing`, with a real SIGKILL at each step).
 - **Cancel:** `POST /_localbase/model-imports {"action":"cancel","job":"<id>"}` (`models:manage`)
   stops the job and removes what it downloaded. The job then has `state: "failed"` and
   `errorCode: "import_cancelled"`. A shutdown also stops imports, but keeps their files, so the
-  same import resumes after a restart.
+  same import resumes after a restart. The job page's form posts to `POST /app/models/import/cancel`
+  with a `job` field, and gets the same page back. Cancelling a catalog install is separate work
+  (#498). It keeps its partial file, because a pinned checksum makes resuming safe, while an
+  import's source may change between tries.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.

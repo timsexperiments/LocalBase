@@ -200,6 +200,18 @@ type Lease struct {
 	claimed   bool
 }
 
+// operationWait is how long a lease waits for another operation (tests shorten it).
+var operationWait = 10 * time.Second
+
+// ErrOperationBusy is why a lease was not granted when something else holds the root:
+// waiting longer may work.
+var ErrOperationBusy = errors.New("another LocalBase operation is active")
+
+type busyError struct{ message string }
+
+func (e *busyError) Error() string        { return e.message }
+func (e *busyError) Is(target error) bool { return target == ErrOperationBusy }
+
 // AcquireOperation takes the operation lease of a canonical root, waiting up
 // to 10 s for another operation to finish.
 func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
@@ -207,7 +219,7 @@ func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
 	if err := ensurePrivateDir(p.dir); err != nil {
 		return nil, err
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(operationWait)
 	var invalidSince time.Time
 	for time.Now().Before(deadline) {
 		err := os.Mkdir(p.lock, 0o700)
@@ -258,8 +270,8 @@ func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
 		invalidSince = time.Time{}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("Timed out waiting to %s LocalBase root %s; another LocalBase operation is still active or its owner cannot be verified.",
-		operation, canonicalRoot)
+	return nil, &busyError{fmt.Sprintf("Timed out waiting to %s LocalBase root %s; another LocalBase operation is still active or its owner cannot be verified.",
+		operation, canonicalRoot)}
 }
 
 // Handoff passes the lease to the gateway a service start launches: the

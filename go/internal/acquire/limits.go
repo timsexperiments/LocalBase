@@ -76,14 +76,38 @@ func CheckSpace(rootDir string, p *Plan) error {
 type budget struct {
 	dir       string
 	unknown   bool // the source did not say how big the file is
+	limit     int64
+	onHost    bool
 	nextCheck int64
 }
 
-func newBudget(dir string, expected int64) *budget { return &budget{dir: dir, unknown: expected <= 0} }
+func newBudget(dir string, expected int64) *budget {
+	return &budget{dir: dir, unknown: expected <= 0, limit: maxUnknownSizeBytes}
+}
+
+// budget is a plan's own limits, for one of its files.
+func (p *Plan) budget(dir string, expected int64) *budget {
+	b := newBudget(dir, expected)
+	if p.MaxUnknownBytes > 0 {
+		b.limit = p.MaxUnknownBytes
+	}
+	b.onHost = p.onHost
+	return b
+}
+
+func tooLarge(limit int64, onHost bool) error {
+	message := fmt.Sprintf("This source did not say how big the file is, and it passed the %s limit for that. Nothing was kept.", gib(limit))
+	if onHost {
+		message += " To allow more, run: local-base configure --import-max-unknown-gib <GiB>"
+	} else {
+		message += " Whoever runs this LocalBase can raise the limit."
+	}
+	return &RefusedError{CodeTooLarge, message}
+}
 
 func (b *budget) check(done int64) error {
-	if b.unknown && done > maxUnknownSizeBytes {
-		return &RefusedError{CodeTooLarge, fmt.Sprintf("This source did not say how big the file is, and it passed the %s limit for that. Nothing was kept.", gib(maxUnknownSizeBytes))}
+	if b.unknown && done > b.limit {
+		return tooLarge(b.limit, b.onHost)
 	}
 	if done < b.nextCheck {
 		return nil

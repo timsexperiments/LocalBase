@@ -244,3 +244,58 @@ func TestStagingIsPruned(t *testing.T) {
 		}
 	}
 }
+
+// A root's own limit replaces the default, and the refusal says how to raise it in words
+// that suit who is reading: the command on the host, a plain sentence elsewhere.
+func TestUnknownSizeLimitComesFromThePlan(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		onHost bool
+		want   string
+		not    string
+	}{
+		{"through the API", false, "Whoever runs this LocalBase can raise the limit", "local-base configure"},
+		{"on the host", true, "local-base configure --import-max-unknown-gib <GiB>", "Whoever runs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &Plan{MaxUnknownBytes: 1 << 20, onHost: tc.onHost}
+			b := p.budget(t.TempDir(), 0)
+			if err := b.check(1 << 20); err != nil {
+				t.Errorf("at the limit: %v", err)
+			}
+			err := b.check(1<<20 + 1)
+			var refused *RefusedError
+			if !errors.As(err, &refused) || refused.Code != CodeTooLarge {
+				t.Fatalf("past the limit: %v", err)
+			}
+			if !strings.Contains(refused.Message, tc.want) || strings.Contains(refused.Message, tc.not) {
+				t.Errorf("message: %s", refused.Message)
+			}
+		})
+	}
+	// No limit set on the plan: the default, and a stated size isn't limited at all.
+	limit(t, &maxUnknownSizeBytes, 1<<10)
+	if err := (&Plan{}).budget(t.TempDir(), 0).check(1<<10 + 1); err == nil {
+		t.Error("the default limit didn't apply")
+	}
+	limit(t, &availableBytes, func(string) (int64, error) { return 1 << 60, nil })
+	if err := (&Plan{}).budget(t.TempDir(), 1<<30).check(1 << 29); err != nil {
+		t.Errorf("a file of stated size: %v", err)
+	}
+}
+
+// Through a real download, a plan's own limit is what stops a source with no stated size.
+func TestDownloadKeepsToThePlansLimit(t *testing.T) {
+	root := t.TempDir()
+	srv := endless(t)
+	p, err := Resolve(context.Background(), root, Request{Source: srv.URL + "/m.gguf", AllowHTTP: true, AllowPrivate: true, Confirmed: true, ID: "limited", Task: "chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.MaxUnknownBytes = 256 << 10
+	_, err = Fetch(context.Background(), root, p, nil)
+	var refused *RefusedError
+	if !errors.As(err, &refused) || refused.Code != CodeTooLarge {
+		t.Fatalf("%v", err)
+	}
+}

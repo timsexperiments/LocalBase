@@ -304,7 +304,22 @@ func (u *UI) importStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) importJob(w http.ResponseWriter, r *http.Request) {
-	job := u.d.Library.Job(r.PathValue("job"))
+	u.renderImportJob(w, r, r.PathValue("job"))
+}
+
+// importCancel stops an import and shows its job page again, for a plain form with a
+// `job` field. The page keeps polling until the job has stopped.
+func (u *UI) importCancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PostFormValue("job")
+	if !u.d.Library.CancelImport(id) {
+		http.NotFound(w, r)
+		return
+	}
+	u.renderImportJob(w, r, id)
+}
+
+func (u *UI) renderImportJob(w http.ResponseWriter, r *http.Request, id string) {
+	job := u.d.Library.Job(id)
 	if job == nil {
 		http.NotFound(w, r)
 		return

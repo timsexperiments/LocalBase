@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -183,6 +184,23 @@ const (
 	PrivateImportsKey   = "imports.allow-private"
 	LocalPathImportsKey = "imports.allow-local-paths"
 )
+
+// What one import may cost, when this root sets its own limits (DESIGN §31.3). Only the
+// CLI on the host sets them. They apply to the next import.
+const (
+	ImportDeadlineKey   = "imports.deadline-hours"
+	ImportMaxUnknownKey = "imports.max-unknown-gib"
+)
+
+// SettingInt reads a positive whole-number setting. Anything else counts as unset.
+func (s *Store) SettingInt(ctx context.Context, key string) (int, bool) {
+	v, ok, err := s.Setting(ctx, key)
+	if err != nil || !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n > 0
+}
 
 func (s *Store) settingOn(ctx context.Context, key string) bool {
 	v, ok, err := s.Setting(ctx, key)

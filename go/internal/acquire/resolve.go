@@ -103,11 +103,14 @@ type Plan struct {
 	// Preview holds the facts known before downloading (pinned upstream
 	// metadata, or a local file's header), for a backend recommendation in
 	// the import form. Downloaded files are inspected again.
-	Preview      models.Variant `json:"preview"`
-	profile      *Profile
-	hfToken      string
-	allowPrivate bool
-	onHost       bool
+	Preview models.Variant `json:"preview"`
+	// MaxUnknownBytes bounds a file whose source does not say how big it is, when this
+	// root sets its own limit (0: the default).
+	MaxUnknownBytes int64 `json:"-"`
+	profile         *Profile
+	hfToken         string
+	allowPrivate    bool
+	onHost          bool
 }
 
 var (
