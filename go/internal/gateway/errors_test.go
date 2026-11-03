@@ -73,10 +73,10 @@ func TestModelTooLarge(t *testing.T) {
 	}{
 		"GPU working set": {&memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set", Permanent: true,
 			RequestedBytes: tenth(145), AvailableBytes: tenth(47), CapacityBytes: tenth(47)},
-			"This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host (4.7 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."},
+			"This model requires about 14.5 GiB of memory, but only 4.7 GiB is available for models on this host (4.7 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config."},
 		"system memory": {&memory.AdmissionError{Reason: "system-memory", PoolID: "system", Permanent: true,
 			RequestedBytes: 20 * gib, AvailableBytes: 8 * gib, CapacityBytes: 16 * gib},
-			"This model requires about 20.0 GiB of memory, but only 8.0 GiB is available for models on this host (16.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model."},
+			"This model requires about 20.0 GiB of memory, but only 8.0 GiB is available for models on this host (16.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config."},
 	} {
 		w := httptest.NewRecorder()
 		runtimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")

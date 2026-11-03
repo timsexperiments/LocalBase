@@ -86,7 +86,7 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 		var pe *placement.Error
 		if errors.As(err, &pe) {
 			status := 400
-			if pe.Code == "placement_does_not_fit" {
+			if pe.Code == "placement_does_not_fit" || pe.Code == "model_too_large" {
 				status = 409
 			}
 			writeError(w, r, status, "invalid_request_error", pe.Code, pe.Message, nil)
