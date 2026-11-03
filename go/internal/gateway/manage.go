@@ -203,7 +203,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	if in.KeyID != nil {
 		keyID = *in.KeyID
 	}
-	valid := true
+	var valid bool
 	switch in.Action {
 	case "create":
 		valid = in.Name != nil && strings.TrimSpace(*in.Name) != "" && len(*in.Name) <= 128 && in.Scopes != nil && in.KeyID == nil &&
