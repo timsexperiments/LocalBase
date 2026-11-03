@@ -6,7 +6,9 @@
 #   go build -o /tmp/fake/llama-server ./internal/runtime/fakebackend
 #   mkfile -n <size> <root>/models/llm/<the active model's file>   (sparse)
 #   LOCALBASE_LLAMA_SERVER=/tmp/fake/llama-server local-base --root <root> \
-#     serve --port <port> --no-auth --llm --no-stt --no-tts --no-image --no-video
+#     serve --port <port> --llm-port <another port> --no-auth --llm --no-stt --no-tts --no-image --no-video
+# Pass --llm-port. --port moves only the gateway, and the backend's default port is the one a live
+# gateway's backend uses, so a scratch gateway can end up asking the live model.
 #   tools/chat-runs-check.sh http://127.0.0.1:<port>
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
