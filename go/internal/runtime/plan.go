@@ -444,3 +444,31 @@ func ApplyObserved(d memory.Demand, peaks []store.ObservedPeak, shape string) me
 	}
 	return d
 }
+
+// mediaShape is the launch shape a media backend's peaks are kept under. Peaks recorded before
+// backends were told apart are under "default".
+func mediaShape(backendID string) string { return "backend=" + backendID }
+
+// RaiseToObserved applies what a media backend has been seen to need. It only ever raises the
+// estimate. A media peak depends on the request (image size, steps, batch, video length), admission
+// doesn't know the request, and the next one may be larger than any seen. So a small peak says
+// nothing about what the model can need, while a large one says at least that much. Unlike an LLM's
+// peak, which is for one launch shape, the highest seen counts, plus the observed margin.
+func RaiseToObserved(d memory.Demand, peaks []store.ObservedPeak, shape string) memory.Demand {
+	var high int64
+	for _, p := range peaks {
+		if p.Method == "footprint" && (p.LaunchShape == shape || p.LaunchShape == "default") && p.PeakBytes > high {
+			high = p.PeakBytes
+		}
+	}
+	if high <= 0 {
+		return d
+	}
+	b := high + memory.ObservedMargin(high)
+	if b <= d.UnifiedBytes { // A footprint is the whole process, which is what this figure is too.
+		return d
+	}
+	d.UnifiedBytes, d.HostBytes, d.AcceleratorBytes = max(d.UnifiedBytes, b), max(d.HostBytes, b), max(d.AcceleratorBytes, b)
+	d.Confidence = "observed"
+	return d
+}
