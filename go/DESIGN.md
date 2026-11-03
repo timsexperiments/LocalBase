@@ -4893,3 +4893,67 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   makes resuming safe. An import removes its file, because its source may change between tries.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+## 27. UI v2: the Studio surfaces (2026-11-02)
+
+The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
+own notes are in §22.15 to §22.20, and this says what v2 changed about them.
+
+### 27.1 The landing
+
+- **Tools** are one list, led by the tool's name in the reading face, with one line of purpose.
+  A tool's latest result moved out of its row, because Recent already shows it.
+- **Recent** holds up to six results, newest first, and is left out until there is one. Each has
+  what it is (a picture, a video's first frame, a transcript's first words, speech's real
+  waveform), the words it was asked for, and its tool and age. It leads to that result, not only
+  to the tool. Decisions are not in it, because a question stays in the browser (§22.17).
+- **While a result is made** its tile shows the state in words beside a still lamp, and asks after
+  itself every 3 s until it settles. Only that tile changes, so the strip keeps its scroll
+  position, and nothing replays. A failure says "Didn’t finish" and a stop says "Stopped".
+- **Width.** Phones have Recent first and then the tools, with a strip that runs to the screen's
+  edge so the next result shows. From 1100 px the tools are on the left and three across of results
+  on the right.
+
+### 27.2 Honest states
+
+- **A selected model that isn't on disk isn't usable,** on the landing and now on the tool's own
+  page. On a fresh install Image and Transcribe had shown a working prompt that could only fail,
+  because their defaults are selected before they are downloaded. Video and Decisions could do the
+  same. Tools offer only what `installedOnly` keeps, so a model that is half installed or removed
+  is not a choice.
+- **One banner.** When no tool can run, one calm line says so, and the rows don't repeat it (they
+  keep it for screen readers). When only some can, each that can't says "Needs a model".
+- **Someone who can't add models** is told to ask whoever runs the computer, and is not sent to a
+  page they can't use.
+- **The purple was never ours.** The review's "purple placeholders" were the fake image server's
+  test pictures, so it now draws warm, quiet ones. No product style changed for this, and real
+  pictures are as colorful as they are.
+
+**Checks:** `TestStudioLanding`, `TestStudioTile`, and `tools/chat-runs-check.sh` (words on a
+result, a tile that settles and keeps the strip's place, and the seeded landing at 320, 360, 390,
+430, 768 and 1280). `contract/studio_models_test.go` runs the real binary from the defaults `init`
+really chooses: each of the five tools offers only what is on disk, and half a model isn't one. On
+the pages before this change it failed for all five.
+
+### 27.2a The pill and a video's size
+
+- **A pill leads somewhere.** A form's run has no recorded place, so it now goes by what the run is. It
+  doesn't show on the result's own page, or on the landing for what Recent shows.
+- **It covers nothing.** It is a bar on its own ground above the tab bar or the prompt, and pages keep
+  room. Before, it floated over rows and, at z-30, over a tool's prompt.
+- **A finished video fits one phone screen** with its heading and actions, by leaving room for the fixed
+  parts rather than taking a share of the screen: a share of 60% left no room at 740 px tall. Below
+  about 660 px the player stops at 9rem, so the end of the card can need a scroll.
+
+### 27.3 What the landing's overflow taught
+
+- **Hidden text can widen a page.** The shelf was contained, but a `.sr-only` span is absolute, and
+  with no positioned parent inside the shelf it counted against the page: 636 px wide at 320. So a
+  tile is `relative`. Any shelf holding hidden text needs the same.
+- **Compare with `clientWidth`, never `innerWidth`.** Under mobile emulation `innerWidth` grows with
+  an overflowing page, so `scrollWidth > innerWidth` can't fail. Ten checks did that, and hid this.
+- **A check must be able to fail.** "Keeps its place" first passed at scroll position 0, so it runs
+  at 320 with enough results to scroll, and asserts that it did. Snapping also moves a position
+  between tiles, so it scrolls to a tile.
+- **Real pictures vary.** Captures use pictures a real model made and a quiet video fixture, so
+  sheets are judged on the design. Real media is as colorful as it is.
+
