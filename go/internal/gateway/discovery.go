@@ -147,7 +147,7 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := s.LLM.Config()
 	token := cfg.HFToken
-	client := &hub.Client{Root: s.Root.Dir, Token: hubTokenOr(token)}
+	client := &hub.Client{Root: s.Root.Dir, Token: hubTokenOr(token), Log: s.Log}
 	ctx := r.Context()
 	fail := func(err error) {
 		var ce *hub.ConflictError
