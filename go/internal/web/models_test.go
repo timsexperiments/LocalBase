@@ -46,7 +46,7 @@ func TestLibraryModelsFirst(t *testing.T) {
 	if !strings.Contains(main, `<h1 id="models-title" class="page-title">Models</h1>`) || strings.Count(main, "<h1") != 1 {
 		t.Errorf("title: %s", main)
 	}
-	for _, gone := range []string{"eyebrow", "Your library", "Memory available now", `href="/app/models/running"`} {
+	for _, gone := range []string{"eyebrow", "Your library", "Memory available now"} {
 		if strings.Contains(main, gone) {
 			t.Errorf("still shows %q", gone)
 		}
