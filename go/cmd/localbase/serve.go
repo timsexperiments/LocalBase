@@ -434,6 +434,7 @@ func serve(c *cli.Ctx) (any, error) {
 		videoJobs.Shutdown() // the active job stops before its runtime closes
 	}
 	srv.StopManagement(3 * time.Second) // an accepted install gets a moment, then is interrupted and recorded
+	lib.StopImports(3 * time.Second)    // what they downloaded stays, to resume
 	llm.Close()
 	// Every runtime is down before the log says the gateway is (the deferred
 	// closes above then find nothing left to do).
