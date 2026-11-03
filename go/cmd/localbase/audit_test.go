@@ -82,10 +82,11 @@ var auditClasses = map[string]string{
 	"smoke":                 "audited-temporary-key",
 	"upgrade":               "audited-temporary-key",
 	"upgrade check-updates": "not-a-change",
-	// Deliberately not audited: they start and stop a process, or replace the binary, and don't change who
-	// can do what. Uninstall removes the logs a line would go in, and says what it did on screen.
+	// Deliberately not audited: they start and stop a process. Uninstall removes the logs a line would go
+	// in, and says what it did on screen.
 	"serve": "not-a-change", "start": "not-a-change", "stop": "not-a-change", "restart": "not-a-change",
-	"upgrade rollback": "not-a-change", "uninstall": "not-a-change",
+	"uninstall":        "not-a-change",
+	"upgrade rollback": "audited-elsewhere", // audit.upgrade-rolled-back, in the contract test
 	// These write their own lines, under other event names, already.
 	"access login-link": "audited-elsewhere", "access sessions list": "read", "access sessions revoke": "audited-elsewhere",
 }

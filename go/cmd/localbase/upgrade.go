@@ -444,6 +444,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	}
 	res, err := upgrade.Apply(cand, binary, ops)
 	data["rolledBack"] = res.RolledBack
+	auditUpgrade(e, "audit.upgrade-applied", version.Version, target, cand.SHA256, upgradeOutcome(res, err))
 	if err != nil {
 		var smoke *upgrade.SmokeFailed
 		if errors.As(err, &smoke) {
@@ -453,6 +454,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 		return nil, err
 	}
 	data["changed"] = true
+	e.withAuditResult(data)
 	c.Info("Now running %s.", target)
 	if state != gatewayManaged {
 		c.Info("No gateway was running here. To start one: local-base start")
@@ -507,9 +509,16 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 	if state == gatewayManaged {
 		ops = managedOps(c, e, binary, arguments)
 	}
+	// What it goes back to, for the record, if the file will say.
+	to := "unknown"
+	if v, err := upgrade.RunVersion(binary + upgrade.PreviousSuffix); err == nil {
+		to = v
+	}
 	if err := upgrade.Rollback(binary, ops); err != nil {
+		auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "failed")
 		return nil, err
 	}
+	auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "rolled-back")
 	c.Info("Back on the previous version. To undo this: local-base upgrade rollback")
 	return map[string]any{"rolledBack": true}, nil
 }

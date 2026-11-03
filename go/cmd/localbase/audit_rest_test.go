@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 // changedConfig is this root's configuration as a file to apply, with one setting changed.
@@ -226,6 +228,19 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 			if strings.Contains(string(b), value) {
 				t.Errorf("%s holds %s", entry.Name(), what)
 			}
+		}
+	}
+}
+
+func TestUpgradeOutcome(t *testing.T) {
+	for want, got := range map[string]string{
+		"applied":      upgradeOutcome(upgrade.Result{}, nil),
+		"rolled-back":  upgradeOutcome(upgrade.Result{RolledBack: true}, errors.New("PLANTED")),
+		"smoke-failed": upgradeOutcome(upgrade.Result{}, &upgrade.SmokeFailed{Err: errors.New("PLANTED")}),
+		"failed":       upgradeOutcome(upgrade.Result{}, errors.New("PLANTED")),
+	} {
+		if got != want {
+			t.Errorf("%q, want %q", got, want)
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 // openAuditSink is a variable so that a test can make it fail.
@@ -46,6 +47,30 @@ func auditCLI(e *env, msg string, attrs ...any) {
 	if err := sink.AuditErr(); err != nil {
 		fail(err)
 	}
+}
+
+// auditUpgrade records a change of this binary: versions, the new file's short checksum, and how it
+// ended. Never a URL, a signature, a path or an error's text: a download URL can carry a token.
+func auditUpgrade(e *env, event, from, to, sha256, outcome string) {
+	if len(sha256) > 12 {
+		sha256 = sha256[:12]
+	}
+	auditCLI(e, "Administration change.", "event", event, "action", strings.TrimPrefix(event, "audit.upgrade-"), "actor_kind", "cli", "actor_id", "",
+		"from_version", from, "to_version", to, "build", sha256, "outcome", outcome)
+}
+
+// upgradeOutcome is how an Apply ended, in words from a short list.
+func upgradeOutcome(res upgrade.Result, err error) string {
+	var smoke *upgrade.SmokeFailed
+	switch {
+	case err == nil:
+		return "applied"
+	case res.RolledBack:
+		return "rolled-back"
+	case errors.As(err, &smoke):
+		return "smoke-failed"
+	}
+	return "failed"
 }
 
 // auditFailureClass names what went wrong from a short list. An error's own text is never

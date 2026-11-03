@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -496,5 +497,76 @@ func TestUpgradeCheckUpdatesToggle(t *testing.T) {
 	// Leave the shared gateway as it was.
 	if res := runCLI(t, "go", target.Root, "--json", "upgrade", "check-updates", "off"); res.code != 0 {
 		t.Errorf("off: %d %s", res.code, res.stderr)
+	}
+}
+
+// An upgrade and a rollback each leave a record: which versions, the file's short checksum, how it
+// ended. A token in a download URL, or the path, stays out of every log.
+func TestUpgradeIsAudited(t *testing.T) {
+	k := theKit(t)
+	old, next := k.build(t, "0.2.0", true), k.build(t, "9.9.9", true)
+	rel := newFakeReleases(t, "v9.9.9")
+	rel.tags["v9.9.9"] = k.releaseFiles(t, next)
+	bin := installBinary(t, old)
+	rootDir := filepath.Join(scratchDir(t), "root")
+	const token = "PLANTED_download_token_4e71a0"
+	host := strings.TrimPrefix(rel.srv.URL, "http://")
+	env := []string{"LOCALBASE_RELEASE_URL=http://mirror:" + token + "@" + host + "/files",
+		"LOCALBASE_RELEASE_API_URL=" + rel.srv.URL + "/latest?token=" + token}
+	if res := runBinary(t, bin, env, "--root", rootDir, "upgrade", "--yes"); res.code != 0 {
+		t.Fatalf("upgrade: %d\n%s\n%s", res.code, res.stdout, res.stderr)
+	}
+	if res := runBinary(t, bin, env, "--root", rootDir, "upgrade", "rollback"); res.code != 0 {
+		t.Fatalf("rollback: %d\n%s\n%s", res.code, res.stdout, res.stderr)
+	}
+	audit, err := os.ReadFile(filepath.Join(rootDir, "logs", "audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(string(audit)), "\n") {
+		var ev struct {
+			EventName  string         `json:"eventName"`
+			Attributes map[string]any `json:"attributes"`
+		}
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if strings.HasPrefix(ev.EventName, "audit.upgrade-") {
+			// Only these: the sink redacts a URL's secrets, but that's a second line of defence.
+			for k := range ev.Attributes {
+				if !slices.Contains([]string{"action", "actor_kind", "actor_id", "from_version", "to_version", "build", "outcome"}, k) {
+					t.Errorf("an upgrade line has %q: %s", k, line)
+				}
+			}
+			ev.Attributes["event"] = ev.EventName
+			seen = append(seen, ev.Attributes)
+		}
+	}
+	if len(seen) != 2 {
+		t.Fatalf("%d upgrade lines: %v", len(seen), seen)
+	}
+	up, back := seen[0], seen[1]
+	if up["event"] != "audit.upgrade-applied" || up["from_version"] != "0.2.0" || up["to_version"] != "9.9.9" || up["outcome"] != "applied" || up["actor_kind"] != "cli" {
+		t.Errorf("%v", up)
+	}
+	if b, _ := up["build"].(string); len(b) != 12 {
+		t.Errorf("build %q", b)
+	}
+	if back["event"] != "audit.upgrade-rolled-back" || back["to_version"] != "0.2.0" || back["from_version"] != "9.9.9" || back["outcome"] != "rolled-back" {
+		t.Errorf("%v", back)
+	}
+	logs, _ := filepath.Glob(filepath.Join(rootDir, "logs", "*"))
+	for _, m := range logs {
+		b, err := os.ReadFile(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), token) {
+			t.Errorf("%s holds the download token", m)
+		}
+	}
+	if strings.Contains(string(audit), filepath.Dir(bin)) {
+		t.Error("the audit file holds the install path")
 	}
 }
