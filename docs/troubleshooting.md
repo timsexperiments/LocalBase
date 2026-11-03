@@ -25,6 +25,10 @@ See [why a model was refused](model-refusals.md) and [the memory reserve](memory
 
 A failed install prints a reason. See [install failures](install-failures.md).
 
+## Chat requests
+
+`400 remote_media_not_allowed` means a content part named a web address. Send the content itself: `image_url.url` must be a `data:` URL, and audio and files must hold base64, an id or a `data:` URL. A client that replays its history has to replace an address in an earlier message too. See [API details](api-details.md#image-and-video-inputs). Arrives with PR #529.
+
 ## Queues
 
 `429 inference_queue_full` and `429 inference_queue_timeout` mean too many requests are waiting for one model type. Retry after `Retry-After`, or raise `--inference-queue-capacity` and `--inference-queue-timeout-ms` on `serve`. See [operations](operations.md).
@@ -38,6 +42,7 @@ A failed install prints a reason. See [install failures](install-failures.md).
 ## Sign-in
 
 - **No way to sign in.** No provider is configured, which is the default on a fresh install. On this computer, run `local-base access login-link` and open the link. For a phone or another computer, follow [authentication](authentication.md).
+- **"This account has no access here".** You signed in, and this LocalBase gives that address nothing, so you were not signed in. The page gives one next step, to run on the computer holding the data directory: `local-base access policy starter --email <address>` if there is no policy yet, or `local-base access users invite --email <address> --roles <role>` if there is. With several providers, it adds `--issuer <issuer>`. Arrives with PR #530.
 - **OIDC errors after sign-in.** The redirect URI at the provider must be exactly `<origin>/oidc/callback`, and `--origin` must be the exact HTTPS origin people visit, with no path or trailing slash.
 - **Locked out.** The local CLI still works: use `local-base access` from the machine that holds the data directory.
 - **API key refused in the browser.** That's expected: the browser accepts only sign-in sessions.
