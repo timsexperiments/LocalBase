@@ -438,6 +438,18 @@ func (g *Gateway) LeasePaths() (lease, mutation string) {
 
 // env is a scrubbed environment: no LOCALBASE_ or token settings from the
 // caller, a scratch home, and no route off this machine.
+// CLIEnv is the environment for running local-base by hand against this root: the gateway's home and
+// runtime directory, not this machine's, and not its debug listener, whose address is the gateway's.
+func (g *Gateway) CLIEnv() []string {
+	var env []string
+	for _, kv := range g.env() {
+		if !strings.HasPrefix(kv, "LOCALBASE_LAB_DEBUG_ADDR=") {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
 func (g *Gateway) env() []string {
 	var env []string
 	for _, kv := range os.Environ() {

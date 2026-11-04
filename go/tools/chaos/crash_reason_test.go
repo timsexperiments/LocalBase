@@ -97,7 +97,9 @@ func exitReasonIn(t *testing.T, events []byte, runtime string) bool {
 func bundleEvents(t *testing.T, ctx context.Context, g *lab.Gateway) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "bundle.zip")
-	out, err := exec.CommandContext(ctx, filepath.Join(g.W.Bin, "local-base"), "--root", g.Root, "--json", "diagnostics", "--output", path).CombinedOutput()
+	cmd := exec.CommandContext(ctx, filepath.Join(g.W.Bin, "local-base"), "--root", g.Root, "--json", "diagnostics", "--output", path)
+	cmd.Env = g.CLIEnv() // never this machine's own home
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("diagnostics: %v: %.500s", err, out)
 	}
