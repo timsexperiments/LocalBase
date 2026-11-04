@@ -16,8 +16,11 @@ import (
 // DatabaseCeiling is the most descriptors a settled gateway should hold on its database and
 // sidecars, measured with the store in WAL: one on the database for each connection the pool has
 // ever opened, up to its limit (they stay, even after the pool closes the connection), one on the
-// -wal for each idle connection, and one -shm between them. The cause of the database's staying is
-// not established; this is what was measured.
+// -wal for each idle connection, and one -shm between them. SQLite does not close a file while any
+// connection in the process holds a lock on it, because that would clear those locks; it keeps the
+// descriptor to reuse on the next open (unixClose and findReusableFd in its source). That a WAL
+// connection holds a lock for its whole life, so this never drains, fits what was measured but has
+// not been confirmed in the source.
 const DatabaseCeiling = store.MaxOpenConns + store.MaxIdleConns + 1
 
 // DatabaseFiles is how many descriptors a process holds on a database and its sidecars.
