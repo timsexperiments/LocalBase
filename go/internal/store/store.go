@@ -36,6 +36,8 @@ type Store struct {
 	stage string
 	// path is the database, on a store that can write it.
 	path string
+	// held keeps this process's locks on the file: see heldFile.
+	held *heldFile
 }
 
 type migration struct {
@@ -74,6 +76,7 @@ func loadMigrations() ([]migration, error) {
 // Open opens (creating if needed) the database and applies pending migrations.
 func Open(path string) (*Store, error) {
 	makePrivate(path)
+	held := holdFile(path)
 	// busy_timeout: the gateway and CLI share this file; wait for another
 	// process's write lock instead of failing with SQLITE_BUSY (#359).
 	// _txlock=immediate: writes never hit the deferred read-to-write upgrade,
@@ -82,18 +85,21 @@ func Open(path string) (*Store, error) {
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_size_limit(" + strconv.Itoa(walSizeLimit) + ")&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
+		held.letGo()
 		return nil, err
 	}
 	db.SetMaxOpenConns(MaxOpenConns)
 	db.SetMaxIdleConns(MaxIdleConns)
-	s := &Store{DB: db, path: path}
+	s := &Store{DB: db, path: path, held: held}
 	if err := checkWALBelongs(path); err != nil {
 		db.Close()
+		held.letGo()
 		return nil, err
 	}
 	clean := walIsEmpty(path)
 	if err := s.useWAL(context.Background()); err != nil {
 		db.Close()
+		held.letGo()
 		if readOnlyRoot(err) {
 			return OpenReadOnly(path) // nothing here can be written, and what it reads is still good
 		}
@@ -101,6 +107,7 @@ func Open(path string) (*Store, error) {
 	}
 	if err := s.migrate(context.Background()); err != nil {
 		db.Close()
+		held.letGo()
 		if readOnlyRoot(err) {
 			return OpenReadOnly(path)
 		}
@@ -184,6 +191,7 @@ func OpenReadOnly(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	held := holdFile(read)
 	db, err := sql.Open("sqlite", "file:"+read+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err == nil {
 		// Ping doesn't read the file, and a database that can't be read should fail here.
@@ -195,10 +203,11 @@ func OpenReadOnly(path string) (*Store, error) {
 		}
 	}
 	if err != nil {
+		held.letGo()
 		removeStage(stage)
 		return nil, err
 	}
-	return &Store{DB: db, stage: stage}, nil
+	return &Store{DB: db, stage: stage, held: held}, nil
 }
 
 func (s *Store) Close() error {
@@ -207,6 +216,7 @@ func (s *Store) Close() error {
 	if err == nil && s.path != "" {
 		markCleanStop(s.path)
 	}
+	s.held.letGo()
 	return err
 }
 
