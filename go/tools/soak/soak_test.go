@@ -231,7 +231,8 @@ func TestDescriptorsHaveTwoParts(t *testing.T) {
 		{"the pool fills, with the whole budget used", point(41, 16, 4), true},
 		{"the pool fills, and one past the budget", point(42, 16, 4), false},
 		{"nothing fills, and one past the budget", point(26, 2, 2), false},
-		{"past the ceiling, and nothing else moves", point(35, 17, 4), false},
+		// 12 others, as at first, and one past the ceiling, however the pool is set.
+		{"past the ceiling, and nothing else moves", point(12+lab.DatabaseCeiling+1, lab.DatabaseCeiling+1-4-1, 4), false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			s := testSoak(t)
