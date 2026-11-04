@@ -37,18 +37,18 @@ const tokenOffset = 68
 
 // fileToken is the token in the main file's own header, 0 if it has none.
 func fileToken(path string) (uint32, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = f.Close() }() // only read
-	b := make([]byte, 4)
-	if _, err := f.ReadAt(b, tokenOffset); errors.Is(err, io.EOF) {
-		return 0, nil // a new, empty file
-	} else if err != nil {
-		return 0, err
-	}
-	return binary.BigEndian.Uint32(b), nil
+	var token uint32
+	err := readFile(path, func(f io.ReaderAt, _ int64) error {
+		b := make([]byte, 4)
+		if _, err := f.ReadAt(b, tokenOffset); errors.Is(err, io.EOF) {
+			return nil // a new, empty file
+		} else if err != nil {
+			return err
+		}
+		token = binary.BigEndian.Uint32(b)
+		return nil
+	})
+	return token, err
 }
 
 // walIsEmpty: no commits are waiting in a -wal, so nobody else is writing and nothing needs judging.
@@ -305,33 +305,32 @@ func sweepStages(parent string, now time.Time) {
 }
 
 func inWAL(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = f.Close() }() // only read
-	header := make([]byte, 20)
-	if _, err := io.ReadFull(f, header); err != nil {
-		return false
-	}
-	return strings.HasPrefix(string(header), "SQLite format 3") && header[18] == walHeaderMode
+	found := false
+	_ = readFile(path, func(f io.ReaderAt, _ int64) error { // no file reads as not in write-ahead logging
+		header := make([]byte, 20)
+		if _, err := f.ReadAt(header, 0); err != nil {
+			return err
+		}
+		found = strings.HasPrefix(string(header), "SQLite format 3") && header[18] == walHeaderMode
+		return nil
+	})
+	return found
 }
 
+// copyPrivate copies a database or its -wal. A -wal has no locks of this process's on it to lose, and
+// going through readFile for both is simpler than telling them apart.
 func copyPrivate(from, to string) error {
-	in, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = in.Close() }() // only read
-	out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close() // the copy has already failed
-		return err
-	}
-	return out.Close()
+	return readFile(from, func(in io.ReaderAt, size int64) error {
+		out, err := os.OpenFile(to, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, io.NewSectionReader(in, 0, size)); err != nil {
+			_ = out.Close() // the copy has already failed
+			return err
+		}
+		return out.Close()
+	})
 }
 
 // removeStage removes a private copy: it can hold secrets. A crash leaves it, private, for sweepStages.
