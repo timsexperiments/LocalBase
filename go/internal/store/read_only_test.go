@@ -785,3 +785,29 @@ func TestAReadOnlyOpenLeavesNothingAttached(t *testing.T) {
 		})
 	}
 }
+
+// The refusal is approved text. It names both files, because removing the wrong one loses writes.
+func TestTheRefusalNamesWhatToRemove(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "local-base.db")
+	made, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := made.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+"-wal", make([]byte, 4096), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := path + "-wal holds writes that may belong to a different copy of this database, so LocalBase didn't open it: " +
+		"replaying them could replace or damage this database. If they don't belong here, move " + path + "-wal somewhere safe and try again. " +
+		"If they do, as after copying a whole root, remove " + path + "-wal-owner and try again. Removing " + path + "-wal-owner is safe only then."
+	_, err = OpenReadOnly(path)
+	if err == nil || err.Error() != want {
+		t.Errorf("OpenReadOnly:\n got %v\nwant %s", err, want)
+	}
+	_, err = Open(path)
+	if err == nil || err.Error() != want {
+		t.Errorf("Open:\n got %v\nwant %s", err, want)
+	}
+}
