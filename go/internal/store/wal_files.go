@@ -233,6 +233,33 @@ func readablePath(path string) (stage, read string, err error) {
 	if _, err := os.Stat(path + "-shm"); err == nil {
 		return "", path, nil
 	}
+	return privateCopy(path)
+}
+
+// ReadablePath is the file a read of this database should open, by the same rule as OpenReadOnly, for a
+// command that reads it several times and would otherwise copy it each time. done removes any copy.
+func ReadablePath(path string) (read string, done func(), err error) {
+	if err := checkWALBelongs(path); err != nil {
+		return "", func() {}, err
+	}
+	stage, read, err := readablePath(path)
+	if err != nil {
+		return "", func() {}, err
+	}
+	return read, func() { removeStage(stage) }, nil
+}
+
+// PrivateCopy is a copy of this database and its -wal to read, for when the file itself can't be read,
+// as with a -shm that can't be used. done removes it.
+func PrivateCopy(path string) (read string, done func(), err error) {
+	stage, read, err := privateCopy(path)
+	if err != nil {
+		return "", func() {}, err
+	}
+	return read, func() { removeStage(stage) }, nil
+}
+
+func privateCopy(path string) (stage, read string, err error) {
 	// A copy of files someone is writing can be torn, so it's taken only with nobody holding the root.
 	if root.InUse(filepath.Dir(path)) {
 		return "", "", ErrInUse
@@ -303,6 +330,9 @@ func sweepStages(parent string, now time.Time) {
 		_ = os.RemoveAll(filepath.Join(parent, e.Name()))
 	}
 }
+
+// InWAL says whether a database's own header says it's in write-ahead logging.
+func InWAL(path string) bool { return inWAL(path) }
 
 func inWAL(path string) bool {
 	f, err := os.Open(path)
