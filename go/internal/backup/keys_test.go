@@ -350,6 +350,78 @@ func TestEveryPermissionBeyondMakingRequestsIsHeldBack(t *testing.T) {
 	}
 }
 
+// A key held back isn't lost for as long as there's the backup: the same restore again, naming it. Both
+// ways a root can be by then: with the ordinary keys the first restore brought, and with none.
+func TestAHeldBackKeyCanComeBackAfterTheRestore(t *testing.T) {
+	t.Run("with other keys there by then", func(t *testing.T) {
+		k := withKey(t)
+		bad := addAdminKey(t, k.file, `["keys:manage"]`)
+		target := filepath.Join(dir(t), "target")
+		s, err := Stage(context.Background(), bad, target, false)
+		if err != nil {
+			t.Fatalf("stage: %v", err)
+		}
+		if _, err := s.Commit(); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		restored := &keyRoot{r: &root.Root{Dir: target}}
+		if restored.works(t, adminSecret) {
+			t.Fatal("it wasn't held back")
+		}
+		rep := restoreNaming(t, bad, target, "key_admin")
+		if !restored.works(t, adminSecret) {
+			t.Error("it didn't come back")
+		}
+		if !restored.works(t, k.secret) {
+			t.Error("the ordinary key stopped working")
+		}
+		oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{"key_admin", "admin", "this root doesn't have it"})
+	})
+	t.Run("with no keys there", func(t *testing.T) {
+		k := withKey(t)
+		bad := editedBackup(t, k.file, `DELETE FROM api_keys`, `INSERT INTO api_keys (id, name, prefix, key_hash, created_at, last_rotated_at, scopes)
+			VALUES ('key_admin', 'admin', 'lb_admin', '`+store.HashKey(adminSecret)+`', 'x', 'x', '["keys:manage"]')`)
+		target := filepath.Join(dir(t), "target")
+		s, err := Stage(context.Background(), bad, target, false)
+		if err != nil {
+			t.Fatalf("stage: %v", err)
+		}
+		if _, err := s.Commit(); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		restored := &keyRoot{r: &root.Root{Dir: target}}
+		rep := restoreNaming(t, bad, target, "key_admin")
+		if !restored.works(t, adminSecret) {
+			t.Error("it didn't come back")
+		}
+		oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{"key_admin", "admin", "can do keys:manage"})
+	})
+}
+
+// When the root can't be read, what changes isn't known, so that's what's said, for roles and for who
+// can sign in.
+func TestAnUnreadableRootSaysItMayChangeThings(t *testing.T) {
+	rootDir, file := withRole(t)
+	if err := os.WriteFile(filepath.Join(rootDir, "local-base.db"), []byte(strings.Repeat("not a database ", 400)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep := stageReport(t, file, rootDir, true)
+	if !caution(rep, grantsUnknownCaution) || caution(rep, grantsChangedCaution) {
+		t.Errorf("roles: %v", rep.Cautions)
+	}
+	if !caution(rep, signInUnknownCaution) || caution(rep, signInChangedCaution) {
+		t.Errorf("sign-in: %v", rep.Cautions)
+	}
+}
+
+// What can be read and differs is still said to change, whatever else can't be read.
+func TestAKnownChangeIsSaidToChangeThings(t *testing.T) {
+	s, caution := signInReport(signInValues{mail: "new.example:25"}, &signInValues{mail: "old.example:25", accessErr: context.Canceled})
+	if caution != signInChangedCaution {
+		t.Errorf("%q, %+v", caution, s)
+	}
+}
+
 // A list of permissions that doesn't read can't be taken for an ordinary key. A file holding one is
 // refused before this, so this is only the rule, with the rule's own reason.
 func TestPermissionsThatDoNotReadAreMoreThanMakingRequests(t *testing.T) {
@@ -560,6 +632,24 @@ func TestAKeyThisRootDoesNotHaveStaysOut(t *testing.T) {
 	if k.works(t, otherSecret) {
 		t.Error("the key the backup doesn't hold still works")
 	}
+}
+
+// A key already revoked on this root does nothing, so its going isn't worth saying. The list is of keys
+// that would stop working.
+func TestARevokedKeyTheBackupDoesNotHoldIsNotLost(t *testing.T) {
+	k := withKey(t)
+	k.onRoot(t, func(st *store.Store) {
+		ctx := context.Background()
+		gone, _, err := st.CreateAPIKey(ctx, "revoked since", []string{"inference:chat"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.RevokeAPIKey(ctx, gone.ID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	rep := stageReport(t, k.file, k.r.Dir, true)
+	noKeys(t, rep)
 }
 
 func TestAKeyThisRootDoesNotHaveComesBackByName(t *testing.T) {
