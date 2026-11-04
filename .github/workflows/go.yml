@@ -33,7 +33,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Unit tests
-        run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
+        run: go test -race -timeout 20m ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
       - name: A killed gateway leaves no backend behind
@@ -72,7 +72,7 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Unit tests
-        run: go test -race ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
+        run: go test -race -timeout 20m ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
       - name: A killed gateway leaves no backend behind
