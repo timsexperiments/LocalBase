@@ -39,6 +39,24 @@ func Default() string {
 	return filepath.Join(home, ".local", "share", "local-base")
 }
 
+// IsDefault says whether dir is the default root, however its path is spelled. What LOCALBASE_ROOT names
+// isn't the default, even when a command would use it.
+func IsDefault(dir string) bool {
+	a, errA := canonical(dir)
+	b, errB := canonical(Default())
+	return errA == nil && errB == nil && a == b
+}
+
+// DefaultRootNote is what a message about stopping a gateway adds when the root is the default one, so
+// that the person reading it knows which LocalBase it means. It names the root and not the service,
+// because a gateway on that root may have been started with serve.
+func DefaultRootNote(dir string) string {
+	if IsDefault(dir) {
+		return " This is the default root, the one your installed LocalBase uses."
+	}
+	return ""
+}
+
 // Resolve picks the root from an explicit flag, then LOCALBASE_ROOT, then the default.
 func Resolve(flagValue string) string {
 	if flagValue != "" {

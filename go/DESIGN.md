@@ -5677,7 +5677,7 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - Sign-in providers, the number of keys and users, models to install, and secrets to re-enter.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
 5. **The target.**
-   - A gateway on the root, or a lock it can't read, refuses: `stop it first: local-base stop`. A stale lock is cleared as usual. It takes the operation lease and the gateway lock and holds both to the end, so a service manager can't start one midway.
+   - A gateway on the root, or a lock it can't read, refuses. For the service it names `local-base --root <root> stop` and what else that does. For a gateway started with `serve` it says to stop that process, because `stop` refuses one. On the default root it says so in words. A stale lock is cleared as usual. It takes the operation lease and the gateway lock and holds both to the end, so a service manager can't start one midway.
    - A root another user owns, or one that fails the checks of #494, refuses with their message.
    - An existing directory that isn't an empty one or a LocalBase root refuses, always. `--replace` does not change this.
    - A root with data refuses unless `--replace` is given.

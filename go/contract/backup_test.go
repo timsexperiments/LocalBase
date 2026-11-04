@@ -142,7 +142,7 @@ func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 		t.Errorf("the backup is %o", info.Mode().Perm())
 	}
 	running := one.cli(nil, "restore", "--replace", "--yes", file)
-	if running.code == 0 || !strings.Contains(running.stderr+running.stdout, "Stop it first") {
+	if running.code == 0 || !strings.Contains(running.stderr+running.stdout, "Stop it where it is running") {
 		t.Errorf("a restore over a running gateway: %d %s%s", running.code, running.stdout, running.stderr)
 	}
 	one.stop()
@@ -538,6 +538,42 @@ func TestBeforeRestoreIsNeverRead(t *testing.T) {
 		if strings.Contains(string(b), planted) {
 			t.Errorf("diagnostics entry %s holds it", f.Name)
 		}
+	}
+}
+
+// A real gateway started with serve, on the default root of a scratch home. Restore doesn't send
+// someone to `stop` for it, because stop really does refuse it, which is checked here too. `stop` refuses
+// before it asks the service manager anything, so nothing outside the scratch home is touched.
+func TestRestoreOverAForegroundGatewaySaysWhatStopsIt(t *testing.T) {
+	backupGoOnly(t)
+	home, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := backupRoot(t, home, filepath.Join(".local", "share", "local-base"))
+	e.env = append(e.env, "HOME="+home)
+	file := filepath.Join(home, "out", "b"+backup.Extension)
+	if err := mustMkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
+		t.Fatalf("backup: %s%s", r.stdout, r.stderr)
+	}
+	e.serve()
+	defer e.stop()
+	r := e.cli(nil, "restore", "--replace", "--yes", file)
+	said := r.stdout + r.stderr
+	if r.code == 0 {
+		t.Fatalf("it restored over a running gateway: %s", said)
+	}
+	for _, want := range []string{"started with local-base serve", "This is the default root, the one your installed LocalBase uses.", "Stop it where it is running"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("no %q in: %s", want, said)
+		}
+	}
+	if strings.Contains(said, " stop") || strings.Contains(said, "--root") {
+		t.Errorf("it names a command that can't stop this gateway: %s", said)
+	}
+	stop := e.cli(nil, "stop")
+	if stop.code == 0 || !strings.Contains(stop.stdout+stop.stderr, "a foreground gateway owns the root") {
+		t.Errorf("stop on a gateway started with serve: %d %s%s", stop.code, stop.stdout, stop.stderr)
 	}
 }
 

@@ -103,6 +103,8 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 | It says, or you see | What to do |
 | --- | --- |
 | `A gateway is running on <root>. Stop it first…` | Run the `stop` it names, then restore. `stop` also disables the service, so run the `start` it names afterwards |
+| `A gateway started with local-base serve is running on <root>…` | Stop it where it is running, with Ctrl-C or by ending that process, then restore. `local-base stop` only controls the service, and refuses this gateway |
+| `This is the default root, the one your installed LocalBase uses.` | Added to either of those. Stopping it stops the LocalBase you normally use, so make sure that's what you mean |
 | `<root> already holds a LocalBase root. To replace its settings, run this again with --replace…` | Add `--replace` if you mean it, or choose an empty `--root` |
 | `a restore did not finish`, from any command | A restore was interrupted. Run the `restore --undo` it names |
 | `The database on <root> is busy: the gateway or another command is writing to it…` | Try again in a moment, using the command it gives. Nothing was changed. If it keeps happening, stop the gateway, or whatever else is writing |

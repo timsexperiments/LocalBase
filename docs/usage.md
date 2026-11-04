@@ -83,8 +83,8 @@ The API is `GET` and `POST /_localbase/usage`, described at `/openapi.json`.
 | `No requests in this period.` | Check that recording is on, and the period. Listing models, administration, pages, health checks and requests with no valid key aren't counted |
 | A request you just made is missing from the CLI | Wait up to 30 seconds, or look at the page |
 | A 403 from `GET /_localbase/usage` | The key asked for more than its own usage. See [Who sees what](#who-sees-what) |
-| `A gateway is running on this root, but it did not answer.` | Clearing and settings go through a running gateway, and change nothing if it doesn't answer. Check `local-base status`, or stop it with the command it gives. That also disables the service, until you run the `start` it gives |
-| `The gateway running on this root did not accept the change (HTTP …).` | It may be an older build, or not reachable on this computer's loopback address. Stop it with the command it gives, and the command writes to the database directly. That also disables the service, until you run the `start` it gives |
+| `A gateway is running on this root, but it did not answer.` | Clearing and settings go through a running gateway, and change nothing if it doesn't answer. Check `local-base status`, or stop it as it says. For the service that's a command, which also disables the service until you run the `start` it gives. For a gateway started with `serve`, stop that process |
+| `The gateway running on this root did not accept the change (HTTP …).` | It may be an older build, or not reachable on this computer's loopback address. Stop it as it says, and the command then writes to the database directly. For the service, that also disables the service until you run the `start` it gives |
 | `clear removes usage totals. Re-run with --yes to confirm.` | Add `--yes` |
 | `retention must be from 1 to 365 days` | Use a whole number of days in that range |
 | `range must be 24h, 7d or 30d` | Use one of those, or `--from` and `--to` |
