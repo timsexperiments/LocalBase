@@ -191,7 +191,7 @@ func checkWALBelongs(path string) error {
 	if _, err := os.Stat(path + ownerSuffix); err != nil {
 		return nil // no record to compare, as on a root that hasn't opened with this build
 	}
-	refused := fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, as after copying a whole root, remove %s and try again", wal, path+ownerSuffix)
+	refused := fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could replace or damage this database. If they don't belong here, move %[1]s somewhere safe and try again. If they do, as after copying a whole root, remove %[2]s and try again. Removing %[2]s is safe only then.", wal, path+ownerSuffix)
 	recorded, err := readOwner(path)
 	if err != nil {
 		return refused
