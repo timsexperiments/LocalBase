@@ -108,19 +108,21 @@ var (
 	includedDirs  = []string{"catalog.d", "backends.d", "voices"}
 	// notIncludedTop says why each other thing a root holds stays out.
 	notIncludedTop = map[string]string{
-		"models":                "Large, and downloaded again. Restore lists which to install",
-		"runs":                  "Replies in progress. No prompt or reply ever goes in a backup",
-		"logs":                  "Not settings, and they stay on the computer they describe",
-		"bin":                   "Downloaded again, and programs should not travel in a data file",
-		"runtime":               "Tied to this machine and this process",
-		"service":               "Tied to this machine. `start` writes it again",
-		"cache":                 "Fetched again",
-		"catalog-feed.json":     "A cache of the remote catalog, fetched again",
-		".localbase-root.json":  "Restore makes its own, since a marker names one root",
-		"local-base.db-wal":     "Part of the database, which is copied whole",
-		"local-base.db-shm":     "Part of the database, which is copied whole",
-		"local-base.db-journal": "SQLite's record of a write in progress. The copy holds only finished writes",
-		root.RestoreJournalName: "Left by a restore that did not finish",
+		"models":                      "Large, and downloaded again. Restore lists which to install",
+		"runs":                        "Replies in progress. No prompt or reply ever goes in a backup",
+		"logs":                        "Not settings, and they stay on the computer they describe",
+		"bin":                         "Downloaded again, and programs should not travel in a data file",
+		"runtime":                     "Tied to this machine and this process",
+		"service":                     "Tied to this machine. `start` writes it again",
+		"cache":                       "Fetched again",
+		"catalog-feed.json":           "A cache of the remote catalog, fetched again",
+		".localbase-root.json":        "Restore makes its own, since a marker names one root",
+		"local-base.db-wal":           "Part of the database, which is copied whole",
+		"local-base.db-shm":           "Part of the database, which is copied whole",
+		"local-base.db-journal":       "SQLite's record of a write in progress. The copy holds only finished writes",
+		"local-base.db-wal-owner":     "Says which database a -wal belongs to. A restored database writes its own",
+		"local-base.db-wal-owner.tmp": "Left by a process stopped while writing that note",
+		root.RestoreJournalName:       "Left by a restore that did not finish",
 	}
 	// rowsLeftOut are rows that are not settings. They are dropped when a backup is written and
 	// again on restore, since a crafted file can carry them.
@@ -484,10 +486,14 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
 	}
-	dbPath := o.Root.DB()
-	if _, err := os.Lstat(dbPath); err != nil {
+	if _, err := os.Lstat(o.Root.DB()); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
 	}
+	dbPath, removeCopy, err := readRoot(ctx, o.Root.DB())
+	if err != nil {
+		return nil, err
+	}
+	defer removeCopy()
 	// Any other failure here shows at the step that needs the data, with that step's name.
 	if err := retryBusy(ctx, func() error { return readableDatabase(ctx, dbPath) }); isUnfinishedWrite(err) {
 		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
@@ -503,7 +509,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	)
 	err = retryBusy(ctx, func() error {
 		var err error
-		if secrets, err = readSecrets(ctx, o.Root.Dir, o.ExcludeSecrets); err != nil {
+		if secrets, err = readSecrets(ctx, o.Root.Dir, dbPath, o.ExcludeSecrets); err != nil {
 			return err
 		}
 		if migrations, err = appliedMigrations(ctx, dbPath); err != nil {

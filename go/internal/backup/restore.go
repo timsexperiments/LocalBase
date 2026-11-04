@@ -132,12 +132,25 @@ type Staged struct {
 // Discard removes the staging directory. Commit does too.
 func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 
-// replaceable is all a restore moves, here and on undo. It is a constant, so a journal
-// can't name anything else.
-var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
+// replaceable is all a restore moves, here and on undo. It never changes, so a journal can't name
+// anything else. The database is first, and goes in last. Whatever belongs with a database moves with it,
+// because a -wal left beside another database is replayed into it, and nothing notices.
+var replaceable = func() []string {
+	names := []string{"local-base.db"}
+	for _, suffix := range store.Sidecars {
+		names = append(names, "local-base.db"+suffix)
+	}
+	return append(names, "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices")
+}()
 
 // targetState is what a restore found at its target.
-type targetState struct{ newRoot, hasData bool }
+type targetState struct {
+	newRoot, hasData bool
+	// liveDB is the file to read the root's database through, for a root being replaced. With liveErr,
+	// it couldn't be read at all, which a root is often replaced because of, so this doesn't refuse.
+	liveDB  string
+	liveErr error
+}
 
 func checkTarget(target string, replace bool) (*targetState, error) {
 	if home, _ := os.UserHomeDir(); target == string(filepath.Separator) || (home != "" && target == home) {
@@ -241,10 +254,18 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*S
 		return nil, err
 	}
 	if !state.newRoot && state.hasData {
-		// A database that is only busy is left for the comparison, which refuses it.
-		read := func() error { return readableDatabase(ctx, filepath.Join(target, "local-base.db")) }
-		if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
-			return nil, refuse("%s", unfinishedWriteMessage(target))
+		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"))
+		if errors.Is(err, store.ErrInUse) {
+			return nil, err
+		}
+		defer removeCopy()
+		state.liveDB, state.liveErr = liveDB, err
+		if err == nil {
+			// A database that is only busy is left for the comparison, which refuses it.
+			read := func() error { return readableDatabase(ctx, liveDB) }
+			if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
+				return nil, refuse("%s", unfinishedWriteMessage(target))
+			}
 		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
@@ -678,7 +699,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	var liveValues *signInValues
 	if !state.newRoot && state.hasData {
-		v := liveSignIn(ctx, target)
+		v := liveSignIn(ctx, target, state.liveDB, state.liveErr)
 		liveValues = &v
 	}
 	var signInChanged bool
@@ -690,7 +711,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, refuse("The roles in this backup can't be read: %v", err)
 	}
 	if !state.newRoot && state.hasData {
-		live, liveErr := liveGrants(ctx, target)
+		live, liveErr := liveGrants(ctx, state.liveDB, state.liveErr)
 		gone, changed := compareGrants(rep.Grants, live, liveErr)
 		rep.RolesGone = gone
 		if changed {
@@ -721,7 +742,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	rep.Settings = append(rep.Settings, exposure...)
 	if !state.newRoot && state.hasData {
-		if err := compareWithTarget(ctx, st.DB, filepath.Join(target, "local-base.db"), rep); err != nil {
+		if err := compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep); err != nil {
 			return nil, err
 		}
 	} else {
@@ -961,10 +982,13 @@ func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser
 
 // compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
 // backup would bring back. Restoring must not revive a key someone revoked because it leaked.
-func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
+func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liveErr error, rep *Report) error {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
-	err := retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	err := liveErr
+	if err == nil {
+		err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	}
 	if isBusy(err) {
 		return fmt.Errorf("reading this root's database: %w", err)
 	}

@@ -3,7 +3,6 @@ package backup
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -144,8 +143,11 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 }
 
 // liveGrants reads the root being replaced, and only reads.
-func liveGrants(ctx context.Context, target string) ([]Grant, error) {
-	db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+func liveGrants(ctx context.Context, liveDB string, liveErr error) ([]Grant, error) {
+	if liveErr != nil {
+		return nil, liveErr
+	}
+	db, err := openReadOnly(liveDB)
 	if err != nil {
 		return nil, err
 	}
