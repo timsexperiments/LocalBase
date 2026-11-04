@@ -279,6 +279,44 @@ func TestACommandStartedDuringARestoreIsRefused(t *testing.T) {
 	}
 }
 
+// On the default root that refusal says so, as other messages about a running gateway do.
+func TestACommandRefusedDuringARestoreOnTheDefaultRootSaysSo(t *testing.T) {
+	bin := filepath.Join(dir(t), "local-base")
+	if out, err := exec.Command("go", "build", "-o", bin, "../../cmd/localbase").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	src, _ := newRoot(t, dir(t))
+	res := create(t, src, false)
+	home, err := filepath.EvalSymlinks(dir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("LOCALBASE_ROOT", "")
+	target := filepath.Join(home, ".local", "share", "local-base")
+	s, err := Stage(context.Background(), res.Output, target, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said string
+	was := stepHook
+	defer func() { stepHook = was }()
+	stepHook = func(step string) error {
+		if step == "before" {
+			out, _ := exec.Command(bin, "--root", target, "keys", "list").CombinedOutput()
+			said = string(out)
+		}
+		return nil
+	}
+	if _, err := s.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	want := "A restore is running on " + target + ". This is the default root, the one your installed LocalBase uses. Wait for it to finish, then run this again."
+	if !strings.Contains(said, want) {
+		t.Errorf("it says: %s", said)
+	}
+}
+
 // TestHelperKilledCommit isn't a test of its own. A real process stages a restore, and is killed at a
 // step of Commit, as a person's power cut or kill -9 would.
 func TestHelperKilledCommit(t *testing.T) {

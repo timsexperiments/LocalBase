@@ -22,7 +22,7 @@ func unfinishedRestore(dir string) error {
 	}
 	// Telling someone to undo a restore that's still running would be wrong, and the undo would refuse.
 	if restoreRunning(dir) {
-		return &UnsafeRootError{Problem: "A restore is running on " + dir + ". Wait for it to finish, then run this again."}
+		return &UnsafeRootError{Problem: "A restore is running on " + dir + "." + DefaultRootNote(dir) + " Wait for it to finish, then run this again."}
 	}
 	return &UnsafeRootError{path, "a restore did not finish", "Run: local-base --root " + shellQuote(dir) + " restore --undo"}
 }
