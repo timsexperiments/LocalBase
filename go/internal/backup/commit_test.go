@@ -545,7 +545,7 @@ func TestACommandRefusedDuringARestoreOnTheDefaultRootSaysSo(t *testing.T) {
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	want := "A restore is running on " + target + ". This is the default root, the one your installed LocalBase uses. Wait for it to finish, then run this again."
+	want := "A restore is running on '" + target + "'. This is the default root, the one your installed LocalBase uses. Wait for it to finish, then run this again."
 	if !strings.Contains(said, want) {
 		t.Errorf("it says: %s", said)
 	}
