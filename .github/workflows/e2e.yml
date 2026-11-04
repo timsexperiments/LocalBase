@@ -50,6 +50,9 @@ jobs:
         # Ubuntu's AppArmor stops unprivileged user namespaces, which the sandbox needs.
         # This relaxes it on this disposable runner, so the sandbox can stay on.
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Kill check, for this throwaway only
+        working-directory: go
+        run: tools/e2e-kill-check.sh
       - name: Run the suite
         working-directory: go
         run: |
