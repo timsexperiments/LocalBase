@@ -297,6 +297,58 @@ func TestAPartlyUnreadableRootIsStillCompared(t *testing.T) {
 	}
 }
 
+// The control. What couldn't be read is compared as a fact, between a read-only read for the report and
+// a read-write one here. If those ever described it differently, a broken root would report a change on
+// every try, and could never be restored, which is often why someone is restoring it.
+func TestAPartlyUnreadableRootThatDidntChangeIsRestored(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	changeRoot(t, r, `ALTER TABLE auth_role_permissions RENAME COLUMN permission TO granted`)
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.live == nil {
+		t.Fatal("a root whose keys could be read has nothing to compare")
+	}
+	if s.live.signIn.unreadable == strings.Repeat(";", 3) {
+		t.Fatal("nothing failed to read, so this tests nothing")
+	}
+	if _, err := s.Commit(); err != nil {
+		t.Fatalf("a root that didn't change: %v", err)
+	}
+	wholeDatabase(t, r.DB())
+	if exists(journalPath(r.Dir)) {
+		t.Error("it finished, and left its journal")
+	}
+}
+
+// The journal is written twice, and an undo depends on what it says, so the second one has to reach the
+// disk before anything moves, as the first does. Lost in a power cut, it could list a working file that's
+// gone since, and an undo would then never see everything aside, and would leave new files behind.
+func TestTheSecondJournalReachesTheDiskBeforeAnythingMoves(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	was := dirSync
+	defer func() { dirSync = was }()
+	calls, movedBy := 0, map[int]bool{}
+	dirSync = func(d *os.File) error {
+		calls++
+		aside, err := filepath.Glob(filepath.Join(r.Dir, beforePrefix+"*"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		movedBy[calls] = len(aside) > 0
+		return was(d)
+	}
+	if _, err := s.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if calls < 2 || movedBy[1] || movedBy[2] {
+		t.Errorf("the journal's two writes should each be synced before anything moves. %d syncs, moved by each: %v", calls, movedBy)
+	}
+}
+
 // A database deleted while it asked isn't created empty, and it says so rather than that nothing changed
 // with an empty file left behind.
 func TestCommitDoesntCreateADatabaseDeletedWhileItAsked(t *testing.T) {

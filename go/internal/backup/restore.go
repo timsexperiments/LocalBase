@@ -1415,6 +1415,9 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
+	if err := syncDir(r.Dir); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
 
 	if err := s.apply(r.Dir, j); err != nil {
 		return nil, s.failed(r.Dir, j, err)
