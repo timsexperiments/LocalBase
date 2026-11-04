@@ -68,6 +68,18 @@ func unavailable(code string) *jsjson.Object {
 	return object("available", false, "error", code)
 }
 
+// databaseProblem is the manifest's code for a database that couldn't be read. An unfinished write says
+// more, and what to do about it, so it wins.
+func databaseProblem(openFailed, unfinishedWrite bool) string {
+	switch {
+	case unfinishedWrite:
+		return "unfinished_write"
+	case openFailed:
+		return "database_unavailable"
+	}
+	return ""
+}
+
 // nodeArch is process.arch.
 func nodeArch() string {
 	switch goruntime.GOARCH {
@@ -220,12 +232,11 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	// could not read from the database is marked unavailable above.
 	// The bundle says only that it couldn't: bundles get shared, and the error can hold a path.
 	if databaseErr != nil {
-		manifest.Set("database", unavailable("database_unavailable"))
 		c.Error("Could not read this root's database: %s", cli.Printable(databaseErr.Error()))
 	}
 	unfinished := backup.UnfinishedWrite(ctx, dir)
-	if unfinished != "" {
-		manifest.Set("database", unavailable("unfinished_write"))
+	if code := databaseProblem(databaseErr != nil, unfinished != ""); code != "" {
+		manifest.Set("database", unavailable(code))
 	}
 	entries := []zipEntry{
 		{"manifest.json", append(jsjson.Indent(manifest), '\n')},
