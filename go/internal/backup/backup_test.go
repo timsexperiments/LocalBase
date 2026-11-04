@@ -2040,7 +2040,8 @@ func failSyncs(t *testing.T, fail func(call int) error) {
 }
 
 func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
-	for _, failing := range []int{1, 2} {
+	// The journal, the journal again once the root is held, and the files moved in.
+	for _, failing := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("sync %d", failing), func(t *testing.T) {
 			parent := dir(t)
 			r, _ := newRoot(t, parent)
@@ -2081,7 +2082,8 @@ func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
 	}
 	failing := true
 	failSyncs(t, func(call int) error {
-		if failing && call >= 2 {
+		// From the sync after the files moved in, so that there's something to put back.
+		if failing && call >= 3 {
 			return syscall.EIO
 		}
 		return nil
@@ -2127,14 +2129,19 @@ func TestRestoreThatFinishedStaysFinished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failSyncs(t, func(call int) error {
-		if call == 3 {
+	failed := false
+	failSyncs(t, func(int) error {
+		if !exists(journalPath(r.Dir)) {
+			failed = true
 			return syscall.EIO
 		}
 		return nil
 	})
 	if _, err := s.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+	if !failed {
+		t.Fatal("no sync came after the journal went, so this tested nothing")
 	}
 	if _, err := root.Open(r.Dir); err != nil {
 		t.Fatal(err)
