@@ -218,11 +218,14 @@ check(boxes.composer !== null && !String(boxes.composer).includes("typed-not-sen
 check(boxes.search.length > 0 && !boxes.search.some((v: string) => v.includes("searched-by-alice")), `B's search doesn't hold A's: ${JSON.stringify(boxes.search)}`);
 // The visible action.
 await go("/app/settings", 800);
-const summary = await ev(`document.querySelector("[data-history-settings] details summary")?.textContent.trim()`);
+const summary = await ev(`document.querySelector("[data-history-settings] details.confirm summary")?.textContent.trim()`);
 check(summary === "Clear saved chats on this device", `the action is there: ${summary}`);
 const says = (await ev(`document.querySelector("[data-history-settings] .setting-row")?.textContent.replace(/\\s+/g, " ")`)) ?? "";
 check(/stay on this device after you sign out/.test(says), `the setting says so: ${says.slice(0, 150)}`);
-await ev(`(() => { const d = document.querySelector("[data-history-settings] details"); d.open = true; d.querySelector("[data-history-clear]").click(); })()`);
+check(/can see their names in its history/.test(says) && /Turning this off removes them/.test(says), "what it costs and what turning it off does stay in view, with More closed");
+const more = await ev(`(() => { const d = document.querySelector("[data-history-more]"); return { open: d?.open, says: d?.textContent.replace(/\\s+/g, " ") }; })()`);
+check(more?.open === false && /aren’t encrypted/.test(more.says) && /never saved/.test(more.says), "the rest is behind More, closed at first");
+await ev(`(() => { const d = document.querySelector("[data-history-settings] details.confirm"); d.open = true; d.querySelector("[data-history-clear]").click(); })()`);
 await sleep(200);
 check((await ev(`document.querySelector("[data-history-status]").textContent`)) === "Saved chats cleared from this device.", "Clear says it's done");
 check(!(await ev(`Object.keys(localStorage).some((k) => k.startsWith("localbase.chat.history.v2.${bobKey}"))`)), "Clear removed B's saved chats");
