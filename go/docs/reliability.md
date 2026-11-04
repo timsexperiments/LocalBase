@@ -84,6 +84,11 @@ over a short run a slope can be a plateau still settling.
   cannot tell a plateau from a very slow leak. The weekly long run should answer
   it; until then this is open, not a pass.
 
+  A second run, at `91462a35` on the integration tree before its rebuild (macOS, 18
+  cycles), rose from 61.1 to 78.5 MiB by cycle 7 and then only to 79.1 by cycle 18, with
+  threads 12 to 15. That looks like a plateau, but it is one run. The weekly 2-hour run is
+  the real answer.
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
@@ -107,6 +112,7 @@ replaces a model's real demand and admission decides the same on macOS and Linux
 ### Rules for a shared machine
 
 - Ports come from 29000-29499; `LOCALBASE_LAB_PORTS=<low>-<high>` moves the block.
+- Built tools go to `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE`; see `tools/README.md`.
 - A scratch directory holds everything. `HOME` points into it, proxies point
   nowhere, and the caller's `LOCALBASE_*` and token settings are removed.
 - The tools refuse a scratch path inside the installed root.
@@ -157,3 +163,18 @@ before starting and throughout, and stop at once if the live state changes or fr
 memory falls under the agreed floor. Print the plan the gateway will load before
 loading it, and stop if it is over the agreed size: a model's default plan can be far
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
+
+**Waiting for the next window: does a real backend use more memory with every request?**
+System-wide `available` memory (`free -m`) fell about 100 MiB per chat over four samples
+and two and a half minutes on a Linux x64 runner, with the gateway running `llama-server`
+on CPU (`-c 131072 --parallel 4 --cache-ram 2048`). That was not the backend's own memory,
+which was not recorded, so it could include anything on the runner and page cache
+accounting. Nothing yet ties it to the backend.
+
+The gateway always passes `--cache-ram 2048`, so one hypothesis is a prompt cache filling up
+to a limit. **That is unsupported until the RSS curve shows it.** The pass is
+`tools/real-memory-check.sh`: 200 sequential requests with short outputs on a small model,
+with the backend's own RSS as the primary measure and system memory beside it. A plateau near
++2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
+on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
+flat result here would not clear the Linux case.

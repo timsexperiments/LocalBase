@@ -74,7 +74,7 @@ func (s *soak) startTraffic(ctx context.Context) *sync.WaitGroup {
 	for _, c := range classes() {
 		for range c.workers {
 			id++
-			w := &worker{id: id, rng: rand.New(rand.NewPCG(s.o.seed, uint64(id)))}
+			w := &worker{id: id, rng: rand.New(rand.NewPCG(s.o.seed, uint64(id)))} //nolint:gosec // seeded, so that a run can be repeated
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -329,7 +329,7 @@ var transcriptionForm, transcriptionType = func() ([]byte, string) {
 	mw := multipart.NewWriter(&b)
 	mw.WriteField("model", lab.STT)
 	fw, _ := mw.CreateFormFile("file", "a.wav")
-	fw.Write(lab.WAV(8000))
+	_, _ = fw.Write(lab.WAV(8000)) // into a bytes.Buffer, which cannot fail
 	mw.Close()
 	return b.Bytes(), mw.FormDataContentType()
 }()
@@ -482,7 +482,9 @@ func readRunEvents(resp *http.Response, after *int, dropAfter int, stop bool, ca
 			id, name := -1, ""
 			for _, line := range strings.Split(block, "\n") {
 				if v, ok := strings.CutPrefix(line, "id: "); ok {
-					fmt.Sscan(v, &id)
+					if _, err := fmt.Sscan(v, &id); err != nil {
+						return false, fmt.Sprintf("an event id that is not a number: %q", v), n
+					}
 				}
 				if v, ok := strings.CutPrefix(line, "event: "); ok {
 					name = v
