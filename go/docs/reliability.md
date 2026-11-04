@@ -107,8 +107,11 @@ connection; one on the `-wal` for each idle connection; and one `-shm`. So the d
 the pool fills, and that isn't a leak. A single growth budget wide enough for that let a leak of one
 descriptor a request through a 31-request test. So everything except the database's files keeps the old
 exact budget, and the database's files get a ceiling, `store.MaxOpenConns + store.MaxIdleConns + 1`.
-That the database's descriptor stays is measured; why is not established. A leak small enough to fit in
-the budget still passes, as it always did: one per 16 requests adds 2 to 6 in these tests.
+That the database's descriptor stays is measured. SQLite's `unixClose` won't close a file while any
+connection in the process holds a lock on it, and `findReusableFd` reuses the descriptor on the next open.
+That a WAL connection holds a lock for its whole life, so this never drains, fits the numbers but isn't
+confirmed in the source. A leak small enough to fit in the budget still passes, as it always did: one per
+16 requests adds 2 to 6 in these tests.
 
 `LOCALBASE_CHAOS_RACE=1` builds the gateway with the race detector. On macOS the
 full-disk tests make a small disk image; elsewhere they need a small tmpfs named by
