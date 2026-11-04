@@ -69,7 +69,18 @@ const (
 	maxFileBytes     = 8 << 30
 	maxTotalBytes    = 16 << 30
 	maxEntries       = 20000
-	maxPathLength    = 512
+	// What a backup can really hold. A compressed file can list far more than it weighs, and these
+	// files are read into memory, so each is held to what a root writes. The catalog feed has the
+	// same limit, and a voice can't be larger than its upload.
+	maxSettingsFileBytes  = 8 << 20
+	maxSettingsTotalBytes = 64 << 20
+	maxFormerBytes        = 1 << 20
+	// What a database can really hold. Usage piles up, and nothing here reads it. Everything else is
+	// settings, read into memory, and small.
+	maxDatabaseRows       = 100_000
+	maxDatabaseTableBytes = 16 << 20
+	maxDatabaseValueBytes = 1 << 20
+	maxPathLength         = 512
 )
 
 // Manifest is the first entry of a backup. Restore checks every file against it and believes
@@ -326,6 +337,25 @@ func (c ctxReader) Read(p []byte) (int, error) {
 // holdable is every path a backup may hold, for writing one and for reading one. They must not
 // disagree: a file one writes and the other refuses makes a backup that can never be restored.
 // Each directory holds only what its reader reads. Anything else there is listed as unknown.
+// maxBytesOf is the most a file in a backup can be, by what it is. A file holdable says nothing about
+// is a setting, so it can't be read for more than one.
+func maxBytesOf(rel string) int64 {
+	switch {
+	case rel == "local-base.db":
+		return maxFileBytes
+	case rel == formerLog:
+		return maxFormerBytes
+	case strings.HasPrefix(rel, "voices/"):
+		return voices.MaxUploadBytes
+	}
+	return maxSettingsFileBytes
+}
+
+// isSettingsFile says whether a file counts toward what a restore reads into memory.
+func isSettingsFile(rel string) bool {
+	return rel != "local-base.db" && !strings.HasPrefix(rel, "voices/")
+}
+
 func holdable(rel string) bool {
 	if len(rel) == 0 || len(rel) > maxPathLength || strings.ContainsAny(rel, "\\\x00\r\n") || path.IsAbs(rel) || path.Clean(rel) != rel {
 		return false

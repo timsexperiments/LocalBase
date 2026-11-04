@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -363,7 +364,7 @@ func checkManifestFiles(m *Manifest) (map[string]File, int64, error) {
 		return nil, 0, refuse("The backup lists more files than a backup can hold.")
 	}
 	byPath := map[string]File{}
-	var total int64
+	var total, settings int64
 	for _, f := range m.Files {
 		if !holdable(f.Path) {
 			return nil, 0, refuse("The backup lists a file a backup can't hold: %q.", f.Path)
@@ -371,8 +372,13 @@ func checkManifestFiles(m *Manifest) (map[string]File, int64, error) {
 		if _, dup := byPath[f.Path]; dup {
 			return nil, 0, refuse("The backup lists %q twice.", f.Path)
 		}
-		if f.Size < 0 || f.Size > maxFileBytes {
+		if f.Size < 0 || f.Size > maxBytesOf(f.Path) {
 			return nil, 0, refuse("The backup lists %q with a size a backup can't hold.", f.Path)
+		}
+		if isSettingsFile(f.Path) {
+			if settings += f.Size; settings > maxSettingsTotalBytes {
+				return nil, 0, refuse("The backup lists more settings than a backup can hold.")
+			}
 		}
 		if !sha256Hex.MatchString(f.SHA256) {
 			return nil, 0, refuse("The backup lists %q with no usable checksum.", f.Path)
@@ -581,7 +587,55 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if bad := shape.Unexpected(expected); len(bad) > 0 {
 		return refuse("The database holds what LocalBase does not make, so it was changed by something else: %s.", strings.Join(bad, "; "))
 	}
+	if err := checkDatabaseSize(ctx, db, shape); err != nil {
+		return err
+	}
 	return checkForeignKeys(ctx, db)
+}
+
+// checkDatabaseSize refuses a database holding more than a root could, before anything reads it into
+// memory. octet_length takes a value's size from its header, so a large value isn't read to find out
+// that it's large.
+func checkDatabaseSize(ctx context.Context, db *sql.DB, shape *store.Shape) error {
+	for _, name := range slices.Sorted(maps.Keys(shape.Tables)) {
+		table := shape.Tables[name]
+		query := `SELECT COUNT(*)`
+		for _, column := range table.Columns {
+			query += `, COALESCE(MAX(octet_length(` + quoteName(column.Name) + `)), 0), COALESCE(SUM(octet_length(` + quoteName(column.Name) + `)), 0)`
+		}
+		values := make([]int64, 1+2*len(table.Columns))
+		targets := make([]any, len(values))
+		for i := range values {
+			targets[i] = &values[i]
+		}
+		if err := db.QueryRowContext(ctx, query+` FROM `+quoteName(name)).Scan(targets...); err != nil {
+			return refuse("The database can't be read: %v", err)
+		}
+		var total int64
+		for i := range table.Columns {
+			if largest := values[1+2*i]; largest > maxDatabaseValueBytes {
+				return refuse("The database holds more than a root could, so it was changed by something else: a value of %d bytes in %s.", largest, name)
+			}
+			total += values[2+2*i]
+		}
+		if name == usageTable {
+			continue
+		}
+		if values[0] > maxDatabaseRows {
+			return refuse("The database holds more than a root could, so it was changed by something else: %d rows in %s.", values[0], name)
+		}
+		if total > maxDatabaseTableBytes {
+			return refuse("The database holds more than a root could, so it was changed by something else: %d bytes in %s.", total, name)
+		}
+	}
+	return nil
+}
+
+// usageTable piles up, and a restore never reads it into memory, so only its values are limited.
+const usageTable = "usage_hourly"
+
+func quoteName(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // checkForeignKeys refuses a database with rows pointing at something that isn't there. LocalBase keeps
