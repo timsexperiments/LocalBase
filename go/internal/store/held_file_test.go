@@ -282,12 +282,14 @@ func TestHeldFilesFollowTheFileAndAreLetGo(t *testing.T) {
 // opensAllowed names every function in this package that opens a file directly, and why it isn't
 // a database, or is the one place that may. A new one fails until someone has read this comment.
 var opensAllowed = map[string]string{
-	"held_file.go:holdFile":    "the shared descriptor",
-	"held_file.go:fileToRead":  "the shared descriptor's fallback, with no store holding the file",
-	"store.go:makePrivate":     "O_EXCL: it opens only a file that didn't exist",
-	"wal_files.go:readOwner":   "the owner file",
-	"wal_files.go:writeOwner":  "the owner file",
-	"wal_files.go:copyPrivate": "the copy being written, in a private folder",
+	"held_file.go:holdFile":       "the shared descriptor",
+	"held_file.go:fileToRead":     "the shared descriptor's fallback, with no store holding the file",
+	"store.go:makePrivate":        "O_EXCL: it opens only a file that didn't exist",
+	"wal_files.go:readOwner":      "the owner file",
+	"wal_files.go:writeOwner":     "the owner file",
+	"wal_files.go:holdStage":      "a lock file in a copy's folder",
+	"wal_files.go:stageOwnerGone": "a lock file in a copy's folder",
+	"wal_files.go:copyPrivate":    "the copy being written, in a private folder",
 }
 
 // One close of a descriptor on the database ends this process's locks, so raw opens are read for here.
