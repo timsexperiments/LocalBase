@@ -284,7 +284,7 @@ func TestAWALFromAnotherDatabaseIsRefused(t *testing.T) {
 					st.Close()
 					t.Fatalf("%s opened it", name)
 				}
-				for _, want := range []string{path + "-wal", "move it somewhere safe", path + ownerSuffix} {
+				for _, want := range []string{path + "-wal", "somewhere safe and try again", path + ownerSuffix} {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("%s: %q lacks %q", name, err, want)
 					}
