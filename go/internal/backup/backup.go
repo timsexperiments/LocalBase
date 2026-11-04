@@ -52,9 +52,14 @@ const (
 	// built-ins already kept as entries, so that removing one sticks.
 	formerLog = "catalog.d/.former-built-ins"
 
-	// SignOutLine and RevokedLine are said before a restore asks, and are in every manifest.
-	SignOutLine = "A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."
+	// SignOutLine, HeldKeyLine, RevokedLine and ChangedKeyLine are said before a restore asks, and are in every manifest.
+	SignOutLine = "A restore signs everyone out. Active API keys keep working, except as said here, and revoked ones stay revoked."
 	RevokedLine = "A key revoked, or a user removed or disabled, on the root being replaced stays that way, whatever this backup says."
+	// HeldKeyLine is for where a file could bring in an administrator's key unnoticed: nothing on a
+	// root with no keys would show it was never there.
+	HeldKeyLine = "On a root with no keys, a key that can do more than make requests stays out, unless you name it with --bring-back-key."
+	// ChangedKeyLine covers what RevokedLine doesn't: a key rotated because its secret got out.
+	ChangedKeyLine = "On a root with keys of its own, a key changed there keeps its current secret and permissions, and a key missing there stays out, unless you name it with --bring-back-key."
 )
 
 // These limits are constants, because a backup is input from someone else: none of them is ever
@@ -520,7 +525,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	}
 	m := &Manifest{Format: Format, CreatedAt: o.Now.UTC().Format(time.RFC3339), Version: o.Version, GoSchema: store.GoSchemaVersion(),
 		Migrations: migrations, Secrets: "included", SecretNames: secrets.names, SecretsRemoved: secrets.removed, NotIncluded: left,
-		RowsLeftOut: rowsPresent, Models: models, RestoreRules: []string{SignOutLine, RevokedLine}}
+		RowsLeftOut: rowsPresent, Models: models, RestoreRules: []string{SignOutLine, HeldKeyLine, RevokedLine, ChangedKeyLine}}
 	if o.ExcludeSecrets {
 		m.Secrets = "excluded"
 	}
@@ -635,7 +640,7 @@ func selfCheck(ctx context.Context, archive, stage string) error {
 	if err != nil {
 		return err
 	}
-	_, err = validate(ctx, dir, filepath.Join(stage, "would-be-root"), m, &targetState{newRoot: true})
+	_, err = validate(ctx, dir, filepath.Join(stage, "would-be-root"), m, &targetState{newRoot: true}, nil)
 	return err
 }
 

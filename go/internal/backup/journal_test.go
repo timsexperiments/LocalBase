@@ -164,14 +164,38 @@ func TestRestoreOverACrashedRootSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Discard()
-	if s.Report.RevocationsKept == 0 || len(s.Report.ReturningKeys) != 0 {
-		t.Errorf("after recovering: kept %d, returning %v", s.Report.RevocationsKept, s.Report.ReturningKeys)
+	if s.Report.RevocationsKept == 0 || len(s.Report.KeysLeftOut) != 0 {
+		t.Errorf("after recovering: kept %d, left out %v", s.Report.RevocationsKept, s.Report.KeysLeftOut)
 	}
 }
 
-// A crash can also come after the checks, while the person reads the report: the journal has to go
-// wherever its database goes. Left behind, SQLite plays it into the restored database and uses it
-// up, so that neither database survives.
+// A crash can also come after the checks, while the person reads the report. That's a change to the root
+// they said yes about, and an open for writing would undo the write here, so it stops and says what to do.
+func TestACrashWhileRestoreAskedStopsIt(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	dbPath := filepath.Join(r.Dir, "local-base.db")
+	keys := keyCount(t, dbPath)
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashMidWrite(t, dbPath)
+	before := tree(t, r.Dir, "runtime")
+	_, err = s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "never finished") || !strings.Contains(err.Error(), " status") {
+		t.Fatalf("commit: %v", err)
+	}
+	if after := tree(t, r.Dir, "runtime"); after != before {
+		t.Errorf("it stopped, and the root changed:\n%s\nwas:\n%s", after, before)
+	}
+	recovers(t, dbPath, keys)
+}
+
+// When a root couldn't be read for the report, there's nothing to compare, and nothing opens that file
+// for writing, so a journal is still there to move. It has to go wherever its database goes. Left behind,
+// SQLite plays it into the restored database and uses it up, so that neither database survives.
 func TestRestoreKeepsAJournalWithItsDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
@@ -181,6 +205,7 @@ func TestRestoreKeepsAJournalWithItsDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.live = nil
 	crashMidWrite(t, dbPath)
 	done, err := s.Commit()
 	if err != nil {
@@ -204,6 +229,7 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		s.live = nil // as for a root that couldn't be read for the report, so the journal is still there to move
 		crashMidWrite(t, dbPath)
 		return r, s, dbPath, keys
 	}
