@@ -27,6 +27,16 @@ type signInFacts struct {
 	unreadable          string
 }
 
+// unreadableFact is what a failed read comes to, as a fact to compare. The report has already said it
+// couldn't read this. Keys and users may still have been compared, so this can't take them with it, and
+// only a failure that may pass, which the caller retries, isn't a fact.
+func unreadableFact(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 func readLiveFacts(ctx context.Context, db *sql.DB, rootDir string) (*liveFacts, error) {
 	keys, err := readComparedKeys(ctx, db)
 	if err != nil {
@@ -37,21 +47,14 @@ func readLiveFacts(ctx context.Context, db *sql.DB, rootDir string) (*liveFacts,
 		return nil, err
 	}
 	grants, err := readGrants(ctx, db)
-	if err != nil {
+	if isBusy(err) {
 		return nil, err
 	}
 	v := readSignIn(ctx, rootDir, db)
-	if v.policyErr != nil {
+	if isBusy(v.policyErr) {
 		return nil, v.policyErr
 	}
-	// A file that can't be read is a fact to compare: it decides who can sign in, and it may be why this
-	// root is being replaced.
-	unreadable := ""
-	for _, err := range []error{v.accessErr, v.mailErr} {
-		if err != nil {
-			unreadable += err.Error() + ";"
-		}
-	}
+	unreadable := strings.Join([]string{unreadableFact(err), unreadableFact(v.policyErr), unreadableFact(v.accessErr), unreadableFact(v.mailErr)}, ";")
 	return &liveFacts{keys, users, grants, signInFacts{v.ways, v.everyone, v.ifRemoved, v.origin, v.mail, unreadable}}, nil
 }
 
@@ -119,7 +122,8 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
 		return release, refuse("%s", unfinishedWriteMessage(dir))
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
+	// mode=rw, so that a database deleted while it waited isn't created empty here.
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("mode=rw&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
 	if err != nil {
 		return release, refuse("This root's database can't be opened: %v", err)
 	}
@@ -134,7 +138,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	}
 	var mode string
 	if err := db.QueryRowContext(ctx, `PRAGMA locking_mode=EXCLUSIVE`).Scan(&mode); err != nil || mode != "exclusive" {
-		return stop(refuse("This root's database can't be locked (%q): %v", mode, err))
+		return stop(refuse("This root's database can't be read now, so what the report said can't be checked. Nothing was changed: %v", err))
 	}
 	take := func() error {
 		_, err := db.ExecContext(ctx, `BEGIN EXCLUSIVE`)
@@ -164,6 +168,11 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 			return stop(refuse("%s", someoneElseHoldsIt))
 		}
 		return stop(refuse("This root's database can't be changed for the move. Nothing was changed: %v", err))
+	}
+	// SQLite answers with the mode it stayed in when it can't change it, and this would then move a
+	// database still in write-ahead logging.
+	if mode != "delete" {
+		return stop(refuse("%s", someoneElseHoldsIt))
 	}
 	if err := take(); err != nil {
 		return stop(refuse("%s", someoneElseHoldsIt))

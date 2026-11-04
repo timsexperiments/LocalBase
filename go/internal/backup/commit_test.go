@@ -115,21 +115,203 @@ func TestStoppingLeavesAnotherProcesssWorkingFilesAlone(t *testing.T) {
 	}
 }
 
-// The same for an undo that comes before the database moved: a kill between writing the journal and the
-// move leaves whatever a process wrote since then, and its writes stay.
-func TestAnUndoBeforeTheMoveLeavesWorkingFilesAlone(t *testing.T) {
+// The same for an undo before anything new went in: a kill between writing the journal and the move
+// leaves whatever a process has made since, and an undo can't take any of it for this restore's.
+func TestAnUndoBeforeAnythingWentInLeavesTheRestAlone(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(t *testing.T, r *root.Root, j *journal)
+	}{
+		{"nothing moved", func(t *testing.T, r *root.Root, j *journal) {}},
+		{"the database moved, and not the settings", func(t *testing.T, r *root.Root, j *journal) {
+			// A later run of an undo, or a kill partway through the move aside.
+			before := filepath.Join(r.Dir, j.Before)
+			if err := os.Mkdir(before, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(r.DB(), filepath.Join(before, "local-base.db")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(r.DB(), []byte("not the database"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			s := stageOver(t, r)
+			defer s.Discard()
+			// The journal lists the database and one more, which hasn't moved.
+			j := &journal{Version: 1, Before: beforePrefix + "20260101-000000", Had: []string{"local-base.db", "voices"}}
+			c.setup(t, r, j)
+			made := map[string]string{
+				"local-base.db-wal": "someone's writes",
+				"ui-access.json":    "made while it waited",
+			}
+			for name, body := range made {
+				if err := os.WriteFile(filepath.Join(r.Dir, name), []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := undo(r.Dir, j); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range made {
+				if got, err := os.ReadFile(filepath.Join(r.Dir, name)); err != nil || string(got) != body {
+					t.Errorf("an undo touched %s: %q %v", name, got, err)
+				}
+			}
+			if exists(filepath.Join(r.Dir, j.Before)) {
+				t.Error("the directory of old files is still there")
+			}
+			wholeDatabase(t, r.DB())
+		})
+	}
+}
+
+// An undo that's stopped partway leaves a root the next one can finish, whichever step it was, and that
+// root is the one the restore started from, byte for byte.
+func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
+	var steps []string
+	func() {
+		r, _ := newRoot(t, dir(t))
+		s := stageOver(t, r)
+		was := stepHook
+		defer func() { stepHook = was }()
+		stepHook = func(step string) error {
+			if strings.HasPrefix(step, "undo ") {
+				steps = append(steps, step)
+			}
+			if step == "finish" {
+				return errors.New("injected")
+			}
+			return nil
+		}
+		if _, err := s.Commit(); err == nil {
+			t.Fatal("no failure")
+		}
+	}()
+	if !contains(steps, "undo back local-base.db") || steps[len(steps)-1] != "undo back local-base.db" {
+		t.Fatalf("the database should go back last: %v", steps)
+	}
+	for _, step := range steps {
+		t.Run(step, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			s := stageOver(t, r)
+			before := tree(t, r.Dir, "runtime")
+			was := stepHook
+			defer func() { stepHook = was }()
+			// Commit fails after it has moved everything, and its undo crashes at this step.
+			stepHook = func(at string) error {
+				switch at {
+				case "finish":
+					return errors.New("injected")
+				case step:
+					panic("crash")
+				}
+				return nil
+			}
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Fatal("no crash")
+					}
+				}()
+				_, _ = s.Commit()
+			}()
+			stepHook = was
+			if _, err := root.Open(r.Dir); err == nil {
+				t.Error("the root opened with a restore half undone")
+			}
+			if err := Undo(r.Dir); err != nil {
+				t.Fatalf("the second undo: %v", err)
+			}
+			if after := tree(t, r.Dir, "runtime"); after != before {
+				t.Errorf("after the second undo:\n%s\nwas:\n%s", after, before)
+			}
+			if _, err := root.Open(r.Dir); err != nil {
+				t.Errorf("the root afterwards: %v", err)
+			}
+		})
+	}
+}
+
+// A new root has no database in its journal. Killed once the restored files are in, an undo has to
+// remove all of them, including what the restored database made beside itself.
+func TestAnUndoOnANewRootLeavesNothing(t *testing.T) {
+	src, _ := newRoot(t, dir(t))
+	res := create(t, src, false)
+	parent := dir(t)
+	target := filepath.Join(parent, "target")
+	s, err := Stage(context.Background(), res.Output, target, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := stepHook
+	defer func() { stepHook = was }()
+	stepHook = func(step string) error {
+		if step == "finish" {
+			for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+				if err := os.WriteFile(filepath.Join(target, "local-base.db"+suffix), []byte("the restored database's"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			panic("crash")
+		}
+		return nil
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("no crash")
+			}
+		}()
+		_, _ = s.Commit()
+	}()
+	stepHook = was
+	if err := Undo(target); err != nil {
+		t.Fatal(err)
+	}
+	if exists(target) {
+		entries, _ := os.ReadDir(target)
+		t.Errorf("an undo on a new root left: %v", entries)
+	}
+}
+
+// Something the report couldn't read doesn't turn the rest of the comparison off: the keys were read,
+// so a key revoked while it asked is still seen.
+func TestAPartlyUnreadableRootIsStillCompared(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	changeRoot(t, r, `ALTER TABLE auth_role_permissions RENAME COLUMN permission TO granted`)
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.live == nil {
+		t.Fatal("a root whose keys could be read has nothing to compare")
+	}
+	changeRoot(t, r, `UPDATE api_keys SET revoked_at = 'now'`)
+	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "changed while this waited") || !strings.Contains(err.Error(), "API keys") {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// A database deleted while it asked isn't created empty, and it says so rather than that nothing changed
+// with an empty file left behind.
+func TestCommitDoesntCreateADatabaseDeletedWhileItAsked(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	j := &journal{Version: 1, Before: beforePrefix + "20260101-000000", Had: []string{"local-base.db"}}
-	if err := os.WriteFile(r.DB()+"-wal", []byte("someone's writes"), 0o600); err != nil {
+	if err := os.Remove(r.DB()); err != nil {
 		t.Fatal(err)
 	}
-	defer s.Discard()
-	if err := undo(r.Dir, j); err != nil {
-		t.Fatal(err)
+	_, err := s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "can't be read now") {
+		t.Fatalf("commit: %v", err)
 	}
-	if got, err := os.ReadFile(r.DB() + "-wal"); err != nil || string(got) != "someone's writes" {
-		t.Errorf("an undo with nothing moved touched a -wal: %q %v", got, err)
+	if exists(r.DB()) {
+		t.Error("it created the database")
 	}
 }
 

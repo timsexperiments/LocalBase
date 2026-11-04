@@ -1526,28 +1526,45 @@ func verify(dir string) error {
 // undo puts a root back. It only ever moves names on the constant list, and is safe to run again.
 func undo(dir string, j *journal) error {
 	before := filepath.Join(dir, j.Before)
-	// Until the database has moved, its working files can't be this restore's. They may be another
-	// process's, with writes in them, so they stay.
-	moved := exists(filepath.Join(before, "local-base.db"))
-	for _, name := range replaceable {
-		old, here := filepath.Join(before, name), filepath.Join(dir, name)
-		switch {
-		case !moved && name != "local-base.db" && strings.HasPrefix(name, "local-base.db"):
-		case exists(old):
-			// It was moved aside, so anything at its name now is new.
-			if err := os.RemoveAll(here); err != nil {
+	// Nothing new goes in until everything old is aside, so before that, whatever is at a name the journal
+	// doesn't list isn't this restore's. It may be another process's working files, with writes in them,
+	// or a settings file a command just made, and it stays. This has to be worked out before anything goes
+	// back, and it's the same on a second run that had finished removing what was new.
+	allAside := exists(before)
+	for _, name := range j.Had {
+		allAside = allAside && exists(filepath.Join(before, name))
+	}
+	if allAside {
+		for _, name := range replaceable {
+			if contains(j.Had, name) {
+				continue
+			}
+			if err := stepHook("undo remove " + name); err != nil {
 				return err
 			}
-			if err := os.Rename(old, here); err != nil {
-				return err
-			}
-		case !contains(j.Had, name):
 			// It was never there, so anything at its name now is new.
-			if err := os.RemoveAll(here); err != nil {
+			if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
 				return err
 			}
 		}
-		// Otherwise it hasn't moved yet, and is still the old one.
+	}
+	// The database goes back last, as it goes in last: if this stops partway, a later run finds it still
+	// aside, along with whatever else hasn't gone back yet.
+	for _, name := range append(append([]string{}, replaceable[1:]...), replaceable[0]) {
+		old, here := filepath.Join(before, name), filepath.Join(dir, name)
+		if !exists(old) {
+			continue // It hasn't moved, or it's already back.
+		}
+		if err := stepHook("undo back " + name); err != nil {
+			return err
+		}
+		// It was moved aside, so anything at its name now is new.
+		if err := os.RemoveAll(here); err != nil {
+			return err
+		}
+		if err := os.Rename(old, here); err != nil {
+			return err
+		}
 	}
 	if err := os.Remove(before); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
