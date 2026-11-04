@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -25,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -39,7 +41,21 @@ type Refused struct{ Why string }
 
 func (e *Refused) Error() string { return e.Why }
 
-func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format, a...)} }
+// refuse says why. A refusal can quote what's in the file, so what it quotes can't act on a terminal.
+func refuse(format string, a ...any) error {
+	shown := make([]any, len(a))
+	for i, v := range a {
+		switch x := v.(type) {
+		case string:
+			shown[i] = cli.Printable(x)
+		case error:
+			shown[i] = cli.Printable(x.Error())
+		default:
+			shown[i] = v
+		}
+	}
+	return &Refused{fmt.Sprintf(format, shown...)}
+}
 
 // Program is one custom backend's whole command line: the program can be a shell.
 type Program struct {
@@ -72,7 +88,7 @@ type KeyCounts struct {
 
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
-	Target    string        `json:"target"`
+	Target    string        `json:"target" report:"letters"`
 	NewRoot   bool          `json:"newRoot"`
 	Manifest  *Manifest     `json:"manifest"`
 	Rules     []string      `json:"rules"`
@@ -80,9 +96,13 @@ type Report struct {
 	Sources   []ModelSource `json:"modelSources"`
 	Settings  []Setting     `json:"settings"`
 	Providers []string      `json:"signInProviders"`
-	Keys      KeyCounts     `json:"keys"`
-	Users     int           `json:"users"`
-	Ports     []int         `json:"ports"`
+	SignIn    *SignIn       `json:"signIn"`
+	Grants    []Grant       `json:"grants"`
+	// RolesGone are the roles this root has and the backup doesn't.
+	RolesGone []Grant   `json:"rolesGone,omitempty"`
+	Keys      KeyCounts `json:"keys"`
+	Users     int       `json:"users"`
+	Ports     []int     `json:"ports"`
 	// Who a provider's bindings cover, by issuer, and those that name no provider.
 	Issuers     []IssuerLine      `json:"issuers"`
 	Unbound     auth.UnboundCount `json:"unbound"`
@@ -90,13 +110,15 @@ type Report struct {
 	// With a root being replaced, what the backup would bring back, and what stays as it is.
 	ReturningBindings []IssuerLine `json:"returningBindings,omitempty"`
 	RevocationsKept   int          `json:"revocationsKept"`
-	ReturningKeys     []string     `json:"returningKeys"`
-	KeysLost          []string     `json:"keysLost"`
+	ReturningKeys     []string     `json:"returningKeys" report:"letters"`
+	KeysLost          []string     `json:"keysLost" report:"letters"`
 	ReturningUsers    int          `json:"returningUsers"`
 	// A user the target has removed or disabled stays that way, as a revoked key does.
-	UserStatusesKept int      `json:"userStatusesKept"`
-	UsersChanged     int      `json:"usersGoingBackToAnOlderStatus"`
-	Cautions         []string `json:"cautions"`
+	UserStatusesKept int `json:"userStatusesKept"`
+	UsersChanged     int `json:"usersGoingBackToAnOlderStatus"`
+	// Cautions keep their letters because they hold this person's own path, often as a command to copy.
+	// So a caution mustn't quote the file: what the file says goes in a field of its own.
+	Cautions []string `json:"cautions" report:"letters"`
 }
 
 // Staged is a backup read and checked, in a private directory beside its target.
@@ -540,7 +562,41 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if bad := shape.Unexpected(expected); len(bad) > 0 {
 		return refuse("The database holds what LocalBase does not make, so it was changed by something else: %s.", strings.Join(bad, "; "))
 	}
-	return nil
+	return checkForeignKeys(ctx, db)
+}
+
+// checkForeignKeys refuses a database with rows pointing at something that isn't there. LocalBase keeps
+// foreign keys on, so only an edit of the file can make one, and what reads such a row may not look
+// at what it points to. It runs after the schema is compared, so the foreign keys it checks are the
+// ones this version makes, and the tables it names are too. It says how many rows, and nothing in them.
+func checkForeignKeys(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var key int
+		if err := rows.Scan(&table, &rowid, &parent, &key); err != nil {
+			return refuse("The database can't be read: %v", err)
+		}
+		counts[table]++
+	}
+	if err := rows.Err(); err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	var found []string
+	for table, n := range counts {
+		found = append(found, fmt.Sprintf("%s: %d", table, n))
+	}
+	slices.Sort(found)
+	return refuse("The database has rows pointing at something that isn't there, so it was changed by something else. %s.", strings.Join(found, ", "))
 }
 
 // validate checks everything else, with the validators the gateway uses, and writes the staged
@@ -615,6 +671,31 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	if err := checkBindingRows(ctx, st.DB); err != nil {
 		return nil, err
+	}
+	backedSignIn := readSignIn(ctx, dir, st.DB)
+	if backedSignIn.policyErr != nil {
+		return nil, refuse("The access policy in this backup can't be read: %v", backedSignIn.policyErr)
+	}
+	var liveValues *signInValues
+	if !state.newRoot && state.hasData {
+		v := liveSignIn(ctx, target)
+		liveValues = &v
+	}
+	var signInChanged bool
+	rep.SignIn, signInChanged = signInReport(backedSignIn, liveValues)
+	if signInChanged {
+		rep.Cautions = append(rep.Cautions, signInChangedCaution)
+	}
+	if rep.Grants, err = readGrants(ctx, st.DB); err != nil {
+		return nil, refuse("The roles in this backup can't be read: %v", err)
+	}
+	if !state.newRoot && state.hasData {
+		live, liveErr := liveGrants(ctx, target)
+		gone, changed := compareGrants(rep.Grants, live, liveErr)
+		rep.RolesGone = gone
+		if changed {
+			rep.Cautions = append(rep.Cautions, grantsChangedCaution)
+		}
 	}
 	if rep.Issuers, rep.Unbound, err = bindingsOf(ctx, st.DB, access); err != nil {
 		return nil, refuse("The access bindings in this backup can't be read: %v", err)

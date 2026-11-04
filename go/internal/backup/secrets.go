@@ -286,6 +286,17 @@ func tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
 	return n > 0, err
 }
 
+// tablesExist says whether a database has all of these. A root last opened by an older version lacks
+// the tables added since, which is having no rows in them, not a failed read.
+func tablesExist(ctx context.Context, db *sql.DB, tables ...string) (bool, error) {
+	for _, table := range tables {
+		if present, err := tableExists(ctx, db, table); err != nil || !present {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
 	var n int
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
