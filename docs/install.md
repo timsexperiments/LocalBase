@@ -78,6 +78,8 @@ rm -rf ~/.local/share/doc/local-base
 
 **`uninstall` deletes all LocalBase data, including downloaded models, API keys and custom voices.** To keep the data, run only `local-base stop` and remove the binary. Chat history lives in your browser and isn't affected.
 
+`uninstall` also removes this root's private read copies left by interrupted reads, from your cache and temp folders. It leaves copies a running command still holds, and other roots' copies.
+
 ## Signing setup for maintainers
 
 Tagged releases sign and notarize the macOS binaries in `.github/workflows/release-go.yml`. Linux archives aren't signed; they rely on checksums and GitHub attestations. The workflow needs these repository secrets:
