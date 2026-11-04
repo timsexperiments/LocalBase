@@ -560,6 +560,7 @@ func TestTheHeldDatabaseClosesWhileCommandsAreStillKeptOut(t *testing.T) {
 type rootWas struct {
 	rest     string
 	database []byte
+	mode     os.FileMode
 }
 
 var databaseFiles = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal"}
@@ -570,7 +571,11 @@ func rootAsItIs(t *testing.T, rootDir string, skip ...string) rootWas {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return rootWas{tree(t, rootDir, append(skip, databaseFiles...)...), database}
+	info, err := os.Stat(filepath.Join(rootDir, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rootWas{tree(t, rootDir, append(skip, databaseFiles...)...), database, info.Mode()}
 }
 
 // headerBytesTheSwitchChanges are the file format versions, the change counter, and the version that wrote it.
@@ -601,8 +606,16 @@ func (was rootWas) isPutBack(t *testing.T, rootDir string, skip ...string) {
 			}
 		}
 	}
+	if info, err := os.Stat(dbPath); err != nil || info.Mode() != was.mode {
+		t.Errorf("the database's mode is %v, and was %v: %v", info.Mode(), was.mode, err)
+	}
 	if info, err := os.Stat(dbPath + "-wal"); err == nil && info.Size() != 0 {
 		t.Errorf("a -wal with %d bytes is beside it", info.Size())
+	}
+	for _, suffix := range []string{"-wal", "-journal"} {
+		if info, err := os.Stat(dbPath + suffix); err == nil && info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("%s beside it has mode %v", suffix, info.Mode())
+		}
 	}
 	if exists(dbPath + "-shm") {
 		t.Error("a -shm is beside it")
@@ -730,4 +743,60 @@ func TestARestoredRootKeepsNoOwnerFromBefore(t *testing.T) {
 		t.Errorf("the owner file beside the restored database is %q, and the old one was %q", now, old)
 	}
 	takesAWrite(t, r.DB())
+}
+
+// A stop says nothing was changed, and on a root a crash left with a -wal that's true of its rows: closing
+// the held connection checkpoints, as any open would, so its bytes can differ. What the crash committed stays,
+// and what it didn't finish doesn't appear.
+func TestAStopOnACrashedRootKeepsEveryRow(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	keys := keyCount(t, r.DB())
+	crashWhileWriting(t, r.DB(), true, revokeAllKeys)
+	_, err := s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "changed while this waited") {
+		t.Fatalf("commit: %v", err)
+	}
+	if exists(journalPath(r.Dir)) {
+		t.Error("it stopped, and left its journal")
+	}
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	wholeOf(t, st.DB)
+	if n := revokedKeys(t, st.DB); n != keys {
+		t.Errorf("%d of %d keys are revoked, so the crash's committed write isn't all there", n, keys)
+	}
+	if n := unfinishedTable(t, st.DB); n != 0 {
+		t.Errorf("%d rows of a write that never finished are there", n)
+	}
+}
+
+// A -wal that isn't this database's, appearing while the person reads the report, stops the restore before
+// anything opens the database. Opening would replay it, and closing would write it in.
+func TestAForeignWALAfterTheReportStopsARestore(t *testing.T) {
+	other, _ := newRoot(t, dir(t))
+	crashWhileWriting(t, other.DB(), false, revokeAllKeys)
+	foreign, err := os.ReadFile(other.DB() + "-wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, _ := newRoot(t, dir(t))
+	stoppedCleanly(t, r.DB())
+	s := stageOver(t, r)
+	if err := os.WriteFile(r.DB()+"-wal", foreign, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := tree(t, r.Dir, "runtime")
+	_, err = s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "different copy of this database") {
+		t.Fatalf("commit: %v", err)
+	}
+	if after := tree(t, r.Dir, "runtime"); after != before {
+		t.Errorf("it stopped, and the root changed:\n%s\nwas:\n%s", after, before)
+	}
 }

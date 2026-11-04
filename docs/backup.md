@@ -65,7 +65,7 @@ Restore checks the whole file before changing anything, treating it as input fro
 
 It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, a database with a write that never finished, and running as root. A root with data needs `--replace`.
 
-**`--replace` only replaces what a backup holds.** Your models and logs stay. The old files go to `<root>/.before-restore-<time>/`, private to you, and nothing reads them. **They hold secrets too,** so the last line of the output gives the command to delete them.
+**`--replace` only replaces what a backup holds.** Your models and logs stay. The old files go to `<root>/.before-restore-<time>/`, private to you, and nothing reads them. **They hold secrets too,** so the last line of the output gives the command to delete them. They can include a `local-base.db-journal` that SQLite has finished with, which is safe to delete with the rest.
 
 **If anything fails, everything is put back.** If a restore is interrupted, every command refuses until you run:
 

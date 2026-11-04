@@ -119,6 +119,11 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if s.live == nil {
 		return release, nil
 	}
+	// A -wal that appeared while it waited and isn't this database's would be replayed by opening it, and
+	// closing would then write it in, so this stops before that as every other open does.
+	if err := store.CheckWALBelongs(dbPath); err != nil {
+		return release, refuse("%v", err)
+	}
 	// What was left mid-write while it waited. A read-write open would undo that here, and the report
 	// didn't say so. Write-ahead logging has no such state, and reading this way would leave files.
 	if !store.InWAL(dbPath) {

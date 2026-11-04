@@ -212,6 +212,9 @@ func checkWALBelongs(path string) error {
 	return nil
 }
 
+// CheckWALBelongs is the check every open makes, for a caller that has to open a database its own way.
+func CheckWALBelongs(path string) error { return checkWALBelongs(path) }
+
 // readOnlyRoot: this failed because nothing can be written here, not because the database is busy.
 func readOnlyRoot(err error) bool {
 	var e *sqlite.Error

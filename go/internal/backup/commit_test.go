@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -606,6 +607,12 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 				t.Fatalf("undo: %v", err)
 			}
 			before.isPutBack(t, r.Dir, "runtime")
+			// Only the switch may change the header, and it comes after these two.
+			if step != "before" {
+				if now, err := os.ReadFile(r.DB()); err != nil || !bytes.Equal(now, before.database) {
+					t.Errorf("killed before the switch, and the database changed: %v", err)
+				}
+			}
 			wholeDatabase(t, r.DB())
 			takesAWrite(t, r.DB())
 		})
