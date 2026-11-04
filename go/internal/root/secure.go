@@ -26,6 +26,10 @@ type UnsafeRootError struct {
 }
 
 func (e *UnsafeRootError) Error() string {
+	// With no file to name, what's wrong is the whole sentence.
+	if e.Path == "" {
+		return e.Problem
+	}
 	return fmt.Sprintf("Refusing to use %s: %s. %s", e.Path, e.Problem, e.Fix)
 }
 

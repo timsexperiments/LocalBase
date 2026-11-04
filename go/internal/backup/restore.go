@@ -144,6 +144,11 @@ type Staged struct {
 	dir     string
 	target  string
 	replace bool
+	// live is what the report said about the root being replaced, read before it was written. It's nil
+	// for a new root, an empty one, or one that couldn't be read, which have nothing to hold it to.
+	live *liveFacts
+	// hadData says the report was about a root with something to replace.
+	hadData bool
 }
 
 // Discard removes the staging directory. Commit does too.
@@ -285,7 +290,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	if err != nil {
 		return nil, err
 	}
-	s := &Staged{dir: dir, target: target, replace: replace}
+	s := &Staged{dir: dir, target: target, replace: replace, hadData: state.hasData}
 	ok := false
 	defer func() {
 		if !ok {
@@ -295,6 +300,14 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	m, err := extract(ctx, in, dir)
 	if err != nil {
 		return nil, err
+	}
+	// Before the report, so that a change made while it's written is seen as one, and never missed.
+	if !state.newRoot && state.hasData {
+		s.live, err = readRootFacts(ctx, filepath.Join(target, "local-base.db"), target)
+		if isBusy(err) {
+			return nil, fmt.Errorf("reading this root's database: %w", err)
+		}
+		// Any other failure is for the report, which says the root can't be read.
 	}
 	report, err := validate(ctx, dir, target, m, state, bringBack)
 	if err != nil {
@@ -1342,6 +1355,9 @@ func (s *Staged) Commit() (*Done, error) {
 	if err != nil {
 		return nil, err
 	}
+	if state.hasData && !s.hadData {
+		return nil, refuse("This root changed while this waited: it holds settings now, and the report said it had none. Nothing was changed. Run this again to see what it would do now.")
+	}
 	r, err := root.Init(s.target)
 	if err != nil {
 		return nil, err
@@ -1381,6 +1397,25 @@ func (s *Staged) Commit() (*Done, error) {
 		return nil, s.failed(r.Dir, j, err)
 	}
 
+	release, err := s.holdRoot(context.Background(), r.Dir, r.DB())
+	if err != nil {
+		return nil, s.stopped(r.Dir, j, err)
+	}
+	defer release()
+	// Taking the lock can change which working files there are, and the journal has to say what's here.
+	j.Had = nil
+	for _, name := range replaceable {
+		if exists(filepath.Join(r.Dir, name)) {
+			j.Had = append(j.Had, name)
+		}
+	}
+	if raw, err = json.Marshal(j); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+
 	if err := s.apply(r.Dir, j); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
@@ -1402,6 +1437,21 @@ func (s *Staged) Commit() (*Done, error) {
 		done.BeforeDir = before
 	}
 	return done, nil
+}
+
+// stopped ends a restore that hasn't moved anything. A refusal says why, in its own words, and anything
+// else is a failure like any other.
+func (s *Staged) stopped(dir string, j *journal, cause error) error {
+	var refused *Refused
+	if !errors.As(cause, &refused) {
+		return s.failed(dir, j, cause)
+	}
+	// Only the journal: nothing moved, and whatever else is here may be another process's working files.
+	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%v And its journal couldn't be removed (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
+	}
+	_ = syncDir(dir) // If this removal is lost in a power cut the journal returns, and the undo is safe.
+	return cause
 }
 
 func (s *Staged) failed(dir string, j *journal, cause error) error {
@@ -1476,9 +1526,13 @@ func verify(dir string) error {
 // undo puts a root back. It only ever moves names on the constant list, and is safe to run again.
 func undo(dir string, j *journal) error {
 	before := filepath.Join(dir, j.Before)
+	// Until the database has moved, its working files can't be this restore's. They may be another
+	// process's, with writes in them, so they stay.
+	moved := exists(filepath.Join(before, "local-base.db"))
 	for _, name := range replaceable {
 		old, here := filepath.Join(before, name), filepath.Join(dir, name)
 		switch {
+		case !moved && name != "local-base.db" && strings.HasPrefix(name, "local-base.db"):
 		case exists(old):
 			// It was moved aside, so anything at its name now is new.
 			if err := os.RemoveAll(here); err != nil {

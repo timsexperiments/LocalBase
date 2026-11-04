@@ -20,5 +20,20 @@ func unfinishedRestore(dir string) error {
 	} else if err != nil {
 		return err
 	}
+	// Telling someone to undo a restore that's still running would be wrong, and the undo would refuse.
+	if restoreRunning(dir) {
+		return &UnsafeRootError{Problem: "A restore is running on " + dir + ". Wait for it to finish, then run this again."}
+	}
 	return &UnsafeRootError{path, "a restore did not finish", "Run: local-base --root " + shellQuote(dir) + " restore --undo"}
+}
+
+// restoreRunning says a live process holds this root's operation lease for a restore. Whatever can't be
+// read isn't running: the journal is still there, and the undo takes the lease itself.
+func restoreRunning(dir string) bool {
+	canonical, err := Canonical(dir)
+	if err != nil {
+		return false
+	}
+	var o operationOwner
+	return readJSON(operationPaths(canonical).owner, &o) && o.valid() && o.Operation == "restore" && presence(o.PID) != 0
 }
