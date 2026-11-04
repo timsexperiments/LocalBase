@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -87,11 +88,35 @@ func maintenanceCommands() []*cli.Command {
 				if !removed {
 					c.Info("No managed user service was installed.")
 				}
+				// Found while the root's name still resolves, and gone before the root is.
+				leftCopies, readingCopies := store.ReadCopies(r.Dir)
+				copiesRemoved := 0
+				var copyFailures []string
+				for _, left := range leftCopies {
+					if err := store.RemoveReadCopy(left); err != nil {
+						shown := shownPath(left.Path)
+						copyFailures = append(copyFailures, fmt.Sprintf("Could not remove a private copy of this root's database at %s: %s. It may hold secrets. To delete it: rm -rf %s", shown, cli.Printable(err.Error()), shown))
+						continue
+					}
+					copiesRemoved++
+				}
 				if err := os.RemoveAll(r.Dir); err != nil {
 					return nil, err
 				}
 				c.Info("Removed all local-base managed data at %s", r.Dir)
-				out := map[string]any{"removed": true, "root": r.Dir}
+				out := map[string]any{"removed": true, "root": r.Dir, "readCopiesRemoved": copiesRemoved}
+				switch {
+				case copiesRemoved == 1:
+					c.Info("Removed 1 private copy of this root's database left by an interrupted read.")
+				case copiesRemoved > 1:
+					c.Info("Removed %d private copies of this root's database left by interrupted reads.", copiesRemoved)
+				}
+				for _, failure := range copyFailures {
+					c.Info("%s", failure)
+				}
+				for _, reading := range readingCopies {
+					c.Info("A LocalBase command still reading this root has a private copy at %s. It's left on purpose: that command removes it when it ends.", shownPath(reading.Path))
+				}
 				if dir := backupsLeftBehind(r.Dir); dir != "" {
 					c.Info("Backups in %s were left behind. They hold secrets. To delete them: rm -rf '%s'", dir, dir)
 					out["backupsLeftBehind"] = dir
@@ -105,3 +130,6 @@ func withHelp(o cli.Option, help string) cli.Option {
 	o.Help = help
 	return o
 }
+
+// shownPath is a path as a person reads it and pastes it: nothing in it acts on the terminal.
+func shownPath(path string) string { return root.ShellQuote(cli.Printable(path)) }

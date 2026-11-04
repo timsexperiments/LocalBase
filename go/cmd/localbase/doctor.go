@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -101,6 +102,13 @@ func doctorCommand() *cli.Command {
 					c.Info("An interrupted backup or restore left private files at %s. They may hold secrets. To delete them: rm -rf '%s'", path, path)
 				}
 				data["interruptedWorkingFiles"] = left
+			}
+			if left, _ := store.ReadCopies(e.Root.Dir); len(left) > 0 {
+				for _, copied := range left {
+					shown := shownPath(copied.Path)
+					c.Info("An interrupted read left a private copy of this root's database at %s (%d bytes). It may hold secrets. To delete it: rm -rf %s", shown, copied.Bytes, shown)
+				}
+				data["leftoverReadCopies"] = left
 			}
 			if n := unendedSessions(e.Root.Dir); n > 0 {
 				c.Info("%d sessions could not be ended; run `local-base access sessions revoke --all`.", n)

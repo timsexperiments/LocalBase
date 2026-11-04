@@ -36,6 +36,9 @@ const (
 )
 
 // shellQuote makes a path safe to paste into a shell.
+// ShellQuote quotes s to paste into a shell.
+func ShellQuote(s string) string { return shellQuote(s) }
+
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
