@@ -1,12 +1,14 @@
 package store
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -461,8 +463,32 @@ func TestALegitimateRootStillOpens(t *testing.T) {
 	})
 }
 
-// A copy of files someone may be writing can be torn, so with the root held there's no copy.
+// A copy of files someone may be writing can be torn, so with another process holding the root there's
+// no copy. That process is this test binary run again, holding each kind of hold until it's told to stop.
 func TestAHeldRootIsNotCopied(t *testing.T) {
+	if dir := os.Getenv("LOCALBASE_TEST_HOLD_ROOT"); dir != "" {
+		r, err := root.Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var release func()
+		switch os.Getenv("LOCALBASE_TEST_HOLD_KIND") {
+		case "gateway":
+			if release, err = r.Lock("127.0.0.1", 1); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			lease, err := root.AcquireOperation(r.Dir, "restore")
+			if err != nil {
+				t.Fatal(err)
+			}
+			release = lease.Release
+		}
+		defer release()
+		fmt.Println("HOLDING")
+		_, _ = io.Copy(io.Discard, os.Stdin) // until the parent closes it
+		return
+	}
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
@@ -478,41 +504,46 @@ func TestAHeldRootIsNotCopied(t *testing.T) {
 	if err := made.Close(); err != nil {
 		t.Fatal(err)
 	}
-	before, err := OpenReadOnly(path)
-	if err != nil {
-		t.Fatalf("nobody holds it: %v", err)
-	}
-	before.Close()
-	t.Run("a gateway", func(t *testing.T) {
-		release, err := r.Lock("127.0.0.1", 1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer release()
-		if st, err := OpenReadOnly(path); !errors.Is(err, ErrInUse) {
-			if st != nil {
-				st.Close()
+	for _, kind := range []string{"gateway", "lease"} {
+		t.Run(kind, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestAHeldRootIsNotCopied$")
+			cmd.Env = append(os.Environ(), "LOCALBASE_TEST_HOLD_ROOT="+r.Dir, "LOCALBASE_TEST_HOLD_KIND="+kind)
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				t.Fatal(err)
 			}
-			t.Errorf("%v", err)
-		}
-	})
-	t.Run("a command with the lease", func(t *testing.T) {
-		lease, err := root.AcquireOperation(r.Dir, "restore")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer lease.Release()
-		if st, err := OpenReadOnly(path); !errors.Is(err, ErrInUse) {
-			if st != nil {
-				st.Close()
+			stdout, err := cmd.StdoutPipe()
+			if err != nil {
+				t.Fatal(err)
 			}
-			t.Errorf("%v", err)
-		}
-	})
-	if after, err := OpenReadOnly(path); err != nil {
-		t.Errorf("released: %v", err)
-	} else {
-		after.Close()
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done := false
+			finish := func() {
+				if !done {
+					done = true
+					_ = stdin.Close()
+					_ = cmd.Wait()
+				}
+			}
+			defer finish()
+			if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || !strings.Contains(line, "HOLDING") {
+				t.Fatalf("the other process: %q %v", line, err)
+			}
+			if st, err := OpenReadOnly(path); !errors.Is(err, ErrInUse) {
+				if st != nil {
+					st.Close()
+				}
+				t.Errorf("held: %v", err)
+			}
+			finish()
+			st, err := OpenReadOnly(path)
+			if err != nil {
+				t.Fatalf("released: %v", err)
+			}
+			st.Close()
+		})
 	}
 }
 
@@ -574,4 +605,72 @@ func TestLeftCopiesAreSwept(t *testing.T) {
 			t.Errorf("%s went: %v", p, err)
 		}
 	}
+}
+
+// A command reading with its own lease isn't racing itself: it reads the copy.
+func TestAProcessHoldingItsOwnLeaseCanRead(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	r, err := root.Init(filepath.Join(t.TempDir(), "root"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := made.Close(); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := root.AcquireOperation(r.Dir, "backup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+	st, err := OpenReadOnly(r.DB())
+	if err != nil {
+		t.Fatalf("with its own lease: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Error(err)
+	}
+}
+
+// The token reaches the main file while the store is open, not only when it closes: a crash could come
+// before then. And an open that finds commits in a -wal claims nothing: it can't know whose they are.
+func TestATokenIsInTheFileOnceOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "local-base.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	token, err := fileToken(path)
+	if err != nil || token == 0 {
+		t.Fatalf("%d %v", token, err)
+	}
+	if got, err := os.ReadFile(path + ownerSuffix); err != nil || string(got) != strconv.FormatUint(uint64(token), 10) {
+		t.Errorf("%q %v", got, err)
+	}
+	// Once only, even asked again.
+	if err := st.setToken(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := fileToken(path); err != nil || again != token {
+		t.Errorf("it changed: %d, was %d: %v", again, token, err)
+	}
+}
+
+func TestAnOpenWithCommitsInTheWALClaimsNothing(t *testing.T) {
+	_, path := aCrashedRoot(t, false)
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := os.Stat(path + ownerSuffix); !os.IsNotExist(err) {
+		t.Errorf("it claimed a -wal it can't know: %v", err)
+	}
+	wantSetting(t, st, "only in the wal")
 }

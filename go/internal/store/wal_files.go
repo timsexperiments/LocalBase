@@ -20,6 +20,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
+// Sidecars are the suffixes of every file that belongs with a database. Whatever replaces, removes or
+// tightens a database does the same to these: a -wal left beside another database can damage it.
+var Sidecars = []string{"-wal", "-shm", "-journal", ownerSuffix, ownerSuffix + ".tmp"}
+
 // ownerSuffix names the file beside the database saying which database its -wal belongs to.
 const ownerSuffix = "-wal-owner"
 

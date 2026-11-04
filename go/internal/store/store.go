@@ -165,7 +165,7 @@ func makePrivate(path string) {
 	if f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
 		f.Close()
 	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
+	for _, suffix := range append([]string{""}, Sidecars...) {
 		p := path + suffix
 		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 != 0 {
 			_ = os.Chmod(p, info.Mode().Perm()&^0o077) // serve's TightenPermissions reports what stays loose
