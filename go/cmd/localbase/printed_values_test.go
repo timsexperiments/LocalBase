@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,6 +35,62 @@ var keepsLineBreaks = map[string]string{
 	"cmd/localbase/imports.go:modelsExportCommand": "JSON",
 	"cmd/localbase/imports.go:backendsCommand":     "JSON",
 	"cmd/localbase/connect.go:printClient":         "snippets a person copies, from this program's templates",
+}
+
+// writesItsOwnLines is everywhere that builds a cli.TextError, which prints unescaped. Each one escapes
+// its values when it builds the text.
+var writesItsOwnLines = map[string]string{
+	"internal/install/install.go:downloadError": "the source, with PrintableASCII",
+	"internal/install/install.go:Verify":        "the filename and expected digest, with Printable; the other digest is ours",
+}
+
+// A TextError prints as it is, on trust, so a new one fails until someone has read it.
+func TestEveryTextErrorIsNamed(t *testing.T) {
+	seen := map[string]bool{}
+	err := filepath.WalkDir("../..", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		fset := token.NewFileSet()
+		parsed, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimPrefix(filepath.ToSlash(path), "../../")
+		for _, decl := range parsed.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok {
+				continue
+			}
+			where := name + ":" + fn.Name.Name
+			ast.Inspect(fn, func(n ast.Node) bool {
+				lit, ok := n.(*ast.CompositeLit)
+				if !ok {
+					return true
+				}
+				if text := exprText(lit.Type); text != "cli.TextError" && text != "TextError" {
+					return true
+				}
+				seen[where] = true
+				if writesItsOwnLines[where] == "" {
+					t.Errorf("%s:%d: builds a TextError, which prints unescaped; escape its values and name it in writesItsOwnLines", where, fset.Position(lit.Pos()).Line)
+				}
+				return true
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for where := range writesItsOwnLines {
+		if !seen[where] {
+			t.Errorf("writesItsOwnLines names %s, which no longer builds one", where)
+		}
+	}
 }
 
 var standardStream = regexp.MustCompile(`\.Std(out|err)$`)
