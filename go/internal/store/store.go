@@ -187,7 +187,9 @@ func OpenReadOnly(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", "file:"+read+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err == nil {
 		// Ping doesn't read the file, and a database that can't be read should fail here.
-		err = db.QueryRow(`SELECT count(*) FROM sqlite_master`).Err()
+		// Scan, not Err: only Scan gives the connection back, and sees a failure reading the row.
+		var tables int
+		err = db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&tables)
 		if err != nil {
 			db.Close()
 		}

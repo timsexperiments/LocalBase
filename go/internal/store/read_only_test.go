@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -728,5 +729,59 @@ func TestADifferentDatabaseUnderItsOwnWALIsRefused(t *testing.T) {
 	if st, err := Open(path); err == nil {
 		st.Close()
 		t.Error("it opened")
+	}
+}
+
+// Opening to read holds nothing once it's done, and closing lets go of the file. A connection left
+// attached would make a later BEGIN EXCLUSIVE in this same process fail against itself.
+func TestAReadOnlyOpenLeavesNothingAttached(t *testing.T) {
+	for name, keepSHM := range map[string]bool{"in place": true, "from a copy": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("XDG_CACHE_HOME", t.TempDir())
+			path := filepath.Join(t.TempDir(), "local-base.db")
+			made, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := made.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if keepSHM {
+				if err := os.WriteFile(path+"-shm", nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i := range 3 {
+				st, err := OpenReadOnly(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n := st.DB.Stats().InUse; n != 0 {
+					t.Errorf("open %d: %d connections still checked out", i, n)
+				}
+				if err := st.Close(); err != nil {
+					t.Error(err)
+				}
+				if n := st.DB.Stats().OpenConnections; n != 0 {
+					t.Errorf("open %d: %d connections left after Close", i, n)
+				}
+			}
+			db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(0)")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			db.SetMaxOpenConns(1)
+			if _, err := db.Exec(`PRAGMA locking_mode=EXCLUSIVE`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`BEGIN EXCLUSIVE`); err != nil {
+				t.Errorf("this process blocks itself: %v", err)
+			}
+			if _, err := db.Exec(`ROLLBACK`); err != nil {
+				t.Error(err)
+			}
+		})
 	}
 }
