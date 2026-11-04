@@ -12,6 +12,11 @@ import (
 // Budgets for growth between the first and the last checkpoint: the gateway
 // with every model unloaded and no client connected. A race-detector gateway's
 // memory is several times larger, so its figures get raceFactor.
+//
+// Descriptors have two parts. budgetFDs is for everything except the database's
+// files, and it is no larger than it was. Those files fill as the connection pool
+// does, which is not a leak and can add about 17 after warm-up, so they have a
+// ceiling of their own, lab.DatabaseCeiling. See lab.DescriptorProblem.
 const (
 	budgetGoroutines = 12
 	budgetFDs        = 8
@@ -256,7 +261,8 @@ func (s *soak) checkResources() {
 		factor = raceFactor
 	}
 	s.addCheck("goroutines bounded", last.Goroutines-first.Goroutines <= budgetGoroutines, "%d > %d (budget +%d)", first.Goroutines, last.Goroutines, budgetGoroutines)
-	s.addCheck("file descriptors bounded", last.FDs-first.FDs <= budgetFDs && first.FDs > 0, "%d > %d (budget +%d)", first.FDs, last.FDs, budgetFDs)
+	descriptors := lab.DescriptorProblem(first, last, budgetFDs, lab.DatabaseCeiling)
+	s.addCheck("file descriptors bounded", descriptors == "" && first.FDs > 0, "%d to %d, with %d on the database's files: %s", first.FDs, last.FDs, last.Files.Total(), descriptors)
 	s.addCheck("heap bounded", last.HeapInuse-first.HeapInuse <= budgetHeap*factor, "%.1f > %.1f MiB (budget +%d)", mib(first.HeapInuse), mib(last.HeapInuse), budgetHeap*factor>>20)
 	s.addCheck("RSS bounded", last.RSS-first.RSS <= budgetRSS*factor, "%.1f > %.1f MiB (budget +%d)", mib(first.RSS), mib(last.RSS), budgetRSS*factor>>20)
 	// Over many cycles a leak climbs at every checkpoint. Skip the first half:
@@ -271,7 +277,7 @@ func (s *soak) checkResources() {
 			}
 		}
 		grow(func(st lab.Stats) int64 { return int64(st.Goroutines) }, budgetGoroutines/2, "goroutines")
-		grow(func(st lab.Stats) int64 { return int64(st.FDs) }, budgetFDs/2, "descriptors")
+		grow(func(st lab.Stats) int64 { return int64(st.FDs - st.Files.Total()) }, budgetFDs/2, "descriptors")
 		grow(func(st lab.Stats) int64 { return st.HeapInuse }, budgetHeap*factor/2, "heap bytes")
 	}
 }

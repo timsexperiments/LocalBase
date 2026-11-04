@@ -101,6 +101,9 @@ huge, slow and malformed requests, and a thousand keys and sessions.
 A test of an open bug starts with `knownBug(t, <pr>, "...")`, naming the pull request
 that fixes it. That fix removes the line.
 
+The soak's budget has the same two parts: `budgetFDs` is unchanged at 8, for everything except the
+database's files, and those have the ceiling. Its result table shows how many descriptors are on them.
+
 **Descriptors have two parts.** With the store in WAL, a settled gateway holds one descriptor on the
 database for each connection the pool has ever opened, up to its limit, even after the pool closes the
 connection; one on the `-wal` for each idle connection; and one `-shm`. So the database's files grow as

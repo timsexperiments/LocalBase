@@ -103,11 +103,11 @@ func (r *report) markdown() string {
 	}
 	fmt.Fprintln(&b, "\nLatency covers successes only; a detached run's figure is its whole life, from create to dismissal.")
 	if len(r.Points) > 0 {
-		fmt.Fprintln(&b, "\n| checkpoint (all models unloaded, no clients) | goroutines | fds | threads | heap MiB | RSS MiB |")
-		fmt.Fprintln(&b, "|---|---:|---:|---:|---:|---:|")
+		fmt.Fprintln(&b, "\n| checkpoint (all models unloaded, no clients) | goroutines | fds | on the database | threads | heap MiB | RSS MiB |")
+		fmt.Fprintln(&b, "|---|---:|---:|---:|---:|---:|---:|")
 		for _, i := range checkpointRows(len(r.Points)) {
 			p := r.Points[i]
-			fmt.Fprintf(&b, "| %s | %d | %d | %d | %.1f | %.1f |\n", p.Label, p.Stats.Goroutines, p.Stats.FDs, p.Stats.Threads, mib(p.Stats.HeapInuse), mib(p.Stats.RSS))
+			fmt.Fprintf(&b, "| %s | %d | %d | %d | %d | %.1f | %.1f |\n", p.Label, p.Stats.Goroutines, p.Stats.FDs, p.Stats.Files.Total(), p.Stats.Threads, mib(p.Stats.HeapInuse), mib(p.Stats.RSS))
 		}
 	}
 	if r.Trend != nil {
