@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -143,6 +145,39 @@ func printKeys(c *cli.Ctx, heading, how string, keys []backup.KeyChange) {
 	if how != "" {
 		c.Info("%s", how)
 	}
+}
+
+// plainKeyID is the shape of an id that's safe to offer for pasting into a shell. An id comes from the
+// file, so a line made to be copied can't carry one a shell would act on, or take for an option.
+var plainKeyID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
+
+// bringBackFlag is a key's flag ready to copy, or the form to fill in if its id isn't safe to paste.
+func bringBackFlag(id string) string {
+	if plainKeyID.MatchString(id) {
+		return "--bring-back-key " + id
+	}
+	return "--bring-back-key <id>"
+}
+
+// printHeldBack gives each key its own line to bring it back, so that a key comes back because someone
+// picked it. One line for all of them would bring back whatever a file planted among them.
+func printHeldBack(c *cli.Ctx, keys []backup.KeyChange) {
+	if len(keys) == 0 {
+		return
+	}
+	c.Info("Keys held back, because they can do more than make requests. Bring back only one you recognise:")
+	for _, k := range keys[:min(len(keys), maxGrantLines)] {
+		c.Info("  %s (%s): %s", k.ID, k.Name, k.Why)
+		c.Info("    To bring it back: %s", bringBackFlag(k.ID))
+	}
+	if hidden := len(keys) - maxGrantLines; hidden > 0 {
+		c.Info("  and %d more. All of them: restore --dry-run --json", hidden)
+	}
+}
+
+// shellQuoted makes a path one word in a line made to be pasted, whatever it holds.
+func shellQuoted(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // printIssuers says who each sign-in provider's bindings cover. They decide who gets which role.
@@ -317,7 +352,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		c.Info("%d keys revoked on this root stay revoked.", rep.RevocationsKept)
 	}
 	printKeys(c, "API keys in this backup that would work:", "", rep.KeysActive)
-	printKeys(c, "Keys held back, because they can do more than make requests:", "  To bring one back: --bring-back-key <id>", rep.KeysHeldBack)
+	printHeldBack(c, rep.KeysHeldBack)
 	printKeys(c, "Keys changed since this backup stay as they are on this root:", "  To take this backup's version of one: --bring-back-key <id>", rep.KeysKept)
 	printKeys(c, "Keys in this backup that this root doesn't have stay out:", "  To bring one back: --bring-back-key <id>", rep.KeysLeftOut)
 	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  The secret in this backup works for these, and any they have now stops working.", rep.KeysBroughtBack)
@@ -471,12 +506,31 @@ func printWho(c *cli.Ctx, who []backup.Line) {
 	c.Info("    %s. All of them: restore --dry-run --json", more)
 }
 
+// backupArgument is the file this restore was given, as a word to paste from any folder.
+func backupArgument(c *cli.Ctx) string {
+	if len(c.Args) == 0 {
+		return "<this backup>"
+	}
+	file := c.Args[0]
+	if abs, err := filepath.Abs(file); err == nil {
+		file = abs
+	}
+	return shellQuoted(cli.Printable(file))
+}
+
 func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 	rep = printable(rep)
-	flag := "local-base --root '" + rep.Target + "'"
+	flag := "local-base --root " + shellQuoted(rep.Target)
 	c.Info("Restored to %s. Nothing was started.", rep.Target)
 	c.Info("Next:")
 	c.Info("  Start it: %s start", flag)
+	if len(rep.KeysHeldBack) > 0 {
+		name := "--bring-back-key <id>"
+		if len(rep.KeysHeldBack) == 1 {
+			name = bringBackFlag(rep.KeysHeldBack[0].ID)
+		}
+		c.Info("  A key held back can still come back from this backup: %s restore --replace %s %s", flag, name, backupArgument(c))
+	}
 	if len(rep.Providers) == 0 {
 		c.Info("  Everyone must sign in again. For a sign-in link: %s access login-link", flag)
 	} else {
@@ -492,7 +546,7 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {
 		before := cli.Printable(done.BeforeDir)
-		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf '%s'", before, before)
+		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf %s", before, shellQuoted(before))
 	}
 }
 

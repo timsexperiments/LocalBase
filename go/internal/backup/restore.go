@@ -754,10 +754,10 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		v := liveSignIn(ctx, target)
 		liveValues = &v
 	}
-	var signInChanged bool
-	rep.SignIn, signInChanged = signInReport(backedSignIn, liveValues)
-	if signInChanged {
-		rep.Cautions = append(rep.Cautions, signInChangedCaution)
+	var signInCaution string
+	rep.SignIn, signInCaution = signInReport(backedSignIn, liveValues)
+	if signInCaution != "" {
+		rep.Cautions = append(rep.Cautions, signInCaution)
 	}
 	if rep.Grants, err = readGrants(ctx, st.DB); err != nil {
 		return nil, refuse("The roles in this backup can't be read: %v", err)
@@ -766,7 +766,10 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		live, liveErr := liveGrants(ctx, target)
 		gone, changed := compareGrants(rep.Grants, live, liveErr)
 		rep.RolesGone = gone
-		if changed {
+		switch {
+		case changed && liveErr != nil:
+			rep.Cautions = append(rep.Cautions, grantsUnknownCaution)
+		case changed:
 			rep.Cautions = append(rep.Cautions, grantsChangedCaution)
 		}
 	}
