@@ -413,7 +413,9 @@ func TestCommitGoesAheadWhenNothingChanged(t *testing.T) {
 	}
 }
 
-// A process that held the database too long stops it, plainly, with nothing changed.
+// Something holding the database too long stops it, plainly, with nothing changed. The holder here is a
+// connection in this process taking the lock itself, so this is the same process only, and doesn't show what a
+// process that opened through the store does. That's TestAnIdleProcessWithTheDatabaseOpenStopsARestore.
 func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
@@ -439,7 +441,7 @@ func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 func TestAWriteDuringTheMoveFailsAndIsNotLost(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	// As a root from before write-ahead logging is: its connection takes no lock until it's used, so one
-	// can be open here. In write-ahead logging, TestAProcessWithTheDatabaseOpenStopsARestore applies.
+	// can be open here. In write-ahead logging, TestAnIdleProcessWithTheDatabaseOpenStopsARestore applies.
 	inRollbackMode(t, r.DB())
 	s := stageOver(t, r)
 	late, err := sql.Open("sqlite", "file:"+r.DB()+"?_pragma=busy_timeout(5000)")
@@ -619,10 +621,10 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 	}
 }
 
-// In write-ahead logging, SQLite doesn't give exclusive access while any other connection is open. So a
-// process with the database open stops a restore, rather than have the database moved from under it, and
-// what it writes is kept.
-func TestAProcessWithTheDatabaseOpenStopsARestore(t *testing.T) {
+// A connection in this process stops a restore, and what it writes is kept. This is the same process only:
+// SQLite shares its locks within one, so this can't show what another process does. That's
+// TestAnIdleProcessWithTheDatabaseOpenStopsARestore.
+func TestAConnectionInThisProcessStopsARestore(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
 	shortBusyWaits(t, 100*time.Millisecond)

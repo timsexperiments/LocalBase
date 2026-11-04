@@ -119,30 +119,34 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if s.live == nil {
 		return release, nil
 	}
+	// POSIX drops all of a process's locks on a file when any descriptor on it closes. Raw reads of this file
+	// share this one from now on, so none of them can cost the lock below.
+	letGo := store.HoldFile(dbPath)
 	// A -wal that appeared while it waited and isn't this database's would be replayed by opening it, and
 	// closing would then write it in, so this stops before that as every other open does.
-	//
-	// This and store.InWAL open the database's file outside SQLite, so they come before the lock and must
-	// never move after it: POSIX drops all of a process's locks on a file when any descriptor on it closes.
 	if err := store.CheckWALBelongs(dbPath); err != nil {
+		letGo()
 		return release, refuse("%v", err)
 	}
 	// What was left mid-write while it waited. A read-write open would undo that here, and the report
 	// didn't say so. Write-ahead logging has no such state, and reading this way would leave files.
 	if !store.InWAL(dbPath) {
 		if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+			letGo()
 			return release, refuse("%s", unfinishedWriteMessage(dir))
 		}
 	}
 	// mode=rw, so that a database deleted while it waited isn't created empty here.
 	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("mode=rw&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
 	if err != nil {
+		letGo()
 		return release, refuse("This root's database can't be opened: %v", err)
 	}
 	db.SetMaxOpenConns(1)
 	held := func() {
 		_, _ = db.ExecContext(ctx, `ROLLBACK`) // Nothing was written, and closing ends it anyway.
 		_ = db.Close()                         // The same: there's nothing a failed close could lose.
+		letGo()
 	}
 	stop := func(err error) (func(), error) {
 		held()

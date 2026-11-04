@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -214,6 +215,15 @@ func checkWALBelongs(path string) error {
 
 // CheckWALBelongs is the check every open makes, for a caller that has to open a database its own way.
 func CheckWALBelongs(path string) error { return checkWALBelongs(path) }
+
+// HoldFile keeps this process's locks on the file at path safe from any raw read of it, for a caller that
+// opens a database its own way, as a store does for itself. Call it before the first connection, and let go
+// after the last has closed. It follows the file, not the path, and letGo can be called more than once.
+func HoldFile(path string) (letGo func()) {
+	h := holdFile(path)
+	var once sync.Once
+	return func() { once.Do(h.letGo) }
+}
 
 // readOnlyRoot: this failed because nothing can be written here, not because the database is busy.
 func readOnlyRoot(err error) bool {
