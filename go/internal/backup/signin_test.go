@@ -174,8 +174,8 @@ func TestWhatThisRootHasBeingUnreadableIsSaid(t *testing.T) {
 					t.Errorf("%+v", l)
 				}
 			}
-			if !hasCaution(rep) {
-				t.Errorf("no caution: %v", rep.Cautions)
+			if !caution(rep, signInUnknownCaution) || caution(rep, signInChangedCaution) {
+				t.Errorf("it should say it may change, not that it does: %v", rep.Cautions)
 			}
 		})
 	}

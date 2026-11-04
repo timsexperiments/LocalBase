@@ -22,6 +22,9 @@ type Grant struct {
 // grantsChangedCaution prints last, with the one about who can sign in.
 const grantsChangedCaution = `This changes who has a role on this root. See "What each role gives" above.`
 
+// grantsUnknownCaution is for when the root's roles can't be read, so what changes isn't known.
+const grantsUnknownCaution = `This may change who has a role on this root, since its roles can't be read. See "What each role gives" above.`
+
 // readGrants reads every role and who has it, from any database. A person counts only while they're
 // active or invited, since a role does nothing for anyone else. The text of each line is what's
 // compared, so the same person reached two ways shows as two lines, and the same way twice as one. A

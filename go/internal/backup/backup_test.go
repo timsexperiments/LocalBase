@@ -1421,10 +1421,10 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if rep.RevocationsKept != 1 {
 		t.Errorf("revocations kept: %d", rep.RevocationsKept)
 	}
-	if strings.Join(rep.ReturningKeys, ",") != "removed since" {
-		t.Errorf("returning: %v", rep.ReturningKeys)
+	if len(rep.KeysLeftOut) != 1 || rep.KeysLeftOut[0].Name != "removed since" {
+		t.Errorf("left out: %v", rep.KeysLeftOut)
 	}
-	if strings.Join(rep.KeysLost, ",") != "made since" {
+	if len(rep.KeysLost) != 1 || rep.KeysLost[0].Name != "made since" {
 		t.Errorf("lost: %v", rep.KeysLost)
 	}
 	if rep.ReturningUsers != 1 {
@@ -1436,7 +1436,7 @@ func TestRestoreKeepsRevocations(t *testing.T) {
 	if rep.UsersChanged != 1 {
 		t.Errorf("users going back: %d", rep.UsersChanged)
 	}
-	if strings.Join(rep.Rules, " ") != SignOutLine+" "+RevokedLine {
+	if strings.Join(rep.Rules, " ") != SignOutLine+" "+HeldKeyLine+" "+RevokedLine+" "+ChangedKeyLine {
 		t.Errorf("rules: %v", rep.Rules)
 	}
 
@@ -1730,8 +1730,8 @@ func TestRestoreReportsWhatMatters(t *testing.T) {
 	if strings.Contains(string(text), secretOTLP) {
 		t.Error("the report shows a secret value")
 	}
-	if strings.Join(rep.Rules, " ") != SignOutLine {
-		t.Errorf("a new root has only the sign-out rule: %v", rep.Rules)
+	if strings.Join(rep.Rules, " ") != SignOutLine+" "+HeldKeyLine {
+		t.Errorf("a new root has only the rules that apply to it: %v", rep.Rules)
 	}
 	if !strings.Contains(strings.Join(rep.Cautions, " "), "keys list") {
 		t.Errorf("a new root says to check its keys: %v", rep.Cautions)
@@ -1739,7 +1739,7 @@ func TestRestoreReportsWhatMatters(t *testing.T) {
 	if len(rep.Ports) != 3 || rep.Ports[0] != 28300 {
 		t.Errorf("ports: %v", rep.Ports)
 	}
-	if !contains(rep.Manifest.RestoreRules, SignOutLine) || !contains(rep.Manifest.RestoreRules, RevokedLine) {
+	if !contains(rep.Manifest.RestoreRules, SignOutLine) || !contains(rep.Manifest.RestoreRules, RevokedLine) || !contains(rep.Manifest.RestoreRules, ChangedKeyLine) || !contains(rep.Manifest.RestoreRules, HeldKeyLine) {
 		t.Errorf("the manifest should state the rules: %v", rep.Manifest.RestoreRules)
 	}
 }
@@ -2040,7 +2040,8 @@ func failSyncs(t *testing.T, fail func(call int) error) {
 }
 
 func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
-	for _, failing := range []int{1, 2} {
+	// The journal, the journal again once the root is held, and the files moved in.
+	for _, failing := range []int{1, 2, 3} {
 		t.Run(fmt.Sprintf("sync %d", failing), func(t *testing.T) {
 			parent := dir(t)
 			r, _ := newRoot(t, parent)
@@ -2081,7 +2082,8 @@ func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
 	}
 	failing := true
 	failSyncs(t, func(call int) error {
-		if failing && call >= 2 {
+		// From the sync after the files moved in, so that there's something to put back.
+		if failing && call >= 3 {
 			return syscall.EIO
 		}
 		return nil
@@ -2127,14 +2129,19 @@ func TestRestoreThatFinishedStaysFinished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failSyncs(t, func(call int) error {
-		if call == 3 {
+	failed := false
+	failSyncs(t, func(int) error {
+		if !exists(journalPath(r.Dir)) {
+			failed = true
 			return syscall.EIO
 		}
 		return nil
 	})
 	if _, err := s.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+	if !failed {
+		t.Fatal("no sync came after the journal went, so this tested nothing")
 	}
 	if _, err := root.Open(r.Dir); err != nil {
 		t.Fatal(err)
