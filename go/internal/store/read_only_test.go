@@ -284,10 +284,8 @@ func TestAWALFromAnotherDatabaseIsRefused(t *testing.T) {
 					st.Close()
 					t.Fatalf("%s opened it", name)
 				}
-				for _, want := range []string{path + "-wal", "somewhere safe and try again", path + ownerSuffix} {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("%s: %q lacks %q", name, err, want)
-					}
+				if want := approvedRefusal(path); err.Error() != want {
+					t.Errorf("%s:\n got %v\nwant %s", name, err, want)
 				}
 			}
 			if after := rootFiles(t, dir); after != before {
@@ -786,6 +784,13 @@ func TestAReadOnlyOpenLeavesNothingAttached(t *testing.T) {
 	}
 }
 
+// approvedRefusal is the operator-approved text, written out here so a change to the code shows up.
+func approvedRefusal(path string) string {
+	return path + "-wal holds writes that may belong to a different copy of this database, so LocalBase didn't open it: " +
+		"replaying them could replace or damage this database. If they don't belong here, move " + path + "-wal somewhere safe and try again. " +
+		"If they do, as after copying a whole root, remove " + path + "-wal-owner and try again. Removing " + path + "-wal-owner is safe only then."
+}
+
 // The refusal is approved text. It names both files, because removing the wrong one loses writes.
 func TestTheRefusalNamesWhatToRemove(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "local-base.db")
@@ -799,9 +804,7 @@ func TestTheRefusalNamesWhatToRemove(t *testing.T) {
 	if err := os.WriteFile(path+"-wal", make([]byte, 4096), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	want := path + "-wal holds writes that may belong to a different copy of this database, so LocalBase didn't open it: " +
-		"replaying them could replace or damage this database. If they don't belong here, move " + path + "-wal somewhere safe and try again. " +
-		"If they do, as after copying a whole root, remove " + path + "-wal-owner and try again. Removing " + path + "-wal-owner is safe only then."
+	want := approvedRefusal(path)
 	_, err = OpenReadOnly(path)
 	if err == nil || err.Error() != want {
 		t.Errorf("OpenReadOnly:\n got %v\nwant %s", err, want)
