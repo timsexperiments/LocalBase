@@ -418,7 +418,7 @@ func modelsInstall() *cli.Command {
 					}
 					path, err := installModel(ctx, e, id, progressReporter(c))
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "Failed to install %q: %v\n", id, err)
+						c.Error("Failed to install %q: %v", id, err)
 						return nil, err
 					}
 					c.Info("Installed: %s", path)

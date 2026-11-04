@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -108,7 +107,7 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 		target.Key = raw
 		key = publicKey(k)
 		// The secret goes out once: in the snippets, or in the envelope.
-		fmt.Fprintf(c.Stderr, "Created key %s (%s). The secret below is not shown again.\n", k.ID, k.Name)
+		c.Error("Created key %s (%s). The secret below is not shown again.", k.ID, k.Name)
 	}
 
 	clients := connect.Clients(target)
@@ -138,7 +137,7 @@ func printClient(c *cli.Ctx, client connect.Client, hasKey bool) {
 		if s.Main {
 			continue
 		}
-		fmt.Fprintf(c.Stderr, "# %s\n%s\n\n", s.Label, strings.TrimRight(s.Text, "\n"))
+		c.Error("# %s\n%s\n", s.Label, cli.Lines(strings.TrimRight(s.Text, "\n")))
 	}
 	for _, s := range client.Snippets {
 		if !s.Main {
@@ -148,19 +147,19 @@ func printClient(c *cli.Ctx, client connect.Client, hasKey bool) {
 		if s.Path != "" {
 			where += " in " + s.Path
 		}
-		fmt.Fprintf(c.Stderr, "# %s\n", where)
-		fmt.Fprintln(c.Stdout, strings.TrimRight(s.Text, "\n"))
+		c.Error("# %s", where)
+		c.Out("%s", cli.Lines(strings.TrimRight(s.Text, "\n")))
 	}
 	if client.Note != "" {
-		fmt.Fprintf(c.Stderr, "\n%s\n", client.Note)
+		c.Error("\n%s", client.Note)
 	}
 	if !client.Run {
-		fmt.Fprintf(c.Stderr, "\n%s.\n", connect.NotRunLabel)
+		c.Error("\n%s.", connect.NotRunLabel)
 	}
 	if !hasKey && slices.ContainsFunc(client.Snippets, func(s connect.Snippet) bool { return strings.Contains(s.Text, connect.KeyToken) }) {
-		fmt.Fprintf(c.Stderr, "\nGet a key: local-base connect %s --create-key\n", client.ID)
+		c.Error("\nGet a key: local-base connect %s --create-key", client.ID)
 	}
-	fmt.Fprintf(c.Stderr, "\nIts documentation: %s\n", client.Docs)
+	c.Error("\nIts documentation: %s", cli.PrintableASCII(client.Docs))
 }
 
 func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, running bool, key string) {
@@ -171,10 +170,10 @@ func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, runn
 	}
 	c.Info("")
 	if baseURL != bases[0].URL {
-		c.Info("Address: %s", baseURL)
+		c.Info("Address: %s", cli.PrintableASCII(baseURL))
 	}
 	for _, b := range bases {
-		c.Info("%s: %s", b.Label, b.URL)
+		c.Info("%s: %s", b.Label, cli.PrintableASCII(b.URL))
 		if b.Note != "" {
 			c.Info("  %s", b.Note)
 		}

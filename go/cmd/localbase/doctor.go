@@ -41,7 +41,7 @@ func doctorCommand() *cli.Command {
 				return nil, err
 			}
 			if eff.Enabled {
-				c.Info("OpenTelemetry: enabled via %s (%s)", eff.Source, eff.DisplayEndpoint)
+				c.Info("OpenTelemetry: enabled via %s (%s)", eff.Source, cli.PrintableASCII(eff.DisplayEndpoint))
 			} else {
 				c.Info("OpenTelemetry: disabled")
 			}

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"io"
 	"net/http"
 	"net/url"
@@ -244,10 +245,10 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 func downloadError(src, token string, err error) error {
 	low := strings.ToLower(src)
 	if token == "" && (strings.Contains(low, "gemma") || strings.Contains(low, "llama")) {
-		return fmt.Errorf("Failed to download model from %s.\n\nThis model is gated on Hugging Face. To download it:\n"+
+		return &cli.TextError{Text: fmt.Sprintf("Failed to download model from %s.\n\nThis model is gated on Hugging Face. To download it:\n"+
 			"1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n"+
 			"2. Save your access token in the database: local-base configure --hf-token \"your_token\" (or set the HF_TOKEN environment variable)\n"+
-			"3. Re-run the command.", src)
+			"3. Re-run the command.", cli.PrintableASCII(src))}
 	}
 	return fmt.Errorf("Failed to download model from %s: %w", src, err)
 }
@@ -433,8 +434,8 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		return "", err
 	}
 	if actual != digest {
-		return "", fmt.Errorf("Checksum mismatch for %s!\n  Expected: %s\n  Got:      %s\n  File may be corrupted or tampered with. Delete it and retry.",
-			a.Filename, digest, actual)
+		return "", &cli.TextError{Text: fmt.Sprintf("Checksum mismatch for %s!\n  Expected: %s\n  Got:      %s\n  File may be corrupted or tampered with. Delete it and retry.",
+			cli.Printable(a.Filename), cli.Printable(digest), actual)}
 	}
 	err = withCacheLock(dir, func() error {
 		c := readCache(dir)

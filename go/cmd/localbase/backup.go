@@ -62,9 +62,9 @@ func runBackup(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	// On stderr, so it is seen even when the output goes somewhere else.
-	fmt.Fprintln(c.Stderr, res.Warning)
+	c.Error("%s", res.Warning)
 	for _, caution := range res.Cautions {
-		fmt.Fprintln(c.Stderr, caution)
+		c.Error("%s", caution)
 	}
 	if res.DryRun {
 		c.Info("Dry run: nothing was written. It would go to %s.", res.Output)
@@ -331,7 +331,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		}
 	}
 	for _, caution := range rep.Cautions {
-		fmt.Fprintln(c.Stderr, caution)
+		c.Error("%s", caution)
 	}
 }
 

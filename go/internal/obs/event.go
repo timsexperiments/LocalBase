@@ -68,6 +68,9 @@ func BoundedText(s string, max int) string {
 	return s
 }
 
+// StripANSI removes what BoundedText removes before it looks for anything to redact.
+func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
 func normalize(s string, allowed *regexp.Regexp, max int, fallback string) string {
 	s = strings.ToLower(strings.TrimSpace(ansiRe.ReplaceAllString(s, "")))
 	s = allowed.ReplaceAllString(s, "-")
