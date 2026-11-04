@@ -67,6 +67,9 @@ type SignIn struct {
 // signInChangedCaution prints last, just before the question, where it can't be missed in a long report.
 const signInChangedCaution = `This changes who can sign in on this root. See "Who can sign in" above.`
 
+// signInUnknownCaution is for when nothing differs that can be read, and something can't be.
+const signInUnknownCaution = `This may change who can sign in on this root, since part of it can't be read. See "Who can sign in" above.`
+
 // signInValues is what a root's files and database say. A failed read is kept beside the value,
 // so that it's never taken for having none.
 type signInValues struct {
@@ -169,7 +172,7 @@ func joined(perms []string) string {
 
 // signInReport is what the backup says, set against what the root being replaced says. With no root
 // to compare, there's nothing to set it against, and live is nil.
-func signInReport(backed signInValues, live *signInValues) (*SignIn, bool) {
+func signInReport(backed signInValues, live *signInValues) (*SignIn, string) {
 	s := &SignIn{Who: append([]Line{}, backed.ways...), Everyone: Line{Value: joined(backed.everyone)}, IfPolicyRemoved: joined(backed.ifRemoved)}
 	if backed.origin != "" {
 		s.Origin = &Line{Value: backed.origin}
@@ -178,11 +181,16 @@ func signInReport(backed signInValues, live *signInValues) (*SignIn, bool) {
 		s.Mail = &Line{Value: backed.mail}
 	}
 	if live == nil {
-		return s, false
+		return s, ""
 	}
-	changed := false
+	changed, unknown := false, false
 	note := func(l *Line, against, thisRoot string) {
-		l.Against, l.ThisRoot, changed = against, thisRoot, true
+		l.Against, l.ThisRoot = against, thisRoot
+		if against == AgainstUnreadable {
+			unknown = true
+		} else {
+			changed = true
+		}
 	}
 	for i := range s.Who {
 		way := &s.Who[i]
@@ -228,7 +236,13 @@ func signInReport(backed signInValues, live *signInValues) (*SignIn, bool) {
 	}
 	compareValue(&s.Origin, live.origin, live.accessErr)
 	compareValue(&s.Mail, live.mail, live.mailErr)
-	return s, changed
+	switch {
+	case changed:
+		return s, signInChangedCaution
+	case unknown:
+		return s, signInUnknownCaution
+	}
+	return s, ""
 }
 
 // liveSignIn reads the root being replaced. It only reads: that root may well be replaced because
