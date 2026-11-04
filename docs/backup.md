@@ -73,6 +73,14 @@ It refuses a root with a running gateway (stop it first), a root or directory an
 local-base restore --undo
 ```
 
+Everything comes back byte for byte except the database, whose rows and pages are the same. A restore takes the database out of write-ahead logging to move it, which changes part of its header, and the next command to open it puts that back.
+
+**What you answered is checked again.** After you say yes, the restore holds the root's database and compares it with what the report said. If it changed, or something else keeps the database open for more than a minute, the restore stops and says so, with nothing changed.
+
+**A crash can leave a write-ahead log with finished writes in it.** Those go into the database before it moves, so the old files hold the same rows, though not the same files. A root that couldn't be read for the report is moved as it is, with whatever is beside it.
+
+**Don't put a database back by hand with a `-wal` beside it.** That includes opening it with `sqlite3`. A `-wal` doesn't say which database it belongs to, so another database's replaces what this one holds, and `PRAGMA integrity_check` still passes. Move `local-base.db-wal`, `-shm` and `-journal` along with the database. `restore` and `restore --undo` do.
+
 **It starts nothing.** The settings carry their ports, so a backup restored beside a running gateway names that gateway's ports. It warns about any that are in use, by connecting to each and closing the connection: change them with `local-base config apply` before starting. `--no-port-probe` skips this, and says which ports it did not check.
 
 Files are created 0600 and directories 0700, owned by you, and the restored root passes the same checks a gateway runs at startup.
@@ -105,6 +113,9 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 | `A gateway is running on <root>. Stop it first…` | Run the `stop` it names, then restore |
 | `<root> already holds a LocalBase root. To replace its settings, run this again with --replace…` | Add `--replace` if you mean it, or choose an empty `--root` |
 | `a restore did not finish`, from any command | A restore was interrupted. Run the `restore --undo` it names |
+| `A restore is running on '<root>'…`, from any command | Another restore is working on this root. Wait for it to finish, then run your command again |
+| `This root changed while this waited…` | Something changed what the report told you, so nothing was changed. Run the restore again to see what it would do now |
+| `Something else is using this root's database…` | Nothing was changed. Stop what's using it or wait, then run the restore again |
 | `The database on <root> is busy: the gateway or another command is writing to it…` | Try again in a moment, using the command it gives. Nothing was changed. If it keeps happening, stop the gateway first |
 | `The database on <root> has a write that never finished…` | A process stopped mid-write. Run the `status` it names, which undoes that write, then try again. `backup` and `restore` say this and change nothing |
 | `the restore failed, and everything was put back: …` | Nothing changed. Fix what it names, then try again |
