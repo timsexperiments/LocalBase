@@ -101,6 +101,15 @@ huge, slow and malformed requests, and a thousand keys and sessions.
 A test of an open bug starts with `knownBug(t, <pr>, "...")`, naming the pull request
 that fixes it. That fix removes the line.
 
+**Descriptors have two parts.** With the store in WAL, a settled gateway holds one descriptor on the
+database for each connection the pool has ever opened, up to its limit, even after the pool closes the
+connection; one on the `-wal` for each idle connection; and one `-shm`. So the database's files grow as
+the pool fills, and that isn't a leak. A single growth budget wide enough for that let a leak of one
+descriptor a request through a 31-request test. So everything except the database's files keeps the old
+exact budget, and the database's files get a ceiling, `store.MaxOpenConns + store.MaxIdleConns + 1`.
+That the database's descriptor stays is measured; why is not established. A leak small enough to fit in
+the budget still passes, as it always did: one per 16 requests adds 2 to 6 in these tests.
+
 `LOCALBASE_CHAOS_RACE=1` builds the gateway with the race detector. On macOS the
 full-disk tests make a small disk image; elsewhere they need a small tmpfs named by
 `LOCALBASE_CHAOS_SMALL_DISK`, and skip without one.

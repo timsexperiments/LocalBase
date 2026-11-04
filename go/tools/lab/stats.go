@@ -27,6 +27,8 @@ type Stats struct {
 	Sys         int64     `json:"sys"`
 	NumGC       int64     `json:"numGC"`
 	RSS         int64     `json:"rss"`
+	// Files is set by Settled, not Stats: counting them means asking the system.
+	Files DatabaseFiles `json:"dbFiles"`
 }
 
 var debugClient = &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
@@ -125,6 +127,17 @@ if command -v ps >/dev/null; then ps -A -o pid=,command= | awk -v p=%q 'index($2
 // Settled samples the gateway once it has freed what it can and its goroutine
 // count has stopped moving, so a figure is not a GC or connection-close artifact.
 func (g *Gateway) Settled(ctx context.Context) (Stats, error) {
+	s, err := g.settle(ctx)
+	if err != nil {
+		return s, err
+	}
+	if s.Files, err = g.DatabaseFiles(); err != nil {
+		return s, fmt.Errorf("counting the descriptors on the database: %w", err)
+	}
+	return s, nil
+}
+
+func (g *Gateway) settle(ctx context.Context) (Stats, error) {
 	var last Stats
 	for i := 0; i < 20; i++ {
 		req, _ := http.NewRequestWithContext(ctx, "GET", "http://"+g.Debug+"/debug/free", nil)
