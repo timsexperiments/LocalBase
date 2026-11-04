@@ -34,6 +34,8 @@ type Store struct {
 	Log *slog.Logger
 	// stage is a private copy being read, if there is one: see readablePath.
 	stage string
+	// path is the database, on a store that can write it.
+	path string
 }
 
 type migration struct {
@@ -84,7 +86,7 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(MaxOpenConns)
 	db.SetMaxIdleConns(MaxIdleConns)
-	s := &Store{DB: db}
+	s := &Store{DB: db, path: path}
 	if err := checkWALBelongs(path); err != nil {
 		db.Close()
 		return nil, err
@@ -200,6 +202,9 @@ func OpenReadOnly(path string) (*Store, error) {
 func (s *Store) Close() error {
 	err := s.DB.Close()
 	removeStage(s.stage)
+	if err == nil && s.path != "" {
+		markCleanStop(s.path)
+	}
 	return err
 }
 

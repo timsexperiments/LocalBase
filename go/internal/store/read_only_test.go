@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -255,6 +254,14 @@ func TestAWALFromAnotherDatabaseIsRefused(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
+		{"nothing else: the same database, stopped cleanly, and a -wal put beside it", func(*testing.T, string) {}},
+		{"its own recorded -wal replaced, after a crash", func(t *testing.T, path string) {
+			token, err := fileToken(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeOwner(path, ownerRecord{token: token, wal: "1:1"}) // not the file about to be put there
+		}},
 		{"a database from before tokens", func(t *testing.T, path string) {
 			body := other(t)
 			copy(body[tokenOffset:tokenOffset+4], []byte{0, 0, 0, 0})
@@ -306,9 +313,11 @@ func aCrashedRootWithOwner(t *testing.T) (dir, path string) {
 	if err != nil || token == 0 {
 		t.Fatalf("no token: %d %v", token, err)
 	}
-	if err := os.WriteFile(path+ownerSuffix, []byte(strconv.FormatUint(uint64(token), 10)), 0o600); err != nil {
+	id, err := fileID(path + "-wal")
+	if err != nil {
 		t.Fatal(err)
 	}
+	writeOwner(path, ownerRecord{token: token, wal: id})
 	return dir, path
 }
 
@@ -327,9 +336,9 @@ func TestADatabaseGetsOneToken(t *testing.T) {
 	if again, err := fileToken(path); err != nil || again != first {
 		t.Errorf("it changed: %d, was %d: %v", again, first, err)
 	}
-	owner, err := os.ReadFile(path + ownerSuffix)
-	if err != nil || string(owner) != strconv.FormatUint(uint64(first), 10) {
-		t.Errorf("owner file %q, token %d: %v", owner, first, err)
+	owner, err := readOwner(path)
+	if err != nil || owner.token != first || owner.wal != ownerCleanStop {
+		t.Errorf("owner file %+v, token %d: %v", owner, first, err)
 	}
 	_, otherPath := aRoot(t, "wal")
 	if other, _ := fileToken(otherPath); other == first {
@@ -383,8 +392,8 @@ func TestADatabaseWithoutARecordGetsOne(t *testing.T) {
 		if after, _ := fileToken(path); after != token {
 			t.Errorf("the token changed: %d, was %d", after, token)
 		}
-		if b, err := os.ReadFile(path + ownerSuffix); err != nil || string(b) != strconv.FormatUint(uint64(token), 10) {
-			t.Errorf("%q %v", b, err)
+		if got, err := readOwner(path); err != nil || got.token != token {
+			t.Errorf("%+v %v", got, err)
 		}
 	})
 	t.Run("replaced cleanly: no -wal, so nothing to judge, and the record follows", func(t *testing.T) {
@@ -403,14 +412,13 @@ func TestADatabaseWithoutARecordGetsOne(t *testing.T) {
 		}
 		st.Close()
 		token, _ := fileToken(path)
-		if got, err := os.ReadFile(path + ownerSuffix); err != nil || string(got) != strconv.FormatUint(uint64(token), 10) {
-			t.Errorf("%q, token %d: %v", got, token, err)
+		if got, err := readOwner(path); err != nil || got.token != token {
+			t.Errorf("%+v, token %d: %v", got, token, err)
 		}
 	})
 }
 
-// What must keep working: a whole root copied or moved, after a clean stop or a crash. Its -wal, its
-// database and its owner file are all still each other's.
+// What must keep working: a whole root copied after a clean stop, and one moved after a crash.
 func TestALegitimateRootStillOpens(t *testing.T) {
 	copyDir := func(t *testing.T, from string) string {
 		t.Helper()
@@ -452,9 +460,17 @@ func TestALegitimateRootStillOpens(t *testing.T) {
 		wantSetting(t, st, "only in the wal")
 		st.Close()
 	})
-	t.Run("copied after a crash", func(t *testing.T) {
+	t.Run("copied after a crash: refused, because a copied -wal can't be told from a foreign one, and the way out works", func(t *testing.T) {
 		dir, path := aCrashedRootWithOwner(t)
-		st, err := Open(filepath.Join(copyDir(t, dir), filepath.Base(path)))
+		copied := filepath.Join(copyDir(t, dir), filepath.Base(path))
+		if st, err := Open(copied); err == nil {
+			st.Close()
+			t.Fatal("it opened")
+		}
+		if err := os.Remove(copied + ownerSuffix); err != nil {
+			t.Fatal(err)
+		}
+		st, err := Open(copied)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -650,8 +666,8 @@ func TestATokenIsInTheFileOnceOpen(t *testing.T) {
 	if err != nil || token == 0 {
 		t.Fatalf("%d %v", token, err)
 	}
-	if got, err := os.ReadFile(path + ownerSuffix); err != nil || string(got) != strconv.FormatUint(uint64(token), 10) {
-		t.Errorf("%q %v", got, err)
+	if got, err := readOwner(path); err != nil || got.token != token || got.wal == "-" || got.wal == ownerCleanStop {
+		t.Errorf("%+v %v", got, err)
 	}
 	// Once only, even asked again.
 	if err := st.setToken(context.Background()); err != nil {
@@ -673,4 +689,44 @@ func TestAnOpenWithCommitsInTheWALClaimsNothing(t *testing.T) {
 		t.Errorf("it claimed a -wal it can't know: %v", err)
 	}
 	wantSetting(t, st, "only in the wal")
+}
+
+// One store closing while another has the database open isn't a clean stop: the -wal is still in use,
+// and a crash of the one left must still find it its own.
+func TestAnotherProcessClosingIsNotACleanStop(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "local-base.db")
+	one, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer one.Close()
+	two, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := two.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readOwner(path)
+	if err != nil || got.wal == ownerCleanStop || got.wal == "-" {
+		t.Errorf("%+v %v", got, err)
+	}
+}
+
+// A different database put under a crashed root's own -wal: the -wal is the recorded one, and only the
+// token can tell.
+func TestADifferentDatabaseUnderItsOwnWALIsRefused(t *testing.T) {
+	_, path := aCrashedRootWithOwner(t)
+	_, other := aRoot(t, "wal")
+	b, err := os.ReadFile(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := Open(path); err == nil {
+		st.Close()
+		t.Error("it opened")
+	}
 }

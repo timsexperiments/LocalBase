@@ -74,14 +74,72 @@ func (s *Store) claimWAL(ctx context.Context, path string) {
 			return // another process's commits kept the checkpoint from finishing: the next open
 		}
 	}
+	walID := "-"
+	if id, err := fileID(path + "-wal"); err == nil {
+		walID = id
+	}
+	writeOwner(path, ownerRecord{token: token, wal: walID})
+}
+
+// ownerRecord is what the owner file says: this database's token, and which -wal is its own, or that
+// it stopped cleanly and so has none. A token alone can't judge a -wal, which carries none: another
+// database's -wal beside this one would pass.
+type ownerRecord struct {
+	token uint32
+	wal   string // a file's device and inode, ownerCleanStop, or "-" if there's no telling
+}
+
+const ownerCleanStop = "stopped"
+
+func (o ownerRecord) String() string {
+	return strconv.FormatUint(uint64(o.token), 10) + " " + o.wal
+}
+
+func readOwner(path string) (ownerRecord, error) {
+	b, err := os.ReadFile(path + ownerSuffix)
+	if err != nil {
+		return ownerRecord{}, err
+	}
+	token, wal, ok := strings.Cut(string(b), " ")
+	n, err := strconv.ParseUint(token, 10, 32)
+	if !ok || err != nil {
+		return ownerRecord{}, fmt.Errorf("the owner file can't be read: %q", b)
+	}
+	return ownerRecord{uint32(n), wal}, nil
+}
+
+func writeOwner(path string, o ownerRecord) {
 	owner := path + ownerSuffix
-	id := strconv.FormatUint(uint64(token), 10)
-	if b, err := os.ReadFile(owner); err == nil && string(b) == id {
+	if b, err := os.ReadFile(owner); err == nil && string(b) == o.String() {
 		return
 	}
 	tmp := owner + ".tmp"
-	if os.WriteFile(tmp, []byte(id), 0o600) == nil && os.Rename(tmp, owner) != nil {
-		_ = os.Remove(tmp) // it stays unable to tell, as above
+	if os.WriteFile(tmp, []byte(o.String()), 0o600) == nil && os.Rename(tmp, owner) != nil {
+		_ = os.Remove(tmp) // it stays unable to tell, as in claimWAL
+	}
+}
+
+// fileID says which file this is, whatever it's called.
+func fileID(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", errors.New("no file identity here")
+	}
+	return strconv.FormatUint(uint64(st.Dev), 10) + ":" + strconv.FormatUint(st.Ino, 10), nil
+}
+
+// markCleanStop records that the last connection closed and took the -wal with it: any -wal with
+// commits found beside this database from now on isn't its own.
+func markCleanStop(path string) {
+	if _, err := os.Stat(path + "-wal"); !errors.Is(err, os.ErrNotExist) {
+		return // another process still has it open, or this can't tell
+	}
+	if token, err := fileToken(path); err == nil && token != 0 {
+		writeOwner(path, ownerRecord{token: token, wal: ownerCleanStop})
 	}
 }
 
@@ -117,28 +175,41 @@ func (s *Store) setToken(ctx context.Context) error {
 	return err
 }
 
-// checkWALBelongs refuses a -wal with commits in it that came with a different database. A -wal says
-// nothing of which database it belongs to, and SQLite would replay it into this one and damage it: from
-// the SQLite docs, https://www.sqlite.org/howtocorrupt.html, "Mispairing database files and hot
-// journals". This catches a database replaced by another in any way, and a -wal carried in with its
-// owner file. It can't see a root with no owner file yet, an older copy of the same database with its
-// later -wal, which has the same token, or a database and its owner file copied in together under a -wal
-// that isn't theirs. A restore's own guarantee is that it leaves no -wal behind.
+// checkWALBelongs refuses a -wal with commits in it that isn't this database's. A -wal says nothing of
+// which database it belongs to, and SQLite would replay it into this one and damage it: from the SQLite
+// docs, https://www.sqlite.org/howtocorrupt.html, "Mispairing database files and hot journals". This
+// catches a database replaced by another in any way, a -wal put beside a database that stopped cleanly,
+// and one that replaced its own after a crash, as a copy does. It can't see a root with no owner file
+// yet, an older copy of the same database put back under its own later -wal, or a different -wal that
+// lands on the recorded inode number after a crash. A restore's own guarantee is that it leaves no -wal.
 func checkWALBelongs(path string) error {
 	wal := path + "-wal"
 	info, err := os.Stat(wal)
 	if err != nil || info.Size() == 0 {
 		return nil
 	}
-	recorded, err := os.ReadFile(path + ownerSuffix)
-	if err != nil {
+	if _, err := os.Stat(path + ownerSuffix); err != nil {
 		return nil // no record to compare, as on a root that hasn't opened with this build
 	}
+	refused := fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, as after copying a whole root, remove %s and try again", wal, path+ownerSuffix)
+	recorded, err := readOwner(path)
+	if err != nil {
+		return refused
+	}
 	token, err := fileToken(path)
-	if err != nil || strconv.FormatUint(uint64(token), 10) == string(recorded) {
+	if err != nil {
 		return nil
 	}
-	return fmt.Errorf("%s holds writes that may belong to a different copy of this database, so LocalBase didn't open it: replaying them could damage it. If it doesn't belong here, move it somewhere safe and try again. If it does, remove %s and try again", wal, path+ownerSuffix)
+	if token != recorded.token {
+		return refused
+	}
+	// After a clean stop the record names no file, so no -wal can match it, whatever inode it has.
+	if recorded.wal != "-" {
+		if id, err := fileID(wal); err == nil && id != recorded.wal {
+			return refused
+		}
+	}
+	return nil
 }
 
 // readOnlyRoot: this failed because nothing can be written here, not because the database is busy.
