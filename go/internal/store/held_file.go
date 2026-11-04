@@ -9,10 +9,17 @@ import (
 // A process's locks on a file are cancelled when it closes any descriptor on that file, whatever opened
 // it. A connection in write-ahead logging holds a shared lock on the database for as long as it lives,
 // which is how another process knows it's attached, and SQLite thinks it still holds that lock, so it
-// never takes it again. One os.Open and Close of the database by this process would quietly end that:
-// from the SQLite docs, "How To Corrupt An SQLite Database File", section 2.2. So while a store has the
+// never takes it again. One os.Open and Close of the database by this process would quietly end that.
+// From the SQLite docs: the shared lock is in the WAL format page, section 2.3.1, "held even by
+// connections that are not within transaction", and it's what keeps another connection from taking the
+// exclusive lock that lets it delete the -wal; the close is in "How To Corrupt An SQLite Database File",
+// section 2.2. So while a store has the
 // database open, every raw read here shares one descriptor, which stays open until the last store on
 // that file has closed. Nothing outside this file opens a database: TestOnlyThisFileOpensADatabase.
+//
+// HeldDescriptors is how many descriptors that adds for each database file, not each connection.
+const HeldDescriptors = 1
+
 type heldFile struct {
 	id   string
 	f    *os.File
