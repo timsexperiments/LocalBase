@@ -606,8 +606,10 @@ func (was rootWas) isPutBack(t *testing.T, rootDir string, skip ...string) {
 			}
 		}
 	}
-	if info, err := os.Stat(dbPath); err != nil || info.Mode() != was.mode {
-		t.Errorf("the database's mode is %v, and was %v: %v", info.Mode(), was.mode, err)
+	if info, err := os.Stat(dbPath); err != nil {
+		t.Errorf("the database: %v", err)
+	} else if info.Mode() != was.mode {
+		t.Errorf("the database's mode is %v, and was %v", info.Mode(), was.mode)
 	}
 	if info, err := os.Stat(dbPath + "-wal"); err == nil && info.Size() != 0 {
 		t.Errorf("a -wal with %d bytes is beside it", info.Size())

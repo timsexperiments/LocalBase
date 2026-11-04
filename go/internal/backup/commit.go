@@ -121,6 +121,9 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	}
 	// A -wal that appeared while it waited and isn't this database's would be replayed by opening it, and
 	// closing would then write it in, so this stops before that as every other open does.
+	//
+	// This and store.InWAL open the database's file outside SQLite, so they come before the lock and must
+	// never move after it: POSIX drops all of a process's locks on a file when any descriptor on it closes.
 	if err := store.CheckWALBelongs(dbPath); err != nil {
 		return release, refuse("%v", err)
 	}
