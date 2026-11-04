@@ -113,9 +113,10 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 
 	// The database, read-only: no section creates or migrates it.
 	var st *store.Store
+	var databaseErr error
 	if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
 		if st, err = store.OpenReadOnly(filepath.Join(dir, "local-base.db")); err != nil {
-			st = nil
+			st, databaseErr = nil, err
 		}
 	}
 	if st != nil {
@@ -217,6 +218,11 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 		"models", models, "service", service, "observability", observability, "logs", logs, "voices", voices)
 	// A bundle is how a damaged root gets reported, so it is still made, and says so: what it
 	// could not read from the database is marked unavailable above.
+	// The bundle says only that it couldn't: bundles get shared, and the error can hold a path.
+	if databaseErr != nil {
+		manifest.Set("database", unavailable("database_unavailable"))
+		c.Error("Could not read this root's database: %s", cli.Printable(databaseErr.Error()))
+	}
 	unfinished := backup.UnfinishedWrite(ctx, dir)
 	if unfinished != "" {
 		manifest.Set("database", unavailable("unfinished_write"))
