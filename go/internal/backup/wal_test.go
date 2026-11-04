@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -243,42 +244,61 @@ func noWorkingFilesBeside(t *testing.T, dbPath string) {
 // Whatever belongs with a database goes where it goes. Each is here with bytes of its own, so that
 // a mix-up shows, and the old ones must come out unchanged on the other side.
 func TestEverySidecarLeavesWithItsDatabase(t *testing.T) {
-	r, _ := newRoot(t, dir(t))
-	res := create(t, r, false)
-	s, err := Stage(context.Background(), res.Output, r.Dir, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	planted := map[string]string{}
-	for _, suffix := range store.Sidecars {
-		// An empty -wal and -journal, so that nothing replays them, and this checks only where they go.
-		body := ""
-		if suffix != "-wal" && suffix != "-journal" && suffix != "-shm" {
-			body = "planted " + suffix
-		}
-		planted[suffix] = body
-		if err := os.WriteFile(r.DB()+suffix, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	done, err := s.Commit()
-	if err != nil {
-		t.Fatal(err)
-	}
-	noWorkingFilesBeside(t, r.DB())
-	for suffix, body := range planted {
-		got, err := os.ReadFile(filepath.Join(done.BeforeDir, "local-base.db"+suffix))
-		if err != nil || string(got) != body {
-			t.Errorf("%s in the old files: %q %v", suffix, got, err)
-		}
-	}
-	if got, err := os.ReadFile(r.DB() + "-wal-owner"); err == nil && strings.HasPrefix(string(got), "planted") {
-		t.Errorf("the old owner file is beside the restored database: %q", got)
+	// A root that was read for the report is held and switched out of write-ahead logging first, and SQLite
+	// deals with its own files then. One that couldn't be read is moved as it is, with all of them.
+	for _, c := range []struct {
+		name      string
+		couldntBe bool
+		ownFiles  []string
+	}{
+		{name: "a root that could be read", ownFiles: []string{"-wal", "-shm", "-journal"}},
+		{name: "a root that couldn't", couldntBe: true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			res := create(t, r, false)
+			s, err := Stage(context.Background(), res.Output, r.Dir, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.couldntBe {
+				s.live = nil
+			}
+			planted := map[string]string{}
+			for _, suffix := range store.Sidecars {
+				// An empty -wal and -journal, so that nothing replays them, and this checks only where they go.
+				body := ""
+				if suffix != "-wal" && suffix != "-journal" && suffix != "-shm" {
+					body = "planted " + suffix
+				}
+				planted[suffix] = body
+				if err := os.WriteFile(r.DB()+suffix, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			done, err := s.Commit()
+			if err != nil {
+				t.Fatal(err)
+			}
+			noWorkingFilesBeside(t, r.DB())
+			for suffix, body := range planted {
+				if contains(c.ownFiles, suffix) {
+					continue
+				}
+				got, err := os.ReadFile(filepath.Join(done.BeforeDir, "local-base.db"+suffix))
+				if err != nil || string(got) != body {
+					t.Errorf("%s in the old files: %q %v", suffix, got, err)
+				}
+			}
+			if got, err := os.ReadFile(r.DB() + "-wal-owner"); err == nil && strings.HasPrefix(string(got), "planted") {
+				t.Errorf("the old owner file is beside the restored database: %q", got)
+			}
+		})
 	}
 }
 
 // An undone restore puts each of them back as it was, byte for byte, and removes what the restored
-// database wrote.
+// database wrote. The database itself comes back with its header changed, which isPutBack says exactly.
 func TestAnUndoneRestorePutsEverySidecarBack(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
@@ -289,7 +309,7 @@ func TestAnUndoneRestorePutsEverySidecarBack(t *testing.T) {
 	if err := os.WriteFile(r.DB()+"-wal-owner", []byte("planted owner"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	before := tree(t, r.Dir, "runtime")
+	before := rootAsItIs(t, r.Dir, "runtime")
 	was := stepHook
 	// After the checks, which open the restored database and so write its owner file.
 	stepHook = func(step string) error {
@@ -302,9 +322,7 @@ func TestAnUndoneRestorePutsEverySidecarBack(t *testing.T) {
 	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "put back") {
 		t.Fatalf("commit: %v", err)
 	}
-	if after := tree(t, r.Dir, "runtime"); after != before {
-		t.Errorf("after an undo:\n%s\nwas:\n%s", after, before)
-	}
+	before.isPutBack(t, r.Dir, "runtime")
 }
 
 // A file can't bring its own: a -wal in a backup would be replayed into the database it names.
@@ -495,4 +513,221 @@ func TestAnUnusableShmDoesntSkipTheComparison(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Closing the connection a restore holds deletes whatever journal is at its path, even with its own database
+// moved away. So it has to close while the restore's journal still keeps every command out, or it could take
+// the journal of a command that had just started. That goes for both ways out.
+func TestTheHeldDatabaseClosesWhileCommandsAreStillKeptOut(t *testing.T) {
+	for name, fails := range map[string]bool{"finishing": false, "going back": true} {
+		t.Run(name, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			s := stageOver(t, r)
+			journal := r.DB() + "-journal"
+			was := stepHook
+			defer func() { stepHook = was }()
+			closed, keptOut := false, false
+			stepHook = func(at string) error {
+				switch at {
+				case "finish":
+					if err := os.WriteFile(journal, []byte("a command's"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					if fails {
+						return errors.New("injected")
+					}
+				case "released", "undo released":
+					closed, keptOut = !exists(journal), exists(journalPath(r.Dir))
+				}
+				return nil
+			}
+			if _, err := s.Commit(); (err != nil) != fails {
+				t.Fatalf("commit: %v", err)
+			}
+			if !closed {
+				t.Error("the connection wasn't closed by then")
+			}
+			if !keptOut {
+				t.Error("the restore's journal had already gone")
+			}
+		})
+	}
+}
+
+// rootWas is a root as it was, to compare with one that a restore went back on. The database is checked
+// apart, because a restore takes it out of write-ahead logging to move it, which rewrites part of its
+// header. Its next open puts it back.
+type rootWas struct {
+	rest     string
+	database []byte
+}
+
+var databaseFiles = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal"}
+
+func rootAsItIs(t *testing.T, rootDir string, skip ...string) rootWas {
+	t.Helper()
+	database, err := os.ReadFile(filepath.Join(rootDir, "local-base.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rootWas{tree(t, rootDir, append(skip, databaseFiles...)...), database}
+}
+
+// headerBytesTheSwitchChanges are the file format versions, the change counter, and the version that wrote it.
+func headerBytesTheSwitchChanges(at int) bool {
+	return at == 18 || at == 19 || (at >= 24 && at <= 27) || (at >= 92 && at <= 99)
+}
+
+// isPutBack checks everything but the database byte for byte, and the database down to those header bytes.
+// All a killed process may leave beside it is what holds nothing: an empty -wal, or a journal SQLite has
+// finished with, which it ignores.
+func (was rootWas) isPutBack(t *testing.T, rootDir string, skip ...string) {
+	t.Helper()
+	if rest := tree(t, rootDir, append(skip, databaseFiles...)...); rest != was.rest {
+		t.Errorf("not put back:\n%s\nwas:\n%s", rest, was.rest)
+	}
+	dbPath := filepath.Join(rootDir, "local-base.db")
+	now, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(now) != len(was.database) {
+		t.Errorf("the database is %d bytes, and was %d", len(now), len(was.database))
+	} else {
+		for at := range now {
+			if now[at] != was.database[at] && !headerBytesTheSwitchChanges(at) {
+				t.Errorf("the database differs at byte %d", at)
+				break
+			}
+		}
+	}
+	if info, err := os.Stat(dbPath + "-wal"); err == nil && info.Size() != 0 {
+		t.Errorf("a -wal with %d bytes is beside it", info.Size())
+	}
+	if exists(dbPath + "-shm") {
+		t.Error("a -shm is beside it")
+	}
+	if journal, err := os.ReadFile(dbPath + "-journal"); err == nil && !bytes.Equal(journal[:min(len(journal), 8)], make([]byte, min(len(journal), 8))) {
+		t.Error("a journal SQLite would play is beside it")
+	}
+}
+
+// takesAWrite opens a database as a command does, writes to it, and checks it's in write-ahead logging.
+func takesAWrite(t *testing.T, dbPath string) {
+	t.Helper()
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.Exec(`UPDATE api_keys SET name = name`); err != nil {
+		t.Errorf("a write: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !store.InWAL(dbPath) {
+		t.Error("it didn't go back into write-ahead logging")
+	}
+}
+
+// A -shm left over can't mislead a database opened afterwards, whether it's rubbish or another database's.
+// SQLite rebuilds it for the first connection. Reopening in write-ahead logging and writing is what shows it,
+// since a read-only look or a database in rollback mode wouldn't use it at all.
+func TestAStaleShmDoesNoHarm(t *testing.T) {
+	other, _ := newRoot(t, dir(t))
+	open, err := store.Open(other.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Close()
+	if _, err := open.DB.Exec(`UPDATE api_keys SET name = 'in the other database'`); err != nil {
+		t.Fatal(err)
+	}
+	anothers, err := os.ReadFile(other.DB() + "-shm")
+	if err != nil || len(anothers) == 0 {
+		t.Fatalf("the other database has no -shm to borrow: %v", err)
+	}
+	for name, body := range map[string][]byte{"rubbish": bytes.Repeat([]byte("rubbish!"), 4096), "another database's": anothers} {
+		t.Run(name, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			stoppedCleanly(t, r.DB())
+			if err := os.WriteFile(r.DB()+"-shm", body, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			keys := keyCount(t, r.DB())
+			takesAWrite(t, r.DB())
+			st, err := store.Open(r.DB())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.DB.Exec(`UPDATE api_keys SET name = 'written here'`); err != nil {
+				t.Errorf("a write: %v", err)
+			}
+			var written int
+			if err := st.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = 'written here'`).Scan(&written); err != nil {
+				t.Fatal(err)
+			}
+			_ = st.Close()
+			if written != keys {
+				t.Errorf("%d of %d rows have the write", written, keys)
+			}
+			wholeDatabase(t, r.DB())
+		})
+	}
+}
+
+// A backup's database is in rollback mode, however its root was. It can't need a -wal, and what it holds
+// comes up in write-ahead logging when a command opens it.
+func TestABackupsDatabaseIsNotInWAL(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	if !store.InWAL(r.DB()) {
+		t.Fatal("the root isn't in write-ahead logging, so this tests nothing")
+	}
+	for _, e := range read(t, res.Output) {
+		if e.header.Name != filesPrefix+"local-base.db" {
+			continue
+		}
+		if len(e.body) < 20 || e.body[18] != 1 || e.body[19] != 1 {
+			t.Errorf("its header says format %d and %d", e.body[18], e.body[19])
+		}
+		return
+	}
+	t.Fatal("the backup holds no database")
+}
+
+// The owner file beside a restored database is that database's, or isn't there. Another's would make SQLite's
+// -wal look as if it belonged, which is what the file exists to catch.
+func TestARestoredRootKeepsNoOwnerFromBefore(t *testing.T) {
+	from, _ := newRoot(t, dir(t))
+	res := create(t, from, false)
+	r, _ := newRoot(t, dir(t))
+	stoppedCleanly(t, r.DB())
+	old, err := os.ReadFile(r.DB() + "-wal-owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err := os.ReadFile(filepath.Join(done.BeforeDir, "local-base.db-wal-owner"))
+	if err != nil || !bytes.Equal(moved, old) {
+		t.Errorf("the old owner file in the old files: %q %v", moved, err)
+	}
+	now, err := os.ReadFile(r.DB() + "-wal-owner")
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fields, oldFields := strings.Fields(string(now)), strings.Fields(string(old)); len(fields) == 0 || len(oldFields) == 0 || fields[0] == oldFields[0] {
+		t.Errorf("the owner file beside the restored database is %q, and the old one was %q", now, old)
+	}
+	takesAWrite(t, r.DB())
 }
