@@ -313,7 +313,7 @@ func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
 	}
 	message, _ := e["message"].(string)
 	for _, want := range []string{"Results are holding 1 MiB", "the limit is 1 MiB", "Finished results hold 1 MiB", "Remove finished results, or wait", "when the last one is removed",
-		"expires at " + expires.UTC().Format("15:04") + " UTC"} {
+		"and the oldest expires ", " after this was stopped (" + expires.UTC().Format("15:04") + " UTC)."} {
 		if !strings.Contains(message, want) {
 			t.Errorf("%q lacks %q", message, want)
 		}
@@ -418,14 +418,41 @@ func TestAFullTotalNamesTheOldestFinishedResult(t *testing.T) {
 	m.runs[active.ID] = active
 	m.mu.Unlock()
 	m.held.Store(8 << 20)
+	m.now = func() time.Time { return soon.Add(-29 * time.Minute) } // stopped 29 minutes before
 	e := m.memoryFullError()
 	message := e["message"].(string)
-	for _, want := range []string{"Results are holding 8 MiB", "Finished results hold 3 MiB", "expires at 09:15 UTC"} {
+	for _, want := range []string{"Results are holding 8 MiB", "Finished results hold 3 MiB",
+		"and the oldest expires 29 minutes after this was stopped (09:15 UTC). Remove finished results"} {
 		if !strings.Contains(message, want) {
 			t.Errorf("%q lacks %q", message, want)
 		}
 	}
 	if e["finishedBytes"] != int64(3<<20) || e["oldestExpiresAt"] != soon.Format(time.RFC3339) {
 		t.Errorf("%v", e)
+	}
+}
+
+// How long until the oldest result goes, from when the run was stopped: a person reads it in their own
+// time zone, and a countdown read later would be wrong. Rounded up to whole minutes.
+func TestTheWaitIsSaidAsTimeAfterTheStop(t *testing.T) {
+	for _, c := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "less than a minute"},
+		{30 * time.Second, "less than a minute"},
+		{time.Minute, "1 minute"},
+		{time.Minute + time.Second, "2 minutes"},
+		{29 * time.Minute, "29 minutes"},
+		{59*time.Minute + 30*time.Second, "1 hour"},
+		{65 * time.Minute, "1 hour 5 minutes"},
+		{61 * time.Minute, "1 hour 1 minute"},
+		{121 * time.Minute, "2 hours 1 minute"},
+		{120 * time.Minute, "2 hours"},
+		{-time.Minute, "less than a minute"},
+	} {
+		if got := afterTheStop(c.d); got != c.want {
+			t.Errorf("%v: %q, want %q", c.d, got, c.want)
+		}
 	}
 }

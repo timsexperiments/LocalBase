@@ -255,8 +255,10 @@ func (m *runManager) memoryFullError() map[string]any {
 	if oldest == nil {
 		message += " Nothing has finished yet, so wait for the running ones and try again."
 	} else {
+		// The message is read later than it's written, so the wait is said from the stop, not from now.
 		at := oldest.UTC().Format("15:04") + " UTC"
-		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.", mib(finished), at)
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires %s after this was stopped (%s). Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.",
+			mib(finished), afterTheStop(oldest.Sub(m.now())), at)
 		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
 	}
 	out["message"] = message
@@ -285,6 +287,28 @@ func listError(e map[string]any) map[string]any {
 		case int, int64, float64, bool:
 			out[k] = v
 		}
+	}
+	return out
+}
+
+// afterTheStop says a wait in whole minutes, rounded up, so it isn't shorter than it is.
+func afterTheStop(d time.Duration) string {
+	if d < time.Minute {
+		return "less than a minute"
+	}
+	minutes := int((d + time.Minute - 1) / time.Minute)
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	if minutes < 60 {
+		return plural(minutes, "minute")
+	}
+	out := plural(minutes/60, "hour")
+	if minutes%60 != 0 {
+		out += " " + plural(minutes%60, "minute")
 	}
 	return out
 }
