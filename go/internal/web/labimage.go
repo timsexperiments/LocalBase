@@ -144,7 +144,7 @@ func (q imageRequest) editBody(picture []byte, ctype string) ([]byte, string) {
 	head.Set("Content-Disposition", `form-data; name="image"; filename="picture"`)
 	head.Set("Content-Type", ctype)
 	if part, err := form.CreatePart(head); err == nil {
-		part.Write(picture)
+		_, _ = part.Write(picture) // into a bytes.Buffer, which can't fail
 	}
 	form.Close()
 	return out.Bytes(), form.FormDataContentType()
