@@ -100,6 +100,20 @@ func readOwnSettings(ctx context.Context, db *sql.DB) (map[string]string, error)
 	return out, nil
 }
 
+// settingsUnreadable refuses a backup whose own settings can't be read. The schema check already refuses
+// a settings table defined differently, so this is for whatever gets past it. Like every refusal, what it
+// quotes is escaped, and the CLI bounds the line.
+const settingsUnreadable = "The settings in this backup can't be read: %v"
+
+// backupOwnSettings reads what the backup's own settings do, and refuses the backup if it can't.
+func backupOwnSettings(ctx context.Context, db *sql.DB) (map[string]string, error) {
+	v, err := readOwnSettings(ctx, db)
+	if err != nil {
+		return nil, refuse(settingsUnreadable, err)
+	}
+	return v, nil
+}
+
 // liveOwnSettings reads the root being replaced. A failure is returned, and the report then says that
 // root's setting can't be read.
 func liveOwnSettings(ctx context.Context, liveDB string, liveErr error) (map[string]string, error) {

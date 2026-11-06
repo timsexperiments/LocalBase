@@ -902,9 +902,9 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, err
 	}
 	rep.Settings = append(rep.Settings, exposure...)
-	backedOwn, err := readOwnSettings(ctx, st.DB)
+	backedOwn, err := backupOwnSettings(ctx, st.DB)
 	if err != nil {
-		return nil, refuse("The settings in this backup can't be read: %v", err)
+		return nil, err
 	}
 	// A root with no data has what a new one has, and it is set against that by name: "this root".
 	liveOwn, liveOwnErr := map[string]string{}, error(nil)

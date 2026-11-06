@@ -378,3 +378,31 @@ func TestAFailedReadOfTheSettingsIsAnError(t *testing.T) {
 		t.Error("a settings table that can't be read gave an answer")
 	}
 }
+
+// A backup whose own settings can't be read is refused, in these words, quoting the error escaped as
+// every refusal does.
+func TestABackupWhoseSettingsCantBeReadIsRefused(t *testing.T) {
+	db, err := sql.Open("sqlite", sqliteDSN(filepath.Join(dir(t), "broken.db"), ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE go_settings (key TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	_, readErr := readOwnSettings(context.Background(), db)
+	if readErr == nil {
+		t.Fatal("the read should fail")
+	}
+	_, err = backupOwnSettings(context.Background(), db)
+	var refused *Refused
+	if !errors.As(err, &refused) {
+		t.Fatalf("not a refusal: %v", err)
+	}
+	if want := "The settings in this backup can't be read: " + readErr.Error(); err.Error() != want {
+		t.Errorf("got  %q\nwant %q", err.Error(), want)
+	}
+	if got := refuse(settingsUnreadable, errors.New("x\x1b[2K\ny")).Error(); got != `The settings in this backup can't be read: x\x1b[2K\ny` {
+		t.Errorf("what it quotes isn't escaped: %q", got)
+	}
+}
