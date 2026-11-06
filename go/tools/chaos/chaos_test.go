@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -29,6 +30,9 @@ func TestMain(m *testing.M) {
 	// Below the machine's other work; every process here inherits it.
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10)
 	code := func() int {
+		if os.Getenv(stalePlant) != "" {
+			return m.Run() // the plant starts no gateway
+		}
 		w, err := lab.NewWorkspace("")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -44,6 +48,9 @@ func TestMain(m *testing.M) {
 		workspace = w
 		return m.Run()
 	}()
+	if code == 0 {
+		code = reportStaleSkips()
+	}
 	os.Exit(code)
 }
 
@@ -222,15 +229,49 @@ func transient(t *testing.T, what string, r lab.Call) {
 	}
 }
 
+// backWithin asks again, as a client does after a transient answer, until the time that answer
+// promised. A request can still reach the dead backend in the moment before the gateway notices,
+// so a second transient answer is allowed, and each one has to be clean too. It returns what went
+// wrong, or "".
+func backWithin(first lab.Call, ask func() lab.Call) string {
+	secs, err := strconv.Atoi(first.RetryAfter)
+	if err != nil || secs <= 0 {
+		return fmt.Sprintf("Retry-After %q is not a number of seconds", first.RetryAfter)
+	}
+	deadline := time.Now().Add(time.Duration(secs) * time.Second)
+	for {
+		r := ask()
+		if r.Err == nil && r.Status == 200 {
+			return ""
+		}
+		if r.Err != nil || (r.Status != 503 && r.Status != 429) || r.Code == "" || r.RetryAfter == "" {
+			return fmt.Sprintf("on the way back: %d code %q Retry-After %q err %v: %.300s", r.Status, r.Code, r.RetryAfter, r.Err, r.Body)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Sprintf("not back within the %d s its Retry-After promised: %d %.300s", secs, r.Status, r.Body)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func chatComesBack(t *testing.T, ctx context.Context, c *lab.Client, g *lab.Gateway, what string, first lab.Call) {
+	t.Helper()
+	problem := backWithin(first, func() lab.Call { return c.PostJSON(ctx, chatPath, g.Keys.User, chatBody(lab.ChatSmall, "hello")) })
+	if problem != "" {
+		t.Fatalf("%s: %s", what, problem)
+	}
+}
+
 // knownBug skips a test that fails because of an open bug, unless
 // LOCALBASE_CHAOS_ALL is set (make chaos-all). It names the bug and the pull request
 // that fixes it; that fix removes the line, and the test guards it from then on.
 // tools/known-bugs-check.sh fails once a named pull request has merged, so a skip
 // cannot outlive its bug unnoticed. noPRYet says there is no fix yet, and fails that
-// check too.
+// check too. And a skip has to be true: see reportStaleSkips.
 func knownBug(t *testing.T, pr int, bug string) {
 	t.Helper()
 	if os.Getenv("LOCALBASE_CHAOS_ALL") == "" {
+		noteSkip(t.Name(), pr)
 		t.Skipf("known bug, fixed by #%d: %s", pr, bug)
 	}
 }
@@ -272,7 +313,6 @@ func TestBackendKilledMidStream(t *testing.T) {
 // A request waiting on a backend that is killed gets the transient-failure
 // answer, and the next one works.
 func TestBackendKilledMidRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{FakeDelayMS: 1500})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	done := make(chan lab.Call, 1)
@@ -280,13 +320,13 @@ func TestBackendKilledMidRequest(t *testing.T) {
 	waitFor(t, "the request to be admitted", 5*time.Second, func() bool { return active(ctx, c, g, lab.ChatSmall) == 1 })
 	time.Sleep(100 * time.Millisecond) // it has reached the backend
 	killBackend(t, "llama-server")
-	transient(t, "a request whose backend died", <-done)
-	mustChat(t, ctx, c, g, lab.ChatSmall)
+	first := <-done
+	transient(t, "a request whose backend died", first)
+	chatComesBack(t, ctx, c, g, "a request whose backend died", first)
 }
 
 // The same for the media runtimes.
 func TestMediaBackendKilledMidRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{})
 	image := func(prompt string) lab.Call {
 		return c.PostJSON(ctx, "/v1/images/generations", g.Keys.User, map[string]any{"model": lab.Image, "prompt": prompt, "n": 1, "size": "512x512"})
@@ -298,9 +338,10 @@ func TestMediaBackendKilledMidRequest(t *testing.T) {
 	go func() { done <- image("fake:slow-image") }()
 	time.Sleep(400 * time.Millisecond) // well inside the 1.5 s the fake takes
 	killBackend(t, "sd-server")
-	transient(t, "an image whose backend died", <-done)
-	if r := image("a boat"); r.Status != 200 {
-		t.Errorf("the image runtime did not come back: %d %.300s", r.Status, r.Body)
+	first := <-done
+	transient(t, "an image whose backend died", first)
+	if problem := backWithin(first, func() lab.Call { return image("a boat") }); problem != "" {
+		t.Errorf("the image runtime: %s", problem)
 	}
 }
 
@@ -424,7 +465,6 @@ func TestStartupCrashLoop(t *testing.T) {
 // A backend that dies after each request: the next request brings it back every
 // time, with no hang and no growth.
 func TestCrashAfterEveryRequest(t *testing.T) {
-	knownBug(t, 477, "a crash mid-request answers 502 without Retry-After")
 	ctx, g, c := start(t, lab.Options{})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	first := settledStats(t, ctx, g, c)
@@ -433,12 +473,12 @@ func TestCrashAfterEveryRequest(t *testing.T) {
 	for i := range rounds {
 		killBackend(t, "llama-server")
 		// A request can reach the dead backend before the gateway notices; it
-		// must still be a clean answer, and the one after it must work.
+		// must still be a clean answer, and it must be back when that answer says.
 		r := c.PostJSON(ctx, chatPath, g.Keys.User, chatBody(lab.ChatSmall, "hello"))
 		if r.Err != nil || r.Status != 200 {
 			failures++
 			transient(t, fmt.Sprintf("round %d", i), r)
-			mustChat(t, ctx, c, g, lab.ChatSmall)
+			chatComesBack(t, ctx, c, g, fmt.Sprintf("round %d", i), r)
 		}
 	}
 	t.Logf("%d of %d requests met the dead backend", failures, rounds)
@@ -490,7 +530,10 @@ func TestGatewayKilledOutright(t *testing.T) {
 	if r.Err != nil || r.Status != 200 {
 		t.Errorf("first request after the restart: %d %v %.300s", r.Status, r.Err, r.Body)
 	}
-	procs, _ := workspace.Backends()
+	procs, err := workspace.Backends()
+	if err != nil {
+		t.Errorf("listing backends after the restart: %v", err)
+	}
 	for _, p := range procs {
 		if p.PID == before.PID {
 			t.Errorf("the dead gateway's backend (pid %d) is still running; parent now %d", p.PID, p.PPID)

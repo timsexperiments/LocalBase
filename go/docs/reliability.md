@@ -87,7 +87,7 @@ over a short run a slope can be a plateau still settling.
 ## Chaos
 
 ```
-make chaos          # about 40 s; skips tests of open bugs
+make chaos          # about a minute, and more while a skip's test reruns; skips tests of open bugs
 make chaos-all      # includes them
 make known-bugs     # fails if a skip names a merged pull request, or none
 ```
@@ -100,6 +100,21 @@ huge, slow and malformed requests, and a thousand keys and sessions.
 
 A test of an open bug starts with `knownBug(t, <pr>, "...")`, naming the pull request
 that fixes it. That fix removes the line.
+
+A skip also has to be true. A fix can reach a tree while its pull request is still open,
+so `make known-bugs`, which reads the pull request's state, has nothing to say, and the
+test goes on skipping behind a green run: five did, on the integration tree at `9081ff39`,
+on both runners. So after a clean `make chaos` each skipped test runs again with its skip
+off, and one that passes fails the run and names the line to remove. It costs nothing when
+nothing is skipped. A repro that only sometimes shows its bug will trip this, and should
+say so rather than stay skipped.
+
+When the database cannot answer, someone holding something valid must not be told it is
+not. With the database locked by another process, or damaged under the gateway, a good key
+must get a 503 with `Retry-After`, a signed-in browser must keep its session and its cookie,
+and a good sign-in link must not be told it has expired. Each of these tests first checks
+the fault really stopped the lookup, so it cannot pass for the wrong reason: WAL does not
+block readers on an exclusive lock, so the locked case will need another fault under WAL.
 
 `LOCALBASE_CHAOS_RACE=1` builds the gateway with the race detector. On macOS the
 full-disk tests make a small disk image; elsewhere they need a small tmpfs named by
