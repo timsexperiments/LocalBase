@@ -488,8 +488,21 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 			c.Info("  %s: %s", setting.Name, setting.Value)
 		}
 	}
+	printOwnSettings(c, rep)
 	for _, caution := range rep.Cautions {
 		c.Error("%s", caution)
+	}
+}
+
+// printOwnSettings says what the root would do by itself, a line for each, whatever their values, since
+// a line left out would read as safe.
+func printOwnSettings(c *cli.Ctx, rep *backup.Report) {
+	if len(rep.OwnSettings) == 0 {
+		return
+	}
+	c.Info("What this root does by itself:")
+	for _, s := range rep.OwnSettings {
+		c.Info("  %s", s.Text(rep.NewRoot))
 	}
 }
 

@@ -476,6 +476,12 @@ func dropRows(ctx context.Context, db *sql.DB) error {
 		if _, err := db.ExecContext(ctx, `DELETE FROM go_settings WHERE key = 'access.first-run-link-shown'`); err != nil {
 			return err
 		}
+		// What the last check for a newer version found: a file's own answer would show as available.
+		for _, key := range updateCache {
+			if _, err := db.ExecContext(ctx, `DELETE FROM go_settings WHERE key = ?`, key); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
