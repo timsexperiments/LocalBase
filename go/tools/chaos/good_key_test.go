@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -21,59 +22,85 @@ import (
 // real file, from outside the gateway. The in-process sweep of every route is in
 // internal/gateway/credential_lookup_test.go; this is what a client sees.
 
-// databaseFaults are the ways of stopping the database answering. undo is nil where nothing can
-// bring it back. In rollback-journal mode an exclusive lock makes a reader wait out the busy
-// timeout and fail, so each answer under the lock takes about 5 s. WAL does not block readers
-// that way, which is why every test first checks that the fault took (see faultTook).
+// databaseFaults are the ways of stopping the database answering, each made to take under WAL,
+// where the store now runs. undo is nil where nothing can bring it back.
+//   - locked: this process, not the gateway's, holds write locks on the -shm file's five read
+//     marks. A WAL reader needs one, so each read fails after SQLite's own retries, about 10 s, with
+//     "locking protocol". An exclusive lock on the database file, which this used to hold, blocked
+//     readers only in rollback-journal mode; under WAL they went on answering.
+//   - damaged: the head of the database file is overwritten, then a store here whose cache is
+//     still warm writes. That changes the WAL index, so the gateway's connections drop their
+//     caches and read the damaged file ("file is not a database"). Damage alone was never read
+//     while their caches stayed valid.
+//
+// Every test checks that its fault took before it asserts anything (see faultTook).
 var databaseFaults = []struct {
 	name  string
 	apply func(t *testing.T, ctx context.Context, g *lab.Gateway) (undo func())
 }{
-	{"locked", func(t *testing.T, ctx context.Context, g *lab.Gateway) func() {
-		st, err := store.Open(dbPath(g))
+	{"locked", func(t *testing.T, _ context.Context, g *lab.Gateway) func() {
+		f, err := os.OpenFile(dbPath(g)+"-shm", os.O_RDWR, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { st.Close() })
-		conn, err := st.DB.Conn(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { conn.Close() })
-		if _, err := conn.ExecContext(ctx, "BEGIN EXCLUSIVE"); err != nil {
-			t.Fatal(err)
+		lk := syscall.Flock_t{Type: syscall.F_WRLCK, Whence: io.SeekStart, Start: shmReadMarks, Len: 5}
+		// A read in flight holds a mark for a moment, so this tries for a few seconds.
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+			if err = syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &lk); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				f.Close()
+				t.Fatalf("taking the -shm read marks: %v", err)
+			}
 		}
 		held := true
 		undo := func() {
 			if held {
 				held = false
-				if _, err := conn.ExecContext(context.Background(), "COMMIT"); err != nil {
-					t.Errorf("releasing the lock: %v", err)
-				}
+				f.Close() // gives the locks back
 			}
 		}
 		t.Cleanup(undo)
 		return undo
 	}},
-	{"damaged", func(t *testing.T, _ context.Context, g *lab.Gateway) func() {
+	{"damaged", func(t *testing.T, ctx context.Context, g *lab.Gateway) func() {
+		st, err := store.Open(dbPath(g))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+		if _, _, err := st.Setting(ctx, "chaos-fault"); err != nil { // warms its cache before the damage
+			t.Fatal(err)
+		}
 		f, err := os.OpenFile(dbPath(g), os.O_WRONLY, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
-		if _, err := f.WriteAt(bytes.Repeat([]byte{0xDB}, 64<<10), 0); err != nil {
+		_, err = f.WriteAt(bytes.Repeat([]byte{0xDB}, 64<<10), 0)
+		f.Close()
+		if err != nil {
 			t.Fatal(err)
+		}
+		if err := st.SetSetting(ctx, "chaos-fault", "1"); err != nil {
+			t.Fatalf("the write that makes the gateway read the damage: %v", err)
 		}
 		return nil
 	}},
 }
 
+// shmReadMarks is where the -shm file's read-mark locks start in SQLite's unix VFS: its lock
+// bytes begin at 120 (UNIX_SHM_BASE), and the five read marks come after the write, checkpoint
+// and recovery locks.
+const shmReadMarks = 120 + 3
+
 // faultTook stops a test whose fault did not stop the lookup: its answer says nothing about what
-// happens when a lookup fails, and passing would be for the wrong reason.
+// happens when a lookup fails, and passing would be for the wrong reason. It fails the test rather
+// than skipping it, so a fault that stops taking can't pass unnoticed.
 func faultTook(t *testing.T, what string, status int) {
 	t.Helper()
 	if status >= 200 && status < 300 {
-		t.Fatalf("%s: %d, so the database still answered and this test no longer tests a failed lookup. Under WAL an exclusive lock does not block readers: it needs a fault that does.", what, status)
+		t.Fatalf("%s: %d, so the fault did not take: the database still answered, and this test no longer tests a failed lookup.", what, status)
 	}
 }
 
