@@ -113,6 +113,8 @@ The form is `clamp(percent of total, floor, cap)`.
 | 64 | 6.4 | 8.0 | 8.0 | 10.4 | 14.4 | 48.0 |
 | 128 | 12.8 | 16.0 | 16.0 | 16.8 | 20.8 | 96.0 |
 
+**The floor matters more than the size arithmetic on a small host.** Below 1.25 x reserve everything is refused, however small the model: a 16 GiB host on today's 8 GiB minimum reserve refuses every load below 10 GiB free, and Option C's 3 GiB minimum moves that to 3.75 GiB. `TestSmallModelsFlipAtTheSameFloor` pins this.
+
 **Why Option C.** Options B and C differ only above 80 GiB. A cap needs a new stored setting; the
 floor and percent exist already. Option C on 128 GiB keeps a larger margin, and if anyone wants
 less they can set it. Option A's lower floor gets a 1 GiB model running at 3 GiB free on small
