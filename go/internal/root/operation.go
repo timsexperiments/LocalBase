@@ -88,11 +88,31 @@ func readJSON(path string, v any) bool {
 	return err == nil && json.Unmarshal(b, v) == nil
 }
 
+// syncFile is (*os.File).Sync, which on macOS is F_FULLFSYNC. A test can see it run, and fail it.
+var syncFile = (*os.File).Sync
+
+// writeSynced is os.WriteFile with 0600, and the data synced before it returns, so a rename that
+// follows can't give a name to a file a crash then empties.
+func writeSynced(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = syncFile(f)
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
 func writeJSONAtomic(path string, v any) error {
 	tmp := path + "." + uuid() + ".tmp"
 	defer os.Remove(tmp)
 	b, _ := json.Marshal(v)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	if err := writeSynced(tmp, b); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
