@@ -263,6 +263,32 @@ func (m *runManager) memoryFullError() map[string]any {
 	return out
 }
 
+// maxListErrorText bounds each text in a run list's error, as other error messages are bounded.
+const maxListErrorText = 1024
+
+// listErrorFields are the fields an error keeps in the run list: what LocalBase's own errors have,
+// so an entry has the same error as the run's own read. Anything else a backend sent stays there.
+var listErrorFields = []string{"type", "code", "message", "param", "heldBytes", "limitBytes", "finishedBytes", "oldestExpiresAt"}
+
+// listError is a run's error as the run list gives it. The list carries every run a person has, and
+// an error can come from a backend as it sent it, so each text is bounded and redacted, and only
+// plain values are kept.
+func listError(e map[string]any) map[string]any {
+	if e == nil {
+		return nil
+	}
+	out := map[string]any{}
+	for _, k := range listErrorFields {
+		switch v := e[k].(type) {
+		case string:
+			out[k] = obs.BoundedText(v, maxListErrorText)
+		case int, int64, float64, bool:
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // mib rounds up, so that a small amount doesn't read as none.
 func mib(b int64) int64 { return (b + 1<<20 - 1) >> 20 }
 
@@ -1050,6 +1076,9 @@ func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
 			"createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano), "startedAt": stamp(r.StartedAt), "endedAt": stamp(r.EndedAt)}
 		if r.Reason != "" {
 			item["reason"] = r.Reason
+		}
+		if r.Error != nil { // a run that stopped says why, as its own read does
+			item["error"] = listError(r.Error)
 		}
 		r.mu.Unlock()
 		data = append(data, item)

@@ -2166,6 +2166,21 @@
                             "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit", "memory_limit"],
                             "description": "Present only when it applies."
                           },
+                          "error": {
+                            "type": "object",
+                            "properties": {
+                              "type": {"type": "string"},
+                              "code": {"type": "string"},
+                              "message": {"type": "string", "maxLength": 1024},
+                              "param": {"type": "string"},
+                              "heldBytes": {"type": "integer"},
+                              "limitBytes": {"type": "integer"},
+                              "finishedBytes": {"type": "integer"},
+                              "oldestExpiresAt": {"type": "string", "format": "date-time"}
+                            },
+                            "additionalProperties": false,
+                            "description": "Present only for a run that failed with an error. It is the run's own error, with only these fields, and each text bounded and redacted."
+                          },
                           "createdAt": {"type": "string", "format": "date-time"},
                           "startedAt": {"type": ["string", "null"], "format": "date-time"},
                           "endedAt": {"type": ["string", "null"], "format": "date-time"}
