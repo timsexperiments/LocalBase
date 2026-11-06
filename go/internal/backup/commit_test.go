@@ -640,8 +640,9 @@ func TestNothingWritesBetweenTheComparisonAndTheMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attempt == nil {
-		t.Error("a write got in between the comparison and the move")
+	// Refused because it was locked out: any other failure wouldn't show anything about the lock.
+	if !isBusy(attempt) {
+		t.Errorf("a write between the comparison and the move: %v", attempt)
 	}
 	for name, path := range map[string]string{"restored": r.DB(), "moved": filepath.Join(done.BeforeDir, "local-base.db")} {
 		st, err := store.Open(path)
