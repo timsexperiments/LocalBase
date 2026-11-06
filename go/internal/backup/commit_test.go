@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -59,7 +60,8 @@ func TestCommitStopsWhenWhatTheReportSaidHasChanged(t *testing.T) {
 			before := tree(t, r.Dir, "runtime")
 			_, err := s.Commit()
 			var refused *Refused
-			if !errors.As(err, &refused) || !strings.Contains(err.Error(), "changed while this waited") || !strings.Contains(err.Error(), c.says) {
+			// Exactly the refusal, and not the same words wrapped by a failure that went through the undo.
+			if !errors.As(err, &refused) || !strings.HasPrefix(err.Error(), "This root changed while this waited: ") || !strings.Contains(err.Error(), c.says) {
 				t.Fatalf("commit: %v", err)
 			}
 			if after := tree(t, r.Dir, "runtime"); after != before {
@@ -420,7 +422,7 @@ func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 	before := tree(t, r.Dir, "runtime")
 	_, err := s.Commit()
 	var refused *Refused
-	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "Something else is using this root's database") {
+	if !errors.As(err, &refused) || err.Error() != someoneElseHoldsIt {
 		t.Fatalf("commit: %v", err)
 	}
 	if strings.Contains(err.Error(), "SQLITE_BUSY") || strings.Contains(err.Error(), "database is locked") {
@@ -604,5 +606,55 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 			}
 			wholeDatabase(t, r.DB())
 		})
+	}
+}
+
+// The lock taken for the comparison is kept until the move, which is what locking_mode=EXCLUSIVE is for, so
+// nothing writes in between and what was compared is what moves. A write tried there fails and is in neither
+// database.
+func TestNothingWritesBetweenTheComparisonAndTheMove(t *testing.T) {
+	const written = "written between the comparison and the move"
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	var attempt error
+	reached := false
+	was := stepHook
+	defer func() { stepHook = was }()
+	stepHook = func(step string) error {
+		if step != "switched" {
+			return nil
+		}
+		reached = true
+		late, err := sql.Open("sqlite", "file:"+r.DB()+"?_pragma=busy_timeout(0)")
+		if err != nil {
+			return err
+		}
+		defer late.Close()
+		_, attempt = late.Exec(`UPDATE api_keys SET name = ?`, written)
+		return nil
+	}
+	done, err := s.Commit()
+	if !reached {
+		t.Fatalf("it never reached the step, so this tested nothing: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt == nil {
+		t.Error("a write got in between the comparison and the move")
+	}
+	for name, path := range map[string]string{"restored": r.DB(), "moved": filepath.Join(done.BeforeDir, "local-base.db")} {
+		st, err := store.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		if err := st.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = ?`, written).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		_ = st.Close()
+		if count != 0 {
+			t.Errorf("the %s database has the write", name)
+		}
 	}
 }
