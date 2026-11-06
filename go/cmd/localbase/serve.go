@@ -301,17 +301,9 @@ func serve(c *cli.Ctx) (any, error) {
 	placementSource := &runtime.HostPlacement{Store: st, DeviceID: lib.DeviceID, Memory: mem, Log: log}
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
-		cur := llm.Config()
-		if cur.Active[kind] == modelID {
-			return
-		}
-		next := cur.Clone()
-		next.Active[kind] = modelID
-		if err := root.WithOperation(r.Dir, "update runtime configuration", func() error { return st.SaveConfig(context.Background(), next) }); err != nil {
+		if err := recordActive(r.Dir, st, llm, kind, modelID); err != nil {
 			log.Warn("Could not record the active "+kind+" model.", "event", "config.save-failed", "error", err.Error())
-			return
 		}
-		llm.SetConfig(next)
 	}
 	llm = runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: r.ModelsDir("llm"), RuntimesDir: r.RuntimesDir(),
 		Store: st, Catalog: cat, Memory: mem, Log: log, MemoryGB: float64(memoryGB), CtxOverride: ctxSize,
@@ -409,7 +401,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
-	srv := &gateway.Server{RunMemoryLimit: int64(runMemory) << 20, RunsMemoryLimit: int64(runsMemory) << 20, Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
+	srv := &gateway.Server{Overrides: runningOverrides(c.String("llm-host"), log), RunMemoryLimit: int64(runMemory) << 20, RunsMemoryLimit: int64(runsMemory) << 20, Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
 	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
@@ -682,4 +674,18 @@ func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (
 		}
 	}
 	return tel, nil
+}
+
+// runningOverrides puts back what only this process has when a saved configuration is published:
+// the environment and --llm-host, as serve applied them when it started. The environment was checked
+// then, so an error here means it can't have changed; it is logged, and leaves that value saved.
+func runningOverrides(llmHost string, log *slog.Logger) func(*store.Config) {
+	return func(cfg *store.Config) {
+		if err := applyEnvOverrides(cfg); err != nil {
+			log.Warn("Could not apply the environment to the running configuration.", "event", "config.override-failed", "error", err.Error())
+		}
+		if llmHost != "" {
+			cfg.Host = llmHost
+		}
+	}
 }

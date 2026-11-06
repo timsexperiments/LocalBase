@@ -92,6 +92,9 @@ type Server struct {
 	// RunMemoryLimit and RunsMemoryLimit are what a detached chat run, and all retained runs
 	// together, may hold in memory; 0 is the default.
 	RunMemoryLimit, RunsMemoryLimit int64
+	// Overrides applies what only this process has (the environment, serve's flags) to a saved
+	// configuration, before it is published to the runtimes.
+	Overrides func(*store.Config)
 }
 
 func New(s *Server) *Server {

@@ -427,6 +427,15 @@ func modelsList() *cli.Command {
 		}}
 }
 
+// currentHFToken is the saved token now, not when this process started: serve installs on demand
+// long after it read its configuration. If the read fails, what it started with is the best left.
+func currentHFToken(ctx context.Context, e *env) string {
+	if saved, err := e.Store.LoadConfig(ctx); err == nil {
+		return saved.HFToken
+	}
+	return e.Config.HFToken
+}
+
 // installModel checks eligibility and installs one catalog model.
 func installModel(ctx context.Context, e *env, id string, report func(install.Event)) (string, error) {
 	s := e.Catalog.ByID(id)
@@ -436,8 +445,7 @@ func installModel(ctx context.Context, e *env, id string, report func(install.Ev
 	if reason := conf.Ineligible(s, e.Config.AllowExperimental); reason != "" {
 		return "", fmt.Errorf("%s: %s", id, reason)
 	}
-	token := e.Config.HFToken
-	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: token, AllowPrivate: e.Store.PrivateImportsAllowed(ctx), Report: report})
+	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: currentHFToken(ctx, e), AllowPrivate: e.Store.PrivateImportsAllowed(ctx), Report: report})
 	if err != nil {
 		return "", &cli.ReasonedError{Err: err, Reason: install.Reason(err)}
 	}

@@ -17,6 +17,8 @@ The script replaces the binary by rename and keeps the old one as `~/.local/bin/
 
 `restart` also rewrites the service definition, so prefer it to `launchctl kickstart` or `systemctl --user restart`.
 
+**One change from 0.2.0:** activating a model no longer writes environment and `serve` flag overrides into the saved configuration, which was a bug. If you set an override once, removed it, and relied on it staying in effect, the gateway uses the saved value at its next start instead, so set what you want with `local-base configure`. Values an older version already saved stay saved.
+
 ## Roll back
 
 ```sh
