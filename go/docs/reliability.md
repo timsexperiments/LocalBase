@@ -358,7 +358,9 @@ page and a state reached by using it get axe and overflow only where a journey o
 A root in write-ahead logging can't be read in place without leaving files beside its database, or at all
 in a folder that can't be written. So with no process holding the root, `store.OpenReadOnly` reads a private
 copy of the database and its `-wal`: in a 0700 folder under `local-base` in the user's cache folder, named
-`localbase-read-<pid>-*`. Commands print `Read a copy of this root's database, as it stood just now.` on
-stderr when they do. `Close` removes it. It can hold secrets, so if a crash leaves one, the next read removes
-it once it's an hour old and its process has gone. With a process holding the root there's no copy, because
+`localbase-read-<pid>-<root>-*`. Commands print `Read a copy of this root's database, as it stood just now.` on
+stderr when they do. `Close` removes it. **An interrupted read (Ctrl-C, kill) can leave a private copy of the database; `doctor`
+names it and `uninstall` removes it.** It can hold secrets. The next read that makes a copy also removes one
+that's an hour old and whose process has gone. A lock held in the folder shows that a process has ended even
+if its pid is reused; a copy with no lock, from a process killed just as it began, goes by its pid. With a process holding the root there's no copy, because
 one could be torn, and the command says another process is using the root.

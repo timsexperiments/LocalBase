@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -288,11 +289,14 @@ func privateCopy(path string) (stage, read string, err error) {
 		return "", "", ErrInUse
 	}
 	parent := stageParent()
-	sweepStages(parent, time.Now())
-	stage, err = os.MkdirTemp(parent, stagePrefix+strconv.Itoa(os.Getpid())+"-") // 0700
+	for _, p := range stageParents() {
+		sweepStages(p, time.Now())
+	}
+	stage, err = os.MkdirTemp(parent, stagePrefix+strconv.Itoa(os.Getpid())+"-"+stageTag(filepath.Dir(path))+"-") // 0700
 	if err != nil {
 		return "", "", err
 	}
+	holdStage(stage)
 	read = filepath.Join(stage, filepath.Base(path))
 	if err := copyPrivate(path, read); err != nil {
 		removeStage(stage)
@@ -326,6 +330,87 @@ func stageParent() string {
 	return os.TempDir()
 }
 
+// stageParents is everywhere a copy could be, since the cache folder can come and go.
+func stageParents() []string {
+	parents := []string{}
+	if cache, err := os.UserCacheDir(); err == nil {
+		parents = append(parents, filepath.Join(cache, "local-base"))
+	}
+	return append(parents, os.TempDir())
+}
+
+// stageTag says which root a copy came from, so that one root's uninstall leaves another's alone.
+func stageTag(rootDir string) string {
+	dir, err := root.Canonical(rootDir)
+	if err != nil {
+		dir = filepath.Clean(rootDir)
+	}
+	return root.Hash(dir)[:16]
+}
+
+// stageLockName is a file in a copy's folder, locked for as long as its process holds the copy. The
+// kernel lets go of a lock when a process ends in any way, and a new process given the same pid doesn't
+// hold it, so this says a copy's owner has gone where a pid can't.
+const stageLockName = ".owner"
+
+// heldStages keeps each lock's file open until its copy is removed.
+var heldStages sync.Map
+
+func holdStage(stage string) {
+	f, err := os.OpenFile(filepath.Join(stage, stageLockName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return // stageOwnerGone goes by the pid instead
+	}
+	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		_ = f.Close() // the same
+		return
+	}
+	heldStages.Store(stage, f)
+}
+
+// stageOwnerGone says the process holding a copy has ended, given the folder's name after the prefix. A
+// copy with no lock file, from a process killed just as it began or on a filesystem without locks, goes
+// by its pid, which a new process can reuse: then it counts as held until that process ends. Anything
+// that can't be told counts as held.
+func stageOwnerGone(path, name string) bool {
+	pidText, _, _ := strings.Cut(name, "-")
+	pid, err := strconv.Atoi(pidText)
+	if err != nil || pid <= 0 || pid == os.Getpid() {
+		return false
+	}
+	f, err := os.OpenFile(filepath.Join(path, stageLockName), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return false
+		}
+		return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
+	}
+	defer func() { _ = f.Close() }() // only read
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err == nil {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) // closing lets go as well
+		return true
+	}
+	return false
+}
+
+// isOwnStage says this entry is a real folder of this user's, with the name a copy has. A symlink with
+// that name isn't one, and in a shared temp folder another user's isn't this user's to touch.
+func isOwnStage(path string, e fs.DirEntry) (name string, ok bool) {
+	name, ok = strings.CutPrefix(e.Name(), stagePrefix)
+	if !ok || !e.IsDir() {
+		return "", false
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	if st, isStat := info.Sys().(*syscall.Stat_t); !isStat || int(st.Uid) != os.Getuid() {
+		return "", false
+	}
+	return name, true
+}
+
 // sweepStages removes copies a crash left: they can hold secrets. Only ones past stageMaxAge whose
 // process has gone, named as this code names them.
 func sweepStages(parent string, now time.Time) {
@@ -334,24 +419,89 @@ func sweepStages(parent string, now time.Time) {
 		return
 	}
 	for _, e := range entries {
-		name, ok := strings.CutPrefix(e.Name(), stagePrefix)
-		if !ok || !e.IsDir() {
-			continue
-		}
-		pidText, _, _ := strings.Cut(name, "-")
-		pid, err := strconv.Atoi(pidText)
-		if err != nil || pid <= 0 {
+		path := filepath.Join(parent, e.Name())
+		name, ok := isOwnStage(path, e)
+		if !ok {
 			continue
 		}
 		info, err := e.Info()
 		if err != nil || now.Sub(info.ModTime()) < stageMaxAge {
 			continue
 		}
-		if syscall.Kill(pid, 0) == nil || errors.Is(syscall.Kill(pid, 0), syscall.EPERM) {
+		if stageOwnerGone(path, name) {
+			_ = os.RemoveAll(path)
+		}
+	}
+}
+
+// ReadCopy is a private copy of a database, left by a read or still in use.
+type ReadCopy struct {
+	Path  string `json:"path"`
+	Bytes int64  `json:"bytes"`
+}
+
+// ReadCopies finds this root's copies, of any age, in every place one could be. left are those whose
+// process has gone. reading are those held by another process, which removes them itself. This
+// process's own are in neither. Nothing here deletes anything.
+func ReadCopies(rootDir string) (left, reading []ReadCopy) {
+	tag := "-" + stageTag(rootDir) + "-"
+	for _, parent := range stageParents() {
+		entries, err := os.ReadDir(parent)
+		if err != nil {
 			continue
 		}
-		_ = os.RemoveAll(filepath.Join(parent, e.Name()))
+		for _, e := range entries {
+			path := filepath.Join(parent, e.Name())
+			name, ok := isOwnStage(path, e)
+			if !ok || !strings.Contains(name, tag) {
+				continue
+			}
+			pidText, _, _ := strings.Cut(name, "-")
+			if pidText == strconv.Itoa(os.Getpid()) {
+				if _, held := heldStages.Load(path); held {
+					continue
+				}
+			}
+			found := ReadCopy{Path: path, Bytes: stageBytes(path)}
+			if stageOwnerGone(path, name) {
+				left = append(left, found)
+			} else {
+				reading = append(reading, found)
+			}
+		}
 	}
+	return left, reading
+}
+
+func stageBytes(stage string) int64 {
+	var total int64
+	entries, err := os.ReadDir(stage)
+	if err != nil {
+		return 0
+	}
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && info.Mode().IsRegular() {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// RemoveReadCopy removes a copy ReadCopies found left. It looks again first, so a copy that has come
+// into use since stays. os.RemoveAll doesn't follow a symlink inside the folder.
+func RemoveReadCopy(c ReadCopy) error {
+	info, err := os.Lstat(c.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	name, ok := strings.CutPrefix(filepath.Base(c.Path), stagePrefix)
+	if !ok || !info.IsDir() || !stageOwnerGone(c.Path, name) {
+		return fmt.Errorf("it isn't a copy whose process has gone")
+	}
+	return os.RemoveAll(c.Path)
 }
 
 // InWAL says whether a database's own header says it's in write-ahead logging.
@@ -388,7 +538,11 @@ func copyPrivate(from, to string) error {
 
 // removeStage removes a private copy: it can hold secrets. A crash leaves it, private, for sweepStages.
 func removeStage(stage string) {
-	if stage != "" {
-		_ = os.RemoveAll(stage)
+	if stage == "" {
+		return
+	}
+	_ = os.RemoveAll(stage)
+	if f, held := heldStages.LoadAndDelete(stage); held {
+		_ = f.(*os.File).Close() // nothing was written to it
 	}
 }

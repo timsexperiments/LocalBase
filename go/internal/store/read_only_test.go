@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -812,5 +813,208 @@ func TestTheRefusalNamesWhatToRemove(t *testing.T) {
 	_, err = Open(path)
 	if err == nil || err.Error() != want {
 		t.Errorf("Open:\n got %v\nwant %s", err, want)
+	}
+}
+
+// A process killed while reading leaves its copy. That copy is named as left, any age, and goes only when
+// asked. One a live process holds is named as reading. Another root's isn't this root's business.
+func TestAKilledReadsCopyIsFoundAndRemoved(t *testing.T) {
+	if path := os.Getenv("LOCALBASE_TEST_READ_COPY"); path != "" {
+		st, err := OpenReadOnly(path)
+		if err != nil {
+			fmt.Println("FAILED", err)
+			return
+		}
+		fmt.Println("HOLDING", st.stage)
+		_, _ = io.ReadAll(os.Stdin)
+		return
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	makeRoot := func() *root.Root {
+		r, err := root.Init(filepath.Join(t.TempDir(), "root"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		made, err := Open(r.DB())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := made.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	hold := func(r *root.Root) (stage string, cmd *exec.Cmd, stdin io.WriteCloser) {
+		cmd = exec.Command(os.Args[0], "-test.run=^TestAKilledReadsCopyIsFoundAndRemoved$")
+		cmd.Env = append(os.Environ(), "LOCALBASE_TEST_READ_COPY="+r.DB())
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+		reader := bufio.NewReader(stdout)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				t.Fatalf("the other process: %v", err)
+			}
+			if rest, ok := strings.CutPrefix(line, "HOLDING "); ok {
+				return strings.TrimSpace(rest), cmd, stdin
+			}
+			if strings.HasPrefix(line, "FAILED") {
+				t.Fatal(line)
+			}
+		}
+	}
+	mine, other := makeRoot(), makeRoot()
+	stage, cmd, _ := hold(mine)
+	otherStage, _, _ := hold(other)
+
+	// A process with the same pid wouldn't hold this lock: see TestAReusedPidDoesNotKeepACopy.
+	if !strings.HasPrefix(filepath.Base(stage), stagePrefix) {
+		t.Fatal(stage)
+	}
+	lock, err := os.Open(filepath.Join(stage, stageLockName))
+	if err != nil {
+		t.Fatalf("a copy in use should hold a lock: %v", err)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		t.Error("nobody holds the lock of a copy in use")
+	}
+	_ = lock.Close()
+	left, reading := ReadCopies(mine.Dir)
+	if len(left) != 0 || len(reading) != 1 || reading[0].Path != stage {
+		t.Fatalf("while reading: left %v, reading %v", left, reading)
+	}
+	if err := RemoveReadCopy(reading[0]); err == nil {
+		t.Error("it removed a copy a live process holds")
+	}
+	if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	if _, err := os.Stat(stage); err != nil {
+		t.Fatalf("a killed read's copy should stay until asked: %v", err)
+	}
+	left, reading = ReadCopies(mine.Dir)
+	if len(reading) != 0 || len(left) != 1 || left[0].Path != stage {
+		t.Fatalf("after the kill: left %v, reading %v", left, reading)
+	}
+	if left[0].Bytes == 0 {
+		t.Error("no size")
+	}
+	if !strings.Contains(filepath.Base(stage), stageTag(mine.Dir)) {
+		t.Errorf("%s doesn't name its root", stage)
+	}
+	if err := RemoveReadCopy(left[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stage); !os.IsNotExist(err) {
+		t.Errorf("it stayed: %v", err)
+	}
+	if _, err := os.Stat(otherStage); err != nil {
+		t.Errorf("another root's copy went: %v", err)
+	}
+}
+
+// A pid can be reused. The lock is what says, so a live process with the dead owner's pid doesn't keep a
+// copy. With no lock file there's only the pid to go by, and that case does stay until the process ends.
+func TestAReusedPidDoesNotKeepACopy(t *testing.T) {
+	parent := t.TempDir()
+	alive := os.Getppid()
+	stage := func(name string, lock bool) string {
+		p := filepath.Join(parent, fmt.Sprintf("%s%d-%s", stagePrefix, alive, name))
+		if err := os.Mkdir(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if lock {
+			if err := os.WriteFile(filepath.Join(p, stageLockName), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return p
+	}
+	name := func(p string) string { return strings.TrimPrefix(filepath.Base(p), stagePrefix) }
+	if p := stage("unheld", true); !stageOwnerGone(p, name(p)) {
+		t.Error("nobody holds the lock, so its process has gone, whatever has its pid now")
+	}
+	if p := stage("nolock", false); stageOwnerGone(p, name(p)) {
+		t.Error("with no lock and a live pid, it should count as held")
+	}
+	if p := filepath.Join(parent, fmt.Sprintf("%s%d-x", stagePrefix, 1<<22)); os.Mkdir(p, 0o700) != nil || !stageOwnerGone(p, name(p)) {
+		t.Error("with no lock and no process, it's gone")
+	}
+}
+
+// A symlink with a copy's name isn't a copy, so nothing is removed through it, listed or swept.
+func TestASymlinkNamedLikeACopyIsNotFollowed(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	parent := stageParent()
+	r := filepath.Join(t.TempDir(), "root")
+	precious := t.TempDir()
+	if err := os.WriteFile(filepath.Join(precious, "keep"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, fmt.Sprintf("%s%d-%s-x", stagePrefix, 1<<22, stageTag(r)))
+	if err := os.Symlink(precious, link); err != nil {
+		t.Fatal(err)
+	}
+	long := time.Now().Add(2 * stageMaxAge)
+	sweepStages(parent, long)
+	left, reading := ReadCopies(r)
+	if len(left)+len(reading) != 0 {
+		t.Errorf("listed: %v %v", left, reading)
+	}
+	if err := RemoveReadCopy(ReadCopy{Path: link}); err == nil {
+		t.Error("removing a symlink as a copy should refuse")
+	}
+	if _, err := os.Stat(filepath.Join(precious, "keep")); err != nil {
+		t.Errorf("it went through the link: %v", err)
+	}
+}
+
+// A copy can be in the temp folder, from when there was no cache folder, and it's swept all the same.
+func TestACopyInTheTempFolderIsSwept(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	temp := t.TempDir()
+	t.Setenv("TMPDIR", temp)
+	old := time.Now().Add(-2 * stageMaxAge)
+	left := filepath.Join(temp, fmt.Sprintf("%s%d-x", stagePrefix, 1<<22))
+	if err := os.Mkdir(left, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(left, old, old); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "local-base.db")
+	made, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := made.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := OpenReadOnly(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if st.stage == "" {
+		t.Fatal("it didn't read a copy")
+	}
+	if _, err := os.Stat(left); !os.IsNotExist(err) {
+		t.Errorf("it stayed: %v", err)
 	}
 }

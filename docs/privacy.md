@@ -41,7 +41,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 
 ## Removing your data
 
-`local-base uninstall --yes` removes the data directory. See [uninstall](install.md#uninstall). After a rollback to an older version, delete `runs/*.json` by hand, as [the upgrade guide](upgrade.md#roll-back) explains.
+`local-base uninstall --yes` removes the data directory, and this root's private read copies left by interrupted reads. See [uninstall](install.md#uninstall). After a rollback to an older version, delete `runs/*.json` by hand, as [the upgrade guide](upgrade.md#roll-back) explains.
 
 ## If you share this gateway
 
