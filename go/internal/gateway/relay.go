@@ -671,6 +671,27 @@ func upstreamErrorEvent(message string) string {
 	return "data: " + string(b) + "\n\n"
 }
 
+// sseEventLimit is the most one line or event of an upstream stream may hold in memory. Nothing else
+// in a stream is kept, so this is all a streaming client's request can cost, however long it runs.
+var sseEventLimit = 16 << 20
+
+var errSSEEventTooLong = errors.New("line over the limit")
+
+// readSSELine is ReadString('\n') that gives up past limit bytes.
+func readSSELine(rd *bufio.Reader, limit int) (string, error) {
+	var long []byte
+	for {
+		part, err := rd.ReadSlice('\n')
+		if len(long)+len(part) > limit {
+			return "", errSSEEventTooLong
+		}
+		if !errors.Is(err, bufio.ErrBufferFull) {
+			return string(long) + string(part), err
+		}
+		long = append(long, part...)
+	}
+}
+
 // relaySSE forwards a chat stream event by event, flushing each one. Data
 // events get the public model id and `reasoning` normalization; an error
 // event ends the stream; unparseable data ends it with upstream_error.
@@ -741,11 +762,18 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 		}
 		return true, "", ""
 	}
+	eventBytes := 0
 	for {
-		line, err := rd.ReadString('\n')
+		line, err := readSSELine(rd, sseEventLimit)
+		eventBytes += len(line)
+		if errors.Is(err, errSSEEventTooLong) || eventBytes > sseEventLimit {
+			write(upstreamErrorEvent(fmt.Sprintf("The upstream sent an event over the %d MiB limit.", sseEventLimit>>20)))
+			return "error", "response_event_limit"
+		}
 		if len(line) > 0 {
 			trimmed := strings.TrimRight(line, "\r\n")
 			if trimmed == "" && strings.HasSuffix(line, "\n") {
+				eventBytes = 0
 				if more, outcome, source := emit(); !more {
 					return outcome, source
 				}

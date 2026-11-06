@@ -3230,7 +3230,14 @@ read across principals.
 | Retained runs per principal (any status) | 32 | the oldest *finished* run is dropped (`run.dismissed`) |
 | Run duration | 30 min from creation | `interrupted` / `max_duration` |
 | Buffered output per run (chunk bytes) | 8 MiB | generation stops upstream; `failed` / `output_limit` |
+| Held in memory per chat run, overhead included (`--run-memory-limit-mib`) | 32 MiB | generation stops upstream; `failed` / `output_limit`, with what it had. The 8 MiB above normally ends it first |
+| Held in memory by all retained runs, media results included (`--runs-memory-limit-mib`) | 256 MiB | the run that passes it stops; `failed` / `memory_limit`, with what it had. Finished runs hold theirs until they expire or are dismissed |
 | Retention after a run ends | 30 min (`expiresAt`) | deleted with its checkpoint; `run.expired` |
+
+The two memory figures are proposals, not measured against real traffic. One
+line or event of an upstream stream may hold 16 MiB, for streaming clients and
+runs alike: past that the stream ends with `upstream_error`. A streaming client's
+request holds nothing else, so that is its whole cost.
 
 Admission is unchanged: a run is a request, so it waits in the same queue
 under the same queue timeout and capacity. A queue-timeout or memory

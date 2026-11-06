@@ -88,6 +88,10 @@ type Server struct {
 	stopping atomic.Bool
 	mux      *http.ServeMux
 	routes   []string // every registered pattern, for the OpenAPI drift test
+
+	// RunMemoryLimit and RunsMemoryLimit are what a detached chat run, and all retained runs
+	// together, may hold in memory; 0 is the default.
+	RunMemoryLimit, RunsMemoryLimit int64
 }
 
 func New(s *Server) *Server {

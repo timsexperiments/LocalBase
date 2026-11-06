@@ -86,6 +86,8 @@ func serveCommand() *cli.Command {
 		opt("ctx-size", "<tokens>", "LLM context limit"),
 		opt("inference-queue-capacity", "<requests>", "Maximum waiting requests per inference type"),
 		opt("inference-queue-timeout-ms", "<milliseconds>", "Maximum inference queue wait"),
+		opt("run-memory-limit-mib", "<MiB>", "Most one detached chat run may hold in memory (default 32)"),
+		opt("runs-memory-limit-mib", "<MiB>", "Most all retained detached runs may hold in memory together (default 256)"),
 		opt("max-connections", "<connections>", "Maximum open connections, 0 for no cap (default: the configured value, or 4096)"),
 		opt("max-connections-per-ip", "<connections>", "Maximum open connections from one address other than loopback, 0 for no cap (default: the configured value, or 256)"),
 		opt("stt-path", "<path>", "Whisper endpoint path"),
@@ -153,6 +155,14 @@ func serve(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	queueTimeout, err := intOpt(c, "inference-queue-timeout-ms", 1, 3_600_000)
+	if err != nil {
+		return nil, err
+	}
+	runMemory, err := intOpt(c, "run-memory-limit-mib", 1, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	runsMemory, err := intOpt(c, "runs-memory-limit-mib", 1, 1<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +409,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
-	srv := &gateway.Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
+	srv := &gateway.Server{RunMemoryLimit: int64(runMemory) << 20, RunsMemoryLimit: int64(runsMemory) << 20, Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
 	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
