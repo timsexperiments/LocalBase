@@ -331,25 +331,60 @@ func copyPrintable(dst, src reflect.Value, letters bool) {
 // catalogShown is how many catalog entries a report lists before it counts the rest.
 const catalogShown = 25
 
-// printCatalog says what the backup's catalog.d will make this root trust, before anything is changed.
+// catalogDownloadsShown and catalogFilesShown are how many entries that change where something downloads from,
+// and how many of an entry's files from elsewhere, a report lists before it counts the rest. A file chooses how
+// many there are, and nobody can read tens of thousands of lines. --json lists them all.
+const (
+	catalogDownloadsShown = 50
+	catalogFilesShown     = 5
+)
+
+// printCatalog says what the backup's catalog.d will make this root trust, before anything is changed. Entries
+// that change where something downloads from come first, and the rest are only listed after them.
 func printCatalog(c *cli.Ctx, entries []backup.CatalogEntry) {
 	if len(entries) == 0 {
 		return
 	}
-	c.Info("Catalog entries in it, which this root will trust as its own:")
-	for i, e := range entries {
-		if i == catalogShown {
-			c.Info("  and %d more: run this with --json to see them all.", len(entries)-catalogShown)
-			return
-		}
-		if e.New {
-			c.Info("  %s: new, downloads from %s at %s", e.Model, e.Source, e.Revision)
+	var downloads, rest []backup.CatalogEntry
+	for _, e := range entries {
+		if e.Downloads {
+			downloads = append(downloads, e)
 		} else {
-			c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision)
+			rest = append(rest, e)
 		}
-		for _, f := range e.Files {
-			c.Info("    %s comes from %s", f.File, f.From)
+	}
+	c.Info("Catalog entries in it, which this root will trust as its own:")
+	for i, e := range downloads {
+		if i == catalogDownloadsShown {
+			c.Info("  and %d more that change where models download from: run this with --json to see them all.", len(downloads)-catalogDownloadsShown)
+			break
 		}
+		printCatalogEntry(c, e)
+	}
+	for i, e := range rest {
+		if i == catalogShown {
+			c.Info("  and %d more: run this with --json to see them all.", len(rest)-catalogShown)
+			break
+		}
+		printCatalogEntry(c, e)
+	}
+}
+
+func printCatalogEntry(c *cli.Ctx, e backup.CatalogEntry) {
+	switch {
+	case e.New:
+		c.Info("  %s: new, downloads from %s at %s", e.Model, e.Source, e.Revision)
+	case e.WasSource != "" || e.WasRevision != "":
+		c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s instead of %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision, e.WasSource, e.WasRevision)
+	default:
+		c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision)
+	}
+	for i, f := range e.Files {
+		if i == catalogFilesShown {
+			c.Info("    and %d more files from elsewhere: run this with --json to see them all.", len(e.Files)-catalogFilesShown)
+			break
+		}
+		c.Info("    %s comes from %s", f.File, f.From)
 	}
 }
 

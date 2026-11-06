@@ -270,34 +270,82 @@ func TestAPutBackLineIsPrintedSafely(t *testing.T) {
 	}
 }
 
-// The catalog section says what each entry adds or changes, by id, and counts what it doesn't list.
+// The catalog section says what each entry adds or changes. One that changes where something downloads from is
+// never left out, however many there are, and only the rest are counted past the cap.
 func TestTheCatalogSectionSaysWhatEachEntryDoes(t *testing.T) {
 	var entries []backup.CatalogEntry
 	for i := range 30 {
-		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("model-%02d", i), New: i%2 == 0, Changes: []string{"source", "artifacts"},
+		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("dl-%02d", i), New: true, Downloads: true,
 			Source: "https://huggingface.co/someone/repo", Revision: "abc123"})
 	}
-	entries[1].Files = []backup.FileSource{{File: "weights.gguf", From: "https://elsewhere.example/weights.gguf"}}
-	entries[2].Model = "evil\x1b[2J"
+	entries[1] = backup.CatalogEntry{Model: "dl-01", Changes: []string{"source", "notes"}, Downloads: true, Source: "https://huggingface.co/someone-else/repo",
+		Revision: "def456", WasSource: "https://huggingface.co/the-maker/repo", WasRevision: "abc123"}
+	entries[2] = backup.CatalogEntry{Model: "dl-02", Changes: []string{"artifacts"}, Downloads: true, Source: "https://huggingface.co/the-maker/repo", Revision: "abc123",
+		Files: []backup.FileSource{{File: "weights.gguf", From: "https://huggingface.co/elsewhere/repo/resolve/abc123/weights.gguf"}}}
+	entries[3].Model = "evil\x1b[2J"
+	for i := range 30 {
+		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("hm-%02d", i), Changes: []string{"notes"}, Source: "https://huggingface.co/the-maker/repo", Revision: "abc123"})
+	}
 	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: entries})
 	if strings.ContainsRune(got, 0x1b) {
 		t.Error("an escape reached the terminal")
 	}
 	for _, want := range []string{
 		"Catalog entries in it, which this root will trust as its own:",
-		"  model-00: new, downloads from https://huggingface.co/someone/repo at abc123",
-		"  model-01: changes source, artifacts of the built-in entry, and downloads from https://huggingface.co/someone/repo at abc123",
-		"    weights.gguf comes from https://elsewhere.example/weights.gguf",
+		"  dl-00: new, downloads from https://huggingface.co/someone/repo at abc123",
+		"  dl-01: changes source, notes of the built-in entry, and downloads from https://huggingface.co/someone-else/repo at def456 instead of https://huggingface.co/the-maker/repo at abc123",
+		"  dl-02: changes artifacts of the built-in entry, and downloads from https://huggingface.co/the-maker/repo at abc123",
+		"    weights.gguf comes from https://huggingface.co/elsewhere/repo/resolve/abc123/weights.gguf",
 		`  evil\x1b[2J: new, downloads from`,
-		"  model-24: new, downloads from",
+		"  dl-29: new, downloads from",
+		"  hm-24: changes notes of the built-in entry",
 		"  and 5 more: run this with --json to see them all.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("it should say %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "model-25") {
-		t.Error("it listed more than it should")
+	if strings.Contains(got, "hm-25") {
+		t.Error("it listed more of the rest than it should")
+	}
+}
+
+// Past 50 entries that change where something downloads from, the report says how many more there are, so a
+// person is told there are more even when the one that matters is among those not listed. Past 5 of an entry's
+// files from elsewhere, the same.
+func TestDownloadChangesPastTheCapAreCounted(t *testing.T) {
+	entry := func(id string) backup.CatalogEntry {
+		return backup.CatalogEntry{Model: id, New: true, Downloads: true, Source: "https://huggingface.co/someone/repo", Revision: "abc123"}
+	}
+	var sixty []backup.CatalogEntry
+	for i := range 60 {
+		sixty = append(sixty, entry(fmt.Sprintf("dl-%02d", i)))
+	}
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: sixty})
+	if !strings.Contains(got, "  dl-49: new, downloads from") || strings.Contains(got, "dl-50") {
+		t.Errorf("it should list the first 50:\n%s", got)
+	}
+	if want := "  and 10 more that change where models download from: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("it should say %q", want)
+	}
+	withHostile := append(append([]backup.CatalogEntry{}, sixty...), entry("zz-hostile"))
+	got = rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: withHostile})
+	if strings.Contains(got, "zz-hostile") {
+		t.Error("the 61st was listed")
+	}
+	if want := "  and 11 more that change where models download from: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("with the hostile one 61st, it should still say %q", want)
+	}
+	files := entry("dl-files")
+	for i := range 7 {
+		files.Files = append(files.Files, backup.FileSource{File: fmt.Sprintf("f-%d.gguf", i), From: "https://huggingface.co/elsewhere/repo/resolve/abc/f.gguf"})
+	}
+	got = rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: []backup.CatalogEntry{files}})
+	if !strings.Contains(got, "    f-4.gguf comes from") || strings.Contains(got, "f-5.gguf") {
+		t.Errorf("it should list 5 files:\n%s", got)
+	}
+	if want := "    and 2 more files from elsewhere: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("it should say %q", want)
 	}
 }
 
