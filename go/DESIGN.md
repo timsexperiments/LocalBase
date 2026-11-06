@@ -4934,6 +4934,26 @@ and from the backend that turns it into a grammar. A chat key can send one.
 These hold before a model is looked up. `FuzzStructuredOutput` runs its seeds in `go test`, and
 `tools/fuzz.sh` searches on demand.
 
+### 31.6 What anyone can cost
+
+Sign-in routes answer without credentials, so what they keep and what they start can't grow with requests.
+
+**A sign-in in progress keeps nothing on the server.** There used to be a table of 128 entries with random
+eviction, so about 1000 anonymous requests to `/app/login` made a person's sign-in in progress fail. Now the
+state carries its own expiry and a MAC under a key made at start, the PKCE verifier and the nonce are derived
+from it, and the browser holds it in the same cookie as before. Nothing is left to push out.
+
+- **The key** is made at start and held only in memory, so it's in no file and no backup. A restart makes a new one: a
+  restored root accepts no earlier state, and a sign-in in progress ends, as it always did.
+- **Seeing a state gives nothing.** The verifier and nonce are HMACs under that key, and the redirect carries only the
+  S256 challenge and the nonce.
+- **A state belongs to one browser,** as before: it must match the `__Host-` cookie, so a stolen state fails elsewhere.
+- **A state works once.** A callback that goes ahead records it, and gives it back only if it signed nobody in. So only
+  completed sign-ins stay on record, up to 4096 until they'd have expired, and failing callbacks can't push them out.
+  Past 4096 real sign-ins within ten minutes it could forget one, and the provider's single-use code is then the only
+  guard. A callback with the wrong cookie no longer spends the state, so someone holding only the state can't end a
+  person's sign-in.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's

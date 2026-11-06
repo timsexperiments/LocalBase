@@ -53,7 +53,8 @@ func TestOIDCStateReplayed(t *testing.T) {
 	w := httptest.NewRecorder()
 	b.CompleteLogin(w, get(OIDCCallbackPath+"?"+back.Encode(), state))
 	refused(t, "replayed", w.Result())
-	// A state mismatch also spends the state: the right cookie cannot follow it.
+	// Someone who has the state but not the cookie is refused, and can't spend the state:
+	// the browser it belongs to can still finish.
 	var again url.Values
 	var good *http.Cookie
 	refused(t, "mismatch", login(t, b, f, func(q url.Values, s *http.Cookie) *http.Cookie {
@@ -62,18 +63,19 @@ func TestOIDCStateReplayed(t *testing.T) {
 	}))
 	w = httptest.NewRecorder()
 	b.CompleteLogin(w, get(OIDCCallbackPath+"?"+again.Encode(), good))
-	refused(t, "after a mismatch", w.Result())
+	if cookieNamed(w.Result(), SessionCookie) == nil {
+		t.Errorf("after someone else's mismatch: %d %s", w.Code, w.Header().Get("Location"))
+	}
 }
 
 func TestOIDCStateExpired(t *testing.T) {
 	b, f := oidcFixture(t)
 	refused(t, "expired state", login(t, b, f, func(q url.Values, s *http.Cookie) *http.Cookie {
-		b.mu.Lock()
-		st := b.states[q.Get("state")]
-		st.expires = time.Now().Add(-time.Second)
-		b.states[q.Get("state")] = st
-		b.mu.Unlock()
-		return s
+		old := b.newLoginState(b.Config.Provider.Registrations[0].ID, time.Now().Add(-time.Second))
+		st, _ := b.loginStateOf(old)
+		f.challenge, f.nonce = s256(st.verifier), st.nonce // only its age is wrong
+		q.Set("state", old)
+		return &http.Cookie{Name: s.Name, Value: old}
 	}))
 }
 
