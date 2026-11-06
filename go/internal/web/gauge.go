@@ -1,7 +1,10 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"hash/fnv"
 	"net/http"
 	"os"
@@ -283,4 +286,14 @@ func (u *UI) stripFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.fragment(w, r, "running", "memory-strip", strip)
+}
+
+// personKey names a person's chats in their browser's storage, without putting who they are
+// in the page: the same person gets the same key, and different people different keys.
+func personKey(p *auth.Principal) string {
+	if p == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(p.Kind + "\x00" + p.ID))
+	return hex.EncodeToString(sum[:8])
 }

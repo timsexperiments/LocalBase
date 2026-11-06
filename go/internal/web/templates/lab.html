@@ -85,8 +85,8 @@
         <label class="grid gap-1"><span class="font-semibold">Avoid <span class="font-normal text-muted">(negative prompt)</span></span>
           <input class="input" name="negative_prompt" maxlength="16384" autocomplete="off"></label>
         <div class="grid grid-cols-2 gap-3">
-          <label class="grid gap-1"><span class="font-semibold">Seed</span><input class="input" name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="Random"></label>
-          <label class="grid gap-1"><span class="font-semibold">Steps</span><input class="input" name="steps" inputmode="numeric" pattern="[0-9]*" placeholder="Default"></label>
+          <label class="grid gap-1"><span class="font-semibold">Seed</span><input class="input" name="seed" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Random"></label>
+          <label class="grid gap-1"><span class="font-semibold">Steps</span><input class="input" name="steps" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="Default"></label>
         </div>
         <p class="text-sm text-muted">A seed stays here until you clear it, so the same prompt can repeat a picture.</p>
       </div>
@@ -277,6 +277,10 @@
     {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Examples")}}
     <p class="px-5 pb-2 text-sm text-muted">Fills in the question. Nothing runs until you send it.</p>
     <ul class="list-group mx-4 mb-3" data-templates></ul>
+    <div class="mx-5 mb-3 grid justify-items-start gap-2 text-sm text-muted" data-old-saved hidden>
+      <p>Examples saved on this browser before an update aren’t shown, because they could be someone else’s.</p>
+      <button type="button" class="btn btn-quiet rounded-full" data-clear-old-saved>Clear old examples on this device</button>
+    </div>
     <div data-saved-box hidden>
       <h3 class="list-label mx-5 mt-0">Saved in this browser</h3>
       <ul class="list-group mx-4 mb-3" data-saved></ul>

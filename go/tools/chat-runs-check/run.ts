@@ -205,12 +205,18 @@ else {
   await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: globalThis.__noShare });
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
-  await ev(`[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")?.click()`);
-  await sleep(1200);
-  check(await ev(`document.querySelector("#lab-items > li").textContent.includes("Stopped.")`), "Stop stops the run");
+  // Stop is waited for and then its result is: a fixed wait, with a click that quietly found nothing, read a run that was
+  // still going as a failed Stop, and the next step then threw. Each now says what it saw.
+  const stopButton = `[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")`;
+  const startedAt = Date.now();
+  for (let i = 0; i < 150 && !(await ev(`!!${stopButton}`)); i++) await sleep(100);
+  const stopShown = await ev(`!!${stopButton}`);
+  check(stopShown, `a slow picture shows Stop while it runs: after ${Date.now() - startedAt} ms`);
+  if (stopShown) await ev(`${stopButton}.click()`);
+  for (let i = 0; i < 100 && !(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`)); i++) await sleep(100);
+  check(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`), `Stop stops the run: ${JSON.stringify(await ev(`document.querySelector("#lab-items > li")?.textContent.replace(/\\s+/g, " ").trim().slice(0, 80)`))}`);
   const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
-  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]").click()`);
+  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]")?.click()`);
   await sleep(800);
   const after = await ev(`document.querySelectorAll("#lab-items > li").length`);
   const left = await runsNow();
@@ -401,21 +407,28 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
   await ev(decide);
-  await sleep(3600);
+  // Until the first row is really done, not for as long as a row usually takes.
+  for (let i = 0; i < 200 && !(await ev(`/^1 of 3/.test(document.querySelector("[data-batch-summary]")?.textContent ?? "")`)); i++) await sleep(50);
   await ev(`document.querySelector("[data-batch-stop]").click()`);
   await sleep(500);
   const stopped = await ev(`({ s: document.querySelector("[data-batch-summary]").textContent, more: !document.querySelector("[data-batch-continue]").hidden })`);
   check(/^1 of 3 done/.test(stopped.s) && stopped.more, `Stop keeps finished rows and offers Continue: ${JSON.stringify(stopped)}`);
-  // A lost connection pauses a batch rather than failing every row left.
+  // A lost connection pauses a batch rather than failing every row left. The batch has to be running when the connection
+  // goes, with rows left, or the rest says nothing: an empty line reads the same on a batch that is still working.
+  const batchNow = `(() => { const q = (s) => document.querySelector(s); return { running: !q("[data-batch-stop]").hidden, s: q("[data-batch-summary]").textContent, paused: q("[data-batch-paused]").textContent, more: !q("[data-batch-continue]").hidden, failed: /failed/.test(q("[data-batch-summary]").textContent) }; })()`;
   await ev(`document.querySelector("[data-batch-continue]").click()`);
-  await sleep(200);
+  for (let i = 0; i < 40 && !(await ev(`${batchNow}.running`)); i++) await sleep(25);
+  const going = await ev(batchNow);
+  check(going.running && !going.paused && !going.more && /^1 of 3/.test(going.s), `the batch is still running, with rows left, when the connection goes: ${JSON.stringify(going)}`);
   await send("Network.enable");
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  await sleep(4000);
-  const dropped = await ev(`({ paused: document.querySelector("[data-batch-paused]").textContent, more: !document.querySelector("[data-batch-continue]").hidden, failed: /failed/.test(document.querySelector("[data-batch-summary]").textContent) })`);
+  const droppedAt = Date.now();
+  // If the row's stream is already open the pause comes when the row ends. If it isn't, the page tries it for 30 s first.
+  for (let i = 0; i < 450 && !(await ev(`/Lost the connection/.test(document.querySelector("[data-batch-paused]").textContent)`)); i++) await sleep(100);
+  const waited = Date.now() - droppedAt;
+  const dropped = await ev(batchNow);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  check(/Lost the connection/.test(dropped.paused) && dropped.more && !dropped.failed, `a lost connection pauses the batch: ${JSON.stringify(dropped)}`);
-  await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
+  check(/Lost the connection/.test(dropped.paused) && !dropped.running && dropped.more && !dropped.failed && /^[12] of 3/.test(dropped.s), `a lost connection pauses the running batch, with rows left: ${JSON.stringify({ ...dropped, waited })}`);
 }
 
 // --- On Decisions, what takes focus clears the bar, and a row's parts stay in a line (DESIGN §27.4) --
@@ -446,8 +459,6 @@ if (await ev(`!!document.getElementById("decide")`)) {
   for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     await nav("/app/studio/decisions");
-    await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
-    await nav("/app/studio/decisions");
     await ev(pickRoute);
     await sleep(150);
     await tabThrough(`at ${width}, the form`);
@@ -457,7 +468,6 @@ if (await ev(`!!document.getElementById("decide")`)) {
     const row = await ev(`(() => { const r = document.querySelector("[data-result] .decide-bar"), name = r.querySelector(".decide-bar-name").getBoundingClientRect(), track = r.querySelector(".decide-track").getBoundingClientRect(), odds = r.querySelector(".decide-bar-odds").getBoundingClientRect(); return { oneLine: Math.abs((name.top + name.bottom) / 2 - (track.top + track.bottom) / 2) < 8 && Math.abs((odds.top + odds.bottom) / 2 - (track.top + track.bottom) / 2) < 8, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
     check(row.oneLine && !row.over, `at ${width}, a row's name, track and number share a line, on any browser: ${JSON.stringify(row)}`);
   }
-  await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
 }
 
 // --- Video (DESIGN §22.18) ------------------------------------------------------
@@ -744,12 +754,18 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
-  await ev(`document.querySelector("a[href='/app/models']").click()`);
-  await sleep(900);
-  await ev(`document.querySelector("a[href='/app/studio']")?.click()`);
-  await sleep(900);
-  await ev(`document.querySelector("a[href='/app/studio/transcribe']")?.click()`);
-  await sleep(900);
+  // By its links, so the page lives on. Each one waits for the page it asked for, and says if it never came:
+  // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
+  const visited = [];
+  for (const href of ["/app/models", "/app/studio", "/app/studio/transcribe"]) {
+    const clicked = await ev(`(() => { const a = document.querySelector("a[href='${href}']"); if (!a) return false; a.click(); return true; })()`);
+    if (!clicked) { visited.push(`no link to ${href} on ${await ev("location.pathname")}`); break; }
+    for (let i = 0; i < 80 && (await ev("location.pathname")) !== href; i++) await sleep(150);
+    visited.push(await ev("location.pathname"));
+    await sleep(300);
+  }
+  check(visited.join() === "/app/models,/app/studio,/app/studio/transcribe", `moving around the app goes through each page: ${visited}`);
+  for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("[data-keep]")`)); i++) await sleep(150);
   check(!(await ev(`document.querySelector("[data-keep]").hidden`)), "and it is still offered after moving around the app");
   await ev(`document.querySelector("[data-keep-send]").click()`);
   for (let i = 0; i < 60 && (await seen()) === beforeLost; i++) await sleep(150);
@@ -1206,7 +1222,10 @@ else {
   await nav("/app/studio/video");
   const long = "A long slow pan across a quiet harbour at first light, with gulls overhead and small boats rocking on the water";
   await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(long)}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 80 && !(await ev(`!!document.querySelector("#lab-items > li video") && document.querySelector("#lab-items > li .image-title")?.textContent.startsWith("A long slow pan")`)); i++) await sleep(150);
+  // That video itself, not an older one further down: the title shows as soon as it starts.
+  const longDone = `(() => { const item = document.querySelector("#lab-items > li"); return !!item?.querySelector("video") && !!item.querySelector("[data-share]") && !!item.querySelector(".image-title")?.textContent.startsWith("A long slow pan"); })()`;
+  for (let i = 0; i < 200 && !(await ev(longDone)); i++) await sleep(150);
+  check(await ev(longDone), "the video with the long title has finished, so its actions are there to read");
   const slowPictures = `(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a slow lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: "dreamshaper-8-lcm" }) }); })()`;
   for (const [width, height] of [[360, 740], [390, 844]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
