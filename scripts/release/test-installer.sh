@@ -15,8 +15,18 @@ port=${2:-26010}
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/lb-installer-test.XXXXXX")"
 serve_pid=
+# The gateway's root is inside $work and it keeps writing while it stops (logs, the database's
+# checkpoint), so delete only once it has exited: up to 10 s, then KILL as a last resort.
 cleanup() {
-  [ -z "$serve_pid" ] || kill "$serve_pid" 2> /dev/null || true
+  if [ -n "$serve_pid" ]; then
+    kill "$serve_pid" 2> /dev/null || true
+    for _ in $(seq 1 100); do
+      kill -0 "$serve_pid" 2> /dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$serve_pid" 2> /dev/null || true
+    wait "$serve_pid" 2> /dev/null || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
