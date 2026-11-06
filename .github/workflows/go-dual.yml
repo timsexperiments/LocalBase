@@ -16,7 +16,7 @@ permissions:
 jobs:
   dual:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'dual')
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       MODEL_FILE: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
