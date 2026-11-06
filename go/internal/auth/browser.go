@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -74,6 +75,8 @@ type Browser struct {
 	magicDropped atomic.Int64
 	// magicFailed is when a link that could not be issued was last logged, as Unix seconds.
 	magicFailed atomic.Int64
+	// failedLog keeps what failed sign-ins write to the log small.
+	failedLog *obs.Sampler
 }
 
 type oidcRuntime struct {
@@ -101,7 +104,7 @@ type loginState struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
+	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), failedLog: &obs.Sampler{Every: time.Minute, Burst: 20}, Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
 		oidc: map[string]*oidcRuntime{}, spent: map[string]time.Time{}, stateKey: make([]byte, 32)}
 	if _, err := rand.Read(b.stateKey); err != nil {
@@ -549,11 +552,21 @@ func (b *Browser) CompleteLogin(w http.ResponseWriter, r *http.Request) {
 	id, owner, err := b.exchange(r.Context(), rt, code, state)
 	if err != nil {
 		b.unspendLoginState(stateValue)
-		b.Log.Warn("OpenID Connect sign-in failed.", "event", "auth.signin-failed", "error", err.Error())
+		if now := time.Now(); b.failedLog.Allow(now) { // anyone can start a sign-in and fail it
+			b.Log.Warn("OpenID Connect sign-in failed.", "event", "auth.signin-failed", "error", err.Error(), "held_back", b.failedLog.Flush(now))
+		}
 		failed()
 		return
 	}
 	b.establish(w, r, *id, owner)
+}
+
+// LogHeldBack says how many failed sign-ins were counted rather than logged. It's for shutdown,
+// when no later failure will say so.
+func (b *Browser) LogHeldBack() {
+	if n := b.failedLog.Drain(time.Now()); n > 0 {
+		b.Log.Warn("Failed sign-ins were counted rather than logged.", "event", "auth.signin-failed-summary", "held_back", n)
+	}
 }
 
 func (b *Browser) exchange(ctx context.Context, rt *oidcRuntime, code string, state loginState) (*Identity, string, error) {

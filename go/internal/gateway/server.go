@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -78,6 +79,15 @@ type Server struct {
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runManager
+	// anonLog keeps what requests with no credential write to the log small.
+	anonLog *obs.Sampler
+	// anonRefused counts the 401s and 403s for those requests since start, logged or not.
+	// anonAdminRefused counts the changes among them refused on an audited route, which
+	// aren't audit events. Each summary carries both.
+	anonRefused, anonAdminRefused atomic.Int64
+	// refusedAudit keeps refused changes small in the audit file. Any key can be refused, and the
+	// same file says who changed what.
+	refusedAudit *obs.Sampler
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
@@ -95,7 +105,17 @@ type Server struct {
 	// Overrides applies what only this process has (the environment, serve's flags) to a saved
 	// configuration, before it is published to the runtimes.
 	Overrides func(*store.Config)
+	// LogOutages reports logs that can't rotate or be written, for doctor and status.
+	LogOutages func() []obs.LogOutage
 }
+
+// What requests with no credential may write to the log.
+const (
+	anonymousLogEvery = time.Minute
+	anonymousLogBurst = 20
+	refusedAuditEvery = time.Minute
+	refusedAuditBurst = 20
+)
 
 func New(s *Server) *Server {
 	s.started = time.Now()
@@ -110,6 +130,8 @@ func New(s *Server) *Server {
 		runsDir = filepath.Join(rootDir, "runs")
 	}
 	s.runs = newRunManager(s, runsDir)
+	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
+	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	go s.runs.janitor()
 	mux := newRouteMux()
 	mux.HandleFunc("/health", s.health)
@@ -175,6 +197,33 @@ func (s *Server) StopRuns(wait time.Duration) { s.runs.Shutdown(wait) }
 
 // Stopping makes health and readiness report the gateway is shutting down.
 func (s *Server) Stopping() { s.stopping.Store(true) }
+
+// LogHeldBack writes what has been counted and not yet said. It's for once requests have stopped:
+// during a run, only a later request brings a summary out.
+func (s *Server) LogHeldBack() {
+	if s.Browser != nil {
+		s.Browser.LogHeldBack()
+	}
+	held := s.anonLog.Drain(time.Now())
+	if held > 0 || s.anonRefused.Load() > 0 || s.anonAdminRefused.Load() > 0 {
+		s.anonymousSummary(held)
+	}
+	if held := s.refusedAudit.Drain(time.Now()); held > 0 {
+		s.Log.Warn("Refused changes were counted rather than logged.", "event", "audit.refused-summary", "held_back", held)
+	}
+}
+
+// anonymousSummary says how many requests with no credential were held back since the last one,
+// with the totals since start. Totals alone aren't a warning.
+func (s *Server) anonymousSummary(held int) {
+	level := slog.LevelWarn
+	if held == 0 {
+		level = slog.LevelInfo
+	}
+	s.Log.Log(context.Background(), level, "Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
+		"count", held, "interval_seconds", int(s.anonLog.Every.Seconds()),
+		"refused_total", s.anonRefused.Load(), "admin_refused_total", s.anonAdminRefused.Load())
+}
 
 type principalKey struct{}
 
@@ -459,8 +508,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(auth); i += 2 {
 			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
 		}
+		now := time.Now()
+		if n := s.anonLog.Flush(now); n > 0 {
+			s.anonymousSummary(n)
+		}
 		if quietRoute(label, r.URL.Path) && status < 400 {
 			return // successful probes and polls are not logged
+		}
+		anonymous := !s.NoAuth && status < 500 && (rec.auth == nil || rec.auth.Kind == "anonymous")
+		if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+			s.anonRefused.Add(1)
+		}
+		if anonymous && !s.anonLog.Allow(now) {
+			return // anyone can send these, so a flood can't be what fills the log
 		}
 		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
 		attrs := []any{"event", "http.request", "category", "http", "request_id", id,
@@ -657,5 +717,11 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
 		return
 	}
-	writeJSON(w, 200, map[string]string{"instanceId": o.InstanceID, "rootHash": o.RootHash})
+	out := map[string]any{"instanceId": o.InstanceID, "rootHash": o.RootHash}
+	if s.LogOutages != nil {
+		if outages := s.LogOutages(); len(outages) > 0 {
+			out["logOutages"] = outages // Only then, so the usual answer doesn't change.
+		}
+	}
+	writeJSON(w, 200, out)
 }

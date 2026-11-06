@@ -68,3 +68,14 @@ A failed install prints a reason. See [install failures](install-failures.md).
 - **"A file did not match its checksum and was fetched again."** A file was already on disk at the right size with the wrong contents, so it was replaced from its pinned source. If the source is wrong too, the install stops and names the file.
 
 A checksum "recorded after download" says which file you have. It doesn't say who published it.
+
+## A log that can't rotate
+
+`local-base doctor` and `local-base status` print `Log problem:` when the running gateway can't rotate or write a log, with its path, size, reason and how long it has been going on. A read-only `logs` directory or a full disk are the usual causes. With no gateway running there is nothing to report, because only the gateway knows.
+
+While it lasts:
+
+- **`events.jsonl`** stays under its 10 MiB limit, so new events are dropped and counted. The older events and archives are kept.
+- **`audit.jsonl`** keeps its events by going up to 4 MiB past the limit. After that, up to 4 MiB of events go to the service's stderr, whole. Only after that are they lost, and stderr says so. The stderr allowance is per outage. On Linux the service's stderr goes to the journal rather than a private file, so whoever can read the journal can read those events. On macOS only the newest 1 MiB of that capture is kept when the gateway next starts, so copy out what you need first.
+
+Fix the cause and writing resumes by itself. stderr then says how many events were lost or are only on stderr.

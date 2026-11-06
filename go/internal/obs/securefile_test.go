@@ -277,7 +277,7 @@ func TestCheckRootFiles(t *testing.T) {
 	for _, d := range []string{"logs", "runs", "runtime"} {
 		os.Mkdir(filepath.Join(root, d), 0o700)
 	}
-	for _, f := range []string{"logs/events.jsonl", "logs/events.1.jsonl", "logs/service-stderr.log", "runs/run_a.json", "runtime/model-operations.json"} {
+	for _, f := range []string{"logs/events.jsonl", "logs/events.1.jsonl", "logs/audit.jsonl", "logs/audit.1.jsonl", "logs/service-stderr.log", "runs/run_a.json", "runtime/model-operations.json"} {
 		os.WriteFile(filepath.Join(root, f), []byte("x"), 0o600)
 	}
 	if got := CheckRootFiles(root); len(got) != 0 {
@@ -287,13 +287,13 @@ func TestCheckRootFiles(t *testing.T) {
 		t.Errorf("an empty root: %v", got)
 	}
 	target, content := victim(t)
-	for _, rel := range []string{"logs/events.jsonl", "logs/events.2.jsonl", "logs/service-stderr.log", "logs/service-stderr.log.1", "runs/run_a.json", "runtime/model-operations.json"} {
+	for _, rel := range []string{"logs/events.jsonl", "logs/events.2.jsonl", "logs/audit.jsonl", "logs/audit.2.jsonl", "logs/service-stderr.log", "logs/service-stderr.log.1", "runs/run_a.json", "runtime/model-operations.json"} {
 		p := filepath.Join(root, rel)
 		os.Remove(p)
 		os.Symlink(target, p)
 	}
 	got := CheckRootFiles(root)
-	if len(got) != 6 {
+	if len(got) != 8 {
 		t.Errorf("found %d: %v", len(got), got)
 	}
 	for _, e := range got {

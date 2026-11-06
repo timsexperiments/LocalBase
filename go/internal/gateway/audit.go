@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 )
@@ -60,7 +61,15 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			kind, id = "model", in.Model
 		}
 		actorKind, actorID := s.auditActor(r)
+		if refused && (actorKind == "" || actorKind == "anonymous") {
+			s.anonAdminRefused.Add(1)
+			return // anyone can send these, so they're counted, not audited
+		}
 		if refused {
+			now := time.Now()
+			if !s.refusedAudit.Allow(now) {
+				return
+			}
 			action := in.Action
 			if !auditActionRe.MatchString(action) {
 				action = ""
@@ -69,7 +78,8 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 				id = ""
 			}
 			s.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
-				"target_kind", kind, "target_id", id, "status", rec.status, "reason", auditReason(rec.body.Bytes()))
+				"target_kind", kind, "target_id", id, "status", rec.status, "reason", auditReason(rec.body.Bytes()),
+				"held_back", s.refusedAudit.Flush(now))
 			return
 		}
 		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}

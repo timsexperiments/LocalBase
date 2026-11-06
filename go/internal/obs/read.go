@@ -17,6 +17,8 @@ import (
 
 // Filters select events (logs.ts matchesLogFilters).
 type Filters struct {
+	// Audit reads the audit log instead of the main one.
+	Audit     bool
 	Since     time.Time
 	Level     string
 	Runtime   string
@@ -82,18 +84,18 @@ func (f Filters) match(e *Event) bool {
 		(f.RequestID == "" || e.RequestID == f.RequestID)
 }
 
-// paths lists the log files oldest first: archives 5..1, then the active file.
-func paths(rootDir string) []string {
+// paths lists a log's files oldest first: archives 5..1, then the active file.
+func paths(rootDir, name string) []string {
 	dir := filepath.Join(rootDir, "logs")
 	var out []string
 	for i := archives; i >= 1; i-- {
-		p := filepath.Join(dir, fmt.Sprintf("events.%d.jsonl", i))
+		p := filepath.Join(dir, fmt.Sprintf("%s.%d.jsonl", name, i))
 		if st, err := os.Lstat(p); err == nil && st.Mode().IsRegular() {
 			out = append(out, p)
 		}
 	}
-	if st, err := os.Lstat(filepath.Join(dir, "events.jsonl")); err == nil && st.Mode().IsRegular() {
-		out = append(out, filepath.Join(dir, "events.jsonl"))
+	if st, err := os.Lstat(filepath.Join(dir, name+".jsonl")); err == nil && st.Mode().IsRegular() {
+		out = append(out, filepath.Join(dir, name+".jsonl"))
 	}
 	return out
 }
@@ -101,7 +103,11 @@ func paths(rootDir string) []string {
 // Snapshot returns up to limit matching events, oldest first, from the
 // newest end of the log.
 func Snapshot(rootDir string, f Filters, limit int) ([]*Event, error) {
-	files := paths(rootDir)
+	name := "events"
+	if f.Audit {
+		name = "audit"
+	}
+	files := paths(rootDir, name)
 	var out []*Event
 	for i := len(files) - 1; i >= 0 && len(out) < limit; i-- {
 		b, err := ReadOwnedRegular(files[i])
@@ -149,7 +155,7 @@ func Follow(ctx context.Context, rootDir string, f Filters, emit func(*Event) er
 			s.visible = false
 		}
 		var order []string
-		for _, p := range paths(rootDir) {
+		for _, p := range paths(rootDir, "events") {
 			fh, err := OpenOwnedRegular(p, os.O_RDONLY)
 			if err != nil {
 				continue

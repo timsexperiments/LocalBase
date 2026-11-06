@@ -11,6 +11,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 )
@@ -85,18 +86,22 @@ func serviceCommands() []*cli.Command {
 					printLoginLink(c, firstRunLoginLink(e, net.JoinHostPort(e.Config.GatewayHost, strconv.Itoa(e.Config.GatewayPort))))
 				}
 			}
+			outages := reportLogOutages(c, e)
 			// The fit-aware default (DESIGN §18), when a list is configured.
+			var def *gatewayDefault
 			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
-				if d := gatewayDefaultModel(e); d != nil {
-					line := "Default chat model: " + d.ModelID
-					if d.Reason != "" {
-						line += " (" + d.Reason + ")"
+				if def = gatewayDefaultModel(e); def != nil {
+					line := "Default chat model: " + def.ModelID
+					if def.Reason != "" {
+						line += " (" + def.Reason + ")"
 					}
 					c.Info("%s", line)
-					return statusWithDefault{in, d}, nil
 				}
 			}
-			return in, nil
+			if def == nil && len(outages) == 0 {
+				return in, nil
+			}
+			return statusWithDefault{in, def, outages}, nil
 		}
 	}
 	return []*cli.Command{
@@ -135,18 +140,22 @@ func serviceCommands() []*cli.Command {
 			if open := openSignIn(e); open != "" {
 				c.Info("Browser access: %s", open)
 			}
+			outages := reportLogOutages(c, e)
 			// The fit-aware default (DESIGN §18), when a list is configured.
+			var def *gatewayDefault
 			if len(e.Config.DefaultLLMs) >= 2 && in.Gateway.State == "ready" {
-				if d := gatewayDefaultModel(e); d != nil {
-					line := "Default chat model: " + d.ModelID
-					if d.Reason != "" {
-						line += " (" + d.Reason + ")"
+				if def = gatewayDefaultModel(e); def != nil {
+					line := "Default chat model: " + def.ModelID
+					if def.Reason != "" {
+						line += " (" + def.Reason + ")"
 					}
 					c.Info("%s", line)
-					return statusWithDefault{in, d}, nil
 				}
 			}
-			return in, nil
+			if def == nil && len(outages) == 0 {
+				return in, nil
+			}
+			return statusWithDefault{in, def, outages}, nil
 		}},
 	}
 }
@@ -155,7 +164,34 @@ func serviceCommands() []*cli.Command {
 // model; without a default list the output is exactly TS's.
 type statusWithDefault struct {
 	service.Inspection
-	DefaultChatModel *gatewayDefault `json:"defaultChatModel"`
+	DefaultChatModel *gatewayDefault `json:"defaultChatModel,omitempty"`
+	LogOutages       []obs.LogOutage `json:"logOutages,omitempty"`
+}
+
+// reportLogOutages says which logs the running gateway can't rotate or write. Only that gateway
+// knows, so with none running there is nothing to report.
+func reportLogOutages(c *cli.Ctx, e *env) []obs.LogOutage {
+	state, o, _ := e.Root.OwnerState()
+	if state != "active" || o == nil {
+		return nil
+	}
+	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/instance", nil)
+	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var answer struct {
+		LogOutages []obs.LogOutage `json:"logOutages"`
+	}
+	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&answer) != nil {
+		return nil
+	}
+	for _, out := range answer.LogOutages {
+		c.Info("Log problem: %s", out.Describe(time.Now()))
+	}
+	return answer.LogOutages
 }
 
 type gatewayDefault struct {

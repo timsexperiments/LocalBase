@@ -4984,6 +4984,33 @@ again. `auth.magic-link-dropped` is logged at most once a minute, with no addres
 real person's link, and it can't reach anything else. SMTP has its own deadlines, so a worker always comes back.
 
 
+### 31.8 What a flood can write
+
+Every request wrote a line to the log, which keeps 60 MiB. So about 140,000 requests from anyone, a matter of
+seconds, could push out everything older, including the record of who changed what.
+
+- **Audit events have a file of their own.** `audit.*` events go to `logs/audit.jsonl` as well as the main log, with
+  the same rotation and modes, so nothing else can push them out. `local-base logs --audit` reads it.
+- **Only someone with standing writes one.** A refused change by a caller with no valid credential is no longer an
+  audit event, since anyone can send it. It's counted with other requests like it.
+- **A refused change can't push out a change made.** Any key can be refused, and both go in the audit file. A key with
+  only `models:read` took the record of a change out of every file in about 10 seconds. So the first 20 refusals in a
+  minute are written, the next one written gives how many it held back as `held_back`, and `audit.refused-summary` says
+  the rest at shutdown. A change someone made is always written. The limit is shared, so one key's refusals can crowd
+  out another's: those are counted, not named. At 20 lines a minute, turning over what the file keeps would take more
+  than five days of refusals without a pause.
+- **Requests with no valid credential are counted, not all logged.** The first 20 in a minute are logged, and the rest are
+  summed in one `http.anonymous-summary` when a request arrives after that minute, and at shutdown. A flood of 20,000 now writes
+  under 64 KiB, where it wrote 9 MB. Server errors are always logged, and so is everything from someone with a key or
+  a signed-in API request, and from `--no-auth`. A page view from a signed-in person counts here too: the page layer
+  resolves the person after this point.
+- **There's a running count.** Each summary carries `refused_total`, the 401s and 403s for those requests since start,
+  logged or not, and `admin_refused_total`, the changes refused on an audited route. A signed-in person's refused page
+  view counts too, as above. The gateway has no metrics system, so these are fields on a log event. They start again at
+  each start, and a crash loses what hasn't been written.
+- **`auth.signin-failed`** is limited the same way, with `held_back` saying how many it skipped, and
+  `auth.signin-failed-summary` saying the rest at shutdown.
+
 ### 31.9 What a refused request costs
 
 A caller decides how much is wrong with a request, so what refusing it costs is bounded.

@@ -79,17 +79,17 @@ func TestKeyChangesAndRefusalsAreAudited(t *testing.T) {
 		t.Errorf("refused create: %+v", e)
 	}
 	// A caller with no standing is recorded without its request being read.
-	var noPermission, anonymous bool
+	var noPermission bool
 	for _, e := range entries {
 		if e.Event == refused && e.Status == 403 && e.Reason == "insufficient_permissions" && e.Actor_kind == "api-key" && e.Action == "" {
 			noPermission = true
 		}
-		if e.Event == refused && e.Status == 401 && e.Actor_kind == "anonymous" && e.Action == "" {
-			anonymous = true
+		if e.Event == refused && e.Status == 401 {
+			t.Errorf("a refusal with no credential was audited: %+v", e)
 		}
 	}
-	if !noPermission || !anonymous {
-		t.Errorf("refusals before the body: permission %v, anonymous %v\n%s", noPermission, anonymous, f.logs)
+	if !noPermission {
+		t.Errorf("a refusal before the body wasn't audited\n%s", f.logs)
 	}
 	log := f.logs.String()
 	for name, secret := range map[string]string{"created": secretOf(t, created), "rotated": secretOf(t, rotated), "narrow": narrow, "planted": planted, "unknown": "lb_notarealkeyatall"} {

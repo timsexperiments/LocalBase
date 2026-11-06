@@ -26,6 +26,7 @@ func logsCommand() *cli.Command {
 			{Name: "level", Value: "<debug|info|warn|error>", Help: "Filter by severity"},
 			{Name: "runtime", Value: "<gateway|llm|stt|tts|image|service|cli>", Help: "Filter by runtime"},
 			{Name: "request-id", Value: "<id>", Help: "Filter by request ID"},
+			{Name: "audit", Bool: true, Help: "Read the audit log: who changed what, kept apart from everything else"},
 		},
 		Run: func(c *cli.Ctx) (any, error) {
 			var f obs.Filters
@@ -51,6 +52,9 @@ func logsCommand() *cli.Command {
 			}
 			if f.RequestID = c.String("request-id"); f.RequestID != "" && !requestIDFlagRe.MatchString(f.RequestID) {
 				return nil, cli.Inputf("requestId: Invalid string")
+			}
+			if f.Audit = c.Bool("audit"); f.Audit && c.Bool("follow") {
+				return nil, cli.Inputf("audit: can't be used with --follow")
 			}
 			r, err := root.Open(root.Resolve(c.Global.Root))
 			if err != nil {

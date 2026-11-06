@@ -224,7 +224,8 @@ func CheckRootFiles(rootDir string) []*UnsafeFileError {
 	logs := filepath.Join(rootDir, "logs")
 	if checkDir(logs) {
 		matches, _ := filepath.Glob(filepath.Join(logs, "events*.jsonl"))
-		for _, p := range matches {
+		audit, _ := filepath.Glob(filepath.Join(logs, "audit*.jsonl"))
+		for _, p := range append(matches, audit...) {
 			checkFile(p)
 		}
 		checkFile(filepath.Join(logs, "events.jsonl"))
