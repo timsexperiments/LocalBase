@@ -113,6 +113,12 @@ type readProblems struct {
 	text []string
 }
 
+// addReason records a step with a reason in words of ours, for an error whose text mustn't leave stderr.
+func (p *readProblems) addReason(step, reason string) {
+	p.list = append(p.list, object("step", step, "reason", reason))
+	p.text = append(p.text, step+": "+reason)
+}
+
 func (p *readProblems) add(step string, err error) {
 	reason := "the database is busy"
 	if !store.IsBusy(err) {
@@ -147,7 +153,9 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
 		if st, err = store.OpenReadOnly(filepath.Join(dir, "local-base.db")); err != nil {
 			st, databaseErr = nil, err
-			problems.add("opening the database", err)
+			// The step and a word for why; the error itself goes to stderr only, since a bundle gets
+			// shared and the error can hold a path.
+			problems.addReason("opening the database", (&failedRead{Step: "opening the database", Err: err}).Reason())
 		}
 	}
 	if st != nil {
