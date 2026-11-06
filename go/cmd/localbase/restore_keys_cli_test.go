@@ -84,7 +84,7 @@ func TestARestoreLeavesARotatedKeyAloneUnlessItIsNamed(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("restore naming it: %s", out)
 	}
-	want = "Keys going back to what this backup holds, because you named them:\n  " + key.ID + " (laptop): rotated\n  The secret in this backup works for these, and any they have now stops working.\n"
+	want = "Keys going back to what this backup holds, because you named them:\n  " + key.ID + " (laptop): rotated\n  This backup's secret for each of these will work. The secret each has now will stop working.\n"
 	if !strings.Contains(out, want) {
 		t.Errorf("no %q in:\n%s", want, out)
 	}
@@ -229,7 +229,7 @@ func TestTheKeyLinesRead(t *testing.T) {
 		{func(r *backup.Report) { r.KeysLeftOut = bare },
 			"Keys in this backup that this root doesn't have stay out:\n  key_a (laptop)\n  To bring one back: --bring-back-key <id>\n"},
 		{func(r *backup.Report) { r.KeysBroughtBack = one },
-			"Keys going back to what this backup holds, because you named them:\n  key_a (laptop): rotated, permissions changed\n  The secret in this backup works for these, and any they have now stops working.\n"},
+			"Keys going back to what this backup holds, because you named them:\n  key_a (laptop): rotated, permissions changed\n  This backup's secret for each of these will work. The secret each has now will stop working.\n"},
 		{func(r *backup.Report) { r.KeysLost = bare },
 			"Keys made since this backup would stop working:\n  key_a (laptop)\n"},
 		{func(r *backup.Report) {
