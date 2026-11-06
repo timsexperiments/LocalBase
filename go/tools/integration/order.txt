@@ -158,7 +158,7 @@ sec-go-toolchain
 sec-anonymous-sign-in
 sec-magic-link-errors
 sec-validation-early-stop
-# sec-repo-settings: out of the 2026-11-05 pass; docs/repo-settings.md conflicts with the tree's newer reading, for Security to rebase
+sec-repo-settings
 sec-stalled-reader
 sec-jsjson-depth
 sec-backend-env
@@ -210,3 +210,5 @@ rel-soak-split
 feat-wal-restore
 wal-store-side
 cli-printable
+# Reliability: the two #614 skip lines go, for the tree only, once #609 and #610 are in
+pick rel-chaos-goodkey-tree origin/rewrite/go-rel-chaos-goodkey
