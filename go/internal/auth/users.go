@@ -460,11 +460,15 @@ func IssueMagicLink(ctx context.Context, st *store.Store, email, issuer string) 
 	}
 	defer tx.Rollback()
 	var userID, status string
-	if err := tx.QueryRowContext(ctx, `SELECT u.id, u.status FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id WHERE e.email = ?
+	err = tx.QueryRowContext(ctx, `SELECT u.id, u.status FROM auth_user_emails e JOIN auth_users u ON e.user_id = u.id WHERE e.email = ?
 		AND (EXISTS (SELECT 1 FROM go_invitation_issuers i WHERE i.user_id = u.id AND i.issuer = ?)
 			OR EXISTS (SELECT 1 FROM auth_identities a WHERE a.user_id = u.id AND a.issuer = ?))`, email, issuer, issuer).
-		Scan(&userID, &status); err != nil || (status != "pending" && status != "active") {
+		Scan(&userID, &status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows), err == nil && status != "pending" && status != "active":
 		return "", "", nil
+	case err != nil:
+		return "", "", err
 	}
 	var created string
 	if tx.QueryRowContext(ctx, `SELECT created_at FROM auth_magic_link_tokens WHERE user_id = ?`, userID).Scan(&created) == nil {

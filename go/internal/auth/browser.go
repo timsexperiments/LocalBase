@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -36,6 +37,7 @@ const (
 	loginStateTTL     = 10 * time.Minute
 	loginStateRandom  = 24
 	maxSpentStates    = 4096
+	magicLinkWorkers  = 4
 	maxIdPResponse    = 64 * 1024
 	OIDCCallbackPath  = "/oidc/callback"
 	MagicCallbackPath = "/magic-link/callback"
@@ -66,6 +68,12 @@ type Browser struct {
 	// spent holds the states of callbacks being worked on or finished, until they would
 	// have expired anyway.
 	spent map[string]time.Time
+	// magicWork bounds the magic-link requests being worked on, since anyone can post one.
+	magicWork chan struct{}
+	// magicDropped is when a dropped request was last logged, as Unix seconds.
+	magicDropped atomic.Int64
+	// magicFailed is when a link that could not be issued was last logged, as Unix seconds.
+	magicFailed atomic.Int64
 }
 
 type oidcRuntime struct {
@@ -93,7 +101,7 @@ type loginState struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
+	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
 		oidc: map[string]*oidcRuntime{}, spent: map[string]time.Time{}, stateKey: make([]byte, 32)}
 	if _, err := rand.Read(b.stateKey); err != nil {
@@ -690,10 +698,34 @@ func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliv
 		done()
 		return
 	}
+	if ValidEmail(email) == "" {
+		done()
+		return
+	}
+	select {
+	case b.magicWork <- struct{}{}:
+	default:
+		// The page reads the same either way. Whoever asked can ask again.
+		now := time.Now().Unix()
+		if last := b.magicDropped.Load(); now-last >= 60 && b.magicDropped.CompareAndSwap(last, now) {
+			b.Log.Warn("Magic-link requests were dropped because too many are being worked on.", "event", "auth.magic-link-dropped")
+		}
+		done()
+		return
+	}
 	go func() {
+		defer func() { <-b.magicWork }()
 		ctx := context.Background()
 		token, to, err := IssueMagicLink(ctx, b.Store, email, MagicIssuer(b.Config.Origin))
-		if err != nil || token == "" {
+		if err != nil {
+			// Sparingly, since anyone can ask as often as the database keeps failing.
+			now := time.Now().Unix()
+			if last := b.magicFailed.Load(); now-last >= 60 && b.magicFailed.CompareAndSwap(last, now) {
+				b.Log.Error("A magic link could not be issued.", "event", "auth.magic-link-issue-failed", "error", err.Error())
+			}
+			return
+		}
+		if token == "" {
 			return
 		}
 		if err := deliver(to, b.Config.Origin+MagicCallbackPath+"#"+token); err != nil {
