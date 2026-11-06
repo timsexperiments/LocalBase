@@ -81,6 +81,12 @@ func TestSpeechCrashAnswers503(t *testing.T) {
 // the fake whisper-server.
 func newTranscriptionGateway(t *testing.T) *httptest.Server {
 	t.Helper()
+	return newTranscriptionGatewayQueue(t, 0)
+}
+
+// newTranscriptionGatewayQueue is newTranscriptionGateway with a queue timeout; 0 is the default.
+func newTranscriptionGatewayQueue(t *testing.T, queueTimeout time.Duration) *httptest.Server {
+	t.Helper()
 	if goruntime.GOOS != "darwin" {
 		t.Skip("the transcription runtime target here is Metal")
 	}
@@ -114,7 +120,7 @@ func newTranscriptionGateway(t *testing.T) *httptest.Server {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := runtime.NewService(runtime.ServiceDeps{Modality: "stt", Kind: "stt", Catalog: cat, Store: st, Memory: mem, Log: log,
 		Config: func() *store.Config { return cfg }, Gate: gate, ModelsDir: modelsDir, RootDir: r.Dir, Host: "127.0.0.1",
-		Port: freePort(t), Binaries: map[string]string{"whisper-server": fakeBinary},
+		Port: freePort(t), Binaries: map[string]string{"whisper-server": fakeBinary}, QueueTimeout: queueTimeout,
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
 	ts := httptest.NewServer(New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
@@ -181,5 +187,35 @@ func TestRunCrashCarries503Code(t *testing.T) {
 	m = c.waitStatus(id, "failed")
 	if e, _ := m["error"].(map[string]any); e == nil || e["code"] != "service_unavailable" {
 		t.Errorf("a run whose backend crashed: %v", m)
+	}
+}
+
+// Over HTTP: a load longer than the queue's deadline answers the request, not 429.
+func TestATranscriptionLongerToLoadThanTheQueueTimeoutIsAnswered(t *testing.T) {
+	t.Setenv("FAKE_STARTUP_MS", "900")
+	ts := newTranscriptionGatewayQueue(t, 150*time.Millisecond)
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	_ = mw.WriteField("model", "whisper-base-q8_0")
+	fw, err := mw.CreateFormFile("file", "a.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(testWAV()); err != nil {
+		t.Fatal(err)
+	}
+	_ = mw.Close()
+	start := time.Now()
+	resp, err := http.Post(ts.URL+"/v1/audio/transcriptions", mw.FormDataContentType(), &b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Errorf("after %s: %d %s", time.Since(start).Round(time.Millisecond), resp.StatusCode, body)
+	}
+	if took := time.Since(start); took < 900*time.Millisecond {
+		t.Errorf("took %s, so the load wasn't longer than the queue's deadline", took)
 	}
 }

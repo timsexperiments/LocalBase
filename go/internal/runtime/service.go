@@ -104,7 +104,10 @@ type svcWaiter struct {
 	ready      chan error
 	lease      *ServiceLease
 	done       bool
-	dispatched time.Time // left the queue (TS queueWaitMs)
+	// dispatching: its own backend start is running. The start has its own budget, so the queue's
+	// deadline no longer applies.
+	dispatching bool
+	dispatched  time.Time // left the queue (TS queueWaitMs)
 }
 
 // ServiceLease is exclusive use of the resident backend for one request.
@@ -202,28 +205,27 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 	s.mu.Unlock()
 	timer := time.NewTimer(s.d.QueueTimeout)
 	defer timer.Stop()
-	select {
-	case err := <-w.ready:
-		if err != nil {
-			return nil, err
-		}
-		w.lease.Waited = w.dispatched.Sub(start)
-		return w.lease, nil
-	case <-ctx.Done():
-		s.abandon(w)
-		return nil, ctx.Err()
-	case <-timer.C:
-		s.mu.Lock()
-		if w.done {
-			s.mu.Unlock()
-			if err := <-w.ready; err != nil {
+	for {
+		select {
+		case err := <-w.ready:
+			if err != nil {
 				return nil, err
 			}
+			w.lease.Waited = w.dispatched.Sub(start)
 			return w.lease, nil
+		case <-ctx.Done():
+			s.abandon(w)
+			return nil, ctx.Err()
+		case <-timer.C:
+			s.mu.Lock()
+			if w.dispatching || w.done {
+				s.mu.Unlock()
+				continue // its own backend start is not limited by the queue deadline
+			}
+			s.remove(w)
+			s.mu.Unlock()
+			return nil, ErrQueueTimeout
 		}
-		s.remove(w)
-		s.mu.Unlock()
-		return nil, ErrQueueTimeout
 	}
 }
 
@@ -267,6 +269,7 @@ func (s *Service) pump() {
 			return
 		}
 		s.busy = true // the switch holds the backend
+		head.dispatching = true
 		head.dispatched = time.Now()
 		s.switching = true
 		s.switchW.Add(1)
