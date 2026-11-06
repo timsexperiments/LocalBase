@@ -112,6 +112,10 @@ func TestBackendsAreRegisteredFromThisComputerOnly(t *testing.T) {
 	if strings.Contains(body, `hx-post="/app/backends"`) || strings.Contains(body, `name="definition"`) {
 		t.Errorf("the page still offers a form: %.400s", body)
 	}
+	// The command can be copied: the Connect page's copy script, on the command's own scope.
+	if !strings.Contains(body, `data-copy-text>local-base backends add --file`) || !strings.Contains(body, `data-copy>Copy</button>`) || !strings.Contains(body, `js/connect.js`) {
+		t.Errorf("the command has no copy button: %.600s", body)
+	}
 }
 
 // Nothing a request reaches can register or remove one. Only the command line does.
