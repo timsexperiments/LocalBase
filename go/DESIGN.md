@@ -753,9 +753,16 @@ The requirements that supersede earlier preferences (2026-10-20):
 Auth profile values are **plaintext at rest**: the file is mode 0600 in a
 0700 directory, readable by the account LocalBase runs as and by anyone with
 its backups. That matches the minimal-dependencies policy (no keychain or
-secret-service library). A profile named `huggingface` may list CDN origins
-that also receive the Hugging Face token; otherwise the token goes to the
-Hugging Face endpoint only. Every route, page, export and log shows profiles
+secret-service library). A profile named `huggingface` may list origins that
+also receive the Hugging Face token: Hugging Face's own (`huggingface.co`,
+`hf.co`, or a subdomain of either at any depth, such as its CDN
+`cas-bridge.xethub.hf.co`, written as `https://` and the host alone), or the
+origin `HF_ENDPOINT` names. `hf.space` isn't one, as anyone can run a Space
+there. Any other origin it lists, in a file written before this or by hand, is
+left out wherever the profile is used, with the warning
+`acquire.profile-origin-ignored`; otherwise the token goes to the Hugging Face
+endpoint only. A profile that fails the checks of `auth-profiles add` is kept
+out of use, and a restore refuses a backup that holds one. Every route, page, export and log shows profiles
 as ids, origins and header names only (`/_localbase/auth-profiles`, `auth-profiles list`). The
 `diagnostics` bundle (M5) must leave out `credentials/`, the `model_backend_selections` rows
 and the device hash; `config show` reads none of them.
@@ -860,7 +867,8 @@ files are fetched.
   - A redirect to another origin drops them, as it drops the HF token
     outside `huggingface.co`.
   - `Range`, `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` and
-    `Accept-Encoding` belong to the downloader and are rejected in profiles.
+    `Accept-Encoding` belong to the downloader: they're rejected in profiles,
+    and never sent from one, even one in a file written by hand.
 - **Redaction:** logs, errors, progress and exports redact header values and
   the query values of URLs from custom sources.
 
@@ -951,7 +959,7 @@ export and the database for three planted secrets.
 | AC10 OpenAI-compatible interfaces unchanged | `AC10 OpenAI-compatible routes are unchanged`; the TS/Go contract suite | |
 | OP1 device identity stays local; export, import elsewhere, automatic there | `OP1 exports carry no selection or device hash; ...` (exported bytes scanned for the device id, the hashed machine id, selection fields and secrets; the second root has zero selection rows) | |
 | OP2 profiles redacted everywhere (planted secrets) | `OP2 no output, page, log, export or database contains a planted secret` | `acquire.TestDirectURLImport` |
-| OP3 HF token off CDN origins unless the `huggingface` profile lists them; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...`, `OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it` (direct URL and HF→http CDN hop) | `acquire.TestHFTokenCDNScope`, `TestRedirectDowngradeRefused` |
+| OP3 HF token off CDN origins unless the `huggingface` profile lists them, which it can only for Hugging Face's own; anonymous CDN works; HTTPS→HTTP refused | `OP3 the Hugging Face token stays off CDN origins ...`, `OP3 an HTTPS to plain-HTTP redirect is refused, even with --allow-http, and no header crosses it` (direct URL and HF→http CDN hop) | `acquire.TestHFTokenCDNScope`, `TestTheHuggingFaceProfileNamesOnlyHuggingFacesOwnHosts`, `TestTheTokenNeverGoesWhereTheProfileCantSendIt`, `TestRedirectDowngradeRefused` |
 | OP4 ratings never from names; user sentences plus machine codes; findings table | `OP4 models inspect --json has a findings table ...`, `AC2 ...` | `backends.TestNoRatingFromNames` |
 | OP5 CrispASR listed as not installed, never automatic until pinned (M4: automatic only where pinned, and only for speech) | `OP5 CrispASR is automatic only where pinned, and only for speech` (backends list, a Kokoro speech model, a GGUF whisper model it is never chosen for) | `backends.TestCrispASRWithoutPin` |
 | Rollback stays a binary swap | `rollback: TS opens the database Go wrote` | `store.TestBackendChoicesPersist` |

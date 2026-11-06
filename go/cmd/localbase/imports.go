@@ -435,6 +435,12 @@ func authProfilesCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			for _, w := range ps.Warnings {
+				c.Info("%s", w)
+			}
+			for _, bad := range ps.Problems() {
+				c.Info("%v", bad)
+			}
 			out := []acquire.PublicProfile{}
 			for _, p := range ps.Profiles {
 				pub := p.Public()

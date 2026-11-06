@@ -41,11 +41,18 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	r.Header.Del("Authorization")
 	r.Header.Del("Cookie")
 	if t.profile != nil {
+		// The downloader's own headers are never a profile's, whatever a profile says.
 		for name := range t.profile.Headers {
+			if reserved[http.CanonicalHeaderKey(name)] {
+				continue
+			}
 			r.Header.Del(name)
 		}
 		if t.profile.Allows(origin) {
 			for name, value := range t.profile.Headers {
+				if reserved[http.CanonicalHeaderKey(name)] {
+					continue
+				}
 				r.Header.Set(name, value)
 			}
 		}
@@ -58,9 +65,9 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // newClient returns a client that sends profile headers only to the
 // profile's origins, and the Hugging Face token only to the Hugging Face
-// endpoint's origin plus any origins listed in a "huggingface" auth profile
-// (for example a CDN the person chose to trust with the token). Anonymous
-// downloads from CDNs work without it.
+// endpoint's origin plus the origins a "huggingface" auth profile names, which
+// are only ever Hugging Face's own (see LoadProfiles). Anonymous downloads from
+// CDNs work without it.
 func newClient(profile *Profile, hfToken string, hfExtra []string, allowPrivate bool) *http.Client {
 	hfOrig, _ := Origin(HFEndpoint())
 	base := http.DefaultTransport.(*http.Transport).Clone()

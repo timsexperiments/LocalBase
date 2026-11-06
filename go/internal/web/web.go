@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"path"
 	"regexp"
@@ -62,6 +63,8 @@ type Deps struct {
 	Voices func(ctx context.Context) ([]voices.Voice, error)
 	// ListenAddr is where the gateway listens, for Connect's address.
 	ListenAddr func() string
+	// Log is the gateway's event log, for what an import warns of (the default logger when nil).
+	Log *slog.Logger
 }
 
 type UI struct {
