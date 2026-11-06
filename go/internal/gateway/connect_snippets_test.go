@@ -1,14 +1,56 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 )
+
+// waitForChat waits for the backend to answer before a snippet runs. A snippet's request would
+// otherwise be the one that starts it, and a start that fails answers 503 with Retry-After: right
+// for a client, which retries, but a snippet runs once. This is about whether a snippet works, not
+// whether a backend starts first time, so anything but that 503 still fails at once.
+func waitForChat(t *testing.T, base, key string) {
+	t.Helper()
+	// The deadline covers a request that hangs as well as one that keeps answering 503.
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	for {
+		req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(chatBody("hi")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close() // Read to the end already.
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case resp.StatusCode == http.StatusOK:
+			return
+		case resp.StatusCode != http.StatusServiceUnavailable:
+			t.Fatalf("waiting for the backend: %d %s", resp.StatusCode, body)
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("the backend still answers 503 after 60 s: %s", body)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
 
 // What Connect hands out works (DESIGN §30.7): the curl snippet, run by a real shell
 // with a real curl, gets a real answer from a real gateway, using the scopes the page's
@@ -25,6 +67,7 @@ func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForChat(t, ts.URL, key)
 	target := connect.Target{BaseURL: ts.URL + "/v1", Model: chatModel, Key: key}
 	c := connect.Find("curl", target)
 	var parts []string
