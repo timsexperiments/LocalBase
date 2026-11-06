@@ -697,7 +697,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		}
 	}
 
-	rep := &Report{Target: target, NewRoot: state.newRoot, Manifest: m}
+	rep := &Report{Target: target, NewRoot: state.newRoot, Manifest: manifestToShow(m)}
 	access, err := auth.LoadAccess(dir)
 	if err != nil {
 		return nil, refuse("ui-access.json in this backup is not valid: %v", err)
@@ -1735,4 +1735,17 @@ func Undo(targetDir string) error {
 		return refuse("The gateway lock on %s can't be read: %s", r.Dir, detail)
 	}
 	return undo(r.Dir, j, func() {})
+}
+
+// manifestToShow is the manifest as a report shows it, --json included: without the commands the file gives
+// for its removed secrets. Anything reading the report couldn't tell those from ours, and PutBack carries the
+// checked ones.
+func manifestToShow(m *Manifest) *Manifest {
+	shown := *m
+	shown.SecretsRemoved = nil
+	for _, r := range m.SecretsRemoved {
+		r.Restore = ""
+		shown.SecretsRemoved = append(shown.SecretsRemoved, r)
+	}
+	return &shown
 }

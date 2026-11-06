@@ -230,7 +230,7 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	if !strings.Contains(made.stderr, "not anonymised") || !strings.Contains(made.stderr, "not encrypted") {
 		t.Errorf("the warning: %q", made.stderr)
 	}
-	for _, want := range []string{"OIDC client secret (google)", "access oidc add --id google", "SMTP password", "download credential (vendor)"} {
+	for _, want := range []string{"OIDC client secret (google)", "access oidc add --id=google", "SMTP password", "download credential (vendor)"} {
 		if !strings.Contains(made.stdout, want) {
 			t.Errorf("the output should name %q:\n%s", want, made.stdout)
 		}

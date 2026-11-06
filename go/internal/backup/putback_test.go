@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -73,6 +74,11 @@ func TestACommandInTheFileIsNeverUsed(t *testing.T) {
 	if len(rep.PutBack) != len(backupSaid) {
 		t.Fatalf("put back: %v", rep.PutBack)
 	}
+	for _, r := range rep.Manifest.SecretsRemoved {
+		if r.Restore != "" {
+			t.Errorf("the report still carries the file's own command for %s: %q", r.Name, r.Restore)
+		}
+	}
 	for _, p := range rep.PutBack {
 		if strings.Contains(p.Command, "rm -rf") {
 			t.Errorf("%s: the file's command was used: %q", p.Name, p.Command)
@@ -133,5 +139,25 @@ func TestANameFromAFileIsBounded(t *testing.T) {
 	p := putBack(RemovedSecret{Kind: "unknown", Name: strings.Repeat("x", 5000)})
 	if len(p.Name) > 200 {
 		t.Errorf("a name of %d bytes", len(p.Name))
+	}
+}
+
+// What a shell makes of a printed option is exactly the value, in sh and, where it's installed, in zsh, which
+// is macOS's default and expands a word that starts with =.
+func TestAShellGetsBackExactlyTheValue(t *testing.T) {
+	values := []string{"google", "Acme SSO", "it's", "$HOME", "`id`", "$(id)", "a|b", "a&b", "a;b", "-x", "--name", "=foo",
+		"back\\slash", "~", "#x", "*", "!x", "x^y", "", "https://accounts.google.com", "X-Api-Key"}
+	for _, shell := range []string{"/bin/sh", "zsh"} {
+		path, err := exec.LookPath(shell)
+		if err != nil {
+			t.Logf("%s isn't installed, so it's skipped", shell)
+			continue
+		}
+		for _, v := range values {
+			got, err := exec.Command(path, "-c", "printf %s "+option("name", v)).Output()
+			if err != nil || string(got) != "--name="+v {
+				t.Errorf("%s turns %q into %q: %v", shell, option("name", v), got, err)
+			}
+		}
 	}
 }

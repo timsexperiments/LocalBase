@@ -64,30 +64,30 @@ func putBackCommand(r RemovedSecret, check bool) (string, bool) {
 		if !ok(registrationIDRe.MatchString(r.ID)) {
 			return "", false
 		}
-		return "local-base access github-oauth add --id " + shellArg(r.ID), true
+		return "local-base access github-oauth add " + option("id", r.ID), true
 	case kindOIDC:
 		if !ok(registrationIDRe.MatchString(r.ID) && plainText(r.Label, 100) && auth.ValidIssuer(r.Issuer) &&
 			plainText(r.ClientID, 256) && r.ClientID != "" && !strings.ContainsAny(r.ClientID, " \t")) {
 			return "", false
 		}
-		return fmt.Sprintf("local-base access oidc add --id %s --name %s --issuer %s --client-id %s --client-secret-env <ENVIRONMENT_VARIABLE>",
-			shellArg(r.ID), shellArg(r.Label), shellArg(r.Issuer), shellArg(r.ClientID)), true
+		return fmt.Sprintf("local-base access oidc add %s %s %s %s --client-secret-env <ENVIRONMENT_VARIABLE>",
+			option("id", r.ID), option("name", r.Label), option("issuer", r.Issuer), option("client-id", r.ClientID)), true
 	case kindDownload:
 		if !ok(profileIDRe.MatchString(r.ID)) {
 			return "", false
 		}
-		parts := []string{"local-base auth-profiles add --id " + shellArg(r.ID)}
+		parts := []string{"local-base auth-profiles add " + option("id", r.ID)}
 		for _, o := range r.Origins {
 			if !ok(auth.ValidOrigin(o)) {
 				return "", false
 			}
-			parts = append(parts, "--origin "+shellArg(o))
+			parts = append(parts, option("origin", o))
 		}
 		for _, h := range r.Headers {
 			if !ok(headerNameRe.MatchString(h)) {
 				return "", false
 			}
-			parts = append(parts, "--header-env "+shellArg(h)+"=<ENVIRONMENT_VARIABLE>")
+			parts = append(parts, option("header-env", h)+"=<ENVIRONMENT_VARIABLE>")
 		}
 		return strings.Join(parts, " "), true
 	}
@@ -106,6 +106,13 @@ func plainText(s string, max int) bool {
 		}
 	}
 	return true
+}
+
+// option is --name=value, with the value quoted for a POSIX shell. Joined with =, a value that starts with
+// - can't be taken for an option, and the word starts with --, so zsh doesn't expand a value that starts
+// with =. The CLI splits at the first =.
+func option(name, value string) string {
+	return "--" + name + "=" + shellArg(value)
 }
 
 // shellArg quotes a value for a POSIX shell, when it needs it.
