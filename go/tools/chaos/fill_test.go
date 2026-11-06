@@ -67,6 +67,23 @@ func TestFreeFullDisk(t *testing.T) {
 	}
 }
 
+// A failure in CI lists each refused delete with the free bytes at that moment, runs put together.
+func TestRefusalsReadAsRuns(t *testing.T) {
+	got := runs([]string{"0 bytes free: no space", "0 bytes free: no space", "4096 bytes free: no space"})
+	if want := "tries 1-2: 0 bytes free: no space; try 3: 4096 bytes free: no space"; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+	err := freeFullDisk("filler", 96<<20, diskOps{
+		truncate:  func(string, int64) error { return nil },
+		remove:    func(string) error { return syscall.ENOSPC },
+		available: func() (int64, error) { return 0, nil },
+		wait:      func() {},
+	}, 3)
+	if err == nil || !strings.Contains(err.Error(), "each try: tries 1-3: 0 bytes free: no space left on device") {
+		t.Errorf("err %v, want each try with its free bytes", err)
+	}
+}
+
 func TestDetachVolume(t *testing.T) {
 	busy := []byte(`hdiutil: couldn't eject "disk4" - Resource busy`)
 	script := func(fails int, out []byte) (func() ([]byte, error), *int) {
