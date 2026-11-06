@@ -347,10 +347,18 @@ func ApplyPolicy(ctx context.Context, st *store.Store, p *Policy) error {
 	}
 	for rows.Next() {
 		var id, name string
-		rows.Scan(&id, &name)
+		if err := rows.Scan(&id, &name); err != nil {
+			_ = rows.Close()
+			return err
+		}
 		existing[name] = id
 	}
-	rows.Close()
+	// A role that wasn't read would look new, and get a new id, leaving who holds it behind.
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return err
+	}
 	ids := map[string]string{}
 	for _, r := range p.Roles {
 		id, ok := existing[r.Name]

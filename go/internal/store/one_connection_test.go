@@ -95,6 +95,7 @@ func TestEveryTransactionNeedsOnlyOneConnection(t *testing.T) {
 			return err
 		}},
 		{"usage.write", func(ctx context.Context) error { return rec.Flush(ctx) }},
+		{"store.SaveConfig", func(ctx context.Context) error { return st.SaveConfig(ctx, cfg) }},
 		{"store.SaveConfigMarking", func(ctx context.Context) error { return st.SaveConfigMarking(ctx, cfg) }},
 		{"store.MarkRestartPendingUnlessChanged", func(ctx context.Context) error { return st.MarkRestartPendingUnlessChanged(ctx, cfg) }},
 		{"store.AcknowledgeStatic", func(ctx context.Context) error { return st.AcknowledgeStatic(ctx, cfg) }},
