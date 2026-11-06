@@ -151,6 +151,14 @@ func guardedAppend(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
 }
 
+// guardedOpenRW opens an existing file to read and write in place, such as a database's -shm.
+func guardedOpenRW(path string) (*os.File, error) {
+	if err := checkWrite(path); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_RDWR, 0)
+}
+
 func guardedMkdirAll(path string, perm os.FileMode) error {
 	if err := checkWrite(path); err != nil {
 		return err
@@ -186,6 +194,25 @@ func guardedSparse(path string, size int64) error {
 		return err
 	}
 	err = f.Truncate(size)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// guardedGrow makes a file at least size bytes long, sparse, creating it if it's missing. Unlike
+// guardedSparse, it also grows a file that's already there.
+func guardedGrow(path string, size int64) error {
+	if err := checkWrite(path); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if info, statErr := f.Stat(); statErr == nil && info.Size() < size {
+		err = f.Truncate(size)
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -422,6 +449,11 @@ func mustAppend(path string) (*os.File, error) {
 	return f, mustGuard(err)
 }
 
+func mustOpenRW(path string) (*os.File, error) {
+	f, err := guardedOpenRW(path)
+	return f, mustGuard(err)
+}
+
 func mustMkdirAll(path string, perm os.FileMode) error { return mustGuard(guardedMkdirAll(path, perm)) }
 
 func mustChmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
@@ -444,6 +476,8 @@ func mustRemoveLink(path string) error {
 }
 
 func mustRemoveAll(path string) error { return mustGuard(guardedRemoveAll(path)) }
+
+func mustGrow(path string, size int64) error { return mustGuard(guardedGrow(path, size)) }
 
 // scratchTemp is os.MkdirTemp under the system temp directory, registered
 // as a scratch root.

@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -136,6 +138,7 @@ func TestDoctorNVIDIALines(t *testing.T) {
 // is the shared setting (DESIGN §20.2, §20.8).
 func TestModelsPlacementCLI(t *testing.T) {
 	t.Setenv("LOCALBASE_ROOT", "")
+	roomyHost(t) // the placements below fit whatever else the machine is running
 	root := filepath.Join(t.TempDir(), "root")
 	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
 		t.Fatalf("configure: %s", out)
@@ -154,7 +157,13 @@ func TestModelsPlacementCLI(t *testing.T) {
 		json.Unmarshal([]byte(line), &env)
 		if env.Error != nil {
 			msg, _ := env.Error["message"].(string)
+			if !slices.Contains(args, "custom") && !slices.Contains(args, "fastest") { // only those are meant to be refused
+				t.Logf("models placement %v: exit %d, refused: %q", args, code, msg)
+			}
 			return code, nil, msg
+		}
+		if code != 0 {
+			t.Logf("models placement %v: exit %d, output: %.500q", args, code, out)
 		}
 		return code, env.Data, ""
 	}
@@ -187,4 +196,26 @@ func TestModelsPlacementCLI(t *testing.T) {
 	if strings.Contains(js, "placement") {
 		t.Errorf("show JSON gained placement (TS shape changed)")
 	}
+}
+
+// roomyHost gives the commands a computer with 64 GiB and 48 GiB of it free, shaped like this one
+// (unified or not), instead of what this machine has free right now. setup runs the other packages'
+// tests beside these, and a CPU placement was refused on a 16 GB runner for want of 0.2 GB.
+func roomyHost(t *testing.T) {
+	t.Helper()
+	old := newHostProvider
+	newHostProvider = func() memory.HostProvider { return fixedHost{real: old()} }
+	t.Cleanup(func() { newHostProvider = old })
+}
+
+type fixedHost struct{ real memory.HostProvider }
+
+func (h fixedHost) Topology() memory.Topology {
+	topo := h.real.Topology()
+	topo.SystemCapacity = 64 * memory.GiB
+	return topo
+}
+
+func (h fixedHost) Snapshot(context.Context) memory.Snapshot {
+	return memory.Snapshot{Available: 48 * memory.GiB, Pressure: "normal"}
 }

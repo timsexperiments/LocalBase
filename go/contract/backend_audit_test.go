@@ -89,7 +89,10 @@ func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
 		"audit.model-backend-changed set " + model + " audit-fake",
 		"audit.model-backend-changed reset " + model + " ",
 		"audit.backend-removed remove audit-fake audit-fake",
-		"audit.model-backend-changed import chosen llama.cpp-cpu"}
+		"audit.model-backend-changed import chosen llama.cpp-cpu",
+		// #608's line for every import, kept beside the backend one (operator's decision).
+		"audit.imports-changed import chosen ",
+		"audit.imports-changed import automatic "}
 	if strings.Join(seen, "|") != strings.Join(want, "|") {
 		t.Errorf("audit events:\n got %q\nwant %q", seen, want)
 	}

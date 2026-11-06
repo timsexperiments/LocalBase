@@ -16,6 +16,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
+// newHostProvider reads this computer's memory. It exists only so tests can swap the host for a
+// fixed one, so what they check doesn't depend on what else the machine is running.
+var newHostProvider = memory.NewHostProvider
+
 // env is what most commands need: the root, its database, the catalog and
 // the configuration. Like TS, opening a root without a config row
 // initializes the defaults.
@@ -56,7 +60,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &env{Root: r, Store: st, Host: memory.NewHostProvider(), warnings: c.Stderr}
+	e := &env{Root: r, Store: st, Host: newHostProvider(), warnings: c.Stderr} // the seam exists only so tests can swap the host
 	if e.Catalog, err = catalog.LoadRoot(r.Dir, nil); err != nil {
 		e.Close()
 		return nil, err
