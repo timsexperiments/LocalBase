@@ -6,6 +6,10 @@
 //   expired: the edge redirects the request cross-origin, so fetch fails.
 //   A same-origin probe with redirect: "manual" comes back opaque.
 // - The gateway is unreachable: the probe itself fails.
+import { forgetOthers, forgetTab } from "./person.js";
+
+forgetOthers();
+
 const notice = () => document.getElementById("session-notice");
 
 function show(message, action) {
@@ -69,6 +73,7 @@ document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("[data-logout]");
   if (!button) return;
   button.disabled = true;
+  forgetTab();
   try {
     await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
   } finally {
