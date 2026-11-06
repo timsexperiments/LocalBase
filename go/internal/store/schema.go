@@ -40,26 +40,38 @@ type Table struct {
 	ForeignKeys []ForeignKey
 }
 
+// Definition is a table's or an index's statement as SQLite keeps it, with whitespace collapsed.
+type Definition struct {
+	Type, Name, Table, SQL string
+}
+
 // Shape is a database's tables, and the other objects it holds.
 type Shape struct {
 	Tables map[string]Table
+	// Definitions are by type and name. They hold what no pragma says: a CHECK, a COLLATE, an index's
+	// order or condition.
+	Definitions map[string]Definition
 	// Triggers and Views are refused outright. This build creates neither.
 	Triggers, Views []string
 }
 
 // ReadShape reads a database's shape. It runs no SQL the database supplies.
 func ReadShape(ctx context.Context, db *sql.DB) (*Shape, error) {
-	rows, err := db.QueryContext(ctx, `SELECT type, name FROM sqlite_master`)
+	rows, err := db.QueryContext(ctx, `SELECT type, name, tbl_name, COALESCE(sql, '') FROM sqlite_master`)
 	if err != nil {
 		return nil, err
 	}
 	var tables []string
-	s := &Shape{Tables: map[string]Table{}}
+	s := &Shape{Tables: map[string]Table{}, Definitions: map[string]Definition{}}
 	for rows.Next() {
-		var kind, name string
-		if err := rows.Scan(&kind, &name); err != nil {
+		var kind, name, table, text string
+		if err := rows.Scan(&kind, &name, &table, &text); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		// An index SQLite makes for a constraint has no statement of its own: its table's says it.
+		if (kind == "table" || kind == "index") && text != "" {
+			s.Definitions[kind+" "+name] = Definition{Type: kind, Name: name, Table: table, SQL: strings.Join(strings.Fields(text), " ")}
 		}
 		switch kind {
 		case "table":
@@ -261,6 +273,24 @@ func (s *Shape) Unexpected(expected *Shape) []string {
 	}
 	for _, name := range s.Views {
 		out = append(out, "a view: "+name)
+	}
+	// A table or index a migration makes is made by the same statements wherever it was made, so its
+	// definition is the same, apart from whitespace. Go's own tables are added on open and checked there.
+	for key, want := range expected.Definitions {
+		if goTable(want.Table) {
+			continue
+		}
+		have, here := s.Definitions[key]
+		switch {
+		case !here && want.Type == "index":
+			out = append(out, "an index this version needs is missing: "+want.Name)
+		case !here || have.SQL == want.SQL:
+			// A missing table is said above.
+		case want.Type == "table":
+			out = append(out, "a table defined differently: "+want.Name)
+		default:
+			out = append(out, "an index defined differently: "+want.Name)
+		}
 	}
 	for name, t := range s.Tables {
 		if strings.HasPrefix(name, "sqlite_") {
