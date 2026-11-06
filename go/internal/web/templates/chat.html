@@ -165,7 +165,7 @@
 {{define "chat-history"}}
 <div class="flex min-h-0 flex-1 flex-col gap-3">
   <button type="button" class="btn btn-quiet w-full" data-new-chat>{{template "icon-plus"}}New chat</button>
-  <input type="search" class="input min-h-11" data-search placeholder="Search chats" aria-label="Search chats">
+  <input autocomplete="off" type="search" class="input min-h-11" data-search placeholder="Search chats" aria-label="Search chats">
   <nav aria-label="Chats" class="-mx-1 min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1">
     <ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5" data-conversations></ul>
     <p class="px-2 py-3 text-sm text-muted" data-no-conversations hidden></p>

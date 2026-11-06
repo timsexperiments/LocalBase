@@ -6,7 +6,7 @@
 // markdown.js.
 import {
   chatContext, compact, contextWindow, interruptReply, learnContext, overflowContext, phaseLabel, planCompaction,
-  promptBudget, readHistory, steerAbortReason, streamText, titleFrom, toolOverhead, visibleMessages, writeHistory,
+  draftKeyFor, historyKeyFor, personKey, promptBudget, readHistory, steerAbortReason, streamText, titleFrom, toolOverhead, visibleMessages, writeHistory,
 } from "./chat-core.js";
 import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
@@ -30,7 +30,7 @@ const jump = $("[data-jump]");
 const status = $("#chat-status");
 const errorBox = $("[data-error-box]");
 // What the strip should say about the last request; shell.js keeps it through refreshes.
-const strip = { refused: (word) => document.dispatchEvent(new CustomEvent("localbase:refused", { detail: word })) };
+const strip = { refused: (word, model) => document.dispatchEvent(new CustomEvent("localbase:refused", { detail: word && { word, model } })) };
 const drawer = $("#chat-drawer");
 const picker = $("#model-picker");
 const attachButton = $("[data-attach]");
@@ -61,6 +61,7 @@ const fresh = () => ({ id: uuid(), title: "New chat", workspace: "chat", mode: "
 
 // --- state ----------------------------------------------------------------------
 
+const historyKey = historyKeyFor(personKey());
 let conversations = [];
 let persistent = false;
 let historyError = "";
@@ -76,7 +77,7 @@ const session = (() => {
   }
 })();
 try {
-  const saved = readHistory(localStorage);
+  const saved = readHistory(localStorage, historyKey);
   persistent = saved !== null;
   conversations = saved ?? [];
 } catch {
@@ -84,9 +85,9 @@ try {
 }
 if (!persistent && !historyError && session)
   try {
-    conversations = readHistory(session) ?? [];
+    conversations = readHistory(session, historyKey) ?? [];
   } catch {
-    session.removeItem("localbase.playground.history.v1");
+    session.removeItem(historyKey);
   }
 let active;
 let abort = null; // the running reply or compaction
@@ -145,14 +146,14 @@ function save() {
   if (!target) return;
   try {
     // Empty conversations are not worth keeping.
-    writeHistory(target, conversations.filter((c) => c.messages.length || c === active));
+    writeHistory(target, conversations.filter((c) => c.messages.length || c === active), historyKey);
   } catch {
     if (persistent) showError("Device storage is unavailable, so this conversation was not saved.");
   }
 }
 
 // The unsent message survives leaving the page (this tab only).
-const draftKey = "localbase.chat.draft.v1";
+const draftKey = draftKeyFor(personKey());
 function saveDraft() {
   try {
     if (input.value) session?.setItem(draftKey, JSON.stringify({ conversation: active.id, text: input.value }));
@@ -209,13 +210,24 @@ function showError(message, retry, label = "Retry") {
 // sentence and what to do next. The gateway's own sentence, with its figures, is one tap away.
 const refusals = {
   model_too_large: { title: "This model is too big for this computer", line: "It won’t fit even with everything else closed. A smaller one will." },
-  insufficient_memory: { title: "Not enough free memory for this model", line: "Unload a model or close another app, then try again." },
+  insufficient_memory: { title: "Not enough free memory for this model", line: "Free memory from a loaded model or close other apps, then try again." },
 };
+
+// A retry while memory is settling would only be refused again, so it waits with the strip.
+function holdRetry() {
+  const retry = $("[data-refusal-retry]");
+  if (!retry) return;
+  const settling = !!$("[data-strip] .strip-settling");
+  retry.disabled = settling;
+  $("[data-refusal-wait]").hidden = !settling;
+}
+document.addEventListener("htmx:afterSettle", holdRetry);
 
 function showFailure(e, retry) {
   const refusal = refusals[e.code];
   if (!refusal) return showError(e.message, retry);
-  strip.refused("Not enough memory for this model");
+  // "Too big" won't change with what's free, so it's for the card, not for the strip.
+  strip.refused(e.code === "insufficient_memory" ? "Not enough memory for this model" : null, active?.model);
   const card = errorCard();
   const title = document.createElement("p");
   title.className = "font-semibold text-danger";
@@ -234,9 +246,18 @@ function showFailure(e, retry) {
   const actions = document.createElement("div");
   actions.className = "refusal-actions";
   actions.append(button("Choose a model", "btn btn-primary", openPicker));
-  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet", retry));
+  card.append(title, line, why);
+  if (e.code === "insufficient_memory") {
+    const wait = document.createElement("p");
+    wait.className = "text-sm font-semibold";
+    wait.dataset.refusalWait = "";
+    wait.textContent = "Memory just freed, ready in a few seconds.";
+    card.append(wait);
+    actions.append(button("Try again", "btn btn-quiet", retry, { "data-refusal-retry": "" }));
+  }
   actions.append(button("Dismiss", "btn btn-quiet", dismissErrors));
-  card.append(title, line, why, actions);
+  card.append(actions);
+  holdRetry();
   announce(`${refusal.title}. ${refusal.line}`);
 }
 
@@ -580,7 +601,8 @@ function compactingNode() {
 function render() {
   $("#chat-title").textContent = active.title;
   $("[data-rename]").disabled = !active.messages.length;
-  document.title = `${active.messages.length ? active.title : "Chat"} · LocalBase`;
+  // A chat's name reaches the browser's history, so only for someone who chose to keep chats here.
+  document.title = `${persistent && active.messages.length ? active.title : "Chat"} · LocalBase`;
   renderModel();
   renderDraft();
   const nodes = [];
@@ -1374,9 +1396,9 @@ for (const s of $$("[data-search]")) s.addEventListener("input", () => {
 });
 window.addEventListener("storage", (e) => {
   // Another tab changed saved history: pick it up when idle.
-  if (e.key !== "localbase.playground.history.v1" || abort) return;
+  if (e.key !== historyKey || abort) return;
   try {
-    const saved = readHistory(localStorage);
+    const saved = readHistory(localStorage, historyKey);
     persistent = saved !== null;
     if (saved) {
       const id = active.id;

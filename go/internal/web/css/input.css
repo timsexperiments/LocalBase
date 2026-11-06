@@ -840,6 +840,9 @@
   .strip-free {
     @apply ml-auto font-medium whitespace-nowrap tabular-nums;
   }
+  .strip-settling .strip-word {
+    @apply font-medium text-ink;
+  }
   .strip-load .strip-word {
     @apply font-semibold;
     color: var(--lb-lamp-text);

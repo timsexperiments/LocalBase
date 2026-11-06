@@ -712,9 +712,9 @@ await ev(`(() => {
 await sleep(800);
 const refused = await ev(`(() => { const box = document.querySelector("[data-error-box]"); return { text: box.textContent, buttons: [...box.querySelectorAll("button")].map((b) => b.textContent) }; })()`);
 check(refused.text.includes("too big for this computer") && refused.text.includes(tooLarge) && refused.buttons.join() === "Choose a model,Dismiss", `a model too large for this computer says so, keeps the gateway's sentence a tap away, and offers no retry: ${JSON.stringify(refused.buttons)}`);
-check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip says the same as the refusal");
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "a model too big leaves the strip alone: that is the card's to say");
 await sleep(3500);
-check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip still says so after a refresh");
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "and still does after a refresh");
 await ev(`[...document.querySelectorAll("[data-error-box] button")].find((b) => b.textContent === "Dismiss").click()`);
 await sleep(3500);
 check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "dismissing the refusal gives the strip back to real state");
@@ -839,10 +839,77 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
+// --- After a refusal the strip tells the truth as memory comes back. "Freed" is the gateway's
+// admission answer for that model, stubbed here, not a guess from the free figure. Each step redraws
+// the strip as a refresh would, then the same event a swap fires.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+await ev(`(() => { const real = window.fetch; window.__asked = 0; window.__admission = { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 3 }; window.fetch = (u, o) => { if (String(u).endsWith("/admission")) { window.__asked++; return Promise.resolve(new Response(JSON.stringify(window.__admission), { status: 200 })); } return real(u, o); }; })()`);
+const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
+const redraw = async (state, word, free, admission) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; delete s.dataset.refusedHere; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterOnLoad", { detail: { elt: document.querySelector("[data-strip]") } })); document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
+const refusedNow = await ev(stripSays);
+check(refusedNow.word === "Not enough memory for this model" && refusedNow.red, `a refusal for memory says so: ${JSON.stringify(refusedNow)}`);
+await sleep(3500);
+const refreshed = await ev(stripSays);
+check(refreshed.word === "Not enough memory for this model" && refreshed.red, `and still does after a real refresh: ${JSON.stringify(refreshed)}`);
+const drift = await redraw("ready", "Ready", 11, { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 4 });
+check(drift.word === "Not enough memory for this model" && drift.red, `a gigabyte of drift isn't memory coming back: ${JSON.stringify(drift)}`);
+const bigRise = await redraw("ready", "Ready", 40, { admitted: false, requestedBytes: 90, reserveBytes: 2, availableBytes: 40 });
+check(bigRise.word === "Not enough memory for this model" && bigRise.red, `nor is a big rise that still isn't enough for this model: ${JSON.stringify(bigRise)}`);
+const stillShort = await redraw("short", "Memory is tight", 48, { admitted: true, requestedBytes: 8, reserveBytes: 2, availableBytes: 10 });
+check(stillShort.word === "Not enough memory for this model" && stillShort.red, `enough, but the computer is still short: no try again yet: ${JSON.stringify(stillShort)}`);
+const settling = await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+check(settling.word === "Memory just freed, ready in a few seconds" && !settling.red, `settling: calm, and the gateway's words: ${JSON.stringify(settling)}`);
+const cleared = await redraw("ready", "Ready", 48);
+check(cleared.word === "Memory looks free. Try again." && !cleared.red, `exactly enough, and settled: it looks free, no promise: ${JSON.stringify(cleared)}`);
+// The real load can still refuse. Then it isn't told the same thing again on the same reading.
+const GiB = 2 ** 30;
+await redraw("ready", "Ready", 48, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 40 * GiB });
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
+const refusedAgain = await redraw("ready", "Ready", 48);
+check(refusedAgain.word === "Not enough memory for this model" && refusedAgain.red, `refused after it looked free: not told so again on the same reading: ${JSON.stringify(refusedAgain)}`);
+const smallMove = await redraw("ready", "Ready", 48, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 40.5 * GiB });
+check(smallMove.word === "Not enough memory for this model", `nor on half a gigabyte of drift: ${JSON.stringify(smallMove)}`);
+const reallyMoved = await redraw("ready", "Ready", 50, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 42 * GiB });
+check(reallyMoved.word === "Memory looks free. Try again." && !reallyMoved.red, `when the reading really moves, it can say so again: ${JSON.stringify(reallyMoved)}`);
+// One question per refresh, and none once the refusal is gone.
+const askedBefore = await ev("window.__asked");
+await redraw("ready", "Ready", 50);
+check((await ev("window.__asked")) === askedBefore + 1, "the preview is asked once per strip refresh");
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
+const askedThen = await ev("window.__asked");
+const afterSend = await redraw("ready", "Ready", 48);
+check(afterSend.word === "Ready" && !afterSend.red, `sending again clears it: ${JSON.stringify(afterSend)}`);
+check((await ev("window.__asked")) === askedThen, "no refusal, no preview call");
+// The card's own Try again waits out the same window.
+await ev(`(async () => { const real = window.fetch; window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "Not enough free memory." } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1000)); window.fetch = real; })()`);
+const retryState = `(() => { const b = document.querySelector("[data-refusal-retry]"), w = document.querySelector("[data-refusal-wait]"); return { found: !!b, disabled: b?.disabled, line: w && !w.hidden ? w.textContent : "" }; })()`;
+const retryOpen = await ev(retryState);
+check(retryOpen.found && !retryOpen.disabled && !retryOpen.line, `outside settling, Try again can be pressed: ${JSON.stringify(retryOpen)}`);
+await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+const retryHeld = await ev(retryState);
+check(retryHeld.disabled && /ready in a few seconds/.test(retryHeld.line), `while settling, it waits and says why: ${JSON.stringify(retryHeld)}`);
+await redraw("ready", "Ready", 48);
+const retryBack = await ev(retryState);
+check(!retryBack.disabled && !retryBack.line, `when settling clears, it can be pressed again: ${JSON.stringify(retryBack)}`);
+await ev(`document.querySelector("[data-refusal-retry]").closest(".refusal-actions").querySelector("button:last-child").click()`);
+await nav("/app/chat");
+// A permanent refusal leaves the strip alone: the model is too big, whatever is free.
+await ev(`(() => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: "Too big." } }), { status: 422, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+await ev(`document.querySelector("[data-send]").click()`);
+await sleep(1200);
+const tooBig = await ev(`({ strip: ${stripSays}, card: document.querySelector("[data-error-box]").textContent })`);
+check(/too big/.test(tooBig.card) && !/Not enough memory/.test(tooBig.strip.word) && !tooBig.strip.red, `a model too big never reads as a shortage: ${JSON.stringify(tooBig.strip)}`);
+await nav("/app/chat");
+
 // --- The list of chats: search, and each chat's own actions ----------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+const savedKeyIs = `const savedKey = "localbase.chat.history.v2." + (document.documentElement.dataset.person ?? "none");`;
 await nav("/app/chat");
-await ev(`localStorage.setItem("localbase.playground.history.v1", JSON.stringify([
+await ev(`${savedKeyIs} localStorage.setItem(savedKey, JSON.stringify([
   { id: "list-a", title: "Trip to the lake", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "a1", role: "user", text: "Where should we stop for lunch on the way?" }, { id: "a2", role: "assistant", text: "A bakery by the bridge." }] },
   { id: "list-b", title: "Soup", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "b1", role: "user", text: "How long does barley take?" }] },
   { id: "list-c", title: "A very long chat name that keeps going past where a phone can show the whole of it", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "c1", role: "user", text: "muchtoolongtofitonasinglelineofaphonescreenwithoutbreakinganywhereatallinthislist" }] }]))`);
@@ -871,7 +938,7 @@ await ev(`document.querySelector("[data-option-rename]").click()`);
 await sleep(100);
 await ev(`(() => { document.getElementById("rename-input").value = "Barley soup"; document.querySelector("[data-rename-form]").requestSubmit(); })()`);
 await sleep(150);
-const renamedRow = await ev(`({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.title === "Barley soup") })`);
+const renamedRow = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.title === "Barley soup") }); })()`);
 check(renamedRow.row && renamedRow.saved, `rename from the list changes that chat, not the open one: ${JSON.stringify(renamedRow)}`);
 await ev(`${rowFor("Barley soup")}.querySelector(".chat-row-more").click()`);
 await sleep(100);
@@ -893,10 +960,10 @@ await ev(`document.querySelector("[data-option-delete]").click()`);
 await sleep(50);
 await ev(`document.querySelector("[data-option-confirm]").click()`);
 await sleep(150);
-const deleted = await ev(`({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem("localbase.playground.history.v1")).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") })`);
+const deleted = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem(savedKey)).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem(savedKey)).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") }); })()`);
 check(!deleted.row && !deleted.saved && /^Deleted Barley soup/.test(deleted.said) && deleted.focus, `delete removes it, says so, and leaves focus in the list: ${JSON.stringify(deleted)}`);
 check(deleted.others.join() === "list-a,list-c" && deleted.other && deleted.otherText === 2, `deleting one chat leaves the others whole: ${JSON.stringify(deleted.others)}`);
-await ev(`localStorage.removeItem("localbase.playground.history.v1")`);
+await ev(`${savedKeyIs} localStorage.removeItem(savedKey)`);
 await nav("/app/chat");
 
 // --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --

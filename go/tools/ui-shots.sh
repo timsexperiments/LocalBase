@@ -19,7 +19,7 @@ port=$((24000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 6000))
 . "$here/tools/browser-run.sh"
 browser_guard ui-shots
 (cd "$here" && rm -rf .cache/browser-profile-ui-shots)
-"$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
+browser_group "$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
   --no-first-run --hide-scrollbars --allow-file-access-from-files about:blank >/dev/null 2>&1 &
 browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$port/json/version" >/dev/null && break; sleep 0.5; done

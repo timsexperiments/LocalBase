@@ -86,7 +86,7 @@ export async function api(path, init = {}) {
     const value = await response.json().catch(() => null);
     if (response.status === 401) throw new SessionRequiredError();
     const message = value?.error?.code === "model_unloading"
-      ? "The model was being unloaded, so this didn’t run. Try again: it loads again when needed."
+      ? "The model’s memory was being freed, so this didn’t run. Try again: it loads again when needed."
       : typeof value?.error?.message === "string" ? value.error.message : `Request failed (${response.status}). Try again.`;
     const error = new Error(message);
     error.status = response.status;
