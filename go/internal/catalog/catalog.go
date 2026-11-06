@@ -485,8 +485,50 @@ func loadLayers(files []userFile, fileDiags []Diagnostic, remote *RemoteLayer) (
 		c.Models = append(c.Models, s)
 		c.byID[id] = s
 	}
+	c.dropFeedEntriesTakingFiles()
 	c.indexAnnotations()
 	return c, nil
+}
+
+// dropFeedEntriesTakingFiles takes out feed entries that name a file another model uses. Every model
+// of a kind shares a directory, and installing an entry replaces whatever has its file's name, so
+// such an entry would take that file's place under the other model's name, and a qualified model
+// would then run what the feed supplied. The same bytes under the same name take nothing from
+// anyone. A disk may not care about case.
+func (c *Catalog) dropFeedEntriesTakingFiles() {
+	type owner struct{ modelID, sha string }
+	owners := map[string]owner{}
+	key := func(s *Spec, a Artifact) string { return s.Kind + "/" + strings.ToLower(a.Filename) }
+	claim := func(s *Spec) {
+		for _, a := range s.Artifacts {
+			if _, taken := owners[key(s, a)]; !taken {
+				owners[key(s, a)] = owner{s.ModelID, a.SHA256}
+			}
+		}
+	}
+	for _, s := range c.Models {
+		if s.Origin != "remote" {
+			claim(s)
+		}
+	}
+	kept := c.Models[:0]
+next:
+	for _, s := range c.Models {
+		if s.Origin == "remote" {
+			for _, a := range s.Artifacts {
+				o, taken := owners[key(s, a)]
+				if taken && (a.SHA256 == "" || !strings.EqualFold(a.SHA256, o.sha)) {
+					c.Diagnostics = append(c.Diagnostics, Diagnostic{Tier: "remote", Path: s.LayerPath, ModelID: s.ModelID,
+						Message: fmt.Sprintf("Skipped: its file %q would replace the one %s uses.", a.Filename, o.modelID)})
+					delete(c.byID, s.ModelID)
+					continue next
+				}
+			}
+			claim(s)
+		}
+		kept = append(kept, s)
+	}
+	c.Models = kept
 }
 
 // jsonKeys lists an object's keys in JavaScript order (Object.keys).

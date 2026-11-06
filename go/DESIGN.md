@@ -5263,6 +5263,14 @@ held up everyone in turn. After a failed fetch the next one now waits 30 s, and 
 keys already held go on working, even when they're older than the 10 minutes they'd normally last, and a token
 needing any other key is refused straight away. A caller that hangs up doesn't end the fetch for the others waiting.
 
+### 31.14 A feed entry can't take another model's file
+
+Every model of a kind shares a directory, and installing an entry replaces whatever has its file's name. So a feed entry
+naming a qualified model's file would take that file's place, and the qualified model would then run what the feed
+supplied. An entry from the feed that names a file another model uses, with different bytes or no checksum, is left out
+of the catalog, with a diagnostic saying why. Case doesn't count, since a disk may not care. Between two feed entries,
+the first keeps the name. A person's own entries in `catalog.d` aren't checked: what they name is their choice.
+
 ## 32. Usage and activity (design addendum, 2026-11-02)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
