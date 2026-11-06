@@ -42,9 +42,21 @@ func Default() string {
 // IsDefault says whether dir is the default root, however its path is spelled. What LOCALBASE_ROOT names
 // isn't the default, even when a command would use it.
 func IsDefault(dir string) bool {
-	a, errA := canonical(dir)
-	b, errB := canonical(Default())
-	return errA == nil && errB == nil && a == b
+	def := Default()
+	if def == "" {
+		return false
+	}
+	// A path that can't be made canonical is compared as written, so a guard on the default root
+	// doesn't let a spelling it can't resolve through.
+	a, err := Canonical(dir)
+	if err != nil {
+		a = dir
+	}
+	b, err := Canonical(def)
+	if err != nil {
+		b = def
+	}
+	return a == b
 }
 
 // DefaultRootNote is what a message about stopping a gateway adds when the root is the default one, so

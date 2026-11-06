@@ -779,14 +779,6 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	var op *mgmtOperation
 	if action == "cancel" {
 		op, err = s.stopInstall(modelID)
-		if err == nil {
-			actor, actorID := "cli", ""
-			if p.Authenticated() {
-				actor, actorID = p.Kind, p.ID
-			}
-			s.Log.Info("Administration change.", "event", "audit.models-changed", "action", "cancel", "actor_kind", actor, "actor_id", actorID,
-				"target_kind", "model", "target_id", modelID)
-		}
 	} else {
 		op, err = s.runManagement(modelID, action)
 	}

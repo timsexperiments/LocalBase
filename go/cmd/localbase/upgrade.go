@@ -166,8 +166,11 @@ func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string,
 	if err != nil {
 		return false, "", err
 	}
+	auditKeyChange(e, "create", k, "purpose", "upgrade")
 	defer func() {
-		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr != nil {
+		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr == nil {
+			auditKeyChange(e, "delete", k, "purpose", "upgrade")
+		} else {
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
@@ -266,7 +269,9 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 	return upgrade.Ops{
 		Stop: func() error {
 			c.Info("Stopping the gateway...")
-			if _, err := service.Stop(e.Root); err != nil {
+			_, err := service.Stop(e.Root)
+			auditService(e, "audit.service-stopped", err, "purpose", "upgrade", "disabled", err == nil)
+			if err != nil {
 				return err
 			}
 			for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(200 * time.Millisecond) {
@@ -441,6 +446,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	}
 	res, err := upgrade.Apply(cand, binary, ops)
 	data["rolledBack"] = res.RolledBack
+	auditUpgrade(e, "audit.upgrade-applied", version.Version, target, cand.SHA256, upgradeOutcome(res, err))
 	if err != nil {
 		var smoke *upgrade.SmokeFailed
 		if errors.As(err, &smoke) {
@@ -450,6 +456,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 		return nil, err
 	}
 	data["changed"] = true
+	e.withAuditResult(data)
 	c.Info("Now running %s.", target)
 	if state != gatewayManaged {
 		c.Info("No gateway was running here. To start one: local-base start")
@@ -504,9 +511,16 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 	if state == gatewayManaged {
 		ops = managedOps(c, e, binary, arguments)
 	}
+	// What it goes back to, for the record, if the file will say.
+	to := "unknown"
+	if v, err := upgrade.RunVersion(binary + upgrade.PreviousSuffix); err == nil {
+		to = versionForAudit(v)
+	}
 	if err := upgrade.Rollback(binary, ops); err != nil {
+		auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "failed")
 		return nil, err
 	}
+	auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "rolled-back")
 	c.Info("Back on the previous version. To undo this: local-base upgrade rollback")
 	return map[string]any{"rolledBack": true}, nil
 }

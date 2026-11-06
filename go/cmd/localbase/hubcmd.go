@@ -224,6 +224,7 @@ func modelsAdd() *cli.Command {
 			if replaced {
 				verb = "Updated"
 			}
+			auditChange(e, "discovery", "add", "model", model.ModelID)
 			c.Info("%s %s (%s)", verb, model.ModelID, model.DisplayName)
 			c.Info("  From:          %s at %s", entry.Repo, entry.Revision)
 			for _, f := range entry.Weights {
@@ -340,6 +341,7 @@ func modelsRemoveEntry() *cli.Command {
 				}
 				return nil, cli.Inputf("No user catalog entry named %q.", id)
 			}
+			auditChange(e, "discovery", "remove-entry", "model", id)
 			c.Info("Removed %s", path)
 			next, err := catalog.LoadRoot(e.Root.Dir, nil)
 			if err != nil {

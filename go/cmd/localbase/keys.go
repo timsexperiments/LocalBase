@@ -79,7 +79,11 @@ func withEnv(run func(c *cli.Ctx, e *env) (any, error)) func(c *cli.Ctx) (any, e
 			return nil, err
 		}
 		defer e.Close()
-		return run(c, e)
+		data, err := run(c, e)
+		if m, ok := data.(map[string]any); ok {
+			e.withAuditResult(m)
+		}
+		return data, err
 	}
 }
 
@@ -136,6 +140,7 @@ func keysCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			auditKeyChange(e, "create", k)
 			c.Info("Created key id=%s name=%s prefix=%s", k.ID, k.Name, k.Prefix)
 			if !c.Global.JSON {
 				c.Info("secret=%s", raw)
@@ -150,6 +155,7 @@ func keysCommand() *cli.Command {
 				if err != nil {
 					return nil, keyNotFound(err)
 				}
+				auditKeyChange(e, "revoke", k)
 				c.Info("Revoked key %s (%s)", k.ID, k.Name)
 				warn()
 				return map[string]any{"key": publicKey(k)}, nil
@@ -160,6 +166,7 @@ func keysCommand() *cli.Command {
 				if err != nil {
 					return nil, keyNotFound(err)
 				}
+				auditKeyChange(e, "rotate", k)
 				c.Info("Rotated key %s (%s)", k.ID, k.Name)
 				if !c.Global.JSON {
 					c.Info("new_secret=%s", raw)
@@ -181,6 +188,7 @@ func keysCommand() *cli.Command {
 			if err != nil {
 				return nil, keyNotFound(err)
 			}
+			auditKeyChange(e, "set-scopes", k)
 			c.Info("Updated scopes for key %s: %s", k.ID, strings.Join(k.Scopes, ","))
 			return map[string]any{"key": publicKey(k)}, nil
 		})},

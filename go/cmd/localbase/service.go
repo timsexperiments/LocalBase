@@ -68,13 +68,15 @@ func serviceCommands() []*cli.Command {
 					return nil, err
 				}
 			}
+			action, verb, event := "start", "Started", "audit.service-started"
+			if restart {
+				action, verb, event = "restart", "Restarted", "audit.service-restarted"
+				sayIfInstalled(c, e.Root.Dir, "This restarts the installed LocalBase service.")
+			}
 			in, err := service.Start(e.Root, restart, c.Bool("install-missing"))
+			auditService(e, event, err)
 			if err != nil {
 				return nil, err
-			}
-			action, verb := "start", "Started"
-			if restart {
-				action, verb = "restart", "Restarted"
 			}
 			if in.Service.State != "running" && in.Service.State != "starting" {
 				return nil, fmt.Errorf("LocalBase service manager reported %s after %s.", in.Service.State, action)
@@ -112,7 +114,9 @@ func serviceCommands() []*cli.Command {
 				return nil, err
 			}
 			defer e.Close()
+			sayIfInstalled(c, e.Root.Dir, "This stops the installed LocalBase service.")
 			in, err := service.Stop(e.Root)
+			auditService(e, "audit.service-stopped", err, "disabled", err == nil)
 			if err != nil {
 				return nil, err
 			}

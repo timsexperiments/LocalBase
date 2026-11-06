@@ -32,11 +32,12 @@ const (
 
 // Sink is a rotating, private JSONL file. Safe for concurrent use.
 type Sink struct {
-	mu   sync.Mutex
-	dir  string
-	name string // the file is <name>.jsonl and its archives <name>.N.jsonl
-	f    *os.File
-	size int64
+	lastErr, auditOpenErr error // see AuditErr
+	mu                    sync.Mutex
+	dir                   string
+	name                  string // the file is <name>.jsonl and its archives <name>.N.jsonl
+	f                     *os.File
+	size                  int64
 	// Also writes each line here when set (foreground serve's stderr).
 	Mirror io.Writer
 	// audit holds audit.* events too, in a file nothing else writes, so a flood of other
@@ -304,6 +305,23 @@ func (s *Sink) writeAudit(line []byte) {
 	a := s.audit
 	s.mu.Unlock()
 	a.Write(line)
+}
+
+// AuditErr is the last failure to put a line in the audit file, for a short-lived writer that has
+// one record to answer for. A failure of the main log alone isn't one: the record was written.
+func (s *Sink) AuditErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.auditOpenErr != nil || s.audit == nil {
+		return s.auditOpenErr
+	}
+	return s.audit.lastWriteErr()
+}
+
+func (s *Sink) lastWriteErr() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastErr
 }
 
 func (s *Sink) Close() error {

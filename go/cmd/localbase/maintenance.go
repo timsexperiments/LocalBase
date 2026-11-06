@@ -31,7 +31,10 @@ func maintenanceCommands() []*cli.Command {
 				}
 				defer lease.Release()
 				if service.HasEvidence(r) {
-					if _, err := service.StopWithin(r); err != nil {
+					sayIfInstalled(c, r.Dir, "This stops the installed LocalBase service.")
+					_, err := service.StopWithin(r)
+					auditService(&env{Root: r, warnings: c.Stderr}, "audit.service-stopped", err, "purpose", "reset", "disabled", err == nil)
+					if err != nil {
 						return nil, err
 					}
 				}
@@ -57,9 +60,11 @@ func maintenanceCommands() []*cli.Command {
 				if err := st.SaveConfig(context.Background(), cfg); err != nil {
 					return nil, err
 				}
+				e := &env{Root: r, warnings: c.Stderr}
+				auditChange(e, "config", "reset", "configuration", "")
 				c.Info("Database reset complete at %s", r.Dir)
 				c.Info("Initialized default configuration.")
-				return map[string]any{"reset": true, "root": r.Dir}, nil
+				return e.withAuditResult(map[string]any{"reset": true, "root": r.Dir}), nil
 			}},
 		{Name: "uninstall", Summary: "Remove all LocalBase-managed data", Options: []cli.Option{withHelp(yes, "Confirm uninstall")},
 			Run: func(c *cli.Ctx) (any, error) {
@@ -76,6 +81,11 @@ func maintenanceCommands() []*cli.Command {
 				}
 				defer lease.Release()
 				removed := false
+				// The last record, and it goes with the logs, so it's on the screen as well.
+				audited := &env{Root: r, warnings: c.Stderr}
+				sayIfInstalled(c, r.Dir, "This stops and removes the installed LocalBase service.")
+				auditChange(audited, "root", "uninstall", "root", "", "root", r.Dir, "service_evidence", service.HasEvidence(r))
+				c.Error("Uninstalling LocalBase at %s. Its audit log goes with it.", r.Dir)
 				if service.HasEvidence(r) {
 					in, err := service.Remove(r)
 					if err != nil {

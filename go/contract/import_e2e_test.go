@@ -122,6 +122,9 @@ func (e *e2e) command(args ...string) *exec.Cmd {
 		cmd.Dir = repoRoot()
 		return cmd
 	}
+	if len(args) < 2 || args[0] != "--root" {
+		e.t.Fatalf("a contract test must name its root: %v", args)
+	}
 	return exec.Command(goCLI(e.t), args...)
 }
 

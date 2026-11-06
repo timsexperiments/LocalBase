@@ -376,7 +376,12 @@ func runSmoke(c *cli.Ctx) (any, error) {
 		if err != nil {
 			return err
 		}
-		defer e.Store.DeleteAPIKey(context.Background(), k.ID)
+		auditKeyChange(e, "create", k, "purpose", "smoke")
+		defer func() {
+			if derr := e.Store.DeleteAPIKey(context.Background(), k.ID); derr == nil {
+				auditKeyChange(e, "delete", k, "purpose", "smoke")
+			}
+		}()
 		s.key = raw
 		v, _ := s.llms()
 		isDecision := func(id string) bool {
