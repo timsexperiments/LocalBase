@@ -235,6 +235,9 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"at which revision":     rep.Catalog[1].Revision,
 		"a file of it":          rep.Catalog[1].Files[1].File,
 		"where that comes from": rep.Catalog[1].Files[1].From,
+		"a credential":          rep.Downloads[1].ID,
+		"a header it sends":     rep.Downloads[1].Headers[1],
+		"where it sends it":     rep.Downloads[1].Origins[1],
 		"a model to install":    rep.Manifest.Models[1],
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
@@ -295,5 +298,38 @@ func TestTheCatalogSectionSaysWhatEachEntryDoes(t *testing.T) {
 	}
 	if strings.Contains(got, "model-25") {
 		t.Error("it listed more than it should")
+	}
+}
+
+// The download section says where each credential goes, the Hugging Face profile in its own words, and counts
+// what it doesn't list.
+func TestTheDownloadSectionSaysWhereEachIsSent(t *testing.T) {
+	credentials := []backup.DownloadCredential{
+		{ID: "huggingface", Origins: []string{"https://elsewhere.example"}},
+		{ID: "vendor", Headers: []string{"X-Api-Key", "X-Org"}, Origins: []string{"https://vendor.example.com", "https://cdn.vendor.example.com"}},
+	}
+	for i := range 28 {
+		credentials = append(credentials, backup.DownloadCredential{ID: fmt.Sprintf("zz-%02d", i), Headers: []string{"X-Key"}, Origins: []string{"https://x.example"}})
+	}
+	credentials[2].ID = "evil\x1b[2J"
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Downloads: credentials})
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	for _, want := range []string{
+		"Download credentials in it, and where each is sent:",
+		"  huggingface: the Hugging Face token to https://elsewhere.example",
+		"  vendor: X-Api-Key, X-Org to https://vendor.example.com, https://cdn.vendor.example.com",
+		`  evil\x1b[2J: X-Key to https://x.example`,
+		"  and 5 more: run this with --json to see them all.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
+		}
+	}
+	withHeaders := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{},
+		Downloads: []backup.DownloadCredential{{ID: "huggingface", Headers: []string{"X-Extra"}, Origins: []string{"https://elsewhere.example"}}}})
+	if want := "  huggingface: the Hugging Face token and X-Extra to https://elsewhere.example"; !strings.Contains(withHeaders, want) {
+		t.Errorf("it should say %q:\n%s", want, withHeaders)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -352,6 +353,30 @@ func printCatalog(c *cli.Ctx, entries []backup.CatalogEntry) {
 	}
 }
 
+// printDownloads says where each download credential will be sent, by header name, never value. The
+// huggingface profile also sends the Hugging Face token.
+func printDownloads(c *cli.Ctx, credentials []backup.DownloadCredential) {
+	if len(credentials) == 0 {
+		return
+	}
+	c.Info("Download credentials in it, and where each is sent:")
+	for i, d := range credentials {
+		if i == catalogShown {
+			c.Info("  and %d more: run this with --json to see them all.", len(credentials)-catalogShown)
+			return
+		}
+		origins, headers := strings.Join(d.Origins, ", "), strings.Join(d.Headers, ", ")
+		switch {
+		case d.ID == acquire.HFProfileID && len(d.Headers) == 0:
+			c.Info("  huggingface: the Hugging Face token to %s", origins)
+		case d.ID == acquire.HFProfileID:
+			c.Info("  huggingface: the Hugging Face token and %s to %s", headers, origins)
+		default:
+			c.Info("  %s: %s to %s", d.ID, headers, origins)
+		}
+	}
+}
+
 func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	rep = printable(rep)
 	if rep.NewRoot {
@@ -375,6 +400,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		c.Info("Its own list of secrets leaves out %s, so it may have been changed after it was made.", strings.Join(rep.SecretsUnlisted, ", "))
 	}
 	printCatalog(c, rep.Catalog)
+	printDownloads(c, rep.Downloads)
 	for _, rule := range rep.Rules {
 		c.Info("%s", rule)
 	}

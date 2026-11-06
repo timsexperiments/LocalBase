@@ -106,14 +106,16 @@ type Report struct {
 	// from fields it checked, or none.
 	PutBack []PutBack `json:"putBack,omitempty"`
 	// Catalog are the catalog.d entries this root's catalog will trust as its own, by id.
-	Catalog   []CatalogEntry `json:"catalog,omitempty"`
-	Rules     []string       `json:"rules"`
-	Programs  []Program      `json:"programs"`
-	Sources   []ModelSource  `json:"modelSources"`
-	Settings  []Setting      `json:"settings"`
-	Providers []string       `json:"signInProviders"`
-	SignIn    *SignIn        `json:"signIn"`
-	Grants    []Grant        `json:"grants"`
+	Catalog []CatalogEntry `json:"catalog,omitempty"`
+	// Downloads are the download credentials in it and where each will be sent, by id. Header names only.
+	Downloads []DownloadCredential `json:"downloadCredentials,omitempty"`
+	Rules     []string             `json:"rules"`
+	Programs  []Program            `json:"programs"`
+	Sources   []ModelSource        `json:"modelSources"`
+	Settings  []Setting            `json:"settings"`
+	Providers []string             `json:"signInProviders"`
+	SignIn    *SignIn              `json:"signIn"`
+	Grants    []Grant              `json:"grants"`
 	// RolesGone are the roles this root has and the backup doesn't.
 	RolesGone []Grant   `json:"rolesGone,omitempty"`
 	Keys      KeyCounts `json:"keys"`
@@ -715,8 +717,12 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if _, err := auth.LoadEmail(dir); err != nil {
 		return nil, refuse("email-delivery.json in this backup is not valid: %v", err)
 	}
-	if _, err := acquire.LoadProfiles(dir); err != nil {
+	profiles, err := acquire.LoadProfiles(dir)
+	if err != nil {
 		return nil, refuse("The download credentials in this backup are not valid: %v", err)
+	}
+	if rep.Downloads, err = downloadCredentials(profiles); err != nil {
+		return nil, err
 	}
 	if rep.Programs, err = checkBackends(dir); err != nil {
 		return nil, err
