@@ -334,19 +334,32 @@ func TestAnAdminKeyComesBackByName(t *testing.T) {
 // What the code gives a new key is ordinary. Everything else is held back, including a permission only
 // a file has heard of.
 func TestEveryPermissionBeyondMakingRequestsIsHeldBack(t *testing.T) {
-	k := withKey(t)
 	for _, scope := range append(append([]string{}, auth.Permissions...), "something:new", "*") {
-		t.Run(strings.NewReplacer(":", "-", "*", "star").Replace(scope), func(t *testing.T) {
-			bad := addAdminKey(t, k.file, `["`+scope+`"]`)
-			rep := stageReport(t, bad, filepath.Join(dir(t), "target"), false)
-			if slices.Contains(auth.DefaultKeyScopes, scope) {
-				if len(rep.KeysHeldBack) != 0 {
-					t.Errorf("held back: %+v", rep.KeysHeldBack)
-				}
-				return
+		k := comparedKey{scopes: sql.NullString{String: `["` + scope + `"]`, Valid: true}}
+		got := k.beyondRequests()
+		if slices.Contains(auth.DefaultKeyScopes, scope) {
+			if len(got) != 0 {
+				t.Errorf("%s counts as more than making requests: %v", scope, got)
 			}
-			oneKey(t, "held back", rep.KeysHeldBack, KeyChange{"key_admin", "admin", scope})
-		})
+			continue
+		}
+		if len(got) != 1 || got[0] != scope {
+			t.Errorf("%s: %v", scope, got)
+		}
+	}
+	// One through a real restore, for each side of that line. The rest of it is tested elsewhere with
+	// other permissions: see TestAnAdminKeyIsHeldBackWhereThereIsNothingToCompare.
+	k := withKey(t)
+	for _, c := range []struct {
+		scope string
+		held  bool
+	}{{"something:new", true}, {auth.DefaultKeyScopes[0], false}} {
+		rep := stageReport(t, addAdminKey(t, k.file, `["`+c.scope+`"]`), filepath.Join(dir(t), "target"+c.scope), false)
+		if c.held {
+			oneKey(t, "held back", rep.KeysHeldBack, KeyChange{"key_admin", "admin", c.scope})
+		} else if len(rep.KeysHeldBack) != 0 {
+			t.Errorf("held back: %+v", rep.KeysHeldBack)
+		}
 	}
 }
 
@@ -589,7 +602,27 @@ func TestARevokedKeyComesBackOnlyByName(t *testing.T) {
 	if rep.RevocationsKept != 0 {
 		t.Errorf("revocations kept when named: %d", rep.RevocationsKept)
 	}
-	oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{k.id, "kept", "revoked"})
+	oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{k.id, "kept", "revoked on this root, and would work again"})
+}
+
+// Going back, a key revoked on this root says it would work again, before anything else that differs.
+// Staying, it keeps "revoked", which is what stays true there.
+func TestARevokedKeyGoingBackSaysItWouldWorkAgain(t *testing.T) {
+	k := withKey(t)
+	k.onRoot(t, func(st *store.Store) {
+		if _, err := st.RevokeAPIKey(context.Background(), k.id); err != nil {
+			t.Fatal(err)
+		}
+	})
+	rotated := editedBackup(t, k.file, `UPDATE api_keys SET key_hash = 'x' WHERE id = '`+k.id+`'`)
+	kept := stageReport(t, rotated, k.r.Dir, true)
+	oneKey(t, "kept", kept.KeysKept, KeyChange{k.id, "kept", "revoked, rotated"})
+	s, err := Stage(context.Background(), rotated, k.r.Dir, true, k.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Discard()
+	oneKey(t, "brought back", s.Report.KeysBroughtBack, KeyChange{k.id, "kept", "revoked on this root, and would work again, rotated"})
 }
 
 // Revoked in both is nothing to say, whatever else differs about when.

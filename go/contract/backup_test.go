@@ -609,19 +609,22 @@ func TestUninstallNamesBackups(t *testing.T) {
 	}
 }
 
-// bigBackupRoot has a recording large enough that a run is still working when a signal arrives.
+// bigBackupRoot has enough recordings that a run is still working when a signal arrives. Each is what
+// a recording can be, and they can't compress.
 func bigBackupRoot(t *testing.T, tmp string) *e2e {
 	t.Helper()
 	e := backupRoot(t, tmp, "root")
-	clip := make([]byte, 96<<20)
-	if _, err := rand.Read(clip); err != nil {
-		t.Fatal(err)
-	}
 	if err := mustMkdirAll(filepath.Join(e.root, "voices"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(e.root, "voices", "voice-aaaaaaaaaaaa.wav"), clip, 0o600); err != nil {
-		t.Fatal(err)
+	for i := range 8 {
+		clip := make([]byte, 12<<20)
+		if _, err := rand.Read(clip); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustWriteFile(filepath.Join(e.root, "voices", fmt.Sprintf("voice-aaaaaaaaaaa%d.wav", i)), clip, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return e
 }

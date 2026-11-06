@@ -945,8 +945,9 @@ func TestRestoreRefusesBadFiles(t *testing.T) {
 		}, "size a backup can't hold"},
 		"a total over the limit": {func(t *testing.T, e []entry) []entry {
 			m := manifestOf(t, e)
-			for i := 0; i < 3; i++ {
-				m.Files = append(m.Files, File{Path: fmt.Sprintf("catalog.d/big%d.json", i), Size: maxFileBytes, SHA256: strings.Repeat("a", 64)})
+			voice := maxBytesOf("voices/voice-000000000000.wav")
+			for i := int64(0); i <= maxTotalBytes/voice; i++ {
+				m.Files = append(m.Files, File{Path: fmt.Sprintf("voices/voice-%012x.wav", i), Size: voice, SHA256: strings.Repeat("a", 64)})
 			}
 			setManifest(t, e, m)
 			return e

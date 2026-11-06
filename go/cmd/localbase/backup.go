@@ -355,7 +355,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	printHeldBack(c, rep.KeysHeldBack)
 	printKeys(c, "Keys changed since this backup stay as they are on this root:", "  To take this backup's version of one: --bring-back-key <id>", rep.KeysKept)
 	printKeys(c, "Keys in this backup that this root doesn't have stay out:", "  To bring one back: --bring-back-key <id>", rep.KeysLeftOut)
-	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  The secret in this backup works for these, and any they have now stops working.", rep.KeysBroughtBack)
+	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  This backup's secret for each of these will work. The secret each has now will stop working.", rep.KeysBroughtBack)
 	printKeys(c, "Keys made since this backup would stop working:", "", rep.KeysLost)
 	if rep.ReturningUsers > 0 {
 		c.Info("%d users this root has removed would come back.", rep.ReturningUsers)
