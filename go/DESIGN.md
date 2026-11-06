@@ -3837,6 +3837,7 @@ A playground for typed questions: one page (`/app/studio/decisions`) with a card
 on the Studio landing. The owner asked for "Jev-style decision AIs" to have
 their own place. It asks `POST /v1/systemone`.
 
+- **(§27.4 changes this form:** the question comes first and leaves the dock, and an answer no longer shows the type.)
 - **The form** keeps one fixed control at the top, the type: Pick one (`choice`),
   Yes or no (`noul`), Rate (`score`). Below it the situation and the options,
   and in the dock the Template chip, the Batch chip and the question as a real
@@ -5116,9 +5117,84 @@ the pages before this change it failed for all five.
   doesn't show on the result's own page, or on the landing for what Recent shows.
 - **It covers nothing.** It is a bar on its own ground above the tab bar or the prompt, and pages keep
   room. Before, it floated over rows and, at z-30, over a tool's prompt.
-- **A finished video fits one phone screen** with its heading and actions, by leaving room for the fixed
-  parts rather than taking a share of the screen: a share of 60% left no room at 740 px tall. Below
-  about 660 px the player stops at 9rem, so the end of the card can need a scroll.
+- **A finished video fits one phone screen** with its heading and actions from 360 up, by leaving room
+  for the fixed parts rather than taking a share of the screen: a share of 60% left no room at 740 px
+  tall. Below about 660 px the player stops at 9rem, so a scroll has to reach the actions, and they are
+  then uncovered. **This line claimed more at first:** the check for it skipped silently, because earlier
+  steps had removed the videos by then, and the row wrapped wherever Share showed (§27.2b has what fixed it).
+
+### 27.2b Video, led by your words
+
+- **A result reads like a picture's:** the words in the reading face, then its length and age, then the player.
+  There is no card round it, and space separates results. On a phone the words stop at two lines.
+- **While it runs,** the stage and Stop sit together above its place, which has the video's shape. The place says
+  how long so far, in words. That is what has happened, and it promises nothing about what is left, because the
+  API reports no steps. "It can take up to 10 minutes" is the model's limit, not a measurement, and past half of
+  it the line says this is taking a while.
+- **Make again leads,** with Save, Share, Edit prompt and Remove as icons, so all of them stay in one row down to
+  360 with Share showing. The first version let Remove wrap onto a second row, behind a pill. An icon is 44 px
+  and named for a screen reader. A tooltip can't help on a phone, so a first visit names Edit prompt, and a long
+  press shows an icon's name and does nothing else: holding Remove doesn't remove. If a reviewer finds the pencil
+  unclear, it goes back to the words.
+- **A first visit** asks what you'd like to see move, like Image, and says plainly that a video can take a while
+  and uses a lot of memory. It names no model.
+
+**Checks:** `tools/chat-runs-check.sh`: with a two-line title, a pill and Share showing, at 360 and 390, every
+action is in one row and none is covered; at 320 by 568 a scroll reaches them. This section makes its own video,
+and fails if it can't, because a guard that quietly stays off is a hole in every table: a check run now has to show
+a result line for every `check()` in the script. **No real video model has run through this page.**
+
+### 27.2c Speech, in the same pattern
+
+- **A script reads like a video:** its first words, then the voice, length and age, then the waveform above the
+  native player. Make again leads, and Save, Share, Edit script and Remove are icons in one row.
+- **While it runs,** the voice and Stop sit together, and its progress is the real count of parts made, because this
+  page makes them one at a time. It has no shimmer: polling would restart one every two seconds.
+- **The voice chip says Voice,** since the name of a voice alone ("Default") doesn't say what the chip is.
+- **Unchanged:** the sample in each voice's row, the note about long runs of digits, and the 350 ms pause between
+  parts, which is one constant, `speechPartPause` (§22.19). No one has judged that pause by ear (`docs/owner-test-script.md`).
+
+**Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390 with Share showing, and a long press. **No real speech
+model has run through this new layout.**
+
+### 27.2d Transcribe, in the same pattern
+
+- **A transcript reads like the others:** its first words, then what it is, the file, the language and age, then
+  the player, the actions and the text. There is no card, and a translation says to check it right beside its name.
+- **Record and Choose a file carry equal weight,** with an icon each. Neither is the "real" way in.
+- **Copy and Export lead,** with Timestamps and Remove as icons in one row, and a long press names them. Times are
+  in tabular figures, written out because Tailwind's utility does nothing on the floor browser.
+- **An English-only model** still hides language and translate. **Unchanged:** TXT, SRT and VTT, and tapping a time.
+
+- **At 320 the two starts take a size smaller,** because a half-width button there can't hold an icon and "Choose a file" on one line.
+
+**Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390, and tabular times. **No real transcription model
+has run through this new layout, and the real microphone test is in `docs/owner-test-script.md`.**
+
+### 27.2e What Studio keeps in a browser is one person's
+
+- **Keyed by person.** Saved examples, the question being asked and a prompt on its way to another tool are stored under
+  `data-person`, a hash that doesn't say who someone is. They had one key per browser, so on a shared profile the next
+  person saw the last one's saved questions, and the words they were still typing.
+- **A tab holds nothing for the next person.** Signing out clears what the tab holds. A session can also just end, with
+  a redirect to sign-in and no chance to run anything, so every page also removes anything in the tab that isn't this
+  person's, before anything can read it.
+- **Older examples aren't shown, and aren't silently deleted.** They could be anyone's, so nothing reads them, and the
+  Examples sheet says so and offers to clear them on this device. That is the same policy as Chat's old history.
+- **What someone typed and never sent stays out of form restore.** A browser can put typed words back into a form when a
+  page comes back from history, into whoever's page it now is. `autocomplete="off"` on every typed box is what stops it:
+  removed from the prompts, B's box showed what A had typed, on Chrome 114 and 156. A test holds the attribute in place.
+- **Back shows nothing of the last person.** A browser can bring a page back exactly as it was, whoever is signed in now,
+  and without a word to the server. So a restored page is blanked at once, before anything else runs, and fetched again.
+  The shell does this for every page.
+- **A look preference stays per browser:** the viewer's mat says nothing about anyone.
+
+**Checks:** a real two-person sign-in on one profile, through a fake provider over TLS, on both browsers. It fails at the
+commit before this: B sees A's saved example and A's question, and gets A's prompt. Which pages hop with a prompt today
+is narrow: only Image's own Try again offers one, on Image itself, so that test plants the button and tests the key.
+Each Studio page also gets its own Back, once with the provider refusing and once with B signed in. A page that didn't
+come from the browser's cache fails that check as not exercised, because passing then says nothing about the page. What
+those checks read is the page's text and whether it's hidden, at the moment it returns. They can't see a painted frame.
 
 ### 27.3 What the landing's overflow taught
 
@@ -5132,6 +5208,81 @@ the pages before this change it failed for all five.
   between tiles, so it scrolls to a tile.
 - **Real pictures vary.** Captures use pictures a real model made and a quiet video fixture, so
   sheets are judged on the design. Real media is as colorful as it is.
+
+### 27.4 Decisions, led by the question
+
+The page should read as what it is: you ask something, and read how the odds came out. The chat-style
+dock put the question last and left it out of the answer.
+
+- **The question comes first,** at the top of the page, set like a title, and leaves the dock. Below it
+  the type, the situation and the options. Only an action bar stays fixed: Examples, Batch and Decide.
+- **An answer has no form and no type tabs,** which reverses §22.17's "the type has not moved". That
+  rule stopped the control jumping as a form changed, and it still holds while the form is open. But
+  on an answer the tabs are controls for a question already sent, and they took the space and the
+  attention from the question and its odds. Edit brings them back. Owner's call, through the operator.
+- **After an answer** the bar offers Edit, and Ask another, which keeps the type and options and clears
+  the words, since the next one is often the same question about something else. The Hearth mock drew
+  an input there, but a question needs its options, which that input had no way to change.
+- **A row reads in order:** the answer, an equal track, its number, in tabular figures. No `subgrid`:
+  the check that numbers come after tracks failed on the first version because the test browser is
+  Chrome 114 and `subgrid` needs 117, so every row fell back to one column and stacked. Older phones
+  would have done the same. Every row now has the same fixed columns. Tabular figures are written out
+  as well, because Tailwind's `tabular-nums` is built from empty `var()` fallbacks, which Chrome 114 reads
+  as `normal`: the figures looked right on a current browser and silently weren't on an older one.
+- **Focus clears the bar.** A control taking focus could end up behind the action bar, because the page's
+  scroll padding allowed for the tab bar and keyboard only. It now allows for the bar too, on any page
+  with one, and for the pill's bar when that is up.
+- **Words.** The band table is unchanged. A close call and an unsure read add one line saying the result
+  is worth a person's look. It says what the odds show, never how often they are right, and a test
+  holds that. The standing line stays under the odds.
+- **While it decides,** the answer's own shape appears, with its names and no numbers yet.
+- **Questions aren't in Recent,** because they stay in this browser. The page says so, since someone
+  could look for them there.
+- **Answers read as written,** so the examples' options are capitalized. What a person types is shown as
+  they typed it.
+
+**Checks:** `TestDecisionsPage`, `tools/jstest/decisions.test.ts`, and `tools/chat-runs-check.sh` (question
+first, no tabs on an answer, equal tracks, numbers after them and lined up, Ask another, real Tab presses
+clearing the bar, and a row's parts on one line). They run on Chrome 114 and on a current Chrome.
+
+### 27.5 Image, gallery first
+
+- **A group leads with its words,** in the reading face, then its look and age, then its pictures. A long
+  prompt stops at three lines here, and Details has all of it. Pictures are what the page is for, so the
+  "Results" heading went, and one line says they stay for 30 minutes.
+- **The viewer is for inspecting.** It opens on the whole picture. A tap or click on the picture, the button,
+  or Z doubles it around that point. Zoomed in, the arrows move around the picture rather than to the next
+  one. Moving on shows the next whole picture. Pinching is the browser's own, and is not disabled.
+- **The mat is optional, and off by default.** It puts the picture on paper, for looking at rather than
+  checking. It is a way of looking at pictures, so it stays with this browser, not with one picture.
+- **Closing goes back to the picture you were on,** even after moving between several.
+- **What a restart lost is one line.** A run outlives the in-memory note holding its words, so afterwards it
+  has no prompt, nothing to try again and no picture. A tool says how many once, with Clear, rather than a
+  row each, and the landing leaves them out.
+- **Edit makes a picture the start of a new one** (`/v1/images/edits`). It sits in the prompt box with its
+  words ready to change: these models draw what the words describe, so the whole description goes in, not an
+  instruction. The new picture keeps this one's shape, so Shape gives way to how much to change, in three
+  plain steps that make no promise about any model. The button says Edit rather than "Use as input": that is
+  the word a person would look for, and the bar has to fit a small phone.
+- **A model that can't edit is never offered for it.** The same answer the API goes by decides, and a model
+  that can't stays visible in the sheet, saying so. Editing switches to one that can; stopping goes back. With
+  none on this computer, Edit says what is needed and leaves the picture where it is. That state names no model.
+- **An edit stays an edit.** Its result says so, Details shows how much and the picture it started from while
+  that is kept, and Vary, Regenerate, Reuse settings and Try again all start from the same picture. Once the
+  starting picture has gone, Vary and Regenerate say so, and Reuse settings and Try again step aside: none of
+  them quietly makes a new picture instead.
+- **Regenerate moved under Details.** With Edit and Share on a phone there are too many for one row, and it is
+  the rarest of them: the same seed mostly repeats the same picture.
+- **Details is a plain button and panel, not a `<details>`.** The panel has to sit above the actions, across the
+  bar, while its opener stays in the row. A `<details>` can only do that with `display: contents`, and browsers
+  that wrap its content in a `::details-content` box then lay it out differently: Chrome 156 put the panel beside
+  the actions at 1280, where Chrome 114 put it above them. A check now compares where the panel really is.
+
+**Checks:** `tools/chat-runs-check.sh`: the words above the pictures, zoom by each means, the arrows while
+zoomed, the mat, focus on closing, and all the actions at 320 with Share showing, as it does on a real phone.
+Edit, by whichever state the gateway's models allow: the picture in the prompt, the route, the way back, and
+that the page doesn't move. `TestImageEdit` and `TestImageEditOnlyWithAModelThatCan` cover the request and
+both states without a browser. **A real model has not edited a picture through this page.**
 
 ## 30. Connect an app, and the OpenAPI document (design addendum, 2026-11-02)
 

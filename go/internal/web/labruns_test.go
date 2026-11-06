@@ -1,15 +1,21 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -227,6 +233,49 @@ func TestStudioTile(t *testing.T) {
 	}
 }
 
+// After a restart a run has lost the note that held its words, so it has nothing to show. The tool
+// says so once, with one way to clear them, and the landing leaves them out. A run that kept its
+// words stays a row of its own, with its Try again.
+func TestLostRuns(t *testing.T) {
+	calls := []string{}
+	lost := func(id string) string {
+		return `{"id":"` + id + `","target":"/v1/images/generations","status":"interrupted","reason":"gateway_restart"}`
+	}
+	cat, _ := catalog.Load("")
+	cfg := &store.Config{Selected: map[string][]string{"image": {"dreamshaper-8-lcm"}}}
+	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
+	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, "dreamshaper-8-lcm"), Call: func(_ context.Context, _ *auth.Principal, method, path, _ string, _ []byte) APIResult {
+		if method == "DELETE" {
+			calls = append(calls, path)
+		}
+		return APIResult{Status: 200, Body: []byte(`{"data":[` + lost("run_a") + `,` + lost("run_b") + `]}`)}
+	}})
+	page := mainRe.FindString(get(u, "/app/studio/image").Body.String())
+	if !strings.Contains(page, "2 earlier results didn’t finish") || strings.Contains(page, `id="run-run_a"`) || strings.Contains(page, "Generate it again") {
+		t.Errorf("lost runs should be one line, not a row each: %s", page)
+	}
+	if other := mainRe.FindString(get(u, "/app/studio/speech").Body.String()); strings.Contains(other, "earlier result") {
+		t.Errorf("another tool's page shouldn't mention them: %s", other)
+	}
+	if landing := mainRe.FindString(get(u, "/app/studio").Body.String()); strings.Contains(landing, "tile-run_a") || strings.Contains(landing, `id="recent-title"`) {
+		t.Errorf("the landing has nothing to show for them: %s", landing)
+	}
+	r := htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"image"}})
+	withCSRF(u, r)
+	w := httptest.NewRecorder()
+	u.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "" || strings.Join(calls, ",") != "/_localbase/runs/run_a,/_localbase/runs/run_b" {
+		t.Errorf("clear: %d %q %v", w.Code, w.Body.String(), calls)
+	}
+	calls = nil
+	r = htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"speech"}})
+	withCSRF(u, r)
+	u.ServeHTTP(httptest.NewRecorder(), r)
+	if len(calls) != 0 {
+		t.Errorf("clearing one tool removed another's: %v", calls)
+	}
+}
+
 // Old Lab links land on the new pages; an unknown tool is not found.
 func TestLabRedirects(t *testing.T) {
 	u := New(Deps{NoAuth: true})
@@ -329,7 +378,7 @@ func TestImageAgain(t *testing.T) {
 	u.ServeHTTP(httptest.NewRecorder(), htmxPost("/app/lab/image", url.Values{"prompt": {"a boat"}, "shape": {"landscape"}, "seed": {"7"}, "count": {"2"}, "model": {"some-model"}}))
 	out := get(u, "/app/lab/runs/run_1").Body.String()
 	for _, want := range []string{`<dialog id="view-run_1-0" class="viewer"`, `<dialog id="view-run_1-1" class="viewer"`, "<dt>Seed</dt><dd>7</dd>", "<dt>Seed</dt><dd>8</dd>",
-		"<span>Regenerate</span>", "<span>Vary</span>", "<dt>Model</dt><dd>some-model</dd>", `data-copy-text="a boat"`, `data-seed="8"`, "A saved copy includes its prompt."} {
+		"title=\"The same prompt and seed\">Regenerate</button>", "<span>Edit</span>", "<span>Vary</span>", "<dt>Model</dt><dd>some-model</dd>", `data-copy-text="a boat"`, `data-seed="8"`, "A saved copy includes its prompt."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("viewer: missing %q", want)
 		}
@@ -399,7 +448,7 @@ func TestDecisionsPage(t *testing.T) {
 	body := get(u, "/app/studio/decisions").Body.String()
 	main := mainRe.FindString(body)
 	for _, want := range []string{`id="decide"`, `name="decide-type" value="choice"`, `name="decide-type" value="noul"`, `name="decide-type" value="score"`,
-		`data-open-sheet="decide-template"`, `name="question"`, `name="model" value="clef-flash-q4_k_m"`, `id="decide-code"`, `aria-label="Decide"`} {
+		`data-open-sheet="decide-template"`, `name="question"`, `name="model" value="clef-flash-q4_k_m"`, `id="decide-code"`, `>Decide</button>`} {
 		if !strings.Contains(main, want) {
 			t.Errorf("missing %q", want)
 		}
@@ -425,5 +474,157 @@ func TestDecisionsPage(t *testing.T) {
 	}
 	if main := mainRe.FindString(get(u, "/app/studio").Body.String()); !strings.Contains(main, `href="/app/models/get?filter=decisions"`) {
 		t.Errorf("no way to get a model: %s", main)
+	}
+}
+
+// A real picture, so an edit can read its size.
+func testPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	if err := png.Encode(&out, image.NewRGBA(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// Edit (DESIGN §27.5): a result goes to the edit route as a file, keeping its size, and only with a
+// model that can edit. A model that can't, a picture that has gone and another person's picture never
+// reach the API.
+func TestImageEdit(t *testing.T) {
+	cat, _ := catalog.Load("")
+	const plain, capable = "dreamshaper-8-lcm", "juggernaut-xl-v9"
+	cfg := &store.Config{Selected: map[string][]string{"image": {plain, capable}}}
+	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
+	var posts []string
+	var form *multipart.Form
+	status := "completed"
+	call := func(_ context.Context, _ *auth.Principal, method, path, ctype string, body []byte) APIResult {
+		switch {
+		case method == "GET" && path == "/_localbase/runs/run_e":
+			return APIResult{Status: 200, Body: []byte(`{"id":"run_e","target":"/v1/images/edits","status":"` + status + `"}`)}
+		case method == "GET" && path == "/_localbase/runs/run_e/result":
+			img := base64.StdEncoding.EncodeToString(testPNG(t, 8, 8))
+			return APIResult{Status: 200, Body: []byte(`{"data":[{"b64_json":"` + img + `"}]}`)}
+		case method == "GET":
+			return APIResult{Status: 200, Body: []byte(`{"object":"list","data":[]}`)}
+		}
+		posts = append(posts, path)
+		_, params, _ := mime.ParseMediaType(ctype)
+		form, _ = multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+		return APIResult{Status: 202, Body: []byte(`{"id":"run_e","target":"/v1/images/edits","status":"queued"}`)}
+	}
+	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm, RootDir: installedRoot(t, cat, plain, capable), Call: call})
+
+	page := mainRe.FindString(get(u, "/app/studio/image").Body.String())
+	if strings.Contains(page, `id="image-needs-edit"`) {
+		t.Error("a model here can edit, so nothing should say one is needed")
+	}
+	for id, want := range map[string]bool{plain: false, capable: true} {
+		radio := regexp.MustCompile(`<input type="radio" name="model" value="` + id + `"[^>]*>`).FindString(page)
+		if radio == "" || strings.Contains(radio, "data-edits") != want {
+			t.Errorf("%s: %q, want data-edits %v", id, radio, want)
+		}
+	}
+
+	owner := (&auth.Principal{Kind: "browser-session", ID: "no-auth"}).OwnerID()
+	picture := testPNG(t, 512, 768)
+	source := u.results.put(owner, "image/png", picture)
+	send := func(path string, v url.Values) string {
+		t.Helper()
+		r := httptest.NewRequest("POST", path, strings.NewReader(v.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Set("HX-Request", "true")
+		r.Header.Set("X-Localbase-UI", "1")
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
+		withCSRF(u, r)
+		w := httptest.NewRecorder()
+		u.ServeHTTP(w, r)
+		return w.Body.String()
+	}
+	post := func(v url.Values) string { t.Helper(); return send("/app/lab/image", v) }
+	item := post(url.Values{"prompt": {"the same boat"}, "model": {capable}, "source": {source}, "change": {"little"}, "look": {"watercolor"}, "shape": {"square"}, "count": {"2"}, "seed": {"7"}})
+	if len(posts) != 1 || posts[0] != "/_localbase/runs/v1/images/edits" || form == nil {
+		t.Fatalf("posts %v, form %v: %s", posts, form, item)
+	}
+	value := func(name string) string {
+		if v := form.Value[name]; len(v) == 1 {
+			return v[0]
+		}
+		return ""
+	}
+	if value("model") != capable || value("strength") != "0.35" || value("size") != "512x768" || value("seed") != "7" || value("n") != "2" || value("response_format") != "b64_json" || !strings.HasPrefix(value("prompt"), "the same boat, watercolor") {
+		t.Errorf("the edit's fields: %v", form.Value)
+	}
+	if files := form.File["image"]; len(files) != 1 {
+		t.Errorf("want one image, got %d", len(files))
+	} else {
+		f, _ := files[0].Open()
+		got, _ := io.ReadAll(f)
+		if !bytes.Equal(got, picture) || files[0].Header.Get("Content-Type") != "image/png" {
+			t.Errorf("the file sent isn't the picture: %d bytes, %q", len(got), files[0].Header.Get("Content-Type"))
+		}
+	}
+	if !strings.Contains(item, "id=\"run-run_e\"") {
+		t.Errorf("no tray item: %s", item)
+	}
+
+	// Vary edits the same picture again.
+	posts = nil
+	out := send("/app/lab/runs/run_e/again", url.Values{"mode": {"vary"}})
+	if len(posts) != 1 || posts[0] != "/_localbase/runs/v1/images/edits" {
+		t.Errorf("Vary on an edit: %v: %s", posts, out)
+	}
+
+	// Everything that repeats an edit starts from the same picture while it is kept.
+	item = func() string {
+		status = "failed"
+		out := get(u, "/app/lab/runs/run_e").Body.String()
+		status = "completed"
+		return out
+	}()
+	if !strings.Contains(item, `data-edit-picture="/app/lab/results/`+source+`"`) {
+		t.Errorf("Try again on an edit should start from its picture: %s", item)
+	}
+	done := get(u, "/app/lab/runs/run_e").Body.String()
+	if !strings.Contains(done, `data-from="/app/lab/results/`+source+`"`) || !strings.Contains(done, "viewer-from") || !strings.Contains(done, "Edited") {
+		t.Errorf("a finished edit should say what it started from: %s", done)
+	}
+
+	// None of these should reach the API.
+	posts = nil
+	for name, c := range map[string]struct {
+		v    url.Values
+		want string
+	}{
+		"a model that can't":       {url.Values{"prompt": {"x"}, "model": {plain}, "source": {source}}, "can’t edit pictures"},
+		"a picture that's gone":    {url.Values{"prompt": {"x"}, "model": {capable}, "source": {"00000000000000000000000000000000"}}, "no longer here"},
+		"another person's picture": {url.Values{"prompt": {"x"}, "model": {capable}, "source": {u.results.put("someone-else", "image/png", picture)}}, "no longer here"},
+	} {
+		if out := post(c.v); !strings.Contains(out, c.want) || len(posts) != 0 {
+			t.Errorf("%s: posts %v: %s", name, posts, out)
+		}
+	}
+
+	// Once the picture has gone, nothing that repeats the edit quietly makes a new picture instead.
+	u.results.mu.Lock()
+	delete(u.results.items, source)
+	u.results.mu.Unlock()
+	if out := send("/app/lab/runs/run_e/again", url.Values{"mode": {"vary"}}); !strings.Contains(out, "no longer here") || len(posts) != 0 {
+		t.Errorf("Vary with the picture gone: posts %v: %s", posts, out)
+	}
+	gone := get(u, "/app/lab/runs/run_e").Body.String()
+	if strings.Contains(gone, "data-reuse") || strings.Contains(gone, "viewer-from") || !strings.Contains(gone, "Edited") {
+		t.Errorf("a finished edit whose picture has gone offers Reuse settings: %s", gone)
+	}
+	status = "failed"
+	if out := get(u, "/app/lab/runs/run_e").Body.String(); strings.Contains(out, "Try again") {
+		t.Errorf("a failed edit whose picture has gone offers Try again: %s", out)
+	}
+
+	// With no model that can, the page says so, and how to get one.
+	alone := New(Deps{NoAuth: true, Catalog: cat, LLM: runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, &store.Config{Selected: map[string][]string{"image": {plain}}}), RootDir: installedRoot(t, cat, plain), Call: call})
+	none := mainRe.FindString(get(alone, "/app/studio/image").Body.String())
+	if !strings.Contains(none, `id="image-needs-edit"`) || !strings.Contains(none, "/app/models/get?filter=images") || strings.Contains(none, "data-edits") {
+		t.Errorf("no model that can edit: %s", none)
 	}
 }

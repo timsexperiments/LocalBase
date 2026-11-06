@@ -6,6 +6,10 @@
 //   expired: the edge redirects the request cross-origin, so fetch fails.
 //   A same-origin probe with redirect: "manual" comes back opaque.
 // - The gateway is unreachable: the probe itself fails.
+import { forgetOthers, forgetTab } from "./person.js";
+
+forgetOthers();
+
 const notice = () => document.getElementById("session-notice");
 
 function show(message, action) {
@@ -33,8 +37,11 @@ function show(message, action) {
 // replace that with a message that doesn't say so.
 let signOutFailed = false;
 
-async function diagnose() {
+async function diagnose(event) {
   if (signOutFailed) return;
+  // A form that says its own send failure ("[data-own-send-error]") keeps the sign-in check
+  // but not the two lines that would repeat it.
+  const own = event?.detail?.elt?.closest?.("[data-own-send-error]");
   let response;
   try {
     response = await fetch("/app/session", {
@@ -44,14 +51,14 @@ async function diagnose() {
       headers: { "X-Localbase-UI": "1" },
     });
   } catch {
-    show("Can't reach LocalBase right now. Check the connection and try again.");
+    if (!own) show("Can't reach LocalBase right now. Check the connection and try again.");
     return;
   }
   if (response.type === "opaqueredirect") {
     show("Your sign-in expired. Reload to sign in again.", { label: "Reload", run: () => location.reload() });
   } else if (response.status === 401) {
     location.assign("/app/login");
-  } else {
+  } else if (!own) {
     show("That didn't load. Try again.");
   }
 }
@@ -78,6 +85,7 @@ document.addEventListener("click", async (event) => {
   if (!button) return;
   button.disabled = true;
   let failure = "";
+  forgetTab();
   try {
     const answer = await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
     // Only a real answer ends it. A 503 means the session is still good, so saying "signed out" would be false.

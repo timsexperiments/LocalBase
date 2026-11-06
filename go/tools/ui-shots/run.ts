@@ -34,6 +34,7 @@ const PAGES: [string, string, string?][] = [
   ["transcribe", "/app/studio/transcribe"],
   ["decisions", "/app/studio/decisions"],
   ["decisions-result", "/app/studio/decisions", `document.querySelector("[data-open-sheet=decide-template]").click();${wait(120)}document.querySelector('[data-template="route"]').click();${wait(120)}document.querySelector("#decide .lab-dock button[type=submit]").click();${wait(1800)}`],
+  ["decisions-close", "/app/studio/decisions", `document.querySelector("[data-open-sheet=decide-template]").click();${wait(120)}document.querySelector('[data-template="route"]').click();${wait(120)}const a=document.getElementById("decide-situation");a.value="fake:close The courier billed me for a redelivery I never got.";a.dispatchEvent(new Event("input",{bubbles:true}));${wait(100)}document.querySelector("#decide .lab-dock button[type=submit]").click();${wait(1800)}`],
   ["models", "/app/models"],
   ["get", "/app/models/get"],
   ["running", "/app/models/running"],

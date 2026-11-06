@@ -35,6 +35,9 @@ const nav = async (path) => { await send("Page.navigate", { url: base + path });
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
 let fails = 0; const check = (ok, msg) => { console.log((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };
 await send("Page.enable");
+// A test tab can go hidden behind others, and a hidden page rightly stops polling and taking focus, which
+// then looks like a bug in the page. Focus emulation keeps it active for the whole run.
+await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 
 await nav("/app/chat");
@@ -174,7 +177,7 @@ else {
   await sleep(250);
   const view = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"); const r = d.getBoundingClientRect(); const img = d.querySelector(".viewer-img").getBoundingClientRect(); const tile = document.querySelector(".image-tile").getBoundingClientRect();
     return { full: Math.round(r.width) === innerWidth && Math.round(r.height) === innerHeight, img: img.height > 150, count: d.querySelector("[data-view-count]").textContent, acts: [...d.querySelectorAll(".viewer-foot .viewer-act span")].map((s) => s.textContent).filter(Boolean), small: [...d.querySelectorAll("button, a, summary")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 43.5).length, tile: tile.width > 100 }; })()`);
-  check(view.full && view.img && view.tile && view.small === 0 && /of/.test(view.count) && ["Save", "Vary", "Regenerate", "Details"].every((a) => view.acts.includes(a)), `the viewer fills the screen with its actions: ${JSON.stringify(view)}`);
+  check(view.full && view.img && view.tile && view.small === 0 && /of/.test(view.count) && ["Save", "Edit", "Vary", "Details"].every((a) => view.acts.includes(a)), `the viewer fills the screen with its actions: ${JSON.stringify(view)}`);
   const first = await ev(`document.querySelector("dialog.viewer[open]").id`);
   await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
   check((await ev(`document.querySelector("dialog.viewer[open]").id`)) !== first, "Next moves to another picture");
@@ -202,12 +205,18 @@ else {
   await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: globalThis.__noShare });
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
-  await ev(`[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")?.click()`);
-  await sleep(1200);
-  check(await ev(`document.querySelector("#lab-items > li").textContent.includes("Stopped.")`), "Stop stops the run");
+  // Stop is waited for and then its result is: a fixed wait, with a click that quietly found nothing, read a run that was
+  // still going as a failed Stop, and the next step then threw. Each now says what it saw.
+  const stopButton = `[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")`;
+  const startedAt = Date.now();
+  for (let i = 0; i < 150 && !(await ev(`!!${stopButton}`)); i++) await sleep(100);
+  const stopShown = await ev(`!!${stopButton}`);
+  check(stopShown, `a slow picture shows Stop while it runs: after ${Date.now() - startedAt} ms`);
+  if (stopShown) await ev(`${stopButton}.click()`);
+  for (let i = 0; i < 100 && !(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`)); i++) await sleep(100);
+  check(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`), `Stop stops the run: ${JSON.stringify(await ev(`document.querySelector("#lab-items > li")?.textContent.replace(/\\s+/g, " ").trim().slice(0, 80)`))}`);
   const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
-  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]").click()`);
+  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]")?.click()`);
   await sleep(800);
   const after = await ev(`document.querySelectorAll("#lab-items > li").length`);
   const left = await runsNow();
@@ -284,18 +293,18 @@ await nav("/app/studio/decisions");
 if (!(await ev(`!!document.getElementById("decide")`))) {
   console.log("skip decisions (no decision model selected)");
 } else {
-  const typeTop = `document.querySelector(".decide-types").getBoundingClientRect().top`;
+  const typeTop = `document.querySelector(".decide-types").getBoundingClientRect().top + scrollY`; // in the page: focus can scroll it
   const pick = (id) => `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector('#decide-template [data-template="${id}"]').click(); })()`;
   const situation = (text) => `(() => { const a = document.getElementById("decide-situation"); a.value = ${JSON.stringify(text)}; a.dispatchEvent(new Event("input", { bubbles: true })); })()`;
   const decide = `document.querySelector("#decide button[type=submit]").click()`;
-  const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-word") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
-  const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-label")].map((n) => n.firstChild.textContent), said: document.getElementById("decide-said").textContent })`;
+  const finished = async () => { for (let i = 0; i < 60 && (await ev(`!document.querySelector("[data-result] .decide-verdict") && !document.querySelector("[data-result] [role=alert]")`)); i++) await sleep(100); };
+  const read = `({ word: document.querySelector("[data-result] .decide-word")?.textContent, verdict: document.querySelector("[data-result] .decide-verdict")?.textContent, labels: [...document.querySelectorAll("[data-result] .decide-bar-name")].map((n) => n.textContent), said: document.getElementById("decide-said").textContent })`;
   const decisionRuns = async () => (await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.label === "Decision").map((x) => x.status))`));
 
-  const top = await ev(typeTop);
   await ev(pick("route"));
   check((await decisionRuns()).length === 0 && (await ev(`document.getElementById("lab-prompt").value`)).includes("team") && !(await ev(`document.querySelector("[data-result]").hidden === false`)), "a template fills the form and runs nothing");
 
+  const top = await ev(typeTop);
   await ev(`document.querySelector("input[name=decide-type][value=noul]").click()`);
   check((await ev(typeTop)) === top && (await ev(`document.querySelector("[data-options]").hidden`)), "the question type stays put; yes or no needs no options");
   await ev(`document.querySelector("input[name=decide-type][value=choice]").click()`);
@@ -304,15 +313,17 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await finished();
   check((await ev(`location.search`)) === "", "the question stays out of the address");
   const strong = await ev(read);
-  check(strong.word === "Strongly favored" && /^billing/.test(strong.verdict) && strong.labels[0] === "billing" && /Strongly favored: billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
+  check(strong.word === "Strongly favored" && /^Billing/.test(strong.verdict) && strong.labels[0] === "Billing" && /Strongly favored: Billing, 91%/.test(strong.said), `words first, then ranked odds, and announced: ${JSON.stringify(strong)}`);
   check((await ev(`document.querySelector("[data-result]").textContent.includes("not a check that it is right")`)), "the standing line is under the answer");
-  check((await ev(`document.querySelector("[data-form-open]").hidden && !document.querySelector("[data-form-summary]").hidden`)) && (await ev(typeTop)) === top, "the form collapses to a summary, and the type did not move");
+  const led = await ev(`(() => { const q = document.querySelector("[data-summary-question]"), word = document.querySelector("[data-result] .decide-word"), bar = document.querySelector("[data-bar-answer]"); return { form: document.querySelector("[data-form-open]").hidden, summary: !document.querySelector("[data-form-summary]").hidden, tabs: document.querySelector(".decide-types").getBoundingClientRect().height, question: q.textContent, first: q.getBoundingClientRect().bottom <= word.getBoundingClientRect().top, ask: document.querySelector("[data-bar-form]").hidden, again: !bar.hidden && !bar.querySelector("[data-again]").hidden }; })()`);
+  check(led.form && led.summary && led.tabs === 0 && /team/.test(led.question) && led.first && led.ask && led.again, `the answer is led by its question, without the form or its tabs: ${JSON.stringify(led)}`);
+  check((await ev(`document.querySelector(".decide-keep").textContent.includes("stay in this browser")`)), "it says questions stay in this browser, so nobody looks for them in Recent");
   await sleep(200);
   check((await decisionRuns()).length === 0, "the run is deleted once its answer is here");
 
   await ev(`document.querySelector("[data-code]:not([data-form-open] *)").click()`);
   const code = await ev(`({ open: document.getElementById("decide-code").open, text: document.querySelector("[data-code-text]").textContent })`);
-  check(code.open && code.text.includes("$LOCALBASE_API_KEY") && code.text.includes("/v1/systemone") && code.text.includes("billing"), "View code shows the request with the key as a placeholder");
+  check(code.open && code.text.includes("$LOCALBASE_API_KEY") && code.text.includes("/v1/systemone") && code.text.includes("Billing"), "View code shows the request with the key as a placeholder");
   await ev(`document.querySelector("input[name=decide-code-lang][value=js]").click()`);
   check((await ev(`document.querySelector("[data-code-text]").textContent.includes("process.env.LOCALBASE_API_KEY")`)), "and JavaScript");
   await ev(`document.getElementById("decide-code").close()`);
@@ -322,7 +333,9 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(300); await finished();
   const close = await ev(read);
-  check(close.word === "Close call" && /^billing or shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+  check(close.word === "Close call" && /^Billing or Shipping/.test(close.verdict), `a close call names both: ${close.verdict}`);
+  const tracks = await ev(`(() => { const rows = [...document.querySelectorAll("[data-result] .decide-bar")], left = (r, q) => r.querySelector(q).getBoundingClientRect(); return { widths: rows.map((r) => Math.round(left(r, ".decide-track").width)), order: rows.every((r) => left(r, ".decide-bar-name").right <= left(r, ".decide-track").left && left(r, ".decide-track").right <= left(r, ".decide-bar-odds").left), numbers: new Set(rows.map((r) => Math.round(left(r, ".decide-bar-odds").right))).size, tabular: getComputedStyle(rows[0].querySelector(".decide-bar-odds")).fontVariantNumeric, note: document.querySelector("[data-result] .decide-note")?.textContent, leads: document.querySelectorAll("[data-result] .decide-bar-top").length }; })()`);
+  check(new Set(tracks.widths).size === 1 && tracks.widths[0] > 0 && tracks.order && tracks.numbers === 1 && tracks.tabular.includes("tabular-nums") && /a person’s look/.test(tracks.note) && tracks.leads === 2, `a close result: equal tracks, then numbers after them, lined up and tabular; both lead, and it says to look: ${JSON.stringify(tracks)}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:unsure"));
@@ -334,7 +347,7 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(300); await finished();
   const scale = await ev(read);
-  check(scale.labels.join() === "low,medium,high" && /^low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
+  check(scale.labels.join() === "Low,Medium,High" && /^Low/.test(scale.verdict), `a scale keeps its order: ${scale.labels}`);
 
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(`(() => { document.querySelector("input[name=decide-type][value=choice]").click(); for (const n of document.querySelectorAll("[data-remove-option]")) document.querySelector("[data-remove-option]")?.click(); })()`);
@@ -354,9 +367,9 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(decide);
   await sleep(400);
   await nav("/app/studio/decisions");
-  check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-word")`)), "a reload finds the question still running");
+  check((await ev(`!!document.querySelector("[data-result] [aria-busy]")`)) || (await ev(`!!document.querySelector("[data-result] .decide-verdict")`)), "a reload finds the question still running");
   await sleep(1000);
-  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-word")`)); i++) await sleep(100);
+  for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-verdict")`)); i++) await sleep(100);
   check((await ev(read)).word === "Strongly favored", "and then its answer");
 
   // Saved examples stay in this browser.
@@ -367,6 +380,11 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(`document.querySelector("#decide-template [data-unsave]").click()`);
   check((await ev(`document.querySelector("[data-saved-box]").hidden`)), "and can be deleted");
   await ev(`document.getElementById("decide-template").close()`);
+
+  // After an answer: the same type and options, with a new question.
+  await ev(`document.querySelector("[data-again]").click()`);
+  const again = await ev(`({ q: document.getElementById("lab-prompt").value, s: document.getElementById("decide-situation").value, focus: document.activeElement?.id, open: !document.querySelector("[data-form-open]").hidden, tabs: document.querySelector(".decide-types").getBoundingClientRect().height > 0, options: document.querySelectorAll("[data-option][data-part=name]").length, result: document.querySelector("[data-result]").hidden })`);
+  check(again.q === "" && again.s === "" && again.focus === "lab-prompt" && again.open && again.tabs && again.options >= 2 && again.result, `Ask another keeps the options and starts at the question: ${JSON.stringify(again)}`);
 
   // A batch.
   await ev(pick("route"));
@@ -389,21 +407,67 @@ if (!(await ev(`!!document.getElementById("decide")`))) {
   await ev(`document.querySelector("[data-edit]").click()`);
   await ev(situation("fake:slow a\nfake:slow b\nfake:slow c"));
   await ev(decide);
-  await sleep(3600);
+  // Until the first row is really done, not for as long as a row usually takes.
+  for (let i = 0; i < 200 && !(await ev(`/^1 of 3/.test(document.querySelector("[data-batch-summary]")?.textContent ?? "")`)); i++) await sleep(50);
   await ev(`document.querySelector("[data-batch-stop]").click()`);
   await sleep(500);
   const stopped = await ev(`({ s: document.querySelector("[data-batch-summary]").textContent, more: !document.querySelector("[data-batch-continue]").hidden })`);
   check(/^1 of 3 done/.test(stopped.s) && stopped.more, `Stop keeps finished rows and offers Continue: ${JSON.stringify(stopped)}`);
-  // A lost connection pauses a batch rather than failing every row left.
+  // A lost connection pauses a batch rather than failing every row left. The batch has to be running when the connection
+  // goes, with rows left, or the rest says nothing: an empty line reads the same on a batch that is still working.
+  const batchNow = `(() => { const q = (s) => document.querySelector(s); return { running: !q("[data-batch-stop]").hidden, s: q("[data-batch-summary]").textContent, paused: q("[data-batch-paused]").textContent, more: !q("[data-batch-continue]").hidden, failed: /failed/.test(q("[data-batch-summary]").textContent) }; })()`;
   await ev(`document.querySelector("[data-batch-continue]").click()`);
-  await sleep(200);
+  for (let i = 0; i < 40 && !(await ev(`${batchNow}.running`)); i++) await sleep(25);
+  const going = await ev(batchNow);
+  check(going.running && !going.paused && !going.more && /^1 of 3/.test(going.s), `the batch is still running, with rows left, when the connection goes: ${JSON.stringify(going)}`);
   await send("Network.enable");
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  await sleep(4000);
-  const dropped = await ev(`({ paused: document.querySelector("[data-batch-paused]").textContent, more: !document.querySelector("[data-batch-continue]").hidden, failed: /failed/.test(document.querySelector("[data-batch-summary]").textContent) })`);
+  const droppedAt = Date.now();
+  // If the row's stream is already open the pause comes when the row ends. If it isn't, the page tries it for 30 s first.
+  for (let i = 0; i < 450 && !(await ev(`/Lost the connection/.test(document.querySelector("[data-batch-paused]").textContent)`)); i++) await sleep(100);
+  const waited = Date.now() - droppedAt;
+  const dropped = await ev(batchNow);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  check(/Lost the connection/.test(dropped.paused) && dropped.more && !dropped.failed, `a lost connection pauses the batch: ${JSON.stringify(dropped)}`);
-  await ev(`sessionStorage.removeItem("localbase.decisions.v1")`);
+  check(/Lost the connection/.test(dropped.paused) && !dropped.running && dropped.more && !dropped.failed && /^[12] of 3/.test(dropped.s), `a lost connection pauses the running batch, with rows left: ${JSON.stringify({ ...dropped, waited })}`);
+}
+
+// --- On Decisions, what takes focus clears the bar, and a row's parts stay in a line (DESIGN §27.4) --
+// Real Tab presses, as Reliability's suite found this: focus on a control left only its top edge above
+// the dock. At each width, in the form and on an answer.
+await nav("/app/studio/decisions");
+if (!(await ev(`!!document.getElementById("decide")`))) console.log("skip decision answers (no decision model selected)");
+if (await ev(`!!document.getElementById("decide")`)) {
+  const pressTab = async () => {
+    await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+    await sleep(70);
+  };
+  const focused = `(() => { const a = document.activeElement, dock = document.querySelector("[data-docked]"); if (!a || a === document.body) return null; const inMain = !!a.closest("#decide") && !a.closest("[data-docked]") && !a.closest("dialog"); if (!inMain) return { skip: true }; const r = a.getBoundingClientRect(), d = dock && !dock.hidden ? dock.getBoundingClientRect().top : innerHeight; return { what: (a.getAttribute("aria-label") || a.textContent || a.placeholder || a.tagName).trim().slice(0, 24), top: Math.round(r.top), bottom: Math.round(r.bottom), dockTop: Math.round(d), clear: r.bottom <= d + 0.5 && r.top >= 0 }; })()`;
+  const tabThrough = async (label) => {
+    await ev(`(document.activeElement?.blur(), scrollTo(0, 0))`);
+    const covered = []; let seen = 0;
+    for (let i = 0; i < 45; i++) {
+      await pressTab();
+      const f = await ev(focused);
+      if (!f || f.skip) continue;
+      seen++;
+      if (!f.clear) covered.push(f);
+    }
+    check(seen >= 3 && covered.length === 0, `${label}: each of ${seen} controls clears the bar when it takes focus${covered.length ? ": " + JSON.stringify(covered).slice(0, 260) : ""}`);
+  };
+  const pickRoute = `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 60)); document.querySelector('#decide-template [data-template="route"]').click(); })()`;
+  for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/decisions");
+    await ev(pickRoute);
+    await sleep(150);
+    await tabThrough(`at ${width}, the form`);
+    await ev(`document.querySelector("#decide .lab-dock button[type=submit]").click()`);
+    for (let i = 0; i < 60 && !(await ev(`!!document.querySelector("[data-result] .decide-word:not(:empty) ~ .decide-verdict")`)); i++) await sleep(100);
+    await tabThrough(`at ${width}, an answer`);
+    const row = await ev(`(() => { const r = document.querySelector("[data-result] .decide-bar"), name = r.querySelector(".decide-bar-name").getBoundingClientRect(), track = r.querySelector(".decide-track").getBoundingClientRect(), odds = r.querySelector(".decide-bar-odds").getBoundingClientRect(); return { oneLine: Math.abs((name.top + name.bottom) / 2 - (track.top + track.bottom) / 2) < 8 && Math.abs((odds.top + odds.bottom) / 2 - (track.top + track.bottom) / 2) < 8, over: document.documentElement.scrollWidth > document.documentElement.clientWidth }; })()`);
+    check(row.oneLine && !row.over, `at ${width}, a row's name, track and number share a line, on any browser: ${JSON.stringify(row)}`);
+  }
 }
 
 // --- Video (DESIGN §22.18) ------------------------------------------------------
@@ -566,6 +630,28 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   check(finished?.audio && finished.bars === 64 && /Make again/.test(finished.text), `it finishes after leaving and reloading, with a waveform: ${finished?.text.slice(0, 80)}`);
   const audio = await ev(`(async () => { const a = ${firstItem}.querySelector("audio"); if (a.readyState < 1) await new Promise((r) => { a.onloadedmetadata = r; a.onerror = r; setTimeout(r, 4000); }); const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { duration: a.duration, x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
   check(audio.duration > 60, `the parts are joined into one file (${audio.duration?.toFixed(0)} s)`);
+  // As on Video: Make again leads, and the rest stay in one row with Share showing, as on a real phone. A long press names them.
+  for (const width of [360, 390]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height: width === 360 ? 740 : 844, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/speech");
+    const row = await ev(`(() => { scrollTo(0, 0); const item = ${firstItem}; item.querySelector("[data-share]").hidden = false; const acts = [...item.querySelectorAll(".result-actions a, .result-actions button")].filter((a) => a.getBoundingClientRect().width > 0), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { first: acts[0].textContent.trim(), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, big: acts.every((a) => a.getBoundingClientRect().height >= 44), named: acts.every((a) => a.getAttribute("aria-label") || a.textContent.trim()), bottom: Math.round(Math.max(...acts.map((a) => a.getBoundingClientRect().bottom))), dockTop: Math.round(dock.top) }; })()`);
+    check(row.first === "Make again" && row.acts >= 5 && row.rows === 1 && row.big && row.named && row.bottom <= row.dockTop, `at ${width}, a script's actions are one row above the prompt, with Share showing: ${JSON.stringify(row)}`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await nav("/app/studio/speech");
+  const speechRemove = `${firstItem}.querySelector("[aria-label='Remove this speech']")`;
+  const scripts = `document.querySelectorAll("#lab-items .lab-item-speech").length`;
+  const scriptsBefore = await ev(scripts);
+  const heldAt = await ev(`(() => { const r = ${speechRemove}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [heldAt] });
+  await sleep(650);
+  const heldName = await ev(`document.querySelector(".icon-name")?.textContent ?? ""`);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(1300);
+  check(heldName === "Remove" && (await ev(scripts)) === scriptsBefore, `on Speech too, a long press on Remove shows its name and removes nothing: ${JSON.stringify({ heldName, scriptsBefore })}`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  check(/Voice/.test(await ev(`document.querySelector("[data-open-sheet=lab-voice]").textContent`)), "the voice chip says what it is");
   await ev(`${firstItem}.querySelector("[data-wave]").scrollIntoView({ block: "center" })`);
   const box = await ev(`(() => { const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
@@ -618,6 +704,24 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     const at = await ev(`${trItem}.querySelector("audio").currentTime`);
     check(at >= 1.2 && at < 2.5, `a time moves the player: ${at}`);
     check((await ev(`${trItem}.querySelector("[data-seek]").getAttribute("aria-label")`)) === "0:00, play from 0 seconds", "a time says what it does");
+    // Copy and Export lead, with Timestamps and Remove as icons in one row. Times line up, on the floor browser too.
+    for (const width of [360, 390]) {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: width === 360 ? 740 : 844, deviceScaleFactor: 2, mobile: true });
+      const row = await ev(`(() => { const item = ${trItem}, acts = [...item.querySelectorAll(".result-actions a, .result-actions button")].filter((a) => a.getBoundingClientRect().width > 0); return { first: acts[0].textContent.trim(), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, big: acts.every((a) => a.getBoundingClientRect().height >= 44), named: acts.every((a) => a.getAttribute("aria-label") || a.textContent.trim()), figures: getComputedStyle(item.querySelector(".transcript-time")).fontVariantNumeric, fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth }; })()`);
+      check(row.first === "Copy" && row.acts === 4 && row.rows === 1 && row.big && row.named && /tabular/.test(row.figures) && row.fits, `at ${width}, a transcript's actions are one row, and its times are in tabular figures: ${JSON.stringify(row)}`);
+    }
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    const ways = await ev(`(() => { const [a, b] = [document.querySelector("[data-record-start]"), document.querySelector("[data-pick-audio]")]; const r = [a, b].map((x) => x.getBoundingClientRect()); return { same: a.className === b.className, widths: r.map((x) => Math.round(x.width)), heights: r.map((x) => Math.round(x.height)), ground: [a, b].map((x) => getComputedStyle(x).backgroundColor) }; })()`);
+    check(ways.same && ways.widths[0] === ways.widths[1] && ways.heights[0] === ways.heights[1] && ways.ground[0] === ways.ground[1], `Record and Choose a file carry equal weight: ${JSON.stringify(ways)}`);
+    // At 320 both labels keep to one line: there, "Choose a file" and its icon wrapped inside a half-width button.
+    await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+    const startLines = await ev(`[...document.querySelectorAll("[data-record-start], [data-pick-audio]")].map((b) => { const t = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()); if (!t) return 0; const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; })`);
+    check(startLines.length === 2 && startLines.every((n) => n === 1), `at 320, Record and Choose a file each keep their label on one line: ${JSON.stringify(startLines)}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    // A tap on the icon itself, not the button around it.
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+    check(await ev(`${trItem}.querySelector("[data-toggle-times]").getAttribute("aria-pressed") === "false"`), "a tap on the Timestamps icon itself turns them off");
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     check((await ev(`getComputedStyle(${trItem}.querySelector("[data-seek]")).display`)) === "none", "Times hides the times");
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
@@ -685,22 +789,89 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await sleep(600);
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const beforeLost = await seen();
+  // With everything offline the page's own polls fail too, and its notice is right to say so: the notice checks below block
+  // only the requests they're about.
+  const watchNotice = `(() => { window.__noticeSaid = []; const box = document.getElementById("session-notice"); if (!box) return false; window.__noticeWatch?.disconnect(); window.__noticeWatch = new MutationObserver(() => { const t = box.textContent.trim(); if (t) window.__noticeSaid.push(t); }); window.__noticeWatch.observe(box, { childList: true, subtree: true, characterData: true }); return true; })()`;
+  const noticeSaid = `(window.__noticeSaid ?? ["no watcher"]).join(" | ")`;
   await ev(`document.querySelector("[data-record-stop]").click()`);
   for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
-  await ev(`document.querySelector("a[href='/app/models']").click()`);
-  await sleep(900);
-  await ev(`document.querySelector("a[href='/app/studio']")?.click()`);
-  await sleep(900);
-  await ev(`document.querySelector("a[href='/app/studio/transcribe']")?.click()`);
-  await sleep(900);
+  // By its links, so the page lives on. Each one waits for the page it asked for, and says if it never came:
+  // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
+  const visited = [];
+  for (const href of ["/app/models", "/app/studio", "/app/studio/transcribe"]) {
+    const clicked = await ev(`(() => { const a = document.querySelector("a[href='${href}']"); if (!a) return false; a.click(); return true; })()`);
+    if (!clicked) { visited.push(`no link to ${href} on ${await ev("location.pathname")}`); break; }
+    for (let i = 0; i < 80 && (await ev("location.pathname")) !== href; i++) await sleep(150);
+    visited.push(await ev("location.pathname"));
+    await sleep(300);
+  }
+  check(visited.join() === "/app/models,/app/studio,/app/studio/transcribe", `moving around the app goes through each page: ${visited}`);
+  for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("[data-keep]")`)); i++) await sleep(150);
   check(!(await ev(`document.querySelector("[data-keep]").hidden`)), "and it is still offered after moving around the app");
   await ev(`document.querySelector("[data-keep-send]").click()`);
   for (let i = 0; i < 60 && (await seen()) === beforeLost; i++) await sleep(150);
   const resent = await trUntil((s) => !s.active && s.times > 0);
   check((await seen()) === beforeLost + 1 && resent?.times === 3 && (await ev(`document.querySelector("[data-keep]").hidden`)), "Send again makes the transcript and clears it");
+
+  // The page's own notice and Transcribe's panel (with FE, session.js): a form that says its own send failure keeps the
+  // sign-in check, and loses only the two lines that would repeat it.
+  if (voiceFile) {
+    const panelUp = async () => { for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150); return !(await ev(`document.querySelector("[data-keep]").hidden`)); };
+    // Only the send fails; the sign-in check answers.
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const onlySend = { panel: await panelUp() };
+    await sleep(1500);
+    onlySend.notice = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(onlySend.panel && onlySend.notice === "", `with only the send failing, only the panel says so: ${JSON.stringify(onlySend)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // The send and the sign-in check both fail; the rest of the page still answers.
+    await nav("/app/studio/transcribe");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe", "*/app/session"] });
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const both = { panel: await panelUp() };
+    await sleep(1500);
+    both.notice = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(both.panel && both.notice === "", `with the send and the sign-in check both failing, only the panel says so: ${JSON.stringify(both)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A sign-in that has expired at the edge: the check is redirected, and that is said, even for this form.
+    await nav("/app/studio/transcribe");
+    const paused = (e) => { const m = JSON.parse(String(e.data)); if (m.method !== "Fetch.requestPaused") return; const u = m.params.request.url;
+      if (u.includes("/app/lab/transcribe")) send("Fetch.failRequest", { requestId: m.params.requestId, errorReason: "InternetDisconnected" });
+      else if (u.includes("/app/session")) send("Fetch.fulfillRequest", { requestId: m.params.requestId, responseCode: 302, responseHeaders: [{ name: "Location", value: "https://sign-in.example.invalid/" }], body: "" });
+      else send("Fetch.continueRequest", { requestId: m.params.requestId }); };
+    ws.addEventListener("message", paused);
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*/app/lab/transcribe*" }, { urlPattern: "*/app/session*" }] });
+    // Watched as the two above are: a notice that came and went still counts as said.
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const expired = { panel: await panelUp() };
+    for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeSaid)); i++) await sleep(150);
+    expired.notice = await ev(noticeSaid);
+    await send("Fetch.disable");
+    ws.removeEventListener("message", paused);
+    check(expired.panel && /Your sign-in expired/.test(expired.notice), `an expired sign-in is still said on this form: ${JSON.stringify(expired)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A form that doesn't say its own failure still gets the page's notice.
+    await nav("/app/studio/image");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/image"] });
+    await ev(watchNotice);
+    await ev(`(() => { const f = document.querySelector("form.lab-dock"); f.querySelector("#lab-prompt").value = "a paper boat"; f.querySelector("button[type=submit]").click(); })()`);
+    for (let i = 0; i < 30 && !/didn.t load|Can.t reach/.test(await ev(noticeSaid)); i++) await sleep(150);
+    const other = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(/didn.t load|Can.t reach/.test(other), `a form that doesn't say its own failure still gets the notice: ${JSON.stringify(other)}`);
+    await nav("/app/studio/transcribe");
+  } else {
+    console.log("skip the page's notice and Transcribe's panel (no voice file)");
+  }
 
   // No microphone: it says how to fix it, and a file still works.
   await ev(`navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError"))`);
@@ -868,7 +1039,13 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
 {
   const hasResults = await ev(`fetch("/app/studio").then((r) => r.text()).then((t) => (t.match(/class="studio-tile"/g) ?? []).length)`);
   if (hasResults < 4) console.log(`skip landing width (${hasResults} results)`);
-  else for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
+  // The measure itself must be able to fail: a planted wide element has to read as overflow.
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio");
+  const planted = await ev(`(async () => { const n = document.createElement("div"); n.style.cssText = "width:1200px;height:1px"; document.querySelector("main").append(n); await new Promise((r) => requestAnimationFrame(r)); const d = document.documentElement, caught = d.scrollWidth > d.clientWidth; n.remove(); return { caught, inner: innerWidth, client: d.clientWidth }; })()`);
+  check(planted.caught, `the width measure catches a planted 1200 px element: ${JSON.stringify(planted)}`);
+  if (hasResults < 4) console.log("skip the landing with results (fewer than four results)");
+  if (hasResults >= 4) for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: width < 1024 });
     await nav("/app/studio");
     const fit = await ev(`(() => { const d = document.documentElement, shelf = document.querySelector(".studio-recent"), right = (q) => Math.round(document.querySelector(q).getBoundingClientRect().right); return { scroll: d.scrollWidth, client: d.clientWidth, tiles: shelf.children.length, shelfScrolls: shelf.scrollWidth > shelf.clientWidth, strip: right(".strip"), list: right(".studio-tools .list-group") }; })()`);
@@ -877,10 +1054,159 @@ if (await ev(`!!document.querySelector("#lab-prompt")`)) {
   }
 }
 
+// --- The picture viewer inspects, frames and gives back your place (DESIGN §27.5) ----------------
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/studio/image");
+if ((await ev(`document.querySelectorAll(".image-open").length`)) < 2) console.log("skip the viewer (fewer than two pictures)");
+if ((await ev(`document.querySelectorAll(".image-open").length`)) >= 2) {
+  const inViewer = `(() => { const d = document.querySelector("dialog.viewer[open]"), st = d.querySelector(".viewer-stage"), b = d.querySelector("[data-view-zoom]"), m = d.querySelector("[data-view-mat]"), img = d.querySelector(".viewer-img"); return { id: d.id, zoomed: st.classList.contains("viewer-zoomed"), wider: st.scrollWidth > st.clientWidth, left: st.scrollLeft, pressed: b.getAttribute("aria-pressed"), label: b.getAttribute("aria-label"), mat: m.getAttribute("aria-pressed"), matLabel: m.getAttribute("aria-label"), ground: getComputedStyle(img).backgroundColor, hint: getComputedStyle(d.querySelector(".viewer-hint")).display }; })()`;
+  const press = async (key, code, vk) => { for (const type of ["keyDown", "keyUp"]) await send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk }); await sleep(120); };
+  await ev(`try { localStorage.removeItem("localbase.viewer.mat.v1") } catch {}`);
+  await nav("/app/studio/image");
+  const title = await ev(`(() => { const g = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector(".image-open")), t = g.querySelector(".image-title"), grid = g.querySelector(".image-grid"); return { above: t.getBoundingClientRect().bottom <= grid.getBoundingClientRect().top, font: getComputedStyle(t).fontFamily, keep: !!document.querySelector(".studio-keep") }; })()`);
+  check(title.above && /Newsreader/.test(title.font) && title.keep, `a group leads with its words, and says how long pictures stay: ${JSON.stringify(title)}`);
+  await ev(`document.querySelector(".image-open").click()`);
+  await sleep(300);
+  check((await ev(inViewer)).zoomed === false, "the viewer opens on the whole picture");
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-zoom]").click()`);
+  await sleep(120);
+  const zoomed = await ev(inViewer);
+  check(zoomed.zoomed && zoomed.wider && zoomed.pressed === "true" && zoomed.label === "Zoom out" && zoomed.hint === "none", `Zoom in enlarges it, and says how to come back: ${JSON.stringify(zoomed)}`);
+  await press("ArrowRight", "ArrowRight", 39);
+  const panned = await ev(inViewer);
+  check(panned.id === zoomed.id && panned.left !== zoomed.left, `zoomed in, the arrows move around the picture, not to the next one: ${JSON.stringify({ id: panned.id === zoomed.id, left: [zoomed.left, panned.left] })}`);
+  await ev(`document.querySelector("dialog.viewer[open] .viewer-img").click()`);
+  await sleep(120);
+  check((await ev(inViewer)).zoomed === false, "a tap on the zoomed picture comes back");
+  await press("z", "KeyZ", 90);
+  check((await ev(inViewer)).zoomed === true, "Z zooms too");
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
+  await sleep(200);
+  const moved = await ev(inViewer);
+  check(moved.id !== zoomed.id && moved.zoomed === false, `moving on shows the next whole picture: ${JSON.stringify(moved)}`);
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-mat]").click()`);
+  await sleep(120);
+  const matted = await ev(inViewer);
+  check(matted.mat === "true" && matted.matLabel === "Show without a mat" && !/, 0\)$|transparent/.test(matted.ground), `the mat puts the picture on paper: ${JSON.stringify(matted)}`);
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-step='1']").click()`);
+  await sleep(200);
+  check((await ev(inViewer)).mat === "true", "the mat stays on for the next picture");
+  await ev(`document.querySelector("dialog.viewer[open] [data-view-mat]").click()`);
+  // The close event can take a moment to arrive, so this waits for the result, up to a deadline.
+  const wentBack = await ev(`(async () => { const d = document.querySelector("dialog.viewer[open]"), id = d.id; d.close(); let focus = null; for (let i = 0; i < 30 && focus !== id; i++) { await new Promise((r) => setTimeout(r, 50)); focus = document.activeElement?.getAttribute?.("data-open-sheet") ?? null; } return { id, focus }; })()`);
+  check(wentBack.focus === wentBack.id, `closing goes back to that picture, even after moving between them: ${JSON.stringify(wentBack)}`);
+  // Details opens above the actions, across the bar, at every width: engines place a <details> box differently,
+  // so this compares where the panel really is, on whichever browser this runs.
+  for (const [width, height, mobile] of [[320, 568, true], [390, 844, true], [1280, 800, false]] as const) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
+    await nav("/app/studio/image");
+    await ev(`document.querySelector(".image-open").click()`);
+    await sleep(300);
+    const panelOf = `document.querySelector("dialog.viewer[open] .viewer-panel")`;
+    const closed = await ev(`${panelOf}.getClientRects().length`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
+    await sleep(200);
+    const placed = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"), foot = d.querySelector(".viewer-foot").getBoundingClientRect(), panel = ${panelOf}.getBoundingClientRect(), acts = [...d.querySelectorAll(".viewer-foot > .viewer-act")].filter((a) => a.getBoundingClientRect().width > 0).map((a) => a.getBoundingClientRect());
+      return { width: Math.round(panel.width), foot: Math.round(foot.width), panelBottom: Math.round(panel.bottom), actsTop: Math.round(Math.min(...acts.map((a) => a.top))), rows: new Set(acts.map((a) => Math.round(a.top))).size, onScreen: Math.round(panel.top) >= 0 && Math.round(Math.max(...acts.map((a) => a.bottom))) <= innerHeight }; })()`);
+    check(closed === 0 && placed.width >= placed.foot - 32 && placed.panelBottom <= placed.actsTop && placed.onScreen, `at ${width}, Details opens above the actions, across the bar: ${JSON.stringify({ closed, ...placed })}`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
+    const shut = await ev(`({ gone: ${panelOf}.getClientRects().length === 0, said: document.querySelector("dialog.viewer[open] [data-view-details]").getAttribute("aria-expanded") })`);
+    check(shut.gone && shut.said === "false", `at ${width}, Details closes again and says so: ${JSON.stringify(shut)}`);
+    await ev(`document.querySelector("dialog.viewer[open]").close()`);
+  }
+  // On a small phone, with Share showing as it does on a real one, every action is on screen and big enough.
+  await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/image");
+  await ev(`document.querySelector(".image-open").click()`);
+  await sleep(300);
+  const small = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"); d.querySelector("[data-share]").hidden = false; const acts = [...d.querySelectorAll(".viewer-foot .viewer-act, .viewer-top .viewer-btn")].filter((n) => n.getBoundingClientRect().width > 1); const rects = acts.map((n) => n.getBoundingClientRect()); const img = d.querySelector(".viewer-img").getBoundingClientRect(); return { count: acts.length, inside: rects.every((r) => r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.top >= 0), big: rects.every((r) => r.width >= 43.5 && r.height >= 43.5), picture: Math.round(img.height) }; })()`);
+  check(small.count >= 8 && small.inside && small.big && small.picture >= 150, `at 320, every viewer action fits and is big enough, and the picture stays: ${JSON.stringify(small)}`);
+  await ev(`document.querySelector("dialog.viewer[open]").close()`);
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+
+  // Edit (DESIGN §27.5): with a model that can, a picture goes into the prompt as the start of a new
+  // one; without, it says what is needed. Which of these runs depends on the gateway's models.
+  await nav("/app/studio/image");
+  const openPicture = async () => { await ev(`document.querySelector(".image-open").click()`); await sleep(250); };
+  if (!(await ev(`!!document.querySelector('form.lab-dock [name="model"][data-edits]')`))) {
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(250);
+    const needs = await ev(`(() => { const d = document.getElementById("image-needs-edit"); return { open: !!d?.open, viewer: !!document.querySelector("dialog.viewer[open]"), link: d?.querySelector("a")?.getAttribute("href") ?? "", source: document.querySelector("form.lab-dock input[name=source]").value }; })()`);
+    check(needs.open && needs.viewer && needs.link === "/app/models/get?filter=images" && needs.source === "", `with no model that can edit, Edit says what is needed: ${JSON.stringify(needs)}`);
+    await ev(`document.getElementById("image-needs-edit").close(); document.querySelector("dialog.viewer[open]").close()`);
+  } else {
+    const dock = `(() => {
+      const f = document.querySelector("form.lab-dock"), row = f.querySelector("[data-image-source]"), img = row.querySelector("img");
+      const shown = (name) => { const c = f.querySelector(\`[data-chip-label=\${name}]\`)?.closest("button"); return !!c && c.getBoundingClientRect().width > 0; };
+      const models = [...f.querySelectorAll("input[type=radio][name=model]")];
+      return { row: row.getBoundingClientRect().height > 0, picture: img.naturalWidth > 0, source: f.elements.source.value, words: f.querySelector("#lab-prompt").value, hint: f.querySelector("#lab-prompt").placeholder,
+        focus: document.activeElement?.id ?? "", viewer: !!document.querySelector("dialog.viewer[open]"), shape: shown("shape"), change: shown("change"), label: f.querySelector("[data-chip-label=change]").textContent,
+        model: models.find((m) => m.checked)?.value ?? "", capable: models.find((m) => m.checked)?.hasAttribute("data-edits") ?? false, off: models.filter((m) => m.disabled).length, fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+    })()`;
+    // Starts on a model that can't, where there is one, so the switch and the way back are real.
+    await ev(`(() => { const r = document.querySelector('form.lab-dock input[type=radio][name=model]:not([data-edits])'); if (r) { r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); } })()`);
+    const before = await ev(dock);
+    const words = await ev(`document.querySelector(".image-open").closest(".image-run").querySelector(".image-title").textContent`);
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    let on = await ev(dock);
+    for (let i = 0; i < 30 && (on.focus !== "lab-prompt" || !on.picture); i++) { await sleep(100); on = await ev(dock); }
+    check(on.row && on.picture && /^[0-9a-f]{32}$/.test(on.source) && !on.viewer, `Edit closes the viewer and puts the picture in the prompt: ${JSON.stringify(on)}`);
+    check(on.focus === "lab-prompt" && on.words === words && on.hint === "Describe what to change", `Edit leaves its words ready to change: ${JSON.stringify(on)}`);
+    await sleep(400);
+    check((await ev(`document.activeElement?.id`)) === "lab-prompt", "closing the viewer for Edit doesn't take focus back to the picture");
+    check(!on.shape && on.change && on.capable && on.fits, `while editing, the new picture keeps this one's shape, and only a model that can edit is chosen: ${JSON.stringify(on)}`);
+    await ev(`document.querySelector("[data-source-clear]").click()`);
+    await sleep(100);
+    const off = await ev(dock);
+    check(!off.row && off.source === "" && off.hint === "Describe the picture" && off.shape && !off.change && off.model === before.model && off.off === 0, `Stop editing puts everything back: ${JSON.stringify(off)}`);
+    // On a wide screen the prompt is in the page's flow, so focusing it could move the page.
+    await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+    await nav("/app/studio/image");
+    await openPicture();
+    // Before and after: a reload can restore where an earlier step left the page.
+    const was = await ev(`Math.round(document.scrollingElement.scrollTop)`);
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(400);
+    const wide = await ev(`({ moved: Math.round(document.scrollingElement.scrollTop) - ${was}, focus: document.activeElement?.id, can: document.scrollingElement.scrollHeight > innerHeight + 100 })`);
+    check(wide.can && wide.moved === 0 && wide.focus === "lab-prompt", `Edit doesn't move the page: ${JSON.stringify(wide)}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/image");
+    await openPicture();
+    await ev(`document.querySelector("dialog.viewer[open] [data-edit-picture]").click()`);
+    await sleep(150);
+    const runsBefore = (await runsNow()).length;
+    await ev(`(() => { const f = document.querySelector("form.lab-dock"), little = f.querySelector("input[name=change][value=little]"); little.checked = true; little.dispatchEvent(new Event("change", { bubbles: true })); f.querySelector("#lab-prompt").value = "the same lighthouse in the snow"; f.querySelector("button[type=submit]").click(); })()`);
+    const newest = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => { const list = b.data ?? b; return { count: list.length, target: list[0]?.target, status: list[0]?.status }; })`;
+    let started = await ev(newest);
+    for (let i = 0; i < 40 && (started.count <= runsBefore || started.status !== "completed"); i++) { await sleep(150); started = await ev(newest); }
+    check(started.target === "/v1/images/edits" && started.status === "completed", `the edit runs on the edit route and finishes: ${JSON.stringify(started)}`);
+    let made = "";
+    for (let i = 0; i < 40 && !/^Edited/.test(made); i++) { await sleep(150); made = await ev(`document.querySelector("#lab-items > li .image-facts")?.textContent ?? ""`); }
+    check(/^Edited/.test(made), `the new picture says it was edited: "${made}"`);
+    const after = await ev(dock);
+    check(!after.row && after.source === "" && after.shape, `once it has started, the next picture starts fresh: ${JSON.stringify(after)}`);
+    await ev(`document.querySelector("#lab-items > li .image-open").click()`);
+    await sleep(250);
+    await ev(`document.querySelector("dialog.viewer[open] [data-view-details]").click()`);
+    await sleep(200);
+    const facts = await ev(`(() => { const d = document.querySelector("dialog.viewer[open]"), img = d.querySelector(".viewer-from"); return { text: d.querySelector(".viewer-facts").textContent, from: img?.naturalWidth > 0, again: [...d.querySelectorAll(".viewer-panel button")].some((b) => b.textContent.trim() === "Regenerate") }; })()`);
+    check(/A little/.test(facts.text) && /Started from/.test(facts.text) && facts.from && facts.again, `Details say how it was edited and from what: ${JSON.stringify(facts)}`);
+    const count = (await ev(newest)).count;
+    await ev(`document.querySelector("dialog.viewer[open] [hx-vals*=vary]").click()`);
+    let varied = await ev(newest);
+    for (let i = 0; i < 40 && (varied.count <= count || varied.status !== "completed"); i++) { await sleep(150); varied = await ev(newest); }
+    check(varied.count > count && varied.target === "/v1/images/edits", `Vary on an edit edits the same picture again: ${JSON.stringify(varied)}`);
+    await nav("/app/studio/image");
+  }
+}
+
 // --- A pill leads somewhere useful, and is never over content (DESIGN §27) -----------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/image");
 const imageModel = await ev(`document.querySelector("form input[name=model]")?.value ?? ""`);
+if (!imageModel) console.log("skip the pill (no picture model)");
 if (imageModel) {
   // Waits for what is running to end, then starts slow pictures, so the states below are really there.
   const anyActive = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
@@ -932,6 +1258,7 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 await nav("/app/studio/video");
 const canVideo = await ev(`!!document.querySelector("#lab-prompt") && !!document.querySelector("form input[name=model]")`);
 const pictureModel = await (async () => { await nav("/app/studio/image"); return ev(`document.querySelector("form input[name=model]")?.value ?? ""`); })();
+if (!(canVideo && pictureModel)) console.log("skip reaching the last control with a pill (needs a video and a picture model)");
 if (canVideo && pictureModel) {
   const activeRuns = `fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).some((x) => x.status === "queued" || x.status === "in_progress"))`;
   const lastControl = `(() => {
@@ -943,7 +1270,9 @@ if (canVideo && pictureModel) {
   })()`;
   await nav("/app/studio/video");
   await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = "fake:slow still going"; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items video, #lab-items .lab-progress")].length > 0`)); i++) await sleep(150);
+  // A running job specifically: a finished video from earlier would pass at once, and leaving the page then cancels this request.
+  for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items .lab-progress")`)); i++) await sleep(150);
+  check(await ev(`!!document.querySelector("#lab-items .lab-progress")`), "a slow video is running for the checks below");
   for (const [width, height] of [[320, 568], [360, 740], [390, 844]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     for (const path of ["/app/studio/image", "/app/models"]) {
@@ -973,16 +1302,83 @@ if (canVideo && pictureModel) {
 }
 
 // --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
+const settleVideoPage = async () => { for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items > li .result-actions")`)); i++) await sleep(150); };
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/video");
-if (await ev(`!!document.querySelector("#lab-items video")`)) {
-  for (const [width, height] of [[320, 568], [360, 740], [390, 844], [430, 932]]) {
+if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) console.log("skip finished video (no video model selected)");
+else {
+  // This section makes its own: earlier steps have removed theirs by now, and for a while it skipped without saying so.
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = "a quiet bay at dawn"; document.querySelector("form[aria-label='Make a video'] button[type=submit]").click(); })()`);
+  for (let i = 0; i < 160 && !(await ev(`!!document.querySelector("#lab-items video")`)); i++) await sleep(150);
+  check(await ev(`!!document.querySelector("#lab-items video")`), "a finished video is here for the checks below");
+  // The shortest phone can't hold it all on one screen (DESIGN §27.2a), so there a scroll has to reach the actions, uncovered.
+  await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  const shortest = await ev(`(async () => { const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), foot = item.querySelector(".lab-item-foot"), dock = document.querySelector("[data-docked]").getBoundingClientRect(); scrollTo(0, 0); const first = Math.round(foot.getBoundingClientRect().bottom); scrollBy(0, foot.getBoundingClientRect().bottom - dock.top + 12); await new Promise((r) => setTimeout(r, 150)); const r = foot.getBoundingClientRect(), a = foot.querySelector("a, button"), ar = a.getBoundingClientRect(), at = document.elementFromPoint(ar.left + ar.width / 2, ar.top + ar.height / 2); return { first, dockTop: Math.round(dock.top), after: Math.round(r.bottom), reached: !!at && (at === a || a.contains(at)), player: Math.round(item.querySelector("video").getBoundingClientRect().height) }; })()`);
+  check(shortest.after <= shortest.dockTop && shortest.reached && shortest.player >= 100, `at 320 by 568, a scroll reaches a video's actions, uncovered: ${JSON.stringify(shortest)}`);
+  for (const [width, height] of [[360, 740], [390, 844], [430, 932]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
     await nav("/app/studio/video");
-    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")), v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = document.getElementById("results-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
+    // With Share showing, as it does on a real phone. On a browser without it, #483's row fitted and on one with it, it wrapped.
+    const fit = await ev(`(() => { scrollTo(0, 0); const item = [...document.querySelectorAll("#lab-items > li")].find((n) => n.querySelector("video")); item.querySelector("[data-share]").hidden = false; const v = item.querySelector("video").getBoundingClientRect(), foot = item.querySelector(".lab-item-foot").getBoundingClientRect(), head = item.querySelector(".image-title").getBoundingClientRect(), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { head: Math.round(head.top), player: Math.round(v.height), actionsEnd: Math.round(foot.bottom), dockTop: Math.round(dock.top), share: +(v.height / innerHeight).toFixed(2), width: Math.round(v.width), fit: getComputedStyle(item.querySelector("video")).objectFit }; })()`);
     check(fit.head >= 0 && fit.actionsEnd <= fit.dockTop && fit.player >= 100 && fit.fit === "contain", `at ${width}, a video's heading, player and actions are all on one screen: ${JSON.stringify(fit)}`);
   }
+  // A long title and a pill together are the tightest case: two lines of words, and another tool's run showing.
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await nav("/app/studio/video");
+  const long = "A long slow pan across a quiet harbour at first light, with gulls overhead and small boats rocking on the water";
+  await ev(`(() => { const p = document.getElementById("lab-prompt"); p.value = ${JSON.stringify(long)}; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
+  // That video itself, not an older one further down: the title shows as soon as it starts.
+  const longDone = `(() => { const item = document.querySelector("#lab-items > li"); return !!item?.querySelector("video") && !!item.querySelector("[data-share]") && !!item.querySelector(".image-title")?.textContent.startsWith("A long slow pan"); })()`;
+  for (let i = 0; i < 200 && !(await ev(longDone)); i++) await sleep(150);
+  check(await ev(longDone), "the video with the long title has finished, so its actions are there to read");
+  const slowPictures = `(async () => { const t = JSON.parse(document.body.getAttribute("hx-headers") || "{}"); for (let i = 0; i < 3; i++) await fetch("/app/lab/image", { method: "POST", headers: { ...t, "HX-Request": "true", "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ prompt: "fake:slow-image a slow lighthouse " + i, count: "1", shape: "square", resolution: "standard", model: "dreamshaper-8-lcm" }) }); })()`;
+  for (const [width, height] of [[360, 740], [390, 844]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/video");
+    await ev(slowPictures);
+    const pillOn = `(() => { const p = document.querySelector("[data-run-pill=dock]"); return !!p && !p.hidden && p.getBoundingClientRect().height > 0; })()`;
+    for (let i = 0; i < 100 && !(await ev(pillOn)); i++) await sleep(150);
+    const tight = await ev(`(() => { scrollTo(0, 0); const item = document.querySelector("#lab-items > li"), title = item.querySelector(".image-title"), share = item.querySelector("[data-share]"), bar = document.querySelector(".run-pill-dock").getBoundingClientRect(), line = parseFloat(getComputedStyle(title).lineHeight); share.hidden = false;
+      const acts = [...item.querySelectorAll(".lab-item-foot a, .lab-item-foot button")].filter((a) => a.getBoundingClientRect().width > 0), reach = (a) => { const r = a.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!at && (at === a || a.contains(at)); };
+      return { lines: Math.round(title.getBoundingClientRect().height / line), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, bottom: Math.round(Math.max(...acts.map((a) => a.getBoundingClientRect().bottom))), barTop: Math.round(bar.top), reached: acts.every(reach), pill: ${pillOn}, player: Math.round(item.querySelector("video").getBoundingClientRect().height) }; })()`);
+    check(tight.pill && tight.lines === 2 && tight.acts >= 5 && tight.rows === 1 && tight.bottom <= tight.barTop && tight.reached && tight.player >= 100, `at ${width}, with a two-line title, a pill and Share showing, every action is in one row and none is covered: ${JSON.stringify(tight)}`);
+    const left = await ev(`fetch("/app/api/_localbase/runs", { headers: { "x-localbase-ui": "1" } }).then((r) => r.json()).then((b) => (b.data ?? b).filter((x) => x.status === "queued" || x.status === "in_progress").map((x) => x.id))`);
+    for (const id of left ?? []) await ev(`fetch("/app/api/_localbase/runs/${id}/cancel", { method: "POST", headers: { "x-localbase-ui": "1" } }).then((r) => r.status)`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  // The icons, for a thumb: big enough, named for a screen reader, a long press shows the name and does nothing
+  // else, and a tap still works. A first visit teaches the pencil, which a tooltip can't on a phone.
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await nav("/app/studio/video");
+  await settleVideoPage();
+  const pencil = `document.querySelector("#lab-items > li .result-actions [aria-label='Edit prompt']")`;
+  const removeBtn = `document.querySelector("#lab-items > li .result-actions [aria-label='Remove this video']")`;
+  const icons = await ev(`[...document.querySelectorAll("#lab-items > li .result-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
+  check(icons.length >= 3 && icons.every((i) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
+  const centre = async (sel) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const count = `document.querySelectorAll("#lab-items > li").length`;
+  const itemsBefore = await ev(count);
+  const at = await centre(removeBtn);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [at] });
+  await sleep(650);
+  const label = await ev(`document.querySelector(".icon-name")?.textContent ?? ""`);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(1300);
+  const held = await ev(`({ items: ${count}, left: !!document.querySelector(".icon-name") })`);
+  check(label === "Remove" && held.items === itemsBefore && !held.left, `a long press on Remove shows its name and removes nothing: ${JSON.stringify({ label, itemsBefore, ...held })}`);
+  await ev(`(() => { document.getElementById("lab-prompt").value = ""; })()`);
+  const tapAt = await centre(pencil);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [tapAt] });
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(500);
+  const tapped = await ev(`({ words: document.getElementById("lab-prompt").value.length, label: !!document.querySelector(".icon-name") })`);
+  check(tapped.words > 0 && !tapped.label, `a tap on the pencil still puts the words back, with no label: ${JSON.stringify(tapped)}`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
 }
+
+// A hidden tab would have made the checks above mean something else, so say if it happened.
+check(!(await ev(`document.hidden`)), "the page stayed visible through the run");
 
 // --- The strip's words, under long names (review of #410) ---------------------------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 2, mobile: true });

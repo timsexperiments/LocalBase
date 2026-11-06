@@ -510,7 +510,7 @@ func TestStripWhileSettling(t *testing.T) {
 	}
 }
 
-// Chats are stored under a key for the person, which doesn't say who they are.
+// Studio's and Chat's words are stored under a key for the person, which doesn't say who they are.
 func TestPersonKey(t *testing.T) {
 	a := &auth.Principal{Kind: "browser-session", ID: "alice@example.com"}
 	b := &auth.Principal{Kind: "browser-session", ID: "bob@example.com"}
