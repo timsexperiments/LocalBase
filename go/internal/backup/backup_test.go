@@ -1873,7 +1873,7 @@ func TestRestoreRefusesTargets(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer unlock()
-		if _, err := Stage(ctx, res.Output, r.Dir, true); err == nil || !strings.Contains(err.Error(), "local-base --root") || !strings.Contains(err.Error(), "stop") {
+		if _, err := Stage(ctx, res.Output, r.Dir, true); err == nil || !strings.Contains(err.Error(), "Stop it where it is running") {
 			t.Fatal(err)
 		}
 	})

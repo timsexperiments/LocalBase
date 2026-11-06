@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 )
 
@@ -231,7 +232,7 @@ func writeThroughGateway(e *env, route string, body map[string]any, direct func(
 	state, owner, detail := e.Root.OwnerState()
 	switch state {
 	case "active":
-		return throughGateway(owner.HealthURL(), route, owner.InstanceToken, body)
+		return throughGateway(e.Root.Dir, owner, route, body)
 	case "missing", "stale":
 		out, err := direct()
 		if err != nil {
@@ -246,8 +247,21 @@ func writeThroughGateway(e *env, route string, body map[string]any, direct func(
 	return nil, errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing changed.")
 }
 
-func throughGateway(healthURL, route, token string, body map[string]any) (map[string]any, error) {
-	const stopIt = " Nothing changed. Try again, or stop the gateway first: local-base stop"
+// stopGatewayAdvice is for a change that needs the gateway stopped, since with none running it writes
+// to the database directly. Stopping the service also disables it, so this says how to get it back. A
+// gateway started with serve isn't the service, and `stop` refuses it, so this doesn't name that for one.
+func stopGatewayAdvice(rootDir string, owner *root.Owner) string {
+	start := " Nothing changed." + root.DefaultRootNote(rootDir)
+	if owner != nil && owner.ServiceID == "" {
+		return start + " Try again, or stop the gateway where it is running, with Ctrl-C or by ending that process. The service commands don't control it."
+	}
+	q := "'" + strings.ReplaceAll(rootDir, "'", `'\''`) + "'"
+	return start + " Try again, or stop the gateway first: local-base --root " + q + " stop. That also disables the service, until you run: local-base --root " + q + " start"
+}
+
+func throughGateway(rootDir string, owner *root.Owner, route string, body map[string]any) (map[string]any, error) {
+	healthURL, token := owner.HealthURL(), owner.InstanceToken
+	stopIt := stopGatewayAdvice(rootDir, owner)
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err

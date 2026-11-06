@@ -271,11 +271,16 @@ func retryBusy(ctx context.Context, read func() error) error {
 	}
 }
 
+// quote makes a path safe to paste into a shell.
+func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
 // busyMessage is what a person reads when the database stayed busy, with the command to run again.
+// It names no command to stop anything: `local-base stop` also disables the service, which is far
+// too much for a lock that will pass.
 // Its last words name the step, so that a report says where, and no raw SQLite error reaches them.
 func busyMessage(rootDir, retry string, err error) string {
 	step, _, _ := strings.Cut(err.Error(), ":")
-	return fmt.Sprintf("The database on %s is busy: the gateway or another command is writing to it. Nothing was changed. Try again in a moment: %s. If it keeps happening, stop the gateway first: local-base --root '%s' stop. (This was while %s.)", rootDir, retry, rootDir, step)
+	return fmt.Sprintf("The database on %s is busy: the gateway or another command is writing to it. Nothing was changed. Try again in a moment: %s. If it keeps happening, stop the gateway, or whatever else is writing. (This was while %s.)", rootDir, retry, step)
 }
 
 // tableExists and columnExists say so when they can't tell. An answer of "no" on a failed read once

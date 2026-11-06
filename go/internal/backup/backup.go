@@ -465,7 +465,7 @@ func inside(p, dir string) bool {
 func Create(ctx context.Context, o Options) (*Result, error) {
 	res, err := createBackup(ctx, o)
 	if isBusy(err) {
-		retry := "local-base --root '" + o.Root.Dir + "' backup"
+		retry := "local-base --root " + quote(o.Root.Dir) + " backup"
 		if o.DryRun {
 			retry += " --dry-run"
 		}
@@ -473,7 +473,7 @@ func Create(ctx context.Context, o Options) (*Result, error) {
 			retry += " --exclude-secrets"
 		}
 		if o.Output != "" {
-			retry += " --output '" + o.Output + "'"
+			retry += " --output " + quote(o.Output)
 		}
 		return nil, errors.New(busyMessage(o.Root.Dir, retry, err))
 	}
