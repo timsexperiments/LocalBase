@@ -40,6 +40,7 @@ While it works, it uses a private directory named `.local-base-temporary-…`, b
 | `logs/`, `bin/`, `cache/`, `runtime/`, `service/`, `catalog-feed.json` | Not settings, tied to this machine, or fetched again |
 | Sessions and sign-in links | A restore signs everyone out |
 | Measured memory | Measured on one machine, and measured again on the next load |
+| What the last check for a newer version found | Not a setting. A file could use it to show a version and link of its own as available. A restored root with the check on asks again |
 | Old files from an earlier restore | They hold secrets |
 | SQLite's working files (`local-base.db-wal`, `-shm`, `-journal`) | The backup copies through SQLite, so it holds only finished writes |
 
@@ -67,6 +68,7 @@ Restore checks the whole file before changing anything. It refuses a file you do
 - **Which secrets it holds,** found in its files rather than taken from its own list, and how to put back each one it leaves out. If its own list leaves one out, the report says so, since the file may have been changed after it was made.
 - **Catalog entries this root will trust as its own,** with where each downloads from. One that changes a built-in entry says which fields, and if it changes where the model downloads from, where it downloaded from before.
 - **Download credentials, and where each is sent:** header names and origins, never values.
+- **What this root does by itself:** whether it checks GitHub once a day for a newer version, and whether it marks synthesized speech as made by AI, each set against what this root does now. If the file turns marking off, the last lines before the question say so, since telling people the speech was made by AI then becomes your responsibility.
 - **How many role bindings and invitations each sign-in provider has,** and how many name no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
 - **With `--replace`, a user removed or disabled on that root stays that way,** whatever the backup says.
 
@@ -167,6 +169,5 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 
 - **Plaintext secrets at rest:** a backup holds the same secrets a root holds, and anyone who can read it can use them.
 - **A parent directory other users can write to** can swap the root, or the backups directory beside it. Owner and mode checks don't protect against that.
-- **A backup someone else made or changed.** Nothing signs a backup, and the checksums find damage, not tampering. Restore refuses what LocalBase couldn't have written, and the report shows what decides who can sign in, who has which role, which keys work, what runs as you and where downloads go. A file made to mislead can hold all of that in a form LocalBase could have written, so the report is what you decide on, and:
-  - **The report doesn't show the `update.*` and `speech.provenance-marking` settings.**
+- **A backup someone else made or changed.** Nothing signs a backup, and the checksums find damage, not tampering. Restore refuses what LocalBase couldn't have written, and the report shows what decides who can sign in, who has which role, which keys work, what runs as you, where downloads go and what the root does by itself. A file made to mislead can hold all of that in a form LocalBase could have written, so the report is what you decide on, and:
   - **A command to put a secret back is built from what the file says,** checked and quoted, so read where it would send the secret before you run it.

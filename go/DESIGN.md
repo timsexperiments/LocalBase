@@ -5771,6 +5771,7 @@ manifest. `TestBackupClassifiesEveryRootEntry` fails if a root gains an entry ne
 | Rows: `auth_browser_sessions`, `local_sessions`, `local_login_links`, `auth_magic_link_tokens` | **A restore signs everyone out.** Bringing back old sessions would undo a sign-out |
 | Rows: `model_observed_memory`, `model_runtime_capabilities` | Measured on one machine. Measured again on the next load |
 | Rows: `config_activation` | A restart that was pending on another gateway |
+| Settings: `update.latest`, `update.url`, `update.etag`, `update.checked-at` | What the last check for a newer version found, not settings. A file could show a version and link of its own as available, keep that answer with a matching tag, or stop the check with a time that never comes due. A restored root with the check on asks again |
 | `.before-restore-*` | Old files from an earlier restore. They hold secrets, and a backup must not carry them on |
 
 Models may become an option later. Nothing here depends on that, and it is not built now.
@@ -5851,7 +5852,7 @@ disk encryption, or `age` or `gpg` before moving a backup anywhere.
 
 **The checksums find damage, not tampering.** Nothing signs a backup, so restore aims to treat all of
 it as input from someone else, the manifest included (Security's review, 2026-11-02): step 1, step 2 and
-the report exist because of that. Security's restore findings (2026-11-03) are fixed in the tree, except the one 34.8 still lists. **The limits are constants in the binary, never read from the manifest:**
+the report exist because of that. Security's restore findings (2026-11-03) are fixed in the tree. **The limits are constants in the binary, never read from the manifest:**
 total size, size per file, number of entries, manifest size and path length. **Each kind of file is held to what a root can write (#643),** checked from the manifest before anything is unpacked: the database 8 GiB, a voice 12 MiB (`voices.MaxUploadBytes`), `catalog.d/.former-built-ins` 1 MiB, any other file 8 MiB, and those other files 64 MiB together. In the database, a value is at most 1 MiB, measured with `octet_length` so a large value isn't read to find its size, and a table is at most 100,000 rows and 16 MiB, except `usage_hourly`, which a restore doesn't read into memory, so only its values are limited. A 271 KB file once made a dry run allocate 4.6 GiB. At each limit, one at a time, it now allocates under 60 MiB.
 
 `uninstall` leaves the backups directory, and says so: it names the directory, says the backups hold
@@ -5871,7 +5872,7 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - Every entry is a regular file with a clean relative path on the 34.1 list, once. Links, devices, sparse entries, `../` and anything else are refused, as is data after the end of the tar. Tar modes and owners are ignored.
    - Free space is checked before anything expands. Size and hash match the manifest, and the fixed limits hold while reading.
    - **The database is input, and `integrity_check` alone doesn't cover that.** It is opened read-only with `trusted_schema=OFF` before any migration runs. It must pass `integrity_check`, and **its shape must match what this binary creates at that migration level**, so a trigger, a view, a table, column or index it doesn't make, or a missing index or foreign key, is refused. The shape holds each table's and index's definition as SQLite stores it, so a `CHECK`, a `COLLATE` or a partial index's condition can't differ either (#650). Only SQLite's own five whitespace bytes are collapsed, Go's tables are compared when present, and the TS build's `__drizzle_migrations` isn't compared. Then `PRAGMA foreign_key_check` refuses a row pointing at nothing (#603), and the sign-in check ignores a role that doesn't exist. Without this, a trigger could re-add a role binding after every policy change, and no report would show it. A newer `go_schema` or migration is refused, as a newer database always is. An older one then migrates, as usual. The last thing done to the staged database leaves it in rollback mode, so a journal mode the file claims never becomes the root's, and the store sets its own at its next open (#645).
-   - **Rows left out are deleted on restore, not trusted to be absent.** A crafted file can carry session or login-link rows, and "signs everyone out" has to hold anyway. The same goes for measured rows and pending activation.
+   - **Rows left out are deleted on restore, not trusted to be absent.** A crafted file can carry session or login-link rows, and "signs everyone out" has to hold anyway. The same goes for measured rows, pending activation, and what the last update check found.
    - `ui-access.json`, `email-delivery.json`, backends and catalog entries pass the validators the gateway uses, profiles pass `Validate` as every use of them does (#651), and each voice file matches its row. A `huggingface` profile naming origins outside Hugging Face's own hosts still restores, and those origins are left out wherever it's used. Each `imported_models.definition` must pass `Model.Validate`, match its row's id, and name only clean relative file names.
 3. **The report, before it asks.** What it holds, secrets or not, and:
    - **Each custom backend's whole command line:** program and arguments, since the program can be a shell, and it runs as you when its model loads. One whose program doesn't exist here gets a line and stays registered. Imported models that read a local path or a direct URL are named too.
@@ -5882,8 +5883,9 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - **What each role gives and who has it (#607):** each subject, address, domain, signed-in person and invitation, with whoever is new to the target or would lose a role first, and up to 50 per role before a count. `--json` has them all.
    - **The secrets it holds, read from the staged files (#644),** with a line when the manifest's own list leaves one out, and for each secret left out a put-back command built from checked fields and quoted for a POSIX shell, or a line saying to put it back by hand.
    - **Catalog entries (#646),** with the address the installer would download each from, the entries that change where a model downloads first. **Download credentials (#648),** as header names and the origins each is sent to.
+   - **What the root does by itself (Medium #9):** `update.check` and `speech.provenance-marking`, both always shown, by what each does as the code that acts on it reads it (the check is on only for `on`, marking is off only for `off`), and set against the target, or against a new root's defaults.
    - The number of keys and users, models to install, and secrets to re-enter.
-   - **A caution just before the question** when who can sign in or who has a role differs, which says "may" when the target can't be read.
+   - **A caution just before the question** when who can sign in or who has a role differs, which says "may" when the target can't be read, and when the file turns speech marking off over a target that marks, or a new one, since telling people the speech was made by AI then becomes the person's responsibility.
 
    **The report is printed from one copy made printable (#604),** so no line can forget: control and format characters and invalid UTF-8 show as escapes, and so does anything outside ASCII, except in the fields that are the person's own, such as key names and the target path (#606). Refusals escape what they quote. `--json` keeps the values as they are.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
@@ -5992,7 +5994,7 @@ must be undone with the version that made it.
 Not accepted risks. They are being fixed, and until then the docs say to restore only a backup you
 made yourself. Each line goes when its fix is in the tree.
 
-- `update.*` and `speech.provenance-marking` aren't reported.
+None is open now.
 
 ## 29. Who owns a backend (2026-11-02)
 
