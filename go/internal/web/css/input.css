@@ -238,17 +238,17 @@
 
 /* Disclosures whose summary is a flex row lose the native marker; draw one. */
 @layer components {
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary {
     @apply list-none gap-2;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::-webkit-details-marker {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary::-webkit-details-marker {
     display: none;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::before {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary::before {
     content: "▸" / "";
     @apply inline-block w-3 text-muted transition-transform motion-reduce:transition-none;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives)[open] > summary::before {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more)[open] > summary::before {
     @apply rotate-90;
   }
 }
@@ -1264,6 +1264,10 @@
 
 /* Settings (DESIGN §22.12): one setting per row in grouped lists. */
 @layer components {
+  /* A disclosure that is one row of a settings group, not a card of its own. */
+  .setting-more > summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
   .setting-row {
     @apply flex min-h-12 items-center gap-3 px-4 py-3 text-ink;
   }
