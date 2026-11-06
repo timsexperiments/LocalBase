@@ -747,3 +747,72 @@ func TestConditionalRequestsChangeNothing(t *testing.T) {
 		}
 	}
 }
+
+// tokenExceptions are the routes the instance token opens beyond tokenRoutes, which
+// answer nothing else. A route that starts honouring the token fails until it is here.
+var tokenExceptions = map[string]string{
+	"POST /_localbase/usage":            "the command line changes usage settings through a running gateway",
+	"POST /_localbase/update":           "the command line changes update settings through a running gateway",
+	"POST /_localbase/model-management": "the command line cancels an install; every other action is refused below",
+}
+
+// With the instance token, a request gets what a request without it gets, on every route
+// and method, apart from the routes that exist for it and tokenExceptions.
+func TestInstanceTokenRouteMatrix(t *testing.T) {
+	g := newMatrixGateway(t, nil)
+	release, err := g.srv.Root.Lock("127.0.0.1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	withToken := map[string]string{"X-Localbase-Instance-Token": g.srv.Root.Instance().InstanceToken}
+	seen := map[string]bool{}
+	for path := range matrixPaths(gatewayPatterns(t)) {
+		if slices.Contains(tokenRoutes, path) {
+			continue
+		}
+		for _, method := range matrixMethods {
+			without := g.send(t, method, path, "", nil)
+			with := g.send(t, method, path, "", withToken)
+			if with.status == without.status {
+				continue
+			}
+			if _, ok := tokenExceptions[method+" "+path]; !ok {
+				t.Errorf("%s %s: %d with the instance token, %d without: add it to tokenExceptions if that is meant", method, path, with.status, without.status)
+			}
+			seen[method+" "+path] = true
+		}
+	}
+	for route := range tokenExceptions {
+		if !seen[route] {
+			t.Errorf("%s no longer answers the token differently: remove it from tokenExceptions", route)
+		}
+	}
+
+	// On the one route that takes a token for one action: cancel only, and only with the token.
+	const path = "/_localbase/model-management"
+	post := func(action string, headers map[string]string) rawResponse {
+		t.Helper()
+		h := map[string]string{"Content-Type": "application/json"}
+		for k, v := range headers {
+			h[k] = v
+		}
+		return g.raw(t, http.MethodPost, path, "", h, `{"modelId":"`+chatModel+`","action":"`+action+`"}`)
+	}
+	// Nothing is running, so a cancel that got through is a 409.
+	if r := post("cancel", withToken); r.status != 409 {
+		t.Errorf("cancel with the token: %d %.200q, want 409", r.status, r.body)
+	}
+	if r := post("cancel", nil); r.status != 401 {
+		t.Errorf("cancel without it: %d %.200q, want 401", r.status, r.body)
+	}
+	for _, action := range []string{"install", "uninstall", "enable", "disable", "activate"} {
+		if r := post(action, withToken); r.status != 403 {
+			t.Errorf("%s with the token: %d %.200q, want 403", action, r.status, r.body)
+		}
+		if r := post(action, nil); r.status != 401 {
+			t.Errorf("%s without it: %d %.200q, want 401", action, r.status, r.body)
+		}
+	}
+	g.checkNoSideEffects(t)
+}

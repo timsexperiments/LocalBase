@@ -110,6 +110,8 @@ A request refused with `validation_failed` lists at most 100 problems, and ends 
 
 `POST /_localbase/model-management` with `{"modelId": "<id>", "action": "cancel"}` stops a running install. It needs `models:manage`. The operation ends in state `cancelled`, with no error, and its partial file stays, counted as used space, for the next install to resume. With no install of that model running, it answers 200 with the operation recorded for that model, unchanged, so a retry is safe, or 409 `conflict` if none is recorded.
 
+`local-base models cancel <modelId>` does the same from this machine, and answers with the same operation. It uses the instance token in the root's lock file, readable only by whoever owns the root, on a request from loopback; that token can cancel an install on this route and nothing else. A cancel is in the audit log as `audit.models-changed`, with `actor_kind` of `local-cli` from the command line. It needs a running gateway, because that's what is installing; an install started with `local-base models install` stops with Ctrl-C in its terminal. With no install of that model running it exits 1 with the API's message.
+
 `POST /_localbase/model-imports` with `{"action": "cancel", "job": "<id>"}` stops an import, using the id `start` answered with. It needs `models:manage`. It answers with the job, usually still `running` for a moment, or 404 `import_not_found` if there is no such import. The job ends in state `cancelled`, with the code `import_cancelled`.
 
 ### Decision models
