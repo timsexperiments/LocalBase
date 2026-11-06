@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
+	"github.com/timsexperiments/LocalBase/go/internal/childenv"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
@@ -80,9 +81,10 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if env != nil {
-		cmd.Env = env
+	if env == nil {
+		env = os.Environ()
 	}
+	cmd.Env = childenv.Clean(env)
 	// Our own pipes: cmd.Wait closes those from StdoutPipe as soon as the child exits, losing
 	// whatever is still unread, which may be the reason it crashed.
 	stdout, stdoutW, err := os.Pipe()

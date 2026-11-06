@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/childenv"
 )
 
 // sd-server (stable-diffusion.cpp) image runtimes: the TS launcher's
@@ -129,7 +130,9 @@ func (s *Service) sdServerCommand(life context.Context, t *Target, host string, 
 func requireSdGPUContract(bin string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, bin, "--localbase-capabilities").Output()
+	cmd := exec.CommandContext(ctx, bin, "--localbase-capabilities")
+	cmd.Env = childenv.Clean(os.Environ())
+	out, err := cmd.Output()
 	if err == nil && strings.TrimSpace(string(out)) == "localbase-sd-gpu-pci-v1" {
 		return nil
 	}

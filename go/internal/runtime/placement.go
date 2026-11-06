@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"os/exec"
 	goruntime "runtime"
 	"sync"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/childenv"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -193,7 +195,9 @@ func (h *HostPlacement) hasFlag(bin, flag string) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	out, _ := exec.CommandContext(ctx, bin, "--help").CombinedOutput()
+	cmd := exec.CommandContext(ctx, bin, "--help")
+	cmd.Env = childenv.Clean(os.Environ())
+	out, _ := cmd.CombinedOutput()
 	h.help[key] = bytes.Contains(out, []byte(flag))
 	return h.help[key]
 }
