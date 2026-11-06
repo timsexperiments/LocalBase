@@ -230,6 +230,11 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"one left off its list": rep.SecretsUnlisted[1],
 		"a secret to put back":  rep.PutBack[1].Name,
 		"its command":           rep.PutBack[1].Command,
+		"a catalog entry":       rep.Catalog[1].Model,
+		"where it comes from":   rep.Catalog[1].Source,
+		"at which revision":     rep.Catalog[1].Revision,
+		"a file of it":          rep.Catalog[1].Files[1].File,
+		"where that comes from": rep.Catalog[1].Files[1].From,
 		"a model to install":    rep.Manifest.Models[1],
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
@@ -259,5 +264,36 @@ func TestAPutBackLineIsPrintedSafely(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("it should say %q:\n%s", want, got)
 		}
+	}
+}
+
+// The catalog section says what each entry adds or changes, by id, and counts what it doesn't list.
+func TestTheCatalogSectionSaysWhatEachEntryDoes(t *testing.T) {
+	var entries []backup.CatalogEntry
+	for i := range 30 {
+		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("model-%02d", i), New: i%2 == 0, Changes: []string{"source", "artifacts"},
+			Source: "https://huggingface.co/someone/repo", Revision: "abc123"})
+	}
+	entries[1].Files = []backup.FileSource{{File: "weights.gguf", From: "https://elsewhere.example/weights.gguf"}}
+	entries[2].Model = "evil\x1b[2J"
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: entries})
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	for _, want := range []string{
+		"Catalog entries in it, which this root will trust as its own:",
+		"  model-00: new, downloads from https://huggingface.co/someone/repo at abc123",
+		"  model-01: changes source, artifacts of the built-in entry, and downloads from https://huggingface.co/someone/repo at abc123",
+		"    weights.gguf comes from https://elsewhere.example/weights.gguf",
+		`  evil\x1b[2J: new, downloads from`,
+		"  model-24: new, downloads from",
+		"  and 5 more: run this with --json to see them all.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "model-25") {
+		t.Error("it listed more than it should")
 	}
 }

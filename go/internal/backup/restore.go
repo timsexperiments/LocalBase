@@ -104,14 +104,16 @@ type Report struct {
 	SecretsUnlisted []string `json:"secretsUnlisted,omitempty"`
 	// PutBack are what the file says --exclude-secrets left out, each with a command this version built
 	// from fields it checked, or none.
-	PutBack   []PutBack     `json:"putBack,omitempty"`
-	Rules     []string      `json:"rules"`
-	Programs  []Program     `json:"programs"`
-	Sources   []ModelSource `json:"modelSources"`
-	Settings  []Setting     `json:"settings"`
-	Providers []string      `json:"signInProviders"`
-	SignIn    *SignIn       `json:"signIn"`
-	Grants    []Grant       `json:"grants"`
+	PutBack []PutBack `json:"putBack,omitempty"`
+	// Catalog are the catalog.d entries this root's catalog will trust as its own, by id.
+	Catalog   []CatalogEntry `json:"catalog,omitempty"`
+	Rules     []string       `json:"rules"`
+	Programs  []Program      `json:"programs"`
+	Sources   []ModelSource  `json:"modelSources"`
+	Settings  []Setting      `json:"settings"`
+	Providers []string       `json:"signInProviders"`
+	SignIn    *SignIn        `json:"signIn"`
+	Grants    []Grant        `json:"grants"`
 	// RolesGone are the roles this root has and the backup doesn't.
 	RolesGone []Grant   `json:"rolesGone,omitempty"`
 	Keys      KeyCounts `json:"keys"`
@@ -720,6 +722,9 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, err
 	}
 	if err := checkCatalog(dir, cfg); err != nil {
+		return nil, err
+	}
+	if rep.Catalog, err = catalogEntries(dir); err != nil {
 		return nil, err
 	}
 	if err := checkVoices(ctx, dir, st); err != nil {

@@ -327,6 +327,31 @@ func copyPrintable(dst, src reflect.Value, letters bool) {
 	}
 }
 
+// catalogShown is how many catalog entries a report lists before it counts the rest.
+const catalogShown = 25
+
+// printCatalog says what the backup's catalog.d will make this root trust, before anything is changed.
+func printCatalog(c *cli.Ctx, entries []backup.CatalogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	c.Info("Catalog entries in it, which this root will trust as its own:")
+	for i, e := range entries {
+		if i == catalogShown {
+			c.Info("  and %d more: run this with --json to see them all.", len(entries)-catalogShown)
+			return
+		}
+		if e.New {
+			c.Info("  %s: new, downloads from %s at %s", e.Model, e.Source, e.Revision)
+		} else {
+			c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision)
+		}
+		for _, f := range e.Files {
+			c.Info("    %s comes from %s", f.File, f.From)
+		}
+	}
+}
+
 func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	rep = printable(rep)
 	if rep.NewRoot {
@@ -349,6 +374,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if len(rep.SecretsUnlisted) > 0 {
 		c.Info("Its own list of secrets leaves out %s, so it may have been changed after it was made.", strings.Join(rep.SecretsUnlisted, ", "))
 	}
+	printCatalog(c, rep.Catalog)
 	for _, rule := range rep.Rules {
 		c.Info("%s", rule)
 	}
