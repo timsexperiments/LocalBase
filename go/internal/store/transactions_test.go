@@ -28,6 +28,7 @@ var transactionClasses = map[string]string{
 	"auth.evaluatePolicy":                   "both: ResolvePolicy reads first, and writes only to claim an invitation",
 	"usage.write":                           "write",
 	"store.migrate":                         "write",
+	"store.SaveConfig":                      "write",
 	"store.SaveConfigMarking":               "write",
 	"store.MarkRestartPendingUnlessChanged": "write",
 	"store.AcknowledgeStatic":               "write",
