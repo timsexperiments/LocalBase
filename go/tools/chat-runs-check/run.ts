@@ -789,19 +789,15 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await sleep(600);
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const beforeLost = await seen();
+  // With everything offline the page's own polls fail too, and its notice is right to say so: the notice checks below block
+  // only the requests they're about.
   const watchNotice = `(() => { window.__noticeSaid = []; const box = document.getElementById("session-notice"); if (!box) return false; window.__noticeWatch?.disconnect(); window.__noticeWatch = new MutationObserver(() => { const t = box.textContent.trim(); if (t) window.__noticeSaid.push(t); }); window.__noticeWatch.observe(box, { childList: true, subtree: true, characterData: true }); return true; })()`;
   const noticeSaid = `(window.__noticeSaid ?? ["no watcher"]).join(" | ")`;
-  await ev(watchNotice);
   await ev(`document.querySelector("[data-record-stop]").click()`);
   for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
-  // Everything is unreachable here, the sign-in check too. The panel says it, so the page's own notice never speaks:
-  // watched, not read once, because the next request that works clears it.
-  await sleep(1200);
-  const quietOffline = await ev(noticeSaid);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
-  check(quietOffline === "", `with nothing reachable, only the panel says so: ${JSON.stringify(quietOffline)}`);
   // By its links, so the page lives on. Each one waits for the page it asked for, and says if it never came:
   // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
   const visited = [];
@@ -833,6 +829,17 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     onlySend.notice = await ev(noticeSaid);
     await send("Network.setBlockedURLs", { urls: [] });
     check(onlySend.panel && onlySend.notice === "", `with only the send failing, only the panel says so: ${JSON.stringify(onlySend)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // The send and the sign-in check both fail; the rest of the page still answers.
+    await nav("/app/studio/transcribe");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe", "*/app/session"] });
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const both = { panel: await panelUp() };
+    await sleep(1500);
+    both.notice = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(both.panel && both.notice === "", `with the send and the sign-in check both failing, only the panel says so: ${JSON.stringify(both)}`);
     await ev(`document.querySelector("[data-keep-drop]")?.click()`);
     // A sign-in that has expired at the edge: the check is redirected, and that is said, even for this form.
     await nav("/app/studio/transcribe");
