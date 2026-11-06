@@ -2,6 +2,8 @@
 // and the drawn waveform following the native player. Scripts are made on the
 // gateway; nothing here is needed for that but the count and the samples.
 
+import "./icon-names.js";
+
 const LIMIT = 5000;
 const PART = 200;
 const format = new Intl.NumberFormat();

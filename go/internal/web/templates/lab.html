@@ -10,6 +10,7 @@
   <section aria-labelledby="results-title" class="lab-results mt-4">
     {{if eq .Tab "image"}}<h2 id="results-title" class="sr-only">Pictures</h2>
     {{else if eq .Tab "video"}}<h2 id="results-title" class="sr-only">Videos</h2>
+    {{else if eq .Tab "speech"}}<h2 id="results-title" class="sr-only">Scripts</h2>
     {{else if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
     {{template "lab-result" .}}
@@ -18,6 +19,7 @@
     {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
     {{if and (eq .Tab "image") .Items}}<p class="studio-keep">Pictures stay here for 30 minutes.</p>{{end}}
     {{if and (eq .Tab "video") .Items}}<p class="studio-keep">Videos stay here for 15 minutes.</p>{{end}}
+    {{if and (eq .Tab "speech") .Items}}<p class="studio-keep">Speech stays here for 30 minutes.</p>{{end}}
   </section>
   {{if .Ready}}<div class="lab-dock-spacer" aria-hidden="true"></div>{{end}}
   {{end}}
@@ -139,7 +141,7 @@
   <form class="lab-dock" data-docked aria-label="Make speech" hx-post="/app/lab/speech" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
     <div class="composer-box lab-box">
       <div class="lab-chips">
-        {{template "lab-chip" (dict "Sheet" "lab-voice" "Name" "voice" "Label" "Voice" "Value" "None")}}
+        <button type="button" class="chip lab-chip gap-1" data-open-sheet="lab-voice" aria-haspopup="dialog"><span class="font-normal text-muted">Voice</span> <span data-chip-label="voice">None</span></button>
         {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
         <span class="speech-count" data-script-count aria-live="polite" hidden></span>
       </div>
@@ -353,11 +355,17 @@
 
 {{/* A script: real progress by part, then a drawn waveform over the native player. */}}
 {{define "speech-item"}}
-<li id="run-{{.ID}}" class="lab-item lab-item-speech"{{if .Active}} hx-get="/app/lab/speech/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
-  {{if .Active}}<div class="lab-progress skeleton flex-col gap-2 px-4"><span>{{.Message}}</span>{{if gt .Parts 1}}<progress class="speech-progress" max="{{.Parts}}" value="{{.Part}}" aria-label="Parts made">{{.Part}} of {{.Parts}}</progress>{{end}}</div>
-  <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>
+<li id="run-{{.ID}}" class="image-run lab-item-speech"{{if .Active}} hx-get="/app/lab/speech/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
+  {{with .Caption}}<h3 class="image-title video-title">{{.}}</h3>{{end}}
+  {{if .Active}}
+  <div class="image-state">
+    <p class="min-w-0 flex-1 image-facts">{{with .VoiceName}}{{.}}. {{end}}You can leave this page; it keeps going.</p>
+    <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/speech/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML"{{if eq .Status "stopping"}} disabled{{end}}>Stop</button>
+  </div>
+  <div class="lab-progress flex-col gap-2 px-4"><span>{{.Message}}</span>{{if gt .Parts 1}}<progress class="speech-progress" max="{{.Parts}}" value="{{.Part}}" aria-label="Parts made">{{.Part}} of {{.Parts}}</progress>{{end}}</div>
   {{else}}
-  {{with .Message}}<p class="px-2 text-sm {{if eq $.Status "completed"}}font-semibold{{else if eq $.Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if or (eq $.Status "failed") (eq $.Status "completed")}} role="alert"{{end}}>{{.}}</p>{{end}}
+  <p class="image-facts">{{or .VoiceName "Speech"}}{{with .Length}} · {{.}}{{end}}{{with .Ago}} · {{.}}{{end}}</p>
+  {{with .Message}}<p class="text-sm {{if eq $.Status "completed"}}font-semibold{{else if eq $.Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if or (eq $.Status "failed") (eq $.Status "completed")}} role="alert"{{end}}>{{.}}</p>{{end}}
   {{with .Audio}}<div data-speech-player>
     {{if $.Bars}}<button type="button" class="speech-wave" data-wave aria-hidden="true" tabindex="-1">
       <svg viewBox="0 0 192 24" preserveAspectRatio="none" class="speech-wave-base">{{range $.Bars}}<rect x="{{.X}}" y="{{.Y}}" width="2" height="{{.H}}" rx="1"/>{{end}}</svg>
@@ -365,18 +373,14 @@
     </button>{{end}}
     <audio controls preload="metadata" src="{{.}}" class="w-full"></audio>
   </div>{{end}}
-  {{end}}
-  <p class="min-w-0 px-2 text-muted"><span class="font-semibold text-ink">{{or .VoiceName "Speech"}}</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}} <span class="text-sm">{{with .Length}}· {{.}} {{end}}{{with .Ago}}· {{.}}{{end}}</span></p>
-  <div class="lab-item-foot">
-    {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/speech/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML"{{if eq .Status "stopping"}} disabled{{end}}>Stop</button>
-    {{else}}
-    {{with .Audio}}<a class="icon-btn" href="{{.}}" download="speech.wav" aria-label="Save audio">{{template "icon-download"}}</a>
-    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="speech.wav" aria-label="Share audio" hidden>{{template "icon-share"}}</button>{{end}}
+  <div class="lab-item-foot result-actions">
     <button type="button" class="btn btn-quiet rounded-full" hx-post="/app/lab/speech/{{.ID}}/again" hx-target="#lab-result" hx-swap="outerHTML">{{if eq .Status "completed"}}Make again{{else}}Try again{{end}}</button>
-    <button type="button" class="btn btn-quiet rounded-full" data-fill="{{.Prompt}}">Edit script</button>
-    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/speech/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this speech">{{template "icon-x"}}</button>
-    {{end}}
+    {{with .Audio}}<a class="icon-btn" href="{{.}}" download="speech.wav" aria-label="Save audio" title="Save">{{template "icon-download"}}</a>
+    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="speech.wav" aria-label="Share audio" title="Share" hidden>{{template "icon-share"}}</button>{{end}}
+    <button type="button" class="icon-btn" data-fill="{{.Prompt}}" aria-label="Edit script" title="Edit script">{{template "icon-edit"}}</button>
+    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/speech/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this speech" title="Remove">{{template "icon-x"}}</button>
   </div>
+  {{end}}
 </li>
 {{end}}
 
@@ -398,7 +402,7 @@
   <p class="image-facts {{if eq .Status "failed"}}text-danger{{end}}"{{if eq .Status "failed"}} role="alert"{{end}}>{{.Message}}{{if .NeedsMemory}} <a class="font-semibold underline" href="/app/models/running">See what’s running</a>{{end}}</p>
   {{end}}
   {{if not .Active}}
-  <div class="lab-item-foot video-actions">
+  <div class="lab-item-foot result-actions">
     {{if .Again}}<button type="button" class="btn btn-quiet rounded-full" hx-post="/app/lab/video/{{.ID}}/again" hx-target="#lab-result" hx-swap="outerHTML">{{if .Video}}Make again{{else}}Try again{{end}}</button>{{end}}
     {{with .Video}}<a class="icon-btn" href="{{.}}" download="video.mp4" aria-label="Save video" title="Save">{{template "icon-download"}}</a>
     <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="video.mp4" aria-label="Share video" title="Share" hidden>{{template "icon-share"}}</button>{{end}}
@@ -481,13 +485,18 @@
   <p class="mt-3 text-sm text-muted">A video can take a while and uses a lot of memory. It keeps going if you leave, and stays here for 15 minutes.</p>
   <p class="lab-hello-icon"><span aria-hidden="true">{{template "icon-edit"}}</span><span><span class="font-semibold">Edit prompt</span> puts a video’s words back here to change.</span></p>
 </div>
+{{else if eq . "speech"}}<div class="lab-hello" data-lab-empty>
+  <p class="lab-hello-title">What would you like to hear?</p>
+  <ul class="lab-examples">
+    <li><button type="button" class="lab-example" data-fill="Welcome back! Here is what is new today.">A friendly welcome</button></li>
+    <li><button type="button" class="lab-example" data-fill="Once upon a time, in a small town by the sea, there lived a lighthouse keeper who loved to read.">The start of a story</button></li>
+    <li><button type="button" class="lab-example" data-fill="The quick brown fox jumps over the lazy dog.">The quick brown fox</button></li>
+  </ul>
+  <p class="mt-3 text-sm text-muted">Choose a voice, and write as much as you like up to 5,000 characters. A long script is made in parts and joined. It keeps going if you leave, and stays here for 30 minutes.</p>
+  <p class="lab-hello-icon"><span aria-hidden="true">{{template "icon-edit"}}</span><span><span class="font-semibold">Edit script</span> puts its words back here to change.</span></p>
+</div>
 {{else}}<div class="lab-empty" data-lab-empty>
-  {{if eq . "speech"}}<p>Write a script, and hear it in the voice you choose. A long one is made in parts and joined.</p>
-  <div class="mt-3 flex flex-wrap justify-center gap-2">
-    <button type="button" class="chip" data-fill="Welcome back! Here is what is new today.">A friendly welcome</button>
-    <button type="button" class="chip" data-fill="The quick brown fox jumps over the lazy dog.">The quick brown fox</button>
-  </div>
-  {{else}}<p>Record, or choose a recording, and the words appear here with their times. It starts as soon as you stop or choose, and up to about 13 minutes fits at a time.</p>{{end}}
+  <p>Record, or choose a recording, and the words appear here with their times. It starts as soon as you stop or choose, and up to about 13 minutes fits at a time.</p>
   <p class="mt-3 text-sm">Results keep going if you leave the page.</p>
 </div>{{end}}
 {{end}}

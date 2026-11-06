@@ -630,6 +630,28 @@ if (!(await ev(`!!document.querySelector("form[aria-label='Make speech']")`))) {
   check(finished?.audio && finished.bars === 64 && /Make again/.test(finished.text), `it finishes after leaving and reloading, with a waveform: ${finished?.text.slice(0, 80)}`);
   const audio = await ev(`(async () => { const a = ${firstItem}.querySelector("audio"); if (a.readyState < 1) await new Promise((r) => { a.onloadedmetadata = r; a.onerror = r; setTimeout(r, 4000); }); const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { duration: a.duration, x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
   check(audio.duration > 60, `the parts are joined into one file (${audio.duration?.toFixed(0)} s)`);
+  // As on Video: Make again leads, and the rest stay in one row with Share showing, as on a real phone. A long press names them.
+  for (const width of [360, 390]) {
+    await send("Emulation.setDeviceMetricsOverride", { width, height: width === 360 ? 740 : 844, deviceScaleFactor: 2, mobile: true });
+    await nav("/app/studio/speech");
+    const row = await ev(`(() => { scrollTo(0, 0); const item = ${firstItem}; item.querySelector("[data-share]").hidden = false; const acts = [...item.querySelectorAll(".result-actions a, .result-actions button")].filter((a) => a.getBoundingClientRect().width > 0), dock = document.querySelector("[data-docked]").getBoundingClientRect(); return { first: acts[0].textContent.trim(), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, big: acts.every((a) => a.getBoundingClientRect().height >= 44), named: acts.every((a) => a.getAttribute("aria-label") || a.textContent.trim()), bottom: Math.round(Math.max(...acts.map((a) => a.getBoundingClientRect().bottom))), dockTop: Math.round(dock.top) }; })()`);
+    check(row.first === "Make again" && row.acts >= 5 && row.rows === 1 && row.big && row.named && row.bottom <= row.dockTop, `at ${width}, a script's actions are one row above the prompt, with Share showing: ${JSON.stringify(row)}`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await send("Emulation.setTouchEmulationEnabled", { enabled: true });
+  await nav("/app/studio/speech");
+  const speechRemove = `${firstItem}.querySelector("[aria-label='Remove this speech']")`;
+  const scripts = `document.querySelectorAll("#lab-items .lab-item-speech").length`;
+  const scriptsBefore = await ev(scripts);
+  const heldAt = await ev(`(() => { const r = ${speechRemove}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  await send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [heldAt] });
+  await sleep(650);
+  const heldName = await ev(`document.querySelector(".icon-name")?.textContent ?? ""`);
+  await send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(1300);
+  check(heldName === "Remove" && (await ev(scripts)) === scriptsBefore, `on Speech too, a long press on Remove shows its name and removes nothing: ${JSON.stringify({ heldName, scriptsBefore })}`);
+  await send("Emulation.setTouchEmulationEnabled", { enabled: false });
+  check(/Voice/.test(await ev(`document.querySelector("[data-open-sheet=lab-voice]").textContent`)), "the voice chip says what it is");
   await ev(`${firstItem}.querySelector("[data-wave]").scrollIntoView({ block: "center" })`);
   const box = await ev(`(() => { const w = ${firstItem}.querySelector("[data-wave]").getBoundingClientRect(); return { x: w.left + w.width / 2, y: w.top + w.height / 2 }; })()`);
   for (const type of ["mousePressed", "mouseReleased"]) await send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", clickCount: 1 });
@@ -1196,7 +1218,7 @@ if (canVideo && pictureModel) {
 }
 
 // --- A finished video, its header and its actions on one phone screen (DESIGN §27) ----------------
-const settleVideoPage = async () => { for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items > li .video-actions")`)); i++) await sleep(150); };
+const settleVideoPage = async () => { for (let i = 0; i < 40 && !(await ev(`!!document.querySelector("#lab-items > li .result-actions")`)); i++) await sleep(150); };
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/studio/video");
 if (!(await ev(`!!document.querySelector("form[aria-label='Make a video']")`))) console.log("skip finished video (no video model selected)");
@@ -1246,9 +1268,9 @@ else {
   await send("Emulation.setTouchEmulationEnabled", { enabled: true });
   await nav("/app/studio/video");
   await settleVideoPage();
-  const pencil = `document.querySelector("#lab-items > li .video-actions [aria-label='Edit prompt']")`;
-  const removeBtn = `document.querySelector("#lab-items > li .video-actions [aria-label='Remove this video']")`;
-  const icons = await ev(`[...document.querySelectorAll("#lab-items > li .video-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
+  const pencil = `document.querySelector("#lab-items > li .result-actions [aria-label='Edit prompt']")`;
+  const removeBtn = `document.querySelector("#lab-items > li .result-actions [aria-label='Remove this video']")`;
+  const icons = await ev(`[...document.querySelectorAll("#lab-items > li .result-actions .icon-btn")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) }; })`);
   check(icons.length >= 3 && icons.every((i) => i.w >= 44 && i.h >= 44 && i.name) && icons.some((i) => i.name === "Edit prompt"), `the video's icons are 44 px and named: ${JSON.stringify(icons)}`);
   const centre = async (sel) => ev(`(() => { const r = ${sel}.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
   const count = `document.querySelectorAll("#lab-items > li").length`;
