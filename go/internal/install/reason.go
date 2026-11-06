@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"io"
 	"net"
 	"net/http"
@@ -38,6 +39,10 @@ type integrityError struct{ message string }
 
 func (e *integrityError) Error() string { return e.message }
 
+// Unwrap gives the CLI the message as one it wrote itself: its line breaks are kept, and any value in
+// it is escaped where it's built.
+func (e *integrityError) Unwrap() error { return &cli.TextError{Text: e.message} }
+
 // truncatedError: the connection ended before the whole file arrived.
 type truncatedError struct{ message string }
 
@@ -55,7 +60,10 @@ type messageError struct {
 }
 
 func (e *messageError) Error() string { return e.message }
-func (e *messageError) Unwrap() error { return e.cause }
+
+// Unwrap keeps the cause classifiable, and gives the CLI the message as one it wrote itself, with its
+// line breaks; any value in it is escaped where it's built.
+func (e *messageError) Unwrap() []error { return []error{e.cause, &cli.TextError{Text: e.message}} }
 
 // Reason classifies an install error. Anything it does not recognize is unknown.
 func Reason(err error) string {

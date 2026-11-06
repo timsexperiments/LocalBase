@@ -112,19 +112,25 @@ func (c *Ctx) Int(name string) (n int, ok bool, err error) {
 }
 
 // Info prints human output: stdout normally, stderr under --json so stdout
-// carries only the envelope.
+// carries only the envelope. Values are escaped (Printable); the format isn't.
 func (c *Ctx) Info(format string, a ...any) {
 	w := c.Stdout
 	if c.Global.JSON {
 		w = c.Stderr
 	}
-	fmt.Fprintf(w, format+"\n", a...)
+	fmt.Fprintf(w, format+"\n", shown(a)...)
 }
 
 // Error prints a human message on stderr, with or without --json (TS
-// output.error).
+// output.error). Values are escaped (Printable); the format isn't.
 func (c *Ctx) Error(format string, a ...any) {
-	fmt.Fprintf(c.Stderr, format+"\n", a...)
+	fmt.Fprintf(c.Stderr, format+"\n", shown(a)...)
+}
+
+// Out prints on stdout even under --json, for what a command is asked to hand over, like a snippet.
+// Values are escaped (Printable); the format isn't.
+func (c *Ctx) Out(format string, a ...any) {
+	fmt.Fprintf(c.Stdout, format+"\n", shown(a)...)
 }
 
 // Streaming marks a command that writes its own JSON lines (logs --follow,
@@ -202,9 +208,9 @@ func (a *App) writeEnvelope(v any) {
 	a.Stdout.Write(append(b, '\n'))
 }
 
-func (a *App) fail(json bool, code, message string, exit int, help *Command, path []string) int {
+func (a *App) fail(json bool, code string, err error, exit int, help *Command, path []string) int {
 	// TS redacts every CLI error message like an external log text.
-	message = obs.BoundedText(message, 2048)
+	message := obs.BoundedText(err.Error(), 2048)
 	if json {
 		detail := map[string]string{"code": code, "message": message}
 		if a.reason != "" {
@@ -212,9 +218,10 @@ func (a *App) fail(json bool, code, message string, exit int, help *Command, pat
 		}
 		a.writeEnvelope(map[string]any{"ok": false, "error": detail})
 	}
-	fmt.Fprintf(a.Stderr, "Error: %s\n", message)
+	// The envelope's JSON encoding keeps its message safe, and a script may compare it.
+	fmt.Fprintf(a.Stderr, "Error: %s\n", shownMessage(err, err.Error(), message))
 	if a.reason != "" {
-		fmt.Fprintf(a.Stderr, "Reason: %s\n", a.reason)
+		fmt.Fprintf(a.Stderr, "Reason: %s\n", Printable(a.reason))
 	}
 	if help != nil {
 		fmt.Fprintln(a.Stderr, a.help(help, path))
@@ -232,7 +239,7 @@ func (a *App) Run(args []string) int {
 	}
 	g, rest, err := splitGlobals(args)
 	if err != nil {
-		return a.fail(hasJSON(args), "invalid_input", err.Error(), 2, a.Root, nil)
+		return a.fail(hasJSON(args), "invalid_input", err, 2, a.Root, nil)
 	}
 	if len(rest) == 1 && (rest[0] == "--version" || rest[0] == "-v") {
 		if g.JSON {
@@ -270,18 +277,18 @@ func (a *App) Run(args []string) int {
 		case len(rest) == 0:
 			return a.printHelp(g.JSON, cmd, path)
 		default:
-			return a.fail(g.JSON, "invalid_input", "Unknown command: "+rest[0], 2, cmd, path)
+			return a.fail(g.JSON, "invalid_input", errors.New("Unknown command: "+rest[0]), 2, cmd, path)
 		}
 	}
 	ctx := &Ctx{Global: g, Stdout: a.Stdout, Stderr: a.Stderr, path: path}
 	if err := parseOptions(ctx, cmd, rest); err != nil {
-		return a.fail(g.JSON, "invalid_input", err.Error(), cmd.inputExit(), cmd, path)
+		return a.fail(g.JSON, "invalid_input", err, cmd.inputExit(), cmd, path)
 	}
 	data, err := cmd.Run(ctx)
 	if err != nil {
 		var ie *InputError
 		if errors.As(err, &ie) {
-			return a.fail(g.JSON, "invalid_input", ie.Message, cmd.inputExit(), cmd, path)
+			return a.fail(g.JSON, "invalid_input", errors.New(ie.Message), cmd.inputExit(), cmd, path)
 		}
 		if a.ExplainError != nil {
 			err = a.ExplainError(err)
@@ -300,7 +307,7 @@ func (a *App) Run(args []string) int {
 			return 1
 		}
 		a.reason = reason
-		return a.fail(g.JSON, "operational_error", err.Error(), 1, nil, path)
+		return a.fail(g.JSON, "operational_error", err, 1, nil, path)
 	}
 	if g.JSON && !ctx.streamingOK {
 		if data == nil {

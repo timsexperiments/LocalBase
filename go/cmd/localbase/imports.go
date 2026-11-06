@@ -189,7 +189,7 @@ func modelsImportCommand() *cli.Command {
 					return
 				}
 				if p.Note != "" {
-					fmt.Fprintln(c.Stderr, p.Note)
+					c.Error("%s", p.Note)
 					return
 				}
 				line := p.Phase + " " + p.File
@@ -197,7 +197,7 @@ func modelsImportCommand() *cli.Command {
 					line = fmt.Sprintf("%s %s %d%%", p.Phase, p.File, p.Done*100/p.Total)
 				}
 				if line != last {
-					fmt.Fprintln(c.Stderr, line)
+					c.Error("%s", line)
 					last = line
 				}
 			})
@@ -341,7 +341,7 @@ func modelsExportCommand() *cli.Command {
 			}
 			if !c.Global.JSON {
 				b, _ := en.Model.Export()
-				c.Info("%s", b)
+				c.Info("%s", cli.Lines(b))
 			}
 			return map[string]any{"model": en.Model}, nil
 		})}
@@ -403,7 +403,7 @@ func backendsCommand() *cli.Command {
 				}
 				b, _ := json.MarshalIndent(d, "", "  ")
 				if !c.Global.JSON {
-					c.Info("%s", b)
+					c.Info("%s", cli.Lines(b))
 				}
 				return map[string]any{"backend": d, "builtIn": d.BuiltIn, "install": l.Host().Install[d.ID]}, nil
 			})},
@@ -465,7 +465,7 @@ func authProfilesCommand() *cli.Command {
 			out := []acquire.PublicProfile{}
 			for _, p := range ps.Profiles {
 				pub := p.Public()
-				c.Info("%s: %s -> %s", pub.ID, strings.Join(pub.HeaderNames, ", "), strings.Join(pub.Origins, ", "))
+				c.Info("%s: %s -> %s", pub.ID, strings.Join(pub.HeaderNames, ", "), cli.PrintableASCII(strings.Join(pub.Origins, ", ")))
 				out = append(out, pub)
 			}
 			return map[string]any{"profiles": out}, nil
@@ -505,7 +505,7 @@ func authProfilesCommand() *cli.Command {
 			}
 			pub := p.Public()
 			auditChange(e, "auth-profiles", "add", "auth-profile", pub.ID)
-			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), strings.Join(pub.Origins, ", "))
+			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), cli.PrintableASCII(strings.Join(pub.Origins, ", ")))
 			return map[string]any{"profile": pub}, nil
 		})},
 		{Name: "remove", Summary: "Remove an auth profile", Usage: "<id>", MinArgs: 1, MaxArgs: 1,

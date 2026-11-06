@@ -113,7 +113,7 @@ func printUsage(c *cli.Ctx, r *usage.Report) error {
 			if g.Latency.P95 != nil {
 				p95 = ms(*g.Latency.P95)
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", who, model, route, count(g.Requests), count(g.Failed+g.Refused), count(g.InputTokens), count(g.OutputTokens), p95)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", cli.Printable(who), cli.Printable(model), cli.Printable(route), count(g.Requests), count(g.Failed+g.Refused), count(g.InputTokens), count(g.OutputTokens), p95)
 		}
 		if err := w.Flush(); err != nil {
 			return fmt.Errorf("could not write the usage table: %w", err)

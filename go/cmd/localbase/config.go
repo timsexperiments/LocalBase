@@ -348,7 +348,7 @@ func runConfigShow(c *cli.Ctx) (any, error) {
 	}
 	document := conf.Render(cfg)
 	if !c.Global.JSON {
-		c.Info("%s", strings.TrimRight(document, "\n"))
+		c.Info("%s", cli.Lines(strings.TrimRight(document, "\n")))
 		if pending {
 			c.Error("Pending restart: saved static settings await managed startup.")
 		}

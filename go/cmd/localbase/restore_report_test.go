@@ -108,7 +108,7 @@ func TestEveryStringInTheReportIsMadePrintable(t *testing.T) {
 		t.Fatalf("%d strings came out of %d", len(got), len(leaves))
 	}
 	for i, s := range got {
-		want := fmt.Sprintf(`field%d\x1b[2K\x0asecond-line\u202e\x9b`, i+1)
+		want := fmt.Sprintf(`field%d\x1b[2K\nsecond-line\u202e\x9b`, i+1)
 		if keepsLetters(leaves[i]) {
 			want += "\u0430"
 		} else {
@@ -154,7 +154,7 @@ func TestTheReportPrintsNothingThatActsOnATerminal(t *testing.T) {
 			t.Errorf("a value started a line of its own: %q", line)
 		}
 	}
-	if !strings.Contains(got, `field1\x1b[2K\x0asecond-line`) {
+	if !strings.Contains(got, `field1\x1b[2K\nsecond-line`) {
 		t.Errorf("it doesn't show what was escaped: %.300q", got)
 	}
 }

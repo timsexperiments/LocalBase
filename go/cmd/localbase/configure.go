@@ -258,7 +258,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		if cfg.HFToken == "" || cfg.HFToken == *overrides.HFToken {
 			cfg.HFToken = *overrides.HFToken
 		} else {
-			fmt.Fprintln(c.Stderr, "Warning: the hfToken in the TOML file was not applied because a different Hugging Face token is already saved, for example from the admin UI. Replace it there, or pass --hf-token.")
+			c.Error("Warning: the hfToken in the TOML file was not applied because a different Hugging Face token is already saved, for example from the admin UI. Replace it there, or pass --hf-token.")
 		}
 	case cfg.HFToken == "" && !hasConfig:
 		cfg.HFToken = os.Getenv("HF_TOKEN")
@@ -267,7 +267,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		return nil, cli.Inputf("%s", conf.Summary(issues))
 	}
 	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && e.memoryGB() < 16 {
-		fmt.Fprintf(c.Stderr, "Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.\n", p, e.memoryGB())
+		c.Error("Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.", p, e.memoryGB())
 	}
 	if err := root.WithOperation(e.Root.Dir, "configure", func() error { return e.saveAs(cfg, true) }); err != nil {
 		var inv *conf.InvalidError
@@ -536,6 +536,6 @@ func loadOverrides(path string) (*Overrides, error) {
 // costs nothing, and the value itself is never repeated.
 func warnAboutSecretOption(c *cli.Ctx, name, instead string) {
 	if c.Has(name) && c.String(name) != "" {
-		fmt.Fprintf(c.Stderr, "Warning: --%s can be read by other users of this computer while the command runs, and stays in your shell history. %s.\n", name, instead)
+		c.Error("Warning: --%s can be read by other users of this computer while the command runs, and stays in your shell history. %s.", name, instead)
 	}
 }

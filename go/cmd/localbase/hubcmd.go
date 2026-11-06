@@ -114,7 +114,7 @@ func modelsSearch() *cli.Command {
 					if h.Gated {
 						gated = "yes"
 					}
-					rows = append(rows, []string{h.Repo, compactCount(h.Downloads), dash(h.License), dash(h.PipelineTag), gated, h.Likely.Label})
+					rows = append(rows, []string{cli.Printable(h.Repo), compactCount(h.Downloads), cli.Printable(dash(h.License)), cli.Printable(dash(h.PipelineTag)), gated, h.Likely.Label})
 				}
 				widths := make([]int, len(rows[0]))
 				for _, row := range rows {

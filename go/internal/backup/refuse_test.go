@@ -16,7 +16,7 @@ func TestARefusalShowsControlCharactersAsEscapes(t *testing.T) {
 		if strings.ContainsRune(got, 0x1b) || strings.Contains(got, "\n") {
 			t.Errorf("%s: %q", name, got)
 		}
-		if !strings.Contains(got, `x\x1b[2K\x0ay`) {
+		if !strings.Contains(got, `x\x1b[2K\ny`) {
 			t.Errorf("%s: it doesn't show it: %q", name, got)
 		}
 	}

@@ -439,7 +439,7 @@ func printDiagnosticModels(c *cli.Ctx, data *jsjson.Object) {
 		if e, ok := field(feed, "lastError").(string); ok && e != "" {
 			lastErr = "; last error: " + e
 		}
-		c.Info("Catalog feed: %v (%d community model(s), %s%s)%s", field(feed, "url"), len(added), fetched, stale, lastErr)
+		c.Info("Catalog feed: %s (%d community model(s), %s%s)%s", cli.PrintableASCII(fmt.Sprint(field(feed, "url"))), len(added), fetched, stale, lastErr)
 	} else {
 		c.Info("Catalog feed: off")
 	}

@@ -34,7 +34,7 @@ func auditCLI(e *env, msg string, attrs ...any) {
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", e.auditFailure, e.Root.LogsDir())
+		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", e.auditFailure, cli.Printable(e.Root.LogsDir()))
 	}
 	sink, err := openAuditSink(e.Root.LogsDir())
 	if err != nil {

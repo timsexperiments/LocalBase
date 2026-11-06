@@ -253,7 +253,7 @@ func accessCommand() *cli.Command {
 				c.Info("Browser access is not configured.")
 				return map[string]any{"config": nil}, nil
 			}
-			c.Info("Browser access: %s for %s", cfg.Provider.Kind, cfg.Origin)
+			c.Info("Browser access: %s for %s", cfg.Provider.Kind, cli.PrintableASCII(cfg.Origin))
 			return map[string]any{"config": cfg.Summary()}, nil
 		})},
 		{Name: "cloudflare", Summary: "Configure Cloudflare Access browser authentication", Options: []cli.Option{
@@ -435,7 +435,7 @@ func accessCommand() *cli.Command {
 					c.Info("Email delivery is not configured.")
 					return map[string]any{"config": nil}, nil
 				}
-				c.Info("Email delivery: %s:%d from %s", cfg.Host, cfg.Port, cfg.From)
+				c.Info("Email delivery: %s:%d from %s", cli.PrintableASCII(cfg.Host), cfg.Port, cli.PrintableASCII(cfg.From))
 				return map[string]any{"config": cfg.Summary()}, nil
 			})},
 			{Name: "configure", Summary: "Configure SMTP email delivery", Options: []cli.Option{
@@ -737,7 +737,7 @@ func accessCommand() *cli.Command {
 				if adopted > 0 {
 					auditChange(e, "access", "adopt-binding-issuer", "issuer", issuer, "count", adopted)
 				}
-				c.Info("%d email bindings and invitations now trust %s.", adopted, issuer)
+				c.Info("%d email bindings and invitations now trust %s.", adopted, cli.PrintableASCII(issuer))
 				return map[string]any{"adopted": adopted, "issuer": issuer}, nil
 			})},
 		}},
@@ -799,7 +799,7 @@ func accessCommand() *cli.Command {
 				if delivered {
 					c.Info("Invited %s and sent an email.", user.Email)
 				} else {
-					c.Info("Invited %s. Sign in at %s", user.Email, signIn)
+					c.Info("Invited %s. Sign in at %s", cli.PrintableASCII(user.Email), cli.PrintableASCII(signIn))
 				}
 				return map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered}, nil
 			})},

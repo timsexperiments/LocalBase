@@ -343,7 +343,7 @@ func runSmoke(c *cli.Ctx) (any, error) {
 			c.Info("PASS %s: %s (%d ms)", label, detail, dur)
 			return nil
 		}
-		fmt.Fprintf(c.Stderr, "FAIL %s: %s\n", label, detail)
+		c.Error("FAIL %s: %s", label, detail)
 		f := label + ": " + detail
 		failure = &f
 		return err
@@ -424,7 +424,7 @@ func runSmoke(c *cli.Ctx) (any, error) {
 	if failure == nil {
 		c.Info("Smoke check passed.")
 	} else {
-		fmt.Fprintf(c.Stderr, "Smoke check failed: %s\n", *failure)
+		c.Error("Smoke check failed: %s", *failure)
 	}
 	if steps == nil {
 		steps = []smokeStep{}
