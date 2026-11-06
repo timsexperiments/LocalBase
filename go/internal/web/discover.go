@@ -426,9 +426,7 @@ func (u *UI) discoverRecipe(w http.ResponseWriter, r *http.Request) {
 func (u *UI) fragment(w http.ResponseWriter, r *http.Request, page, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	if err := u.pages[page].ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, "render failed", http.StatusInternalServerError)
-	}
+	u.execute(w, u.pages[page], page, name, data)
 }
 
 // safeID keeps an element id the page made (letters, digits, '-').

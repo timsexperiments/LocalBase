@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -77,6 +78,10 @@ type UI struct {
 
 	pendingMu sync.Mutex
 	pending   map[string]pendingImport
+
+	// chosen: the model each person started installing from first run, so its GETs may finish it (03-M2).
+	chosenMu sync.Mutex
+	chosen   map[string]string
 
 	pace        installPace
 	localSignIn *template.Template
@@ -396,9 +401,27 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	data["NoAuth"] = u.d.NoAuth
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Vary", "HX-Request, HX-Target")
-	if err := t.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, "render failed", http.StatusInternalServerError)
+	u.execute(w, t, page, name, data)
+}
+
+// execute runs a template into a buffer and sends it whole. A failure partway sends a 500 with none of
+// the partial page, and is logged with the page and template, since otherwise it leaves no trace.
+func (u *UI) execute(w http.ResponseWriter, t *template.Template, page, name string, data any) {
+	var out bytes.Buffer
+	err := errors.New("no such page")
+	if t != nil {
+		err = t.ExecuteTemplate(&out, name, data)
 	}
+	if err != nil {
+		log := u.d.Log
+		if log == nil {
+			log = slog.Default()
+		}
+		log.Error("A page failed to render.", "page", page, "template", name, "error", err)
+		http.Error(w, "render failed", http.StatusInternalServerError)
+		return
+	}
+	w.Write(out.Bytes())
 }
 
 // initial is a name's first letter, upper-cased, for avatars ("A" if none).
