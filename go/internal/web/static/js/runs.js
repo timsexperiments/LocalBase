@@ -9,7 +9,8 @@
 
 const ROOT = "/_localbase/runs";
 // run id -> { href, label, last }. A chat's label is its title, so each person has their own.
-const PLACES = `localbase.runs.places.v2.${document.documentElement.dataset.person ?? "none"}`;
+// Read when used, not when the module loads: a module can load where there is no page yet (tests).
+const placesKey = () => `localbase.runs.places.v2.${globalThis.document?.documentElement?.dataset.person ?? "none"}`;
 export const ACTIVE = new Set(["queued", "in_progress"]);
 let support;
 
@@ -319,7 +320,7 @@ function remember(id, patch) {
 
 function readPlaces() {
   try {
-    return JSON.parse(localStorage.getItem(PLACES) ?? "{}") ?? {};
+    return JSON.parse(localStorage.getItem(placesKey()) ?? "{}") ?? {};
   } catch {
     return {};
   }
@@ -327,7 +328,7 @@ function readPlaces() {
 
 function writePlaces(places) {
   try {
-    localStorage.setItem(PLACES, JSON.stringify(places));
+    localStorage.setItem(placesKey(), JSON.stringify(places));
   } catch {
     // Storage full or blocked: re-attaching then replays from the start.
   }
