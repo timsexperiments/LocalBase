@@ -293,11 +293,11 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		return nil
 	}
 	if err := activate(); err != nil {
+		var markErr error
 		if restart {
-			withStore(func(st *store.Store) error { return st.MarkRestartPendingUnlessChanged(ctx, next) })
+			markErr = withStore(func(st *store.Store) error { return st.MarkRestartPendingUnlessChanged(ctx, next) })
 		}
-		return nil, fmt.Errorf("Configuration is saved, but activation failed: %s. Retry local-base restart, or config apply --restart always --wait.",
-			err.Error())
+		return nil, activationFailed(err, markErr)
 	}
 	if _, plan.PendingRestart, err = readConfigIfPresent(dir, cat); err != nil {
 		return nil, err
@@ -368,4 +368,14 @@ func applyDecision(policy string, wait, restartRequired bool, state string, mana
 		return false, cli.Inputf("--wait requires a running gateway without pending restart changes, or --restart always.")
 	}
 	return restart, nil
+}
+
+// activationFailed says what is owed. If the pending restart couldn't be recorded, status won't show
+// it, so this has to.
+func activationFailed(err, markErr error) error {
+	if markErr != nil {
+		return fmt.Errorf("Configuration is saved, but activation failed: %s. A restart is needed, and that couldn't be recorded either (%s), so local-base status won't show it. Run local-base restart.",
+			err.Error(), markErr.Error())
+	}
+	return fmt.Errorf("Configuration is saved, but activation failed: %s. Retry local-base restart, or config apply --restart always --wait.", err.Error())
 }

@@ -420,10 +420,10 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Which permission this needs. Anything but a clear test-policy needs the stronger one.
 	var head struct{ Action string }
-	json.Unmarshal(body, &head)
 	required := "access:manage"
-	if head.Action == "test-policy" {
+	if json.Unmarshal(body, &head) == nil && head.Action == "test-policy" {
 		required = "access:read"
 	}
 	in, valid := parseAccessRequest(body)
@@ -825,7 +825,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 	if !strictDecode(b, &in) {
 		return nil, false
 	}
-	json.Unmarshal(b, &in.raw)
+	_ = json.Unmarshal(b, &in.raw) // strictDecode has just accepted b as this object.
 	allowed := map[string][]string{
 		"configure-cloudflare":     {"provider", "origin", "permissions"},
 		"upsert-oidc":              {"registration", "origin", "permissions"},
@@ -1116,7 +1116,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 // optional() rejects null).
 func nullField(b []byte, name string) bool {
 	var m map[string]json.RawMessage
-	json.Unmarshal(b, &m)
+	_ = json.Unmarshal(b, &m) // Not an object has no such member.
 	v, ok := m[name]
 	return ok && string(v) == "null"
 }
