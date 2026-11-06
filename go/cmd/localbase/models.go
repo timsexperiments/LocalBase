@@ -48,7 +48,7 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 		return nil, err
 	}
 	dir := root.Resolve(c.Global.Root)
-	e := &env{Root: &root.Root{Dir: dir}, Host: memory.NewHostProvider()}
+	e := &env{Root: &root.Root{Dir: dir}, Host: newHostProvider()} // the seam exists only so tests can swap the host
 	if r, err := root.Open(dir); err == nil {
 		e.Root = r
 	} else if canon, cerr := root.Canonical(dir); cerr == nil {
