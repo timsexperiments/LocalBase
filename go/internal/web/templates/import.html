@@ -69,6 +69,7 @@
 <div id="import-job" class="card mt-4 p-5" aria-live="polite" {{if eq .State "running"}}hx-get="/app/models/import/jobs/{{.ID}}" hx-trigger="every 1s" hx-target="this" hx-swap="outerHTML"{{end}}>
   {{if eq .State "running"}}
   <p class="font-semibold">Importing… {{.Progress.Phase}} {{.Progress.File}}</p>
+  {{if .Progress.Note}}<p class="text-sm text-muted">{{.Progress.Note}}</p>{{end}}
   {{if .Progress.Total}}<progress class="mt-2 w-full" max="{{.Progress.Total}}" value="{{.Progress.Done}}">{{pct .Progress.Done .Progress.Total}}%</progress>{{end}}
   {{else if eq .State "cancelled"}}
   <p role="status">{{.Detail}}</p>

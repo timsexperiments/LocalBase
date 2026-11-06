@@ -5371,7 +5371,8 @@
               "phase": {"type": "string"},
               "file": {"type": "string"},
               "done": {"type": "integer"},
-              "total": {"type": "integer", "description": "0 when unknown."}
+              "total": {"type": "integer", "description": "0 when unknown."},
+              "note": {"type": "string", "description": "Something to tell a person, such as that a source can't be resumed."}
             },
             "required": ["phase", "done", "total"]
           },

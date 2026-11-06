@@ -59,3 +59,10 @@ A failed install prints a reason. See [install failures](install-failures.md).
 - **macOS: the binary exits with code 137 right after an upgrade.** It was probably copied over in place. [Replace it by rename](upgrade.md).
 - **Linux: the service stops when you log out.** Run `loginctl enable-linger "$USER"`. See [running as a service](install.md#running-as-a-service).
 - **Logs on Linux** are in the user journal, as well as `local-base logs`.
+
+## A download says it started again
+
+- **"This source can't be resumed, so the download started again."** The address gives no ETag or Last-Modified, and you didn't give a checksum. Nothing would show if the file had changed since the first part arrived, so LocalBase starts over rather than join two versions. To resume such a source, import it with a checksum.
+- **"A file did not match its checksum and was fetched again."** A file was already on disk at the right size with the wrong contents, so it was replaced from its pinned source. If the source is wrong too, the install stops and names the file.
+
+A checksum "recorded after download" says which file you have. It doesn't say who published it.

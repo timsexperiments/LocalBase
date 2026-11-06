@@ -27,7 +27,15 @@ type Progress struct {
 	File  string `json:"file,omitempty"`
 	Done  int64  `json:"done"`
 	Total int64  `json:"total"` // 0 = unknown
+	// Note is something a person should be told, once: a phase's progress lines say nothing else.
+	Note string `json:"note,omitempty"`
 }
+
+// What a person is told, in Progress.Note.
+const (
+	noteCannotResume = "This source can't be resumed, so the download started again."
+	noteFetchedAgain = "A file did not match its checksum and was fetched again."
+)
 
 // ImportedDir is where an imported model's files live.
 func ImportedDir(rootDir, id string) string { return filepath.Join(rootDir, "models", "imported", id) }
@@ -129,7 +137,9 @@ func Fetch(ctx context.Context, rootDir string, p *Plan, progress func(Progress)
 				}); err != nil {
 					return nil, err
 				}
-			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, p.budget(staging, f.SizeBytes), func(n int64) {
+			} else if err := download(ctx, client, f.fetchURL, partial, f.SizeBytes, red, p.budget(staging, f.SizeBytes), resumeRule{pinned: f.SHA256 != "", cannotResume: func() {
+				progress(Progress{Phase: "download", File: f.Filename, Note: noteCannotResume})
+			}}, func(n int64) {
 				progress(Progress{Phase: "download", File: f.Filename, Done: n, Total: f.SizeBytes})
 			}); err != nil {
 				return nil, refusal(err, p.onHost)
@@ -208,7 +218,7 @@ func Fetch(ctx context.Context, rootDir string, p *Plan, progress func(Progress)
 var contentRangeRe = regexp.MustCompile(`^bytes (\d+)-(\d+)/(\d+|\*)$`)
 
 // download fetches url into partial, resuming from its current size.
-func download(ctx context.Context, client *http.Client, url, partial string, expected int64, red *Redactor, b *budget, progress func(int64)) error {
+func download(ctx context.Context, client *http.Client, url, partial string, expected int64, red *Redactor, b *budget, rule resumeRule, progress func(int64)) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		offset := int64(0)
 		if info, err := os.Stat(partial); err == nil {
@@ -219,11 +229,27 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 			offset = 0
 		}
 		if expected > 0 && offset == expected {
+			clearValidator(partial)
 			return nil
+		}
+		validator := readValidator(partial)
+		if offset > 0 && !validator.usable() && !rule.pinned {
+			// Nothing says this is still the object the partial began as, and no hash will catch it
+			// if it isn't, so the two must not be joined.
+			if validator != validatorNoticed && rule.cannotResume != nil {
+				rule.cannotResume()
+			}
+			os.Remove(partial)
+			offset = 0
+			validator = validatorNoticed
+			writeValidator(partial, validator)
 		}
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if offset > 0 {
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
+			if validator.usable() {
+				req.Header.Set("If-Range", string(validator))
+			}
 		}
 		resp, err := idle.Do(client, req, idle.Timeout())
 		if err != nil {
@@ -238,10 +264,20 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 				os.Remove(partial)
 				continue // the server resumed from somewhere else: start over
 			}
+			if now := validatorOf(resp); validator.usable() && now.usable() && now != validator {
+				// It ignored If-Range: these bytes belong to another object.
+				resp.Body.Close()
+				os.Remove(partial)
+				clearValidator(partial)
+				continue
+			}
 			flags |= os.O_APPEND
 		case resp.StatusCode == 200:
-			flags |= os.O_TRUNC // no resume support: start from zero
+			flags |= os.O_TRUNC // no resume support, or the object changed: start from zero
 			offset = 0
+			if now := validatorOf(resp); now.usable() || validator != validatorNoticed {
+				writeValidator(partial, now)
+			}
 		case resp.StatusCode == 416 && offset > 0:
 			resp.Body.Close()
 			os.Remove(partial)
@@ -291,10 +327,63 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 		var refused *RefusedError
 		if errors.As(werr, &refused) {
 			os.Remove(partial) // it cannot finish, and it is what is using the space
+			clearValidator(partial)
+		}
+		if werr == nil {
+			clearValidator(partial)
 		}
 		return werr
 	}
 	return errors.New("the server does not resume this download consistently")
+}
+
+// resumeRule is what a download may rely on when it resumes. With a pin, the hash decides whether
+// the bytes are right, so joining them is safe. Without one, a resume needs the server's word that
+// the object hasn't changed. cannotResume says so to the person, once.
+type resumeRule struct {
+	pinned       bool
+	cannotResume func()
+}
+
+// validator is what identifies the object a partial began as, kept beside it: an ETag or a
+// Last-Modified, as If-Range takes them.
+type validator string
+
+const (
+	validatorNone    validator = "none"    // the server gave nothing to resume by
+	validatorNoticed validator = "noticed" // and the person has been told
+)
+
+func (v validator) usable() bool { return v != "" && v != validatorNone && v != validatorNoticed }
+
+func validatorPath(partial string) string { return partial + ".validator" }
+
+func readValidator(partial string) validator {
+	b, err := obs.ReadOwnedRegular(validatorPath(partial))
+	if err != nil {
+		return ""
+	}
+	return validator(strings.TrimSpace(string(b)))
+}
+
+func writeValidator(partial string, v validator) {
+	// Without it the next attempt starts over, which costs time and is safe.
+	_ = obs.WritePrivateAtomic(validatorPath(partial), []byte(v))
+}
+
+func clearValidator(partial string) {
+	_ = os.Remove(validatorPath(partial)) // Without a partial, nothing reads it.
+}
+
+// validatorOf is what a response offers. A weak ETag can't be used with If-Range.
+func validatorOf(resp *http.Response) validator {
+	if tag := resp.Header.Get("ETag"); tag != "" && !strings.HasPrefix(tag, "W/") {
+		return validator(tag)
+	}
+	if modified := resp.Header.Get("Last-Modified"); modified != "" {
+		return validator(modified)
+	}
+	return validatorNone
 }
 
 func copyFile(ctx context.Context, src, dst string, b *budget, progress func(int64)) error {
@@ -354,8 +443,8 @@ func fileSHA256(path string) (string, error) {
 
 // FetchPinned downloads a variant's missing artifacts from their pinned
 // Hugging Face sources into dir, checks each against its authoritative size
-// and sha256, and moves it into place. Files already present with the right
-// size are kept.
+// and sha256, and moves it into place. A file already there is kept when its
+// sha256 matches, and otherwise fetched again, with a Progress.Note saying so.
 func FetchPinned(ctx context.Context, dir string, arts []models.Artifact, hfToken string, progress func(Progress)) error {
 	if progress == nil {
 		progress = func(Progress) {}
@@ -371,14 +460,30 @@ func FetchPinned(ctx context.Context, dir string, arts []models.Artifact, hfToke
 	for _, a := range arts {
 		final := filepath.Join(dir, a.Filename)
 		if info, err := os.Stat(final); err == nil && (a.SizeBytes == 0 || info.Size() == a.SizeBytes) {
-			continue
+			if a.SHA256 == "" {
+				continue
+			}
+			progress(Progress{Phase: "verify", File: a.Filename, Done: info.Size(), Total: info.Size()})
+			sum, err := fileSHA256(final)
+			if err != nil {
+				return err
+			}
+			if strings.EqualFold(sum, a.SHA256) {
+				continue
+			}
+			// The right size isn't the right file. The source is pinned, so what comes back is
+			// checked below, and a second mismatch is an error naming the file.
+			progress(Progress{Phase: "download", File: a.Filename, Note: noteFetchedAgain})
+			if err := os.Remove(final); err != nil {
+				return err
+			}
 		}
 		if a.Source.Kind != "huggingface" || a.Source.Repo == "" || a.Source.Revision == "" || a.SHA256 == "" {
 			return fmt.Errorf("%s has no pinned source to download it from", a.Filename)
 		}
 		url := HFEndpoint() + "/" + a.Source.Repo + "/resolve/" + a.Source.Revision + "/" + escapePath(a.Source.Path)
 		partial := filepath.Join(staging, a.Filename+".partial")
-		if err := download(ctx, client, url, partial, a.SizeBytes, redactorFor(nil), newBudget(staging, a.SizeBytes), func(n int64) {
+		if err := download(ctx, client, url, partial, a.SizeBytes, redactorFor(nil), newBudget(staging, a.SizeBytes), resumeRule{pinned: true}, func(n int64) {
 			progress(Progress{Phase: "download", File: a.Filename, Done: n, Total: a.SizeBytes})
 		}); err != nil {
 			return err

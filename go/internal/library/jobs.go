@@ -187,6 +187,9 @@ func (l *Library) StartImport(plan *acquire.Plan, backend string, log *slog.Logg
 		if err == nil {
 			fetched, err = acquire.Fetch(ctx, l.Root.Dir, plan, func(p acquire.Progress) {
 				l.jobs.mu.Lock()
+				if p.Note == "" {
+					p.Note = job.Progress.Note // it's said once, and stays on the page
+				}
 				job.Progress = p
 				l.jobs.mu.Unlock()
 			})
