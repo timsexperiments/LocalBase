@@ -244,6 +244,7 @@ func TestCommandsPrintHostileValuesSafely(t *testing.T) {
 			{"keys", "scopes", hostile},
 			{"configure", "--llm-models", hostile},
 			{"connect", hostile},
+			{"connect", "curl", "--create-key", "--name", hostile},
 			{"access", "show"},
 			{"access", "users", "list"},
 			{"access", "users", "show", hostile},
@@ -254,6 +255,7 @@ func TestCommandsPrintHostileValuesSafely(t *testing.T) {
 			{"models", "list"},
 			{"models", "show", hostile},
 			{"models", "export", hostile},
+			{"models", "import", hostile},
 			{"feed", "status"},
 			{"feed", "use", hostile},
 			{"backends", "list"},
@@ -279,8 +281,9 @@ func TestCommandsPrintHostileValuesSafely(t *testing.T) {
 			}
 			for _, args := range commands(root, hostile) {
 				_, out := runApp(t, append([]string{"--root", root}, args...)...)
+				// Only the line it's in: some commands print a new key's secret.
 				if what := unsafeOnATerminal(out); what != "" {
-					t.Errorf("%q printed %s:\n%.400q", args, what, out)
+					t.Errorf("%q printed %s, in: %.200q", args, what, lineWith(out, what))
 				}
 			}
 		})
@@ -334,4 +337,15 @@ func TestARootPathHoldingControlCharactersIsShownNotObeyed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// lineWith is the line of out holding what unsafeOnATerminal found, so a failure shows that and not
+// everything a command printed.
+func lineWith(out, what string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if unsafeOnATerminal(line) == what || strings.HasPrefix(strings.TrimSpace(line), "FAKE-LINE") {
+			return line
+		}
+	}
+	return ""
 }
