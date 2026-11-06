@@ -631,6 +631,25 @@ func checkDatabaseSize(ctx context.Context, db *sql.DB, shape *store.Shape) erro
 	return nil
 }
 
+// settleJournalMode leaves the staged database as one file. How a database is journaled is the store's
+// to decide, so a file doesn't get to choose it for the root by what its header claims, and nothing
+// beside the database has to move with it. It's the last thing done to the staged database, so that
+// whatever has been written is already in there.
+func settleJournalMode(ctx context.Context, db *sql.DB) error {
+	var mode string
+	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode=DELETE`).Scan(&mode); err != nil {
+		return err
+	}
+	if !strings.EqualFold(mode, "delete") {
+		return fmt.Errorf("its journal mode stayed %s", mode)
+	}
+	return nil
+}
+
+// settleJournal is settleJournalMode, as a variable so that a test can see a restore refuse when it can't be
+// done, which no real file has been found to cause.
+var settleJournal = settleJournalMode
+
 // usageTable piles up, and a restore never reads it into memory, so only its values are limited.
 const usageTable = "usage_hourly"
 
@@ -814,6 +833,9 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		if rep.KeysActive, err = activeKeys(ctx, st); err != nil {
 			return nil, err
 		}
+	}
+	if err := settleJournal(ctx, st.DB); err != nil {
+		return nil, refuse("The database can't be used: %v", err)
 	}
 	return rep, nil
 }
