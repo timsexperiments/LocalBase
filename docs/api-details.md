@@ -206,6 +206,8 @@ keys:manage, access:read, access:manage, sessions:read, sessions:revoke,
 system:read, system:manage
 ```
 
+`configuration:read` and `configuration:manage` are accepted, but no route checks them, so holding them gives nothing, and leaving them out doesn't stop anyone changing a setting. Each setting is guarded by the permission that fits it: `models:manage` for models, the computer's name and the Hugging Face token, `keys:manage` for API keys, `access:manage` for sign-in, and `system:manage` or `access:manage` for updates and usage.
+
 Duplicates are removed and scopes are returned in the order above. Invalid scopes fail before any database changes. Creation and rotation show the secret once; list and scope output contain only key metadata. Rotation preserves scopes, expiry, revocation state, and the key ID used for video ownership. Scope changes also preserve revoked status. A missing, expired, revoked, or invalid credential returns HTTP 401; an active key without the required permission returns HTTP 403. Local CLI key management uses access to the data directory and does not require an API key.
 
 Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.

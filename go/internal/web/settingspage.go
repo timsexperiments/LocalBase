@@ -12,7 +12,8 @@ import (
 // token goes through /_localbase/hf-token as the signed-in person, so the
 // API's checks apply; the page never shows a saved token.
 
-// permissionLabels name what each permission lets a person do, in order.
+// permissionLabels name what each permission lets a person do, in order. configuration:read and
+// configuration:manage aren't here, because nothing checks them, so they let a person do nothing.
 var permissionLabels = []struct{ id, label string }{
 	{"inference:chat", "Chat"},
 	{"inference:image", "Create images"},
@@ -29,8 +30,6 @@ var permissionLabels = []struct{ id, label string }{
 	{"access:manage", "Manage access"},
 	{"sessions:read", "See sessions"},
 	{"sessions:revoke", "Sign out sessions"},
-	{"configuration:read", "See configuration"},
-	{"configuration:manage", "Change configuration"},
 }
 
 // hfStatus is the API's token status (never the token itself).
