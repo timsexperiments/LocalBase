@@ -212,3 +212,8 @@ wal-store-side
 cli-printable
 # Reliability: the two #614 skip lines go, for the tree only, once #609 and #610 are in
 pick rel-chaos-goodkey-tree origin/rewrite/go-rel-chaos-goodkey
+
+# 2026-11-05 pass 2, into integration-3-pass2 off integration-3
+sec-import-own-database
+sec-restore-journal-mode
+feat-restore-profiles
