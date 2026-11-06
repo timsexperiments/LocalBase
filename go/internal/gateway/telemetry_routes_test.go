@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
@@ -57,11 +58,19 @@ func TestANamedRouteIsLoggedByName(t *testing.T) {
 		}
 		_ = resp.Body.Close()
 	}
-	b, err := os.ReadFile(filepath.Join(dir, "events.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{`"path":"/openapi.json"`, `"path":"/_localbase/runs/{rest}"`, `"path":"/_localbase/usage"`} {
+	// A request's line is written after its response has gone, so it can still be on its way.
+	wants := []string{`"path":"/openapi.json"`, `"path":"/_localbase/runs/{rest}"`, `"path":"/_localbase/usage"`}
+	var b []byte
+	waitFor(10*time.Second, func() bool {
+		b, _ = os.ReadFile(filepath.Join(dir, "events.jsonl"))
+		for _, want := range wants {
+			if !strings.Contains(string(b), want) {
+				return false
+			}
+		}
+		return true
+	})
+	for _, want := range wants {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("no %s in the log", want)
 		}
