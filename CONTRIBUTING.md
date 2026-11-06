@@ -111,6 +111,8 @@ LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./contract -run TestServeForUI -args -
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **Goldens** in `testdata/` are generated from the TypeScript code by `go/tools/golden/`. Don't edit them by hand.
 
+For a parser of anything from outside, add a fuzz target to `go/tools/fuzz.sh`. `go test` runs its seeds, and the script searches for new inputs on demand.
+
 ## Community
 
 This project follows the [Code of Conduct](CODE_OF_CONDUCT.md). See [SUPPORT.md](SUPPORT.md) for help, and [SECURITY.md](SECURITY.md) to report a vulnerability.
