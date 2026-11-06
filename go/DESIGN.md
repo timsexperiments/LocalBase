@@ -4504,6 +4504,13 @@ model has run through this new layout.**
 **Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390, and tabular times. **No real transcription model
 has run through this new layout, and the real microphone test is in `docs/owner-test-script.md`.**
 
+### 27.2f Each tool loads its own code
+
+`lab.js` holds what every Studio tool needs: the dock, its chips, examples and Try again, and Share and Copy. Image's
+viewer and Edit with a picture live in `image.js`, loaded only on Image, as `video.js` is only on Video. Both import
+the prompt helpers from `lab-prompt.js`, which has no listeners. Decisions was 1,283 bytes over its 62 KiB budget
+with both UI chains merged; this saved 2,232 bytes there, and the budget stays as it is.
+
 ### 27.2e What Studio keeps in a browser is one person's
 
 - **Keyed by person.** Saved examples, the question being asked and a prompt on its way to another tool are stored under
