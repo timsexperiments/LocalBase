@@ -10,9 +10,13 @@
     <div class="list-group">
       <label class="setting-row cursor-pointer">
         <span class="min-w-0 flex-1"><span class="block font-semibold">Save text history on this device</span>
-          <span class="block text-sm text-muted">Your chats stay on this device after you sign out, and come back when you sign in. Others signing in here don’t see them, but they aren’t encrypted, so someone with this browser’s files could read them. Chat names also appear in your browser’s history while this is on. Credentials, attachments and generated media are never saved. Turning it off removes them. Chats and Decisions examples saved before this update are no longer shown. Clear to remove them.</span></span>
+          <span class="block text-sm text-muted">Saved chats stay on this device after you sign out; others using this browser can see their names in its history. Turning this off removes them.</span></span>
         <input type="checkbox" class="switch" data-history-toggle>
       </label>
+      <details class="setting-more px-4 py-1" data-history-more>
+        <summary>More about saved chats</summary>
+        <p class="pb-2 text-sm text-muted">They come back when you sign in. Others signing in here don’t see the chats themselves, but they aren’t encrypted, so someone with this browser’s files could read them. Credentials, attachments and generated media are never saved. Chats and Decisions examples saved before this update are no longer shown. Use Clear saved chats on this device to remove them.</p>
+      </details>
       <details class="confirm px-4 py-2">
         <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">Clear saved chats on this device</summary>
         <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm clearing saved chats">

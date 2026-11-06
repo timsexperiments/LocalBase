@@ -75,7 +75,7 @@ func TestChatModelsJSONIsInert(t *testing.T) {
 func TestSettingsPage(t *testing.T) {
 	w := get(New(Deps{NoAuth: true}), "/app/settings")
 	body := w.Body.String()
-	for _, want := range []string{"Save text history on this device", "Clear saved chats on this device", "js/settings.js", `aria-current="page"`} {
+	for _, want := range []string{"Save text history on this device", "Saved chats stay on this device after you sign out; others using this browser can see their names in its history.", "Turning this off removes them.", "More about saved chats", "Use Clear saved chats on this device to remove them.", "Clear saved chats on this device", "js/settings.js", `aria-current="page"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
