@@ -9,11 +9,12 @@ import (
 )
 
 // The report says where each download credential will be sent, by id, with header names and never their values.
+// The huggingface profile names one of Hugging Face's own hosts, since a profile naming another is refused.
 func TestTheReportSaysWhereEachCredentialIsSent(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	write(t, filepath.Join(r.Dir, "credentials", "auth-profiles.json"), `{"profiles":[
 		{"id":"vendor","origins":["https://vendor.example.com"],"headers":{"X-Api-Key":"`+secretHeader+`"}},
-		{"id":"huggingface","origins":["https://elsewhere.example"],"headers":{}}]}`)
+		{"id":"huggingface","origins":["https://cas-bridge.xethub.hf.co"],"headers":{}}]}`)
 	rep := stageFile(t, create(t, r, false).Output)
 	var ids []string
 	for _, d := range rep.Downloads {
@@ -22,7 +23,7 @@ func TestTheReportSaysWhereEachCredentialIsSent(t *testing.T) {
 	if !slices.Equal(ids, []string{"huggingface", "vendor"}) {
 		t.Fatalf("credentials, by id: %+v", rep.Downloads)
 	}
-	if d := rep.Downloads[0]; !slices.Equal(d.Origins, []string{"https://elsewhere.example"}) || len(d.Headers) != 0 {
+	if d := rep.Downloads[0]; !slices.Equal(d.Origins, []string{"https://cas-bridge.xethub.hf.co"}) || len(d.Headers) != 0 {
 		t.Errorf("the Hugging Face profile: %+v", d)
 	}
 	if d := rep.Downloads[1]; !slices.Equal(d.Origins, []string{"https://vendor.example.com"}) || !slices.Equal(d.Headers, []string{"X-Api-Key"}) {
