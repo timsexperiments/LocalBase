@@ -104,6 +104,8 @@ type e2e struct {
 	outDir string
 	// impl is "go" (default) or "ts".
 	impl string
+	// lab runs the localbase_lab build of the Go CLI (onFixedHost).
+	lab bool
 }
 
 // scan fails when output contains a planted secret.
@@ -124,6 +126,9 @@ func (e *e2e) command(args ...string) *exec.Cmd {
 	}
 	if len(args) < 2 || args[0] != "--root" {
 		e.t.Fatalf("a contract test must name its root: %v", args)
+	}
+	if e.lab {
+		return exec.Command(goLabCLI(e.t), args...)
 	}
 	return exec.Command(goCLI(e.t), args...)
 }
@@ -399,6 +404,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp,
 		env: []string{"HF_ENDPOINT=" + hf.URL, "LOCALBASE_LLAMA_SERVER=" + fake, "LOCALBASE_DEVICE_ID=device-one",
 			"VENDOR_KEY=" + vendorSecret, "LOCALBASE_DOWNLOAD_CA_FILE=" + caFile}}
+	onFixedHost(t, e, 16, 12<<10) // AC5 starts a model, which has to fit whatever the runner has free
 	defer func() {
 		if e.stop != nil {
 			e.stop()

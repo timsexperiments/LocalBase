@@ -23,10 +23,12 @@ var (
 	goCLIErr  error
 )
 
-// removeGoCLI ends the one build of the binary, which every test run would otherwise leave behind.
+// removeGoCLI ends the builds of the binary (plain and lab), which every test run would otherwise leave behind.
 func removeGoCLI() {
-	if goCLIPath != "" {
-		_ = guardedRemoveAll(filepath.Dir(goCLIPath))
+	for _, p := range []string{goCLIPath, goLabCLIPath} {
+		if p != "" {
+			_ = guardedRemoveAll(filepath.Dir(p))
+		}
 	}
 }
 
@@ -47,6 +49,35 @@ func goCLI(t *testing.T) string {
 		t.Fatal(goCLIErr)
 	}
 	return goCLIPath
+}
+
+var (
+	goLabCLIOnce sync.Once
+	goLabCLIPath string
+	goLabCLIErr  error
+)
+
+// goLabCLI is the localbase_lab build of the CLI: the one that can read its host's memory from a
+// file (onFixedHost). Built once, like goCLI.
+func goLabCLI(t *testing.T) string {
+	goLabCLIOnce.Do(func() {
+		dir, err := scratchTemp("lbgo-cli-lab-bin-")
+		if err != nil {
+			goLabCLIErr = err
+			return
+		}
+		goLabCLIPath = filepath.Join(dir, "local-base")
+		args := goBuildArgs(goLabCLIPath)
+		args = append([]string{args[0], "-tags", "localbase_lab"}, args[1:]...)
+		if out, err := exec.Command("go", args...).CombinedOutput(); err != nil {
+			goLabCLIErr = err
+			t.Log(string(out))
+		}
+	})
+	if goLabCLIErr != nil {
+		t.Fatal(goLabCLIErr)
+	}
+	return goLabCLIPath
 }
 
 type cliResult struct {

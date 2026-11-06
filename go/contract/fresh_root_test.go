@@ -79,6 +79,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 		serveBytes(w, r, data)
 	}), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
+	onFixedHost(t, e, 16, 12<<10) // the model has to fit, whatever the runner has free
 	freshRootInit(t, e, tmp)
 	allowPrivateImports(t, e.root)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
@@ -212,6 +213,7 @@ func TestFreshRootCLIInstall(t *testing.T) {
 	tiny := ggufFile(t, "qwen3", nil, 64*1024)
 	src := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveBytes(w, r, tiny) }), false)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"LOCALBASE_LLAMA_SERVER=" + fake}}
+	onFixedHost(t, e, 16, 12<<10) // the model has to fit, whatever the runner has free
 	freshRootInit(t, e, tmp)
 	allowPrivateImports(t, e.root)
 	freshRootModel(t, e.root, freshTiny, src.URL, tiny)
