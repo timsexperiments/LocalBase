@@ -458,14 +458,28 @@ func TestChangeLimiterNamesAFewActors(t *testing.T) {
 }
 
 // Many distinct ids a caller chose grow nothing: the limiter is counted by area, and an id is
-// never a key.
+// never a key. The scale is in-process, through the same audited route a request goes through, with
+// a handler that writes nothing: 20,000 real requests took three minutes under -race, almost all of
+// it database writes and HTTP. A few hundred real ones still go the whole way.
 func TestChangeLimiterDoesNotGrowWithCallerChosenIDs(t *testing.T) {
 	f := newAuditFixture(t)
-	const n = 20_000
+	const direct, real = 20_000, 300
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	for i := 0; i < n; i++ {
+	describe := func(r *http.Request, _, _ []byte) (auditedChange, bool) {
+		return auditedChange{action: "update", targetKind: "model", targetID: r.URL.Query().Get("id")}, true
+	}
+	for _, status := range []int{http.StatusOK, http.StatusForbidden} {
+		route := f.srv.auditedRoute("computer-name", describe, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+		})
+		for i := 0; i < direct/2; i++ {
+			req := httptest.NewRequest("PUT", "/_localbase/computer-name?id=caller-chosen-"+strconv.Itoa(status)+"-"+strconv.Itoa(i), strings.NewReader(`{}`))
+			route(httptest.NewRecorder(), req)
+		}
+	}
+	for i := 0; i < real; i++ {
 		id := "caller-chosen-" + strconv.Itoa(i)
 		switch i % 3 {
 		case 0: // limited changes, each with its own text
@@ -482,7 +496,7 @@ func TestChangeLimiterDoesNotGrowWithCallerChosenIDs(t *testing.T) {
 	entries, actors := len(f.srv.changeAudit.held), len(f.srv.changeAudit.actors)
 	f.srv.changeAudit.mu.Unlock()
 	if entries > 1 || actors > 1 {
-		t.Errorf("%d areas and %d actors after %d distinct ids", entries, actors, n)
+		t.Errorf("%d areas and %d actors after %d distinct ids", entries, actors, direct+real)
 	}
 	http.DefaultClient.CloseIdleConnections()
 	f.logs.mu.Lock()
@@ -491,7 +505,7 @@ func TestChangeLimiterDoesNotGrowWithCallerChosenIDs(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&after)
 	grew := int64(after.HeapAlloc) - int64(before.HeapAlloc)
-	t.Logf("%d distinct ids: %d limiter entries, heap grew %d bytes", n, entries, grew)
+	t.Logf("%d distinct ids: %d limiter entries, %d actors, heap grew %d bytes", direct+real, entries, actors, grew)
 	if grew > 32<<20 {
 		t.Errorf("the heap grew %d bytes", grew)
 	}
