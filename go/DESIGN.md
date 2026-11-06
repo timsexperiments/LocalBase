@@ -4499,6 +4499,8 @@ model has run through this new layout.**
   in tabular figures, written out because Tailwind's utility does nothing on the floor browser.
 - **An English-only model** still hides language and translate. **Unchanged:** TXT, SRT and VTT, and tapping a time.
 
+- **At 320 the two starts take a size smaller,** because a half-width button there can't hold an icon and "Choose a file" on one line.
+
 **Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390, and tabular times. **No real transcription model
 has run through this new layout, and the real microphone test is in `docs/owner-test-script.md`.**
 

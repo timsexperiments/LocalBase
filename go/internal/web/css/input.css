@@ -1092,6 +1092,12 @@
   .transcribe-start .btn {
     @apply gap-2;
   }
+  /* Below 360 a half-width button can't hold the icon and "Choose a file" on one line at this size, so both get a size smaller. */
+  @media (max-width: 359.98px) {
+    .transcribe-start .btn {
+      @apply gap-1 px-3 text-sm;
+    }
+  }
   .transcribe-start[hidden],
   .transcribe-panel[hidden] {
     @apply hidden;

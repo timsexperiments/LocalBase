@@ -713,6 +713,11 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     const ways = await ev(`(() => { const [a, b] = [document.querySelector("[data-record-start]"), document.querySelector("[data-pick-audio]")]; const r = [a, b].map((x) => x.getBoundingClientRect()); return { same: a.className === b.className, widths: r.map((x) => Math.round(x.width)), heights: r.map((x) => Math.round(x.height)), ground: [a, b].map((x) => getComputedStyle(x).backgroundColor) }; })()`);
     check(ways.same && ways.widths[0] === ways.widths[1] && ways.heights[0] === ways.heights[1] && ways.ground[0] === ways.ground[1], `Record and Choose a file carry equal weight: ${JSON.stringify(ways)}`);
+    // At 320 both labels keep to one line: there, "Choose a file" and its icon wrapped inside a half-width button.
+    await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+    const startLines = await ev(`[...document.querySelectorAll("[data-record-start], [data-pick-audio]")].map((b) => { const t = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()); if (!t) return 0; const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; })`);
+    check(startLines.length === 2 && startLines.every((n) => n === 1), `at 320, Record and Choose a file each keep their label on one line: ${JSON.stringify(startLines)}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     // A tap on the icon itself, not the button around it.
     await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
     check(await ev(`${trItem}.querySelector("[data-toggle-times]").getAttribute("aria-pressed") === "false"`), "a tap on the Timestamps icon itself turns them off");
