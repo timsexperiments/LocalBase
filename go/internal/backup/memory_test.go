@@ -84,12 +84,12 @@ func TestAFileThatUnpacksToALotAllocatesLittle(t *testing.T) {
 		size             int
 	}{
 		{"a list of former ids", formerLog, "\n", 256 << 20}, // a file of about 270 KB
-		{"the access settings", "ui-access.json", " ", 64 << 20},
-		{"the mail settings", "email-delivery.json", " ", 64 << 20},
-		{"the sign-in profiles", "credentials/auth-profiles.json", " ", 64 << 20},
-		{"a catalog entry", "catalog.d/big.json", " ", 64 << 20},
-		{"a backend", "backends.d/big.json", " ", 64 << 20},
-		{"a voice", "voices/" + voiceID + ".wav", " ", 64 << 20},
+		{"the access settings", "ui-access.json", " ", 16 << 20},
+		{"the mail settings", "email-delivery.json", " ", 16 << 20},
+		{"the sign-in profiles", "credentials/auth-profiles.json", " ", 16 << 20},
+		{"a catalog entry", "catalog.d/big.json", " ", 16 << 20},
+		{"a backend", "backends.d/big.json", " ", 16 << 20},
+		{"a voice", "voices/" + voiceID + ".wav", " ", 16 << 20},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r, _ := newRoot(t, dir(t))

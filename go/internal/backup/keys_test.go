@@ -334,19 +334,32 @@ func TestAnAdminKeyComesBackByName(t *testing.T) {
 // What the code gives a new key is ordinary. Everything else is held back, including a permission only
 // a file has heard of.
 func TestEveryPermissionBeyondMakingRequestsIsHeldBack(t *testing.T) {
-	k := withKey(t)
 	for _, scope := range append(append([]string{}, auth.Permissions...), "something:new", "*") {
-		t.Run(strings.NewReplacer(":", "-", "*", "star").Replace(scope), func(t *testing.T) {
-			bad := addAdminKey(t, k.file, `["`+scope+`"]`)
-			rep := stageReport(t, bad, filepath.Join(dir(t), "target"), false)
-			if slices.Contains(auth.DefaultKeyScopes, scope) {
-				if len(rep.KeysHeldBack) != 0 {
-					t.Errorf("held back: %+v", rep.KeysHeldBack)
-				}
-				return
+		k := comparedKey{scopes: sql.NullString{String: `["` + scope + `"]`, Valid: true}}
+		got := k.beyondRequests()
+		if slices.Contains(auth.DefaultKeyScopes, scope) {
+			if len(got) != 0 {
+				t.Errorf("%s counts as more than making requests: %v", scope, got)
 			}
-			oneKey(t, "held back", rep.KeysHeldBack, KeyChange{"key_admin", "admin", scope})
-		})
+			continue
+		}
+		if len(got) != 1 || got[0] != scope {
+			t.Errorf("%s: %v", scope, got)
+		}
+	}
+	// One through a real restore, for each side of that line. The rest of it is tested elsewhere with
+	// other permissions: see TestAnAdminKeyIsHeldBackWhereThereIsNothingToCompare.
+	k := withKey(t)
+	for _, c := range []struct {
+		scope string
+		held  bool
+	}{{"something:new", true}, {auth.DefaultKeyScopes[0], false}} {
+		rep := stageReport(t, addAdminKey(t, k.file, `["`+c.scope+`"]`), filepath.Join(dir(t), "target"+c.scope), false)
+		if c.held {
+			oneKey(t, "held back", rep.KeysHeldBack, KeyChange{"key_admin", "admin", c.scope})
+		} else if len(rep.KeysHeldBack) != 0 {
+			t.Errorf("held back: %+v", rep.KeysHeldBack)
+		}
 	}
 }
 
