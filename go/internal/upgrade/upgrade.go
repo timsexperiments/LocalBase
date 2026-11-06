@@ -610,6 +610,10 @@ type Ops struct {
 	Stop  func() error // stops the gateway cleanly, and confirms it and its backends are gone
 	Start func() error // restarts through the binary at the installed path, and waits for readiness
 	Smoke func() error
+	// OnPrevious runs once a rollback has the previous version in place and started, before smoke. It
+	// doesn't run if the gateway couldn't be stopped, the swap failed, or the previous version didn't
+	// start and this one came back.
+	OnPrevious func() error
 }
 
 func call(f func() error) error {
@@ -757,6 +761,9 @@ func Rollback(binary string, ops Ops) error {
 			return fmt.Errorf("the previous version did not start (%w), and neither did this one: %v", err, serr)
 		}
 		return fmt.Errorf("the previous version did not start, so this version is back: %w", err)
+	}
+	if err := call(ops.OnPrevious); err != nil {
+		return err
 	}
 	return call(ops.Smoke)
 }

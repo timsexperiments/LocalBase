@@ -99,6 +99,12 @@ func TestLimitedChangesCannotPushOutWhoChangedKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	took := time.Since(started)
+	if info, err := os.Stat(filepath.Join(e.root, "local-base.db-wal")); err == nil {
+		t.Logf("the -wal after the flood: %d bytes", info.Size())
+		if info.Size() > 2*64<<20 {
+			t.Errorf("the -wal grew to %d bytes", info.Size())
+		}
+	}
 	// This is about the log. On a busy machine a few of these lose out on the database and answer 503,
 	// having changed nothing. A key that's good is never told otherwise.
 	if n := wrong.Load(); n > 0 {
@@ -147,6 +153,9 @@ func TestLimitedChangesCannotPushOutWhoChangedKeys(t *testing.T) {
 	}
 	if strings.Contains(kept.String(), created) {
 		t.Error("the computer name is in the audit file")
+	}
+	if info, err := os.Stat(filepath.Join(e.root, "local-base.db-wal")); err == nil {
+		t.Errorf("the gateway stopped and left a -wal of %d bytes", info.Size())
 	}
 	everything, _ := filepath.Glob(filepath.Join(logs, "*"))
 	if len(everything) == 0 {

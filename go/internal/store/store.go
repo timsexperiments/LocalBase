@@ -14,11 +14,15 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 
-	_ "modernc.org/sqlite"
+	sqlite "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 //go:embed migrations/*.sql migrations/meta/_journal.json
@@ -26,6 +30,14 @@ var migrationFS embed.FS
 
 type Store struct {
 	DB *sql.DB
+	// Log is where WriteFailed reports. Set it before anything can write in the background.
+	Log *slog.Logger
+	// stage is a private copy being read, if there is one: see readablePath.
+	stage string
+	// path is the database, on a store that can write it.
+	path string
+	// held keeps this process's locks on the file: see heldFile.
+	held *heldFile
 }
 
 type migration struct {
@@ -64,23 +76,93 @@ func loadMigrations() ([]migration, error) {
 // Open opens (creating if needed) the database and applies pending migrations.
 func Open(path string) (*Store, error) {
 	makePrivate(path)
+	held := holdFile(path)
 	// busy_timeout: the gateway and CLI share this file; wait for another
 	// process's write lock instead of failing with SQLITE_BUSY (#359).
 	// _txlock=immediate: writes never hit the deferred read-to-write upgrade,
 	// which returns SQLITE_BUSY without consulting the busy handler.
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
+	// journal_size_limit: what a checkpoint leaves of the -wal file, so a burst doesn't keep its size.
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_size_limit(" + strconv.Itoa(walSizeLimit) + ")&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
+		held.letGo()
 		return nil, err
 	}
 	db.SetMaxOpenConns(MaxOpenConns)
 	db.SetMaxIdleConns(MaxIdleConns)
-	s := &Store{DB: db}
-	if err := s.migrate(context.Background()); err != nil {
+	s := &Store{DB: db, path: path, held: held}
+	if err := checkWALBelongs(path); err != nil {
 		db.Close()
+		held.letGo()
 		return nil, err
 	}
+	clean := walIsEmpty(path)
+	if err := s.useWAL(context.Background()); err != nil {
+		db.Close()
+		held.letGo()
+		if readOnlyRoot(err) {
+			return OpenReadOnly(path) // nothing here can be written, and what it reads is still good
+		}
+		return nil, plainIfBusy(err)
+	}
+	if err := s.migrate(context.Background()); err != nil {
+		db.Close()
+		held.letGo()
+		if readOnlyRoot(err) {
+			return OpenReadOnly(path)
+		}
+		return nil, plainIfBusy(err)
+	}
+	if clean {
+		s.claimWAL(context.Background(), path)
+	}
 	return s, nil
+}
+
+// ErrInUse: something else held the database for longer than the busy timeout while it was opened.
+var ErrInUse = errors.New("Another LocalBase process is using this root. Stop it or wait, then try again.")
+
+// plainIfBusy says what a person can do about a busy database, and keeps the cause for the log.
+func plainIfBusy(err error) error {
+	var e *sqlite.Error
+	if errors.As(err, &e) && e.Code()&0xff == sqlite3.SQLITE_BUSY {
+		return fmt.Errorf("%w", ErrInUse)
+	}
+	return err
+}
+
+// WriteFailed says that a write nobody is waiting on failed, so it isn't lost silently. what is a word
+// from the code. It logs to the store's Log, or to the default logger for a command that set none.
+func (s *Store) WriteFailed(what string, err error) {
+	log := s.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	log.Warn("A background database write failed.", "event", "store."+what+"-write-failed", "error", err.Error())
+}
+
+// walSizeLimit is the most of a -wal file a checkpoint leaves behind, in bytes.
+const walSizeLimit = 64 << 20
+
+// useWAL puts the database in write-ahead logging, so readers and a writer don't wait for each other.
+// The mode is stored in the file, so this is the one place that sets it, whatever a file says when it
+// arrives, and it isn't in the DSN: that would run on every new connection, and flip a file back
+// while something that has switched it away, such as a restore, is working. A process already running
+// doesn't notice a change of mode, which is safe because a restore only switches with nothing attached.
+func (s *Store) useWAL(ctx context.Context) error {
+	conn, err := s.DB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }() // back to the pool; the mode is already set or the error is
+	var mode string
+	if err := conn.QueryRowContext(ctx, `PRAGMA journal_mode=WAL`).Scan(&mode); err != nil {
+		return fmt.Errorf("could not set the database's journal mode: %w", err)
+	}
+	if mode != "wal" {
+		return fmt.Errorf("could not set the database's journal mode: it stayed %q", mode)
+	}
+	return nil
 }
 
 // makePrivate creates the database file 0600 if it is missing, since SQLite would
@@ -92,7 +174,7 @@ func makePrivate(path string) {
 	if f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
 		f.Close()
 	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
+	for _, suffix := range append([]string{""}, Sidecars...) {
 		p := path + suffix
 		if info, err := os.Lstat(p); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o077 != 0 {
 			_ = os.Chmod(p, info.Mode().Perm()&^0o077) // serve's TightenPermissions reports what stays loose
@@ -102,18 +184,41 @@ func makePrivate(path string) {
 
 // OpenReadOnly opens an existing database without migrating or writing it.
 func OpenReadOnly(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err := checkWALBelongs(path); err != nil {
+		return nil, err
+	}
+	stage, read, err := readablePath(path)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
-		db.Close()
+	held := holdFile(read)
+	db, err := sql.Open("sqlite", "file:"+read+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err == nil {
+		// Ping doesn't read the file, and a database that can't be read should fail here.
+		// Scan, not Err: only Scan gives the connection back, and sees a failure reading the row.
+		var tables int
+		err = db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&tables)
+		if err != nil {
+			db.Close()
+		}
+	}
+	if err != nil {
+		held.letGo()
+		removeStage(stage)
 		return nil, err
 	}
-	return &Store{DB: db}, nil
+	return &Store{DB: db, stage: stage, held: held}, nil
 }
 
-func (s *Store) Close() error { return s.DB.Close() }
+func (s *Store) Close() error {
+	err := s.DB.Close()
+	removeStage(s.stage)
+	if err == nil && s.path != "" {
+		markCleanStop(s.path)
+	}
+	s.held.letGo()
+	return err
+}
 
 // drizzleTable is the migration journal, which the TS build also makes.
 const drizzleTable = `CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (

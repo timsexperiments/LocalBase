@@ -38,7 +38,7 @@ func maintenanceCommands() []*cli.Command {
 						return nil, err
 					}
 				}
-				for _, suffix := range []string{"", "-journal", "-wal", "-shm"} {
+				for _, suffix := range append([]string{""}, store.Sidecars...) {
 					if err := os.Remove(r.DB() + suffix); err != nil && !os.IsNotExist(err) {
 						return nil, err
 					}

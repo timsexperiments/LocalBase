@@ -336,3 +336,13 @@ real devices. The focus check shows that something changes, not that the change 
 the buttons inside a native audio or video player are taken on trust; the keyboard, sheet and motion
 checks run in the light theme on the page as it first loads, so a sheet's own contents, a result on the
 page and a state reached by using it get axe and overflow only where a journey or a sheet reaches them.
+
+## Reading a root that isn't running
+
+A root in write-ahead logging can't be read in place without leaving files beside its database, or at all
+in a folder that can't be written. So with no process holding the root, `store.OpenReadOnly` reads a private
+copy of the database and its `-wal`: in a 0700 folder under `local-base` in the user's cache folder, named
+`localbase-read-<pid>-*`. Commands print `Read a copy of this root's database, as it stood just now.` on
+stderr when they do. `Close` removes it. It can hold secrets, so if a crash leaves one, the next read removes
+it once it's an hour old and its process has gone. With a process holding the root there's no copy, because
+one could be torn, and the command says another process is using the root.

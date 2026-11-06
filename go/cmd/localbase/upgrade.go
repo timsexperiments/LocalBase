@@ -19,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
@@ -516,6 +517,9 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 	if v, err := upgrade.RunVersion(binary + upgrade.PreviousSuffix); err == nil {
 		to = versionForAudit(v)
 	}
+	// The previous version doesn't keep the -wal owner record, so a crash under it would leave a -wal
+	// the next upgrade refuses. Only once it's in place, and nothing else is removed.
+	ops.OnPrevious = func() error { return store.ForgetWALOwner(e.Root.DB()) }
 	if err := upgrade.Rollback(binary, ops); err != nil {
 		auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "failed")
 		return nil, err

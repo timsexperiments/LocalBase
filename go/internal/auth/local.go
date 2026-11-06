@@ -153,7 +153,9 @@ func CreateLocalSession(ctx context.Context, st *store.Store) (token, id string,
 	// The prefix keeps a leading '-' out of an id someone will type or paste.
 	token, id = RandomToken(32), "ls_"+RandomToken(9)
 	// Tidying only: an expired row is refused when read, whether or not this removes it.
-	_, _ = st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t))
+	if _, err := st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?`, ms(t), ms(t)); err != nil {
+		st.WriteFailed("session-tidy", err)
+	}
 	_, err = st.DB.ExecContext(ctx, `INSERT INTO local_sessions (id, token_hash, created_at, last_seen_at, idle_expires_at, absolute_expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)`, id, hashToken(token), ms(t), ms(t), ms(t.Add(LocalIdleTTL)), ms(t.Add(LocalAbsoluteTTL)))
 	if err != nil {
@@ -181,13 +183,17 @@ func FindLocalSession(ctx context.Context, st *store.Store, token string) (*Loca
 	}
 	if idle <= t || abs <= t {
 		// The session is refused either way; this only tidies the row.
-		_, _ = st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, h)
+		if _, err := st.DB.ExecContext(ctx, `DELETE FROM local_sessions WHERE token_hash = ?`, h); err != nil {
+			st.WriteFailed("session-tidy", err)
+		}
 		return nil, nil
 	}
 	if t-s.LastSeenAt >= sessionTouchEvery.Milliseconds() {
 		// A failed touch only makes the idle limit come sooner: it fails closed.
-		_, _ = st.DB.ExecContext(ctx, `UPDATE local_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
-			t, t+LocalIdleTTL.Milliseconds(), h)
+		if _, err := st.DB.ExecContext(ctx, `UPDATE local_sessions SET last_seen_at = ?, idle_expires_at = ? WHERE token_hash = ?`,
+			t, t+LocalIdleTTL.Milliseconds(), h); err != nil {
+			st.WriteFailed("session-touch", err) // still due, so the next request tries again
+		}
 		s.LastSeenAt, idle = t, t+LocalIdleTTL.Milliseconds()
 	}
 	s.ExpiresAt = min(idle, abs)

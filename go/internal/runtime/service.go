@@ -579,9 +579,13 @@ func (s *Service) watch(b *svcBackend) {
 		cancel()
 		// Stopped meanwhile: leave the store alone. A write already begun finishes.
 		if ok && bytes > peak && b.sampling.Err() == nil {
-			peak = bytes
-			_ = s.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
-				ArtifactSHA256: spec.Primary().SHA256, LaunchShape: mediaShape(b.target.Backend.ID), PeakBytes: bytes, Method: "footprint"})
+			// Only a recorded peak counts: a failed write comes round again at the next sample.
+			if err := s.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
+				ArtifactSHA256: spec.Primary().SHA256, LaunchShape: mediaShape(b.target.Backend.ID), PeakBytes: bytes, Method: "footprint"}); err != nil {
+				s.d.Store.WriteFailed("observed-peak", err)
+			} else {
+				peak = bytes
+			}
 		}
 	}
 	sample()

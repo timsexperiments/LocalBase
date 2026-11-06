@@ -219,6 +219,7 @@ func serve(c *cli.Ctx) (any, error) {
 	level.UnmarshalText([]byte(c.String("log-level")))
 	handler := obs.NewHandler(sink, level)
 	log := slog.New(handler)
+	st.Log = log
 	if n := root.TightenPermissions(r.Dir, func(path string, err error) {
 		log.Warn("Could not make a file private.", "event", "root.permissions-failed", "path", path, "error", err.Error())
 	}); n > 0 {

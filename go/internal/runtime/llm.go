@@ -38,7 +38,6 @@ const (
 	largeStartupBudget   = 180 * time.Second
 	largeStartupWeights  = 10 * memory.GiB
 	stopGrace            = 10 * time.Second
-	samplePeriod         = 5 * time.Second
 )
 
 // LLMDeps are the LLM manager's collaborators.
@@ -736,6 +735,9 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 
 // watch samples the observed peak and handles an unexpected exit: the slot
 // is cleared and the next request starts the model again.
+// samplePeriod is how often a running model's memory is sampled. A variable so a test can shorten it.
+var samplePeriod = 5 * time.Second
+
 func (m *LLM) watch(b *backend) {
 	defer b.stopSampling()
 	tick := time.NewTicker(samplePeriod)
@@ -751,10 +753,14 @@ func (m *LLM) watch(b *backend) {
 		cancel()
 		// Stopped meanwhile: leave the store alone. A write already begun finishes.
 		if ok && bytes > peak && b.sampling.Err() == nil {
-			peak = bytes
-			_ = m.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
+			// Only a recorded peak counts: a failed write comes round again at the next sample.
+			if err := m.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
 				ArtifactSHA256: b.spec.Primary().SHA256, LaunchShape: b.plan.Launch.LaunchShape(),
-				PeakBytes: bytes, Method: "footprint"})
+				PeakBytes: bytes, Method: "footprint"}); err != nil {
+				m.d.Store.WriteFailed("observed-peak", err)
+			} else {
+				peak = bytes
+			}
 		}
 	}
 	sample()

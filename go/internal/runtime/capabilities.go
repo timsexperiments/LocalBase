@@ -576,7 +576,11 @@ func ProbeLlamaServer(ctx context.Context, st *store.Store, baseURL string, s *c
 			}
 		}
 	}
-	return &rec, st.RecordRuntimeCapabilities(ctx, rec)
+	if err := st.RecordRuntimeCapabilities(ctx, rec); err != nil {
+		st.WriteFailed("runtime-capabilities", err) // the next load probes again
+		return &rec, err
+	}
+	return &rec, nil
 }
 
 func getJSON(ctx context.Context, url string, v any) error {
