@@ -2,6 +2,7 @@
 {{define "main"}}
 <section aria-labelledby="models-title">
   {{template "models-header" .}}
+  {{with .ReadNotice}}<p class="mt-3 text-sm font-semibold" role="status">{{.}}</p>{{end}}
 
   {{if .Installed}}<form id="lib-search" class="mt-4" action="/app/models" method="get" role="search"
         hx-get="/app/models" hx-target="#model-list" hx-select="#model-list" hx-swap="outerHTML" hx-push-url="true"

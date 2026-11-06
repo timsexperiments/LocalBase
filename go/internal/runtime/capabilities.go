@@ -72,6 +72,8 @@ type Resolved struct {
 	InputSource     string
 	Evidence        []string
 	RuntimeBuild    string
+	// ReadProblem is a stored runtime report that couldn't be read: what is here came without it.
+	ReadProblem *store.ReadError
 }
 
 func (r Resolved) Has(id string) bool {
@@ -492,14 +494,20 @@ func ResolveCapabilitiesWith(s *catalog.Spec, det *Detected, rt *store.RuntimeCa
 // report. It never downloads, hashes or launches anything.
 func CapabilitiesFor(ctx context.Context, st *store.Store, cat *catalog.Catalog, s *catalog.Spec, dir string) Resolved {
 	var rt *store.RuntimeCapabilities
+	var problem *store.ReadError
 	if sha := s.Primary().SHA256; sha != "" && st != nil {
-		rt, _ = st.RuntimeCapabilitiesFor(ctx, s.ModelID, sha)
+		var err error
+		if rt, err = st.RuntimeCapabilitiesFor(ctx, s.ModelID, sha); err != nil {
+			problem = &store.ReadError{Step: "reading what the runtime reported for " + s.ModelID, Err: err, Kind: store.ReadCapabilities}
+		}
 	}
 	marks := s.UnsupportedCapabilities
 	if cat != nil {
 		marks = cat.EffectiveUnsupported(s)
 	}
-	return ResolveCapabilitiesWith(s, DetectCapabilities(s, dir), rt, marks)
+	res := ResolveCapabilitiesWith(s, DetectCapabilities(s, dir), rt, marks)
+	res.ReadProblem = problem
+	return res
 }
 
 // --- runtime probe ------------------------------------------------------------

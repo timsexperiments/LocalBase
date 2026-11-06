@@ -72,7 +72,7 @@ type welcomeChoice struct {
 
 // welcomeChoices lists the chat models.
 func (u *UI) welcomeChoices(r *http.Request) []welcomeChoice {
-	rows, _ := u.catalogRows("chat")
+	rows, _, _ := u.catalogRows("chat") // A model with no figure is shown with none.
 	return chooseFrom(u.withForecast(r, rows), freeDisk(u.d.RootDir))
 }
 

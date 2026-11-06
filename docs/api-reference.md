@@ -433,7 +433,7 @@ List the models this key may use.
 
 **Responses:**
 
-- `200`: Per kind: the active model and the selected ones, filtered to what this key may invoke.
+- `200`: Per kind: the active model and the selected ones, filtered to what this key may invoke. If a read behind the list failed, the list is still given, without the figure that needed it, and the header says so.
 - `401`: The key is missing or not accepted (`invalid_api_key`). A request carrying `Origin` or `Sec-Fetch-Site` never authenticates with a key.
 - `403`: The key lacks the permission this route needs (`insufficient_permissions`).
 - `405`: Wrong method (`method_not_allowed`); see the `Allow` header.

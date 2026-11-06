@@ -14,19 +14,32 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
 func doctorCommand() *cli.Command {
 	return &cli.Command{Name: "doctor", Summary: "Run a system health check and print configuration details",
+		// A database it can't read is reported, with everything else it can say, and fails the command.
+		ExitCodeFor: func(data any) int {
+			if m, _ := data.(map[string]any); m["databaseProblem"] != nil {
+				return 1
+			}
+			return 0
+		},
 		Run: func(c *cli.Ctx) (any, error) {
-			e, err := readEnv(c, true)
+			e, err := readEnvKeepingProblems(c, true)
 			if err != nil {
 				return nil, err
 			}
 			defer e.Close()
 			if err := applyEnvOverrides(e.Config); err != nil {
 				return nil, err
+			}
+			problem := ""
+			if e.DatabaseProblem != nil {
+				problem = explainError(e.DatabaseProblem).Error()
+				c.Error("Database: %s", problem)
 			}
 			c.Info("LocalBase: %s", version.Get())
 			s := memory.DetectSpecs()
@@ -36,7 +49,9 @@ func doctorCommand() *cli.Command {
 			for _, l := range gpuLines(s, memory.GPUMemoryNow()) {
 				c.Info("%s", l)
 			}
-			c.Info("Parallel Slots: %s", e.Config.Parallel)
+			if problem == "" {
+				c.Info("Parallel Slots: %s", e.Config.Parallel)
+			}
 			eff, err := obs.ResolveOtel(e.Config.OtelEndpoint, e.Config.OtelHeaders, e.Config.OtelSampleRatio, os.Getenv)
 			if err != nil {
 				return nil, err
@@ -66,7 +81,17 @@ func doctorCommand() *cli.Command {
 			default:
 				c.Info("Status: ❌ Low VRAM. Focus on 1.5B/3B models or CPU offloading.")
 			}
-			data := map[string]any{"hardware": s, "configuration": conf.Public(e.Config, eff)}
+			data := map[string]any{"hardware": s}
+			if problem == "" {
+				data["configuration"] = conf.Public(e.Config, eff)
+			} else {
+				reason := "database_unreadable"
+				if store.IsBusy(e.DatabaseProblem) {
+					reason = "database_busy"
+				}
+				// The defaults aren't this root's settings, so they aren't given.
+				data["databaseProblem"] = map[string]any{"message": problem, "reason": reason}
+			}
 			if left := unboundBindings(e); left.Total() > 0 {
 				c.Info("Browser access: %s", left.Notice())
 				data["unboundBindings"] = left.Total()

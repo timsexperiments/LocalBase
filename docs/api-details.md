@@ -22,6 +22,8 @@ The runtime keeps one active model per service. Memory pressure can evict idle r
 
 ### Model metadata
 
+If a read behind a model list fails, `/v1/models` still answers 200 with `X-Localbase-Warning`, and leaves out the Go-only `memory` object for the models it couldn't size, so read that field as optional.
+
 Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. Runtime metadata separates resolved native slots, active admissions, arithmetic availability, immediate dispatch eligibility, and bounded waiting-room capacity. Reads do not start runtimes or hash model files. Capability fields remain `null` without an authoritative value; the TTS model reports its WAV, catalog-voice, and cold-request contract. Each `/v1/models` entry also lists `capabilities` as `[{ "id", "source" }]`, where `source` is `declared` (catalog), `detected` (installed files), or `runtime` (the running engine). `local-base models show <id>` prints one model's provenance, files, capabilities with their sources, memory figures, and fit on this machine; add `--json` for the same data. In the browser, **Details** on a catalog card opens the same view at a linkable `?panel=catalog&details=<id>` URL.
 
 TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must set `voice` to `default`, `harbor`, `willow`, or the id of a stored custom voice (below); omitted `response_format` defaults to WAV, unlike OpenAI's MP3 default, so clients that omit the format receive WAV bytes. The only supported explicit format is `wav`. `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)). Speech requests cannot supply audio paths, URLs, or uploads; only an administrator can add a reference, through the voice endpoints below. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
@@ -218,6 +220,8 @@ Use the global `--json` option for automation. It may appear before or after a c
 local-base --json models catalog
 local-base doctor --json
 ```
+
+If `doctor` can't read the database, it still reports everything else, with `ok: true`, `data.databaseProblem` (`message` and `reason`) and exit code 1, so scripts must read the exit code and `data.databaseProblem`, not just `ok`.
 
 Finite commands write exactly one JSON document to stdout:
 

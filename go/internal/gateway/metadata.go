@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,8 +65,9 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			modelNotFound(w, r, id)
 			return
 		}
-		m := meta.Project(r.Context(), in, spec)
-		if spec.Kind != "llm" || s.Placement == nil {
+		m, problems := meta.Project(r.Context(), in, spec)
+		s.reportReads(w, problems)
+		if len(problems) == 0 && (spec.Kind != "llm" || s.Placement == nil) {
 			writeJSON(w, 200, m)
 			return
 		}
@@ -74,7 +76,10 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		b, _ := json.Marshal(m)
 		var out map[string]any
 		json.Unmarshal(b, &out)
-		if dev, ok := out["device"].(map[string]any); ok {
+		if len(problems) > 0 {
+			out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
+		}
+		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && s.Placement != nil {
 			if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 				dev["placement"] = placementJSON(plan)
 			} else if next, err := s.LLM.PreviewPlacement(id, s.Placement.Request(id)); err == nil && next.Placement != nil {
@@ -88,8 +93,23 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var data []meta.Model
+	var problems []*store.ReadError
 	for _, spec := range s.Catalog.All() {
-		data = append(data, meta.Project(r.Context(), in, spec))
+		m, failed := meta.Project(r.Context(), in, spec)
+		problems = append(problems, failed...)
+		data = append(data, m)
+	}
+	// A filter on fit can't place a model whose figure couldn't be read, so a filtered list says which.
+	var unknown []string
+	if len(problems) > 0 {
+		unfiltered := r.URL.Query()
+		unfiltered.Del("fit")
+		unknown = []string{}
+		for _, m := range meta.Query(data, unfiltered) {
+			if m.Catalog.Memory.Fit.Verdict == "unknown" {
+				unknown = append(unknown, m.ID)
+			}
+		}
 	}
 	data = meta.Query(data, r.URL.Query())
 	topo := s.Memory.Topology()
@@ -104,7 +124,12 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		data = []meta.Model{}
 	}
-	writeJSON(w, 200, map[string]any{"object": "list", "host": map[string]any{"memory": map[string]any{
+	out := map[string]any{"object": "list", "host": map[string]any{"memory": map[string]any{
 		"kind": kind, "system": map[string]any{"capacityBytes": topo.SystemCapacity, "availableBytes": avail},
-		"accelerators": []any{}}}, "data": data})
+		"accelerators": []any{}}}, "data": data}
+	if len(problems) > 0 {
+		s.reportReads(w, problems)
+		out["degraded"], out["readProblems"], out["unknown"] = true, readProblemsJSON(problems), unknown
+	}
+	writeJSON(w, 200, out)
 }

@@ -1866,6 +1866,21 @@
                   "type": "object",
                   "properties": {
                     "object": {"const": "list"},
+                    "degraded": {"const": true, "description": "Present when a read behind the list failed. Only the figures that needed it are left out."},
+                    "unknown": {
+                      "type": "array",
+                      "description": "Present with `degraded`: the ids matching the other filters whose memory fit couldn't be worked out. A `fit` filter can't place them, so they aren't in `data` when it is used.",
+                      "items": {"type": "string"}
+                    },
+                    "readProblems": {
+                      "type": "array",
+                      "description": "Present with `degraded`: what couldn't be read.",
+                      "items": {
+                        "type": "object",
+                        "properties": {"step": {"type": "string"}, "reason": {"type": "string"}},
+                        "required": ["step", "reason"]
+                      }
+                    },
                     "host": {
                       "type": "object",
                       "properties": {
@@ -3479,7 +3494,13 @@
         "x-localbase-stability": "stable",
         "responses": {
           "200": {
-            "description": "Per kind: the active model and the selected ones, filtered to what this key may invoke.",
+            "description": "Per kind: the active model and the selected ones, filtered to what this key may invoke. If a read behind the list failed, the list is still given, without the figure that needed it, and the header says so.",
+            "headers": {
+              "X-Localbase-Warning": {
+                "description": "Present when a read failed: `peak-read-failed`, `capability-read-failed` or `library-read-failed`, comma-separated.",
+                "schema": {"type": "string"}
+              }
+            },
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelList"}}}
           },
           "401": {"$ref": "#/components/responses/Unauthorized"},
@@ -4202,7 +4223,7 @@
                   "fit": {
                     "type": "object",
                     "properties": {
-                      "verdict": {"type": "string", "enum": ["fits", "tight", "wont-fit"]},
+                      "verdict": {"type": "string", "enum": ["fits", "tight", "wont-fit", "unknown"], "description": "`unknown` when what was seen of the model couldn't be read."},
                       "systemMemoryGb": {"type": "integer"},
                       "headroomGb": {"type": "number"}
                     },

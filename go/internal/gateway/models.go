@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"slices"
@@ -59,10 +60,11 @@ func permissionFor(kind string, spec *catalog.Spec) string {
 
 // ServedModels lists what the gateway routes to: per kind the active model
 // plus selected ones, filtered to what the principal may invoke (nil = all).
-func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
+func (s *Server) ServedModels(p *auth.Principal, only string) ([]Model, []*store.ReadError) {
 	cfg := s.LLM.Config()
 	runningID, runningPlan, _ := s.LLM.Running()
 	var out []Model
+	var problems []*store.ReadError
 	seen := map[string]bool{}
 	for _, kind := range store.Kinds {
 		if kind != "llm" && len(cfg.Selected[kind]) == 0 {
@@ -77,10 +79,16 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 				continue
 			}
 			seen[id] = true
-			out = append(out, s.project(kind, id, spec, runningID, runningPlan))
+			m, failed := s.project(kind, id, spec, runningID, runningPlan)
+			problems = append(problems, failed...)
+			out = append(out, m)
 		}
 	}
-	for _, e := range s.importedLLMs() {
+	imported, err := s.importedLLMsChecked()
+	if err != nil {
+		problems = append(problems, &store.ReadError{Step: "reading the imported models", Err: err, Kind: store.ReadLibrary})
+	}
+	for _, e := range imported {
 		id := e.Model.ID
 		if seen[id] || (only != "" && id != only) {
 			continue
@@ -90,7 +98,8 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 			continue
 		}
 		seen[id] = true
-		m := s.project("llm", id, nil, runningID, runningPlan)
+		m, failed := s.project("llm", id, nil, runningID, runningPlan)
+		problems = append(problems, failed...)
 		m.Name = e.Model.Name
 		switch task {
 		case "embeddings":
@@ -103,17 +112,25 @@ func (s *Server) ServedModels(p *auth.Principal, only string) []Model {
 		}
 		out = append(out, m)
 	}
-	return out
+	return out, problems
 }
 
 // importedLLMs lists imported models the LLM runtime serves.
 func (s *Server) importedLLMs() []library.Entry {
+	entries, err := s.importedLLMsChecked()
+	if err != nil {
+		s.Log.Error("Could not read the imported models.", "event", "models.read-failed", "step", "reading the imported models", "error", err.Error())
+	}
+	return entries
+}
+
+func (s *Server) importedLLMsChecked() ([]library.Entry, error) {
 	if s.Library == nil {
-		return nil
+		return nil, nil
 	}
 	entries, err := s.Library.Entries(context.Background())
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []library.Entry
 	for _, e := range entries {
@@ -121,7 +138,7 @@ func (s *Server) importedLLMs() []library.Entry {
 			out = append(out, e)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func importTask(m *models.Model) string {
@@ -143,7 +160,8 @@ func (s *Server) importedTask(id string) string {
 	return ""
 }
 
-func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) Model {
+func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) (Model, []*store.ReadError) {
+	var problems []*store.ReadError
 	m := Model{ID: id, Object: "model", Created: 1670000000, OwnedBy: "local-base"}
 	mod := defaultModalities[kind]
 	m.Architecture.Input, m.Architecture.Output = mod[0], mod[1]
@@ -156,7 +174,11 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 		case spec.IsDecision():
 			m.Architecture.Output = []string{"decisions"}
 		}
-		caps := s.capabilities(context.Background(), spec).Capabilities
+		resolved := s.capabilities(context.Background(), spec)
+		if resolved.ReadProblem != nil {
+			problems = append(problems, resolved.ReadProblem)
+		}
+		caps := resolved.Capabilities
 		if caps == nil {
 			caps = []catalog.Capability{}
 		}
@@ -175,9 +197,40 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 		}
 	}
 	if spec != nil {
-		m.Memory = s.fit(spec)
+		// Leaving out the figure, not giving one without what was seen.
+		fit, err := s.fit(spec)
+		var failed *store.ReadError
+		if errors.As(err, &failed) {
+			problems = append(problems, failed)
+		} else {
+			m.Memory = fit
+		}
 	}
-	return m
+	return m, problems
+}
+
+// reportReads says a listing is missing something without changing what a client parses: a header,
+// and an error event naming each step.
+func (s *Server) reportReads(w http.ResponseWriter, problems []*store.ReadError) {
+	var kinds []string
+	for _, p := range problems {
+		if !slices.Contains(kinds, p.Kind) {
+			kinds = append(kinds, p.Kind)
+		}
+		s.Log.Error("A listing is missing something it couldn't read.", "event", "models.read-failed", "step", p.Step, "error", p.Err.Error())
+	}
+	if len(kinds) > 0 {
+		w.Header().Set("X-Localbase-Warning", strings.Join(kinds, ", "))
+	}
+}
+
+// readProblemsJSON is what our own routes say about them.
+func readProblemsJSON(problems []*store.ReadError) []map[string]string {
+	out := make([]map[string]string, 0, len(problems))
+	for _, p := range problems {
+		out = append(out, map[string]string{"step": p.Step, "reason": p.Reason()})
+	}
+	return out
 }
 
 func (s *Server) principalForListing(r *http.Request) *auth.Principal {
@@ -192,7 +245,9 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET")
 		return
 	}
-	data := s.ServedModels(s.principalForListing(r), "")
+	// A client's list stays a list: what was missing is in a header and the log, not an outage.
+	data, problems := s.ServedModels(s.principalForListing(r), "")
+	s.reportReads(w, problems)
 	if data == nil {
 		data = []Model{}
 	}
@@ -212,8 +267,18 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, r, "GET")
 		return
 	}
-	data := s.ServedModels(s.principalForListing(r), id)
+	data, problems := s.ServedModels(s.principalForListing(r), id)
+	s.reportReads(w, problems)
 	if len(data) == 0 {
+		// It might be one of the models that couldn't be read, so "not found" would be a guess.
+		for _, p := range problems {
+			if p.Kind == store.ReadLibrary {
+				w.Header().Set("Retry-After", "5")
+				writeError(w, r, 503, "api_error", "service_unavailable",
+					"Could not finish "+p.Step+", so this model may exist. Try again shortly.", nil)
+				return
+			}
+		}
 		modelNotFound(w, r, id)
 		return
 	}
@@ -227,6 +292,6 @@ func (s *Server) capabilities(ctx context.Context, spec *catalog.Spec) runtime.R
 }
 
 // fit is a model's memory figure on this machine.
-func (s *Server) fit(spec *catalog.Spec) *runtime.Fit {
+func (s *Server) fit(spec *catalog.Spec) (*runtime.Fit, error) {
 	return runtime.ModelFit(context.Background(), s.Store, s.Catalog, spec, s.Root.ModelsDir(spec.Kind), s.MemoryGB)
 }

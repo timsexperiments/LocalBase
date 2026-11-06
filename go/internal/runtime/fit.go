@@ -95,13 +95,13 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 // ModelFit is a model's memory figure on this machine. Like TS, local facts
 // (GGUF geometry, observed peaks) count only once every artifact in dir is
 // installed.
-func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *catalog.Spec, dir string, systemGB int) *Fit {
+func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *catalog.Spec, dir string, systemGB int) (*Fit, error) {
 	var feed []catalog.MemoryPeak
 	if cat != nil {
 		feed = cat.PlannableFeedPeaks(spec)
 	}
 	if complete, _ := spec.Installation(dir); !complete {
-		return FitFor(spec, systemGB, nil, nil, feed)
+		return FitFor(spec, systemGB, nil, nil, feed), nil
 	}
 	var geo *memory.Geometry
 	primary := spec.Primary()
@@ -110,7 +110,10 @@ func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *
 	}
 	var peaks []store.ObservedPeak
 	if primary.SHA256 != "" && st != nil {
-		peaks, _ = st.ObservedPeaks(ctx, spec.ModelID, primary.SHA256)
+		var err error
+		if peaks, err = st.ObservedPeaks(ctx, spec.ModelID, primary.SHA256); err != nil {
+			return nil, &store.ReadError{Step: "reading the memory peaks seen for " + spec.ModelID, Err: err, Kind: store.ReadPeaks}
+		}
 	}
-	return FitFor(spec, systemGB, geo, peaks, feed)
+	return FitFor(spec, systemGB, geo, peaks, feed), nil
 }

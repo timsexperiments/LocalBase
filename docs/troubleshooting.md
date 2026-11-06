@@ -21,6 +21,8 @@ See [why a model was refused](model-refusals.md) and [the memory reserve](memory
 
 **On hosts with an NVIDIA GPU:** memory admission and placement for NVIDIA aren't qualified on real hardware yet. Rejection logs say which pool refused.
 
+**A model list with `degraded: true`, or `X-Localbase-Warning` on `/v1/models`:** a read behind the list failed, usually because the database stayed busy. The list is still given, without the figures that needed that read and with `unknown` naming the models a `fit` filter can't place, and the log has a `models.read-failed` event naming the step. Try again in a moment.
+
 ## Downloads
 
 A failed install prints a reason. See [install failures](install-failures.md).
@@ -28,6 +30,10 @@ A failed install prints a reason. See [install failures](install-failures.md).
 ## Chat requests
 
 `400 remote_media_not_allowed` means a content part named a web address. Send the content itself: `image_url.url` must be a `data:` URL, and audio and files must hold base64, an id or a `data:` URL. A client that replays its history has to replace an address in an earlier message too. See [API details](api-details.md#image-and-video-inputs).
+
+## A busy database
+
+`The database is busy: the gateway or another command is writing to it` means something else held the database for longer than the 5 seconds a command waits. Try again in a moment. If it keeps happening, stop the gateway, or whatever else is writing, and try again. With `--json`, the error has the reason `database_busy`.
 
 ## Queues
 

@@ -285,7 +285,10 @@ func (u *UI) getModels(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Query": q, "Kind": kind, "Kinds": discoveryKinds, "CanManage": canManage}
 	if q == "" {
 		filter := taskFilter(r)
-		rows, tasks := u.catalogRows(filter)
+		rows, tasks, missing := u.catalogRows(filter)
+		if missing {
+			data["ReadNotice"] = missingFiguresNotice
+		}
 		rows = u.withForecast(r, rows)
 		data["Catalog"], data["Tasks"] = rows, tasks
 		data["AnyForecast"] = slices.ContainsFunc(rows, func(x CatalogRow) bool { return x.Forecast })
