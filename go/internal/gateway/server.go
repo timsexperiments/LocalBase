@@ -258,13 +258,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			next(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, bp)))
 			return
 		}
-		p, err := s.Auth.ResolveAPI(r.Context(), r)
-		if err != nil {
-			s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
-			serviceUnavailable(w, r, "Authentication")
-			return
-		}
-		setAuth(r, p)
+		p := s.resolveCredential(r)
 		if !p.Authenticated() {
 			unauthorized(w, r)
 			return
@@ -482,7 +476,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.family", family)
 		span.SetAttr("localbase.route.segments", segments)
 	}
-	r = r.WithContext(context.WithValue(ctx, recKey{}, rec))
+	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), recKey{}, rec))
 	defer func() {
 		rec.armWrite() // what's still buffered leaves when this returns
 		if v := recover(); v != nil {
@@ -579,6 +573,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 	p := rec.auth
 	switch {
+	case auth.LookupFailed(r.Context()):
+		return []any{"auth_outcome", "unavailable"}
 	case s.NoAuth || p == nil:
 		return []any{"auth_outcome", "disabled"}
 	case p.Kind == "api-key":
@@ -597,9 +593,7 @@ func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 	if !s.NoAuth {
-		p, _ := s.Auth.ResolveAPI(r.Context(), r)
-		setAuth(r, p)
-		if !p.Authenticated() {
+		if p := s.resolveCredential(r); !p.Authenticated() {
 			unauthorized(w, r)
 			return
 		}

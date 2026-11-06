@@ -61,9 +61,34 @@ func (s *Server) principal(r *http.Request) *auth.Principal {
 	if s.NoAuth {
 		return &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	}
-	p, _ := s.Auth.ResolveAPI(r.Context(), r)
+	return s.resolveCredential(r)
+}
+
+// resolveCredential is every path from an API credential to a principal. A lookup that failed says
+// nothing about the key, so the request is marked (BrowserPrincipal does the same for a session), and unauthorized and forbidden answer 503 for it:
+// a client told 401 may treat a good key as revoked and throw it away.
+func (s *Server) resolveCredential(r *http.Request) *auth.Principal {
+	p, err := s.Auth.ResolveAPI(r.Context(), r)
+	if err != nil {
+		s.lookupFailed(r, err)
+	}
 	setAuth(r, p)
 	return p
+}
+
+// lookupFailed logs a failed look at a key or session, and marks the request.
+func (s *Server) lookupFailed(r *http.Request, err error) {
+	s.Log.Error("Credential lookup failed.", "event", "auth.lookup-failed", "error", err.Error())
+	auth.MarkLookupFailed(r.Context())
+}
+
+// credentialLookupFailed answers for a request whose credential couldn't be looked up.
+func credentialLookupFailed(w http.ResponseWriter, r *http.Request) bool {
+	if !auth.LookupFailed(r.Context()) {
+		return false
+	}
+	serviceUnavailable(w, r, "Authentication")
+	return true
 }
 
 // errCallerGone is a key that stopped working after its request was authenticated.
@@ -183,6 +208,9 @@ func validScopes(scopes []string) ([]string, bool) {
 func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
+		if credentialLookupFailed(w, r) {
+			return
+		}
 		managementError(w, 401, "invalid_api_key")
 		return
 	}
@@ -351,6 +379,9 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
+		if credentialLookupFailed(w, r) {
+			return
+		}
 		managementError(w, 401, "invalid_api_key")
 		return
 	}

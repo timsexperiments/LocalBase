@@ -177,19 +177,26 @@ func cookie(r *http.Request, name string) string {
 
 // Authenticate resolves the request's browser identity, if any.
 func (b *Browser) Authenticate(r *http.Request) (*Identity, string) {
+	id, owner, _ := b.AuthenticateChecked(r)
+	return id, owner
+}
+
+// AuthenticateChecked is Authenticate, and says when a session couldn't be read: that isn't the same
+// as having no session, and shouldn't send a signed-in person to sign in again.
+func (b *Browser) AuthenticateChecked(r *http.Request) (*Identity, string, error) {
 	if !b.Enabled() {
-		return nil, ""
+		return nil, "", nil
 	}
 	if b.Config.Provider.Kind == "cloudflare-access" {
 		token := r.Header.Get("Cf-Access-Jwt-Assertion")
 		if token == "" {
-			return nil, ""
+			return nil, "", nil
 		}
 		issuer := "https://" + b.Config.Provider.TeamDomain
 		claims, err := b.cfJWKS.Verify(r.Context(), token, VerifyOptions{Algorithms: []string{"RS256"}, Issuer: issuer,
 			Audience: b.Config.Provider.Audience, Required: []string{"exp", "sub", "email"}})
 		if err != nil {
-			return nil, ""
+			return nil, "", nil
 		}
 		sub, _ := claims["sub"].(string)
 		email, _ := claims["email"].(string)
@@ -198,33 +205,46 @@ func (b *Browser) Authenticate(r *http.Request) (*Identity, string) {
 		_, sti := claims["service_token_id"]
 		if !asciiSubRe.MatchString(sub) || ValidEmail(email) == "" || strings.HasPrefix(strings.ToLower(email), "non_identity@") ||
 			typ != "app" || cn || sti || claims["service_token_status"] == true {
-			return nil, ""
+			return nil, "", nil
 		}
-		return &Identity{Issuer: issuer, Subject: sub, VerifiedEmail: email}, ownerID("cloudflare-access", issuer, sub)
+		return &Identity{Issuer: issuer, Subject: sub, VerifiedEmail: email}, ownerID("cloudflare-access", issuer, sub), nil
 	}
 	token := cookie(r, SessionCookie)
 	if token == "" {
-		return nil, ""
+		return nil, "", nil
 	}
 	s, err := FindSession(r.Context(), b.Store, token, b.sessionIssuers())
-	if err != nil || s == nil {
-		return nil, ""
+	if err != nil {
+		return nil, "", err
 	}
-	return &s.Identity, s.OwnerID
+	if s == nil {
+		return nil, "", nil
+	}
+	return &s.Identity, s.OwnerID, nil
 }
 
 // Authorize resolves an identity's permissions: the policy when one is
 // configured, else the configuration's permissions.
 func (b *Browser) Authorize(ctx context.Context, id *Identity) *Decision {
+	d, err := b.AuthorizeChecked(ctx, id)
+	if err != nil {
+		return &Decision{MatchedRoles: []string{}, Permissions: []string{}}
+	}
+	return d
+}
+
+// AuthorizeChecked is Authorize, and says when the policy couldn't be read: that isn't the same as the
+// policy granting nothing.
+func (b *Browser) AuthorizeChecked(ctx context.Context, id *Identity) (*Decision, error) {
 	d, err := ResolvePolicy(ctx, b.Store, *id, true)
 	if err != nil {
 		b.Log.Error("Browser access policy lookup failed.", "event", "auth.policy-failed", "error", err.Error())
-		return &Decision{MatchedRoles: []string{}, Permissions: []string{}}
+		return nil, err
 	}
 	if d == nil {
-		return &Decision{MatchedRoles: []string{}, Permissions: b.Config.Permissions}
+		return &Decision{MatchedRoles: []string{}, Permissions: b.Config.Permissions}, nil
 	}
-	return d
+	return d, nil
 }
 
 // ExactHost: the request is for the configured origin's host.
@@ -635,7 +655,12 @@ func (b *Browser) exchange(ctx context.Context, rt *oidcRuntime, code string, st
 // no session, so nothing is kept about someone this LocalBase has nothing for, and a page
 // that says so. Authorizing also claims an invitation, so a first sign-in counts.
 func (b *Browser) establish(w http.ResponseWriter, r *http.Request, id Identity, owner string) {
-	d := b.Authorize(r.Context(), &id)
+	d, err := b.AuthorizeChecked(r.Context(), &id)
+	if err != nil {
+		// Not knowing what they may do isn't knowing they may do nothing.
+		redirect(w, b.Config.Origin+"/app?signin=failed", clearCookie(loginStateCookie))
+		return
+	}
 	if len(d.Permissions) == 0 {
 		b.Log.Info("A sign-in that has no permissions here was refused.", "event", "auth.signin-denied", "actor_id", owner)
 		policy, err := LoadPolicy(r.Context(), b.Store.DB)
@@ -793,7 +818,11 @@ func (b *Browser) Logout(w http.ResponseWriter, r *http.Request) {
 	if b.Direct() {
 		if token := cookie(r, SessionCookie); token != "" {
 			if err := DeleteSession(r.Context(), b.Store, token); err != nil {
+				// The session is still good, so the person isn't told otherwise and keeps the cookie.
 				b.Log.Error("Could not end a browser session; it stays valid until it expires.", "event", "auth.session-delete-failed", "error", err.Error())
+				w.Header().Set("Retry-After", "5")
+				Deny(w, http.StatusServiceUnavailable)
+				return
 			}
 		}
 		http.SetCookie(w, clearCookie(SessionCookie))

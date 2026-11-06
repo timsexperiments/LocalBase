@@ -104,12 +104,20 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 	if !s.Browser.Enabled() {
 		return nil, nil
 	}
-	id, owner := s.Browser.Authenticate(r)
+	id, owner, err := s.Browser.AuthenticateChecked(r)
+	if err != nil {
+		s.lookupFailed(r, err)
+		return nil, nil
+	}
 	if id == nil {
 		return nil, nil
 	}
+	d, err := s.Browser.AuthorizeChecked(r.Context(), id)
+	if err != nil {
+		auth.MarkLookupFailed(r.Context()) // Authorize has logged it
+		return nil, nil
+	}
 	markAuthenticated(r)
-	d := s.Browser.Authorize(r.Context(), id)
 	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }
 
@@ -137,7 +145,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		s.mux.ServeHTTP(w, fwd)
 		return
 	}
-	if s.localUIAccess(w, r) {
+	if s.localUIAccess(w, r) || credentialLookupFailed(w, r) {
 		return
 	}
 	if !b.Enabled() {
@@ -221,7 +229,9 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, id := s.BrowserPrincipal(r)
 	if principal == nil {
-		auth.Deny(w, 401)
+		if !credentialLookupFailed(w, r) {
+			auth.Deny(w, 401)
+		}
 		return
 	}
 	setAuth(r, principal)

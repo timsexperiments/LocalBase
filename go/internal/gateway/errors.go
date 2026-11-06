@@ -39,11 +39,17 @@ func routeDisabled(w http.ResponseWriter, r *http.Request) {
 }
 
 func unauthorized(w http.ResponseWriter, r *http.Request) {
+	if credentialLookupFailed(w, r) {
+		return
+	}
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	writeError(w, r, 401, "invalid_request_error", "invalid_api_key", "Unauthorized: Invalid or missing API key.", nil)
 }
 
 func forbidden(w http.ResponseWriter, r *http.Request) {
+	if credentialLookupFailed(w, r) {
+		return
+	}
 	writeError(w, r, 403, "invalid_request_error", "insufficient_permissions", "Forbidden: The credential lacks the required permission.", nil)
 }
 

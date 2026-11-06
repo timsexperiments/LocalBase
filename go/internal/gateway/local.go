@@ -22,6 +22,8 @@ type LoginPages interface {
 	LoginWrongAddress(w http.ResponseWriter, r *http.Request, origin string)
 	// LoginUnavailable is for a person who followed a way in this gateway doesn't offer.
 	LoginUnavailable(w http.ResponseWriter, r *http.Request, status int)
+	// LoginBusy is for when who someone is couldn't be read: not signed out, not refused.
+	LoginBusy(w http.ResponseWriter, r *http.Request)
 }
 
 // localLimit counts failed redeems: at most 10 a minute per gateway.
@@ -57,7 +59,11 @@ func (s *Server) localPrincipal(r *http.Request) *auth.Principal {
 		return nil
 	}
 	sess, err := auth.FindLocalSession(r.Context(), s.Store, token)
-	if err != nil || sess == nil {
+	if err != nil {
+		s.lookupFailed(r, err)
+		return nil
+	}
+	if sess == nil {
 		return nil
 	}
 	return &auth.Principal{Kind: "browser-session", ID: auth.LocalOwnerID, Permissions: auth.Permissions}
@@ -122,7 +128,18 @@ func (s *Server) localOnce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spent, err := auth.ConsumeLocalLink(r.Context(), s.Store, token)
-	if err != nil || !spent {
+	if err != nil {
+		// Not known to be spent or expired, so it isn't called that, or counted as a bad try.
+		s.Log.Error("Could not read a local sign-in link.", "event", "auth.local-link-failed", "error", err.Error())
+		w.Header().Set("Retry-After", "5")
+		if s.LoginPages == nil {
+			auth.Deny(w, http.StatusServiceUnavailable)
+			return
+		}
+		s.LoginPages.LoginBusy(w, r)
+		return
+	}
+	if !spent {
 		expired()
 		return
 	}
@@ -180,6 +197,10 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 		}
 		if err := auth.DeleteLocalSession(r.Context(), s.Store, token); err != nil {
 			s.Log.Error("Could not end a local session; it stays valid until it expires.", "event", "local-session.delete-failed", "error", err.Error())
+			// The session is still good, so the person isn't told otherwise and keeps the cookie.
+			w.Header().Set("Retry-After", "5")
+			auth.Deny(w, http.StatusServiceUnavailable)
+			return true
 		}
 		http.SetCookie(w, auth.ClearLocalSessionCookie())
 		w.WriteHeader(http.StatusNoContent)

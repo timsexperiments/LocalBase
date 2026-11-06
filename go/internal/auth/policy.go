@@ -476,8 +476,24 @@ type Decision struct {
 // ResolvePolicy evaluates the policy for an identity; nil when no policy is
 // configured. With claim, an invited (pending) user is linked to the
 // identity on first sign-in with the invited email and activated.
+//
+// It runs on every request from a signed-in person, and nearly always only reads, so it looks first
+// without the write lock. Only a sign-in that has something to claim goes round again with it.
 func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool) (*Decision, error) {
-	tx, err := st.DB.BeginTx(ctx, nil)
+	d, err := evaluatePolicy(ctx, st, id, claim, &sql.TxOptions{ReadOnly: true})
+	if errors.Is(err, errPolicyWrites) {
+		return evaluatePolicy(ctx, st, id, claim, nil)
+	}
+	return d, err
+}
+
+// errPolicyWrites: this identity has an invitation to claim, which a read can't do.
+var errPolicyWrites = errors.New("the policy has something to write")
+
+// evaluatePolicy is ResolvePolicy in one transaction. With read-only options, a claim stops it.
+func evaluatePolicy(ctx context.Context, st *store.Store, id Identity, claim bool, opts *sql.TxOptions) (*Decision, error) {
+	readOnly := opts != nil && opts.ReadOnly
+	tx, err := st.DB.BeginTx(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -522,6 +538,9 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		}
 		// Only the provider a person was invited through can claim their record.
 		if err == nil && claim && invitedBy.Valid && invitedBy.String == id.Issuer {
+			if readOnly {
+				return nil, errPolicyWrites
+			}
 			ts := now()
 			if _, err := tx.ExecContext(ctx, `INSERT INTO auth_identities (id, user_id, issuer, subject, verified_email, created_at, last_seen_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`, store.UUID(), invited, id.Issuer, id.Subject, email, ts, ts); err != nil {
@@ -542,6 +561,9 @@ func ResolvePolicy(ctx context.Context, st *store.Store, id Identity, claim bool
 		}
 	}
 	if si != nil && si.status == "pending" && claim && si.email.Valid && email == si.email.String {
+		if readOnly {
+			return nil, errPolicyWrites
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE auth_users SET status = 'active', updated_at = ? WHERE id = ?`, now(), si.userID); err != nil {
 			return nil, err
 		}
