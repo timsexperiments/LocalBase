@@ -115,3 +115,14 @@ func DescriptorProblem(first, last Stats, slack, ceiling int) string {
 	}
 	return ""
 }
+
+// DescriptorSummary sets two settled readings side by side, the database's files apart from the
+// rest, so a run's log says which part moved whether or not anything failed.
+func DescriptorSummary(first, last Stats) string {
+	return fmt.Sprintf("descriptors %d to %d: other than the database's %d to %d; on the database's files %d to %d (db %d to %d, -wal %d to %d, -shm %d to %d, -journal %d to %d)",
+		first.FDs, last.FDs,
+		first.FDs-first.Files.Total(), last.FDs-last.Files.Total(),
+		first.Files.Total(), last.Files.Total(),
+		first.Files.DB, last.Files.DB, first.Files.WAL, last.Files.WAL,
+		first.Files.SHM, last.Files.SHM, first.Files.Journal, last.Files.Journal)
+}
