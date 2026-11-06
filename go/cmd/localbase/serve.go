@@ -70,6 +70,7 @@ func serveCommand() *cli.Command {
 	flag := func(name, help string) cli.Option { return cli.Option{Name: name, Bool: true, Help: help} }
 	return &cli.Command{Name: "serve", Summary: "Start the unified LocalBase API gateway", Options: []cli.Option{
 		flag("install-missing", "Download selected models that are missing"),
+		flag("allow-root", "Serve even as root, in a container that holds nothing else"),
 		opt("host", "<host>", "Gateway host"), opt("port", "<port>", "Gateway port"),
 		flag("llm", "Enable the LLM service (--no-llm disables it)"),
 		flag("stt", "Enable the STT service (--no-stt disables it)"),
@@ -121,7 +122,13 @@ func runtimePort(base int, runtime string, configured int) int {
 	return base + slices.Index(runtimePortOrder, runtime)
 }
 
+// effectiveUID is a variable so a test can be root without being root.
+var effectiveUID = os.Geteuid
+
 func serve(c *cli.Ctx) (any, error) {
+	if effectiveUID() == 0 && !c.Bool("allow-root") {
+		return nil, cli.Inputf("Refusing to serve as root: a gateway runs the backends it downloads and reads model files from anywhere, and all of that would run as root. Run it as an ordinary user, or pass --allow-root in a container that holds nothing else.")
+	}
 	port, err := intOpt(c, "port", 1, 65535)
 	if err != nil {
 		return nil, err
