@@ -76,7 +76,7 @@ After a deploy, run `local-base smoke` to prove inference works end to end: it c
 
 ## Stopping
 
-launchd, systemd and `local-base upgrade` give a stopping gateway 15 seconds. A stop ends any model still loading first, so what was waiting for it gets a 503 at once. Requests already running have until 9 seconds. The log says what happened:
+launchd, systemd and `local-base upgrade` give a stopping gateway 15 seconds. A stop ends any model still loading first, so what was waiting for it gets a 503 at once. Requests already running get up to 9 seconds. The log says what happened:
 
 | Event | Severity | Meaning |
 |---|---|---|
