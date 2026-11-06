@@ -456,10 +456,26 @@ func (s *Service) ensureInstalled(ctx context.Context, modelID string) error {
 	return s.d.Install(ctx, modelID)
 }
 
-// demand is the memory the backend is admitted with: the catalog estimate
-// for catalog models, the declared rule for custom backends, otherwise the
-// weights plus a fixed runtime allowance (an estimate, labelled so).
+// demand is the memory the backend is admitted with: its estimate, or what it has been seen to
+// need if that is more.
 func (s *Service) demand(t *Target) memory.Demand {
+	d := s.estimatedDemand(t)
+	spec := s.d.Catalog.ByID(t.ModelID)
+	if spec == nil || t.Imported || spec.Primary().SHA256 == "" || s.d.Store == nil {
+		return d
+	}
+	peaks, err := s.d.Store.ObservedPeaks(context.Background(), t.ModelID, spec.Primary().SHA256)
+	if err != nil {
+		s.d.Log.Warn("Could not read what this model was seen to need; using its estimate.",
+			"event", "memory.observed-read-failed", "model", t.ModelID, "error", err.Error())
+		return d
+	}
+	return RaiseToObserved(d, peaks, mediaShape(t.Backend.ID))
+}
+
+// estimatedDemand is the catalog estimate for catalog models, the declared rule for custom backends,
+// otherwise the weights plus a fixed runtime allowance (an estimate, labelled so).
+func (s *Service) estimatedDemand(t *Target) memory.Demand {
 	if t.Backend.Adapter == "process-openai/v1" && t.Backend.Launch != nil && t.Backend.Launch.Memory != nil {
 		weights := t.weightsBytes()
 		m := t.Backend.Launch.Memory
@@ -546,8 +562,8 @@ func (s *Service) stop(b *svcBackend, reason string) {
 // starts it again.
 func (s *Service) watch(b *svcBackend) {
 	defer b.stopSampling()
-	// The observed peak footprint of catalog models (macOS), as for the LLM;
-	// non-LLM launches use the "default" shape.
+	// The observed peak footprint of catalog models (macOS), as for the LLM, by backend: the same
+	// file can need different memory on another one.
 	spec := s.d.Catalog.ByID(b.modelID)
 	record := spec != nil && !b.target.Imported && spec.Primary().SHA256 != "" && goruntime.GOOS == "darwin"
 	var peak int64
@@ -562,7 +578,7 @@ func (s *Service) watch(b *svcBackend) {
 		if ok && bytes > peak && b.sampling.Err() == nil {
 			peak = bytes
 			_ = s.d.Store.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: b.modelID,
-				ArtifactSHA256: spec.Primary().SHA256, LaunchShape: "default", PeakBytes: bytes, Method: "footprint"})
+				ArtifactSHA256: spec.Primary().SHA256, LaunchShape: mediaShape(b.target.Backend.ID), PeakBytes: bytes, Method: "footprint"})
 		}
 	}
 	sample()

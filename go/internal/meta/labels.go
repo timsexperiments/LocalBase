@@ -83,6 +83,9 @@ func DescribeLaunchShape(shape string) string {
 	if shape == "default" {
 		return "standard settings"
 	}
+	if id, ok := strings.CutPrefix(shape, "backend="); ok {
+		return "the " + id + " backend"
+	}
 	parts := map[string]string{}
 	for _, p := range strings.Split(shape, ";") {
 		k, v, _ := strings.Cut(p, "=")

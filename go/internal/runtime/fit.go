@@ -74,8 +74,20 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 			break
 		}
 	}
+	if media(spec) {
+		// As admission (RaiseToObserved): the highest seen, and it only ever raises the figure.
+		pick = nil
+		for i := range observed {
+			if p := &observed[i]; p.Method == "footprint" && p.PeakBytes > 0 && (pick == nil || p.PeakBytes > pick.PeakBytes) {
+				pick = p
+			}
+		}
+	}
 	if pick != nil {
 		demand = pick.PeakBytes
+		if media(spec) {
+			demand = max(demand, ref)
+		}
 		peak := pick.PeakBytes
 		f.Source, f.LaunchShape, f.ObservedPeakBytes, f.Observed = "observed", pick.LaunchShape, &peak, pick
 	}
@@ -91,6 +103,9 @@ func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []sto
 	}
 	return f
 }
+
+// media is a model a Service runs, whose peaks depend on the request.
+func media(spec *catalog.Spec) bool { return taskOf(spec.Kind) != "" }
 
 // ModelFit is a model's memory figure on this machine. Like TS, local facts
 // (GGUF geometry, observed peaks) count only once every artifact in dir is

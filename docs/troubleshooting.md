@@ -19,6 +19,8 @@ local-base diagnostics   # a redacted ZIP to attach to a bug report
 
 See [why a model was refused](model-refusals.md) and [the memory reserve](memory-reserve-guide.md). `local-base models recommend` lists what fits. `--bypass-memory-check` on `serve` starts despite memory warnings, and can make the machine swap or kill processes, so use it only when you understand that risk.
 
+**A media model refused for more than it needs:** an image, video, speech or transcription model is sized from the highest memory peak seen for its file and backend, when that is above its estimate. A peak from an unusually large request, or one recorded before peaks were kept per backend, keeps counting. `local-base models show <modelId>` lists them, and `local-base models forget-peaks <modelId>` clears them. Its next load is then sized from its estimate.
+
 **On hosts with an NVIDIA GPU:** memory admission and placement for NVIDIA aren't qualified on real hardware yet. Rejection logs say which pool refused.
 
 **A model list with `degraded: true`, or `X-Localbase-Warning` on `/v1/models`:** a read behind the list failed, usually because the database stayed busy. The list is still given, without the figures that needed that read and with `unknown` naming the models a `fit` filter can't place, and the log has a `models.read-failed` event naming the step. Try again in a moment.
