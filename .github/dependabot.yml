@@ -8,6 +8,15 @@ updates:
     groups:
       go-modules:
         patterns: ["*"]
+    ignore:
+      # The store runs on SQLite in write-ahead-log mode, and its locking depends on the exact
+      # SQLite build. Bump this by hand only, after re-running the WAL checks on the new version:
+      # the soak, the second-process shape test and the guard test.
+      - dependency-name: modernc.org/sqlite
+      # SQLite is built against an exact libc version, and libc carries the allocator behind the
+      # gateway's measured memory growth. So a libc bump on its own also needs the WAL checks
+      # above, and a memory measurement, before it lands.
+      - dependency-name: modernc.org/libc
   - package-ecosystem: github-actions
     directory: /
     schedule:
