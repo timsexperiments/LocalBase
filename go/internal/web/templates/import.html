@@ -3,10 +3,10 @@
 <section aria-labelledby="import-title">
   <a href="/app/models/get" class="inline-flex min-h-11 items-center text-base font-semibold text-accent">← Get models</a>
   <h1 id="import-title" class="mt-1 text-3xl font-bold tracking-tight">Import a model</h1>
-  <p class="mt-1 text-muted">From a Hugging Face repository or file, a direct link, or a file on the LocalBase machine. Downloading a model and being able to run it are separate: the backend is checked again after the download.</p>
+  <p class="mt-1 text-muted">From a Hugging Face repository or a direct link. Downloading a model and being able to run it are separate: the backend is checked again after the download.</p>
   <form class="card mt-6 grid gap-3 p-5" hx-post="/app/models/import/resolve" hx-target="#import-plan" hx-swap="outerHTML">
     <label class="grid gap-1"><span class="text-sm font-semibold">Source</span>
-      <input class="input min-h-11" name="source" required autocomplete="off" spellcheck="false" placeholder="org/repo, https://… or /path/on/the/server/model.gguf" value="{{.Form.Source}}"></label>
+      <input class="input min-h-11" name="source" required autocomplete="off" spellcheck="false" placeholder="org/repo or https://…" value="{{.Form.Source}}"></label>
     <div class="grid gap-3 min-[600px]:grid-cols-2">
       <label class="grid gap-1"><span class="text-sm font-semibold">File in the repository <span class="font-normal text-muted">(optional)</span></span>
         <input class="input min-h-11" name="file" autocomplete="off" spellcheck="false" value="{{.Form.File}}"></label>
@@ -40,7 +40,7 @@
       <dt class="text-muted">Model id</dt><dd class="break-all">{{.ID}}</dd>
       <dt class="text-muted">Task</dt><dd>{{if .Task}}{{.Task}}{{else}}not stated by the source — choose one above{{end}}</dd>
       {{with .License}}<dt class="text-muted">License</dt><dd>{{.}}</dd>{{end}}
-      <dt class="text-muted">Download</dt><dd>{{if .SizeKnown}}{{size .TotalBytes}}{{else}}size not reported{{end}}</dd>
+      <dt class="text-muted">Download</dt><dd>{{if .SizeKnown}}{{size .TotalBytes}}{{else}}Size checked when you confirm{{end}}</dd>
     </dl>
     {{if .Choices}}
     <fieldset><legend class="text-sm font-semibold">This repository has several weight files. Choose one:</legend>
@@ -71,6 +71,11 @@
   <p class="font-semibold">Importing… {{.Progress.Phase}} {{.Progress.File}}</p>
   {{if .Progress.Note}}<p class="text-sm text-muted">{{.Progress.Note}}</p>{{end}}
   {{if .Progress.Total}}<progress class="mt-2 w-full" max="{{.Progress.Total}}" value="{{.Progress.Done}}">{{pct .Progress.Done .Progress.Total}}%</progress>{{end}}
+  <form class="mt-3" hx-post="/app/models/import/cancel" hx-target="#import-job" hx-swap="outerHTML">
+    <input type="hidden" name="job" value="{{.ID}}">
+    {{/* An id, so a poll that redraws the card hands focus to the new button. */}}
+    <button type="submit" id="import-cancel-{{.ID}}" class="btn btn-quiet min-h-11">Cancel import</button>
+  </form>
   {{else if eq .State "cancelled"}}
   <p role="status">{{.Detail}}</p>
   {{else if eq .State "failed"}}
