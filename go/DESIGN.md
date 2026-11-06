@@ -6050,7 +6050,7 @@ live root: does a real `llama-server` exit when its port is taken, does an orpha
 
 ## 35. Search in Studio: the embeddings contract (design addendum, 2026-11-02)
 
-A Search tool in Studio: give it some text, ask a question, and see the passages closest in meaning. The UI thread UI-B builds the page. This is what the page can rely on, and what it must do.
+A Search tool in Studio: give it some text, ask a question, and see the passages closest in meaning. The page is built separately, in Studio. This is what the page can rely on, and what it must do.
 
 **No new route, and nothing stored.** The page calls the `/v1/embeddings` route that already exists, through `/app/api`, and compares the vectors itself, in the browser. A server-side search would have to hold a person's documents somewhere, and nothing here needs it. API clients already get everything the page gets.
 
@@ -6108,13 +6108,13 @@ An embedding model loads into the same slot as a chat model, so **the first sear
 
 **Nothing stays on the server.** The gateway doesn't log request bodies. Usage records counts and tokens, as for every route (§32). A search isn't a run, so it isn't in `runs/`, and it doesn't appear in Studio's Recent list. `TestSearchContract` scans every file in a root after real requests, for the planted text, and finds none.
 
-**Nothing stays in the browser either, by default.** Text and vectors live in the page's memory, not in `localStorage`, `sessionStorage` or IndexedDB, so leaving the page forgets them, and a shared computer keeps nothing. The page says so, in one line: "Your text stays in this page, and is sent only to this LocalBase to be read. Nothing is saved." Files are read in the browser with the File API, plain text only, and are never uploaded as files.
+**Nothing stays in the browser either.** The only thing that leaves the page is the passages, sent to this LocalBase's `/v1/embeddings` to be turned into vectors, which keeps none of them (above). The text and the vectors live in the page's memory, not in `localStorage`, `sessionStorage` or IndexedDB, so leaving the page forgets them, and a shared computer keeps nothing. The page says so, in one line: "Your text is sent only to your LocalBase to be searched, and nothing is saved. Leaving the page forgets it." Files are read in the browser with the File API, plain text only. Their text is sent as passages, and the files themselves are never uploaded.
 
 **Scores are not percentages.** A cosine score is only useful for comparing results of one search with one model. Show the order and a relative mark, and don't call it a percent match or a confidence.
 
-### 35.6 What a real model showed
+### 35.6 What one pass on a real model showed (2026-11-02)
 
-One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `3aa2f63c`. **It ran 2 slots at context 16384, not the default.** The plan was 3261 MiB (derived). **Default 4 x 32768: computed 5090 MiB, not measured.** That figure comes from the plan test data. Each slot has the same 8192 tokens either way, so what one input can hold should not change, but memory and batch timing may. The page has to work whichever way these come out.
+One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `3aa2f63c` (on #520's branch). The table is what that one pass measured, not what the page can count on. **It ran 2 slots at context 16384, not the default.** The plan was 3261 MiB (derived). **Default 4 x 32768: computed 5090 MiB, not measured.** That figure comes from the plan test data. Each slot has the same 8192 tokens either way, so what one input can hold should not change, but memory and batch timing may. The page has to work whichever way these come out.
 
 | Question | Answer |
 |---|---|
@@ -6130,11 +6130,11 @@ One pass on a real model, on 2026-11-02, by `tools/real-embedding-check.sh` at `
 
 ### 35.7 Who does what
 
-**Done here, on this PR:**
+**Done with this section:**
 - `TestSearchContract`, on real binaries and the fake backend: one vector per input in order, ranking by cosine, a passage too long, a key without the permission, a model not selected, a same-origin page through `/app/api` and a cross-site one refused, and no text left in the root afterwards.
 - **The fake backend's embeddings** now give one vector per input, in order, made from the input's words. So texts that share words rank higher, and a page can be tested without a model. `fake:batch` as any input gives the overflow error. Vectors aren't normalized, on purpose, so a page that assumes it is caught.
 
-**UI-B builds:** the `/app/studio/search` page, its card and copy, splitting and batching, cosine and ranking in JavaScript, and every state in 35.3. Tests the page needs:
+**The page builds:** the `/app/studio/search` page, its card and copy, splitting and batching, cosine and ranking in JavaScript, and every state in 35.3. Tests the page needs:
 - Splitting never cuts a word, and offsets point back at the source.
 - Ranking matches a hand-worked example with vectors that aren't normalized.
 - The overflow path, using `fake:batch`.
