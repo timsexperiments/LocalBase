@@ -34,7 +34,14 @@ type Limits struct {
 	// body before answering.
 	RefusedDrain      time.Duration
 	RefusedDrainBytes int64
+	// WriteStall is how long each piece of an answer may take to leave. A client that has stopped
+	// reading keeps what its request holds, such as a generation, until this passes.
+	WriteStall time.Duration
 }
+
+// writePiece is how much of an answer has one deadline. At a minute for each, a client has to read
+// about 1 KiB/s to keep up, however long the answer is.
+const writePiece = 64 << 10
 
 // DefaultLimits are the limits of a gateway that sets none.
 var DefaultLimits = Limits{
@@ -47,6 +54,7 @@ var DefaultLimits = Limits{
 	UploadTotal:       time.Hour,
 	RefusedDrain:      2 * time.Second,
 	RefusedDrainBytes: 1 << 20,
+	WriteStall:        time.Minute,
 }
 
 func (l Limits) withDefaults() Limits {
@@ -74,6 +82,9 @@ func (l Limits) withDefaults() Limits {
 	}
 	if l.RefusedDrainBytes > 0 {
 		d.RefusedDrainBytes = l.RefusedDrainBytes
+	}
+	if l.WriteStall > 0 {
+		d.WriteStall = l.WriteStall
 	}
 	return d
 }

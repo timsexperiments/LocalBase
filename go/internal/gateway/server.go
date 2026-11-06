@@ -230,6 +230,60 @@ type recorder struct {
 	errBody []byte
 	// usage is what the handler knew, for the hourly totals (DESIGN §32).
 	usage usageNote
+	// writes sets the connection's write deadline, and writeStall is how far off. A recorder made
+	// for something inside the gateway has neither.
+	writes     *http.ResponseController
+	writeStall time.Duration
+	// sendFailed says the client didn't get the whole answer.
+	sendFailed bool
+}
+
+// finalStatus is what the request came to. A status is sent before the answer, so a client that
+// went away or stopped reading partway through an answer is a 499, whatever was sent first. An error
+// stays the error it was.
+func (r *recorder) finalStatus() int {
+	status := r.status
+	if status == 0 {
+		status = 200
+	}
+	if r.sendFailed && status < 400 {
+		return 499
+	}
+	return status
+}
+
+// sendsWithin gives each piece of the answer this long to leave. net/http clears the deadline when
+// the answer has gone, so it doesn't reach the next one on the connection.
+func (r *recorder) sendsWithin(stall time.Duration) {
+	r.writes, r.writeStall = http.NewResponseController(r.ResponseWriter), stall
+}
+
+// armWrite starts the deadline for what is about to be sent. Silence between writes costs nothing.
+func (r *recorder) armWrite() {
+	if r.writes != nil {
+		_ = r.writes.SetWriteDeadline(time.Now().Add(r.writeStall)) // Not every connection has one, and nothing depends on it.
+	}
+}
+
+// send writes an answer in pieces, each with its own deadline, so that a client that has stopped
+// reading is let go and a slow one isn't.
+func (r *recorder) send(b []byte) (int, error) {
+	whole := b
+	if r.writes == nil {
+		return r.ResponseWriter.Write(b)
+	}
+	sent := 0
+	defer func() { r.sendFailed = r.sendFailed || sent < len(whole) }()
+	for {
+		piece := b[:min(len(b), writePiece)]
+		r.armWrite()
+		n, err := r.ResponseWriter.Write(piece)
+		sent += n
+		b = b[len(piece):]
+		if err != nil || len(b) == 0 {
+			return sent, err
+		}
+	}
 }
 
 const errSniffBytes = 8 << 10
@@ -289,13 +343,14 @@ func (r *recorder) Write(b []byte) (int, error) {
 	if r.status >= 400 && len(r.errBody) < errSniffBytes {
 		r.errBody = append(r.errBody, b[:min(len(b), errSniffBytes-len(r.errBody))]...)
 	}
-	return r.ResponseWriter.Write(b)
+	return r.send(b)
 }
 
 func (r *recorder) Flush() {
 	if r.discarding() {
 		return
 	}
+	r.armWrite()
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -344,6 +399,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
 	rec := &recorder{ResponseWriter: w}
+	rec.sendsWithin(s.Limits.WriteStall)
 	if rec.body = guardBody(s.Limits, rec, r); rec.body != nil {
 		r.Body = rec.body
 		if s.NoAuth {
@@ -367,6 +423,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r = r.WithContext(context.WithValue(ctx, recKey{}, rec))
 	defer func() {
+		rec.armWrite() // what's still buffered leaves when this returns
 		if v := recover(); v != nil {
 			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
 			if rec.status == 0 {
@@ -375,10 +432,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		defer span.End()
 		label, family, segments := routeLabel(r)
-		status := rec.status
-		if status == 0 {
-			status = 200
-		}
+		status := rec.finalStatus()
 		duration := time.Since(start)
 		s.recordUsage(rec, label, status, duration)
 		auth := s.authTelemetry(r, rec)

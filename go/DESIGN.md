@@ -4754,6 +4754,7 @@ tested, and TS on Bun is unverified.
 | Body before authenticating | 30 s in total | a request that has not authenticated |
 | Authenticated upload | 2 min without progress, 1 h in total | a key, a browser session, or `--no-auth` |
 | Draining a refused body | 2 s, 1 MiB | every refusal through `writeError` |
+| Sending an answer | 1 min for each 64 KiB | every response |
 | Open connections | 4096, and 256 per address | every connection |
 
 - **Deadlines follow authentication.** `setAuth` and `BrowserPrincipal` give the caller the
@@ -4771,6 +4772,14 @@ tested, and TS on Bun is unverified.
   dead. A client that goes away is still a 499, which is not an error of the gateway's.
 - **Idle stays above 90 s.** cloudflared keeps its connections to the origin alive for 90 s
   by default. Below that, the gateway closes connections the tunnel expects to reuse.
+- **A client that stops reading lets go.** Each 64 KiB of an answer has a minute to leave. When
+  that passes the connection ends, and so does whatever the request held, such as a generation.
+  It's recorded as a 499, like any client that leaves before it has the whole answer, and not as the
+  200 that went out first. A client leaving isn't an error: usage counts it as `cancelled`, outside the
+  error rate. A client only has to read about 1 KiB/s to keep up. Silence from a model costs nothing, because
+  the time starts when there is something to send (`TestAQuietStreamIsNotAStalledOne`). net/http
+  clears the deadline when an answer has gone, so it doesn't reach the next one on the connection
+  (`TestAnEarlierDeadlineDoesNotReachTheNextRequest`).
 - **Connection caps.** A connection over a cap gets a 503 `too_busy` and is closed, instead
   of waiting in the kernel's queue. Loopback does not count against the per-address cap,
   because a tunnel connects from loopback for everyone behind it; the global cap still
@@ -4781,8 +4790,8 @@ tested, and TS on Bun is unverified.
 
 **Limits.** With caps at their defaults, a flood through a tunnel can still fill the global
 cap, because everything arrives from one address. The caps keep the process healthy; they do
-not keep a flooded gateway available. Slow reads by an authenticated client are not bounded
-here: a stalled reader can hold a generation until it ends.
+not keep a flooded gateway available. A client that stops reading can still hold a generation for
+that minute, after the kernel's buffers have filled, and it can ask again.
 
 ### 31.2 Where a download may connect
 
@@ -5262,7 +5271,7 @@ Requests to the inference routes that got as far as an identified principal, onc
 | 2xx | `requests` only | No |
 | 4xx other than 499: refused for its body, its scope, a full queue, a model that cannot fit | `refused` | Yes |
 | 408 `request_timeout` (§31.1): the gateway's deadline expired while a body was arriving | `refused`, if the principal was resolved by then. One that expired before authentication has no principal, and only the request log has it | Yes |
-| 499: the client went away | `cancelled` | **No**, so people closing a tab do not look like an outage |
+| 499: the client went away, including partway through an answer, or stopped reading and was cut off. Its tokens and time still count, since the work was done | `cancelled` | **No**, so people closing a tab do not look like an outage |
 | 5xx, including a backend that failed or memory pressure | `failed` | Yes |
 | **A stream that fails after it started** | `failed`, recorded as 502, though its HTTP status was 200 | Yes |
 | A detached run (§21) | Once, as its inner request, by the same rows | By its outcome |

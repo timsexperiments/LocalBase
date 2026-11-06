@@ -33,7 +33,7 @@ Percentiles are approximate, within about 12%, because only hourly totals are ke
 | A successful request | a request | No |
 | Refused for its body, its permissions, a full queue or a model that cannot fit (4xx) | `refused` | Yes |
 | The gateway's deadline expired while a request's body was arriving (408) | `refused` | Yes |
-| The client went away (499) | `cancelled` | No |
+| The client went away (499), including partway through an answer, or stopped reading and was cut off | `cancelled`; its tokens and time still count | No |
 | A server or backend failure (5xx) | `failed` | Yes |
 | A stream that fails after it started, though its status was 200 | `failed` | Yes |
 | A detached run, or a request from Chat or the Studio | once, by how it ended | By how it ended |
