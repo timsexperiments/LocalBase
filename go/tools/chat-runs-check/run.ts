@@ -237,6 +237,8 @@ await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
 check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
 for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
+// Announced once the swap settles, a moment after the words are on screen.
+for (let i = 0; i < 20 && !(await ev(`document.getElementById("running-status").textContent`)); i++) await sleep(100);
 const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
 check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
@@ -747,6 +749,11 @@ await send("Emulation.setEmitTouchEventsForMouse", { enabled: false });
 // --- The smallest phone, empty: the heading is under the strip, not behind it -----------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
 await nav("/app/chat");
+// A refusal on the smallest phone: the tab bar stays, and so does the way out.
+await ev(`(async () => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "This model needs more memory than is free right now. Close another app, or free a loaded model, then try again. ".repeat(4) } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1200)); })()`);
+const refusalAt320 = await ev(`(() => { const box = document.querySelector("[data-error-box]").getBoundingClientRect(), tabs = document.querySelector(".chat-col > .tabbar").getBoundingClientRect(), buttons = [...document.querySelectorAll(".refusal-actions .btn")].map((b) => b.getBoundingClientRect()); return { tabsOnScreen: tabs.bottom <= innerHeight + 1, buttons: buttons.length, inBox: buttons.every((b) => b.top >= box.top - 1 && b.bottom <= box.bottom + 1), tall: Math.round(box.height) }; })()`);
+check(refusalAt320.tabsOnScreen && refusalAt320.buttons === 3 && refusalAt320.inBox, `at 320 x 568 a refusal keeps the tab bar and its buttons in view: ${JSON.stringify(refusalAt320)}`);
+await nav("/app/chat");
 const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
 check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
 
@@ -842,7 +849,7 @@ const measure = `(() => {
   const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const out = [];
   const seen = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  for (const el of document.querySelectorAll(".composer-box, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
+  for (const el of document.querySelectorAll(".composer-box:focus-within, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
     if (!seen(el) || parseFloat(getComputedStyle(el).borderTopWidth) === 0) continue;
     const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
     if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));
@@ -858,6 +865,32 @@ const measure = `(() => {
     if (!seen(el)) continue;
     const n = ratio(rgb(getComputedStyle(el).backgroundColor), behind(el.parentElement));
     if (n < 3) out.push("chip selected " + n.toFixed(2));
+  }
+  // The composer has no 3:1 edge at rest, by design: its placeholder, icons and send button say
+  // what it is, so they have to be readable, and its focus has to be plain.
+  const box = document.querySelector(".composer-box"), field = document.querySelector("#chat-input");
+  if (box && field && seen(box)) {
+    const ground = behind(box);
+    const place = ratio(rgb(getComputedStyle(field, "::placeholder").color), ground);
+    if (place < 4.5) out.push("composer placeholder " + place.toFixed(2));
+    for (const el of box.querySelectorAll(".icon-btn:not(:disabled)")) {
+      if (!seen(el)) continue;
+      const n = ratio(rgb(getComputedStyle(el).color), ground);
+      if (n < 3) out.push("composer " + (el.getAttribute("aria-label") || "icon") + " " + n.toFixed(2));
+    }
+    const send = box.querySelector("[data-send]");
+    if (send && seen(send) && !send.disabled) {
+      const n = ratio(rgb(getComputedStyle(send).backgroundColor), ground);
+      if (n < 3) out.push("composer Send " + n.toFixed(2));
+    }
+    const was = document.activeElement;
+    field.focus();
+    const st = getComputedStyle(box), around = behind(box.parentElement);
+    const ring = ratio(rgb(st.outlineColor), around), edge = ratio(rgb(st.borderTopColor), around);
+    if (parseFloat(st.outlineWidth) < 2 || st.outlineStyle === "none" || ring < 3) out.push("composer focus " + st.outlineWidth + " " + ring.toFixed(2));
+    if (edge < 3) out.push("composer focus edge " + edge.toFixed(2));
+    field.blur();
+    was?.focus?.();
   }
   return out;
 })()`;

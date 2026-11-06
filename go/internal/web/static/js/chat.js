@@ -232,10 +232,10 @@ function showFailure(e, retry) {
   detail.textContent = e.message;
   why.append(summary, detail);
   const actions = document.createElement("div");
-  actions.className = "grid gap-2";
-  actions.append(button("Choose a model", "btn btn-primary w-full", openPicker));
-  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet w-full", retry));
-  actions.append(button("Dismiss", "btn btn-quiet w-full", dismissErrors));
+  actions.className = "refusal-actions";
+  actions.append(button("Choose a model", "btn btn-primary", openPicker));
+  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet", retry));
+  actions.append(button("Dismiss", "btn btn-quiet", dismissErrors));
   card.append(title, line, why, actions);
   announce(`${refusal.title}. ${refusal.line}`);
 }
