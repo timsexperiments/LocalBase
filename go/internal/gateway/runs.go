@@ -1133,7 +1133,7 @@ func requestModel(ctype string, body []byte) string {
 		return probe.Model
 	}
 	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
-	for {
+	for range maxFormParts {
 		p, err := mr.NextPart()
 		if err != nil {
 			return ""
@@ -1143,4 +1143,5 @@ func requestModel(ctype string, body []byte) string {
 			return strings.TrimSpace(string(b))
 		}
 	}
+	return ""
 }

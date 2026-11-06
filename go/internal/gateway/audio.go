@@ -31,6 +31,11 @@ type formPart struct {
 	isFile   bool
 }
 
+// maxFormParts is how many parts a form may have. Every part costs memory however little is in it,
+// so the body limit alone lets a form cost gigabytes. These routes take a few fields each, and this
+// is the limit the standard library sets for its own form reader.
+const maxFormParts = 1000
+
 // readMultipart parses a bounded multipart body: values per field, in order.
 // include[] and timestamp_granularities[] are repeated fields.
 func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) {
@@ -40,13 +45,16 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 	}
 	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
 	out := map[string][]formPart{}
-	for {
+	for parts := 0; ; parts++ {
 		p, err := mr.NextPart()
 		if err == io.EOF {
 			return out, nil
 		}
 		if err != nil {
 			return nil, err
+		}
+		if parts == maxFormParts {
+			return nil, errors.New("too many parts")
 		}
 		data, err := io.ReadAll(p)
 		if err != nil {

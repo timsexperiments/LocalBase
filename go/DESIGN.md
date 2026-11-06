@@ -5248,6 +5248,13 @@ Today that is run for curl and the two SDKs, and not run for every editor, agent
 **Rollback:** nothing here touches the database or `go_schema`. An older binary simply lacks the
 page, the command and the route. The keys it creates are ordinary keys.
 
+### 31.12 How many parts a form may have
+
+Every part of a form costs memory however little is in it, so a form of the smallest parts at the body limit
+could allocate more than 3 GiB to read, none of it needing a large file. A form may have 1000 parts, the limit the
+standard library sets for its own form reader. These routes take a few fields each. Past that it's refused
+like any form that can't be read. The check for a run's model stops looking at the same point.
+
 ## 32. Usage and activity (design addendum, 2026-11-02)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
