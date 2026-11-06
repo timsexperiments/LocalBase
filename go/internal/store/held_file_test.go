@@ -355,7 +355,9 @@ var opensAllowed = map[string]string{
 }
 
 // One close of a descriptor on the database ends this process's locks, so raw opens are read for here.
-// Other packages' opens are read for anything naming the database.
+// Every other package's opens are read for anything naming the database. That's by name, so an open of a
+// path that reached the database under another name isn't seen; for the gateway, the walk from serve in
+// cmd/localbase covers the one package known to do that.
 func TestOnlyThisFileOpensADatabase(t *testing.T) {
 	seen := map[string]bool{}
 	opens := func(n ast.Node) []*ast.CallExpr {
@@ -408,13 +410,20 @@ func TestOnlyThisFileOpensADatabase(t *testing.T) {
 			t.Errorf("opensAllowed names %s, which no longer opens a file", where)
 		}
 	}
-	for _, dir := range []string{"../backup", "../root", "../service", "../../cmd/localbase"} {
+	// Every package, since the gateway links most of them; internal/backup's reading of the files it
+	// hashes is kept out of the gateway by TestServeNeverReachesInternalBackup in cmd/localbase.
+	dirs, err := filepath.Glob("../*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs = append(dirs, "../../cmd/localbase")
+	for _, dir := range dirs {
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() || dir == "../store" {
+			continue
+		}
 		found, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
-		}
-		if len(found) == 0 {
-			t.Fatalf("nothing at %s", dir)
 		}
 		for _, file := range found {
 			if strings.HasSuffix(file, "_test.go") {
