@@ -78,3 +78,39 @@ func TestTheRunListBoundsAnError(t *testing.T) {
 		t.Error("no error should give none")
 	}
 }
+
+// A run's own read bounds its error the same way, so the read and the list agree exactly, and a
+// backend's error can't bring a credential or anything else it sent into the API.
+func TestARunsOwnReadBoundsItsError(t *testing.T) {
+	ts, _, _ := newTestGateway(t, host{})
+	s := runServer(ts)
+	c := runClient{t: t, base: ts.URL}
+	id := c.start("hello")
+	c.waitStatus(id, "completed")
+	s.runs.mu.Lock()
+	r := s.runs.runs[id]
+	s.runs.mu.Unlock()
+	r.mu.Lock()
+	r.Status = runFailed
+	r.Error = map[string]any{"type": "server_error", "code": "upstream_error",
+		"message": "Bearer sk-abcdefghijklmnopqrstuvwxyz0123456789 " + strings.Repeat("x", 5000),
+		"detail":  map[string]any{"prompt": strings.Repeat("y", 5000)}}
+	r.mu.Unlock()
+	own, _ := c.get(id)["error"].(map[string]any)
+	msg, _ := own["message"].(string)
+	if n := utf8.RuneCountInString(msg); n > maxListErrorText || strings.Contains(msg, "sk-abcdefghij") {
+		t.Errorf("the run's own read: %d characters, %.50q", n, msg)
+	}
+	if _, ok := own["detail"]; ok {
+		t.Error("the backend's own field reached the run's read")
+	}
+	listed, _ := listEntry(t, c, id)["error"].(map[string]any)
+	if len(listed) != len(own) {
+		t.Errorf("the list has %v, the run's read %v", listed, own)
+	}
+	for k, v := range own {
+		if listed[k] != v {
+			t.Errorf("%s: the list has %v, the run's read %v", k, listed[k], v)
+		}
+	}
+}

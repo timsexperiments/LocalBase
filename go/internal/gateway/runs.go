@@ -272,9 +272,9 @@ const maxListErrorText = 1024
 // so an entry has the same error as the run's own read. Anything else a backend sent stays there.
 var listErrorFields = []string{"type", "code", "message", "param", "heldBytes", "limitBytes", "finishedBytes", "oldestExpiresAt"}
 
-// listError is a run's error as the run list gives it. The list carries every run a person has, and
-// an error can come from a backend as it sent it, so each text is bounded and redacted, and only
-// plain values are kept.
+// listError is a run's error as the API gives it, in the run list and in a run's own read alike.
+// An error can come from a backend as it sent it, and the list carries every run a person has, so
+// each text is bounded and redacted, and only plain values are kept.
 func listError(e map[string]any) map[string]any {
 	if e == nil {
 		return nil
@@ -495,7 +495,7 @@ func (r *run) setStatus(status, reason string) {
 // view is the public run object. Called with r.mu held.
 func (r *run) view(withOutput bool) map[string]any {
 	v := map[string]any{"id": r.ID, "object": "localbase.run", "target": r.Target, "label": r.Label, "model": r.Model,
-		"status": r.Status, "error": r.Error, "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"status": r.Status, "error": listError(r.Error), "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"startedAt": stamp(r.StartedAt), "endedAt": stamp(r.EndedAt), "expiresAt": stamp(r.ExpiresAt),
 		"lastEventId": r.lastEventID(), "resumable": false}
 	if r.Reason != "" {
