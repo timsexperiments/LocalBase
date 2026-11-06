@@ -602,7 +602,27 @@ func TestARevokedKeyComesBackOnlyByName(t *testing.T) {
 	if rep.RevocationsKept != 0 {
 		t.Errorf("revocations kept when named: %d", rep.RevocationsKept)
 	}
-	oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{k.id, "kept", "revoked"})
+	oneKey(t, "brought back", rep.KeysBroughtBack, KeyChange{k.id, "kept", "revoked on this root, and would work again"})
+}
+
+// Going back, a key revoked on this root says it would work again, before anything else that differs.
+// Staying, it keeps "revoked", which is what stays true there.
+func TestARevokedKeyGoingBackSaysItWouldWorkAgain(t *testing.T) {
+	k := withKey(t)
+	k.onRoot(t, func(st *store.Store) {
+		if _, err := st.RevokeAPIKey(context.Background(), k.id); err != nil {
+			t.Fatal(err)
+		}
+	})
+	rotated := editedBackup(t, k.file, `UPDATE api_keys SET key_hash = 'x' WHERE id = '`+k.id+`'`)
+	kept := stageReport(t, rotated, k.r.Dir, true)
+	oneKey(t, "kept", kept.KeysKept, KeyChange{k.id, "kept", "revoked, rotated"})
+	s, err := Stage(context.Background(), rotated, k.r.Dir, true, k.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Discard()
+	oneKey(t, "brought back", s.Report.KeysBroughtBack, KeyChange{k.id, "kept", "revoked on this root, and would work again, rotated"})
 }
 
 // Revoked in both is nothing to say, whatever else differs about when.

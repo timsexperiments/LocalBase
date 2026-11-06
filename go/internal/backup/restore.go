@@ -1031,7 +1031,7 @@ func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, 
 func (k comparedKey) differences(backed comparedKey) []string {
 	var why []string
 	if k.revoked.Valid && !backed.revoked.Valid {
-		why = append(why, "revoked")
+		why = append(why, revokedHere)
 	}
 	if !k.revoked.Valid && backed.revoked.Valid {
 		why = append(why, "revoked in this backup and not on this root")
@@ -1049,6 +1049,23 @@ func (k comparedKey) differences(backed comparedKey) []string {
 		why = append(why, "renamed")
 	}
 	return why
+}
+
+// How a key revoked on this root, and not in the backup, differs. On the list of keys that stay as they
+// are, "revoked" is what stays true. On the list of keys going back it's what changes, and "revoked" alone
+// would read as if it stays that way.
+const (
+	revokedHere    = "revoked"
+	revokedAndBack = "revoked on this root, and would work again"
+)
+
+// broughtBackWords says how a key named to come back differs. Revoked is always first, when it's there.
+func broughtBackWords(why []string) string {
+	words := slices.Clone(why)
+	if len(words) > 0 && words[0] == revokedHere {
+		words[0] = revokedAndBack
+	}
+	return strings.Join(words, ", ")
 }
 
 // scopeList is a key's permissions. A list that doesn't read is shown as it stands, which is also more
@@ -1308,7 +1325,7 @@ func compareKeys(ctx context.Context, staged *sql.DB, now map[string]comparedKey
 			text := strings.Join(why, ", ")
 			if named[id] {
 				used[id] = true
-				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, text})
+				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, broughtBackWords(why)})
 				continue
 			}
 			// What the root has wins, whole, so a key can't come back partly.
