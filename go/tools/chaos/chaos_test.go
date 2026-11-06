@@ -370,6 +370,7 @@ func checkGrowth(t *testing.T, first, last lab.Stats, goroutines, fds int) {
 	if last.Goroutines-first.Goroutines > goroutines {
 		t.Errorf("goroutines went from %d to %d, more than the %d allowed", first.Goroutines, last.Goroutines, goroutines)
 	}
+	t.Log(lab.DescriptorSummary(first, last))
 	if problem := lab.DescriptorProblem(first, last, fds, lab.DatabaseCeiling); problem != "" {
 		t.Error(problem)
 	}

@@ -209,6 +209,70 @@ func TestACommandClosingBesideAStoreLeavesItsWrites(t *testing.T) {
 	}
 }
 
+// This tests SQLite, not this code. The fix keeps A's lock, so nothing else here sees what happens when a
+// lock is lost: a guard in SQLite (unixIsSharingShmNode) still keeps an ordinary close from deleting A's
+// -wal, and older versions don't have it. If this fails, a change of modernc.org/sqlite has taken that
+// guard away, and a lost lock can again lose commits in ordinary use, so look at what's changed before
+// taking that version. It isn't a version check, because what matters is how it behaves.
+func TestSQLitesGuardKeepsAWALWhenALockIsLost(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	loseLock := func(path string) {
+		t.Helper()
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close() // the bug's shape: this close is what ends the lock
+	}
+	open := func(path string) *Store {
+		t.Helper()
+		st, err := Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+	// The lock really is gone. This is on a file of its own, because this check can delete a -wal.
+	probe := filepath.Join(t.TempDir(), "local-base.db")
+	held := open(probe)
+	defer held.Close()
+	loseLock(probe)
+	if got := exclusiveFromAnotherProcess(t, probe); got != "granted" {
+		t.Fatalf("a raw close should end the lock: %q", got)
+	}
+
+	for _, do := range []string{"open and close", "read only and close"} {
+		t.Run(do, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "local-base.db")
+			st := open(path)
+			defer st.Close()
+			ctx := context.Background()
+			if err := st.SetSetting(ctx, "before", "1"); err != nil {
+				t.Fatal(err)
+			}
+			loseLock(path)
+			wal, err := fileID(path + "-wal")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := inAnotherProcess(t, path, do); got != "close: <nil>" {
+				t.Fatalf("the other command: %q", got)
+			}
+			if after, err := fileID(path + "-wal"); err != nil || after != wal {
+				t.Errorf("an ordinary close deleted a -wal in use: %v, %q then %q", err, wal, after)
+			}
+			if err := st.SetSetting(ctx, "after", "kept"); err != nil {
+				t.Fatal(err)
+			}
+			if got := inAnotherProcess(t, path, "read the setting"); got != "setting: kept true <nil>" {
+				t.Errorf("a third process reads the write as %q", got)
+			}
+		})
+	}
+}
+
 // Descriptors are let go with the last store, and a file put at the same path gets its own.
 func TestHeldFilesFollowTheFileAndAreLetGo(t *testing.T) {
 	held := func() int {

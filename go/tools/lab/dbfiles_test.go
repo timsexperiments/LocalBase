@@ -70,3 +70,12 @@ func TestDescriptorProblemHasTwoParts(t *testing.T) {
 		})
 	}
 }
+
+func TestDescriptorSummarySaysWhichPartMoved(t *testing.T) {
+	first := Stats{FDs: 18, Files: DatabaseFiles{DB: 1, WAL: 1, SHM: 1}}
+	last := Stats{FDs: 25, Files: DatabaseFiles{DB: 4, WAL: 4, SHM: 1}}
+	want := "descriptors 18 to 25: other than the database's 15 to 16; on the database's files 3 to 9 (db 1 to 4, -wal 1 to 4, -shm 1 to 1, -journal 0 to 0)"
+	if got := DescriptorSummary(first, last); got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
