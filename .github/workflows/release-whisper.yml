@@ -100,7 +100,7 @@ jobs:
   build-macos-arm64:
     name: Build Whisper runtime (macos-arm64)
     needs: preflight
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -131,7 +131,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security list-keychains -d user -s $KEYCHAIN_PATH
       - name: Build pinned verified Whisper source
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
         run: bun run scripts/build-whisper.ts
+      - name: Runs on macOS 14 and later
+        run: |
+          minos="$(vtool -show-build build-whisper/whisper-server | awk '/minos/ {print $2}')"
+          echo "minimum macOS: $minos"
+          test "$minos" = 14.0
       - name: Verify precompiled Metal library
         run: |
           set -euo pipefail
