@@ -868,8 +868,8 @@ await sleep(200);
 
 // --- A background strip refresh answered 503 (a held store): it stops saying Ready --------------
 await nav("/app/chat");
-const stripBusy = await ev(`(async () => { const el = document.querySelector("[data-strip]"); const real = XMLHttpRequest.prototype.send; const before = document.querySelector("[data-strip-word]").textContent; document.dispatchEvent(new CustomEvent("htmx:responseError", { detail: { elt: el, xhr: { status: 503 } } })); const s = el.querySelector(".strip"); return { before, word: el.querySelector("[data-strip-word]").textContent, free: el.querySelector("[data-strip-free]").textContent, cls: s.className }; })()`);
-check(stripBusy.word === "LocalBase is busy" && stripBusy.free === "" && !/strip-ready/.test(stripBusy.cls), `a 503 on the strip's refresh stops it saying what it said: ${JSON.stringify(stripBusy)}`);
+const stripBusy = await ev(`(async () => { const el = document.querySelector("[data-strip]"); const real = XMLHttpRequest.prototype.send; const before = document.querySelector("[data-strip-word]").textContent; document.dispatchEvent(new CustomEvent("htmx:responseError", { detail: { elt: el, xhr: { status: 503 } } })); const s = el.querySelector(".strip"); return { before, word: el.querySelector("[data-strip-word]").textContent, free: el.querySelector("[data-strip-free]").textContent, cls: s.className, bars: (() => { const b = el.querySelector(".gauge-models, .gauge-other"); return b ? getComputedStyle(b).opacity : "no bars"; })() }; })()`);
+check(stripBusy.word === "LocalBase is busy" && stripBusy.free === "" && !/strip-ready/.test(stripBusy.cls) && /strip-stale/.test(stripBusy.cls) && Number(stripBusy.bars) < 0.5, `a 503 on the strip's refresh stops it saying what it said, and its bars fade: ${JSON.stringify(stripBusy)}`);
 await sleep(3500);
 const stripBack = await ev(`({ word: document.querySelector("[data-strip-word]").textContent, free: document.querySelector("[data-strip-free]").textContent })`);
 check(stripBack.word !== "LocalBase is busy" && /GiB free/.test(stripBack.free), `the next good answer redraws it: ${JSON.stringify(stripBack)}`);

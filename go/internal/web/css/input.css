@@ -873,8 +873,8 @@
   .strip-off .strip-word {
     @apply font-semibold text-ink;
   }
-  .strip-off .gauge-other,
-  .strip-off .gauge-models {
+  /* Unreachable, or reached but unable to read its own state: the bars are out of date, so they fade. */
+  :is(.strip-off, .strip-stale) :is(.gauge-other, .gauge-models, .gauge-sliver) {
     fill: var(--lb-gauge-free);
     opacity: 0.35;
   }
