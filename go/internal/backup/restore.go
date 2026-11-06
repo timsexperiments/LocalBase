@@ -95,9 +95,16 @@ type KeyChange struct {
 
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
-	Target    string        `json:"target" report:"letters"`
-	NewRoot   bool          `json:"newRoot"`
-	Manifest  *Manifest     `json:"manifest"`
+	Target   string    `json:"target" report:"letters"`
+	NewRoot  bool      `json:"newRoot"`
+	Manifest *Manifest `json:"manifest"`
+	// Secrets are what the file holds, read from what it holds: its manifest's own list isn't believed.
+	Secrets []string `json:"secrets"`
+	// SecretsUnlisted are held and left off the manifest's own list.
+	SecretsUnlisted []string `json:"secretsUnlisted,omitempty"`
+	// PutBack are what the file says --exclude-secrets left out, each with a command this version built
+	// from fields it checked, or none.
+	PutBack   []PutBack     `json:"putBack,omitempty"`
 	Rules     []string      `json:"rules"`
 	Programs  []Program     `json:"programs"`
 	Sources   []ModelSource `json:"modelSources"`
@@ -796,6 +803,21 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		if rep.KeysActive, err = activeKeys(ctx, st); err != nil {
 			return nil, err
 		}
+	}
+	// What it holds, read the way a backup reads a root, once each file has passed its own check. A file
+	// can say anything about itself.
+	held, err := readSecrets(ctx, dir, dbPath, false)
+	if err != nil {
+		return nil, refuse("The secrets in this backup can't be read: %v", err)
+	}
+	rep.Secrets = held.names
+	for _, name := range held.names {
+		if !slices.Contains(m.SecretNames, name) {
+			rep.SecretsUnlisted = append(rep.SecretsUnlisted, name)
+		}
+	}
+	for _, r := range m.SecretsRemoved {
+		rep.PutBack = append(rep.PutBack, putBack(r))
 	}
 	return rep, nil
 }

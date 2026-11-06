@@ -23,10 +23,20 @@ import (
 )
 
 // RemovedSecret names something --exclude-secrets took out, and how to put it back. It never
-// holds a value.
+// holds a value. A restore builds its command from the fields, checked, and never prints Restore,
+// which a file can say anything in. Restore stays for older versions, which print it.
 type RemovedSecret struct {
 	Name    string `json:"name"`
 	Restore string `json:"restore"`
+	Kind    string `json:"kind,omitempty"`
+	ID      string `json:"id,omitempty"`
+	// Label is a sign-in provider's name, for --name.
+	Label    string   `json:"label,omitempty"`
+	Issuer   string   `json:"issuer,omitempty"`
+	ClientID string   `json:"clientId,omitempty"`
+	Origins  []string `json:"origins,omitempty"`
+	// Headers are names only.
+	Headers []string `json:"headers,omitempty"`
 }
 
 // secretSet is what a root holds that is secret. With --exclude-secrets, reduced holds the
@@ -39,12 +49,15 @@ type secretSet struct {
 	dropped map[string]bool
 }
 
-func (s *secretSet) found(name, restore string, exclude bool) {
-	if exclude {
-		s.removed = append(s.removed, RemovedSecret{Name: name, Restore: restore})
+func (s *secretSet) found(r RemovedSecret, exclude bool) {
+	r.Name = secretName(r)
+	if !exclude {
+		s.names = append(s.names, r.Name)
 		return
 	}
-	s.names = append(s.names, name)
+	// This root's own data, so the command is the same whether or not a restore could check it.
+	r.Restore, _ = putBackCommand(r, false)
+	s.removed = append(s.removed, r)
 }
 
 func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool) (*secretSet, error) {
@@ -54,10 +67,10 @@ func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool) (*se
 		return nil, err
 	}
 	if hf {
-		s.found("Hugging Face token", "local-base configure --hf-token <token>", exclude)
+		s.found(RemovedSecret{Kind: kindHFToken}, exclude)
 	}
 	if otel {
-		s.found("OTLP headers", "local-base configure --otel-headers <key=value,...>", exclude)
+		s.found(RemovedSecret{Kind: kindOTLPHeaders}, exclude)
 	}
 	if err := s.readAccess(rootDir, exclude); err != nil {
 		return nil, err
@@ -116,9 +129,9 @@ func (s *secretSet) readAccess(rootDir string, exclude bool) error {
 		case "oidc":
 			issuer, _ := reg["issuer"].(string)
 			client, _ := reg["clientId"].(string)
-			s.found("OIDC client secret ("+id+")", fmt.Sprintf("local-base access oidc add --id %s --name %q --issuer %s --client-id %s --client-secret-env <ENVIRONMENT_VARIABLE>", id, name, issuer, client), exclude)
+			s.found(RemovedSecret{Kind: kindOIDC, ID: id, Label: name, Issuer: issuer, ClientID: client}, exclude)
 		default:
-			s.found("GitHub client secret ("+id+")", "local-base access github-oauth add --id "+id, exclude)
+			s.found(RemovedSecret{Kind: kindGitHub, ID: id}, exclude)
 		}
 	}
 	if !exclude || len(kept) == len(regs) {
@@ -150,7 +163,7 @@ func (s *secretSet) readEmail(rootDir string, exclude bool) error {
 	if password, _ := auth["password"].(string); password == "" {
 		return nil
 	}
-	s.found("SMTP password", "local-base access email configure", exclude)
+	s.found(RemovedSecret{Kind: kindSMTP}, exclude)
 	if exclude {
 		s.dropped[rel] = true
 	}
@@ -174,17 +187,17 @@ func (s *secretSet) readProfiles(rootDir string, exclude bool) error {
 		if list, ok := p["origins"].([]any); ok {
 			for _, o := range list {
 				if v, ok := o.(string); ok {
-					origins = append(origins, "--origin "+v)
+					origins = append(origins, v)
 				}
 			}
 		}
 		if h, ok := p["headers"].(map[string]any); ok {
 			for name := range h {
-				headers = append(headers, "--header-env "+name+"=<ENVIRONMENT_VARIABLE>")
+				headers = append(headers, name)
 			}
 		}
 		sort.Strings(headers)
-		s.found("download credential ("+id+")", strings.TrimSpace("local-base auth-profiles add --id "+id+" "+strings.Join(append(origins, headers...), " ")), exclude)
+		s.found(RemovedSecret{Kind: kindDownload, ID: id, Origins: origins, Headers: headers}, exclude)
 	}
 	// A profile holds nothing but its secret values, so the file goes whole.
 	if exclude {

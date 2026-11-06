@@ -340,10 +340,14 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		keys += fmt.Sprintf(", %d expired", rep.Keys.Expired)
 	}
 	c.Info("The backup was made %s by version %s. It holds %d API keys (%s) and %d users.", m.CreatedAt, m.Version, rep.Keys.Total, keys, rep.Users)
-	if len(m.SecretNames) > 0 {
-		c.Info("Secrets in it: %s.", strings.Join(m.SecretNames, ", "))
+	// What it holds, as read from it. Its own list is only compared.
+	if len(rep.Secrets) > 0 {
+		c.Info("Secrets in it: %s.", strings.Join(rep.Secrets, ", "))
 	} else {
 		c.Info("It holds no secrets.")
+	}
+	if len(rep.SecretsUnlisted) > 0 {
+		c.Info("Its own list of secrets leaves out %s, so it may have been changed after it was made.", strings.Join(rep.SecretsUnlisted, ", "))
 	}
 	for _, rule := range rep.Rules {
 		c.Info("%s", rule)
@@ -540,8 +544,13 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 		c.Info("  Install any of these it doesn't have: %s", strings.Join(rep.Manifest.Models, ", "))
 		c.Info("    %s models install <id>", flag)
 	}
-	for _, s := range rep.Manifest.SecretsRemoved {
-		c.Info("  Put back %s: %s", s.Name, s.Restore)
+	// Never the file's own command: one built here, from fields it checked, or none.
+	for _, p := range rep.PutBack {
+		if p.Command == "" {
+			c.Info("  Put back %s by hand: this file doesn't say how in a way this version can check.", p.Name)
+		} else {
+			c.Info("  Put back %s: %s", p.Name, p.Command)
+		}
 	}
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {

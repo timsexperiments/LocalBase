@@ -226,14 +226,38 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"a key held back":       rep.KeysHeldBack[1].Name,
 		"a caution":             rep.Cautions[1],
 		"a rule":                rep.Rules[1],
-		"a secret's name":       rep.Manifest.SecretNames[1],
-		"a removed secret":      rep.Manifest.SecretsRemoved[1].Restore,
+		"a secret in it":        rep.Secrets[1],
+		"one left off its list": rep.SecretsUnlisted[1],
+		"a secret to put back":  rep.PutBack[1].Name,
+		"its command":           rep.PutBack[1].Command,
 		"a model to install":    rep.Manifest.Models[1],
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
 	} {
 		if !strings.Contains(got, cli.PrintableASCII(value)) && !strings.Contains(got, cli.Printable(value)) {
 			t.Errorf("%s isn't there", name)
+		}
+	}
+}
+
+// A removed secret is put back with the command built for it, or said to be put back by hand, and what the
+// file itself says about it never reaches the terminal as it is.
+func TestAPutBackLineIsPrintedSafely(t *testing.T) {
+	rep := &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{SecretsRemoved: []backup.RemovedSecret{{Name: "evil\x1b[2J", Restore: "the-file-says-run-this"}}},
+		PutBack: []backup.PutBack{{Name: "evil\x1b[2J"}, {Name: "GitHub client secret (gh)", Command: "local-base access github-oauth add --id gh"}}}
+	got := rendered(t, rep)
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	if strings.Contains(got, "the-file-says-run-this") {
+		t.Error("the file's own command was printed")
+	}
+	for _, want := range []string{
+		`Put back evil\x1b[2J by hand: this file doesn't say how in a way this version can check.`,
+		"Put back GitHub client secret (gh): local-base access github-oauth add --id gh",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
 		}
 	}
 }
