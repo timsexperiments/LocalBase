@@ -161,8 +161,7 @@ func sameRequest(a, b placement.Request) bool {
 // placementRuntimeState tells the local CLI, behind the instance token,
 // whether a model is loading and the split it was loaded with.
 func (s *Server) placementRuntimeState(w http.ResponseWriter, r *http.Request) {
-	o := s.Root.Instance()
-	if o == nil || r.Header.Get("X-Localbase-Instance-Token") != o.InstanceToken || s.LLM == nil {
+	if !instanceTokenMatches(s.Root.Instance(), r) || s.LLM == nil {
 		w.WriteHeader(404)
 		return
 	}

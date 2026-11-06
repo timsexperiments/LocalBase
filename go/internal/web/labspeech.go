@@ -563,7 +563,9 @@ func (u *UI) speechItem(id string, note *labNote) labItemView {
 
 // labVoicePreview speaks a short sentence in a voice, once per model and voice.
 func (u *UI) labVoicePreview(w http.ResponseWriter, r *http.Request) {
-	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
+	// A preview can load a model, which can move another out of memory, so a page elsewhere
+	// can't ask for one, not even under the same domain.
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
