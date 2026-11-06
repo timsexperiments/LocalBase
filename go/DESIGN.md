@@ -5271,6 +5271,14 @@ supplied. An entry from the feed that names a file another model uses, with diff
 of the catalog, with a diagnostic saying why. Case doesn't count, since a disk may not care. Between two feed entries,
 the first keeps the name. A person's own entries in `catalog.d` aren't checked: what they name is their choice.
 
+### 31.15 What a diagnostics bundle leaves out
+
+A bundle exists to be shared, so it doesn't say who it came from. Its recent log events leave out the root's path, the
+names and ids of API keys, who acted and on what, and addresses. Text is gone over as well, because an error can quote
+anything: a home directory becomes `/Users/<someone>` and an address becomes `<address>`. The log on the person's own
+computer keeps all of it. A path outside a home directory stays, because it says nothing about them and often says what
+went wrong.
+
 ## 32. Usage and activity (design addendum, 2026-11-02)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
