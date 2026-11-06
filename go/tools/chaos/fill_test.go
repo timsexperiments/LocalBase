@@ -67,6 +67,19 @@ func TestFreeFullDisk(t *testing.T) {
 	}
 }
 
+// The fill keeps a margin. It can't show here that the filesystem needs one: this Mac's APFS stops
+// writes with 2.43 MiB still free, so a fill to the last bytes leaves room to delete anyway, and the
+// refused delete has only been seen on macos-15 (#671's first run). It shows the code keeps one, at
+// least the 4 MiB measured as real free space, with a probe larger than it.
+func TestFillLeavesAMargin(t *testing.T) {
+	if fillMargin < 4<<20 {
+		t.Errorf("fillMargin is %d bytes, under the 4 MiB that is real free space on this Mac's APFS", fillMargin)
+	}
+	if fillProbe <= fillMargin {
+		t.Errorf("the probe (%d bytes) must be larger than the margin (%d)", fillProbe, fillMargin)
+	}
+}
+
 // A failure in CI lists each refused delete with the free bytes at that moment, runs put together.
 func TestRefusalsReadAsRuns(t *testing.T) {
 	got := runs([]string{"0 bytes free: no space", "0 bytes free: no space", "4096 bytes free: no space"})

@@ -781,7 +781,9 @@ func TestDiskFullDuringDownload(t *testing.T) {
 // there is room.
 func TestDiskFullWhileServing(t *testing.T) {
 	disk := smallDisk(t)
-	ctx, g, c := start(t, lab.Options{Dir: filepath.Join(disk, "gw")})
+	// Twice the margin, so installing it is a write that cannot fit on the full disk.
+	big := serveArtifact(t, modelBytes(2*fillMargin))
+	ctx, g, c := start(t, lab.Options{Dir: filepath.Join(disk, "gw"), PrepareRoot: catalogEntry(big)})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	free := fillDisk(t, disk)
 	defer free()
@@ -794,12 +796,31 @@ func TestDiskFullWhileServing(t *testing.T) {
 	if r := c.Do(ctx, "GET", "/health", "", "", nil); r.Status != 200 {
 		t.Errorf("health on a full disk: %d", r.Status)
 	}
-	// A write that cannot happen is refused, never a panic or a false success.
+	// Small writes may fit in the margin fillDisk leaves, so a key or a run may be made: either way,
+	// never a panic or a server error.
 	create := c.PostJSON(ctx, "/_localbase/api-keys", g.Keys.Admin, map[string]any{"action": "create", "name": "on-a-full-disk", "scopes": []string{"models:read"}})
 	noServerError(t, "creating a key on a full disk", create)
 	madeOnFullDisk := create.Status < 300
 	run := c.PostJSON(ctx, "/_localbase/runs/v1/chat/completions", g.Keys.Runs[0], chatBody(lab.ChatSmall, "fake:reply on a full disk"))
 	noServerError(t, "a run on a full disk", run)
+	// A write larger than the margin cannot happen, and is refused cleanly, for storage: the gateway
+	// turns the install away at once (409 insufficient_storage, measured), or it starts and fails
+	// pointing at storage. Never a server error, never a refusal for another reason, never a false
+	// success.
+	inst := c.PostJSON(ctx, "/_localbase/model-management", g.Keys.Admin, map[string]any{"modelId": dlModel, "action": "install"})
+	noServerError(t, "installing more than the margin on a full disk", inst)
+	switch {
+	case inst.Status == 202:
+		s := installEnds(t, ctx, c, g)
+		if s.Operation.State != "failed" || s.Installed {
+			t.Errorf("installing more than the margin on a full disk: %+v %+v", s, s.Operation)
+		} else if d := strings.ToLower(s.Operation.Detail); !strings.Contains(d, "storage") && !strings.Contains(d, "space") {
+			t.Errorf("the failed install does not point at storage: %q", s.Operation.Detail)
+		}
+	case inst.Code != "insufficient_storage":
+		t.Errorf("installing more than the margin on a full disk was refused, but not for storage: %d %q %.300s", inst.Status, inst.Code, inst.Body)
+	}
+	mustChat(t, ctx, c, g, lab.ChatSmall)
 	select {
 	case <-g.Done():
 		t.Fatalf("the gateway exited on a full disk: %v", g.ExitErr())
@@ -811,7 +832,7 @@ func TestDiskFullWhileServing(t *testing.T) {
 	if again.Status >= 300 {
 		t.Errorf("creating a key after freeing the disk: %d %.300s", again.Status, again.Body)
 	}
-	t.Logf("key creation on a full disk: %d (succeeded: %v); a run: %d", create.Status, madeOnFullDisk, run.Status)
+	t.Logf("key creation on a full disk: %d (succeeded: %v); a run: %d; an install of %d bytes: %d %q %.200s", create.Status, madeOnFullDisk, run.Status, 2*fillMargin, inst.Status, inst.Code, inst.Body)
 }
 
 // --- many sessions -----------------------------------------------------------
