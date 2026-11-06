@@ -230,7 +230,7 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	if !strings.Contains(made.stderr, "not anonymised") || !strings.Contains(made.stderr, "not encrypted") {
 		t.Errorf("the warning: %q", made.stderr)
 	}
-	for _, want := range []string{"OIDC client secret (google)", "access oidc add --id google", "SMTP password", "download credential (vendor)"} {
+	for _, want := range []string{"OIDC client secret (google)", "access oidc add --id=google", "SMTP password", "download credential (vendor)"} {
 		if !strings.Contains(made.stdout, want) {
 			t.Errorf("the output should name %q:\n%s", want, made.stdout)
 		}
@@ -242,6 +242,26 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	}
 	if !strings.Contains(done.stdout, "Put back OIDC client secret (google)") {
 		t.Errorf("restore should say what to put back:\n%s", done.stdout)
+	}
+	// Restore builds each command itself and prints it, and it has to be the one the backup printed.
+	said := 0
+	inList := false
+	for _, line := range strings.Split(made.stdout, "\n") {
+		if strings.HasPrefix(line, "Secrets left out, and the command that puts each back:") {
+			inList = true
+			continue
+		}
+		if !inList || !strings.HasPrefix(line, "  ") {
+			inList = inList && strings.HasPrefix(line, "  ")
+			continue
+		}
+		said++
+		if want := "Put back " + strings.TrimPrefix(line, "  "); !strings.Contains(done.stdout, want) {
+			t.Errorf("restore should say %q:\n%s", want, done.stdout)
+		}
+	}
+	if said < 3 {
+		t.Errorf("the backup listed %d secrets to put back:\n%s", said, made.stdout)
 	}
 	for _, secret := range []string{oidc, smtp, header} {
 		if strings.Contains(done.stdout+done.stderr+made.stdout+made.stderr, secret) {
@@ -609,19 +629,22 @@ func TestUninstallNamesBackups(t *testing.T) {
 	}
 }
 
-// bigBackupRoot has a recording large enough that a run is still working when a signal arrives.
+// bigBackupRoot has enough recordings that a run is still working when a signal arrives. Each is what
+// a recording can be, and they can't compress.
 func bigBackupRoot(t *testing.T, tmp string) *e2e {
 	t.Helper()
 	e := backupRoot(t, tmp, "root")
-	clip := make([]byte, 96<<20)
-	if _, err := rand.Read(clip); err != nil {
-		t.Fatal(err)
-	}
 	if err := mustMkdirAll(filepath.Join(e.root, "voices"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(e.root, "voices", "voice-aaaaaaaaaaaa.wav"), clip, 0o600); err != nil {
-		t.Fatal(err)
+	for i := range 8 {
+		clip := make([]byte, 12<<20)
+		if _, err := rand.Read(clip); err != nil {
+			t.Fatal(err)
+		}
+		if err := mustWriteFile(filepath.Join(e.root, "voices", fmt.Sprintf("voice-aaaaaaaaaaa%d.wav", i)), clip, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return e
 }

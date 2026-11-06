@@ -401,9 +401,9 @@ func TestBackupHoldsSecretsOrNot(t *testing.T) {
 	for name, command := range map[string]string{
 		"Hugging Face token":           "configure --hf-token",
 		"OTLP headers":                 "configure --otel-headers",
-		"OIDC client secret (google)":  "access oidc add --id google",
+		"OIDC client secret (google)":  "access oidc add --id=google",
 		"SMTP password":                "access email configure",
-		"download credential (vendor)": "auth-profiles add --id vendor --origin https://vendor.example.com --header-env X-Api-Key=",
+		"download credential (vendor)": "auth-profiles add --id=vendor --origin=https://vendor.example.com --header-env=X-Api-Key=",
 	} {
 		if !strings.Contains(names[name], command) {
 			t.Errorf("%s: %q, want %q", name, names[name], command)
@@ -945,8 +945,9 @@ func TestRestoreRefusesBadFiles(t *testing.T) {
 		}, "size a backup can't hold"},
 		"a total over the limit": {func(t *testing.T, e []entry) []entry {
 			m := manifestOf(t, e)
-			for i := 0; i < 3; i++ {
-				m.Files = append(m.Files, File{Path: fmt.Sprintf("catalog.d/big%d.json", i), Size: maxFileBytes, SHA256: strings.Repeat("a", 64)})
+			voice := maxBytesOf("voices/voice-000000000000.wav")
+			for i := int64(0); i <= maxTotalBytes/voice; i++ {
+				m.Files = append(m.Files, File{Path: fmt.Sprintf("voices/voice-%012x.wav", i), Size: voice, SHA256: strings.Repeat("a", 64)})
 			}
 			setManifest(t, e, m)
 			return e

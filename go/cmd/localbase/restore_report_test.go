@@ -226,8 +226,18 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"a key held back":       rep.KeysHeldBack[1].Name,
 		"a caution":             rep.Cautions[1],
 		"a rule":                rep.Rules[1],
-		"a secret's name":       rep.Manifest.SecretNames[1],
-		"a removed secret":      rep.Manifest.SecretsRemoved[1].Restore,
+		"a secret in it":        rep.Secrets[1],
+		"one left off its list": rep.SecretsUnlisted[1],
+		"a secret to put back":  rep.PutBack[1].Name,
+		"its command":           rep.PutBack[1].Command,
+		"a catalog entry":       rep.Catalog[1].Model,
+		"where it comes from":   rep.Catalog[1].Source,
+		"at which revision":     rep.Catalog[1].Revision,
+		"a file of it":          rep.Catalog[1].Files[1].File,
+		"where that comes from": rep.Catalog[1].Files[1].From,
+		"a credential":          rep.Downloads[1].ID,
+		"a header it sends":     rep.Downloads[1].Headers[1],
+		"where it sends it":     rep.Downloads[1].Origins[1],
 		"a model to install":    rep.Manifest.Models[1],
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
@@ -235,5 +245,139 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		if !strings.Contains(got, cli.PrintableASCII(value)) && !strings.Contains(got, cli.Printable(value)) {
 			t.Errorf("%s isn't there", name)
 		}
+	}
+}
+
+// A removed secret is put back with the command built for it, or said to be put back by hand, and what the
+// file itself says about it never reaches the terminal as it is.
+func TestAPutBackLineIsPrintedSafely(t *testing.T) {
+	rep := &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{SecretsRemoved: []backup.RemovedSecret{{Name: "evil\x1b[2J", Restore: "the-file-says-run-this"}}},
+		PutBack: []backup.PutBack{{Name: "evil\x1b[2J"}, {Name: "GitHub client secret (gh)", Command: "local-base access github-oauth add --id gh"}}}
+	got := rendered(t, rep)
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	if strings.Contains(got, "the-file-says-run-this") {
+		t.Error("the file's own command was printed")
+	}
+	for _, want := range []string{
+		`Put back evil\x1b[2J by hand: this file doesn't say how in a way this version can check.`,
+		"Put back GitHub client secret (gh): local-base access github-oauth add --id gh",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
+		}
+	}
+}
+
+// The catalog section says what each entry adds or changes. One that changes where something downloads from is
+// never left out, however many there are, and only the rest are counted past the cap.
+func TestTheCatalogSectionSaysWhatEachEntryDoes(t *testing.T) {
+	var entries []backup.CatalogEntry
+	for i := range 30 {
+		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("dl-%02d", i), New: true, Downloads: true,
+			Source: "https://huggingface.co/someone/repo", Revision: "abc123"})
+	}
+	entries[1] = backup.CatalogEntry{Model: "dl-01", Changes: []string{"source", "notes"}, Downloads: true, Source: "https://huggingface.co/someone-else/repo",
+		Revision: "def456", WasSource: "https://huggingface.co/the-maker/repo", WasRevision: "abc123"}
+	entries[2] = backup.CatalogEntry{Model: "dl-02", Changes: []string{"artifacts"}, Downloads: true, Source: "https://huggingface.co/the-maker/repo", Revision: "abc123",
+		Files: []backup.FileSource{{File: "weights.gguf", From: "https://huggingface.co/elsewhere/repo/resolve/abc123/weights.gguf"}}}
+	entries[3].Model = "evil\x1b[2J"
+	for i := range 30 {
+		entries = append(entries, backup.CatalogEntry{Model: fmt.Sprintf("hm-%02d", i), Changes: []string{"notes"}, Source: "https://huggingface.co/the-maker/repo", Revision: "abc123"})
+	}
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: entries})
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	for _, want := range []string{
+		"Catalog entries in it, which this root will trust as its own:",
+		"  dl-00: new, downloads from https://huggingface.co/someone/repo at abc123",
+		"  dl-01: changes source, notes of the built-in entry, and downloads from https://huggingface.co/someone-else/repo at def456 instead of https://huggingface.co/the-maker/repo at abc123",
+		"  dl-02: changes artifacts of the built-in entry, and downloads from https://huggingface.co/the-maker/repo at abc123",
+		"    weights.gguf comes from https://huggingface.co/elsewhere/repo/resolve/abc123/weights.gguf",
+		`  evil\x1b[2J: new, downloads from`,
+		"  dl-29: new, downloads from",
+		"  hm-24: changes notes of the built-in entry",
+		"  and 5 more: run this with --json to see them all.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "hm-25") {
+		t.Error("it listed more of the rest than it should")
+	}
+}
+
+// Past 50 entries that change where something downloads from, the report says how many more there are, so a
+// person is told there are more even when the one that matters is among those not listed. Past 5 of an entry's
+// files from elsewhere, the same.
+func TestDownloadChangesPastTheCapAreCounted(t *testing.T) {
+	entry := func(id string) backup.CatalogEntry {
+		return backup.CatalogEntry{Model: id, New: true, Downloads: true, Source: "https://huggingface.co/someone/repo", Revision: "abc123"}
+	}
+	var sixty []backup.CatalogEntry
+	for i := range 60 {
+		sixty = append(sixty, entry(fmt.Sprintf("dl-%02d", i)))
+	}
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: sixty})
+	if !strings.Contains(got, "  dl-49: new, downloads from") || strings.Contains(got, "dl-50") {
+		t.Errorf("it should list the first 50:\n%s", got)
+	}
+	if want := "  and 10 more that change where models download from: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("it should say %q", want)
+	}
+	withHostile := append(append([]backup.CatalogEntry{}, sixty...), entry("zz-hostile"))
+	got = rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: withHostile})
+	if strings.Contains(got, "zz-hostile") {
+		t.Error("the 61st was listed")
+	}
+	if want := "  and 11 more that change where models download from: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("with the hostile one 61st, it should still say %q", want)
+	}
+	files := entry("dl-files")
+	for i := range 7 {
+		files.Files = append(files.Files, backup.FileSource{File: fmt.Sprintf("f-%d.gguf", i), From: "https://huggingface.co/elsewhere/repo/resolve/abc/f.gguf"})
+	}
+	got = rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Catalog: []backup.CatalogEntry{files}})
+	if !strings.Contains(got, "    f-4.gguf comes from") || strings.Contains(got, "f-5.gguf") {
+		t.Errorf("it should list 5 files:\n%s", got)
+	}
+	if want := "    and 2 more files from elsewhere: run this with --json to see them all."; !strings.Contains(got, want) {
+		t.Errorf("it should say %q", want)
+	}
+}
+
+// The download section says where each credential goes, the Hugging Face profile in its own words, and counts
+// what it doesn't list.
+func TestTheDownloadSectionSaysWhereEachIsSent(t *testing.T) {
+	credentials := []backup.DownloadCredential{
+		{ID: "huggingface", Origins: []string{"https://elsewhere.example"}},
+		{ID: "vendor", Headers: []string{"X-Api-Key", "X-Org"}, Origins: []string{"https://vendor.example.com", "https://cdn.vendor.example.com"}},
+	}
+	for i := range 28 {
+		credentials = append(credentials, backup.DownloadCredential{ID: fmt.Sprintf("zz-%02d", i), Headers: []string{"X-Key"}, Origins: []string{"https://x.example"}})
+	}
+	credentials[2].ID = "evil\x1b[2J"
+	got := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{}, Downloads: credentials})
+	if strings.ContainsRune(got, 0x1b) {
+		t.Error("an escape reached the terminal")
+	}
+	for _, want := range []string{
+		"Download credentials in it, and where each is sent:",
+		"  huggingface: the Hugging Face token to https://elsewhere.example",
+		"  vendor: X-Api-Key, X-Org to https://vendor.example.com, https://cdn.vendor.example.com",
+		`  evil\x1b[2J: X-Key to https://x.example`,
+		"  and 5 more: run this with --json to see them all.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("it should say %q:\n%s", want, got)
+		}
+	}
+	withHeaders := rendered(t, &backup.Report{Target: "/tmp/root", Manifest: &backup.Manifest{},
+		Downloads: []backup.DownloadCredential{{ID: "huggingface", Headers: []string{"X-Extra"}, Origins: []string{"https://elsewhere.example"}}}})
+	if want := "  huggingface: the Hugging Face token and X-Extra to https://elsewhere.example"; !strings.Contains(withHeaders, want) {
+		t.Errorf("it should say %q:\n%s", want, withHeaders)
 	}
 }

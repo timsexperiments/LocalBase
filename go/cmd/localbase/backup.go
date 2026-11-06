@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -327,6 +328,90 @@ func copyPrintable(dst, src reflect.Value, letters bool) {
 	}
 }
 
+// catalogShown is how many catalog entries a report lists before it counts the rest.
+const catalogShown = 25
+
+// catalogDownloadsShown and catalogFilesShown are how many entries that change where something downloads from,
+// and how many of an entry's files from elsewhere, a report lists before it counts the rest. A file chooses how
+// many there are, and nobody can read tens of thousands of lines. --json lists them all.
+const (
+	catalogDownloadsShown = 50
+	catalogFilesShown     = 5
+)
+
+// printCatalog says what the backup's catalog.d will make this root trust, before anything is changed. Entries
+// that change where something downloads from come first, and the rest are only listed after them.
+func printCatalog(c *cli.Ctx, entries []backup.CatalogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	var downloads, rest []backup.CatalogEntry
+	for _, e := range entries {
+		if e.Downloads {
+			downloads = append(downloads, e)
+		} else {
+			rest = append(rest, e)
+		}
+	}
+	c.Info("Catalog entries in it, which this root will trust as its own:")
+	for i, e := range downloads {
+		if i == catalogDownloadsShown {
+			c.Info("  and %d more that change where models download from: run this with --json to see them all.", len(downloads)-catalogDownloadsShown)
+			break
+		}
+		printCatalogEntry(c, e)
+	}
+	for i, e := range rest {
+		if i == catalogShown {
+			c.Info("  and %d more: run this with --json to see them all.", len(rest)-catalogShown)
+			break
+		}
+		printCatalogEntry(c, e)
+	}
+}
+
+func printCatalogEntry(c *cli.Ctx, e backup.CatalogEntry) {
+	switch {
+	case e.New:
+		c.Info("  %s: new, downloads from %s at %s", e.Model, e.Source, e.Revision)
+	case e.WasSource != "" || e.WasRevision != "":
+		c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s instead of %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision, e.WasSource, e.WasRevision)
+	default:
+		c.Info("  %s: changes %s of the built-in entry, and downloads from %s at %s", e.Model, strings.Join(e.Changes, ", "), e.Source, e.Revision)
+	}
+	for i, f := range e.Files {
+		if i == catalogFilesShown {
+			c.Info("    and %d more files from elsewhere: run this with --json to see them all.", len(e.Files)-catalogFilesShown)
+			break
+		}
+		c.Info("    %s comes from %s", f.File, f.From)
+	}
+}
+
+// printDownloads says where each download credential will be sent, by header name, never value. The
+// huggingface profile also sends the Hugging Face token.
+func printDownloads(c *cli.Ctx, credentials []backup.DownloadCredential) {
+	if len(credentials) == 0 {
+		return
+	}
+	c.Info("Download credentials in it, and where each is sent:")
+	for i, d := range credentials {
+		if i == catalogShown {
+			c.Info("  and %d more: run this with --json to see them all.", len(credentials)-catalogShown)
+			return
+		}
+		origins, headers := strings.Join(d.Origins, ", "), strings.Join(d.Headers, ", ")
+		switch {
+		case d.ID == acquire.HFProfileID && len(d.Headers) == 0:
+			c.Info("  huggingface: the Hugging Face token to %s", origins)
+		case d.ID == acquire.HFProfileID:
+			c.Info("  huggingface: the Hugging Face token and %s to %s", headers, origins)
+		default:
+			c.Info("  %s: %s to %s", d.ID, headers, origins)
+		}
+	}
+}
+
 func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	rep = printable(rep)
 	if rep.NewRoot {
@@ -340,11 +425,17 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 		keys += fmt.Sprintf(", %d expired", rep.Keys.Expired)
 	}
 	c.Info("The backup was made %s by version %s. It holds %d API keys (%s) and %d users.", m.CreatedAt, m.Version, rep.Keys.Total, keys, rep.Users)
-	if len(m.SecretNames) > 0 {
-		c.Info("Secrets in it: %s.", strings.Join(m.SecretNames, ", "))
+	// What it holds, as read from it. Its own list is only compared.
+	if len(rep.Secrets) > 0 {
+		c.Info("Secrets in it: %s.", strings.Join(rep.Secrets, ", "))
 	} else {
 		c.Info("It holds no secrets.")
 	}
+	if len(rep.SecretsUnlisted) > 0 {
+		c.Info("Its own list of secrets leaves out %s, so it may have been changed after it was made.", strings.Join(rep.SecretsUnlisted, ", "))
+	}
+	printCatalog(c, rep.Catalog)
+	printDownloads(c, rep.Downloads)
 	for _, rule := range rep.Rules {
 		c.Info("%s", rule)
 	}
@@ -355,7 +446,7 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	printHeldBack(c, rep.KeysHeldBack)
 	printKeys(c, "Keys changed since this backup stay as they are on this root:", "  To take this backup's version of one: --bring-back-key <id>", rep.KeysKept)
 	printKeys(c, "Keys in this backup that this root doesn't have stay out:", "  To bring one back: --bring-back-key <id>", rep.KeysLeftOut)
-	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  The secret in this backup works for these, and any they have now stops working.", rep.KeysBroughtBack)
+	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  This backup's secret for each of these will work. The secret each has now will stop working.", rep.KeysBroughtBack)
 	printKeys(c, "Keys made since this backup would stop working:", "", rep.KeysLost)
 	if rep.ReturningUsers > 0 {
 		c.Info("%d users this root has removed would come back.", rep.ReturningUsers)
@@ -540,8 +631,13 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 		c.Info("  Install any of these it doesn't have: %s", strings.Join(rep.Manifest.Models, ", "))
 		c.Info("    %s models install <id>", flag)
 	}
-	for _, s := range rep.Manifest.SecretsRemoved {
-		c.Info("  Put back %s: %s", s.Name, s.Restore)
+	// Never the file's own command: one built here, from fields it checked, or none.
+	for _, p := range rep.PutBack {
+		if p.Command == "" {
+			c.Info("  Put back %s by hand: this file doesn't say how in a way this version can check.", p.Name)
+		} else {
+			c.Info("  Put back %s: %s", p.Name, p.Command)
+		}
 	}
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // Warning codes shown before a download.
@@ -166,7 +167,7 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 	case !req.AllowLocal:
 		return nil, &RefusedError{CodeLocalPath, localPathMessage}
 	default:
-		p, err = resolveLocal(src, req)
+		p, err = resolveLocal(rootDir, src, req)
 	}
 	if err != nil {
 		return nil, refusal(err, req.OnHost)
@@ -531,7 +532,25 @@ func resolveURL(ctx context.Context, raw string, req Request, profile *Profile) 
 	return p, nil
 }
 
-func resolveLocal(src string, req Request) (*Plan, error) {
+// partOfOwnDatabase says whether this file is the root's database or one of the files beside it. It goes
+// by what the file is, so another path or a link to it counts, and it reads nothing: closing any descriptor
+// on the database ends this process's locks on it, and those locks are how another process knows a store is
+// attached. A file with the same name somewhere else is just a file.
+func partOfOwnDatabase(rootDir string, info os.FileInfo) bool {
+	db := filepath.Join(rootDir, "local-base.db")
+	for _, suffix := range append([]string{""}, store.Sidecars...) {
+		if own, err := os.Stat(db + suffix); err == nil && os.SameFile(info, own) {
+			return true
+		}
+	}
+	return false
+}
+
+func ownDatabaseError(name string) error {
+	return fmt.Errorf("%s is part of LocalBase's own database, so it can't be imported.", name)
+}
+
+func resolveLocal(rootDir, src string, req Request) (*Plan, error) {
 	abs, err := filepath.Abs(src)
 	if err != nil {
 		return nil, err
@@ -541,6 +560,9 @@ func resolveLocal(src string, req Request) (*Plan, error) {
 		return nil, fmt.Errorf("%s is not a file, a URL or a Hugging Face repository", src)
 	}
 	name := filepath.Base(abs)
+	if partOfOwnDatabase(rootDir, info) {
+		return nil, ownDatabaseError(name)
+	}
 	if refused(name) {
 		return nil, fmt.Errorf("%s is code or a pickle, which LocalBase never imports", name)
 	}
@@ -565,6 +587,9 @@ func resolveLocal(src string, req Request) (*Plan, error) {
 			oi, err := os.Stat(op)
 			if err != nil {
 				return nil, fmt.Errorf("incomplete split set: %s is missing next to %s", other, name)
+			}
+			if partOfOwnDatabase(rootDir, oi) {
+				return nil, ownDatabaseError(other)
 			}
 			p.Files = append(p.Files, PlannedFile{Filename: other, Role: models.RoleWeights, Required: true, SizeBytes: oi.Size(),
 				Source: models.Source{Kind: "local", Path: op}, local: op})

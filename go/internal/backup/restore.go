@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -95,16 +96,27 @@ type KeyChange struct {
 
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
-	Target    string        `json:"target" report:"letters"`
-	NewRoot   bool          `json:"newRoot"`
-	Manifest  *Manifest     `json:"manifest"`
-	Rules     []string      `json:"rules"`
-	Programs  []Program     `json:"programs"`
-	Sources   []ModelSource `json:"modelSources"`
-	Settings  []Setting     `json:"settings"`
-	Providers []string      `json:"signInProviders"`
-	SignIn    *SignIn       `json:"signIn"`
-	Grants    []Grant       `json:"grants"`
+	Target   string    `json:"target" report:"letters"`
+	NewRoot  bool      `json:"newRoot"`
+	Manifest *Manifest `json:"manifest"`
+	// Secrets are what the file holds, read from what it holds: its manifest's own list isn't believed.
+	Secrets []string `json:"secrets"`
+	// SecretsUnlisted are held and left off the manifest's own list.
+	SecretsUnlisted []string `json:"secretsUnlisted,omitempty"`
+	// PutBack are what the file says --exclude-secrets left out, each with a command this version built
+	// from fields it checked, or none.
+	PutBack []PutBack `json:"putBack,omitempty"`
+	// Catalog are the catalog.d entries this root's catalog will trust as its own, by id.
+	Catalog []CatalogEntry `json:"catalog,omitempty"`
+	// Downloads are the download credentials in it and where each will be sent, by id. Header names only.
+	Downloads []DownloadCredential `json:"downloadCredentials,omitempty"`
+	Rules     []string             `json:"rules"`
+	Programs  []Program            `json:"programs"`
+	Sources   []ModelSource        `json:"modelSources"`
+	Settings  []Setting            `json:"settings"`
+	Providers []string             `json:"signInProviders"`
+	SignIn    *SignIn              `json:"signIn"`
+	Grants    []Grant              `json:"grants"`
 	// RolesGone are the roles this root has and the backup doesn't.
 	RolesGone []Grant   `json:"rolesGone,omitempty"`
 	Keys      KeyCounts `json:"keys"`
@@ -405,7 +417,7 @@ func checkManifestFiles(m *Manifest) (map[string]File, int64, error) {
 		return nil, 0, refuse("The backup lists more files than a backup can hold.")
 	}
 	byPath := map[string]File{}
-	var total int64
+	var total, settings int64
 	for _, f := range m.Files {
 		if !holdable(f.Path) {
 			return nil, 0, refuse("The backup lists a file a backup can't hold: %q.", f.Path)
@@ -413,8 +425,13 @@ func checkManifestFiles(m *Manifest) (map[string]File, int64, error) {
 		if _, dup := byPath[f.Path]; dup {
 			return nil, 0, refuse("The backup lists %q twice.", f.Path)
 		}
-		if f.Size < 0 || f.Size > maxFileBytes {
+		if f.Size < 0 || f.Size > maxBytesOf(f.Path) {
 			return nil, 0, refuse("The backup lists %q with a size a backup can't hold.", f.Path)
+		}
+		if isSettingsFile(f.Path) {
+			if settings += f.Size; settings > maxSettingsTotalBytes {
+				return nil, 0, refuse("The backup lists more settings than a backup can hold.")
+			}
 		}
 		if !sha256Hex.MatchString(f.SHA256) {
 			return nil, 0, refuse("The backup lists %q with no usable checksum.", f.Path)
@@ -623,7 +640,92 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if bad := shape.Unexpected(expected); len(bad) > 0 {
 		return refuse("The database holds what LocalBase does not make, so it was changed by something else: %s.", strings.Join(bad, "; "))
 	}
+	if err := checkDatabaseSize(ctx, db, shape); err != nil {
+		return err
+	}
 	return checkForeignKeys(ctx, db)
+}
+
+// checkDatabaseSize refuses a database holding more than a root could, before anything reads it into
+// memory. octet_length takes a value's size from its header, so a large value isn't read to find out
+// that it's large.
+func checkDatabaseSize(ctx context.Context, db *sql.DB, shape *store.Shape) error {
+	for _, name := range slices.Sorted(maps.Keys(shape.Tables)) {
+		table := shape.Tables[name]
+		query := `SELECT COUNT(*)`
+		for _, column := range table.Columns {
+			query += `, COALESCE(MAX(octet_length(` + quoteName(column.Name) + `)), 0), COALESCE(SUM(octet_length(` + quoteName(column.Name) + `)), 0)`
+		}
+		values := make([]int64, 1+2*len(table.Columns))
+		targets := make([]any, len(values))
+		for i := range values {
+			targets[i] = &values[i]
+		}
+		if err := db.QueryRowContext(ctx, query+` FROM `+quoteName(name)).Scan(targets...); err != nil {
+			return refuse("The database can't be read: %v", err)
+		}
+		var total int64
+		for i := range table.Columns {
+			if largest := values[1+2*i]; largest > maxDatabaseValueBytes {
+				return refuse("The database holds more than a root could, so it was changed by something else: a value of %d bytes in %s.", largest, name)
+			}
+			total += values[2+2*i]
+		}
+		if name == usageTable {
+			continue
+		}
+		if values[0] > maxDatabaseRows {
+			return refuse("The database holds more than a root could, so it was changed by something else: %d rows in %s.", values[0], name)
+		}
+		if total > maxDatabaseTableBytes {
+			return refuse("The database holds more than a root could, so it was changed by something else: %d bytes in %s.", total, name)
+		}
+	}
+	return nil
+}
+
+// settleJournalMode leaves the staged database as one file. How a database is journaled is the store's
+// to decide, so a file doesn't get to choose it for the root by what its header claims, and nothing
+// beside the database has to move with it. It's the last thing done to the staged database, so that
+// whatever has been written is already in there.
+func settleJournalMode(ctx context.Context, db *sql.DB) error {
+	var mode string
+	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode=DELETE`).Scan(&mode); err != nil {
+		return err
+	}
+	return modeAfterSettling(mode)
+}
+
+// journalModes are SQLite's own words for a journal mode, the only ones a refusal shows.
+var journalModes = []string{"delete", "truncate", "persist", "memory", "wal", "off"}
+
+// modeStayedError is a journal mode that didn't change. Its mode is always one of journalModes.
+type modeStayedError struct{ mode string }
+
+func (e *modeStayedError) Error() string { return "its journal mode stayed " + e.mode }
+
+// modeAfterSettling says what SQLite's answer means. An answer that isn't one of its own words, which SQLite
+// doesn't give, is said without it.
+func modeAfterSettling(mode string) error {
+	mode = strings.ToLower(mode)
+	switch {
+	case mode == "delete":
+		return nil
+	case slices.Contains(journalModes, mode):
+		return &modeStayedError{mode}
+	}
+	return errors.New("its journal mode didn't change")
+}
+
+// settleJournal is settleJournalMode, as a variable so that a test can see a restore refuse when it can't be
+// done, which no real file has been found to cause.
+var settleJournal = settleJournalMode
+
+// usageTable piles up, and a restore never reads it into memory, so only its values are limited.
+const usageTable = "usage_hourly"
+
+func quoteName(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 // checkForeignKeys refuses a database with rows pointing at something that isn't there. LocalBase keeps
@@ -696,7 +798,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		}
 	}
 
-	rep := &Report{Target: target, NewRoot: state.newRoot, Manifest: m}
+	rep := &Report{Target: target, NewRoot: state.newRoot, Manifest: manifestToShow(m)}
 	access, err := auth.LoadAccess(dir)
 	if err != nil {
 		return nil, refuse("ui-access.json in this backup is not valid: %v", err)
@@ -712,13 +814,21 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if _, err := auth.LoadEmail(dir); err != nil {
 		return nil, refuse("email-delivery.json in this backup is not valid: %v", err)
 	}
-	if _, err := acquire.LoadProfiles(dir); err != nil {
+	profiles, err := acquire.LoadProfiles(dir)
+	if err != nil {
 		return nil, refuse("The download credentials in this backup are not valid: %v", err)
+	}
+	if rep.Downloads, err = downloadCredentials(profiles); err != nil {
+		return nil, err
 	}
 	if rep.Programs, err = checkBackends(dir); err != nil {
 		return nil, err
 	}
-	if err := checkCatalog(dir, cfg); err != nil {
+	cat, err := checkCatalog(dir, cfg)
+	if err != nil {
+		return nil, err
+	}
+	if rep.Catalog, err = catalogEntries(cat); err != nil {
 		return nil, err
 	}
 	if err := checkVoices(ctx, dir, st); err != nil {
@@ -803,6 +913,30 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 			return nil, err
 		}
 	}
+	// What it holds, read the way a backup reads a root, once each file has passed its own check. A file
+	// can say anything about itself.
+	held, err := readSecrets(ctx, dir, dbPath, false)
+	if err != nil {
+		return nil, refuse("The secrets in this backup can't be read: %v", err)
+	}
+	rep.Secrets = held.names
+	for _, name := range held.names {
+		if !slices.Contains(m.SecretNames, name) {
+			rep.SecretsUnlisted = append(rep.SecretsUnlisted, name)
+		}
+	}
+	for _, r := range m.SecretsRemoved {
+		rep.PutBack = append(rep.PutBack, putBack(r))
+	}
+	// This is the staged copy. Nothing has touched the root yet, whichever command is asking: a restore that's
+	// still staging, or a backup checking that it would restore.
+	if err := settleJournal(ctx, st.DB); err != nil {
+		var stayed *modeStayedError
+		if errors.As(err, &stayed) {
+			return nil, refuse("This backup's database can't be used: its journal mode stayed %s, so nothing was changed.", stayed.mode)
+		}
+		return nil, refuse("The database can't be used: %v", err)
+	}
 	return rep, nil
 }
 
@@ -831,35 +965,35 @@ func checkBackends(dir string) ([]Program, error) {
 }
 
 // checkCatalog is what opening the root will do, so a root that would refuse every command is
-// caught here.
-func checkCatalog(dir string, cfg *store.Config) error {
+// caught here. It returns the catalog it loaded, for the report.
+func checkCatalog(dir string, cfg *store.Config) (*catalog.Catalog, error) {
 	if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(formerLog))); err == nil {
 		for _, id := range strings.Split(string(b), "\n") {
 			if id = strings.TrimSpace(id); id != "" && !formerIDRe.MatchString(id) {
-				return refuse("%s in this backup is not a list of ids.", formerLog)
+				return nil, refuse("%s in this backup is not a list of ids.", formerLog)
 			}
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return nil, err
 	}
 	cat, err := catalog.LoadRoot(dir, nil)
 	if err != nil {
-		return refuse("The catalog in this backup is not valid: %v", err)
+		return nil, refuse("The catalog in this backup is not valid: %v", err)
 	}
 	// The gateway only reports a bad entry. A backup leaves them out, so one here was put there.
 	for _, d := range cat.Diagnostics {
 		if d.Tier == "user" {
-			return refuse("The catalog entry %s in this backup is not valid: %s", filepath.Base(d.Path), d.Message)
+			return nil, refuse("The catalog entry %s in this backup is not valid: %s", filepath.Base(d.Path), d.Message)
 		}
 	}
 	if cfg == nil {
-		return nil
+		return cat, nil
 	}
 	conf.KeepFormerSelections(dir, cfg, cat)
 	if issues := conf.ValidateModels(cfg, cat, false); len(issues) > 0 {
-		return refuse("The settings in this backup are not valid: %s: %s", issues[0].Path, issues[0].Message)
+		return nil, refuse("The settings in this backup are not valid: %s: %s", issues[0].Path, issues[0].Message)
 	}
-	return nil
+	return cat, nil
 }
 
 func checkVoices(ctx context.Context, dir string, st *store.Store) error {
@@ -1019,7 +1153,7 @@ func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, 
 func (k comparedKey) differences(backed comparedKey) []string {
 	var why []string
 	if k.revoked.Valid && !backed.revoked.Valid {
-		why = append(why, "revoked")
+		why = append(why, revokedHere)
 	}
 	if !k.revoked.Valid && backed.revoked.Valid {
 		why = append(why, "revoked in this backup and not on this root")
@@ -1037,6 +1171,23 @@ func (k comparedKey) differences(backed comparedKey) []string {
 		why = append(why, "renamed")
 	}
 	return why
+}
+
+// How a key revoked on this root, and not in the backup, differs. On the list of keys that stay as they
+// are, "revoked" is what stays true. On the list of keys going back it's what changes, and "revoked" alone
+// would read as if it stays that way.
+const (
+	revokedHere    = "revoked"
+	revokedAndBack = "revoked on this root, and would work again"
+)
+
+// broughtBackWords says how a key named to come back differs. Revoked is always first, when it's there.
+func broughtBackWords(why []string) string {
+	words := slices.Clone(why)
+	if len(words) > 0 && words[0] == revokedHere {
+		words[0] = revokedAndBack
+	}
+	return strings.Join(words, ", ")
 }
 
 // scopeList is a key's permissions. A list that doesn't read is shown as it stands, which is also more
@@ -1299,7 +1450,7 @@ func compareKeys(ctx context.Context, staged *sql.DB, now map[string]comparedKey
 			text := strings.Join(why, ", ")
 			if named[id] {
 				used[id] = true
-				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, text})
+				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, broughtBackWords(why)})
 				continue
 			}
 			// What the root has wins, whole, so a key can't come back partly.
@@ -1719,4 +1870,17 @@ func Undo(targetDir string) error {
 		return refuse("The gateway lock on %s can't be read: %s", r.Dir, detail)
 	}
 	return undo(r.Dir, j, func() {})
+}
+
+// manifestToShow is the manifest as a report shows it, --json included: without the commands the file gives
+// for its removed secrets. Anything reading the report couldn't tell those from ours, and PutBack carries the
+// checked ones.
+func manifestToShow(m *Manifest) *Manifest {
+	shown := *m
+	shown.SecretsRemoved = nil
+	for _, r := range m.SecretsRemoved {
+		r.Restore = ""
+		shown.SecretsRemoved = append(shown.SecretsRemoved, r)
+	}
+	return &shown
 }
