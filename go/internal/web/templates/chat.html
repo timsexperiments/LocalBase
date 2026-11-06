@@ -71,6 +71,7 @@
     <form id="composer" aria-label="Message composer" data-docked class="chat-composer bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2" novalidate>
       <div class="mx-auto max-w-3xl">
         <div data-error-box></div>
+        <p class="composer-editing" data-editing hidden><span>Editing your message. Sending replaces it and its reply.</span> <button type="button" class="md-copy" data-cancel-edit>Cancel</button></p>
         <div class="composer-box">
           <ul class="flex flex-wrap gap-2 px-2 pt-2" data-attachments aria-label="Attachments" hidden></ul>
           <label for="chat-input" class="sr-only">Message</label>
