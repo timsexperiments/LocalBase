@@ -71,7 +71,7 @@ func ReadShape(ctx context.Context, db *sql.DB) (*Shape, error) {
 		}
 		// An index SQLite makes for a constraint has no statement of its own: its table's says it.
 		if (kind == "table" || kind == "index") && text != "" {
-			s.Definitions[kind+" "+name] = Definition{Type: kind, Name: name, Table: table, SQL: strings.Join(strings.Fields(text), " ")}
+			s.Definitions[kind+" "+name] = Definition{Type: kind, Name: name, Table: table, SQL: collapse(text)}
 		}
 		switch kind {
 		case "table":
@@ -274,18 +274,21 @@ func (s *Shape) Unexpected(expected *Shape) []string {
 	for _, name := range s.Views {
 		out = append(out, "a view: "+name)
 	}
-	// A table or index a migration makes is made by the same statements wherever it was made, so its
-	// definition is the same, apart from whitespace. Go's own tables are added on open and checked there.
+	// A table or index is made by the same statements wherever it was made, so its definition is the same,
+	// apart from whitespace. Go's own tables have only ever been added to, never changed: a backup from before
+	// one can lack it, as opening the database makes it, but one that's there is compared like the rest.
 	for key, want := range expected.Definitions {
-		if goTable(want.Table) {
+		// TypeScript's migrator made this one, and other versions of it may have written it differently.
+		if want.Table == drizzleTableName {
 			continue
 		}
 		have, here := s.Definitions[key]
+		_, tableHere := s.Tables[want.Table]
 		switch {
-		case !here && want.Type == "index":
+		case !here && want.Type == "index" && tableHere:
 			out = append(out, "an index this version needs is missing: "+want.Name)
 		case !here || have.SQL == want.SQL:
-			// A missing table is said above.
+			// A missing table is said above, and a missing Go table is allowed.
 		case want.Type == "table":
 			out = append(out, "a table defined differently: "+want.Name)
 		default:
@@ -356,3 +359,15 @@ func MigrationCount() (int, error) {
 
 // GoSchemaVersion is the Go schema version this build writes and accepts.
 func GoSchemaVersion() int { return goSchemaVersion }
+
+// collapse runs together only the whitespace SQLite's tokenizer skips. SQLite reads other spaces, such as a
+// non-breaking one, as part of a word, so collapsing those too could make two different definitions look the
+// same.
+func collapse(sql string) string {
+	return strings.Join(strings.FieldsFunc(sql, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == '\f' || r == '\r'
+	}), " ")
+}
+
+// drizzleTableName is the migration journal's table, which the TypeScript build makes too.
+const drizzleTableName = "__drizzle_migrations"
