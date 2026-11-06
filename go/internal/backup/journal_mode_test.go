@@ -140,7 +140,7 @@ func TestAModeThatWontChangeIsSaid(t *testing.T) {
 	}
 }
 
-// SQLite can answer with the mode it stayed in, without an error. That's a refusal too.
+// SQLite can answer with the mode it stayed in, without an error. That's a refusal too, in SQLite's word.
 func TestAModeThatStaysIsAnError(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:settle?mode=memory&cache=private")
 	if err != nil {
@@ -148,24 +148,68 @@ func TestAModeThatStaysIsAnError(t *testing.T) {
 	}
 	defer db.Close()
 	err = settleJournalMode(context.Background(), db)
-	if err == nil || err.Error() != "its journal mode stayed memory" {
+	var stayed *modeStayedError
+	if !errors.As(err, &stayed) || stayed.mode != "memory" {
 		t.Errorf("a database that stays in memory mode: %v", err)
 	}
 }
 
-// When it can't be done, the restore stops there, says why, and leaves nothing behind.
-func TestARestoreThatCantSettleTheModeRefuses(t *testing.T) {
-	k := withKey(t) // made first: making a backup checks that it would restore
-	parent := dir(t)
-	was := settleJournal
-	defer func() { settleJournal = was }()
-	settleJournal = func(context.Context, *sql.DB) error { return errors.New("its journal mode stayed wal") }
-	_, err := Stage(context.Background(), k.file, filepath.Join(parent, "target"), false)
-	var refused *Refused
-	if !errors.As(err, &refused) || err.Error() != "The database can't be used: its journal mode stayed wal" {
-		t.Fatalf("stage: %v", err)
+// Only SQLite's own words for a mode are ever shown. Anything else it answered would be said without it.
+func TestOnlySQLitesOwnWordsAreShown(t *testing.T) {
+	for answer, want := range map[string]string{
+		"delete":    "",
+		"DELETE":    "",
+		"wal":       "its journal mode stayed wal",
+		"WAL":       "its journal mode stayed wal",
+		"truncate":  "its journal mode stayed truncate",
+		"x\x1b[2Jy": "its journal mode didn't change",
+		"":          "its journal mode didn't change",
+	} {
+		got := ""
+		if err := modeAfterSettling(answer); err != nil {
+			got = err.Error()
+		}
+		if got != want {
+			t.Errorf("SQLite answering %q: %q, want %q", answer, got, want)
+		}
 	}
-	noLeftovers(t, parent)
+}
+
+// When it can't be done, the restore stops there and says why. Nothing has touched the root yet, so a root
+// being replaced is left byte for byte as it was, and neither target leaves a working folder behind.
+func TestARestoreThatCantSettleTheModeRefuses(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		says string
+	}{
+		{"the mode stayed", &modeStayedError{"wal"}, "This backup's database can't be used: its journal mode stayed wal, so nothing was changed."},
+		{"the change failed", errors.New("disk I/O error"), "The database can't be used: disk I/O error"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			k := withKey(t) // made first: making a backup checks that it would restore
+			parent := dir(t)
+			before := tree(t, k.r.Dir)
+			was := settleJournal
+			defer func() { settleJournal = was }()
+			settleJournal = func(context.Context, *sql.DB) error { return c.err }
+			for _, target := range []struct {
+				dir     string
+				replace bool
+			}{{filepath.Join(parent, "target"), false}, {k.r.Dir, true}} {
+				_, err := Stage(context.Background(), k.file, target.dir, target.replace)
+				var refused *Refused
+				if !errors.As(err, &refused) || err.Error() != c.says {
+					t.Fatalf("stage over %s: %v", target.dir, err)
+				}
+			}
+			noLeftovers(t, parent)
+			noLeftovers(t, filepath.Dir(k.r.Dir))
+			if after := tree(t, k.r.Dir); after != before {
+				t.Errorf("the root being replaced changed:\n%s\n%s", before, after)
+			}
+		})
+	}
 }
 
 // A connection that's closed is an error too, not a mode.

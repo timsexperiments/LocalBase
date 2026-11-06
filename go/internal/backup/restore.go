@@ -640,10 +640,28 @@ func settleJournalMode(ctx context.Context, db *sql.DB) error {
 	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode=DELETE`).Scan(&mode); err != nil {
 		return err
 	}
-	if !strings.EqualFold(mode, "delete") {
-		return fmt.Errorf("its journal mode stayed %s", mode)
+	return modeAfterSettling(mode)
+}
+
+// journalModes are SQLite's own words for a journal mode, the only ones a refusal shows.
+var journalModes = []string{"delete", "truncate", "persist", "memory", "wal", "off"}
+
+// modeStayedError is a journal mode that didn't change. Its mode is always one of journalModes.
+type modeStayedError struct{ mode string }
+
+func (e *modeStayedError) Error() string { return "its journal mode stayed " + e.mode }
+
+// modeAfterSettling says what SQLite's answer means. An answer that isn't one of its own words, which SQLite
+// doesn't give, is said without it.
+func modeAfterSettling(mode string) error {
+	mode = strings.ToLower(mode)
+	switch {
+	case mode == "delete":
+		return nil
+	case slices.Contains(journalModes, mode):
+		return &modeStayedError{mode}
 	}
-	return nil
+	return errors.New("its journal mode didn't change")
 }
 
 // settleJournal is settleJournalMode, as a variable so that a test can see a restore refuse when it can't be
@@ -834,7 +852,13 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 			return nil, err
 		}
 	}
+	// This is the staged copy. Nothing has touched the root yet, whichever command is asking: a restore that's
+	// still staging, or a backup checking that it would restore.
 	if err := settleJournal(ctx, st.DB); err != nil {
+		var stayed *modeStayedError
+		if errors.As(err, &stayed) {
+			return nil, refuse("This backup's database can't be used: its journal mode stayed %s, so nothing was changed.", stayed.mode)
+		}
 		return nil, refuse("The database can't be used: %v", err)
 	}
 	return rep, nil
