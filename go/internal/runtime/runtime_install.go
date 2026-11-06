@@ -260,10 +260,11 @@ func extractTarGz(archive, dir string, strip int) error {
 		return err
 	}
 	tr := tar.NewReader(gz)
+	var links []string
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return nil
+			return linksStayInside(dir, links)
 		}
 		if err != nil {
 			return err
@@ -271,6 +272,9 @@ func extractTarGz(archive, dir string, strip int) error {
 		target, ok := safeTarget(dir, h.Name, strip)
 		if !ok {
 			continue
+		}
+		if goesThroughLink(dir, target) {
+			return fmt.Errorf("archive entry %s goes through a link", h.Name)
 		}
 		switch h.Typeflag {
 		case tar.TypeDir:
@@ -289,8 +293,53 @@ func extractTarGz(archive, dir string, strip int) error {
 			if err := os.Symlink(h.Linkname, target); err != nil {
 				return err
 			}
+			links = append(links, target)
 		}
 	}
+}
+
+// goesThroughLink says whether a path below dir passes through a link already made. Every check here
+// reads a path as written, which only tells where it leads if no link is on the way. It asks the
+// disk, not a list of the links, because a disk may not care about case.
+func goesThroughLink(dir, target string) bool {
+	rel, err := filepath.Rel(dir, filepath.Dir(target))
+	if err != nil {
+		return true
+	}
+	p := dir
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		p = filepath.Join(p, part)
+		info, err := os.Lstat(p)
+		if err != nil {
+			return false // not made yet, so nothing below it is either
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// linksStayInside follows the links an archive made, once they all exist. Each was checked as written,
+// but its target can name another link and then leave. One that leads nowhere leads nowhere outside.
+func linksStayInside(dir string, links []string) error {
+	pkg, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	for _, link := range links {
+		to, err := filepath.EvalSymlinks(link)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("archive link %s: %w", filepath.Base(link), err)
+		}
+		if !strings.HasPrefix(to, pkg+string(filepath.Separator)) {
+			return fmt.Errorf("archive link %s points outside the package", filepath.Base(link))
+		}
+	}
+	return nil
 }
 
 func extractZip(archive, dir string, strip int) error {
