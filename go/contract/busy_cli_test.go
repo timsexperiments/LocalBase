@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -42,7 +41,7 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	shm, err := os.OpenFile(dbPath+"-shm", os.O_RDWR, 0)
+	shm, err := mustOpenRW(dbPath + "-shm")
 	if err != nil {
 		t.Fatal(err)
 	}
