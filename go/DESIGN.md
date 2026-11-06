@@ -4490,6 +4490,27 @@ a result line for every `check()` in the script. **No real video model has run t
 **Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390 with Share showing, and a long press. **No real speech
 model has run through this new layout.**
 
+### 27.2d Transcribe, in the same pattern
+
+- **A transcript reads like the others:** its first words, then what it is, the file, the language and age, then
+  the player, the actions and the text. There is no card, and a translation says to check it right beside its name.
+- **Record and Choose a file carry equal weight,** with an icon each. Neither is the "real" way in.
+- **Copy and Export lead,** with Timestamps and Remove as icons in one row, and a long press names them. Times are
+  in tabular figures, written out because Tailwind's utility does nothing on the floor browser.
+- **An English-only model** still hides language and translate. **Unchanged:** TXT, SRT and VTT, and tapping a time.
+
+- **At 320 the two starts take a size smaller,** because a half-width button there can't hold an icon and "Choose a file" on one line.
+
+**Checks:** `tools/chat-runs-check.sh`: one row at 360 and 390, and tabular times. **No real transcription model
+has run through this new layout, and the real microphone test is in `docs/owner-test-script.md`.**
+
+### 27.2f Each tool loads its own code
+
+`lab.js` holds what every Studio tool needs: the dock, its chips, examples and Try again, and Share and Copy. Image's
+viewer and Edit with a picture live in `image.js`, loaded only on Image, as `video.js` is only on Video. Both import
+the prompt helpers from `lab-prompt.js`, which has no listeners. Decisions was 1,283 bytes over its 62 KiB budget
+with both UI chains merged; this saved 2,232 bytes there, and the budget stays as it is.
+
 ### 27.2e What Studio keeps in a browser is one person's
 
 - **Keyed by person.** Saved examples, the question being asked and a prompt on its way to another tool are stored under

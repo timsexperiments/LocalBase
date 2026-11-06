@@ -704,6 +704,24 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     const at = await ev(`${trItem}.querySelector("audio").currentTime`);
     check(at >= 1.2 && at < 2.5, `a time moves the player: ${at}`);
     check((await ev(`${trItem}.querySelector("[data-seek]").getAttribute("aria-label")`)) === "0:00, play from 0 seconds", "a time says what it does");
+    // Copy and Export lead, with Timestamps and Remove as icons in one row. Times line up, on the floor browser too.
+    for (const width of [360, 390]) {
+      await send("Emulation.setDeviceMetricsOverride", { width, height: width === 360 ? 740 : 844, deviceScaleFactor: 2, mobile: true });
+      const row = await ev(`(() => { const item = ${trItem}, acts = [...item.querySelectorAll(".result-actions a, .result-actions button")].filter((a) => a.getBoundingClientRect().width > 0); return { first: acts[0].textContent.trim(), acts: acts.length, rows: new Set(acts.map((a) => Math.round(a.getBoundingClientRect().top))).size, big: acts.every((a) => a.getBoundingClientRect().height >= 44), named: acts.every((a) => a.getAttribute("aria-label") || a.textContent.trim()), figures: getComputedStyle(item.querySelector(".transcript-time")).fontVariantNumeric, fits: document.documentElement.scrollWidth <= document.documentElement.clientWidth }; })()`);
+      check(row.first === "Copy" && row.acts === 4 && row.rows === 1 && row.big && row.named && /tabular/.test(row.figures) && row.fits, `at ${width}, a transcript's actions are one row, and its times are in tabular figures: ${JSON.stringify(row)}`);
+    }
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    const ways = await ev(`(() => { const [a, b] = [document.querySelector("[data-record-start]"), document.querySelector("[data-pick-audio]")]; const r = [a, b].map((x) => x.getBoundingClientRect()); return { same: a.className === b.className, widths: r.map((x) => Math.round(x.width)), heights: r.map((x) => Math.round(x.height)), ground: [a, b].map((x) => getComputedStyle(x).backgroundColor) }; })()`);
+    check(ways.same && ways.widths[0] === ways.widths[1] && ways.heights[0] === ways.heights[1] && ways.ground[0] === ways.ground[1], `Record and Choose a file carry equal weight: ${JSON.stringify(ways)}`);
+    // At 320 both labels keep to one line: there, "Choose a file" and its icon wrapped inside a half-width button.
+    await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+    const startLines = await ev(`[...document.querySelectorAll("[data-record-start], [data-pick-audio]")].map((b) => { const t = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()); if (!t) return 0; const r = document.createRange(); r.selectNodeContents(t); return new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size; })`);
+    check(startLines.length === 2 && startLines.every((n) => n === 1), `at 320, Record and Choose a file each keep their label on one line: ${JSON.stringify(startLines)}`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+    // A tap on the icon itself, not the button around it.
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+    check(await ev(`${trItem}.querySelector("[data-toggle-times]").getAttribute("aria-pressed") === "false"`), "a tap on the Timestamps icon itself turns them off");
+    await ev(`${trItem}.querySelector("[data-toggle-times] svg").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
     check((await ev(`getComputedStyle(${trItem}.querySelector("[data-seek]")).display`)) === "none", "Times hides the times");
     await ev(`${trItem}.querySelector("[data-toggle-times]").click()`);
@@ -771,6 +789,10 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await sleep(600);
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const beforeLost = await seen();
+  // With everything offline the page's own polls fail too, and its notice is right to say so: the notice checks below block
+  // only the requests they're about.
+  const watchNotice = `(() => { window.__noticeSaid = []; const box = document.getElementById("session-notice"); if (!box) return false; window.__noticeWatch?.disconnect(); window.__noticeWatch = new MutationObserver(() => { const t = box.textContent.trim(); if (t) window.__noticeSaid.push(t); }); window.__noticeWatch.observe(box, { childList: true, subtree: true, characterData: true }); return true; })()`;
+  const noticeSaid = `(window.__noticeSaid ?? ["no watcher"]).join(" | ")`;
   await ev(`document.querySelector("[data-record-stop]").click()`);
   for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
@@ -793,6 +815,63 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   for (let i = 0; i < 60 && (await seen()) === beforeLost; i++) await sleep(150);
   const resent = await trUntil((s) => !s.active && s.times > 0);
   check((await seen()) === beforeLost + 1 && resent?.times === 3 && (await ev(`document.querySelector("[data-keep]").hidden`)), "Send again makes the transcript and clears it");
+
+  // The page's own notice and Transcribe's panel (with FE, session.js): a form that says its own send failure keeps the
+  // sign-in check, and loses only the two lines that would repeat it.
+  if (voiceFile) {
+    const panelUp = async () => { for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150); return !(await ev(`document.querySelector("[data-keep]").hidden`)); };
+    // Only the send fails; the sign-in check answers.
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const onlySend = { panel: await panelUp() };
+    await sleep(1500);
+    onlySend.notice = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(onlySend.panel && onlySend.notice === "", `with only the send failing, only the panel says so: ${JSON.stringify(onlySend)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // The send and the sign-in check both fail; the rest of the page still answers.
+    await nav("/app/studio/transcribe");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe", "*/app/session"] });
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const both = { panel: await panelUp() };
+    await sleep(1500);
+    both.notice = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(both.panel && both.notice === "", `with the send and the sign-in check both failing, only the panel says so: ${JSON.stringify(both)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A sign-in that has expired at the edge: the check is redirected, and that is said, even for this form.
+    await nav("/app/studio/transcribe");
+    const paused = (e) => { const m = JSON.parse(String(e.data)); if (m.method !== "Fetch.requestPaused") return; const u = m.params.request.url;
+      if (u.includes("/app/lab/transcribe")) send("Fetch.failRequest", { requestId: m.params.requestId, errorReason: "InternetDisconnected" });
+      else if (u.includes("/app/session")) send("Fetch.fulfillRequest", { requestId: m.params.requestId, responseCode: 302, responseHeaders: [{ name: "Location", value: "https://sign-in.example.invalid/" }], body: "" });
+      else send("Fetch.continueRequest", { requestId: m.params.requestId }); };
+    ws.addEventListener("message", paused);
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*/app/lab/transcribe*" }, { urlPattern: "*/app/session*" }] });
+    // Watched as the two above are: a notice that came and went still counts as said.
+    await ev(watchNotice);
+    await setFile(voiceFile);
+    const expired = { panel: await panelUp() };
+    for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeSaid)); i++) await sleep(150);
+    expired.notice = await ev(noticeSaid);
+    await send("Fetch.disable");
+    ws.removeEventListener("message", paused);
+    check(expired.panel && /Your sign-in expired/.test(expired.notice), `an expired sign-in is still said on this form: ${JSON.stringify(expired)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A form that doesn't say its own failure still gets the page's notice.
+    await nav("/app/studio/image");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/image"] });
+    await ev(watchNotice);
+    await ev(`(() => { const f = document.querySelector("form.lab-dock"); f.querySelector("#lab-prompt").value = "a paper boat"; f.querySelector("button[type=submit]").click(); })()`);
+    for (let i = 0; i < 30 && !/didn.t load|Can.t reach/.test(await ev(noticeSaid)); i++) await sleep(150);
+    const other = await ev(noticeSaid);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(/didn.t load|Can.t reach/.test(other), `a form that doesn't say its own failure still gets the notice: ${JSON.stringify(other)}`);
+    await nav("/app/studio/transcribe");
+  } else {
+    console.log("skip the page's notice and Transcribe's panel (no voice file)");
+  }
 
   // No microphone: it says how to fix it, and a file still works.
   await ev(`navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError"))`);

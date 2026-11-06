@@ -33,7 +33,10 @@ function show(message, action) {
   box.append(card);
 }
 
-async function diagnose() {
+async function diagnose(event) {
+  // A form that says its own send failure ("[data-own-send-error]") keeps the sign-in check
+  // but not the two lines that would repeat it.
+  const own = event?.detail?.elt?.closest?.("[data-own-send-error]");
   let response;
   try {
     response = await fetch("/app/session", {
@@ -43,14 +46,14 @@ async function diagnose() {
       headers: { "X-Localbase-UI": "1" },
     });
   } catch {
-    show("Can't reach LocalBase right now. Check the connection and try again.");
+    if (!own) show("Can't reach LocalBase right now. Check the connection and try again.");
     return;
   }
   if (response.type === "opaqueredirect") {
     show("Your sign-in expired. Reload to sign in again.", { label: "Reload", run: () => location.reload() });
   } else if (response.status === 401) {
     location.assign("/app/login");
-  } else {
+  } else if (!own) {
     show("That didn't load. Try again.");
   }
 }
