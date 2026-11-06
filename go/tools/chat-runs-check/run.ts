@@ -1432,6 +1432,9 @@ check(stripBack.word !== "LocalBase is busy" && /GiB free/.test(stripBack.free),
 // the strip as a refresh would, then the same event a swap fires.
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
 await nav("/app/chat");
+// The real strip refresh (every 3 s) is held off on this page, so only these stubbed redraws draw it. Without
+// this, a real one could land between two of them and redraw it from the gateway (once on Chrome 156).
+await ev(`document.addEventListener("htmx:beforeRequest", (e) => { if (e.detail.elt?.hasAttribute?.("data-strip")) e.preventDefault(); }, true)`);
 await ev(`(() => { const real = window.fetch; window.__asked = 0; window.__admission = { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 3 }; window.fetch = (u, o) => { if (String(u).endsWith("/admission")) { window.__asked++; return Promise.resolve(new Response(JSON.stringify(window.__admission), { status: 200 })); } return real(u, o); }; })()`);
 const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
 const redraw = async (state, word, free, admission) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; delete s.dataset.refusedHere; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterOnLoad", { detail: { elt: document.querySelector("[data-strip]") } })); document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };

@@ -3467,6 +3467,35 @@ motion), `.segmented`, `.list-group`/`.list-row`, `.menu`/`.menu-item`,
   once the keyboard settles. Docked composers (`[data-docked]`, the chat
   composer and later the Lab prompt) sit above the keyboard and opt out.
 
+### 22.3a The session notice: what clears it (2026-11-06)
+
+`session.js` shows one notice at the top of the page (`#session-notice`) when an htmx request gets
+no normal answer. Each notice has a kind, and the kind decides what may clear it. No strings
+changed with this.
+
+| Notice | Kind | Cleared by |
+| --- | --- | --- |
+| "Can't reach LocalBase right now. Check the connection and try again." | connection | any request that succeeds, a poll included: it proves LocalBase is back |
+| "That didn't load. Try again." | action | a request the person makes that succeeds, or a page change. Never a poll |
+| "Your sign-in expired. Reload to sign in again." [Reload] | sign-in | Reload, or a page change |
+| "We couldn’t sign you out. Try again in a moment." and "Can’t reach LocalBase, so we couldn’t sign you out. You’re still signed in." | sign-out | the person trying again, or a page change |
+
+Before this, any request that succeeded cleared any notice. So the memory strip's refresh (every
+3 s) wiped "That didn't load" within seconds. A poll proves nothing about what the person did.
+
+**The sign-out notices override #610.** #610 asked that, after a sign-out that couldn't reach
+LocalBase, a background request that later succeeds clears the notice. But the person is still
+signed in then, and that notice is the only thing telling them. If a poll wipes it, someone who
+walked away may think they signed out. So both sign-out notices now stay until the person acts
+(operator's decision, 2026-11-06).
+
+A request is the page's own (`requests.js`, `background()`) when its element has `data-poll`, or its
+`hx-trigger` has `every`, `load`, `revealed` or `intersect`, alone or with other triggers ("load
+delay:1s", "change, every 5s"). Anything else is the person's: a click, a submit, typing, a change.
+`tools/jstest/requests.test.ts` scans every template's triggers against that rule, and fails on a
+trigger word nobody has classified. So a new polling element can't start clearing action notices
+unnoticed.
+
 ### 22.4 Detached runs in the UI
 
 Generation outlives the page (§21). `static/js/runs.js` is the client:
