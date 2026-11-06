@@ -186,6 +186,14 @@ func modelsForgetPeaks() *cli.Command {
 		}}
 }
 
+// videoCatalogLine is the note for a video model no supported computer can run.
+func videoCatalogLine(s *catalog.Spec) string {
+	if s.VideoRuntime != nil && !s.VideoRunsAnywhere() {
+		return catalog.VideoModelRefusal
+	}
+	return ""
+}
+
 func modelsCatalog() *cli.Command {
 	return &cli.Command{Name: "catalog", Summary: "List all supported models",
 		Examples: []string{"local-base models catalog --capability tool-calling --fits",
@@ -276,8 +284,8 @@ func modelsCatalog() *cli.Command {
 					c.Info("      memory: %d GB (observed peak %.1f GB at %s; %s %.1f GB)", f.MinVramGB,
 						float64(f.DemandBytes)/float64(memory.GiB), f.LaunchShape, f.ReferenceSource, float64(f.ReferenceBytes)/float64(memory.GiB))
 				}
-				if s.VideoRuntime != nil && s.VideoRuntime.Mode == "s2v" {
-					c.Info("      Requires Linux x64 with a single NVIDIA GPU.")
+				if line := videoCatalogLine(s); line != "" {
+					c.Info("      %s", line)
 				}
 				c.Info("      catch: %s", s.Catch)
 				extra := memoryJSON(f)

@@ -84,7 +84,6 @@ var expectedModalities = map[string][2]string{"llm": {"text", "text"}, "stt": {"
 
 const (
 	ExperimentalOptIn   = "Experimental models require models.allowExperimental = true."
-	UnsupportedTarget   = "Requires Linux x64 with a single NVIDIA GPU."
 	selectionKindFields = "selected%sModels"
 )
 
@@ -111,7 +110,7 @@ func Ineligible(s *catalog.Spec, allowExperimental bool) string {
 			return ""
 		}
 	}
-	return UnsupportedTarget
+	return s.VideoRefusal()
 }
 
 var fieldNames = map[string]string{"llm": "Llm", "stt": "Stt", "tts": "Tts", "image": "Image", "video": "Video"}

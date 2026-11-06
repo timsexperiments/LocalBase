@@ -169,6 +169,14 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 			t.Logf("one job was refused for memory, the other started: %v vs %v", final["go"]["error"], final["ts"]["error"])
 			continue
 		}
+		// Deliberate difference (DESIGN's list of them): Go's memory refusal says what has the memory and what
+		// to do, so its words aren't TS's. The code must still match; TestVideoGolden pins the words.
+		if code(s) == "insufficient_memory" {
+			if code(s) != code(first) {
+				t.Errorf("codes differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
+			}
+			continue
+		}
 		if sampledUsable(fmt.Sprint(s["error"])) != sampledUsable(fmt.Sprint(first["error"])) {
 			t.Errorf("errors differ: %v vs %v", final["go"]["error"], final["ts"]["error"])
 		}

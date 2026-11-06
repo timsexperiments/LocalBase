@@ -1131,7 +1131,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "The host is under memory pressure, so the video runtime was not started. Free memory (unload other models or close applications) and retry."
+        "message": "This computer is under memory pressure, so video generation wasn't started. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
       }
     },
     "failed-accelerator-pressure": {
@@ -1142,7 +1142,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "The host is under memory pressure, so the video runtime was not started. Free memory (unload other models or close applications) and retry."
+        "message": "This computer is under memory pressure, so video generation wasn't started. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
       }
     },
     "failed-measurement": {
@@ -1164,7 +1164,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough free memory to start the video runtime: it needs 12.0 GiB but only 5.4 GiB is usable after the safety reserve. Free memory (unload other models or close applications) and retry."
+        "message": "Not enough free memory to start video generation: it needs 12.0 GiB, and 5.4 GiB is free after keeping 9.6 GiB for your computer. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
       }
     },
     "failed-system-memory-unknown": {
@@ -1175,7 +1175,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough free memory to start the video runtime: it needs an unknown amount but only an unknown amount is usable after the safety reserve. Free memory (unload other models or close applications) and retry."
+        "message": "Not enough free memory to start video generation. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."
       }
     },
     "failed-accelerator-memory": {
@@ -1186,7 +1186,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough free accelerator (GPU) memory to start the video runtime: it needs 30.0 GiB but only 18.0 GiB is usable after the safety reserve. Free memory (unload other models or close applications) and retry."
+        "message": "Not enough free accelerator (GPU) memory to start the video runtime: it needs 30.0 GiB but only 18.0 GiB is usable after the safety reserve. Free memory from a loaded model or close other apps, then try again."
       }
     },
     "failed-gpu-working-set": {
@@ -1197,7 +1197,7 @@
       "completed_at": 1760000042,
       "error": {
         "code": "insufficient_memory",
-        "message": "Not enough GPU working set to start the video runtime alongside the models already loaded: it needs 20.0 GiB, other loaded models use 30.0 GiB, and the GPU working-set limit is 48.0 GiB. Unload other models and retry."
+        "message": "Not enough GPU working set to start the video runtime alongside the models already loaded: it needs 20.0 GiB, other loaded models use 30.0 GiB, and the GPU working-set limit is 48.0 GiB. Free memory from a loaded model, then try again."
       }
     },
     "failed-consent": {

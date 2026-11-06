@@ -94,6 +94,13 @@ func TestDifferentialModelManagement(t *testing.T) {
 				if r, _ := e["installUnavailableReason"].(string); strings.HasPrefix(r, "Disable ") {
 					e["installUnavailableReason"] = "Disable"
 				}
+				// Deliberate difference (DESIGN's list of them): TS names a Linux target that doesn't exist. Only
+				// these exact sentences; any other reason must still match.
+				if r, _ := e["installUnavailableReason"].(string); slices.Contains([]string{"Requires Linux x64 with a single NVIDIA GPU.",
+					"Video generation runs only on Apple Silicon Macs today.",
+					"This video model can't run on any computer LocalBase supports today. Choose another video model."}, r) {
+					e["installUnavailableReason"] = "video refusal"
+				}
 			}
 			if first == nil {
 				first = s

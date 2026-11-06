@@ -274,7 +274,7 @@ func projectVideoJob(j video.Job) map[string]any {
 	return out
 }
 
-const freeMemoryHint = "Free memory (unload other models or close applications) and retry."
+const freeMemoryHint = "Free memory from a loaded model or close other apps, then try again."
 
 // videoFailureError names a failed job's error code (TS videoFailureError).
 func videoFailureError(err error) map[string]any {
@@ -304,12 +304,8 @@ func gibText(v int64) string {
 func videoMemoryMessage(e *memory.AdmissionError) string {
 	accelerator := e.Reason == "accelerator-memory"
 	switch {
-	case e.Reason == "memory-pressure":
-		prefix := ""
-		if accelerator {
-			prefix = "accelerator "
-		}
-		return "The host is under " + prefix + "memory pressure, so the video runtime was not started. " + freeMemoryHint
+	case e.Reason == "memory-pressure" || e.Reason == "system-memory":
+		return memoryRefusal(e, "video generation")
 	case e.Reason == "measurement-unavailable":
 		return "Available memory could not be measured reliably, so the video runtime was not started. Retry shortly."
 	case e.PoolID == "gpu-working-set" && !e.Permanent:
@@ -318,7 +314,7 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 			required = e.Diagnostics.Requested
 		}
 		resident := e.RequestedBytes - required
-		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Unload other models and retry.",
+		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Free memory from a loaded model, then try again.",
 			gibText(required), gibText(resident), gibText(e.AvailableBytes))
 	}
 	pool := "memory"
