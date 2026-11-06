@@ -5791,9 +5791,9 @@ since a database that names another root is refused at open.
 own is one more thing to get wrong, and the operator's rule is a private file. The docs say to use
 disk encryption, or `age` or `gpg` before moving a backup anywhere.
 
-**The checksums find damage, not tampering.** Nothing signs a backup, so restore treats all of it as
-input from someone else, the manifest included (Security's review, 2026-11-02): step 1, step 2 and the
-report exist because of that. **The limits are constants in the binary, never read from the manifest:**
+**The checksums find damage, not tampering.** Nothing signs a backup, so restore aims to treat all of
+it as input from someone else, the manifest included (Security's review, 2026-11-02): step 1, step 2 and
+the report exist because of that. It doesn't yet manage that (34.8). **The limits are constants in the binary, never read from the manifest:**
 total size, size per file, number of entries, manifest size and path length.
 
 `uninstall` leaves the backups directory, and says so: it names the directory, says the backups hold
@@ -5812,14 +5812,14 @@ local-base [--root <dir>] restore <file> [--dry-run] [--replace] [--yes] [--json
    - `manifest.json` comes first, in a format this binary knows. A newer format is refused and says which version it needs.
    - Every entry is a regular file with a clean relative path on the 34.1 list, once. Links, devices, sparse entries, `../` and anything else are refused, as is data after the end of the tar. Tar modes and owners are ignored.
    - Free space is checked before anything expands. Size and hash match the manifest, and the fixed limits hold while reading.
-   - **The database is input, and `integrity_check` alone doesn't cover that.** It is opened read-only with `trusted_schema=OFF` before any migration runs. It must pass `integrity_check`, and **`sqlite_master` must match what this binary creates at that migration level**, so a trigger, a view or a changed table is refused. Without this, a trigger could re-add a role binding after every policy change, and no report would show it. A newer `go_schema` or migration is refused, as a newer database always is. An older one then migrates, as usual.
+   - **The database is input, and `integrity_check` alone doesn't cover that.** It is opened read-only with `trusted_schema=OFF` before any migration runs. It must pass `integrity_check`, and **its shape must match what this binary creates at that migration level**, so a trigger, a view, or a table, column or extra index it doesn't make is refused. What the shape doesn't hold passes (34.8). Without this, a trigger could re-add a role binding after every policy change, and no report would show it. A newer `go_schema` or migration is refused, as a newer database always is. An older one then migrates, as usual.
    - **Rows left out are deleted on restore, not trusted to be absent.** A crafted file can carry session or login-link rows, and "signs everyone out" has to hold anyway. The same goes for measured rows and pending activation.
-   - `ui-access.json`, `email-delivery.json`, profiles, backends and catalog entries pass the validators the gateway uses, and each voice file matches its row. Each `imported_models.definition` must pass `Model.Validate`, match its row's id, and name only clean relative file names.
+   - `ui-access.json`, `email-delivery.json`, backends and catalog entries pass the validators the gateway uses, profiles are only parsed (34.8), and each voice file matches its row. Each `imported_models.definition` must pass `Model.Validate`, match its row's id, and name only clean relative file names.
 3. **The report, before it asks.** What it holds, secrets or not, and:
    - **Each custom backend's whole command line:** program and arguments, since the program can be a shell, and it runs as you when its model loads. One whose program doesn't exist here gets a line and stays registered. Imported models that read a local path or a direct URL are named too.
    - **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state, `68 API keys (5 active, 63 revoked)`, since a bare count reads as that many that work.
    - **Settings that change exposure or where data goes:** the gateway's host and port, and who can reach it. Where each backend will listen, which is always loopback: `runtime.BackendHost` ignores a stored `0.0.0.0`, as on the live root, because a backend has no authentication. So a restored root can't expose one. Then the OTLP endpoint and whether it has headers, the private-address and local-path import settings, and the connection caps.
-   - **With `--replace`, what comes back:** keys and users the target no longer has. **A key the target has revoked stays revoked, and a user it has removed or disabled stays that way,** whatever the backup says, and the counts are printed, so restoring an older backup can't bring a leaked key back. The rule is also in every manifest. A fresh target has nothing to compare, and it says to check `local-base keys list`.
+   - **With `--replace`, what comes back:** keys and users the target no longer has. **A key the target has revoked stays revoked, and a user it has removed or disabled stays that way,** whatever the backup says, and the counts are printed. The rule is also in every manifest. This compares revocation only, so an older backup can still bring back a secret (34.8). A fresh target has nothing to compare, and it says to check `local-base keys list`.
    - Sign-in providers, the number of keys and users, models to install, and secrets to re-enter.
 4. **`--dry-run` stops here,** removes the staging directory, and exits 0 only if a real restore would proceed. That includes the checks in step 5.
 5. **The target.**
@@ -5858,14 +5858,14 @@ and 0700, so it passes either way.
 
 - **Bindings and invitations stay in a backup, with or without secrets.** They aren't secrets, and leaving them out would silently change who gets which role. An invitation holds no token: it is a `pending` user. The only token is the magic-link one, which is already left out.
 - **With `--exclude-secrets`,** a provider's bindings stay and do nothing until a provider with the same issuer is added again. The manifest and the report say so per issuer: `https://accounts.example.com: 1 role bindings, 1 invitations, inactive until this provider is added back`.
-- **On every restore,** bindings and invitations are shown per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
+- **On every restore,** bindings and invitations are counted per issuer before it asks. One whose issuer matches no provider is reported as inactive, not refused, since a real root can have one after removing a provider.
 - **Rows that name no issuer get their own line,** because a root that hasn't started since E2, or a backup of one, can hold them. With one provider, they adopt it at the next start. With several, they grant nothing until `local-base access bindings adopt --issuer <issuer>`, and the gateway still starts. With none, whichever provider is added next takes them, which matters most with `--exclude-secrets`.
 - **A restore refuses a file** with a `go_binding_issuers` row that matches no binding or role, a `kind` other than `email` or `email-domain`, or a `go_invitation_issuers` row whose user doesn't exist or whose issuer fails the format check. `LoadPolicy` ignores such orphans, and one could otherwise sit unseen and bind when a matching row is added later. Bindings it does load get its own check.
 - **With `--replace`,** bindings withdrawn since the backup would come back, since E2 keeps no record of them. The report lists them per issuer, comparing by role name, because a role's id doesn't survive a policy being applied.
 
 **Users, built now.** A user the target has removed or disabled stays that way, the same as a revoked key, and the count is printed. A withdrawn invitation is a `removed` row, so this covers it. Users match by id, and by address if the id differs. `auth.LoadPolicy` and `Normalize` run on the staged database, so a role, permission, address or duplicate gets the gateway's own check.
 
-**Which tables must be there.** Go tables are added on open without raising `goSchemaVersion`, so a real older backup lacks some, and that's allowed: opening it creates them. A table or column a migration makes must be present. An unknown table, a trigger, a view, or a difference in anything present is refused.
+**Which tables must be there.** Go tables are added on open without raising `goSchemaVersion`, so a real older backup lacks some, and that's allowed: opening it creates them. A table or column a migration makes must be present. An unknown table, a trigger, a view, or a difference in what the shape holds is refused.
 
 ### 34.6 Tests, first
 
@@ -5913,6 +5913,24 @@ All of these use scratch roots, plain files and no real models. Contract tests u
 **Rollback of this feature:** two new commands and one new file format. `go_schema` is unchanged, and
 an older binary ignores `.before-restore-*`. It would not know a journal, so a restore that crashed
 must be undone with the version that made it.
+
+### 34.8 Open: a file from someone else isn't safe yet (Security's review, 2026-11-03)
+
+Not accepted risks. They are being fixed, and until then the docs say to restore only a backup you
+made yourself. Each line goes when its fix is in the tree.
+
+- A file can give permissions that neither the report nor the access policy shows.
+- The report leaves out a provider's exact issuer, what everyone who signs in gets, the origin and the SMTP host.
+- The report only counts role bindings. It doesn't say who they're for or what the role gives.
+- The report prints the file's text as it is, terminal escape codes included.
+- With `--replace`, a rotated key goes back to its older secret, and the report doesn't say so. Rotating it again ends the older one.
+- The manifest's list of secrets and its commands to put them back are printed as the file gives them.
+- A catalog entry's source and a download credential's origins aren't reported, and profiles aren't validated.
+- The shape holds no `CHECK` or `COLLATE`, nor a partial index's condition, and doesn't notice a missing index or foreign key.
+- `.former-built-ins` and `ui-access.json` are read whole, so a small compressed file can take several GiB of memory, with `--dry-run` too.
+- `update.*` and `speech.provenance-marking` aren't reported.
+- The comparison isn't made again after the question, so a key revoked while it waits works afterwards.
+
 ## 29. Who owns a backend (2026-11-02)
 
 Backends run in their own process groups, so they outlive a gateway that dies without

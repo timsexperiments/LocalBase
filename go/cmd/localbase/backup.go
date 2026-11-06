@@ -30,9 +30,9 @@ func backupCommand() *cli.Command {
 }
 
 func restoreCommand() *cli.Command {
-	return &cli.Command{Name: "restore", Summary: "Restore this root's settings from a backup", Usage: "<file>", MaxArgs: 1,
+	return &cli.Command{Name: "restore", Summary: "Restore this root's settings from a backup you made", Usage: "<file>", MaxArgs: 1,
 		Options: []cli.Option{
-			{Name: "dry-run", Bool: true, Help: "Check the file and say what would change, and change nothing"},
+			{Name: "dry-run", Bool: true, Help: "Check the file and print its report, and change nothing. The report doesn't show everything a file can change"},
 			{Name: "replace", Bool: true, Help: "Replace the settings of a root that has data. Its models stay, and its old files are kept"},
 			{Name: "yes", Alias: "y", Bool: true, Help: "Do not ask"},
 			{Name: "undo", Bool: true, Help: "Put back a root that a restore left unfinished"},
