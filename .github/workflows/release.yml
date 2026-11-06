@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - target: macos-arm64
-            runner: macos-14
+            runner: macos-15
             host-architecture: arm64
             platform: macos
             smoke: native
