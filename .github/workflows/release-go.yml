@@ -16,7 +16,38 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels that pull request's older run. Any other event gets a
+# group of its own, so a tag's run is never cancelled or dropped.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # On a pull request, macOS smoke runs only when the release itself changes: the workflow, the
+  # installer, scripts/release or packaging. A change to go/ alone gets the two Linux smoke runs.
+  # A tag always gets all four.
+  scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      runners: ${{ steps.scope.outputs.runners }}
+    steps:
+      - name: Choose the smoke runners
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')"
+          if printf '%s\n' "$files" | grep -Eq '^(\.github/workflows/release-go\.yml|scripts/install\.sh|scripts/release/|packaging/)'; then
+            echo 'runners=["ubuntu-24.04","ubuntu-24.04-arm","macos-15","macos-15-intel"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'runners=["ubuntu-24.04","ubuntu-24.04-arm"]' >> "$GITHUB_OUTPUT"
+          fi
+
   binaries:
     runs-on: ubuntu-24.04
     outputs:
@@ -157,12 +188,12 @@ jobs:
           if-no-files-found: error
 
   smoke:
-    needs: [binaries, package]
+    needs: [binaries, package, scope]
     if: ${{ !cancelled() && needs.package.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+        runner: ${{ fromJSON(needs.scope.outputs.runners || '["ubuntu-24.04","ubuntu-24.04-arm","macos-15","macos-15-intel"]') }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out
