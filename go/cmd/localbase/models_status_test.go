@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,7 +155,13 @@ func TestModelsPlacementCLI(t *testing.T) {
 		json.Unmarshal([]byte(line), &env)
 		if env.Error != nil {
 			msg, _ := env.Error["message"].(string)
+			if !slices.Contains(args, "custom") { // only that one is meant to be refused
+				t.Logf("models placement %v: exit %d, refused: %q", args, code, msg)
+			}
 			return code, nil, msg
+		}
+		if code != 0 {
+			t.Logf("models placement %v: exit %d, output: %.500q", args, code, out)
 		}
 		return code, env.Data, ""
 	}
