@@ -216,6 +216,7 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"the mail server":       rep.SignIn.Mail.Value,
 		"an issuer":             rep.Issuers[1].Issuer,
 		"a setting's value":     rep.Settings[1].Value,
+		"what it does itself":   rep.OwnSettings[1].Value,
 		"a key kept":            rep.KeysKept[1].Name,
 		"its id":                rep.KeysKept[1].ID,
 		"why it's kept":         rep.KeysKept[1].Why,

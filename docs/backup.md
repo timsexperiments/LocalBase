@@ -40,6 +40,7 @@ While it works, it uses a private directory named `.local-base-temporary-…`, b
 | `logs/`, `bin/`, `cache/`, `runtime/`, `service/`, `catalog-feed.json` | Not settings, tied to this machine, or fetched again |
 | Sessions and sign-in links | A restore signs everyone out |
 | Measured memory | Measured on one machine, and measured again on the next load |
+| What the last check for a newer version found | Not a setting. A file could use it to show a version and link of its own as available. A restored root with the check on asks again |
 | Old files from an earlier restore | They hold secrets |
 | SQLite's working files (`local-base.db-wal`, `-shm`, `-journal`) | The backup copies through SQLite, so it holds only finished writes |
 
@@ -57,18 +58,32 @@ Secrets are removed from the copy, never from your root. The finished file holds
 
 **Only restore a backup you made yourself and have kept private.** A backup isn't signed, and **restoring one decides who can sign in and which programs run as you**. The checks and the report below don't make a file from anyone else safe, and neither does `--dry-run`. See [what this can't protect against](#what-this-cant-protect-against).
 
-Restore checks the whole file before changing anything. It refuses a file you don't own or that others can change, and a database with a trigger, a view, or a table or column LocalBase doesn't make. Before it asks, it shows:
+Restore checks the whole file before changing anything. It refuses a file you don't own or that others can change, and a database LocalBase couldn't have written: one with a trigger, a view, a table, column or index LocalBase doesn't make, one of its own defined differently, or rows pointing at something that isn't there. It also refuses a file bigger than a root can hold (see [limits](#limits)), and download credentials that fail the checks `auth-profiles add` makes. Before it asks, it shows:
 
 - **Every custom backend's whole command line.** These run as you when their model loads.
-- **"A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."** Keys are counted by state.
+- **Who can sign in, by the values that decide it:** each sign-in provider's issuer, what everyone who signs in gets, the address people sign in at, and the mail server that can read sign-in links, each set against what this root has. A provider's label, such as `oidc:google`, is only the file's own name for it.
+- **What each role gives, and who has it:** each account, address, domain and invitation, with anyone new to this root first, and anyone who would lose a role. A long list ends with how many more, and `--json` has them all.
+- **"A restore signs everyone out. Active API keys keep working, except as said here, and revoked ones stay revoked."** Then which keys would work, which are held back, and which stay as this root has them, as described below.
 - **Some of the settings that change who can reach it, or where it reaches:** the gateway's address and who can reach it, the OTLP endpoint, the import settings and connection caps. Backends only ever listen on this computer, whatever their stored host says, because they have no authentication.
+- **Which secrets it holds,** found in its files rather than taken from its own list, and how to put back each one it leaves out. If its own list leaves one out, the report says so, since the file may have been changed after it was made.
+- **Catalog entries this root will trust as its own,** with where each downloads from. One that changes a built-in entry says which fields, and if it changes where the model downloads from, where it downloaded from before.
+- **Download credentials, and where each is sent:** header names and origins, never values.
+- **What this root does by itself:** whether it checks GitHub once a day for a newer version, and whether it marks synthesized speech as made by AI, each set against what this root does now. If the file turns marking off, the last lines before the question say so, since telling people the speech was made by AI then becomes your responsibility.
 - **How many role bindings and invitations each sign-in provider has,** and how many name no provider. A provider left out with `--exclude-secrets` keeps its bindings, and they do nothing until it is added back.
-- **With `--replace`, what comes back:** keys, users and role bindings the root no longer has. **A key revoked on that root stays revoked, and a user removed or disabled there stays that way,** whatever the backup says. A new root has nothing to compare with, and neither does a database that can't be read, which the report says. In either case, check `local-base keys list` afterwards.
+- **With `--replace`, a user removed or disabled on that root stays that way,** whatever the backup says.
 
-**An older backup can still bring back a leaked key's secret.** The comparison looks at whether a key is revoked, not at its secret:
+If who can sign in or who has a role differs from this root, the last lines before the question say so, or say that it may when part of this root can't be read.
 
-- **A rotated key goes back to the secret it had when the backup was made.** The newer secret stops working, and the report doesn't say so. If you rotated a key because it leaked, rotate it again straight after restoring: `local-base keys rotate <keyId>`. A key you revoked instead of rotating stays revoked on that root.
-- **The comparison is made before it asks,** so a key revoked while it waits for your answer works again afterwards. Don't change keys or users on that root until the restore has finished.
+**The report shows what the file says for what it is.** A control character shows as an escape such as `\x1b`, and so does a letter from outside ASCII, such as `\u0430`, so one address or program can't pass for another. Your key names and the root's path keep their letters. `--json` carries the values as they are.
+
+**This root's keys win.** A restore compares each key's secret, permissions, expiry, name, and whether it's revoked, and keeps this root's version of all of it:
+
+- **A key changed on this root keeps its current secret and permissions,** so a key you rotated because it leaked stays rotated. A key this root doesn't have stays out, whether it was removed here or the file added it. Keys made here since the backup stop working, and the report lists them.
+- **On a new root, a root with no keys, or one whose database can't be read,** the backup's ordinary keys come back: the ones that can only make requests, as a new key can. A key that can do more, even one that can only read keys, stays out until you name it, because a fresh root is where a file could bring in an administrator's key with nothing to show it was never there.
+- **To take the backup's version of a key, name it:** `--bring-back-key <id>`, once for each key. The report lists each one, and naming a key revoked on this root says that it would work again. Naming a key that would change nothing is refused, since it may be a mistyped id.
+- **A key held back can still come back after the restore.** The last lines give the command: the same restore again, with `--bring-back-key`, so it signs everyone out and moves the current files aside again.
+
+**Download credentials are checked the way every download checks them.** The `huggingface` profile, whose origins also get the Hugging Face token, can name only Hugging Face's own hosts. A backup whose `huggingface` profile names others still restores, and those origins are left out wherever it's used, with a warning in the gateway's log.
 
 It refuses a root with a running gateway (stop it first), a root or directory another user owns, a directory that isn't a LocalBase root, a database with a write that never finished, and running as root. A root with data needs `--replace`.
 
@@ -82,7 +97,7 @@ local-base restore --undo
 
 Everything comes back byte for byte except the database, whose rows and pages are the same. A restore takes the database out of write-ahead logging to move it, which changes part of its header, and the next command to open it puts that back.
 
-**What you answered is checked again.** After you say yes, the restore holds the root's database and compares it with what the report said. If it changed, or something else keeps the database open for more than a minute, the restore stops and says so, with nothing changed.
+**What you answered is checked again.** After you say yes, the restore holds the root's database, and compares the root's API keys, users, roles and sign-in settings with what the report said. If any of them changed, if the database can't be read, or if something else keeps it open for more than a minute, the restore stops and says so, with nothing changed.
 
 **A crash can leave a write-ahead log with finished writes in it.** Those go into the database before it moves, so the old files hold the same rows, though not the same files. A root that couldn't be read for the report is moved as it is, with whatever is beside it.
 
@@ -96,13 +111,15 @@ Files are created 0600 and directories 0700, owned by you, and the restored root
 
 - **A root that doesn't fit isn't backed up.** One file can be at most 8 GiB, and the whole backup 16 GiB and 20,000 files. `backup` says what went over, and keeps nothing.
 - **A file with a path over 512 bytes is left out,** and listed with what else was left out.
+- **A restore holds each file to what a root can write,** and refuses one over its limit before unpacking anything: the database 8 GiB, a voice 12 MiB, `catalog.d/.former-built-ins` 1 MiB, any other file 8 MiB, and all those other files 64 MiB together. In the database, a value can be at most 1 MiB, and a table at most 100,000 rows and 16 MiB, except `usage_hourly`, where only each value is limited. So a small compressed file can't make a restore, or a dry run, use gigabytes of memory.
+- **If a backup of your own root goes over one of these,** `backup` says so and keeps nothing. That root is bigger than LocalBase expects, so please open an issue saying which limit it named.
 - **Each backup is whole.** There's no incremental backup, and nothing deletes old backups for you.
 - **Models aren't in it,** so a restored root installs them again. Restore lists which.
 - **A newer backup can't go into an older LocalBase.** Restore refuses, and asks you to upgrade first.
 
 ## What has been tested
 
-Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `ffc89a72`: a quiet root, with no journal and no writer.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Handling a busy database and a journal has run only in tests. Later commits have not been through that run.
+Tests cover this on scratch data with a fake backend and tiny models, and one run used real data: **`backup` and `restore` with `--exclude-secrets` on a clone of a real install, at commit `ffc89a72`: a quiet root, with no journal and no writer.** All five commands passed, its schema check gave no false refusal, and it left no temporary files. Handling a busy database and a journal has run only in tests. On 2026-11-03, backup, dry run, restore and `--replace` passed again on a copy of that install at `af6a85b8`, which added the check for rows pointing at nothing, as #603's description records. On 2026-11-05, the later comparison of each table's whole definition was measured against that install's definitions, read from a copy, and they match what it expects, as #650's description records, but no restore has run with it. Later commits have not been through a full run.
 
 **Not tested:**
 
@@ -139,6 +156,12 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 | `This backup would not restore, so it was not kept: …` | Fix what it names, which comes from the same checks `restore` makes |
 | `The backup is damaged`, or `… does not match its checksum.` | The file changed after it was written, and can't be repaired. Use another backup |
 | `The database holds what LocalBase does not make, so it was changed by something else: …` | Don't restore it unless you know what changed it, because restoring decides who can sign in and what runs as you |
+| `The database has rows pointing at something that isn't there…` | Don't restore it unless you know what changed it. If `backup` says this about your own root, that root can't be backed up until those rows are gone, and no command removes them yet, though the gateway keeps working. Either way, report it privately through [GitHub Security Advisories](https://github.com/timsexperiments/LocalBase/security/advisories/new), as the security policy asks, not in a public issue |
+| `The database holds more than a root could…`, or `The backup lists "<file>" with a size a backup can't hold.` | Don't restore a file you didn't make that says this. If you think one was made to mislead you, report it privately through [GitHub Security Advisories](https://github.com/timsexperiments/LocalBase/security/advisories/new), as the security policy asks. If `backup` says it about your own root, see [limits](#limits) |
+| `The download credentials in this backup are not valid: …` | It names the profile and why, and a root wouldn't use that profile either. If the backup is yours, replace or remove that profile on the root it came from, with `local-base auth-profiles add` or `remove`, then back up again |
+| `--bring-back-key <id>: there's nothing to bring back…` | Check the id against the report's lists of keys. Either the backup doesn't hold that key, or this root's version of it is already the same |
+| `This root's database can't be read now…` | Nothing was changed. Fix what the error names, then run the restore again |
+| `This backup's database can't be used: its journal mode stayed <mode>…` | Nothing was changed. Try again. If it keeps happening, report it privately through [GitHub Security Advisories](https://github.com/timsexperiments/LocalBase/security/advisories/new), as the security policy asks, since the backup's database may have been changed to cause it |
 | `A newer LocalBase wrote this backup…` | Upgrade LocalBase, then restore |
 | `doctor` names a `.local-base-temporary-…` directory | A backup or restore was killed, and its files may hold secrets. The next backup or restore removes it, or run the `rm` that `doctor` prints |
 
@@ -146,11 +169,5 @@ Tests cover this on scratch data with a fake backend and tiny models, and one ru
 
 - **Plaintext secrets at rest:** a backup holds the same secrets a root holds, and anyone who can read it can use them.
 - **A parent directory other users can write to** can swap the root, or the backups directory beside it. Owner and mode checks don't protect against that.
-- **A backup someone else made or changed.** Nothing signs a backup, and the checksums find damage, not tampering. Restore's checks catch some changes, not all of them, and a file made to mislead can pass them:
-  - **It can give someone permissions the report doesn't show,** and that the access policy doesn't list afterwards.
-  - **The report leaves out things that decide who can sign in or where data goes:** a sign-in provider's exact issuer (it prints the name the file gives it), what everyone who signs in gets, the origin, the SMTP host, a download credential's origins, a catalog entry's source, and the `update.*` and `speech.provenance-marking` settings.
-  - **It only counts role bindings.** It doesn't say who they're for or what the role gives, so a file adding its own account to a strong role shows up as a higher count.
-  - **It prints what the file says as it is,** terminal escape codes included, so a value can change or hide lines of the report on your screen, including the commands that run as you.
-  - **Part of the report is only what the file claims:** which secrets it holds, and the command it gives to put each one back. Don't run a command printed from a file you didn't make.
-  - **The database check doesn't compare all of a table's definition,** such as its `CHECK` constraints, so a changed table can pass and make later commands fail, including `keys revoke`.
-  - **A small file can make restore use several GiB of memory,** with `--dry-run` too, because a dry run reads the file the same way.
+- **A backup someone else made or changed.** Nothing signs a backup, and the checksums find damage, not tampering. Restore refuses what LocalBase couldn't have written, and the report shows what decides who can sign in, who has which role, which keys work, what runs as you, where downloads go and what the root does by itself. A file made to mislead can hold all of that in a form LocalBase could have written, so the report is what you decide on, and:
+  - **A command to put a secret back is built from what the file says,** checked and quoted, so read where it would send the secret before you run it.
