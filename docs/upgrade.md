@@ -29,7 +29,7 @@ Use your own data directory in the last line if you set `--root` or `LOCALBASE_R
 
 **Why delete `runs/`:** `<root>/runs/` holds checkpoints of detached runs, including model output in plaintext (directory 0700, files 0600). A build with detached runs deletes them on its own, but older binaries ignore that directory, so they would stay on disk until a newer build starts again.
 
-If you've run an older version of LocalBase and it stopped without finishing, the newer version may refuse to open the database and name a file ending in `-wal-owner`. Remove that file and start LocalBase again. No data is lost.
+If you've run an older version of LocalBase and it stopped without finishing, the newer version may refuse to open the database and name a file ending in `-wal-owner`. Remove that file and start LocalBase again. No data is lost. `local-base upgrade rollback` removes that file for you when it goes back.
 
 **What a rollback loses:** runs in flight die, and features the older binary lacks stop being available. Pages it doesn't have, such as `/app/studio/*`, return errors, so bookmarks to them break.
 
