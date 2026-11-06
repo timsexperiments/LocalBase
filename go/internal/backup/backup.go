@@ -52,9 +52,14 @@ const (
 	// built-ins already kept as entries, so that removing one sticks.
 	formerLog = "catalog.d/.former-built-ins"
 
-	// SignOutLine and RevokedLine are said before a restore asks, and are in every manifest.
-	SignOutLine = "A restore signs everyone out. Active API keys keep working, and revoked ones stay revoked."
+	// SignOutLine, HeldKeyLine, RevokedLine and ChangedKeyLine are said before a restore asks, and are in every manifest.
+	SignOutLine = "A restore signs everyone out. Active API keys keep working, except as said here, and revoked ones stay revoked."
 	RevokedLine = "A key revoked, or a user removed or disabled, on the root being replaced stays that way, whatever this backup says."
+	// HeldKeyLine is for where a file could bring in an administrator's key unnoticed: nothing on a
+	// root with no keys would show it was never there.
+	HeldKeyLine = "On a root with no keys, a key that can do more than make requests stays out, unless you name it with --bring-back-key."
+	// ChangedKeyLine covers what RevokedLine doesn't: a key rotated because its secret got out.
+	ChangedKeyLine = "On a root with keys of its own, a key changed there keeps its current secret and permissions, and a key missing there stays out, unless you name it with --bring-back-key."
 )
 
 // These limits are constants, because a backup is input from someone else: none of them is ever
@@ -108,19 +113,21 @@ var (
 	includedDirs  = []string{"catalog.d", "backends.d", "voices"}
 	// notIncludedTop says why each other thing a root holds stays out.
 	notIncludedTop = map[string]string{
-		"models":                "Large, and downloaded again. Restore lists which to install",
-		"runs":                  "Replies in progress. No prompt or reply ever goes in a backup",
-		"logs":                  "Not settings, and they stay on the computer they describe",
-		"bin":                   "Downloaded again, and programs should not travel in a data file",
-		"runtime":               "Tied to this machine and this process",
-		"service":               "Tied to this machine. `start` writes it again",
-		"cache":                 "Fetched again",
-		"catalog-feed.json":     "A cache of the remote catalog, fetched again",
-		".localbase-root.json":  "Restore makes its own, since a marker names one root",
-		"local-base.db-wal":     "Part of the database, which is copied whole",
-		"local-base.db-shm":     "Part of the database, which is copied whole",
-		"local-base.db-journal": "SQLite's record of a write in progress. The copy holds only finished writes",
-		root.RestoreJournalName: "Left by a restore that did not finish",
+		"models":                      "Large, and downloaded again. Restore lists which to install",
+		"runs":                        "Replies in progress. No prompt or reply ever goes in a backup",
+		"logs":                        "Not settings, and they stay on the computer they describe",
+		"bin":                         "Downloaded again, and programs should not travel in a data file",
+		"runtime":                     "Tied to this machine and this process",
+		"service":                     "Tied to this machine. `start` writes it again",
+		"cache":                       "Fetched again",
+		"catalog-feed.json":           "A cache of the remote catalog, fetched again",
+		".localbase-root.json":        "Restore makes its own, since a marker names one root",
+		"local-base.db-wal":           "Part of the database, which is copied whole",
+		"local-base.db-shm":           "Part of the database, which is copied whole",
+		"local-base.db-journal":       "SQLite's record of a write in progress. The copy holds only finished writes",
+		"local-base.db-wal-owner":     "Says which database a -wal belongs to. A restored database writes its own",
+		"local-base.db-wal-owner.tmp": "Left by a process stopped while writing that note",
+		root.RestoreJournalName:       "Left by a restore that did not finish",
 	}
 	// rowsLeftOut are rows that are not settings. They are dropped when a backup is written and
 	// again on restore, since a crafted file can carry them.
@@ -484,10 +491,14 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if o.Now.IsZero() {
 		o.Now = time.Now()
 	}
-	dbPath := o.Root.DB()
-	if _, err := os.Lstat(dbPath); err != nil {
+	if _, err := os.Lstat(o.Root.DB()); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
 	}
+	dbPath, removeCopy, err := readRoot(ctx, o.Root.DB())
+	if err != nil {
+		return nil, err
+	}
+	defer removeCopy()
 	// Any other failure here shows at the step that needs the data, with that step's name.
 	if err := retryBusy(ctx, func() error { return readableDatabase(ctx, dbPath) }); isUnfinishedWrite(err) {
 		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
@@ -503,7 +514,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	)
 	err = retryBusy(ctx, func() error {
 		var err error
-		if secrets, err = readSecrets(ctx, o.Root.Dir, o.ExcludeSecrets); err != nil {
+		if secrets, err = readSecrets(ctx, o.Root.Dir, dbPath, o.ExcludeSecrets); err != nil {
 			return err
 		}
 		if migrations, err = appliedMigrations(ctx, dbPath); err != nil {
@@ -520,7 +531,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	}
 	m := &Manifest{Format: Format, CreatedAt: o.Now.UTC().Format(time.RFC3339), Version: o.Version, GoSchema: store.GoSchemaVersion(),
 		Migrations: migrations, Secrets: "included", SecretNames: secrets.names, SecretsRemoved: secrets.removed, NotIncluded: left,
-		RowsLeftOut: rowsPresent, Models: models, RestoreRules: []string{SignOutLine, RevokedLine}}
+		RowsLeftOut: rowsPresent, Models: models, RestoreRules: []string{SignOutLine, HeldKeyLine, RevokedLine, ChangedKeyLine}}
 	if o.ExcludeSecrets {
 		m.Secrets = "excluded"
 	}
@@ -635,7 +646,7 @@ func selfCheck(ctx context.Context, archive, stage string) error {
 	if err != nil {
 		return err
 	}
-	_, err = validate(ctx, dir, filepath.Join(stage, "would-be-root"), m, &targetState{newRoot: true})
+	_, err = validate(ctx, dir, filepath.Join(stage, "would-be-root"), m, &targetState{newRoot: true}, nil)
 	return err
 }
 

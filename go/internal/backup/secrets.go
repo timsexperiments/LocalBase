@@ -47,9 +47,9 @@ func (s *secretSet) found(name, restore string, exclude bool) {
 	s.names = append(s.names, name)
 }
 
-func readSecrets(ctx context.Context, rootDir string, exclude bool) (*secretSet, error) {
+func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool) (*secretSet, error) {
 	s := &secretSet{reduced: map[string][]byte{}, dropped: map[string]bool{}}
-	hf, otel, err := configSecrets(ctx, filepath.Join(rootDir, "local-base.db"))
+	hf, otel, err := configSecrets(ctx, dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,12 @@ func isUnfinishedWrite(err error) bool {
 // UnfinishedWrite says what to do about a root whose database a process left mid-write, or ""
 // when there is none. It changes nothing.
 func UnfinishedWrite(ctx context.Context, rootDir string) string {
-	if err := readableDatabase(ctx, filepath.Join(rootDir, "local-base.db")); isUnfinishedWrite(err) {
+	dbPath := filepath.Join(rootDir, "local-base.db")
+	// In write-ahead logging SQLite recovers a crash by itself, and reading this way would leave files.
+	if store.InWAL(dbPath) {
+		return ""
+	}
+	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
 		return unfinishedWriteMessage(rootDir)
 	}
 	return ""
@@ -228,6 +233,27 @@ func UnfinishedWrite(ctx context.Context, rootDir string) string {
 
 func unfinishedWriteMessage(rootDir string) string {
 	return fmt.Sprintf("The database on %s has a write that never finished, left by a process that stopped. Nothing was changed. To undo that write, run: local-base --root '%s' status. Then try again.", rootDir, rootDir)
+}
+
+// readRoot says which file to read a root's database through, for all of one command's reads. Reading
+// it directly would leave a -shm and a -wal behind on a stopped root, and fail on one that can't be
+// written. done removes any private copy. A read that fails for a reason of its own comes back here as
+// no error, so that the step that needs the data can say what happened.
+func readRoot(ctx context.Context, dbPath string) (read string, done func(), err error) {
+	read, done, err = store.ReadablePath(dbPath)
+	if err != nil || read != dbPath {
+		return read, done, err
+	}
+	err = readableDatabase(ctx, read)
+	if err == nil || isBusy(err) || isUnfinishedWrite(err) {
+		return read, done, nil
+	}
+	// It's read in place because a -shm is there. That file may be what's wrong, and a copy doesn't use it.
+	copied, removeCopy, err := store.PrivateCopy(dbPath)
+	if err != nil {
+		return read, done, nil
+	}
+	return copied, removeCopy, nil
 }
 
 func openReadOnly(path string) (*sql.DB, error) {
@@ -289,6 +315,17 @@ func tableExists(ctx context.Context, db *sql.DB, table string) (bool, error) {
 	var n int
 	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n)
 	return n > 0, err
+}
+
+// tablesExist says whether a database has all of these. A root last opened by an older version lacks
+// the tables added since, which is having no rows in them, not a failed read.
+func tablesExist(ctx context.Context, db *sql.DB, tables ...string) (bool, error) {
+	for _, table := range tables {
+		if present, err := tableExists(ctx, db, table); err != nil || !present {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
@@ -374,12 +411,12 @@ func selectedModels(ctx context.Context, dbPath string) ([]string, error) {
 		}
 		return nil, fmt.Errorf("reading the models: %w", err)
 	}
-	st, err := store.OpenReadOnly(dbPath)
+	db, err := openReadOnly(dbPath)
 	if err != nil {
 		return unavailable(err)
 	}
-	defer func() { _ = st.Close() }() // Read-only.
-	cfg, err := st.LoadConfig(ctx)
+	defer func() { _ = db.Close() }() // Read-only.
+	cfg, err := (&store.Store{DB: db}).LoadConfig(ctx)
 	if err != nil {
 		return unavailable(err)
 	}

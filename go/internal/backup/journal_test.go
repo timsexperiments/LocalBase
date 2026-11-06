@@ -14,11 +14,30 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// crashMidWrite leaves a database as a process killed during a large write would: pages changed
-// on disk, and a journal that undoes them. It writes to a copy and takes that copy's files while
-// the transaction is open, because a test can't kill itself. Those files go to dbPath.
+// inRollbackMode puts a database back as a version before write-ahead logging left it, with no store
+// involved, since the store's open would switch it.
+func inRollbackMode(t *testing.T, dbPath string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	var mode string
+	if err := db.QueryRow(`PRAGMA journal_mode=DELETE`).Scan(&mode); err != nil || mode != "delete" {
+		t.Fatalf("journal mode %q: %v", mode, err)
+	}
+}
+
+// crashMidWrite leaves a database as a version before write-ahead logging would, killed during a large
+// write: pages changed on disk, and a journal that undoes them. That is still a real case: a root that
+// crashed before it was upgraded has this, and nothing has opened it for writing since. It writes to
+// a copy and takes that copy's files while the transaction is open, because a test can't kill itself.
+// Those files go to dbPath.
 func crashMidWrite(t *testing.T, dbPath string) {
 	t.Helper()
+	inRollbackMode(t, dbPath)
 	work := filepath.Join(dir(t), "copy.db")
 	body, err := os.ReadFile(dbPath)
 	if err != nil {
@@ -164,14 +183,38 @@ func TestRestoreOverACrashedRootSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Discard()
-	if s.Report.RevocationsKept == 0 || len(s.Report.ReturningKeys) != 0 {
-		t.Errorf("after recovering: kept %d, returning %v", s.Report.RevocationsKept, s.Report.ReturningKeys)
+	if s.Report.RevocationsKept == 0 || len(s.Report.KeysLeftOut) != 0 {
+		t.Errorf("after recovering: kept %d, left out %v", s.Report.RevocationsKept, s.Report.KeysLeftOut)
 	}
 }
 
-// A crash can also come after the checks, while the person reads the report: the journal has to go
-// wherever its database goes. Left behind, SQLite plays it into the restored database and uses it
-// up, so that neither database survives.
+// A crash can also come after the checks, while the person reads the report. That's a change to the root
+// they said yes about, and an open for writing would undo the write here, so it stops and says what to do.
+func TestACrashWhileRestoreAskedStopsIt(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	res := create(t, r, false)
+	dbPath := filepath.Join(r.Dir, "local-base.db")
+	keys := keyCount(t, dbPath)
+	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crashMidWrite(t, dbPath)
+	before := tree(t, r.Dir, "runtime")
+	_, err = s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "never finished") || !strings.Contains(err.Error(), " status") {
+		t.Fatalf("commit: %v", err)
+	}
+	if after := tree(t, r.Dir, "runtime"); after != before {
+		t.Errorf("it stopped, and the root changed:\n%s\nwas:\n%s", after, before)
+	}
+	recovers(t, dbPath, keys)
+}
+
+// When a root couldn't be read for the report, there's nothing to compare, and nothing opens that file
+// for writing, so a journal is still there to move. It has to go wherever its database goes. Left behind,
+// SQLite plays it into the restored database and uses it up, so that neither database survives.
 func TestRestoreKeepsAJournalWithItsDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
@@ -181,6 +224,7 @@ func TestRestoreKeepsAJournalWithItsDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.live = nil
 	crashMidWrite(t, dbPath)
 	done, err := s.Commit()
 	if err != nil {
@@ -204,6 +248,7 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		s.live = nil // as for a root that couldn't be read for the report, so the journal is still there to move
 		crashMidWrite(t, dbPath)
 		return r, s, dbPath, keys
 	}
@@ -277,57 +322,59 @@ func TestRestoreOverAnUnreadableDatabaseSaysSo(t *testing.T) {
 	}
 }
 
-// A gateway mid-write is the ordinary case: a journal exists, and is not a crash. The backup must
-// succeed, name the journal, and hold only what has been committed.
+// A gateway mid-write is the ordinary case: a working file exists, and is not a crash. The backup must
+// succeed, name the file, and hold only what has been committed. In write-ahead logging that's the -wal,
+// and for a root that hasn't been opened for writing since it was upgraded, the journal.
 func TestBackupDuringAWriteHoldsOnlyWhatIsFinished(t *testing.T) {
-	r, _ := newRoot(t, dir(t))
-	dbPath := filepath.Join(r.Dir, "local-base.db")
-	writer, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer writer.Close()
-	writer.SetMaxOpenConns(1)
-	tx, err := writer.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`UPDATE api_keys SET name = 'not finished'`); err != nil {
-		t.Fatal(err)
-	}
-	if !exists(dbPath + "-journal") {
-		t.Fatal("the write has no journal, so this tests nothing")
-	}
-	res := create(t, r, false)
-	found := false
-	for _, n := range res.Manifest.NotIncluded {
-		if n.What == "local-base.db-journal" {
-			found = true
-			if n.Unknown || n.Why == "" {
-				t.Errorf("the journal is listed as %+v", n)
+	for _, c := range []struct {
+		name     string
+		rollback bool
+		working  string
+	}{
+		{"write-ahead logging", false, "local-base.db-wal"},
+		{"a rollback journal", true, "local-base.db-journal"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, _ := newRoot(t, dir(t))
+			dbPath := filepath.Join(r.Dir, "local-base.db")
+			if c.rollback {
+				inRollbackMode(t, dbPath)
 			}
-		}
-	}
-	if !found {
-		t.Error("the journal is not listed")
-	}
-	for _, e := range read(t, res.Output) {
-		if e.header.Name != filesPrefix+"local-base.db" {
-			continue
-		}
-		copied := filepath.Join(dir(t), "copied.db")
-		if err := os.WriteFile(copied, e.body, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		db, err := openReadOnly(copied)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer db.Close()
-		var n int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = 'not finished'`).Scan(&n); err != nil || n != 0 {
-			t.Errorf("the backup holds an unfinished write: %d %v", n, err)
-		}
+			writer, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer writer.Close()
+			writer.SetMaxOpenConns(1)
+			tx, err := writer.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			if _, err := tx.Exec(`UPDATE api_keys SET name = 'not finished'`); err != nil {
+				t.Fatal(err)
+			}
+			if !exists(filepath.Join(r.Dir, c.working)) {
+				t.Fatalf("the write has no %s, so this tests nothing", c.working)
+			}
+			res := create(t, r, false)
+			found := false
+			for _, n := range res.Manifest.NotIncluded {
+				if n.What == c.working {
+					found = true
+					if n.Unknown || n.Why == "" {
+						t.Errorf("%s is listed as %+v", c.working, n)
+					}
+				}
+			}
+			if !found {
+				t.Errorf("%s is not listed", c.working)
+			}
+			db := databaseIn(t, res.Output)
+			var n int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = 'not finished'`).Scan(&n); err != nil || n != 0 {
+				t.Errorf("the backup holds an unfinished write: %d %v", n, err)
+			}
+		})
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -25,6 +25,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -39,7 +40,21 @@ type Refused struct{ Why string }
 
 func (e *Refused) Error() string { return e.Why }
 
-func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format, a...)} }
+// refuse says why. A refusal can quote what's in the file, so what it quotes can't act on a terminal.
+func refuse(format string, a ...any) error {
+	shown := make([]any, len(a))
+	for i, v := range a {
+		switch x := v.(type) {
+		case string:
+			shown[i] = cli.Printable(x)
+		case error:
+			shown[i] = cli.Printable(x.Error())
+		default:
+			shown[i] = v
+		}
+	}
+	return &Refused{fmt.Sprintf(format, shown...)}
+}
 
 // Program is one custom backend's whole command line: the program can be a shell.
 type Program struct {
@@ -70,9 +85,17 @@ type KeyCounts struct {
 	Expired int `json:"expired"`
 }
 
+// KeyChange is one API key a restore treats as something other than the same, named by the id that
+// identifies it and the name a person gave it. It holds nothing of the secret.
+type KeyChange struct {
+	ID   string `json:"id"`
+	Name string `json:"name" report:"letters"`
+	Why  string `json:"why,omitempty"`
+}
+
 // Report is what a restore would do. It is shown before anything is asked.
 type Report struct {
-	Target    string        `json:"target"`
+	Target    string        `json:"target" report:"letters"`
 	NewRoot   bool          `json:"newRoot"`
 	Manifest  *Manifest     `json:"manifest"`
 	Rules     []string      `json:"rules"`
@@ -80,9 +103,13 @@ type Report struct {
 	Sources   []ModelSource `json:"modelSources"`
 	Settings  []Setting     `json:"settings"`
 	Providers []string      `json:"signInProviders"`
-	Keys      KeyCounts     `json:"keys"`
-	Users     int           `json:"users"`
-	Ports     []int         `json:"ports"`
+	SignIn    *SignIn       `json:"signIn"`
+	Grants    []Grant       `json:"grants"`
+	// RolesGone are the roles this root has and the backup doesn't.
+	RolesGone []Grant   `json:"rolesGone,omitempty"`
+	Keys      KeyCounts `json:"keys"`
+	Users     int       `json:"users"`
+	Ports     []int     `json:"ports"`
 	// Who a provider's bindings cover, by issuer, and those that name no provider.
 	Issuers     []IssuerLine      `json:"issuers"`
 	Unbound     auth.UnboundCount `json:"unbound"`
@@ -90,13 +117,25 @@ type Report struct {
 	// With a root being replaced, what the backup would bring back, and what stays as it is.
 	ReturningBindings []IssuerLine `json:"returningBindings,omitempty"`
 	RevocationsKept   int          `json:"revocationsKept"`
-	ReturningKeys     []string     `json:"returningKeys"`
-	KeysLost          []string     `json:"keysLost"`
-	ReturningUsers    int          `json:"returningUsers"`
+	// KeysKept have changed on the root being replaced, and stay as they are there.
+	KeysKept []KeyChange `json:"keysKept"`
+	// KeysLeftOut are active in the backup and not on that root, and stay out.
+	KeysLeftOut []KeyChange `json:"keysLeftOut"`
+	// KeysBroughtBack are those a person named, to take the backup's version of.
+	KeysBroughtBack []KeyChange `json:"keysBroughtBack"`
+	// KeysLost are active on that root and not in the backup, and stop working.
+	KeysLost []KeyChange `json:"keysLost"`
+	// KeysActive are what would work, when there's no root's keys to set them against.
+	KeysActive []KeyChange `json:"keysActive"`
+	// KeysHeldBack can do more than make requests, have no root's keys to set them against, and stay out.
+	KeysHeldBack   []KeyChange `json:"keysHeldBack"`
+	ReturningUsers int         `json:"returningUsers"`
 	// A user the target has removed or disabled stays that way, as a revoked key does.
-	UserStatusesKept int      `json:"userStatusesKept"`
-	UsersChanged     int      `json:"usersGoingBackToAnOlderStatus"`
-	Cautions         []string `json:"cautions"`
+	UserStatusesKept int `json:"userStatusesKept"`
+	UsersChanged     int `json:"usersGoingBackToAnOlderStatus"`
+	// Cautions keep their letters because they hold this person's own path, often as a command to copy.
+	// So a caution mustn't quote the file: what the file says goes in a field of its own.
+	Cautions []string `json:"cautions" report:"letters"`
 }
 
 // Staged is a backup read and checked, in a private directory beside its target.
@@ -105,17 +144,37 @@ type Staged struct {
 	dir     string
 	target  string
 	replace bool
+	// live is what the report said about the root being replaced, read before it was written. It's nil
+	// for a new root, an empty one, or one that couldn't be read, which have nothing to hold it to.
+	live *liveFacts
+	// hadData says the report was about a root with something to replace.
+	hadData bool
+	// release lets go of the root's database, once Commit holds it.
+	release func()
 }
 
 // Discard removes the staging directory. Commit does too.
 func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 
-// replaceable is all a restore moves, here and on undo. It is a constant, so a journal
-// can't name anything else.
-var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
+// replaceable is all a restore moves, here and on undo. It never changes, so a journal can't name
+// anything else. The database is first, and goes in last. Whatever belongs with a database moves with it,
+// because a -wal left beside another database is replayed into it, and nothing notices.
+var replaceable = func() []string {
+	names := []string{"local-base.db"}
+	for _, suffix := range store.Sidecars {
+		names = append(names, "local-base.db"+suffix)
+	}
+	return append(names, "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices")
+}()
 
 // targetState is what a restore found at its target.
-type targetState struct{ newRoot, hasData bool }
+type targetState struct {
+	newRoot, hasData bool
+	// liveDB is the file to read the root's database through, for a root being replaced. With liveErr,
+	// it couldn't be read at all, which a root is often replaced because of, so this doesn't refuse.
+	liveDB  string
+	liveErr error
+}
 
 func checkTarget(target string, replace bool) (*targetState, error) {
 	if home, _ := os.UserHomeDir(); target == string(filepath.Separator) || (home != "" && target == home) {
@@ -200,8 +259,10 @@ func existingAncestor(p string) string {
 
 // Stage reads a backup into a private directory and checks all of it. It changes nothing
 // else, so a dry run is Stage and Discard.
-func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
-	staged, err := stageRestore(ctx, file, targetDir, replace)
+//
+// bringBack names keys to take the backup's version of, where the root being replaced has its own.
+func Stage(ctx context.Context, file, targetDir string, replace bool, bringBack ...string) (*Staged, error) {
+	staged, err := stageRestore(ctx, file, targetDir, replace, bringBack)
 	if isBusy(err) {
 		retry := "local-base --root " + quote(targetDir) + " restore"
 		if replace {
@@ -212,7 +273,7 @@ func Stage(ctx context.Context, file, targetDir string, replace bool) (*Staged, 
 	return staged, err
 }
 
-func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*Staged, error) {
+func stageRestore(ctx context.Context, file, targetDir string, replace bool, bringBack []string) (*Staged, error) {
 	if os.Getuid() == 0 {
 		return nil, refuse("Refusing to restore as root: the files would belong to root, and the owner could not read them. Run this as the user who will own the root.")
 	}
@@ -225,10 +286,18 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*S
 		return nil, err
 	}
 	if !state.newRoot && state.hasData {
-		// A database that is only busy is left for the comparison, which refuses it.
-		read := func() error { return readableDatabase(ctx, filepath.Join(target, "local-base.db")) }
-		if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
-			return nil, refuse("%s", unfinishedWriteMessage(target))
+		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"))
+		if errors.Is(err, store.ErrInUse) {
+			return nil, err
+		}
+		defer removeCopy()
+		state.liveDB, state.liveErr = liveDB, err
+		if err == nil {
+			// A database that is only busy is left for the comparison, which refuses it.
+			read := func() error { return readableDatabase(ctx, liveDB) }
+			if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
+				return nil, refuse("%s", unfinishedWriteMessage(target))
+			}
 		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
@@ -250,7 +319,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*S
 	if err != nil {
 		return nil, err
 	}
-	s := &Staged{dir: dir, target: target, replace: replace}
+	s := &Staged{dir: dir, target: target, replace: replace, hadData: state.hasData}
 	ok := false
 	defer func() {
 		if !ok {
@@ -261,14 +330,22 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool) (*S
 	if err != nil {
 		return nil, err
 	}
-	report, err := validate(ctx, dir, target, m, state)
+	// Before the report, so that a change made while it's written is seen as one, and never missed.
+	if !state.newRoot && state.hasData && state.liveErr == nil {
+		s.live, err = readRootFacts(ctx, state.liveDB, target)
+		if isBusy(err) {
+			return nil, fmt.Errorf("reading this root's database: %w", err)
+		}
+		// Any other failure is for the report, which says the root can't be read.
+	}
+	report, err := validate(ctx, dir, target, m, state, bringBack)
 	if err != nil {
 		return nil, err
 	}
 	report.Cautions = append(report.Cautions, swept...)
-	report.Rules = []string{SignOutLine}
+	report.Rules = []string{SignOutLine, HeldKeyLine}
 	if !report.NewRoot {
-		report.Rules = append(report.Rules, RevokedLine)
+		report.Rules = append(report.Rules, RevokedLine, ChangedKeyLine)
 	}
 	if parent, err := os.Stat(filepath.Dir(target)); err == nil && parent.Mode().Perm()&0o002 != 0 {
 		report.Cautions = append(report.Cautions, "Other users can write to "+filepath.Dir(target)+", which can swap this root for another. Owner and mode checks don't protect against that.")
@@ -546,12 +623,46 @@ func checkDatabase(ctx context.Context, dbPath string) error {
 	if bad := shape.Unexpected(expected); len(bad) > 0 {
 		return refuse("The database holds what LocalBase does not make, so it was changed by something else: %s.", strings.Join(bad, "; "))
 	}
-	return nil
+	return checkForeignKeys(ctx, db)
+}
+
+// checkForeignKeys refuses a database with rows pointing at something that isn't there. LocalBase keeps
+// foreign keys on, so only an edit of the file can make one, and what reads such a row may not look
+// at what it points to. It runs after the schema is compared, so the foreign keys it checks are the
+// ones this version makes, and the tables it names are too. It says how many rows, and nothing in them.
+func checkForeignKeys(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var key int
+		if err := rows.Scan(&table, &rowid, &parent, &key); err != nil {
+			return refuse("The database can't be read: %v", err)
+		}
+		counts[table]++
+	}
+	if err := rows.Err(); err != nil {
+		return refuse("The database can't be read: %v", err)
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	var found []string
+	for table, n := range counts {
+		found = append(found, fmt.Sprintf("%s: %d", table, n))
+	}
+	slices.Sort(found)
+	return refuse("The database has rows pointing at something that isn't there, so it was changed by something else. %s.", strings.Join(found, ", "))
 }
 
 // validate checks everything else, with the validators the gateway uses, and writes the staged
 // database's fixes. It is the staged copy, and nothing else is touched.
-func validate(ctx context.Context, dir, target string, m *Manifest, state *targetState) (*Report, error) {
+func validate(ctx context.Context, dir, target string, m *Manifest, state *targetState, bringBack []string) (*Report, error) {
 	dbPath := filepath.Join(dir, "local-base.db")
 	if err := checkDatabase(ctx, dbPath); err != nil {
 		return nil, err
@@ -622,6 +733,34 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if err := checkBindingRows(ctx, st.DB); err != nil {
 		return nil, err
 	}
+	backedSignIn := readSignIn(ctx, dir, st.DB)
+	if backedSignIn.policyErr != nil {
+		return nil, refuse("The access policy in this backup can't be read: %v", backedSignIn.policyErr)
+	}
+	var liveValues *signInValues
+	if !state.newRoot && state.hasData {
+		v := liveSignIn(ctx, target, state.liveDB, state.liveErr)
+		liveValues = &v
+	}
+	var signInCaution string
+	rep.SignIn, signInCaution = signInReport(backedSignIn, liveValues)
+	if signInCaution != "" {
+		rep.Cautions = append(rep.Cautions, signInCaution)
+	}
+	if rep.Grants, err = readGrants(ctx, st.DB); err != nil {
+		return nil, refuse("The roles in this backup can't be read: %v", err)
+	}
+	if !state.newRoot && state.hasData {
+		live, liveErr := liveGrants(ctx, state.liveDB, state.liveErr)
+		gone, changed := compareGrants(rep.Grants, live, liveErr)
+		rep.RolesGone = gone
+		switch {
+		case changed && liveErr != nil:
+			rep.Cautions = append(rep.Cautions, grantsUnknownCaution)
+		case changed:
+			rep.Cautions = append(rep.Cautions, grantsChangedCaution)
+		}
+	}
 	if rep.Issuers, rep.Unbound, err = bindingsOf(ctx, st.DB, access); err != nil {
 		return nil, refuse("The access bindings in this backup can't be read: %v", err)
 	}
@@ -645,12 +784,24 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, err
 	}
 	rep.Settings = append(rep.Settings, exposure...)
+	compared := false
 	if !state.newRoot && state.hasData {
-		if err := compareWithTarget(ctx, st.DB, filepath.Join(target, "local-base.db"), rep); err != nil {
+		if compared, err = compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep, bringBack); err != nil {
 			return nil, err
 		}
 	} else {
-		rep.Cautions = append(rep.Cautions, "Any key revoked since this backup was made works again here. Check them afterwards: local-base keys list")
+		if err := holdBackKeys(ctx, st.DB, rep, bringBack); err != nil {
+			return nil, err
+		}
+		rep.Cautions = append(rep.Cautions, "Any key revoked or rotated since this backup was made works again here. Check them afterwards: local-base keys list")
+	}
+	for _, list := range [][]KeyChange{rep.KeysKept, rep.KeysLeftOut, rep.KeysBroughtBack, rep.KeysLost, rep.KeysHeldBack} {
+		sortKeys(list)
+	}
+	if !compared {
+		if rep.KeysActive, err = activeKeys(ctx, st); err != nil {
+			return nil, err
+		}
 	}
 	return rep, nil
 }
@@ -823,20 +974,32 @@ func exposureSettings(ctx context.Context, db *sql.DB) ([]Setting, error) {
 	return out, rows.Err()
 }
 
-// comparedKey is what a restore compares of a key. These reads are of the root being replaced, where
-// a failure must not look like finding nothing, which would bring a revoked key back.
+// comparedKey is what a restore compares of a key: everything that decides what it can do, including
+// the hash of its secret. These reads are of the root being replaced, where a failure must not look
+// like finding nothing, which would bring a revoked key back.
 type comparedKey struct {
-	name    string
-	revoked sql.NullString
+	name, prefix, hash, rotated string
+	// scopes isn't set on a root older than key permissions, which can't say what its keys may do.
+	scopes, expires, revoked sql.NullString
 }
 
+// readComparedKeys reads every key from any database, so that whatever else needs to compare keys
+// reads the same facts.
 func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, error) {
 	out := map[string]comparedKey{}
 	present, err := tableExists(ctx, db, "api_keys")
 	if err != nil || !present {
 		return out, err
 	}
-	rows, err := db.QueryContext(ctx, `SELECT id, name, revoked_at FROM api_keys`)
+	scopes, err := columnExists(ctx, db, "api_keys", "scopes")
+	if err != nil {
+		return nil, err
+	}
+	column := "NULL"
+	if scopes {
+		column = "scopes"
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id, name, prefix, key_hash, `+column+`, last_rotated_at, expires_at, revoked_at FROM api_keys`)
 	if err != nil {
 		return nil, err
 	}
@@ -844,12 +1007,140 @@ func readComparedKeys(ctx context.Context, db *sql.DB) (map[string]comparedKey, 
 	for rows.Next() {
 		var id string
 		var k comparedKey
-		if err := rows.Scan(&id, &k.name, &k.revoked); err != nil {
+		if err := rows.Scan(&id, &k.name, &k.prefix, &k.hash, &k.scopes, &k.rotated, &k.expires, &k.revoked); err != nil {
 			return nil, err
 		}
 		out[id] = k
 	}
 	return out, rows.Err()
+}
+
+// differences says how a backup's copy of a key differs from the one on the root, in words.
+func (k comparedKey) differences(backed comparedKey) []string {
+	var why []string
+	if k.revoked.Valid && !backed.revoked.Valid {
+		why = append(why, "revoked")
+	}
+	if !k.revoked.Valid && backed.revoked.Valid {
+		why = append(why, "revoked in this backup and not on this root")
+	}
+	if k.hash != backed.hash || k.prefix != backed.prefix || k.rotated != backed.rotated {
+		why = append(why, "rotated")
+	}
+	if k.scopes.Valid && k.scopes != backed.scopes {
+		why = append(why, "permissions changed")
+	}
+	if k.expires != backed.expires {
+		why = append(why, "expiry changed")
+	}
+	if k.name != backed.name {
+		why = append(why, "renamed")
+	}
+	return why
+}
+
+// scopeList is a key's permissions. A list that doesn't read is shown as it stands, which is also more
+// than making requests.
+func (k comparedKey) scopeList() []string {
+	var scopes []string
+	if err := json.Unmarshal([]byte(k.scopes.String), &scopes); err != nil {
+		return []string{k.scopes.String}
+	}
+	return scopes
+}
+
+// beyondRequests lists what a key may do beyond what a new key gets, which the code calls no
+// administration. Anything else counts, so a permission added later, or one only a file has heard of,
+// is treated as the stronger kind.
+func (k comparedKey) beyondRequests() []string {
+	scopes := slices.DeleteFunc(k.scopeList(), func(s string) bool { return slices.Contains(auth.DefaultKeyScopes, s) })
+	slices.Sort(scopes)
+	return scopes
+}
+
+// permissions is what the report says a list of permissions comes to.
+func permissions(scopes []string) string {
+	if len(scopes) == 0 {
+		return "no permissions"
+	}
+	return strings.Join(scopes, ", ")
+}
+
+// holdBack keeps a key that can do more than make requests out of a restore, unless it's named.
+func holdBack(ctx context.Context, staged *sql.DB, id string, k comparedKey, beyond []string, named, used map[string]bool, rep *Report) error {
+	if named[id] {
+		used[id] = true
+		rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, "can do " + permissions(beyond)})
+		return nil
+	}
+	if _, err := staged.ExecContext(ctx, `DELETE FROM api_keys WHERE id = ?`, id); err != nil {
+		return err
+	}
+	rep.KeysHeldBack = append(rep.KeysHeldBack, KeyChange{id, k.name, permissions(beyond)})
+	return nil
+}
+
+// holdBackKeys is for a restore with no keys of a root's to set a backup's against: a new root, a root
+// with no keys, or one that can't be read. An ordinary key comes, since getting its clients back is
+// what a backup is for. A key that can do more doesn't, since this is just where a file would bring in
+// an administrator's key unnoticed.
+func holdBackKeys(ctx context.Context, staged *sql.DB, rep *Report, bringBack []string) error {
+	backed, err := readComparedKeys(ctx, staged)
+	if err != nil {
+		return err
+	}
+	named, used := keyNames(bringBack), map[string]bool{}
+	for id, k := range backed {
+		if k.revoked.Valid {
+			continue // A revoked key does nothing, here or not.
+		}
+		if beyond := k.beyondRequests(); len(beyond) > 0 {
+			if err := holdBack(ctx, staged, id, k, beyond, named, used, rep); err != nil {
+				return err
+			}
+		}
+	}
+	return checkKeyNames(bringBack, used)
+}
+
+func keyNames(bringBack []string) map[string]bool {
+	named := map[string]bool{}
+	for _, id := range bringBack {
+		named[id] = true
+	}
+	return named
+}
+
+// checkKeyNames refuses a name that did nothing. It may be a mistyped id, with the real key left on its
+// current secret.
+func checkKeyNames(bringBack []string, used map[string]bool) error {
+	for _, id := range bringBack {
+		if !used[id] {
+			return refuse("--bring-back-key %s: there's nothing to bring back. Either this backup doesn't hold that key, or it would change nothing here.", id)
+		}
+	}
+	return nil
+}
+
+// activeKeys lists every key that would work, with what it may do, by the gateway's own reading.
+func activeKeys(ctx context.Context, st *store.Store) ([]KeyChange, error) {
+	keys, err := st.ListAPIKeys(ctx)
+	if err != nil {
+		return nil, refuse("The API keys in this backup can't be read: %v", err)
+	}
+	now := time.Now()
+	var out []KeyChange
+	for i := range keys {
+		if keys[i].Active(now) {
+			out = append(out, KeyChange{keys[i].ID, keys[i].Name, permissions(keys[i].Scopes)})
+		}
+	}
+	sortKeys(out)
+	return out, nil
+}
+
+func sortKeys(keys []KeyChange) {
+	slices.SortFunc(keys, func(a, b KeyChange) int { return strings.Compare(a.ID, b.ID) })
 }
 
 type comparedUser struct{ status, email string }
@@ -884,65 +1175,51 @@ func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser
 	return out, rows.Err()
 }
 
-// compareWithTarget keeps what the root being replaced has revoked, and reports what else an older
-// backup would bring back. Restoring must not revive a key someone revoked because it leaked.
-func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report) error {
+// compareWithTarget keeps the keys of the root being replaced as they are, and says so. Restoring must
+// not revive a key someone revoked or rotated because it leaked, and a file mustn't add one to a root
+// that has its own. Keys named in bringBack take the backup's version, and the report names them. It
+// says whether every key could be compared.
+func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liveErr error, rep *Report, bringBack []string) (compared bool, err error) {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
-	err := retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	err = liveErr
+	if err == nil {
+		err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	}
 	if isBusy(err) {
-		return fmt.Errorf("reading this root's database: %w", err)
+		return false, fmt.Errorf("reading this root's database: %w", err)
 	}
 	if err != nil {
-		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
-		return nil
+		if err := holdBackKeys(ctx, staged, rep, bringBack); err != nil {
+			return false, err
+		}
+		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked or rotated since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
+		return false, nil
 	}
 	targetReadHook()
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer cur.Close()
 	now, err := readComparedKeys(ctx, cur)
 	if err != nil {
-		return err
+		return false, err
 	}
-	backed, err := readComparedKeys(ctx, staged)
-	if err != nil {
-		return err
+	if compared, err = compareKeys(ctx, staged, now, rep, bringBack); err != nil {
+		return false, err
 	}
-	for id, k := range backed {
-		was, here := now[id]
-		switch {
-		case !here:
-			if !k.revoked.Valid {
-				rep.ReturningKeys = append(rep.ReturningKeys, k.name)
-			}
-		case was.revoked.Valid && !k.revoked.Valid:
-			if _, err := staged.ExecContext(ctx, `UPDATE api_keys SET revoked_at = ? WHERE id = ?`, was.revoked.String, id); err != nil {
-				return err
-			}
-			rep.RevocationsKept++
-		}
-	}
-	for id, k := range now {
-		if _, ok := backed[id]; !ok && !k.revoked.Valid {
-			rep.KeysLost = append(rep.KeysLost, k.name)
-		}
-	}
-	sort.Strings(rep.ReturningKeys)
-	sort.Strings(rep.KeysLost)
 	if rep.ReturningBindings, err = returningBindings(ctx, staged, cur); err != nil {
-		return err
+		return false, err
 	}
 
 	usersNow, err := readComparedUsers(ctx, cur)
 	if err != nil {
-		return err
+		return false, err
 	}
 	usersBacked, err := readComparedUsers(ctx, staged)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// An id survives within one root's lineage. The address is the fallback.
 	byEmail := map[string]comparedUser{}
@@ -964,14 +1241,87 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep
 		case was.status == u.status:
 		case was.status == "removed" || was.status == "disabled":
 			if _, err := staged.ExecContext(ctx, `UPDATE auth_users SET status = ? WHERE id = ?`, was.status, id); err != nil {
-				return err
+				return false, err
 			}
 			rep.UserStatusesKept++
 		default:
 			rep.UsersChanged++
 		}
 	}
-	return nil
+	return compared, nil
+}
+
+// compareKeys sets the backup's keys against the root's, and says whether it could set all of them. A
+// root with none has nothing to compare, as a new root doesn't. A root older than key permissions can't
+// say what its keys may do.
+func compareKeys(ctx context.Context, staged *sql.DB, now map[string]comparedKey, rep *Report, bringBack []string) (bool, error) {
+	if len(now) == 0 {
+		return false, holdBackKeys(ctx, staged, rep, bringBack)
+	}
+	backed, err := readComparedKeys(ctx, staged)
+	if err != nil {
+		return false, err
+	}
+	compared := true
+	for _, k := range now {
+		compared = compared && k.scopes.Valid
+	}
+	named, used := keyNames(bringBack), map[string]bool{}
+	for id, k := range backed {
+		was, here := now[id]
+		switch {
+		case !here:
+			switch {
+			case k.revoked.Valid: // A revoked key does nothing, here or not.
+			case named[id]:
+				used[id] = true
+				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, "this root doesn't have it"})
+			default:
+				if _, err := staged.ExecContext(ctx, `DELETE FROM api_keys WHERE id = ?`, id); err != nil {
+					return false, err
+				}
+				rep.KeysLeftOut = append(rep.KeysLeftOut, KeyChange{id, k.name, permissions(k.scopeList())})
+			}
+		default:
+			// A root that can't say what its key may do can't vouch for what a file says it may.
+			if !was.scopes.Valid && !k.revoked.Valid {
+				if beyond := k.beyondRequests(); len(beyond) > 0 {
+					if err := holdBack(ctx, staged, id, k, beyond, named, used, rep); err != nil {
+						return false, err
+					}
+					continue
+				}
+			}
+			why := was.differences(k)
+			if len(why) == 0 {
+				continue
+			}
+			text := strings.Join(why, ", ")
+			if named[id] {
+				used[id] = true
+				rep.KeysBroughtBack = append(rep.KeysBroughtBack, KeyChange{id, k.name, text})
+				continue
+			}
+			// What the root has wins, whole, so a key can't come back partly.
+			if _, err := staged.ExecContext(ctx, `UPDATE api_keys SET name = ?, prefix = ?, key_hash = ?, scopes = COALESCE(?, scopes), last_rotated_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
+				was.name, was.prefix, was.hash, was.scopes, was.rotated, was.expires, was.revoked, id); err != nil {
+				return false, err
+			}
+			rep.KeysKept = append(rep.KeysKept, KeyChange{id, was.name, text})
+			if was.revoked.Valid && !k.revoked.Valid {
+				rep.RevocationsKept++
+			}
+		}
+	}
+	if err := checkKeyNames(bringBack, used); err != nil {
+		return false, err
+	}
+	for id, k := range now {
+		if _, ok := backed[id]; !ok && !k.revoked.Valid {
+			rep.KeysLost = append(rep.KeysLost, KeyChange{ID: id, Name: k.name})
+		}
+	}
+	return compared, nil
 }
 
 // --- changing the root ---------------------------------------------------------------------------
@@ -1027,6 +1377,7 @@ type Done struct {
 // throughout, so no gateway can start midway. A failure puts everything back; a crash leaves the
 // journal, and root.Open refuses until --undo.
 func (s *Staged) Commit() (*Done, error) {
+	s.release = func() {}
 	defer s.Discard()
 	lease, err := root.AcquireOperation(s.target, "restore")
 	if err != nil {
@@ -1036,6 +1387,9 @@ func (s *Staged) Commit() (*Done, error) {
 	state, err := checkTarget(s.target, s.replace)
 	if err != nil {
 		return nil, err
+	}
+	if state.hasData && !s.hadData {
+		return nil, refuse("This root changed while this waited: it holds settings now, and the report said it had none. Nothing was changed. Run this again to see what it would do now.")
 	}
 	r, err := root.Init(s.target)
 	if err != nil {
@@ -1076,6 +1430,29 @@ func (s *Staged) Commit() (*Done, error) {
 		return nil, s.failed(r.Dir, j, err)
 	}
 
+	release, err := s.holdRoot(context.Background(), r.Dir, r.DB())
+	if err != nil {
+		return nil, s.stopped(r.Dir, j, err)
+	}
+	s.release = release
+	defer release()
+	// Taking the lock can change which working files there are, and the journal has to say what's here.
+	j.Had = nil
+	for _, name := range replaceable {
+		if exists(filepath.Join(r.Dir, name)) {
+			j.Had = append(j.Had, name)
+		}
+	}
+	if raw, err = json.Marshal(j); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+	if err := syncDir(r.Dir); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+
 	if err := s.apply(r.Dir, j); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
@@ -1083,6 +1460,12 @@ func (s *Staged) Commit() (*Done, error) {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := stepHook("finish"); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+	// Closing it deletes whatever journal is at its path, even with its own database moved away, so that
+	// happens while this restore's journal still keeps every command out.
+	release()
+	if err := stepHook("released"); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := os.Remove(journalPath(r.Dir)); err != nil {
@@ -1099,8 +1482,23 @@ func (s *Staged) Commit() (*Done, error) {
 	return done, nil
 }
 
+// stopped ends a restore that hasn't moved anything. A refusal says why, in its own words, and anything
+// else is a failure like any other.
+func (s *Staged) stopped(dir string, j *journal, cause error) error {
+	var refused *Refused
+	if !errors.As(cause, &refused) {
+		return s.failed(dir, j, cause)
+	}
+	// Only the journal: nothing moved, and whatever else is here may be another process's working files.
+	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%v And its journal couldn't be removed (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
+	}
+	_ = syncDir(dir) // If this removal is lost in a power cut the journal returns, and the undo is safe.
+	return cause
+}
+
 func (s *Staged) failed(dir string, j *journal, cause error) error {
-	if err := undo(dir, j); err != nil {
+	if err := undo(dir, j, s.release); err != nil {
 		return fmt.Errorf("the restore failed (%v), and so did putting things back (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
 	}
 	return fmt.Errorf("the restore failed, and everything was put back: %w", cause)
@@ -1169,26 +1567,48 @@ func verify(dir string) error {
 }
 
 // undo puts a root back. It only ever moves names on the constant list, and is safe to run again.
-func undo(dir string, j *journal) error {
+// release lets go of the root's database, for a restore that still holds it.
+func undo(dir string, j *journal, release func()) error {
 	before := filepath.Join(dir, j.Before)
-	for _, name := range replaceable {
-		old, here := filepath.Join(before, name), filepath.Join(dir, name)
-		switch {
-		case exists(old):
-			// It was moved aside, so anything at its name now is new.
-			if err := os.RemoveAll(here); err != nil {
+	// Nothing new goes in until everything old is aside, so before that, whatever is at a name the journal
+	// doesn't list isn't this restore's. It may be another process's working files, with writes in them,
+	// or a settings file a command just made, and it stays. This has to be worked out before anything goes
+	// back, and it's the same on a second run that had finished removing what was new.
+	allAside := exists(before)
+	for _, name := range j.Had {
+		allAside = allAside && exists(filepath.Join(before, name))
+	}
+	if allAside {
+		for _, name := range replaceable {
+			if contains(j.Had, name) {
+				continue
+			}
+			if err := stepHook("undo remove " + name); err != nil {
 				return err
 			}
-			if err := os.Rename(old, here); err != nil {
-				return err
-			}
-		case !contains(j.Had, name):
 			// It was never there, so anything at its name now is new.
-			if err := os.RemoveAll(here); err != nil {
+			if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
 				return err
 			}
 		}
-		// Otherwise it hasn't moved yet, and is still the old one.
+	}
+	// The database goes back last, as it goes in last: if this stops partway, a later run finds it still
+	// aside, along with whatever else hasn't gone back yet.
+	for _, name := range append(append([]string{}, replaceable[1:]...), replaceable[0]) {
+		old, here := filepath.Join(before, name), filepath.Join(dir, name)
+		if !exists(old) {
+			continue // It hasn't moved, or it's already back.
+		}
+		if err := stepHook("undo back " + name); err != nil {
+			return err
+		}
+		// It was moved aside, so anything at its name now is new.
+		if err := os.RemoveAll(here); err != nil {
+			return err
+		}
+		if err := os.Rename(old, here); err != nil {
+			return err
+		}
 	}
 	if err := os.Remove(before); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -1198,6 +1618,11 @@ func undo(dir string, j *journal) error {
 	}
 	// The moves reach the disk while the journal still exists, so a failure here can be run again.
 	if err := syncDir(dir); err != nil {
+		return err
+	}
+	// As in Commit: closing it deletes whatever journal is at its path, so that comes before anyone can start.
+	release()
+	if err := stepHook("undo released"); err != nil {
 		return err
 	}
 	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -1293,5 +1718,5 @@ func Undo(targetDir string) error {
 	default:
 		return refuse("The gateway lock on %s can't be read: %s", r.Dir, detail)
 	}
-	return undo(r.Dir, j)
+	return undo(r.Dir, j, func() {})
 }

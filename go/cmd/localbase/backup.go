@@ -8,6 +8,9 @@ import (
 	"io/fs"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"reflect"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +37,7 @@ func restoreCommand() *cli.Command {
 		Options: []cli.Option{
 			{Name: "dry-run", Bool: true, Help: "Check the file and print its report, and change nothing. The report doesn't show everything a file can change"},
 			{Name: "replace", Bool: true, Help: "Replace the settings of a root that has data. Its models stay, and its old files are kept"},
+			{Name: "bring-back-key", Value: "<id>", Repeatable: true, Help: "Take this backup's version of a key the report says is held back, stays out, or stays as it is on this root"},
 			{Name: "yes", Alias: "y", Bool: true, Help: "Do not ask"},
 			{Name: "undo", Bool: true, Help: "Put back a root that a restore left unfinished"},
 			{Name: "port-probe", Bool: true, Help: "Connect to the restored ports to see which are in use (on by default; --no-port-probe skips it)"},
@@ -121,6 +125,61 @@ func printManifest(c *cli.Ctx, m *backup.Manifest) {
 	}
 }
 
+// printKeys lists keys by the id that identifies them and the name a person gave them. Past the cap
+// it says how many more, as the list of who has a role does.
+func printKeys(c *cli.Ctx, heading, how string, keys []backup.KeyChange) {
+	if len(keys) == 0 {
+		return
+	}
+	c.Info("%s", heading)
+	for _, k := range keys[:min(len(keys), maxGrantLines)] {
+		line := "  " + k.ID + " (" + k.Name + ")"
+		if k.Why != "" {
+			line += ": " + k.Why
+		}
+		c.Info("%s", line)
+	}
+	if hidden := len(keys) - maxGrantLines; hidden > 0 {
+		c.Info("  and %d more. All of them: restore --dry-run --json", hidden)
+	}
+	if how != "" {
+		c.Info("%s", how)
+	}
+}
+
+// plainKeyID is the shape of an id that's safe to offer for pasting into a shell. An id comes from the
+// file, so a line made to be copied can't carry one a shell would act on, or take for an option.
+var plainKeyID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
+
+// bringBackFlag is a key's flag ready to copy, or the form to fill in if its id isn't safe to paste.
+func bringBackFlag(id string) string {
+	if plainKeyID.MatchString(id) {
+		return "--bring-back-key " + id
+	}
+	return "--bring-back-key <id>"
+}
+
+// printHeldBack gives each key its own line to bring it back, so that a key comes back because someone
+// picked it. One line for all of them would bring back whatever a file planted among them.
+func printHeldBack(c *cli.Ctx, keys []backup.KeyChange) {
+	if len(keys) == 0 {
+		return
+	}
+	c.Info("Keys held back, because they can do more than make requests. Bring back only one you recognise:")
+	for _, k := range keys[:min(len(keys), maxGrantLines)] {
+		c.Info("  %s (%s): %s", k.ID, k.Name, k.Why)
+		c.Info("    To bring it back: %s", bringBackFlag(k.ID))
+	}
+	if hidden := len(keys) - maxGrantLines; hidden > 0 {
+		c.Info("  and %d more. All of them: restore --dry-run --json", hidden)
+	}
+}
+
+// shellQuoted makes a path one word in a line made to be pasted, whatever it holds.
+func shellQuoted(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // printIssuers says who each sign-in provider's bindings cover. They decide who gets which role.
 func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
 	if len(lines) == 0 {
@@ -134,6 +193,14 @@ func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
 		}
 		c.Info("  %s: %d role bindings, %d invitations, %s", l.Issuer, l.Bindings, l.Invitations, state)
 	}
+}
+
+func keyIDs(keys []backup.KeyChange) string {
+	ids := make([]string, len(keys))
+	for i, k := range keys {
+		ids[i] = k.ID
+	}
+	return strings.Join(ids, ",")
 }
 
 func runRestore(c *cli.Ctx) (any, error) {
@@ -150,7 +217,7 @@ func runRestore(c *cli.Ctx) (any, error) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	s, err := backup.Stage(ctx, c.Args[0], target, c.Bool("replace"))
+	s, err := backup.Stage(ctx, c.Args[0], target, c.Bool("replace"), c.Strings("bring-back-key")...)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil, errors.New("Interrupted. Nothing was changed, and its working files are gone.")
@@ -208,13 +275,60 @@ func runRestore(c *cli.Ctx) (any, error) {
 	}
 	if r, err := root.Open(rep.Target); err == nil {
 		auditCLI(&env{Root: r}, "backup.restored", "event", "backup.restored", "category", "audit", "component", "backup",
-			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept)
+			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept,
+			"keysKept", len(rep.KeysKept), "keysLeftOut", len(rep.KeysLeftOut), "keysHeldBack", len(rep.KeysHeldBack), "keysBroughtBack", keyIDs(rep.KeysBroughtBack))
 	}
 	printRestoreNext(c, rep, done)
 	return map[string]any{"report": rep, "beforeDir": done.BeforeDir}, nil
 }
 
+// printable is a copy of the report that's safe to show on a terminal. Every string in it, wherever
+// it came from, has been through cli.PrintableASCII, because a person judges what's in this report by
+// eye, and a letter from another alphabet can make one address or program look like another. Only a
+// field tagged report:"letters", which is a name a person gave or the path they typed, keeps its
+// letters, through cli.Printable. Doing it here, once, means a field added to the report can't be
+// missed at the line that prints it. The report itself stays as it is for --json. A field of a kind
+// this doesn't know stops it, and TestEveryStringInTheReportIsMadePrintable finds that first.
+func printable(rep *backup.Report) *backup.Report {
+	out := &backup.Report{}
+	copyPrintable(reflect.ValueOf(out).Elem(), reflect.ValueOf(rep).Elem(), false)
+	return out
+}
+
+func copyPrintable(dst, src reflect.Value, letters bool) {
+	switch src.Kind() {
+	case reflect.String:
+		if letters {
+			dst.SetString(cli.Printable(src.String()))
+		} else {
+			dst.SetString(cli.PrintableASCII(src.String()))
+		}
+	case reflect.Struct:
+		for i := range src.NumField() {
+			copyPrintable(dst.Field(i), src.Field(i), letters || src.Type().Field(i).Tag.Get("report") == "letters")
+		}
+	case reflect.Slice:
+		if !src.IsNil() {
+			dst.Set(reflect.MakeSlice(src.Type(), src.Len(), src.Len()))
+			for i := range src.Len() {
+				copyPrintable(dst.Index(i), src.Index(i), letters)
+			}
+		}
+	case reflect.Pointer:
+		if !src.IsNil() {
+			dst.Set(reflect.New(src.Type().Elem()))
+			copyPrintable(dst.Elem(), src.Elem(), letters)
+		}
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		dst.Set(src)
+	default:
+		panic("the restore report has a field of a kind that can't be made printable: " + src.Type().String())
+	}
+}
+
 func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
+	rep = printable(rep)
 	if rep.NewRoot {
 		c.Info("This makes a new root at %s.", rep.Target)
 	} else {
@@ -237,12 +351,12 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	if rep.RevocationsKept > 0 {
 		c.Info("%d keys revoked on this root stay revoked.", rep.RevocationsKept)
 	}
-	if len(rep.ReturningKeys) > 0 {
-		c.Info("Keys this root no longer has would work again: %s.", strings.Join(rep.ReturningKeys, ", "))
-	}
-	if len(rep.KeysLost) > 0 {
-		c.Info("Keys made since this backup would stop working: %s.", strings.Join(rep.KeysLost, ", "))
-	}
+	printKeys(c, "API keys in this backup that would work:", "", rep.KeysActive)
+	printHeldBack(c, rep.KeysHeldBack)
+	printKeys(c, "Keys changed since this backup stay as they are on this root:", "  To take this backup's version of one: --bring-back-key <id>", rep.KeysKept)
+	printKeys(c, "Keys in this backup that this root doesn't have stay out:", "  To bring one back: --bring-back-key <id>", rep.KeysLeftOut)
+	printKeys(c, "Keys going back to what this backup holds, because you named them:", "  The secret in this backup works for these, and any they have now stops working.", rep.KeysBroughtBack)
+	printKeys(c, "Keys made since this backup would stop working:", "", rep.KeysLost)
 	if rep.ReturningUsers > 0 {
 		c.Info("%d users this root has removed would come back.", rep.ReturningUsers)
 	}
@@ -268,12 +382,9 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 			c.Info("  %s %s %s", s.Model, s.Kind, s.Where)
 		}
 	}
-	if len(rep.Providers) > 0 {
-		c.Info("Sign-in: %s.", strings.Join(rep.Providers, ", "))
-	} else {
-		c.Info("Sign-in: on this computer only, until a provider is added.")
-	}
+	printSignIn(c, rep.SignIn)
 	printIssuers(c, rep.Issuers)
+	printGrants(c, rep.Grants, rep.RolesGone)
 	if rep.UnboundNote != "" {
 		c.Info("%s", rep.UnboundNote)
 	}
@@ -291,11 +402,135 @@ func printRestoreReport(c *cli.Ctx, rep *backup.Report) {
 	}
 }
 
+// printSignIn says who could sign in and what they'd get. The line about what everyone gets is always
+// there, because a missing one would read as safe.
+func printSignIn(c *cli.Ctx, s *backup.SignIn) {
+	if s == nil {
+		return
+	}
+	if len(s.Who) > 0 {
+		c.Info("Who can sign in:")
+		for _, l := range s.Who {
+			c.Info("  %s", l.Text("has"))
+		}
+	} else {
+		c.Info("Sign-in: on this computer only, until a provider is added.")
+	}
+	for _, l := range s.Goes {
+		c.Info("No longer able to sign in: %s (this root names it %s)", l.Value, l.Named)
+	}
+	everyone := s.Everyone
+	if everyone.Value == "" {
+		everyone.Value = "nothing, unless a role gives it"
+	}
+	c.Info("Everyone who signs in through a provider gets: %s", everyone.Text("gives"))
+	if s.IfPolicyRemoved != "" {
+		c.Info("If the access policy is removed, everyone who signs in through a provider gets: %s", s.IfPolicyRemoved)
+	}
+	if s.Origin != nil {
+		c.Info("Address people sign in at: %s", s.Origin.Text("has"))
+	}
+	if s.Mail != nil {
+		c.Info("Mail server, which can read sign-in links: %s", s.Mail.Text("has"))
+	}
+}
+
+// maxGrantLines is how many people a role lists before saying how many more. Those new to this root
+// come first, so this can't bury them, and --json has them all.
+const maxGrantLines = 50
+
+// printGrants says what each role gives and who has it, by name. Roles the root would lose come first.
+func printGrants(c *cli.Ctx, grants, gone []backup.Grant) {
+	if len(grants)+len(gone) == 0 {
+		return
+	}
+	c.Info("What each role gives, and who has it:")
+	for _, g := range gone {
+		gives := g.Gives.Value
+		if gives == "" {
+			gives = "nothing"
+		}
+		c.Info("  No longer a role here: %s (this root gives %s)", g.Role, gives)
+		printWho(c, g.Who)
+	}
+	for _, g := range grants {
+		gives := g.Gives
+		if gives.Value == "" {
+			gives.Value = "nothing"
+		}
+		line := gives.Text("gives")
+		if g.Default {
+			line += " (everyone who signs in through a provider has this)"
+		}
+		c.Info("  %s: %s", g.Role, line)
+		switch {
+		case len(g.Who) == 0 && g.Default:
+			c.Info("    nobody else")
+		case len(g.Who) == 0:
+			c.Info("    nobody")
+		}
+		printWho(c, g.Who)
+	}
+}
+
+// printWho lists who has a role, up to the cap, and says how many it didn't print and what's changing
+// for them.
+func printWho(c *cli.Ctx, who []backup.Line) {
+	for _, l := range who[:min(len(who), maxGrantLines)] {
+		if l.Against == backup.AgainstGone {
+			c.Info("    no longer has this role: %s", l.Value)
+			continue
+		}
+		c.Info("    %s", l.Text("has"))
+	}
+	hidden := who[min(len(who), maxGrantLines):]
+	if len(hidden) == 0 {
+		return
+	}
+	newOnes, leaving := 0, 0
+	for _, l := range hidden {
+		switch l.Against {
+		case backup.AgainstNew:
+			newOnes++
+		case backup.AgainstGone:
+			leaving++
+		}
+	}
+	more := fmt.Sprintf("and %d more", len(hidden))
+	if newOnes > 0 {
+		more += fmt.Sprintf(", %d of them new", newOnes)
+	}
+	if leaving > 0 {
+		more += fmt.Sprintf(", %d of them losing this role", leaving)
+	}
+	c.Info("    %s. All of them: restore --dry-run --json", more)
+}
+
+// backupArgument is the file this restore was given, as a word to paste from any folder.
+func backupArgument(c *cli.Ctx) string {
+	if len(c.Args) == 0 {
+		return "<this backup>"
+	}
+	file := c.Args[0]
+	if abs, err := filepath.Abs(file); err == nil {
+		file = abs
+	}
+	return shellQuoted(cli.Printable(file))
+}
+
 func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
-	flag := "local-base --root '" + rep.Target + "'"
+	rep = printable(rep)
+	flag := "local-base --root " + shellQuoted(rep.Target)
 	c.Info("Restored to %s. Nothing was started.", rep.Target)
 	c.Info("Next:")
 	c.Info("  Start it: %s start", flag)
+	if len(rep.KeysHeldBack) > 0 {
+		name := "--bring-back-key <id>"
+		if len(rep.KeysHeldBack) == 1 {
+			name = bringBackFlag(rep.KeysHeldBack[0].ID)
+		}
+		c.Info("  A key held back can still come back from this backup: %s restore --replace %s %s", flag, name, backupArgument(c))
+	}
 	if len(rep.Providers) == 0 {
 		c.Info("  Everyone must sign in again. For a sign-in link: %s access login-link", flag)
 	} else {
@@ -310,7 +545,8 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 	}
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {
-		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf '%s'", done.BeforeDir, done.BeforeDir)
+		before := cli.Printable(done.BeforeDir)
+		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf %s", before, shellQuoted(before))
 	}
 }
 
