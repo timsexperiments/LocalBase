@@ -223,6 +223,13 @@ func (s *Sink) Write(line []byte) {
 	defer s.mu.Unlock()
 	if !s.closed {
 		kept, problem := s.add(line)
+		// AuditErr is for whoever just wrote: the line is in this file or it isn't. A rotation that
+		// failed while the line still went in isn't that line's failure.
+		if kept {
+			s.lastErr = nil
+		} else {
+			s.lastErr = problem
+		}
 		s.note(line, kept, problem)
 	}
 	if s.Mirror != nil {

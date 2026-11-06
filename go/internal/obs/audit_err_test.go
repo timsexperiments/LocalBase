@@ -60,3 +60,30 @@ func TestAuditErrIsAboutTheAuditFile(t *testing.T) {
 		}
 	})
 }
+
+// The audit file's writer goes through rotation, so AuditErr follows each write through that path: a
+// failure is reported, a later line that gets in clears it, and a line kept past a failed rotation
+// isn't reported as missing.
+func TestAuditErrFollowsTheRotatingWrite(t *testing.T) {
+	s, err := OpenSink(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	write := func() { slog.New(NewHandler(s, slog.LevelInfo)).Info("x", "event", "audit.test-changed") }
+	write()
+	if err := s.AuditErr(); err != nil {
+		t.Fatal(err)
+	}
+	real := s.audit.write
+	s.audit.write = func([]byte) (int, error) { return 0, os.ErrPermission }
+	write()
+	if s.AuditErr() == nil {
+		t.Error("a failed write wasn't reported")
+	}
+	s.audit.write = real
+	write()
+	if err := s.AuditErr(); err != nil {
+		t.Errorf("a line that got in is still reported missing: %v", err)
+	}
+}
