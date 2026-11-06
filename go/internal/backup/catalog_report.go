@@ -1,11 +1,11 @@
 package backup
 
 import (
-	"encoding/json"
 	"slices"
 	"sort"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/install"
 )
 
 // CatalogEntry is an entry of a backup's catalog.d. A root's catalog trusts those as the person's own, so a
@@ -14,24 +14,35 @@ type CatalogEntry struct {
 	Model string `json:"model"`
 	New   bool   `json:"new"`
 	// Changes are the top-level fields it changes of the built-in entry.
-	Changes  []string     `json:"changes,omitempty"`
-	Source   string       `json:"source"`
-	Revision string       `json:"revision"`
-	Files    []FileSource `json:"files,omitempty"`
+	Changes  []string `json:"changes,omitempty"`
+	Source   string   `json:"source"`
+	Revision string   `json:"revision"`
+	// WasSource and WasRevision are the built-in entry's, when a patch changes either.
+	WasSource   string `json:"wasSource,omitempty"`
+	WasRevision string `json:"wasRevision,omitempty"`
+	// Downloads says it changes where something downloads from: it's new, or it patches its source, revision
+	// or files. Those are never left out of the report's list.
+	Downloads bool         `json:"changesDownloads"`
+	Files     []FileSource `json:"files,omitempty"`
 }
 
-// FileSource is a file of an entry that comes from somewhere other than the entry's own source.
+// FileSource is a file that downloads from somewhere other than its entry's own source would put it.
 type FileSource struct {
 	File string `json:"file"`
 	From string `json:"from"`
 }
 
-// catalogEntries lists what a staged catalog.d adds or changes, by id. A patch that changes nothing is left
-// out: the entry stays as built in.
-func catalogEntries(dir string) ([]CatalogEntry, error) {
-	cat, err := catalog.LoadRoot(dir, nil)
+// downloadFields are what decide where a model downloads from.
+var downloadFields = []string{"source", "repositoryRevision", "artifacts"}
+
+// catalogEntries lists what a staged catalog.d adds or changes: those that change where something downloads
+// from first, by id, then the rest, by id. A patch that changes nothing is left out, since the entry stays as
+// built in. A file's address is the installer's own, so the report can't say one place while it fetches from
+// another.
+func catalogEntries(cat *catalog.Catalog) ([]CatalogEntry, error) {
+	builtIn, err := catalog.Load("")
 	if err != nil {
-		return nil, refuse("The catalog in this backup is not valid: %v", err)
+		return nil, err
 	}
 	var out []CatalogEntry
 	for _, s := range cat.Models {
@@ -44,35 +55,34 @@ func catalogEntries(dir string) ([]CatalogEntry, error) {
 				continue
 			}
 			e.Changes = append([]string{}, s.PatchedFields...)
+			if was := builtIn.ByID(s.ModelID); was != nil && (slices.Contains(s.PatchedFields, "source") || slices.Contains(s.PatchedFields, "repositoryRevision")) {
+				e.WasSource, e.WasRevision = bounded(was.Source, 300), bounded(was.RepositoryRevision, 80)
+			}
 		}
-		// A file has a source of its own only where the entry's files are this backup's.
+		e.Downloads = e.New || slices.ContainsFunc(downloadFields, func(f string) bool { return slices.Contains(s.PatchedFields, f) })
 		if e.New || slices.Contains(s.PatchedFields, "artifacts") {
 			for _, a := range s.Artifacts {
-				if from := artifactFrom(a.Source); from != "" {
-					e.Files = append(e.Files, FileSource{File: bounded(a.Filename, 120), From: bounded(from, 300)})
+				plain := a
+				plain.Source = nil
+				if got := install.DownloadURL(s, a); got != install.DownloadURL(s, plain) {
+					e.Files = append(e.Files, FileSource{File: bounded(a.Filename, 120), From: bounded(got, 300)})
 				}
 			}
 		}
 		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
+	orderCatalogEntries(out)
 	return out, nil
 }
 
-// artifactFrom is where a file's own source points: a repository, a URL or a path, or the source as written
-// when it's none of those.
-func artifactFrom(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
-		return ""
-	}
-	var src map[string]any
-	if json.Unmarshal(raw, &src) != nil {
-		return string(raw)
-	}
-	for _, k := range []string{"repositoryUrl", "url", "path"} {
-		if v, ok := src[k].(string); ok && v != "" {
-			return v
+// orderCatalogEntries puts those that change where something downloads from first, then the rest, each by
+// id. The file chooses the ids, so harmless entries sorting first can't push the one that matters out of a
+// list that's cut short.
+func orderCatalogEntries(entries []CatalogEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Downloads != entries[j].Downloads {
+			return entries[i].Downloads
 		}
-	}
-	return string(raw)
+		return entries[i].Model < entries[j].Model
+	})
 }

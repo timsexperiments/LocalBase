@@ -721,10 +721,11 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if rep.Programs, err = checkBackends(dir); err != nil {
 		return nil, err
 	}
-	if err := checkCatalog(dir, cfg); err != nil {
+	cat, err := checkCatalog(dir, cfg)
+	if err != nil {
 		return nil, err
 	}
-	if rep.Catalog, err = catalogEntries(dir); err != nil {
+	if rep.Catalog, err = catalogEntries(cat); err != nil {
 		return nil, err
 	}
 	if err := checkVoices(ctx, dir, st); err != nil {
@@ -852,35 +853,35 @@ func checkBackends(dir string) ([]Program, error) {
 }
 
 // checkCatalog is what opening the root will do, so a root that would refuse every command is
-// caught here.
-func checkCatalog(dir string, cfg *store.Config) error {
+// caught here. It returns the catalog it loaded, for the report.
+func checkCatalog(dir string, cfg *store.Config) (*catalog.Catalog, error) {
 	if b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(formerLog))); err == nil {
 		for _, id := range strings.Split(string(b), "\n") {
 			if id = strings.TrimSpace(id); id != "" && !formerIDRe.MatchString(id) {
-				return refuse("%s in this backup is not a list of ids.", formerLog)
+				return nil, refuse("%s in this backup is not a list of ids.", formerLog)
 			}
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return nil, err
 	}
 	cat, err := catalog.LoadRoot(dir, nil)
 	if err != nil {
-		return refuse("The catalog in this backup is not valid: %v", err)
+		return nil, refuse("The catalog in this backup is not valid: %v", err)
 	}
 	// The gateway only reports a bad entry. A backup leaves them out, so one here was put there.
 	for _, d := range cat.Diagnostics {
 		if d.Tier == "user" {
-			return refuse("The catalog entry %s in this backup is not valid: %s", filepath.Base(d.Path), d.Message)
+			return nil, refuse("The catalog entry %s in this backup is not valid: %s", filepath.Base(d.Path), d.Message)
 		}
 	}
 	if cfg == nil {
-		return nil
+		return cat, nil
 	}
 	conf.KeepFormerSelections(dir, cfg, cat)
 	if issues := conf.ValidateModels(cfg, cat, false); len(issues) > 0 {
-		return refuse("The settings in this backup are not valid: %s: %s", issues[0].Path, issues[0].Message)
+		return nil, refuse("The settings in this backup are not valid: %s: %s", issues[0].Path, issues[0].Message)
 	}
-	return nil
+	return cat, nil
 }
 
 func checkVoices(ctx context.Context, dir string, st *store.Store) error {
