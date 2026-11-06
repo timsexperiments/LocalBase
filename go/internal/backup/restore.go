@@ -114,9 +114,12 @@ type Report struct {
 	Programs  []Program            `json:"programs"`
 	Sources   []ModelSource        `json:"modelSources"`
 	Settings  []Setting            `json:"settings"`
-	Providers []string             `json:"signInProviders"`
-	SignIn    *SignIn              `json:"signIn"`
-	Grants    []Grant              `json:"grants"`
+	// OwnSettings change what the root does by itself, shown by what they do and set against the root
+	// being replaced. Both are always there, since a line left out would read as safe.
+	OwnSettings []OwnSetting `json:"ownSettings"`
+	Providers   []string     `json:"signInProviders"`
+	SignIn      *SignIn      `json:"signIn"`
+	Grants      []Grant      `json:"grants"`
 	// RolesGone are the roles this root has and the backup doesn't.
 	RolesGone []Grant   `json:"rolesGone,omitempty"`
 	Keys      KeyCounts `json:"keys"`
@@ -899,6 +902,23 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, err
 	}
 	rep.Settings = append(rep.Settings, exposure...)
+	backedOwn, err := backupOwnSettings(ctx, st.DB)
+	if err != nil {
+		return nil, err
+	}
+	// A root with no data has what a new one has, and it is set against that by name: "this root".
+	liveOwn, liveOwnErr := map[string]string{}, error(nil)
+	for _, o := range ownSettings {
+		liveOwn[o.key] = o.byDefault
+	}
+	if !state.newRoot && state.hasData {
+		liveOwn, liveOwnErr = liveOwnSettings(ctx, state.liveDB, state.liveErr)
+	}
+	var ownCaution string
+	rep.OwnSettings, ownCaution = ownSettingsReport(backedOwn, liveOwn, liveOwnErr, state.newRoot)
+	if ownCaution != "" {
+		rep.Cautions = append(rep.Cautions, ownCaution)
+	}
 	compared := false
 	if !state.newRoot && state.hasData {
 		if compared, err = compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep, bringBack); err != nil {
