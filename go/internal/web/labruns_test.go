@@ -260,7 +260,13 @@ func TestLostRuns(t *testing.T) {
 	if landing := mainRe.FindString(get(u, "/app/studio").Body.String()); strings.Contains(landing, "tile-run_a") || strings.Contains(landing, `id="recent-title"`) {
 		t.Errorf("the landing has nothing to show for them: %s", landing)
 	}
-	r := htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"image"}})
+	// The page's own Clear posts outside /app/lab/runs/: there, a GET of the same path would reach
+	// GET /app/lab/runs/{id} as a run named clear-lost.
+	clear := regexp.MustCompile(`id="lab-lost"[^>]*>.*?hx-post="([^"]+)"`).FindStringSubmatch(page)
+	if clear == nil || clear[1] != "/app/lab/clear-lost" {
+		t.Fatalf("the page's Clear should post to /app/lab/clear-lost: %v", clear)
+	}
+	r := htmxPost(clear[1], url.Values{"tool": {"image"}})
 	withCSRF(u, r)
 	w := httptest.NewRecorder()
 	u.ServeHTTP(w, r)
@@ -268,7 +274,7 @@ func TestLostRuns(t *testing.T) {
 		t.Errorf("clear: %d %q %v", w.Code, w.Body.String(), calls)
 	}
 	calls = nil
-	r = htmxPost("/app/lab/runs/clear-lost", url.Values{"tool": {"speech"}})
+	r = htmxPost("/app/lab/clear-lost", url.Values{"tool": {"speech"}})
 	withCSRF(u, r)
 	u.ServeHTTP(httptest.NewRecorder(), r)
 	if len(calls) != 0 {

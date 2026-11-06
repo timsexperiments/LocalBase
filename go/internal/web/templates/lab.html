@@ -15,7 +15,7 @@
     {{else if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
     {{template "lab-result" .}}
-    {{if .Lost}}<p id="lab-lost" class="lab-lost"><span class="min-w-0 flex-1">{{if eq .Lost 1}}An earlier result didn’t finish, and can’t be recovered.{{else}}{{.Lost}} earlier results didn’t finish, and can’t be recovered.{{end}}</span><button type="button" class="btn btn-quiet shrink-0" hx-post="/app/lab/runs/clear-lost" hx-vals='{"tool":"{{.Tab}}"}' hx-target="#lab-lost" hx-swap="outerHTML">Clear</button></p>{{end}}
+    {{if .Lost}}<p id="lab-lost" class="lab-lost"><span class="min-w-0 flex-1">{{if eq .Lost 1}}An earlier result didn’t finish, and can’t be recovered.{{else}}{{.Lost}} earlier results didn’t finish, and can’t be recovered.{{end}}</span><button type="button" class="btn btn-quiet shrink-0" hx-post="/app/lab/clear-lost" hx-vals='{"tool":"{{.Tab}}"}' hx-target="#lab-lost" hx-swap="outerHTML">Clear</button></p>{{end}}
     <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
     {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
     {{if and (eq .Tab "image") .Items}}<p class="studio-keep">Pictures stay here for 30 minutes.</p>{{end}}
