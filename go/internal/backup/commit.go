@@ -174,6 +174,9 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if mode != "delete" {
 		return stop(refuse("%s", someoneElseHoldsIt))
 	}
+	if err := stepHook("switched"); err != nil {
+		return stop(err)
+	}
 	if err := take(); err != nil {
 		return stop(refuse("%s", someoneElseHoldsIt))
 	}
