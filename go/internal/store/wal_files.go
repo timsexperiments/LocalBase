@@ -27,6 +27,16 @@ var Sidecars = []string{"-wal", "-shm", "-journal", ownerSuffix, ownerSuffix + "
 // ownerSuffix names the file beside the database saying which database its -wal belongs to.
 const ownerSuffix = "-wal-owner"
 
+// ForgetWALOwner removes the record of whose -wal sits beside the database at path. An older version of
+// LocalBase doesn't keep that record, so after one has run, a -wal it left in a crash is its own but
+// doesn't match: removing the record is what lets it open, as the refusal says. A rollback does this.
+func ForgetWALOwner(path string) error {
+	if err := os.Remove(path + ownerSuffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // walHeaderMode is byte 18 of a database, its write version, when it is in write-ahead logging.
 const walHeaderMode = 2
 

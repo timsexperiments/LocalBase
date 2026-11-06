@@ -745,3 +745,37 @@ func TestAssets(t *testing.T) {
 		t.Error("windows is not a release target")
 	}
 }
+
+// A rollback lets go of the newer version's records only once the previous version is in place and
+// running. If it can't get there, they stay, since the newer version is still the one in use.
+func TestRollbackRunsOnPreviousOnlyOnceThePreviousVersionIsIn(t *testing.T) {
+	setUp := func() (string, *script) {
+		binary := installed(t, "old")
+		if _, err := Apply(candidateFor(t, binary, "new"), binary, (&script{}).ops()); err != nil {
+			t.Fatal(err)
+		}
+		return binary, &script{}
+	}
+	withPrevious := func(s *script) Ops {
+		ops := s.ops()
+		ops.OnPrevious = func() error { s.calls = append(s.calls, "previous"); return nil }
+		return ops
+	}
+	binary, s := setUp()
+	if err := Rollback(binary, withPrevious(s)); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(s.calls, []string{"stop", "start", "previous", "smoke"}) {
+		t.Errorf("calls %v", s.calls)
+	}
+	binary, s = setUp()
+	s.failStop = errors.New("will not stop")
+	if err := Rollback(binary, withPrevious(s)); err == nil || slices.Contains(s.calls, "previous") || read(t, binary) != "new" {
+		t.Errorf("a gateway that wouldn't stop: %v, calls %v", err, s.calls)
+	}
+	binary, s = setUp()
+	s.failStart, s.startFailures = errors.New("refuses this database"), 1
+	if err := Rollback(binary, withPrevious(s)); err == nil || slices.Contains(s.calls, "previous") || read(t, binary) != "new" {
+		t.Errorf("a previous version that didn't start: %v, calls %v", err, s.calls)
+	}
+}
