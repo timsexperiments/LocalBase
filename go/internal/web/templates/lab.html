@@ -169,7 +169,7 @@
 
   {{if eq .Tab "transcribe"}}
   {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "transcription" "Filter" "transcription" "CanGet" .CanManage)}}{{else}}
-  <form class="lab-dock" data-docked aria-label="Transcribe a recording" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" data-audio-form data-audio-rate="16000" data-audio-autosubmit data-transcribe>
+  <form class="lab-dock" data-docked data-own-send-error aria-label="Transcribe a recording" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" data-audio-form data-audio-rate="16000" data-audio-autosubmit data-transcribe>
     <div class="composer-box lab-box pb-1">
       <div class="lab-chips">
         {{template "lab-chip" (dict "Sheet" "lab-language" "Name" "language" "Label" "Language" "Value" "Detect language")}}

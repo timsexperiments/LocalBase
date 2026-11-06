@@ -792,8 +792,12 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await ev(`document.querySelector("[data-record-stop]").click()`);
   for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
+  // Everything is unreachable here, the sign-in check too. The panel says it, so the page's own notice stays quiet.
+  await sleep(1200);
+  const quietOffline = await ev(`document.getElementById("session-notice")?.textContent.trim() ?? "no notice box"`);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
+  check(quietOffline === "", `with nothing reachable, only the panel says so: ${JSON.stringify(quietOffline)}`);
   // By its links, so the page lives on. Each one waits for the page it asked for, and says if it never came:
   // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
   const visited = [];
@@ -811,6 +815,49 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   for (let i = 0; i < 60 && (await seen()) === beforeLost; i++) await sleep(150);
   const resent = await trUntil((s) => !s.active && s.times > 0);
   check((await seen()) === beforeLost + 1 && resent?.times === 3 && (await ev(`document.querySelector("[data-keep]").hidden`)), "Send again makes the transcript and clears it");
+
+  // The page's own notice and Transcribe's panel (with FE, session.js): a form that says its own send failure keeps the
+  // sign-in check, and loses only the two lines that would repeat it.
+  if (voiceFile) {
+    const noticeNow = `document.getElementById("session-notice")?.textContent.trim() ?? "no notice box"`;
+    const panelUp = async () => { for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150); return !(await ev(`document.querySelector("[data-keep]").hidden`)); };
+    // Only the send fails; the sign-in check answers.
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
+    await setFile(voiceFile);
+    const onlySend = { panel: await panelUp() };
+    await sleep(1200);
+    onlySend.notice = await ev(noticeNow);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(onlySend.panel && onlySend.notice === "", `with only the send failing, only the panel says so: ${JSON.stringify(onlySend)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A sign-in that has expired at the edge: the check is redirected, and that is said, even for this form.
+    await nav("/app/studio/transcribe");
+    const paused = (e) => { const m = JSON.parse(String(e.data)); if (m.method !== "Fetch.requestPaused") return; const u = m.params.request.url;
+      if (u.includes("/app/lab/transcribe")) send("Fetch.failRequest", { requestId: m.params.requestId, errorReason: "InternetDisconnected" });
+      else if (u.includes("/app/session")) send("Fetch.fulfillRequest", { requestId: m.params.requestId, responseCode: 302, responseHeaders: [{ name: "Location", value: "https://sign-in.example.invalid/" }], body: "" });
+      else send("Fetch.continueRequest", { requestId: m.params.requestId }); };
+    ws.addEventListener("message", paused);
+    await send("Fetch.enable", { patterns: [{ urlPattern: "*/app/lab/transcribe*" }, { urlPattern: "*/app/session*" }] });
+    await setFile(voiceFile);
+    const expired = { panel: await panelUp() };
+    for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeNow)); i++) await sleep(150);
+    expired.notice = await ev(noticeNow);
+    await send("Fetch.disable");
+    ws.removeEventListener("message", paused);
+    check(expired.panel && /Your sign-in expired/.test(expired.notice), `an expired sign-in is still said on this form: ${JSON.stringify(expired)}`);
+    await ev(`document.querySelector("[data-keep-drop]")?.click()`);
+    // A form that doesn't say its own failure still gets the page's notice.
+    await nav("/app/studio/image");
+    await send("Network.setBlockedURLs", { urls: ["*/app/lab/image"] });
+    await ev(`(() => { const f = document.querySelector("form.lab-dock"); f.querySelector("#lab-prompt").value = "a paper boat"; f.querySelector("button[type=submit]").click(); })()`);
+    for (let i = 0; i < 30 && !(await ev(noticeNow)); i++) await sleep(150);
+    const other = await ev(noticeNow);
+    await send("Network.setBlockedURLs", { urls: [] });
+    check(/didn.t load|Can.t reach/.test(other), `a form that doesn't say its own failure still gets the notice: ${JSON.stringify(other)}`);
+    await nav("/app/studio/transcribe");
+  } else {
+    console.log("skip the page's notice and Transcribe's panel (no voice file)");
+  }
 
   // No microphone: it says how to fix it, and a file still works.
   await ev(`navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("no", "NotAllowedError"))`);
