@@ -103,7 +103,7 @@ func TestGaugeSegments(t *testing.T) {
 		{runtime.Snapshot{State: "running"}, "constrained", false, "Memory is tight"},
 		{runtime.Snapshot{State: "running"}, "constrained", true, "Busy"},
 	} {
-		if word, _ := stripWord(c.st, c.pressure, c.busy); word != c.word {
+		if word, _ := stripWord(c.st, c.pressure, false, c.busy); word != c.word {
 			t.Errorf("%+v, %s, %v: %q, want %q", c.st, c.pressure, c.busy, word, c.word)
 		}
 	}

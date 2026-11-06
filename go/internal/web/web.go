@@ -383,6 +383,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	}
 	if p, ok := r.Context().Value(ctxKey{}).(*auth.Principal); ok {
 		data["Principal"] = p
+		data["PersonKey"] = personKey(p)
 	}
 	data["Page"] = page
 	// Everywhere someone is signed in. Running draws its own, with the legend under it.

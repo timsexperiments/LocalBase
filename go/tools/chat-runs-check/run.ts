@@ -248,6 +248,8 @@ await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
 check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
 for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
+// Announced once the swap settles, a moment after the words are on screen.
+for (let i = 0; i < 20 && !(await ev(`document.getElementById("running-status").textContent`)); i++) await sleep(100);
 const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
 check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
@@ -726,9 +728,9 @@ await ev(`(() => {
 await sleep(800);
 const refused = await ev(`(() => { const box = document.querySelector("[data-error-box]"); return { text: box.textContent, buttons: [...box.querySelectorAll("button")].map((b) => b.textContent) }; })()`);
 check(refused.text.includes("too big for this computer") && refused.text.includes(tooLarge) && refused.buttons.join() === "Choose a model,Dismiss", `a model too large for this computer says so, keeps the gateway's sentence a tap away, and offers no retry: ${JSON.stringify(refused.buttons)}`);
-check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip says the same as the refusal");
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "a model too big leaves the strip alone: that is the card's to say");
 await sleep(3500);
-check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) === "Not enough memory for this model", "the strip still says so after a refresh");
+check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "and still does after a refresh");
 await ev(`[...document.querySelectorAll("[data-error-box] button")].find((b) => b.textContent === "Dismiss").click()`);
 await sleep(3500);
 check((await ev(`document.querySelector("[data-strip-word]")?.textContent`)) !== "Not enough memory for this model", "dismissing the refusal gives the strip back to real state");
@@ -762,6 +764,11 @@ await send("Emulation.setEmitTouchEventsForMouse", { enabled: false });
 
 // --- The smallest phone, empty: the heading is under the strip, not behind it -----------------
 await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+// A refusal on the smallest phone: the tab bar stays, and so does the way out.
+await ev(`(async () => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "This model needs more memory than is free right now. Close another app, or free a loaded model, then try again. ".repeat(4) } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1200)); })()`);
+const refusalAt320 = await ev(`(() => { const box = document.querySelector("[data-error-box]").getBoundingClientRect(), tabs = document.querySelector(".chat-col > .tabbar").getBoundingClientRect(), buttons = [...document.querySelectorAll(".refusal-actions .btn")].map((b) => b.getBoundingClientRect()); return { tabsOnScreen: tabs.bottom <= innerHeight + 1, buttons: buttons.length, inBox: buttons.every((b) => b.top >= box.top - 1 && b.bottom <= box.bottom + 1), tall: Math.round(box.height) }; })()`);
+check(refusalAt320.tabsOnScreen && refusalAt320.buttons === 3 && refusalAt320.inBox, `at 320 x 568 a refusal keeps the tab bar and its buttons in view: ${JSON.stringify(refusalAt320)}`);
 await nav("/app/chat");
 const landing = await ev(`(() => { const strip = document.querySelector(".strip").getBoundingClientRect(), log = document.getElementById("chat-log"); log.scrollTop = 0; const h = document.querySelector(".chat-hello").getBoundingClientRect(), chip = document.querySelector("[data-model-name]"); return { strip: strip.bottom, hello: h.top, cut: chip.scrollWidth > chip.clientWidth }; })()`);
 check(landing.hello >= landing.strip && !landing.cut, `at 320 px the heading starts below the strip and the model's name isn't cut: ${JSON.stringify(landing)}`);
@@ -989,6 +996,168 @@ for (const name of ["Workshop Mac Studio in Attic ", "工房のマックスタ�
   check(!fits.over && !fits.cut && fits.inside && fits.title && fits.ell === "ellipsis", `at 320 px a long name gives way and the state stays whole: ${JSON.stringify(fits)}`);
 }
 
+// --- Your own message: copy it, or change the newest one. Nothing changes until it's sent.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+const sendText = async (text) => { await ev(`(() => { const p = document.querySelector("#chat-input"); p.value = ${JSON.stringify(text)}; p.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("[data-send]").click(); })()`); for (let i = 0; i < 60 && !(await ev(`!document.querySelector("[data-send]").hidden && document.querySelectorAll("[data-messages] article").length >= 2 && !document.querySelector("[data-messages] .reply-place")`)); i++) await sleep(100); await sleep(250); };
+const talk = `[...document.querySelectorAll("[data-messages] article")].map((a) => a.textContent.replace(/\\s+/g, " ").trim().slice(0, 44))`;
+await sendText("first question");
+await sendText("second question");
+const twoTurns = await ev(talk);
+const userButtons = await ev(`[...document.querySelectorAll("[data-messages] article.items-end")].map((a) => [...a.querySelectorAll("button")].map((b) => b.textContent.trim() + ":" + Math.round(b.getBoundingClientRect().height)))`);
+check(userButtons.length === 2 && userButtons[0].join() === "Copy:44" && userButtons[1].join() === "Copy:44,Edit:44", `your messages can be copied, and only the newest edited: ${JSON.stringify(userButtons)}`);
+const editButton = `document.querySelector("[aria-label='Edit your message']")`;
+await ev(`${editButton}.click()`);
+await sleep(100);
+const editingNow = await ev(`({ text: document.querySelector("#chat-input").value, note: !document.querySelector("[data-editing]").hidden, focus: document.activeElement?.id, kept: ${talk}.length, again: !!${editButton} })`);
+check(editingNow.text === "second question" && editingNow.note && editingNow.focus === "chat-input" && editingNow.kept === twoTurns.length && !editingNow.again, `Edit puts it in the box, says so, and changes nothing yet: ${JSON.stringify(editingNow)}`);
+await ev(`document.querySelector("[data-cancel-edit]").click()`);
+await sleep(100);
+const cancelled = await ev(`({ text: document.querySelector("#chat-input").value, note: !document.querySelector("[data-editing]").hidden, talk: ${talk}, focus: document.activeElement?.id })`);
+check(cancelled.text === "" && !cancelled.note && JSON.stringify(cancelled.talk) === JSON.stringify(twoTurns) && cancelled.focus === "chat-input", `Cancel leaves it all as it was: ${JSON.stringify(cancelled.talk).slice(0, 120)}`);
+await ev(`${editButton}.click()`);
+await sleep(100);
+await sendText("second question, changed");
+const edited = await ev(talk);
+check(edited.length === twoTurns.length && edited.some((t) => t.includes("second question, changed")) && !edited.some((t) => /second question$/.test(t)) && edited.some((t) => t.includes("first question")), `sending replaces that message and its reply, and keeps the earlier ones: ${JSON.stringify(edited).slice(0, 170)}`);
+await ev(`document.querySelector("[data-new-chat]").click()`);
+await sleep(200);
+
+// --- A background strip refresh answered 503 (a held store): it stops saying Ready --------------
+await nav("/app/chat");
+const stripBusy = await ev(`(async () => { const el = document.querySelector("[data-strip]"); const real = XMLHttpRequest.prototype.send; const before = document.querySelector("[data-strip-word]").textContent; document.dispatchEvent(new CustomEvent("htmx:responseError", { detail: { elt: el, xhr: { status: 503 } } })); const s = el.querySelector(".strip"); return { before, word: el.querySelector("[data-strip-word]").textContent, free: el.querySelector("[data-strip-free]").textContent, cls: s.className, bars: (() => { const b = el.querySelector(".gauge-models, .gauge-other"); return b ? getComputedStyle(b).opacity : "no bars"; })() }; })()`);
+check(stripBusy.word === "LocalBase is busy" && stripBusy.free === "" && !/strip-ready/.test(stripBusy.cls) && /strip-stale/.test(stripBusy.cls) && Number(stripBusy.bars) < 0.5, `a 503 on the strip's refresh stops it saying what it said, and its bars fade: ${JSON.stringify(stripBusy)}`);
+await sleep(3500);
+const stripBack = await ev(`({ word: document.querySelector("[data-strip-word]").textContent, free: document.querySelector("[data-strip-free]").textContent })`);
+check(stripBack.word !== "LocalBase is busy" && /GiB free/.test(stripBack.free), `the next good answer redraws it: ${JSON.stringify(stripBack)}`);
+
+// --- After a refusal the strip tells the truth as memory comes back. "Freed" is the gateway's
+// admission answer for that model, stubbed here, not a guess from the free figure. Each step redraws
+// the strip as a refresh would, then the same event a swap fires.
+await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+await nav("/app/chat");
+await ev(`(() => { const real = window.fetch; window.__asked = 0; window.__admission = { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 3 }; window.fetch = (u, o) => { if (String(u).endsWith("/admission")) { window.__asked++; return Promise.resolve(new Response(JSON.stringify(window.__admission), { status: 200 })); } return real(u, o); }; })()`);
+const stripSays = `(() => { const s = document.querySelector("[data-strip] .strip"); return { word: s.querySelector("[data-strip-word]").textContent, red: s.classList.contains("strip-short") }; })()`;
+const redraw = async (state, word, free, admission) => { if (admission) await ev(`window.__admission = ${JSON.stringify(admission)}`); await ev(`(() => { const s = document.querySelector("[data-strip] .strip"); s.className = "strip strip-${state}"; delete s.dataset.refusedHere; s.querySelector("[data-strip-word]").textContent = ${JSON.stringify(word)}; s.querySelector("[data-strip-free]").textContent = "${free} GiB free"; document.dispatchEvent(new CustomEvent("htmx:afterOnLoad", { detail: { elt: document.querySelector("[data-strip]") } })); document.dispatchEvent(new CustomEvent("htmx:afterSettle", { detail: {} })); })()`); await sleep(150); return ev(stripSays); };
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
+const refusedNow = await ev(stripSays);
+check(refusedNow.word === "Not enough memory for this model" && refusedNow.red, `a refusal for memory says so: ${JSON.stringify(refusedNow)}`);
+await sleep(3500);
+const refreshed = await ev(stripSays);
+check(refreshed.word === "Not enough memory for this model" && refreshed.red, `and still does after a real refresh: ${JSON.stringify(refreshed)}`);
+const drift = await redraw("ready", "Ready", 11, { admitted: false, requestedBytes: 8, reserveBytes: 2, availableBytes: 4 });
+check(drift.word === "Not enough memory for this model" && drift.red, `a gigabyte of drift isn't memory coming back: ${JSON.stringify(drift)}`);
+const bigRise = await redraw("ready", "Ready", 40, { admitted: false, requestedBytes: 90, reserveBytes: 2, availableBytes: 40 });
+check(bigRise.word === "Not enough memory for this model" && bigRise.red, `nor is a big rise that still isn't enough for this model: ${JSON.stringify(bigRise)}`);
+const stillShort = await redraw("short", "Memory is tight", 48, { admitted: true, requestedBytes: 8, reserveBytes: 2, availableBytes: 10 });
+check(stillShort.word === "Not enough memory for this model" && stillShort.red, `enough, but the computer is still short: no try again yet: ${JSON.stringify(stillShort)}`);
+const settling = await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+check(settling.word === "Memory just freed, ready in a few seconds" && !settling.red, `settling: calm, and the gateway's words: ${JSON.stringify(settling)}`);
+const cleared = await redraw("ready", "Ready", 48);
+check(cleared.word === "Memory looks free. Try again." && !cleared.red, `exactly enough, and settled: it looks free, no promise: ${JSON.stringify(cleared)}`);
+// The real load can still refuse. Then it isn't told the same thing again on the same reading.
+const GiB = 2 ** 30;
+await redraw("ready", "Ready", 48, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 40 * GiB });
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: { word: "Not enough memory for this model", model: "a-model" } }))`);
+const refusedAgain = await redraw("ready", "Ready", 48);
+check(refusedAgain.word === "Not enough memory for this model" && refusedAgain.red, `refused after it looked free: not told so again on the same reading: ${JSON.stringify(refusedAgain)}`);
+const smallMove = await redraw("ready", "Ready", 48, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 40.5 * GiB });
+check(smallMove.word === "Not enough memory for this model", `nor on half a gigabyte of drift: ${JSON.stringify(smallMove)}`);
+const reallyMoved = await redraw("ready", "Ready", 50, { admitted: true, requestedBytes: 8 * GiB, reserveBytes: 2 * GiB, availableBytes: 42 * GiB });
+check(reallyMoved.word === "Memory looks free. Try again." && !reallyMoved.red, `when the reading really moves, it can say so again: ${JSON.stringify(reallyMoved)}`);
+// One question per refresh, and none once the refusal is gone.
+const askedBefore = await ev("window.__asked");
+await redraw("ready", "Ready", 50);
+check((await ev("window.__asked")) === askedBefore + 1, "the preview is asked once per strip refresh");
+await ev(`document.dispatchEvent(new CustomEvent("localbase:refused", { detail: null }))`);
+const askedThen = await ev("window.__asked");
+const afterSend = await redraw("ready", "Ready", 48);
+check(afterSend.word === "Ready" && !afterSend.red, `sending again clears it: ${JSON.stringify(afterSend)}`);
+check((await ev("window.__asked")) === askedThen, "no refusal, no preview call");
+// The card's own Try again waits out the same window.
+await ev(`(async () => { const real = window.fetch; window.fetch = async () => new Response(JSON.stringify({ error: { code: "insufficient_memory", param: "model", message: "Not enough free memory." } }), { status: 503, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); await new Promise((r) => setTimeout(r, 100)); document.querySelector("[data-send]").click(); await new Promise((r) => setTimeout(r, 1000)); window.fetch = real; })()`);
+const retryState = `(() => { const b = document.querySelector("[data-refusal-retry]"), w = document.querySelector("[data-refusal-wait]"); return { found: !!b, disabled: b?.disabled, line: w && !w.hidden ? w.textContent : "" }; })()`;
+const retryOpen = await ev(retryState);
+check(retryOpen.found && !retryOpen.disabled && !retryOpen.line, `outside settling, Try again can be pressed: ${JSON.stringify(retryOpen)}`);
+await redraw("settling", "Memory just freed, ready in a few seconds", 48);
+const retryHeld = await ev(retryState);
+check(retryHeld.disabled && /ready in a few seconds/.test(retryHeld.line), `while settling, it waits and says why: ${JSON.stringify(retryHeld)}`);
+await redraw("ready", "Ready", 48);
+const retryBack = await ev(retryState);
+check(!retryBack.disabled && !retryBack.line, `when settling clears, it can be pressed again: ${JSON.stringify(retryBack)}`);
+await ev(`document.querySelector("[data-refusal-retry]").closest(".refusal-actions").querySelector("button:last-child").click()`);
+await nav("/app/chat");
+// A permanent refusal leaves the strip alone: the model is too big, whatever is free.
+await ev(`(() => { window.fetch = async () => new Response(JSON.stringify({ error: { code: "model_too_large", param: "model", message: "Too big." } }), { status: 422, headers: { "content-type": "application/json" } }); const p = document.querySelector("#chat-input"); p.value = "Hello there."; p.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+await ev(`document.querySelector("[data-send]").click()`);
+await sleep(1200);
+const tooBig = await ev(`({ strip: ${stripSays}, card: document.querySelector("[data-error-box]").textContent })`);
+check(/too big/.test(tooBig.card) && !/Not enough memory/.test(tooBig.strip.word) && !tooBig.strip.red, `a model too big never reads as a shortage: ${JSON.stringify(tooBig.strip)}`);
+await nav("/app/chat");
+
+// --- The list of chats: search, and each chat's own actions ----------------------------------
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+const savedKeyIs = `const savedKey = "localbase.chat.history.v2." + (document.documentElement.dataset.person ?? "none");`;
+await nav("/app/chat");
+await ev(`${savedKeyIs} localStorage.setItem(savedKey, JSON.stringify([
+  { id: "list-a", title: "Trip to the lake", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "a1", role: "user", text: "Where should we stop for lunch on the way?" }, { id: "a2", role: "assistant", text: "A bakery by the bridge." }] },
+  { id: "list-b", title: "Soup", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "b1", role: "user", text: "How long does barley take?" }] },
+  { id: "list-c", title: "A very long chat name that keeps going past where a phone can show the whole of it", workspace: "chat", mode: "llm", model: "m", messages: [{ id: "c1", role: "user", text: "muchtoolongtofitonasinglelineofaphonescreenwithoutbreakinganywhereatallinthislist" }] }]))`);
+await nav("/app/chat");
+await ev(`document.querySelector("[data-open-drawer]").click()`);
+await sleep(150);
+const inDrawer = "#chat-drawer";
+const rows = await ev(`[...document.querySelectorAll("${inDrawer} .chat-row")].map((r) => { const more = r.querySelector(".chat-row-more")?.getBoundingClientRect(), nav = r.closest("nav").getBoundingClientRect(); return { text: r.querySelector(".chat-row-title").textContent.slice(0, 20), line: r.querySelector(".chat-row-line")?.textContent.slice(0, 30), h: Math.round(r.querySelector(".chat-row-link").getBoundingClientRect().height), more: more ? Math.round(more.height) : null, inside: !more || (more.left >= nav.left && more.right <= nav.right + 1) }; })`);
+const saved = rows.filter((r) => r.more !== null);
+check(saved.length === 3 && rows.every((r) => r.h >= 44) && saved.every((r) => r.more >= 44 && r.inside) && saved.some((r) => r.line?.includes("A bakery by the bridge")), `each chat says how it ended, with targets of 44 px and its options in view: ${JSON.stringify(rows).slice(0, 360)}`);
+check(await ev(`(() => { const n = document.querySelector("${inDrawer} nav"); return n.scrollWidth <= n.clientWidth + 1; })()`), "a long name or word doesn't push the list sideways");
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = "BARLEY"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+const found = await ev(`(() => { const r = [...document.querySelectorAll("${inDrawer} .chat-row")]; return { n: r.length, title: r[0]?.querySelector(".chat-row-title").textContent, mark: r[0]?.querySelector("mark")?.textContent }; })()`);
+check(found.n === 1 && found.title === "Soup" && found.mark === "barley", `search finds words inside a chat and shows them: ${JSON.stringify(found)}`);
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = "nothing like this"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+check(await ev(`document.querySelector("${inDrawer} [data-no-conversations]").textContent === "No conversations match."`), "a search with no result says so");
+await ev(`(() => { const i = document.querySelector("${inDrawer} [data-search]"); i.value = ""; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+await sleep(100);
+const rowFor = (title) => `[...document.querySelectorAll("${inDrawer} .chat-row")].find((r) => r.querySelector(".chat-row-title").textContent === ${JSON.stringify(title)})`;
+await ev(`${rowFor("Soup")}.querySelector(".chat-row-more").click()`);
+await sleep(100);
+check(await ev(`document.getElementById("chat-options").open && document.querySelector("[data-options-title]").textContent === "Soup"`), "a chat's options open over the list");
+await ev(`document.querySelector("[data-option-rename]").click()`);
+await sleep(100);
+await ev(`(() => { document.getElementById("rename-input").value = "Barley soup"; document.querySelector("[data-rename-form]").requestSubmit(); })()`);
+await sleep(150);
+const renamedRow = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.title === "Barley soup") }); })()`);
+check(renamedRow.row && renamedRow.saved, `rename from the list changes that chat, not the open one: ${JSON.stringify(renamedRow)}`);
+await ev(`${rowFor("Barley soup")}.querySelector(".chat-row-more").click()`);
+await sleep(100);
+await ev(`document.querySelector("[data-option-delete]").click()`);
+await sleep(100);
+const asking = await ev(`({ confirm: !document.querySelector("[data-options-confirm]").hidden, focus: document.activeElement?.hasAttribute("data-option-keep"), says: document.querySelector("[data-options-confirm] p").textContent })`);
+check(asking.confirm && asking.focus && /this browser/.test(asking.says), `delete asks first, says where the chat lives, with the safe answer focused: ${JSON.stringify(asking)}`);
+// With the keyboard up on the smallest phone, both answers can still be reached.
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 300, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+const reach = await ev(`[...document.querySelectorAll("[data-options-confirm] button")].map((b) => { b.scrollIntoView({ block: "nearest" }); const r = b.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height) }; })`);
+check(reach.length === 2 && reach.every((r) => r.top >= 0 && r.bottom <= 300 && r.h >= 44), `at 320 with the keyboard up, the confirm's answers can be reached: ${JSON.stringify(reach)}`);
+await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 568, deviceScaleFactor: 2, mobile: true });
+await sleep(150);
+await ev(`document.querySelector("[data-option-keep]").click()`);
+await sleep(100);
+check(await ev(`!!${rowFor("Barley soup")} && document.activeElement?.hasAttribute("data-option-delete")`), "Keep it keeps it");
+await ev(`document.querySelector("[data-option-delete]").click()`);
+await sleep(50);
+await ev(`document.querySelector("[data-option-confirm]").click()`);
+await sleep(150);
+const deleted = await ev(`(() => { ${savedKeyIs} return ({ row: !!${rowFor("Barley soup")}, others: JSON.parse(localStorage.getItem(savedKey)).map((c) => c.id).filter((i) => i.startsWith("list-")), other: !!${rowFor("Trip to the lake")}, otherText: JSON.parse(localStorage.getItem(savedKey)).find((c) => c.id === "list-a")?.messages.length, saved: JSON.parse(localStorage.getItem(savedKey)).some((c) => c.id === "list-b"), said: document.getElementById("chat-status").textContent, focus: document.activeElement?.hasAttribute("data-search") }); })()`);
+check(!deleted.row && !deleted.saved && /^Deleted Barley soup/.test(deleted.said) && deleted.focus, `delete removes it, says so, and leaves focus in the list: ${JSON.stringify(deleted)}`);
+check(deleted.others.join() === "list-a,list-c" && deleted.other && deleted.otherText === 2, `deleting one chat leaves the others whole: ${JSON.stringify(deleted.others)}`);
+await ev(`${savedKeyIs} localStorage.removeItem(savedKey)`);
+await nav("/app/chat");
+
 // --- Control boundaries and selection marks, both themes, from rendered colors (DESIGN §25) --
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 const measure = `(() => {
@@ -999,7 +1168,7 @@ const measure = `(() => {
   const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const out = [];
   const seen = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  for (const el of document.querySelectorAll(".composer-box, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
+  for (const el of document.querySelectorAll(".composer-box:focus-within, .strip, .input, .chip:not([aria-current=true]), .btn-quiet")) {
     if (!seen(el) || parseFloat(getComputedStyle(el).borderTopWidth) === 0) continue;
     const n = ratio(rgb(getComputedStyle(el).borderTopColor), behind(el.parentElement));
     if (n < 3) out.push(el.className.split(" ")[0] + " " + n.toFixed(2));
@@ -1015,6 +1184,32 @@ const measure = `(() => {
     if (!seen(el)) continue;
     const n = ratio(rgb(getComputedStyle(el).backgroundColor), behind(el.parentElement));
     if (n < 3) out.push("chip selected " + n.toFixed(2));
+  }
+  // The composer has no 3:1 edge at rest, by design: its placeholder, icons and send button say
+  // what it is, so they have to be readable, and its focus has to be plain.
+  const box = document.querySelector(".composer-box"), field = document.querySelector("#chat-input");
+  if (box && field && seen(box)) {
+    const ground = behind(box);
+    const place = ratio(rgb(getComputedStyle(field, "::placeholder").color), ground);
+    if (place < 4.5) out.push("composer placeholder " + place.toFixed(2));
+    for (const el of box.querySelectorAll(".icon-btn:not(:disabled)")) {
+      if (!seen(el)) continue;
+      const n = ratio(rgb(getComputedStyle(el).color), ground);
+      if (n < 3) out.push("composer " + (el.getAttribute("aria-label") || "icon") + " " + n.toFixed(2));
+    }
+    const send = box.querySelector("[data-send]");
+    if (send && seen(send) && !send.disabled) {
+      const n = ratio(rgb(getComputedStyle(send).backgroundColor), ground);
+      if (n < 3) out.push("composer Send " + n.toFixed(2));
+    }
+    const was = document.activeElement;
+    field.focus();
+    const st = getComputedStyle(box), around = behind(box.parentElement);
+    const ring = ratio(rgb(st.outlineColor), around), edge = ratio(rgb(st.borderTopColor), around);
+    if (parseFloat(st.outlineWidth) < 2 || st.outlineStyle === "none" || ring < 3) out.push("composer focus " + st.outlineWidth + " " + ring.toFixed(2));
+    if (edge < 3) out.push("composer focus edge " + edge.toFixed(2));
+    field.blur();
+    was?.focus?.();
   }
   return out;
 })()`;

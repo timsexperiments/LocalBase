@@ -35,7 +35,7 @@ type labRun struct {
 
 // unloadingMessage: a request reached a model while someone unloaded it
 // (DESIGN §23); the gateway answers 503 model_unloading.
-const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed."
+const unloadingMessage = "The model’s memory was being freed, so this didn’t run. Try again: it loads again when needed."
 
 // labPicture is one image of a result.
 type labPicture struct {

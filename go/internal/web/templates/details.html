@@ -116,16 +116,16 @@
     <div class="grid gap-3 min-[600px]:grid-cols-2">
       <div class="grid gap-1">
         <label for="placement-gpu" class="text-base font-semibold">GPU layers (custom)</label>
-        <input id="placement-gpu" name="gpu_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "gpuLayers"}}" placeholder="All">
+        <input autocomplete="off" id="placement-gpu" name="gpu_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "gpuLayers"}}" placeholder="All">
       </div>
       <div class="grid gap-1">
         <label for="placement-moe" class="text-base font-semibold">Expert layers in system memory (custom)</label>
-        <input id="placement-moe" name="cpu_moe_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "cpuMoeLayers"}}" placeholder="None">
+        <input autocomplete="off" id="placement-moe" name="cpu_moe_layers" type="number" min="0" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "cpuMoeLayers"}}" placeholder="None">
       </div>
     </div>
     <div class="grid gap-1">
       <label for="placement-ctx" class="text-base font-semibold">Context size (tokens, shared by all models)</label>
-      <input id="placement-ctx" name="context_size" type="number" min="256" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "contextSize"}}">
+      <input autocomplete="off" id="placement-ctx" name="context_size" type="number" min="256" inputmode="numeric" class="input min-h-11" value="{{.ReqInt "contextSize"}}">
       <input type="hidden" name="context_size_was" value="{{.ReqInt "contextSize"}}">
     </div>
     <div class="flex flex-wrap gap-2">

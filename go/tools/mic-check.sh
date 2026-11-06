@@ -18,7 +18,7 @@ port=$(test_port_pick)
 . "$here/tools/browser-run.sh"
 browser_guard mic-check
 (cd "$here" && rm -rf .cache/browser-profile-mic-check)
-"$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
+browser_group "$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" \
   --no-first-run --use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-audio-capture="$clip" \
   --disable-features=AudioServiceOutOfProcess --autoplay-policy=no-user-gesture-required about:blank >/dev/null 2>&1 &
 browser_started $!
