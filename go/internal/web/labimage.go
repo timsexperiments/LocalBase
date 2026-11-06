@@ -103,10 +103,11 @@ func imageForm(r *http.Request) (q imageRequest, msg string) {
 		q.Seed = n
 	}
 	if v := strings.TrimSpace(r.PostFormValue("steps")); v != "" {
-		if _, err := strconv.Atoi(v); err != nil {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
 			return q, "steps must be a whole number."
 		}
-		q.Steps = v
+		q.Steps = strconv.Itoa(n)
 	}
 	q.N, _ = strconv.Atoi(r.PostFormValue("count"))
 	if !slices.Contains([]int{1, 2, 4}, q.N) {
