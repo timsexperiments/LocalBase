@@ -422,8 +422,9 @@ func smallDisk(t *testing.T) string {
 	}
 	t.Cleanup(func() {
 		workspace.KillStray()
-		if out, err := exec.Command("hdiutil", "detach", "-force", mount).CombinedOutput(); err != nil {
-			t.Errorf("detaching the scratch volume: %v %s", err, out)
+		detach := func() ([]byte, error) { return exec.Command("hdiutil", "detach", "-force", mount).CombinedOutput() }
+		if err := detachVolume(detach, func() { time.Sleep(500 * time.Millisecond) }, 20); err != nil {
+			t.Errorf("detaching the scratch volume: %v", err)
 		}
 	})
 	if real, err := filepath.EvalSymlinks(mount); err == nil {
@@ -488,11 +489,93 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 	return func() {
 		if !freed {
 			freed = true
-			if err := os.Remove(path); err != nil {
+			ops := diskOps{
+				truncate: os.Truncate,
+				remove:   os.Remove,
+				available: func() (int64, error) {
+					var st syscall.Statfs_t
+					if err := syscall.Statfs(dir, &st); err != nil {
+						return 0, err
+					}
+					return int64(st.Bavail) * int64(st.Bsize), nil
+				},
+				wait: func() { time.Sleep(100 * time.Millisecond) },
+			}
+			if err := freeFullDisk(path, int64(written), ops, 50); err != nil {
 				t.Errorf("freeing the disk: %v", err)
 			}
 		}
 	}
+}
+
+// diskOps are what freeFullDisk does to the disk, so a test can make each of them fail.
+type diskOps struct {
+	truncate  func(path string, size int64) error
+	remove    func(path string) error
+	available func() (int64, error)
+	wait      func()
+}
+
+const (
+	// givenBack is how much of the filler goes when a delete is refused. freedFloor is what must be
+	// free once it has gone.
+	givenBack  = 1 << 20
+	freedFloor = 256 << 10
+)
+
+// freeFullDisk frees a full volume. A completely full APFS image can refuse the very delete that
+// would free it (remove: no space left on device): seen once, in a whole suite under load, and not in
+// 80 runs alone. It can refuse to truncate for longer than it refuses to delete, so the delete comes
+// first, and giving a little back is what it tries between refusals. Then the room must really have
+// come back, or the test after it would fail for a reason nobody could see.
+func freeFullDisk(path string, size int64, ops diskOps, tries int) error {
+	removed := false
+	var err error
+	for range tries {
+		if err = ops.remove(path); err == nil {
+			removed = true
+			break
+		}
+		if !errors.Is(err, syscall.ENOSPC) {
+			return err
+		}
+		if err := ops.truncate(path, max(size-givenBack, 0)); err != nil && !errors.Is(err, syscall.ENOSPC) {
+			return err
+		}
+		ops.wait()
+	}
+	if !removed {
+		return fmt.Errorf("deleting the filler: still refused after %d tries: %w", tries, err)
+	}
+	var free int64
+	for range tries {
+		if free, err = ops.available(); err != nil {
+			return err
+		}
+		if free >= freedFloor {
+			return nil
+		}
+		ops.wait()
+	}
+	return fmt.Errorf("deleted the filler, and only %d bytes are free, under the floor of %d", free, freedFloor)
+}
+
+// detachVolume detaches a scratch image, waiting a bounded time while macOS still has it busy, as it
+// can straight after a fill and delete: hdiutil: couldn't eject "disk4" - Resource busy, on macos-14,
+// even with -force, on an image nothing else had touched.
+func detachVolume(detach func() ([]byte, error), wait func(), tries int) error {
+	var out []byte
+	var err error
+	for range tries {
+		if out, err = detach(); err == nil {
+			return nil
+		}
+		if !strings.Contains(string(out), "Resource busy") {
+			return fmt.Errorf("%w: %s", err, out)
+		}
+		wait()
+	}
+	return fmt.Errorf("still busy after %d tries: %w: %s", tries, err, out)
 }
 
 // fillDisk must refuse an ordinary directory, before writing anything to it.
