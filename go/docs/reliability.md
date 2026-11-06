@@ -201,3 +201,123 @@ with the backend's own RSS as the primary measure and system memory beside it. A
 +2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
 on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
 flat result here would not clear the Linux case.
+
+Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
+on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
+from a leak. The plan is about 200 sequential requests to a small model on a scratch
+gateway on a Mac, with the same conditions as above, recording the backend's RSS and
+available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
+repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
+in recent `llama-server` builds): if it does, a run with the cache off separates the two.
+The plan must fit the agreed size, so the context will be far smaller than the one observed
+and the platform differs. A flat result here would not clear the Linux case; say so if
+that is the result.
+
+## The browser suite
+
+```
+make e2e                              # about a minute
+E2E_PART=journeys tools/e2e.sh        # the journeys alone, under a minute
+E2E_PAGES=chat,studio E2E_WIDTHS=390 E2E_THEMES=dark tools/e2e.sh
+```
+
+Run from `go/`. It needs `bun`. Chrome comes from `LBGO_CHROME`, or else the Chrome for Testing pinned
+in `tools/e2e/pins` is fetched into a cache (`LOCALBASE_E2E_CACHE`, default `~/.cache/localbase-e2e`),
+checked against its sha256 and never installed, so that every run checks the same browser. Only a
+platform with no pin, such as linux/arm64, falls back to an installed Chrome. axe-core comes the
+same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
+ports from the lab's block. Results and captures go to a new directory under
+`$TMPDIR/localbase-e2e`, or `-out <dir>`. `LOCALBASE_E2E_SCRATCH` moves that default and the run's
+scratch out of `$TMPDIR`, so that clearing up never means reaching outside a directory of your own.
+
+**The cache is checked on every run, before anything from it runs.** The archive must match its pin, and
+each unpacked file must match the archive, so a changed or half-written file stops the run at the first
+mismatch, with exit 2. The checksum and version go at the top of `result.md`, and the suite stops if
+Chrome reports a version other than the pin. A Chrome from `LBGO_CHROME` has nothing to match, and
+`result.md` says so. A failed or stopped fetch leaves nothing behind. Its working directories have fixed
+names so a trap can remove them by name, so two runs fetching into one cache at the same moment can
+collide. That fails closed: nothing is used until its checksum matches.
+
+Exit 0 means everything passed, exit 1 means findings about the pages (in `result.md`, with captures),
+exit 2 means the suite itself could not run, exit 4 means it ran and something it should have checked has
+no record of running, exit 5 means a journey failed or the gateway panicked or logged a key, and exit 3
+means it refused to start under the free-disk floor
+(`tools/disk-guard.sh`).
+
+**On macOS,** Chrome starts with `--use-mock-keychain --password-store=basic`, whichever Chrome it is,
+so it never asks the Keychain for anything and cannot put a prompt on the screen. A test requires both
+flags, and fails on any script under `tools/` that starts a Chrome without them. A watcher stops Chrome
+if the suite is killed; `make e2e-kill-check` shows nothing stays after SIGTERM, SIGKILL or the
+last-resort exit. See `tools/README.md` before pointing anything
+else at a current Chrome.
+
+**On Ubuntu,** `kernel.apparmor_restrict_unprivileged_userns=1` stops Chrome's sandbox, and Chrome never
+answers. On a disposable runner, set it to 0 and the suite runs with the sandbox on, as CI does
+(`ubuntu-latest`). `LOCALBASE_E2E_NO_SANDBOX=1` adds `--no-sandbox` for a machine where that setting can't
+be changed; CI doesn't need it. When Chrome fails to start, the error prints the end of its log and the
+scratch root is kept.
+
+**Journeys** sign in with a first-run link from `local-base access login-link`, check it works once,
+hold a first chat, stop a stream, keep HTML in a reply inert, use Image, Speech, Transcribe and
+Decisions, and then break things: too little memory, a backend killed mid-reply, every session
+ended. The driver's small control endpoint does what a page cannot, such as changing the host's memory.
+
+After memory comes back, chat goes on refusing for about 4.6 s while the strip already shows it free. That
+is intended: recovery takes three normal samples at a 2 s poll (`recoverySamples` in
+`internal/memory/controller.go`), so that one good reading does not undo the hysteresis. The journey
+allows 30 s, and prints the time it measured.
+
+**The matrix** runs every page at 320, 360, 390, 430, 768 and 1280 px in light and dark:
+
+- **Overflow.** `scrollWidth` is compared with the width asked for, less a classic scrollbar where
+  there is one (15 px on Linux), and `clientWidth` must not exceed the width asked for. `innerWidth` is
+  not used: in mobile emulation it can grow with the content, so `scrollWidth - innerWidth` can read 0 on
+  a page that overflows. Self-tests plant a 1200 px element, a page that fits beside a scrollbar and one
+  5 px too wide beside it.
+- **axe-core**, WCAG 2.0, 2.1 and 2.2 A and AA, and any exception or 5xx on the page.
+
+Per page, at 390 and 1280 px:
+
+- **Keyboard and focus.** Tab reaches every visible control with no trap. A radio group is one stop, a
+  closed `<details>` holds none, and a tabindex of -1 is out of the order on purpose. Focus is on screen,
+  the middle of the control is not covered, and focusing it changes how it looks: the control is read
+  focused and then blurred, along with its pseudo-elements, up to three boxes around it (a composer
+  shows focus on its frame) and the element after it (a hidden checkbox styles its neighbour).
+- **Sheets.** Enter opens one, focus moves in and stays in, Escape closes it, and focus returns to what
+  opened it.
+- **Reduced motion.** Nothing keeps animating when reduced motion is asked for.
+
+**Every check is shown a page that breaks it.** Before the matrix, the suite plants an overflow, an
+exception, an image with no alt text, a control with no focus style, one Tab cannot reach, a trap, a
+control off screen, one under a cover, an opener that does nothing, a sheet that lets focus out and
+ignores Escape, one that returns focus to the wrong place, and a spinning element under reduced motion.
+If a check misses its plant the suite stops with exit 2, since a clean matrix would mean nothing.
+`result.md` lists what was proved. A new check needs a plant of its own.
+
+**What ran.** A plant shows a check can fail. It does not show the check ran, and a section guarded off
+reads the same as a clean one. So `result.md` opens with a table of what should have run against what
+did: every journey declared in the source, every self-test, overflow, axe and page errors for every cell,
+keyboard, sheets and motion for every page at 390 and 1280, and each page being the one asked for. Any
+gap is exit 4. It also counts, per page, the Tab stops, the openers, and how much each one got, so a page
+where a check passes because it found nothing to look at shows as a zero. `make e2e-manifest-check` guards
+each section off and requires the table to name it, and shows a narrow run with nothing guarded off has
+no gaps. It also shows a failed journey exits 5, and that a key planted in the gateway's log exits 5 with a
+report naming the file and line and no part of the key in the run's output or results. About two minutes.
+
+**Waiting.** Everything waits on the page's state through `until`, which polls and, if the state never
+comes, fails with a screenshot, the address and the console. There are no fixed sleeps and no retries, so a
+flaky check fails loudly. A page may navigate itself while the suite waits for it to settle, as a sign-in
+link does when it submits its own form, and settling then starts again on the new page. Before that, the
+used-link journey failed once in four Linux CI runs with `Inspected target navigated or closed`. Repeated on
+its own on macOS it never failed at natural timing (0 of 500), and failed 9 of 300 at 80 ms of added latency
+and 8 of 300 at 200 ms. With only that change, it was 0 of 500, 0 of 300 and 0 of 300.
+
+**Adding to it.** A new page goes in `ALL_PAGES` in `tools/e2e/run.ts`. A new journey is an
+`await journey("what a person sees", async () => { ... })`: use `until` to wait, and `need` to assert.
+
+Not covered: video generation, installing a first model from an empty root (no chat model means the
+welcome page's install flow), voice recording, an identity provider's sign-in, Safari and Firefox, and
+real devices. The focus check shows that something changes, not that the change has enough contrast;
+the buttons inside a native audio or video player are taken on trust; the keyboard, sheet and motion
+checks run in the light theme on the page as it first loads, so a sheet's own contents, a result on the
+page and a state reached by using it get axe and overflow only where a journey or a sheet reaches them.

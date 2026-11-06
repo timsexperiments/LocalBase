@@ -25,3 +25,15 @@ bench: ## What the gateway itself costs, against fake backends; about 2 minutes
 
 bench-compare: ## The same, then compare with the recorded baseline for this platform
 	tools/bench.sh -compare tools/bench/baseline-$$(go env GOOS)-$$(go env GOARCH).json
+
+.PHONY: e2e
+e2e: ## The browser suite in headless Chrome, against fake backends; about a minute
+	tools/e2e.sh
+
+.PHONY: e2e-manifest-check
+e2e-manifest-check: ## Show the browser suite's table of what ran fails when a section does not run, and a broken run exits 5; about two minutes
+	tools/e2e-manifest-check.sh
+
+.PHONY: e2e-kill-check
+e2e-kill-check: ## Show the browser suite leaves nothing running however it ends; about a minute
+	tools/e2e-kill-check.sh

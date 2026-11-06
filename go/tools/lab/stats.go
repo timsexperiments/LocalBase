@@ -101,6 +101,10 @@ func (w *Workspace) KillStray() {
 	}
 }
 
+// StopIfThisProcessDies stops the process group pid, and anything running from this
+// workspace's binaries, if this process dies without doing it itself.
+func (w *Workspace) StopIfThisProcessDies(pid int) { watchOwner(pid, w.Bin) }
+
 // watchOwner stops the process group pid and every binary under bin if this
 // process dies first (a panic or SIGKILL skips all cleanup). The watcher exits
 // once pid is gone, unless it must clean up first.
