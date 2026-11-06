@@ -829,7 +829,7 @@ is reported. There is never a silent CPU or model fallback.
 
 Built-in adapters implement Go interfaces (`Inspect`, `Prepare`, `Launch`,
 `Health`, `Cancel`, `Unload`) per task. A custom backend is registered
-explicitly (`local-base backends add --file def.json`, or the UI). It names
+explicitly, from the host only (`local-base backends add --file def.json`). It names
 an existing executable and the `process-openai/v1` adapter interface:
 LocalBase starts the executable with templated arguments (`{model}`,
 `{port}`, `{host}`, `{ctx}`), waits for its health path, and proxies the
@@ -4896,6 +4896,23 @@ for as long as it ran. Nothing could cancel it, and what it had staged stayed fo
   An install answers 200 or 202 when an operation is recorded, and 409 otherwise.
 - **Stalls** are not here: #497 limits silence from the source. The deadline is what ends a
   source that keeps sending a little at a time.
+### 31.4 Who decides what runs
+
+A custom backend names a program, and LocalBase runs it as its own user. So:
+
+- **Registering is for the host.** `local-base backends add` and `remove` are the only ways, like the
+  import opt-ins in §31.2: no request can write `backends.d`. The Backends page lists what is
+  registered and shows the command. `TestOnlyTheCommandLineChangesBackends` keeps it that way.
+- **A custom backend runs only for a model someone set it on.** Routing picks only built-ins, whatever
+  a definition or the routing rules say, including `engine:mlx` on Apple Silicon. A model only a custom
+  backend can run has no automatic choice, and shows that backend among its options. A model left on
+  automatic that was using one moves to a built-in when this ships.
+- **Choosing one needs `models:manage`,** and only among what is registered.
+- **All of it is on record, by id.** `audit.backend-registered` and `audit.backend-removed` from the
+  command line, and `audit.model-backend-changed` (`set`, `reset`, `import`) from the API, the pages and
+  the command line, with who did it and which model and backend. The command a backend runs is left
+  out, since a path can hold a person's name.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's

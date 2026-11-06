@@ -249,6 +249,11 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		serviceUnavailable(w, r, "Model management")
 		return
 	}
+	if in.Backend != "" && in.Backend != "auto" {
+		kind, actor := s.auditActor(r)
+		s.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
+			"target_kind", "model", "target_id", plan.ID, "backend_id", in.Backend)
+	}
 	noStore(w, 202, map[string]any{"job": id, "plan": plan})
 }
 

@@ -43,6 +43,8 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		}
 		var in struct {
 			Action         string `json:"action"`
+			Model          string `json:"model"`
+			BackendID      string `json:"backendId"`
 			KeyID          string `json:"keyId"`
 			RegistrationID string `json:"registrationId"`
 			Registration   struct {
@@ -53,21 +55,11 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		if !refused && (in.Action == "" || in.Action == "test-policy" || in.Action == "test-email-delivery") {
 			return
 		}
-		// The principal the handler resolved (never resolved twice).
-		var p *auth.Principal
-		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
-			p = bp
-		} else if outer, ok := r.Context().Value(recKey{}).(*recorder); ok {
-			p = outer.auth
-		}
-		if p == nil && s.NoAuth {
-			p = &auth.Principal{Kind: "environment"}
-		}
 		kind, id := auditTarget(in.Action, in.KeyID, in.RegistrationID, in.Registration.ID, rec.body.Bytes())
-		actorKind, actorID := "", ""
-		if p != nil {
-			actorKind, actorID = p.Kind, p.ID
+		if area == "model-backend" {
+			kind, id = "model", in.Model
 		}
+		actorKind, actorID := s.auditActor(r)
 		if refused {
 			action := in.Action
 			if !auditActionRe.MatchString(action) {
@@ -84,8 +76,32 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		if scopes, ok := auditScopes(rec.body.Bytes()); ok {
 			attrs = append(attrs, "scopes", scopes)
 		}
+		if area == "model-backend" {
+			backend := ""
+			if in.Action == "set" { // the handler has checked it is registered
+				backend = in.BackendID
+			}
+			attrs = append(attrs, "backend_id", backend)
+		}
 		s.Log.Info("Administration change.", attrs...)
 	}
+}
+
+// auditActor is the principal the handler resolved (never resolved twice).
+func (s *Server) auditActor(r *http.Request) (kind, id string) {
+	var p *auth.Principal
+	if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
+		p = bp
+	} else if outer, ok := r.Context().Value(recKey{}).(*recorder); ok {
+		p = outer.auth
+	}
+	if p == nil && s.NoAuth {
+		p = &auth.Principal{Kind: "environment"}
+	}
+	if p == nil {
+		return "", ""
+	}
+	return p.Kind, p.ID
 }
 
 // auditReason is the error code of a refusal: this gateway's own words.

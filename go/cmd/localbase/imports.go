@@ -207,6 +207,9 @@ func modelsImportCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			if backend != "" && backend != "auto" {
+				auditBackend(e, "audit.model-backend-changed", "import", res.Model.ID, backend)
+			}
 			c.Info("Imported %s into %s.", res.Model.ID, res.Dir)
 			c.Info("Downloading a model does not prove it runs; the backend below starts it on first use.")
 			printSelection(c, sel, l.Registry)
@@ -247,9 +250,25 @@ func modelsBackendCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
+			switch {
+			case c.Has("set"):
+				auditBackend(e, "audit.model-backend-changed", "set", id, c.String("set"))
+			case c.Bool("auto"):
+				auditBackend(e, "audit.model-backend-changed", "reset", id, "")
+			}
 			printSelection(c, s, l.Registry)
 			return map[string]any{"modelId": id, "selection": s}, nil
 		})}
+}
+
+// auditBackend records a backend change made on the host. Ids only: the command a backend
+// runs is left out, since a path can hold a person's name.
+func auditBackend(e *env, event, action, target, backend string) {
+	kind := "model"
+	if event != "audit.model-backend-changed" {
+		kind = "backend"
+	}
+	auditCLI(e, "Administration change.", "event", event, "action", action, "actor_kind", "cli", "target_kind", kind, "target_id", target, "backend_id", backend)
 }
 
 func modelsInspectCommand() *cli.Command {
@@ -402,6 +421,7 @@ func backendsCommand() *cli.Command {
 			if err := root.WithOperation(e.Root.Dir, "register backend", func() error { return backends.Add(e.Root.Dir, d) }); err != nil {
 				return nil, cli.Inputf("%v", err)
 			}
+			auditBackend(e, "audit.backend-registered", "add", d.ID, d.ID)
 			c.Info("Registered backend %s. LocalBase starts %s only when a model you chose it for runs.", d.ID, d.Launch.Command)
 			return map[string]any{"backend": d}, nil
 		})},
@@ -416,6 +436,7 @@ func backendsCommand() *cli.Command {
 					return nil, err
 				}
 				if removed {
+					auditBackend(e, "audit.backend-removed", "remove", c.Args[0], c.Args[0])
 					c.Info("Removed %s. Models set to it keep that choice and show it as unavailable.", c.Args[0])
 				} else {
 					c.Info("%s is not a registered custom backend.", c.Args[0])
