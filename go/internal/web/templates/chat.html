@@ -124,6 +124,23 @@
   </form>
 </dialog>
 
+<dialog id="chat-options" aria-labelledby="chat-options-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
+  <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+    <h2 id="chat-options-title" class="min-w-0 text-lg font-bold wrap-anywhere" data-options-title></h2>
+    <button type="button" class="btn btn-quiet size-11 shrink-0 p-0" data-close-options aria-label="Close">{{template "icon-close"}}</button>
+  </div>
+  <div class="grid gap-2 px-4 pb-2" data-options-list>
+    <button type="button" class="btn btn-quiet w-full" data-option-rename>Rename</button>
+    <button type="button" class="btn btn-quiet w-full" data-option-delete>Delete</button>
+    <p class="text-sm text-muted" data-options-busy hidden>Stop the reply before deleting this chat.</p>
+  </div>
+  <div class="grid gap-2 px-4 pb-2" data-options-confirm hidden>
+    <p>Delete this chat from this browser? This can’t be undone.</p>
+    <button type="button" class="btn btn-primary w-full" data-option-confirm>Delete chat</button>
+    <button type="button" class="btn btn-quiet w-full" data-option-keep>Keep it</button>
+  </div>
+</dialog>
+
 <dialog id="generation" aria-labelledby="generation-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
   <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
     <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
@@ -149,8 +166,8 @@
 <div class="flex min-h-0 flex-1 flex-col gap-3">
   <button type="button" class="btn btn-quiet w-full" data-new-chat>{{template "icon-plus"}}New chat</button>
   <input type="search" class="input min-h-11" data-search placeholder="Search chats" aria-label="Search chats">
-  <nav aria-label="Chats" class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
-    <ul class="grid gap-0.5" data-conversations></ul>
+  <nav aria-label="Chats" class="-mx-1 min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1">
+    <ul class="grid grid-cols-[minmax(0,1fr)] gap-0.5" data-conversations></ul>
     <p class="px-2 py-3 text-sm text-muted" data-no-conversations hidden></p>
   </nav>
 </div>

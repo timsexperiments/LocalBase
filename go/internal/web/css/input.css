@@ -521,6 +521,27 @@
   .chat-empty {
     @apply px-1;
   }
+  .chat-row {
+    @apply flex min-w-0 items-center gap-0.5 rounded-xl;
+  }
+  .chat-row-link {
+    @apply flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-xl px-3 py-1.5 hover:bg-hover;
+  }
+  .chat-row-link[aria-current="page"] {
+    @apply bg-accent-soft text-accent;
+  }
+  .chat-row-title {
+    @apply block truncate font-medium;
+  }
+  .chat-row-link[aria-current="page"] .chat-row-title {
+    @apply font-semibold;
+  }
+  .chat-row-line {
+    @apply block truncate text-sm text-muted;
+  }
+  .chat-row-line mark {
+    @apply rounded-sm bg-accent-soft font-semibold text-ink;
+  }
   .chat-suggest {
     @apply mt-2 grid;
   }
