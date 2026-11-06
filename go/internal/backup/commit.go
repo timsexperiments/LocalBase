@@ -7,6 +7,8 @@ import (
 	"maps"
 	"reflect"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // liveFacts is everything about the root being replaced that a report tells someone. They say yes to
@@ -117,20 +119,34 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if s.live == nil {
 		return release, nil
 	}
+	// POSIX drops all of a process's locks on a file when any descriptor on it closes. Raw reads of this file
+	// share this one from now on, so none of them can cost the lock below.
+	letGo := store.HoldFile(dbPath)
+	// A -wal that appeared while it waited and isn't this database's would be replayed by opening it, and
+	// closing would then write it in, so this stops before that as every other open does.
+	if err := store.CheckWALBelongs(dbPath); err != nil {
+		letGo()
+		return release, refuse("%v", err)
+	}
 	// What was left mid-write while it waited. A read-write open would undo that here, and the report
-	// didn't say so.
-	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
-		return release, refuse("%s", unfinishedWriteMessage(dir))
+	// didn't say so. Write-ahead logging has no such state, and reading this way would leave files.
+	if !store.InWAL(dbPath) {
+		if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+			letGo()
+			return release, refuse("%s", unfinishedWriteMessage(dir))
+		}
 	}
 	// mode=rw, so that a database deleted while it waited isn't created empty here.
 	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("mode=rw&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
 	if err != nil {
+		letGo()
 		return release, refuse("This root's database can't be opened: %v", err)
 	}
 	db.SetMaxOpenConns(1)
 	held := func() {
 		_, _ = db.ExecContext(ctx, `ROLLBACK`) // Nothing was written, and closing ends it anyway.
 		_ = db.Close()                         // The same: there's nothing a failed close could lose.
+		letGo()
 	}
 	stop := func(err error) (func(), error) {
 		held()
@@ -163,7 +179,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 		return stop(refuse("This root's database can't be read now, so what the report said can't be checked. Nothing was changed: %v", err))
 	}
 	// The lock stays: that's what locking_mode=EXCLUSIVE means, so nothing gets in between these.
-	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode=DELETE`).Scan(&mode); err != nil {
+	if err := db.QueryRowContext(ctx, leaveWAL).Scan(&mode); err != nil {
 		if isBusy(err) {
 			return stop(refuse("%s", someoneElseHoldsIt))
 		}
@@ -179,6 +195,10 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	}
 	return held, nil
 }
+
+// leaveWAL takes a database out of write-ahead logging. A variable so that a test can see SQLite answer
+// with another mode, which nothing found so far makes it do here.
+var leaveWAL = `PRAGMA journal_mode=DELETE`
 
 // someoneElseHoldsIt is what a restore says when another process has the database open, or is using it.
 const someoneElseHoldsIt = "Something else is using this root's database, so nothing was changed. Stop it or wait, then run this again."

@@ -757,8 +757,21 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 
 // crashDatabase leaves a database as a process killed during a large write would: pages changed on
 // disk, and a journal that undoes them. It takes a copy's files while its transaction is open.
+// crashDatabase leaves a database as a version before write-ahead logging would, killed during a write.
+// A root that crashed before it was upgraded has this, and nothing has opened it for writing since.
 func crashDatabase(t *testing.T, tmp, dbPath string) {
 	t.Helper()
+	rollback, err := sql.Open("sqlite", "file:"+dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rollback.SetMaxOpenConns(1)
+	var mode string
+	err = rollback.QueryRow(`PRAGMA journal_mode=DELETE`).Scan(&mode)
+	_ = rollback.Close() // only the mode was changed, and the query's error says if that failed
+	if err != nil || mode != "delete" {
+		t.Fatalf("journal mode %q: %v", mode, err)
+	}
 	work := filepath.Join(tmp, "crash-copy.db")
 	body, err := os.ReadFile(dbPath)
 	if err != nil {
@@ -794,6 +807,61 @@ func crashDatabase(t *testing.T, tmp, dbPath string) {
 		if err := mustWriteFile(to, b, 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A gateway killed with a write only in the -wal, in write-ahead logging. SQLite recovers that by itself,
+// and what it reads is consistent, so nothing is refused: the write is in the backup, a restore over it
+// keeps it, and an ordinary command clears the -wal without saying anything.
+func TestAKilledGatewaysWriteIsKeptAndNothingIsRefused(t *testing.T) {
+	backupGoOnly(t)
+	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	e := backupRoot(t, tmp, "root")
+	created := e.json("keys", "create", "--name", "leaked", "--scopes", "models:read")
+	leaked := created["secret"].(string)
+	id := created["key"].(map[string]any)["id"].(string)
+	older := filepath.Join(tmp, "older"+backup.Extension)
+	if r := e.cli(nil, "backup", "--output", older); r.code != 0 {
+		t.Fatalf("backup: %s%s", r.stdout, r.stderr)
+	}
+	e.serve()
+	// The gateway holds the database open, so nothing checkpoints this: it stays in the -wal.
+	if r := e.cli(nil, "keys", "revoke", id); r.code != 0 {
+		t.Fatalf("revoke: %s%s", r.stdout, r.stderr)
+	}
+	e.kill()
+	db := filepath.Join(e.root, "local-base.db")
+	if info, err := os.Stat(db + "-wal"); err != nil || info.Size() == 0 {
+		t.Fatalf("no -wal after killing the gateway, so this tests nothing: %v", err)
+	}
+
+	for _, args := range [][]string{{"backup", "--dry-run"}, {"restore", "--dry-run", "--replace", "--no-port-probe", older}} {
+		r := e.cli(nil, args...)
+		if said := r.stdout + r.stderr; r.code != 0 || strings.Contains(said, "never finished") {
+			t.Errorf("%v after a kill: %d %s", args, r.code, said)
+		}
+	}
+	file := filepath.Join(tmp, "after"+backup.Extension)
+	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
+		t.Fatalf("backup after a kill: %s%s", r.stdout, r.stderr)
+	}
+
+	// The backup holds the revocation: the key is refused on a root restored from it.
+	two := &e2e{t: t, root: filepath.Join(tmp, "root-two"), outDir: tmp, key: leaked}
+	if r := two.cli(nil, "restore", "--yes", "--no-port-probe", file); r.code != 0 {
+		t.Fatalf("restore: %s%s", r.stdout, r.stderr)
+	}
+	two.serve()
+	defer two.stop()
+	if r := two.do("GET", "/v1/models", ""); r.Status != 401 {
+		t.Errorf("a key revoked just before the kill gets %d from a root restored from the backup", r.Status)
+	}
+
+	if r := e.cli(nil, "status"); r.code != 0 || strings.Contains(r.stdout+r.stderr, "never finished") {
+		t.Errorf("status: %d %s%s", r.code, r.stdout, r.stderr)
+	}
+	if info, err := os.Stat(db + "-wal"); err == nil && info.Size() != 0 {
+		t.Errorf("status left %d bytes in the -wal", info.Size())
 	}
 }
 

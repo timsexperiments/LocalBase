@@ -149,17 +149,32 @@ type Staged struct {
 	live *liveFacts
 	// hadData says the report was about a root with something to replace.
 	hadData bool
+	// release lets go of the root's database, once Commit holds it.
+	release func()
 }
 
 // Discard removes the staging directory. Commit does too.
 func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 
-// replaceable is all a restore moves, here and on undo. It is a constant, so a journal
-// can't name anything else.
-var replaceable = []string{"local-base.db", "local-base.db-wal", "local-base.db-shm", "local-base.db-journal", "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices"}
+// replaceable is all a restore moves, here and on undo. It never changes, so a journal can't name
+// anything else. The database is first, and goes in last. Whatever belongs with a database moves with it,
+// because a -wal left beside another database is replayed into it, and nothing notices.
+var replaceable = func() []string {
+	names := []string{"local-base.db"}
+	for _, suffix := range store.Sidecars {
+		names = append(names, "local-base.db"+suffix)
+	}
+	return append(names, "ui-access.json", "email-delivery.json", "credentials", "catalog.d", "backends.d", "voices")
+}()
 
 // targetState is what a restore found at its target.
-type targetState struct{ newRoot, hasData bool }
+type targetState struct {
+	newRoot, hasData bool
+	// liveDB is the file to read the root's database through, for a root being replaced. With liveErr,
+	// it couldn't be read at all, which a root is often replaced because of, so this doesn't refuse.
+	liveDB  string
+	liveErr error
+}
 
 func checkTarget(target string, replace bool) (*targetState, error) {
 	if home, _ := os.UserHomeDir(); target == string(filepath.Separator) || (home != "" && target == home) {
@@ -265,10 +280,18 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 		return nil, err
 	}
 	if !state.newRoot && state.hasData {
-		// A database that is only busy is left for the comparison, which refuses it.
-		read := func() error { return readableDatabase(ctx, filepath.Join(target, "local-base.db")) }
-		if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
-			return nil, refuse("%s", unfinishedWriteMessage(target))
+		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"))
+		if errors.Is(err, store.ErrInUse) {
+			return nil, err
+		}
+		defer removeCopy()
+		state.liveDB, state.liveErr = liveDB, err
+		if err == nil {
+			// A database that is only busy is left for the comparison, which refuses it.
+			read := func() error { return readableDatabase(ctx, liveDB) }
+			if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
+				return nil, refuse("%s", unfinishedWriteMessage(target))
+			}
 		}
 	}
 	// Before opening, since opening a file this way also tightens it, which would hide this.
@@ -302,8 +325,8 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 		return nil, err
 	}
 	// Before the report, so that a change made while it's written is seen as one, and never missed.
-	if !state.newRoot && state.hasData {
-		s.live, err = readRootFacts(ctx, filepath.Join(target, "local-base.db"), target)
+	if !state.newRoot && state.hasData && state.liveErr == nil {
+		s.live, err = readRootFacts(ctx, state.liveDB, target)
 		if isBusy(err) {
 			return nil, fmt.Errorf("reading this root's database: %w", err)
 		}
@@ -710,7 +733,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	var liveValues *signInValues
 	if !state.newRoot && state.hasData {
-		v := liveSignIn(ctx, target)
+		v := liveSignIn(ctx, target, state.liveDB, state.liveErr)
 		liveValues = &v
 	}
 	var signInCaution string
@@ -722,7 +745,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, refuse("The roles in this backup can't be read: %v", err)
 	}
 	if !state.newRoot && state.hasData {
-		live, liveErr := liveGrants(ctx, target)
+		live, liveErr := liveGrants(ctx, state.liveDB, state.liveErr)
 		gone, changed := compareGrants(rep.Grants, live, liveErr)
 		rep.RolesGone = gone
 		switch {
@@ -757,7 +780,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	rep.Settings = append(rep.Settings, exposure...)
 	compared := false
 	if !state.newRoot && state.hasData {
-		if compared, err = compareWithTarget(ctx, st.DB, filepath.Join(target, "local-base.db"), rep, bringBack); err != nil {
+		if compared, err = compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep, bringBack); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1150,10 +1173,13 @@ func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser
 // not revive a key someone revoked or rotated because it leaked, and a file mustn't add one to a root
 // that has its own. Keys named in bringBack take the backup's version, and the report names them. It
 // says whether every key could be compared.
-func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, rep *Report, bringBack []string) (compared bool, err error) {
+func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liveErr error, rep *Report, bringBack []string) (compared bool, err error) {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
-	err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	err = liveErr
+	if err == nil {
+		err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+	}
 	if isBusy(err) {
 		return false, fmt.Errorf("reading this root's database: %w", err)
 	}
@@ -1345,6 +1371,7 @@ type Done struct {
 // throughout, so no gateway can start midway. A failure puts everything back; a crash leaves the
 // journal, and root.Open refuses until --undo.
 func (s *Staged) Commit() (*Done, error) {
+	s.release = func() {}
 	defer s.Discard()
 	lease, err := root.AcquireOperation(s.target, "restore")
 	if err != nil {
@@ -1401,6 +1428,7 @@ func (s *Staged) Commit() (*Done, error) {
 	if err != nil {
 		return nil, s.stopped(r.Dir, j, err)
 	}
+	s.release = release
 	defer release()
 	// Taking the lock can change which working files there are, and the journal has to say what's here.
 	j.Had = nil
@@ -1426,6 +1454,12 @@ func (s *Staged) Commit() (*Done, error) {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := stepHook("finish"); err != nil {
+		return nil, s.failed(r.Dir, j, err)
+	}
+	// Closing it deletes whatever journal is at its path, even with its own database moved away, so that
+	// happens while this restore's journal still keeps every command out.
+	release()
+	if err := stepHook("released"); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := os.Remove(journalPath(r.Dir)); err != nil {
@@ -1458,7 +1492,7 @@ func (s *Staged) stopped(dir string, j *journal, cause error) error {
 }
 
 func (s *Staged) failed(dir string, j *journal, cause error) error {
-	if err := undo(dir, j); err != nil {
+	if err := undo(dir, j, s.release); err != nil {
 		return fmt.Errorf("the restore failed (%v), and so did putting things back (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
 	}
 	return fmt.Errorf("the restore failed, and everything was put back: %w", cause)
@@ -1527,7 +1561,8 @@ func verify(dir string) error {
 }
 
 // undo puts a root back. It only ever moves names on the constant list, and is safe to run again.
-func undo(dir string, j *journal) error {
+// release lets go of the root's database, for a restore that still holds it.
+func undo(dir string, j *journal, release func()) error {
 	before := filepath.Join(dir, j.Before)
 	// Nothing new goes in until everything old is aside, so before that, whatever is at a name the journal
 	// doesn't list isn't this restore's. It may be another process's working files, with writes in them,
@@ -1577,6 +1612,11 @@ func undo(dir string, j *journal) error {
 	}
 	// The moves reach the disk while the journal still exists, so a failure here can be run again.
 	if err := syncDir(dir); err != nil {
+		return err
+	}
+	// As in Commit: closing it deletes whatever journal is at its path, so that comes before anyone can start.
+	release()
+	if err := stepHook("undo released"); err != nil {
 		return err
 	}
 	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -1672,5 +1712,5 @@ func Undo(targetDir string) error {
 	default:
 		return refuse("The gateway lock on %s can't be read: %s", r.Dir, detail)
 	}
-	return undo(r.Dir, j)
+	return undo(r.Dir, j, func() {})
 }

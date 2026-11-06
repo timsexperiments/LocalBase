@@ -20,15 +20,24 @@ func shortBusyWaits(t *testing.T, wait time.Duration) {
 	t.Cleanup(func() { busyWait, readBusyMillis = wasWait, wasRead })
 }
 
-// holdLock stops every reader of a database, as a writer does while committing. It returns what
-// releases it.
+// holdLock stops every reader of a database. In write-ahead logging a writer doesn't stop a reader,
+// so this takes the database for itself, as a restore does while it compares and moves. It returns
+// what releases it. A -shm is left there first, as on any root something has read, because a read
+// with none goes to a private copy instead.
 func holdLock(t *testing.T, dbPath string) (release func()) {
 	t.Helper()
+	if err := readableDatabase(context.Background(), dbPath); err != nil {
+		t.Fatal(err)
+	}
 	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	db.SetMaxOpenConns(1)
+	var mode string
+	if err := db.QueryRow(`PRAGMA locking_mode=EXCLUSIVE`).Scan(&mode); err != nil || mode != "exclusive" {
+		t.Fatalf("locking mode %q: %v", mode, err)
+	}
 	if _, err := db.Exec(`BEGIN EXCLUSIVE`); err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +102,8 @@ func TestBackupWaitsOutABusyDatabase(t *testing.T) {
 func TestBackupOfADatabaseThatStaysBusySaysSo(t *testing.T) {
 	parent := dir(t)
 	r, _ := newRoot(t, parent)
-	before := tree(t, r.Dir, "runtime")
 	holdLock(t, r.DB())
+	before := tree(t, r.Dir, "runtime")
 	shortBusyWaits(t, 100*time.Millisecond)
 	for _, dry := range []bool{true, false} {
 		output := filepath.Join(dir(t), "x"+Extension)
@@ -135,8 +144,8 @@ func TestBackupOfADatabaseThatStaysBusySaysSo(t *testing.T) {
 func TestRestoreOverABusyDatabaseRefuses(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
-	before := tree(t, r.Dir, "runtime")
 	holdLock(t, r.DB())
+	before := tree(t, r.Dir, "runtime")
 	shortBusyWaits(t, 100*time.Millisecond)
 	_, err := Stage(context.Background(), res.Output, r.Dir, true)
 	var refused *Refused
@@ -239,6 +248,10 @@ func TestCopyOfADatabaseThatStaysBusySaysWhere(t *testing.T) {
 func TestRestoreThatTurnsBusyPartWayRefuses(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
+	// A -shm is there, so this reads the root's own file. A private copy can't turn busy.
+	if err := readableDatabase(context.Background(), r.DB()); err != nil {
+		t.Fatal(err)
+	}
 	shortBusyWaits(t, 100*time.Millisecond)
 	was := targetReadHook
 	targetReadHook = func() { holdLock(t, r.DB()) }

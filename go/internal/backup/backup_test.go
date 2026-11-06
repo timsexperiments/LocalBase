@@ -1983,7 +1983,7 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 				parent := dir(t)
 				r, _ := newRoot(t, parent)
 				backup := create(t, r, false)
-				before := tree(t, r.Dir, "runtime", ".before-restore")
+				before := rootAsItIs(t, r.Dir, "runtime", ".before-restore")
 				was := stepHook
 				stepHook = func(s string) error {
 					if s != name {
@@ -2021,9 +2021,7 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 				if _, err := root.Open(r.Dir); err != nil {
 					t.Fatal(err)
 				}
-				if after := tree(t, r.Dir, "runtime"); after != before {
-					t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
-				}
+				before.isPutBack(t, r.Dir, "runtime")
 				noLeftovers(t, parent)
 			})
 		}
@@ -2046,7 +2044,7 @@ func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
 			parent := dir(t)
 			r, _ := newRoot(t, parent)
 			res := create(t, r, false)
-			before := tree(t, r.Dir, "runtime", ".before-restore")
+			before := rootAsItIs(t, r.Dir, "runtime", ".before-restore")
 			s, err := Stage(context.Background(), res.Output, r.Dir, true)
 			if err != nil {
 				t.Fatal(err)
@@ -2063,9 +2061,7 @@ func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
 			if _, err := root.Open(r.Dir); err != nil {
 				t.Fatal(err)
 			}
-			if after := tree(t, r.Dir, "runtime"); after != before {
-				t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
-			}
+			before.isPutBack(t, r.Dir, "runtime")
 			noLeftovers(t, parent)
 		})
 	}
@@ -2075,7 +2071,7 @@ func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
 func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
-	before := tree(t, r.Dir, "runtime", ".before-restore")
+	before := rootAsItIs(t, r.Dir, "runtime", ".before-restore")
 	s, err := Stage(context.Background(), res.Output, r.Dir, true)
 	if err != nil {
 		t.Fatal(err)
@@ -2101,9 +2097,7 @@ func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
 	if _, err := root.Open(r.Dir); err != nil {
 		t.Fatal(err)
 	}
-	if after := tree(t, r.Dir, "runtime"); after != before {
-		t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
-	}
+	before.isPutBack(t, r.Dir, "runtime")
 }
 
 func TestRestoreWorksWhereDirectoriesCannotSync(t *testing.T) {
@@ -2153,7 +2147,7 @@ func TestRestoreThatFinishedStaysFinished(t *testing.T) {
 func TestRestoreVerifiesBeforeFinishing(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
-	before := tree(t, r.Dir, "runtime")
+	before := rootAsItIs(t, r.Dir, "runtime")
 	was := stepHook
 	stepHook = func(step string) error {
 		if step == "in local-base.db" {
@@ -2172,9 +2166,7 @@ func TestRestoreVerifiesBeforeFinishing(t *testing.T) {
 	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "put back") || !strings.Contains(err.Error(), "other users can change") {
 		t.Fatalf("commit: %v", err)
 	}
-	if after := tree(t, r.Dir, "runtime"); after != before {
-		t.Errorf("not put back:\n%s\nwas:\n%s", after, before)
-	}
+	before.isPutBack(t, r.Dir, "runtime")
 }
 
 func TestRestoreCrashOnANewRoot(t *testing.T) {

@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -9,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -153,7 +156,7 @@ func TestAnUndoBeforeAnythingWentInLeavesTheRestAlone(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := undo(r.Dir, j); err != nil {
+			if err := undo(r.Dir, j, func() {}); err != nil {
 				t.Fatal(err)
 			}
 			for name, body := range made {
@@ -191,14 +194,15 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 			t.Fatal("no failure")
 		}
 	}()
-	if !contains(steps, "undo back local-base.db") || steps[len(steps)-1] != "undo back local-base.db" {
+	// Then only the release, which has to stay after everything is back.
+	if len(steps) < 2 || steps[len(steps)-2] != "undo back local-base.db" || steps[len(steps)-1] != "undo released" {
 		t.Fatalf("the database should go back last: %v", steps)
 	}
 	for _, step := range steps {
 		t.Run(step, func(t *testing.T) {
 			r, _ := newRoot(t, dir(t))
 			s := stageOver(t, r)
-			before := tree(t, r.Dir, "runtime")
+			before := rootAsItIs(t, r.Dir, "runtime")
 			was := stepHook
 			defer func() { stepHook = was }()
 			// Commit fails after it has moved everything, and its undo crashes at this step.
@@ -226,12 +230,11 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 			if err := Undo(r.Dir); err != nil {
 				t.Fatalf("the second undo: %v", err)
 			}
-			if after := tree(t, r.Dir, "runtime"); after != before {
-				t.Errorf("after the second undo:\n%s\nwas:\n%s", after, before)
-			}
+			before.isPutBack(t, r.Dir, "runtime")
 			if _, err := root.Open(r.Dir); err != nil {
 				t.Errorf("the root afterwards: %v", err)
 			}
+			takesAWrite(t, r.DB())
 		})
 	}
 }
@@ -410,7 +413,9 @@ func TestCommitGoesAheadWhenNothingChanged(t *testing.T) {
 	}
 }
 
-// A process that held the database too long stops it, plainly, with nothing changed.
+// Something holding the database too long stops it, plainly, with nothing changed. The holder here is a
+// connection in this process taking the lock itself, so this is the same process only, and doesn't show what a
+// process that opened through the store does. That's TestAnIdleProcessWithTheDatabaseOpenStopsARestore.
 func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
@@ -435,14 +440,18 @@ func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 // then fails, loudly. Neither database has the write, and nothing was lost without anyone being told.
 func TestAWriteDuringTheMoveFailsAndIsNotLost(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
+	// As a root from before write-ahead logging is: its connection takes no lock until it's used, so one
+	// can be open here. In write-ahead logging, TestAnIdleProcessWithTheDatabaseOpenStopsARestore applies.
+	inRollbackMode(t, r.DB())
 	s := stageOver(t, r)
-	late, err := store.Open(r.DB())
+	late, err := sql.Open("sqlite", "file:"+r.DB()+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer late.Close()
+	late.SetMaxOpenConns(1)
 	var n int
-	if err := late.DB.QueryRow(`SELECT COUNT(*) FROM api_keys`).Scan(&n); err != nil {
+	if err := late.QueryRow(`SELECT COUNT(*) FROM api_keys`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	wrote := make(chan error, 1)
@@ -453,7 +462,7 @@ func TestAWriteDuringTheMoveFailsAndIsNotLost(t *testing.T) {
 		if step == "before" && !started {
 			started = true
 			go func() {
-				_, err := late.DB.Exec(`UPDATE api_keys SET name = 'written during the move'`)
+				_, err := late.Exec(`UPDATE api_keys SET name = 'written during the move'`)
 				wrote <- err
 			}()
 		}
@@ -582,7 +591,7 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 		t.Run(step, func(t *testing.T) {
 			r, _ := newRoot(t, dir(t))
 			res := create(t, r, false)
-			before := tree(t, r.Dir, "runtime")
+			before := rootAsItIs(t, r.Dir, "runtime")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestHelperKilledCommit$")
 			cmd.Env = append(os.Environ(), "LOCALBASE_TEST_KILL_AT="+step, "LOCALBASE_TEST_FILE="+res.Output, "LOCALBASE_TEST_ROOT="+r.Dir)
 			out, err := cmd.CombinedOutput()
@@ -599,10 +608,121 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 			if err := Undo(r.Dir); err != nil {
 				t.Fatalf("undo: %v", err)
 			}
-			if after := tree(t, r.Dir, "runtime"); after != before {
-				t.Errorf("after an undo:\n%s\nwas:\n%s", after, before)
+			before.isPutBack(t, r.Dir, "runtime")
+			// Only the switch may change the header, and it comes after these two.
+			if step != "before" {
+				if now, err := os.ReadFile(r.DB()); err != nil || !bytes.Equal(now, before.database) {
+					t.Errorf("killed before the switch, and the database changed: %v", err)
+				}
 			}
 			wholeDatabase(t, r.DB())
+			takesAWrite(t, r.DB())
 		})
+	}
+}
+
+// A connection in this process stops a restore, and what it writes is kept. This is the same process only:
+// SQLite shares its locks within one, so this can't show what another process does. That's
+// TestAnIdleProcessWithTheDatabaseOpenStopsARestore.
+func TestAConnectionInThisProcessStopsARestore(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	shortBusyWaits(t, 100*time.Millisecond)
+	open, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Close()
+	var n int
+	if err := open.DB.QueryRow(`SELECT COUNT(*) FROM api_keys`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || err.Error() != someoneElseHoldsIt {
+		t.Fatalf("commit: %v", err)
+	}
+	if exists(journalPath(r.Dir)) {
+		t.Error("it stopped, and left its journal")
+	}
+	if _, err := open.DB.Exec(`UPDATE api_keys SET name = 'written after it stopped'`); err != nil {
+		t.Errorf("the other process can't write: %v", err)
+	}
+	var written int
+	if err := open.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = 'written after it stopped'`).Scan(&written); err != nil {
+		t.Fatal(err)
+	}
+	if written == 0 {
+		t.Error("its write isn't there")
+	}
+}
+
+// Once a restore holds a database in write-ahead logging, a process arriving late can't write to it, so
+// its write is neither lost in the moved database nor found in the restored one.
+func TestAWriteWhileARestoreHoldsTheDatabaseFails(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	var attempt error
+	tried := false
+	was := stepHook
+	defer func() { stepHook = was }()
+	stepHook = func(step string) error {
+		if step != "before" {
+			return nil
+		}
+		tried = true
+		late, err := sql.Open("sqlite", "file:"+r.DB()+"?_pragma=busy_timeout(50)")
+		if err != nil {
+			return err
+		}
+		defer late.Close()
+		_, attempt = late.Exec(`UPDATE api_keys SET name = 'written during the move'`)
+		return nil
+	}
+	done, err := s.Commit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tried {
+		t.Fatal("it never reached the step, so this tested nothing")
+	}
+	if attempt == nil {
+		t.Error("the write succeeded while the restore held the database")
+	}
+	for name, path := range map[string]string{"restored": r.DB(), "moved": filepath.Join(done.BeforeDir, "local-base.db")} {
+		st, err := store.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		if err := st.DB.QueryRow(`SELECT COUNT(*) FROM api_keys WHERE name = 'written during the move'`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		_ = st.Close()
+		if count != 0 {
+			t.Errorf("the %s database has the write", name)
+		}
+	}
+}
+
+// SQLite answers with the mode it stayed in when it can't change it. A database still in write-ahead logging
+// can't be moved safely, so that stops the restore with the root as it was.
+func TestARestoreStopsWhenTheDatabaseStaysInWAL(t *testing.T) {
+	r, _ := newRoot(t, dir(t))
+	s := stageOver(t, r)
+	before := tree(t, r.Dir, "runtime")
+	was := leaveWAL
+	leaveWAL = `PRAGMA journal_mode` // Answers with the mode it's in, and changes nothing.
+	defer func() { leaveWAL = was }()
+	_, err := s.Commit()
+	var refused *Refused
+	if !errors.As(err, &refused) || err.Error() != someoneElseHoldsIt {
+		t.Fatalf("commit: %v", err)
+	}
+	if after := tree(t, r.Dir, "runtime"); after != before {
+		t.Errorf("it stopped, and the root changed:\n%s\nwas:\n%s", after, before)
+	}
+	if !store.InWAL(r.DB()) {
+		t.Error("the database left write-ahead logging, so this tested nothing")
 	}
 }

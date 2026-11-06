@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -247,8 +246,13 @@ func signInReport(backed signInValues, live *signInValues) (*SignIn, string) {
 
 // liveSignIn reads the root being replaced. It only reads: that root may well be replaced because
 // something in it is broken, and that has to show as unread, not as having none.
-func liveSignIn(ctx context.Context, target string) signInValues {
-	db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+func liveSignIn(ctx context.Context, target, liveDB string, liveErr error) signInValues {
+	if liveErr != nil {
+		v := readSignIn(ctx, target, nil)
+		v.policyErr = liveErr
+		return v
+	}
+	db, err := openReadOnly(liveDB)
 	if err != nil {
 		v := readSignIn(ctx, target, nil)
 		v.policyErr = err

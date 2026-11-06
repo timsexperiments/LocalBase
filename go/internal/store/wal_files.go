@@ -214,6 +214,18 @@ func checkWALBelongs(path string) error {
 	return nil
 }
 
+// CheckWALBelongs is the check every open makes, for a caller that has to open a database its own way.
+func CheckWALBelongs(path string) error { return checkWALBelongs(path) }
+
+// HoldFile keeps this process's locks on the file at path safe from any raw read of it, for a caller that
+// opens a database its own way, as a store does for itself. Call it before the first connection, and let go
+// after the last has closed. It follows the file, not the path, and letGo can be called more than once.
+func HoldFile(path string) (letGo func()) {
+	h := holdFile(path)
+	var once sync.Once
+	return func() { once.Do(h.letGo) }
+}
+
 // readOnlyRoot: this failed because nothing can be written here, not because the database is busy.
 func readOnlyRoot(err error) bool {
 	var e *sqlite.Error
@@ -235,6 +247,33 @@ func readablePath(path string) (stage, read string, err error) {
 	if _, err := os.Stat(path + "-shm"); err == nil {
 		return "", path, nil
 	}
+	return privateCopy(path)
+}
+
+// ReadablePath is the file a read of this database should open, by the same rule as OpenReadOnly, for a
+// command that reads it several times and would otherwise copy it each time. done removes any copy.
+func ReadablePath(path string) (read string, done func(), err error) {
+	if err := checkWALBelongs(path); err != nil {
+		return "", func() {}, err
+	}
+	stage, read, err := readablePath(path)
+	if err != nil {
+		return "", func() {}, err
+	}
+	return read, func() { removeStage(stage) }, nil
+}
+
+// PrivateCopy is a copy of this database and its -wal to read, for when the file itself can't be read,
+// as with a -shm that can't be used. done removes it.
+func PrivateCopy(path string) (read string, done func(), err error) {
+	stage, read, err := privateCopy(path)
+	if err != nil {
+		return "", func() {}, err
+	}
+	return read, func() { removeStage(stage) }, nil
+}
+
+func privateCopy(path string) (stage, read string, err error) {
 	// A copy of files someone is writing can be torn, so it's taken only with nobody holding the root.
 	if root.InUse(filepath.Dir(path)) {
 		return "", "", ErrInUse
@@ -454,6 +493,9 @@ func RemoveReadCopy(c ReadCopy) error {
 	}
 	return os.RemoveAll(c.Path)
 }
+
+// InWAL says whether a database's own header says it's in write-ahead logging.
+func InWAL(path string) bool { return inWAL(path) }
 
 func inWAL(path string) bool {
 	found := false
