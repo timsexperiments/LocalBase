@@ -19,14 +19,25 @@ func TestIsBusyKnowsALockedDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	// Closed first: an open store holds its lock, so nothing else could take the database exclusively.
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
 	writer, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer writer.Close()
 	writer.SetMaxOpenConns(1)
+	// In write-ahead logging, a write lock doesn't stop a reader; holding the database in exclusive
+	// locking mode, with a write in hand, does.
+	if _, err := writer.Exec(`PRAGMA locking_mode=EXCLUSIVE`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := writer.Exec(`BEGIN EXCLUSIVE`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Exec(`CREATE TABLE IF NOT EXISTS busy_probe (x)`); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(1)")
@@ -50,6 +61,10 @@ func TestIsBusyKnowsALockedDatabase(t *testing.T) {
 		t.Errorf("says: %s", said)
 	}
 	if _, err := writer.Exec(`ROLLBACK`); err != nil {
+		t.Fatal(err)
+	}
+	// Exclusive locking mode keeps the lock until the connection goes.
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reader.Exec(`SELECT * FROM no_such_table`); err == nil || IsBusy(err) {
