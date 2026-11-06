@@ -28,6 +28,10 @@ import (
 var fakeBinary string
 
 func TestMain(m *testing.M) {
+	if path := os.Getenv(lockAskerEnv); path != "" {
+		answerLockAsks(path) // another process, asking for a database's lock: database_lock_test.go
+		return
+	}
 	dir, _ := os.MkdirTemp("", "lbgo-gw-fake-")
 	fakeBinary = filepath.Join(dir, "llama-server")
 	if out, err := exec.Command("go", "build", "-o", fakeBinary, "../runtime/fakebackend").CombinedOutput(); err != nil {

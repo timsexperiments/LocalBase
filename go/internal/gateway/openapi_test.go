@@ -1460,6 +1460,9 @@ func TestOpenAPIResponses(t *testing.T) {
 	if out := check("POST", "/_localbase/model-discovery", `{"action":"install-recipe","modelId":"`+decisionModel+`"}`, 200); !bytes.Contains(out, []byte(`"failed"`)) {
 		t.Errorf("a refused recipe install: %s", firstBytes(out))
 	}
+
+	// All of that, and another process still sees this one attached.
+	newLockAsker(t, s.Root.DB()).mustBeRefused(t, "every route above")
 }
 
 // openAPIHub is the Hub, offline: the responses internal/hub records, and a token check.
