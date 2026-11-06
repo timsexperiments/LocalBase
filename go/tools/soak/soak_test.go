@@ -212,6 +212,54 @@ func TestResourceCheck(t *testing.T) {
 	})
 }
 
+// With the store in WAL the pool fills after warm-up, and a healthy gateway goes from about 17
+// descriptors to 34. That must pass, with the budget no larger, and a leak beside it must not.
+func TestDescriptorsHaveTwoParts(t *testing.T) {
+	point := func(fds, db, wal int) checkpoint {
+		return checkpoint{Stats: lab.Stats{Goroutines: 10, FDs: fds, HeapInuse: 10 << 20, RSS: 50 << 20, Files: lab.DatabaseFiles{DB: db, WAL: wal, SHM: 1}}}
+	}
+	if budgetFDs != 8 {
+		t.Errorf("budgetFDs is %d. The pool has a ceiling of its own, so this should not need raising", budgetFDs)
+	}
+	first := point(17, 2, 2)
+	for _, c := range []struct {
+		name string
+		last checkpoint
+		ok   bool
+	}{
+		{"the pool fills, and nothing else moves", point(34, 16, 4), true},
+		{"the pool fills, with the whole budget used", point(41, 16, 4), true},
+		{"the pool fills, and one past the budget", point(42, 16, 4), false},
+		{"nothing fills, and one past the budget", point(26, 2, 2), false},
+		// 12 others, as at first, and one past the ceiling, however the pool is set.
+		{"past the ceiling, and nothing else moves", point(12+lab.DatabaseCeiling+1, lab.DatabaseCeiling+1-4-1, 4), false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			s := testSoak(t)
+			s.points = []checkpoint{first, c.last}
+			s.checkResources()
+			if got := failed(s, "file descriptors bounded") == ""; got != c.ok {
+				t.Errorf("passed %v, want %v: %+v", got, c.ok, s.checks)
+			}
+		})
+	}
+	climb := func(name string, fds func(i int) (int, int), ok bool) {
+		t.Run(name, func(t *testing.T) {
+			s := testSoak(t)
+			for i := range 12 {
+				f, db := fds(i)
+				s.points = append(s.points, point(f, db, 4))
+			}
+			s.checkResources()
+			if got := failed(s, "no climb in the second half: descriptors") == ""; got != ok {
+				t.Errorf("passed %v, want %v: %+v", got, ok, s.checks)
+			}
+		})
+	}
+	climb("the pool fills in the second half: no climb", func(i int) (int, int) { return 20 + i, 2 + i }, true)
+	climb("something else climbs in the second half", func(i int) (int, int) { return 20 + i, 2 }, false)
+}
+
 func TestExpectedErrors(t *testing.T) {
 	bad := lab.Event{Name: "http.request"}
 	bad.HTTP.Status = 500

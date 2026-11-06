@@ -116,6 +116,22 @@ and a good sign-in link must not be told it has expired. Each of these tests fir
 the fault really stopped the lookup, so it cannot pass for the wrong reason: WAL does not
 block readers on an exclusive lock, so the locked case will need another fault under WAL.
 
+The soak's budget has the same two parts: `budgetFDs` is unchanged at 8, for everything except the
+database's files, and those have the ceiling. Its result table shows how many descriptors are on them.
+
+**Descriptors have two parts.** With the store in WAL, a settled gateway holds one descriptor on the
+database for each connection the pool has ever opened, up to its limit, even after the pool closes the
+connection; one on the `-wal` for each idle connection; and one `-shm`. So the database's files grow as
+the pool fills, and that isn't a leak. A single growth budget wide enough for that let a leak of one
+descriptor a request through a 31-request test. So everything except the database's files keeps the old
+exact budget, and the database's files get a ceiling, `store.MaxOpenConns + store.MaxIdleConns + 1 +
+store.HeldDescriptors`, the last being the descriptor the store itself keeps so its lock can't be dropped.
+That the database's descriptor stays was measured first, and the reason is now known: a WAL connection
+holds a shared lock for as long as it is attached (sqlite.org/walformat.html, 2.3.1), and SQLite's
+`unixClose` won't close a file while any connection in the process holds a lock on it, so `findReusableFd`
+reuses the descriptor on the next open. A leak small enough to fit in the budget still passes, as it always
+did: one per 16 requests adds 2 to 6 in these tests.
+
 `LOCALBASE_CHAOS_RACE=1` builds the gateway with the race detector. On macOS the
 full-disk tests make a small disk image; elsewhere they need a small tmpfs named by
 `LOCALBASE_CHAOS_SMALL_DISK`, and skip without one.
