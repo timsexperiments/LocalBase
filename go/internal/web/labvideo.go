@@ -190,20 +190,24 @@ func (u *UI) startVideo(w http.ResponseWriter, r *http.Request, prompt string, q
 func (u *UI) labVideoAgain(w http.ResponseWriter, r *http.Request) {
 	owner := u.caller(r).OwnerID()
 	note := u.notes.get(owner, r.PathValue("id"))
-	if note == nil || note.video == nil {
+	var d noteData
+	if note != nil {
+		d = note.snapshot()
+	}
+	if note == nil || d.video == nil {
 		u.labOutcome(w, r, map[string]any{"Error": "This video is gone. Describe it again."})
 		return
 	}
 	var picture []byte
-	if note.video.Picture != "" {
-		kept := u.results.get(owner, note.video.Picture)
+	if d.video.Picture != "" {
+		kept := u.results.get(owner, d.video.Picture)
 		if kept == nil {
 			u.labOutcome(w, r, map[string]any{"Error": "The starting picture has expired. Choose it again."})
 			return
 		}
 		picture = kept.body
 	}
-	u.startVideo(w, r, note.prompt, *note.video, picture)
+	u.startVideo(w, r, note.prompt, *d.video, picture)
 }
 
 // labVideoStatus is the tray item while a job runs.
@@ -220,6 +224,7 @@ func (u *UI) labVideoRemove(w http.ResponseWriter, r *http.Request) {
 	id := url.PathEscape(r.PathValue("id"))
 	u.call(r, "DELETE", "/v1/videos/"+id, "", nil)
 	u.notes.drop(u.caller(r).OwnerID(), r.PathValue("id"))
+	u.results.forget(u.caller(r).OwnerID(), "video:"+u.caller(r).OwnerID()+":"+r.PathValue("id"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
@@ -243,16 +248,27 @@ func (u *UI) labActive(w http.ResponseWriter, r *http.Request) {
 
 // labVideoContent plays the result. Range requests are served, which
 // Safari needs to play video.
+//
+// The first request fetches the video and keeps it in the result store, under this person and job
+// (03-M6), so the player's further Range requests are served from memory instead of fetching the
+// whole file again each time. It counts against the store's budgets; once evicted, it is fetched again.
 func (u *UI) labVideoContent(w http.ResponseWriter, r *http.Request) {
-	res := u.call(r, "GET", "/v1/videos/"+url.PathEscape(r.PathValue("id"))+"/content", "", nil)
-	if res.Status != http.StatusOK {
-		http.NotFound(w, r)
-		return
+	owner := u.caller(r).OwnerID()
+	key := "video:" + owner + ":" + r.PathValue("id")
+	kept := u.results.get(owner, key)
+	if kept == nil {
+		res := u.call(r, "GET", "/v1/videos/"+url.PathEscape(r.PathValue("id"))+"/content", "", nil)
+		if res.Status != http.StatusOK {
+			http.NotFound(w, r)
+			return
+		}
+		u.results.putAs(key, owner, res.Header.Get("Content-Type"), res.Body)
+		kept = &labResult{owner: owner, ctype: res.Header.Get("Content-Type"), body: res.Body}
 	}
-	w.Header().Set("Content-Type", res.Header.Get("Content-Type"))
+	w.Header().Set("Content-Type", kept.ctype)
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(res.Body))
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(kept.body))
 }
 
 // videoJobView is the part of a job the tray uses.
@@ -317,7 +333,7 @@ func (u *UI) videoItem(job videoJobView, note *labNote) labItemView {
 		At: at, Ago: agoText(at, time.Now()), Shape: "square"}
 	if note != nil {
 		v.Caption, v.Prompt = note.caption, note.prompt
-		if q := note.video; q != nil {
+		if q := note.snapshot().video; q != nil {
 			v.Again = true
 			if q.Picture != "" {
 				v.Thumb = "/app/lab/results/" + q.Picture
