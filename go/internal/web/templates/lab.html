@@ -214,6 +214,7 @@
 </section>
 <script src="{{asset "js/lab.js"}}" type="module"></script>
 <script src="{{asset "js/audio.js"}}" type="module"></script>
+{{if eq .Tab "image"}}<script src="{{asset "js/image.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "video"}}<script src="{{asset "js/video.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "speech"}}<script src="{{asset "js/speech.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "transcribe"}}<script src="{{asset "js/transcribe.js"}}" type="module"></script>{{end}}
