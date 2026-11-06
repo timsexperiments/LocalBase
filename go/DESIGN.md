@@ -5255,6 +5255,14 @@ could allocate more than 3 GiB to read, none of it needing a large file. A form 
 standard library sets for its own form reader. These routes take a few fields each. Past that it's refused
 like any form that can't be read. The check for a run's model stops looking at the same point.
 
+### 31.13 When a sign-in provider's keys can't be fetched
+
+Checking a token can mean fetching the provider's keys, and anyone can send a token, whether or not it's valid. Each
+caller used to wait in line behind a fetch of its own, including callers whose key was already held, so an outage
+held up everyone in turn. After a failed fetch the next one now waits 30 s, and a fetch takes at most 5 s. In between,
+keys already held go on working, even when they're older than the 10 minutes they'd normally last, and a token
+needing any other key is refused straight away. A caller that hangs up doesn't end the fetch for the others waiting.
+
 ## 32. Usage and activity (design addendum, 2026-11-02)
 
 Someone running this for themselves, or for a few people and apps, should be able to answer: which
