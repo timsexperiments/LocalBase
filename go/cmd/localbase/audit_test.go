@@ -67,7 +67,7 @@ var auditClasses = map[string]string{
 	"models catalog": "read", "models recommend": "read", "models list": "read", "models show": "read",
 	"models search": "read", "models inspect": "read", "models export": "read", "models feed refresh": "read", "models feed status": "read",
 	"models feed use": "audited", "models backend": "audited", "models placement": "audited", "models delete": "audited",
-	"models import": "audited", "models add-definition": "audited",
+	"models import": "audited", "models add-definition": "audited", "models forget-peaks": "audited",
 	// These need a download from a real host, which this test has no stand-in for.
 	"models install": "audited-not-driven", "models add": "audited-not-driven", "models remove-entry": "audited-not-driven",
 	"models cancel": "audited-elsewhere", // the gateway writes it

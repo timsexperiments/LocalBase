@@ -183,6 +183,8 @@ func modelsForgetPeaks() *cli.Command {
 			if n == 0 {
 				c.Info("No memory peaks are recorded for %s.", id)
 			} else {
+				// It changes what admission allows this model, so it's on record, like placement.
+				auditChange(e, "models", "forget-peaks", "model", id, "count", n)
 				c.Info("Forgot %d memory peaks for %s. Its next load is sized from its estimate, and a model that is loaded now keeps recording.", n, id)
 			}
 			return map[string]any{"modelId": id, "forgotten": n}, nil

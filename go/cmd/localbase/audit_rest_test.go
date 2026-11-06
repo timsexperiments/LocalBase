@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -125,6 +127,7 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 		{"voices add", []string{"voices", "add", write("voice.wav", voiceClip()), "--name", "PLANTED voice name", "--consent"}, "voices", "create", "voice", "*"},
 		{"voices remove", nil, "voices", "delete", "voice", "*"},
 		{"models placement", []string{"models", "placement", model, "--reset"}, "placement", "clear", "model", model},
+		{"models forget-peaks", []string{"models", "forget-peaks", model}, "models", "forget-peaks", "model", model},
 		{"config apply", nil, "config", "apply", "configuration", ""},
 		{"reset", []string{"reset", "--yes"}, "config", "reset", "configuration", ""},
 	} {
@@ -140,6 +143,18 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 			}
 			if s.command == "voices remove" {
 				args = []string{"voices", "remove", voiceID}
+			}
+			if s.command == "models forget-peaks" { // a peak to forget, as a load would have recorded it
+				st, err := store.Open(filepath.Join(root, "local-base.db"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = st.RecordObservedPeak(context.Background(), store.ObservedPeak{ModelID: model, ArtifactSHA256: strings.Repeat("a", 64),
+					LaunchShape: "default", PeakBytes: 1 << 30, Method: "footprint"})
+				_ = st.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			if s.command == "config apply" {
 				args = []string{"config", "apply", "--file", changedConfig(t, root, tmp), "--restart", "never"}

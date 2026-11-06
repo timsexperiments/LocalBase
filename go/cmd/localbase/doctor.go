@@ -130,7 +130,10 @@ func doctorCommand() *cli.Command {
 				}
 				data["interruptedWorkingFiles"] = left
 			}
-			if left, _ := store.ReadCopies(e.Root.Dir); len(left) > 0 {
+			// Copies a running command still holds aren't named: that command removes its own.
+			left, stillReading := store.ReadCopies(e.Root.Dir)
+			_ = stillReading
+			if len(left) > 0 {
 				for _, copied := range left {
 					shown := shownPath(copied.Path)
 					c.Info("An interrupted read left a private copy of this root's database at %s (%d bytes). It may hold secrets. To delete it: rm -rf %s", shown, copied.Bytes, shown)
