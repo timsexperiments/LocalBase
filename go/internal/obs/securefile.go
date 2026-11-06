@@ -135,6 +135,9 @@ func ReadOwnedRegular(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
+// syncFile is (*os.File).Sync, which on macOS is F_FULLFSYNC. A test can see it run, and fail it.
+var syncFile = (*os.File).Sync
+
 // WritePrivateAtomic replaces path with a new private file. The temporary name is
 // fresh and exclusive, so nothing planted can redirect the write, and the rename
 // replaces a link at path rather than following it.
@@ -145,6 +148,12 @@ func WritePrivateAtomic(path string, data []byte) error {
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	// The data reaches the disk before the name does. Otherwise a crash can keep the rename and lose
+	// the data, and a restore journal or a settings file is then there and empty.
+	if err := syncFile(tmp); err != nil {
 		tmp.Close()
 		return err
 	}

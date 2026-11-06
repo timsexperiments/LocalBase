@@ -57,10 +57,21 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}
 	}
-	if t.hfToken != "" && slices.Contains(t.hfOrigs, origin) && (t.profile == nil || t.profile.Headers["Authorization"] == "") {
+	if t.hfToken != "" && slices.Contains(t.hfOrigs, origin) && (t.profile == nil || !t.profile.sets("Authorization")) {
 		r.Header.Set("Authorization", "Bearer "+t.hfToken)
 	}
 	return t.base.RoundTrip(r)
+}
+
+// sets says whether the profile gives a header a value. A profile keeps its header names as they were
+// written, and HTTP header names are case-insensitive.
+func (p *Profile) sets(name string) bool {
+	for k, v := range p.Headers {
+		if v != "" && strings.EqualFold(k, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // newClient returns a client that sends profile headers only to the

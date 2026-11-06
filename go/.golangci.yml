@@ -115,9 +115,6 @@ linters:
       - path: ^internal/auth/email\.go$
         linters: [errcheck]
         text: "client\\.Close"
-      - path: ^internal/auth/policy\.go$
-        linters: [errcheck]
-        text: "rows\\.Scan"
       - path: ^internal/catalog/catalog\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"

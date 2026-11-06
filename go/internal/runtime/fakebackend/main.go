@@ -31,12 +31,17 @@
 // FAKE_STARTUP_MS delays listening, like a slow model load.
 // FAKE_IGNORE_TERM makes it ignore SIGTERM and SIGINT.
 //
+// Embeddings are one vector per input, in order, and made from the input's words: texts that
+// share words point the same way, so a page's ranking can be tested without a model. They mean
+// nothing else.
+//
 // It also answers sd-server's image routes (images.go) and tts-server's
 // /v1/generate (speech.go).
 package main
 
 import (
 	"encoding/json"
+	"hash/fnv"
 	"regexp"
 
 	"fmt"
@@ -49,6 +54,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 func main() {
@@ -198,15 +204,31 @@ func main() {
 	mux.HandleFunc("POST /v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
 		var req map[string]any
 		json.NewDecoder(r.Body).Decode(&req)
-		in, _ := req["input"].(string)
-		dieIfAsked(w, in)
-		if batchOverflow(w, in) {
-			return
+		var inputs []string
+		switch in := req["input"].(type) {
+		case string:
+			inputs = []string{in}
+		case []any:
+			for _, item := range in {
+				text, _ := item.(string)
+				inputs = append(inputs, text)
+			}
+		}
+		for _, in := range inputs {
+			dieIfAsked(w, in)
+			if batchOverflow(w, in) {
+				return
+			}
+		}
+		data := make([]any, 0, len(inputs))
+		tokens := 0
+		for i, in := range inputs {
+			data = append(data, map[string]any{"object": "embedding", "index": i, "embedding": fakeEmbedding(in)})
+			tokens += len(strings.Fields(in))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"object": "list", "model": name,
-			"data":  []any{map[string]any{"object": "embedding", "index": 0, "embedding": []float64{0.1, 0.2}}},
-			"usage": map[string]any{"prompt_tokens": 2, "total_tokens": 2}})
+		json.NewEncoder(w).Encode(map[string]any{"object": "list", "model": name, "data": data,
+			"usage": map[string]any{"prompt_tokens": tokens, "total_tokens": tokens}})
 	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -279,6 +301,19 @@ func message(mode, content string) map[string]any {
 		m["reasoning_content"] = "hm"
 	}
 	return m
+}
+
+const fakeEmbeddingSize = 64
+
+// fakeEmbedding counts words into buckets, and does not normalize, since a real backend need not.
+func fakeEmbedding(text string) []float64 {
+	v := make([]float64, fakeEmbeddingSize)
+	for _, word := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		h := fnv.New32a()
+		h.Write([]byte(word))
+		v[h.Sum32()%fakeEmbeddingSize]++
+	}
+	return v
 }
 
 // batchOverflow answers llama-server's error for an input over the physical

@@ -143,6 +143,20 @@ clock is never moved, so timers running through a real jump are not tested.
   threads 12 to 15. That looks like a plateau, but it is one run. The weekly 2-hour run is
   the real answer.
 
+  The result files of both runs were lost in a reboot on 2026-11-03, so they stand as reported and cannot be
+  re-examined. The second run's numbers: PASS, 18 cycles, 28m8s, 44,321 operations, 0 violations, 28 of 28
+  checks, 1,111 model starts, 18,781 refusals checked, 54 pressure transitions, drain in 10.013 s with 3 of 3
+  short streams finished, restart healthy in 60 ms.
+
+  | Checkpoint | Goroutines | Descriptors | Threads | Heap, MiB | RSS, MiB |
+  |---|---:|---:|---:|---:|---:|
+  | After warm-up | 10 | 14 | 12 | 11.0 | 61.1 |
+  | After cycle 3 | 10 | 14 | 14 | 12.1 | 68.5 |
+  | After cycle 7 | 10 | 14 | 14 | 12.4 | 78.5 |
+  | After cycle 10 | 10 | 14 | 14 | 12.4 | 78.7 |
+  | After cycle 14 | 10 | 14 | 14 | 12.5 | 78.9 |
+  | After cycle 18 | 10 | 14 | 15 | 12.6 | 79.1 |
+
 ## The lab
 
 `tools/lab` is what the tools share: it builds the gateway with the
@@ -218,31 +232,54 @@ memory falls under the agreed floor. Print the plan the gateway will load before
 loading it, and stop if it is over the agreed size: a model's default plan can be far
 larger than its file (this model's was 5.3 GiB with 4 slots and a 32768 context).
 
-**Waiting for the next window: does a real backend use more memory with every request?**
-System-wide `available` memory (`free -m`) fell about 100 MiB per chat over four samples
-and two and a half minutes on a Linux x64 runner, with the gateway running `llama-server`
-on CPU (`-c 131072 --parallel 4 --cache-ram 2048`). That was not the backend's own memory,
-which was not recorded, so it could include anything on the runner and page cache
-accounting. Nothing yet ties it to the backend.
+**Does a real backend use more memory with every request?** On a Mac, up to its prompt cache's
+limit, and then no. Measured on 2026-11-02 with `tools/real-memory-check.sh`: `llama-server` 0.7.0-dev
+(build 11671, `ba3c05f71`), Metal, `qwen2.5-coder-1.5b-instruct-q4_k_m`, context 8192, one slot, 200
+sequential requests of about 2,400 tokens, each a new prompt, with 8 tokens out. All returned 200.
 
-The gateway always passes `--cache-ram 2048`, so one hypothesis is a prompt cache filling up
-to a limit. **That is unsupported until the RSS curve shows it.** The pass is
-`tools/real-memory-check.sh`: 200 sequential requests with short outputs on a small model,
-with the backend's own RSS as the primary measure and system memory beside it. A plateau near
-+2 GiB and then flat supports the hypothesis, and a straight line past it is a leak. It runs
-on a Mac, at a far smaller context than the runner used, so Mac and Linux CPU may differ: a
-flat result here would not clear the Linux case.
+| Request | 1 | 25 | 50 | 75 | 100 | 125 | 150 | 175 | 200 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Backend RSS, MiB | 1,346 | 2,180 | 3,052 | 3,644 | 3,749 | 3,609 | 3,609 | 3,437 | 3,647 |
 
-Available memory fell about 100 MiB per request over four samples on a CPU `llama-server`
-on a Linux x64 runner (`-c 131072 --parallel 4`). Four samples cannot tell a cache filling
-from a leak. The plan is about 200 sequential requests to a small model on a scratch
-gateway on a Mac, with the same conditions as above, recording the backend's RSS and
-available memory throughout: flat after warm-up, or falling in a line? Use a mix of new and
-repeated prompts, and check whether the build has a host-memory prompt cache (`--cache-ram`
-in recent `llama-server` builds): if it does, a run with the cache off separates the two.
-The plan must fit the agreed size, so the context will be far smaller than the one observed
-and the platform differs. A flat result here would not clear the Linux case; say so if
-that is the result.
+RSS rose 34.80 MiB a request over the first 50, and moved -0.55 MiB a request over the last 100. The
+gateway always passes `--cache-ram 2048`, and the backend's log shows that cache filling: 141 lines
+of `making room for prompt cache entry, removing oldest entry`, averaging 34.74 MiB, and 200 - 141 =
+59 entries, which is what 2,048 MiB holds at that size. The planner already reserves this 2 GiB. The
+plan was 4,079 MiB, and RSS peaked at 3,749 MiB.
+
+RSS went on rising about 350 MiB after evictions began, for 2,403 MiB in all, before it stopped. Allocator
+overhead would fit, but that was not measured.
+
+**What this does not settle:**
+
+- **What the Linux runner showed.** System-wide `available` (`free -m`) fell about 100 MiB per chat over
+  four samples, with the gateway running `llama-server` on CPU (`-c 131072 --parallel 4 --cache-ram 2048`).
+  That was not the backend's own memory, which was not recorded, so it could include anything on the runner
+  and page cache accounting. **It remains unexplained.** If it is the same cache, RSS would flatten at
+  about +2 GiB after about 20 requests. That is a prediction, to be checked on a real Linux run by
+  recording the backend's RSS and keeping its log.
+- **Other models and shapes.** An entry's size depends on the model, the prompt and the context, so
+  growth per request will differ.
+- **A long run.** 200 requests is about 140 evictions.
+- **Whether an orphan ignores SIGPIPE.** macOS `ps` cannot show ignored signals. On Linux,
+  `SigIgn` in `/proc/<pid>/status` would answer it.
+
+**The raw evidence is gone.** A reboot on 2026-11-03 emptied `/private/tmp`, which held this run's CSV and
+log, so these results stand as reported and cannot be re-examined. The numbers kept, from `#521` at
+`48e66cf8`, with the window running 22:59:19 to 23:04:10 on 2026-11-02:
+
+| Measure | Values |
+|---|---|
+| Plan | 4,278,105,664 bytes, `derived`, also the real start's |
+| Backend RSS, MiB, at request | 1: 1,346, 10: 1,659, 20: 2,006, 25: 2,180, 40: 2,703, 50: 3,052, 58: 3,330, 59: 3,364, 60: 3,399, 65: 3,469, 70: 3,609, 75: 3,644, 80: 3,714, 90: 3,714, 100: 3,749, 125: 3,609, 150: 3,609, 175: 3,437, 200: 3,647 |
+| Backend RSS, requests 100-200 | mean 3,583, least 3,433, most 3,749 MiB |
+| `phys_footprint`, MB, at request | 1: 380, 11: 727, 21: 1,075, 31: 1,423, 41: 1,772, 51: 2,121, 61: 2,469, 71: 2,678, 81: 2,748, 91: 2,748, 101: 2,783, 111: 2,502, 121: 2,643, 131: 2,643, 141: 2,643, 151: 2,678, 161: 2,713, 171: 2,467, 181: 2,467, 191: 2,572 |
+| Evicted cache entries | 141: mean 34.74, least 34.223, most 35.458 MiB |
+| Requests | 200 of 200 returned 200; 2,345-2,432 prompt tokens, mean 2,385; mean 1,415 ms, longest 5,424 ms (the first, with the load) |
+
+System-wide memory (free + speculative + inactive), not the backend's, in MiB: request 1: 30,551, 25: 30,060,
+50: 29,495, 75: 29,179, 100: 29,210, 125: 29,425, 150: 29,348, 175: 29,428, 200: 29,505; least 28,899, at
+request 86. Its early part overlaps another thread's build and tests.
 
 ## The browser suite
 

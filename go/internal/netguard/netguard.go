@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -249,26 +250,42 @@ func (p Policy) DialContext() func(ctx context.Context, network, addr string) (n
 		}
 		pass := p
 		pass.AllowHosts = append(append([]string{}, p.AllowHosts...), proxies...)
-		var blocked error
+		var blocked refusal
 		d := net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Resolver: p.Resolver,
 			Control: func(_, address string, _ syscall.RawConn) error {
 				ap, err := netip.ParseAddrPort(address)
 				if err != nil {
-					blocked = &BlockedError{Host: host, Class: Never}
-					return blocked
+					refused := &BlockedError{Host: host, Class: Never}
+					blocked.set(refused)
+					return refused
 				}
 				if err := pass.check(host, ap.Addr()); err != nil {
-					blocked = err
+					blocked.set(err)
 					return err
 				}
 				return nil
 			}}
 		conn, err := d.DialContext(ctx, network, addr)
-		if err != nil && blocked != nil {
-			return nil, blocked
+		if err != nil {
+			if refused := blocked.get(); refused != nil {
+				return nil, refused
+			}
 		}
 		return conn, err
 	}
+}
+
+// refusal is the last refusal any attempt of one dial met. A name can resolve to several addresses, and
+// the dialer tries them in goroutines of their own (Happy Eyeballs), so it is set from more than one.
+type refusal struct{ err atomic.Pointer[error] }
+
+func (r *refusal) set(err error) { r.err.Store(&err) }
+
+func (r *refusal) get() error {
+	if p := r.err.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // Transport returns a copy of base that keeps to the policy.

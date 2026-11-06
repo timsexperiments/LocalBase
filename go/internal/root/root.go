@@ -198,7 +198,8 @@ func Init(dir string) (*Root, error) {
 	m := marker{Version: 1, Root: dir, RootHash: Hash(dir), Identity: uuid()}
 	raw, _ := json.Marshal(m)
 	tmp := filepath.Join(dir, markerName+".tmp")
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+	if err := writeSynced(tmp, raw); err != nil {
+		os.Remove(tmp)
 		return nil, err
 	}
 	if err := os.Rename(tmp, filepath.Join(dir, markerName)); err != nil {
