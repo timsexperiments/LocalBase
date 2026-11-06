@@ -103,6 +103,13 @@ func New(d Deps) *UI {
 		"asset":         func(name string) string { return "/app/assets/" + name + "?v=" + u.assetVer[name] },
 		"gb":            func(b int64) string { return fmt.Sprintf("%.1f GB", float64(b)/1e9) },
 		"size":          sizeText,
+		// capability names a catalog capability for people: "Image editing", not "image-to-image".
+		"capability": func(id string) string {
+			if l := catalog.CapabilityLabels[id]; l != "" {
+				return l
+			}
+			return id
+		},
 		"num": func(n int) string {
 			s := fmt.Sprint(n)
 			for i := len(s) - 3; i > 0; i -= 3 {

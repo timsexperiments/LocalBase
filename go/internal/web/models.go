@@ -191,6 +191,7 @@ type CatalogRow struct {
 	Forecast                bool   // Fit is the gateway's answer for right now, not total memory
 	MayNotFit               string // the catalog's rough figure says no: words, and the choice stays open
 	Installed               bool
+	EditsPictures           bool // the catalog says it can start from a picture (image-to-image)
 }
 
 // catalogRows are the qualified models LocalBase can install here, by task,
@@ -205,7 +206,7 @@ func (u *UI) catalogRows(filter string) (rows []CatalogRow, tasks []string, miss
 		if !matchesTask(filter, t) {
 			continue
 		}
-		row := CatalogRow{ID: s.ModelID, Name: s.Name(), Initial: initial(s.Name()), Task: t, Installed: u.installedBytes(s) > 0}
+		row := CatalogRow{ID: s.ModelID, Name: s.Name(), Initial: initial(s.Name()), Task: t, Installed: u.installedBytes(s) > 0, EditsPictures: s.HasCapability("image-to-image")}
 		for _, a := range s.Artifacts {
 			row.DownloadBytes += a.ExpectedSizeBytes
 		}
