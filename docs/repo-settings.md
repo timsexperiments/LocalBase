@@ -56,3 +56,11 @@ The site builds on every docs change, but nothing is published. To turn it on:
 - [ ] Run the **Docs site** workflow from `main`, or push a docs change.
 
 It publishes to `https://timsexperiments.github.io/LocalBase/`. Only the publish job can write to Pages.
+
+## Release credentials
+
+The `release` environment above is where the Apple secrets go. For the credentials themselves:
+
+- [ ] Put `RELEASE_AUTOMATION_PRIVATE_KEY` in the same environment, after adding `environment: release` to the jobs that read it, and give that GitHub App only what the manifest sync needs, on this repository alone.
+- [ ] Use an app-specific password for notarizing, as [install](install.md#signing-setup-for-maintainers) says, not the account's password.
+- [ ] Replace the certificate and that password when a maintainer leaves, or if a job holding them ever ran something it shouldn't have.
