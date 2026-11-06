@@ -11,6 +11,8 @@ cd "$(dirname "$0")/.."
 time=${FUZZTIME:-60s}
 for target in \
 	./internal/gateway:FuzzStructuredOutput \
+
+	./internal/jsjson:FuzzParse \
 	./internal/memory:FuzzGGUFHeader \
 	./internal/models:FuzzInspectVariant; do
 	pkg=${target%%:*}

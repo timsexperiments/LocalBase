@@ -39,3 +39,13 @@ func TestFeedRedirectIsJudged(t *testing.T) {
 		t.Errorf("the named host itself was not reached: %d", reached.Load())
 	}
 }
+
+// A feed comes from elsewhere and can be up to this large. One that is nothing but nesting is a bad
+// feed, not the end of the gateway.
+func TestADeeplyNestedFeedIsRefused(t *testing.T) {
+	for _, doc := range []string{strings.Repeat("[", maxFeedBytes), strings.Repeat(`{"a":`, maxFeedBytes/5)} {
+		if _, err := ParseFeed([]byte(doc)); err == nil {
+			t.Errorf("accepted: %.20s", doc)
+		}
+	}
+}
