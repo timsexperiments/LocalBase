@@ -75,9 +75,14 @@ async function diagnose(event) {
 }
 
 document.addEventListener("htmx:sendError", diagnose);
+// Told apart as each request starts: by the time it ends, a swap may have replaced its element.
+const pages = new WeakSet();
+document.addEventListener("htmx:beforeRequest", (event) => {
+  if (background(event.detail.elt)) pages.add(event.detail.xhr);
+});
 document.addEventListener("htmx:afterRequest", (event) => {
   if (!event.detail.successful) return;
-  if (shownKind === "connection" || (shownKind === "action" && !background(event.detail.elt))) clear();
+  if (shownKind === "connection" || (shownKind === "action" && !pages.has(event.detail.xhr))) clear();
 });
 // A page change starts with no notice.
 document.addEventListener("htmx:afterSwap", (event) => {
