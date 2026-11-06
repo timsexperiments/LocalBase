@@ -56,6 +56,9 @@ var notDocumentedCodes = map[string]string{
 // entry fails once its code is here, so the table can't go stale.
 var codesArriving = map[string]string{}
 
+// codeConstant is an unexported constant named for its code: codeNoSpace, and not codec or coder.
+var codeConstant = regexp.MustCompile(`^code[A-Z]`)
+
 // sourceErrorCodes reads the code out of the source, so that a new one can't be missed by a test
 // that has to think of asking for it. It reads each way this code base hands over a code:
 //
@@ -67,7 +70,7 @@ var codesArriving = map[string]string{}
 //	e.Code == "code"
 //	{"code", 409}                                a code and its status, in a table
 //	managementMessages                           the table of management's own codes
-//	const CodeNoSpace = "code"                   a constant named for what it is
+//	const CodeNoSpace = "code"                   a constant named for what it is, either case
 //	`{"error":{"code":"code"}}`                  a body written out by hand
 func sourceErrorCodes(t *testing.T) map[string]string {
 	t.Helper()
@@ -236,7 +239,7 @@ func sourceErrorCodes(t *testing.T) map[string]string {
 				}
 			case *ast.ValueSpec:
 				for i, name := range x.Names {
-					if (isCodeName(name.Name) || strings.HasPrefix(name.Name, "Code")) && i < len(x.Values) {
+					if (isCodeName(name.Name) || strings.HasPrefix(name.Name, "Code") || codeConstant.MatchString(name.Name)) && i < len(x.Values) {
 						add(x.Values[i])
 					}
 					if name.Name == "managementMessages" && i < len(x.Values) {

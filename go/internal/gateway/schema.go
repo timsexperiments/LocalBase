@@ -25,6 +25,9 @@ const (
 	maxSchemaBytes           = 256 * 1024
 	maxSchemaReferences      = 1000
 	maxNativeRepetition      = 10000
+	maxSchemaAlternatives    = 1024
+	maxValidationDepth       = 1000
+	maxValidationSteps       = 2_000_000
 	draft7URI                = "http://json-schema.org/draft-07/schema#"
 	codeInvalidJSONSchema    = "invalid_json_schema"
 	codeUnsupportedJSONSchma = "unsupported_json_schema"
@@ -65,6 +68,9 @@ func prepareStructuredOutput(responseFormat any) (map[string]any, *schemaRejecti
 		return nil, &schemaRejection{codeInvalidJSONSchema, "Structured output schema is not valid JSON Schema draft 7."}
 	}
 	if msg := inspectNative(schema); msg != "" {
+		return nil, &schemaRejection{codeUnsupportedJSONSchma, msg}
+	}
+	if msg := alternativesIssue(schema); msg != "" {
 		return nil, &schemaRejection{codeUnsupportedJSONSchma, msg}
 	}
 	if schema["type"] != "object" {
@@ -157,6 +163,80 @@ func precompileBudgetIssue(root map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// alternativesIssue refuses what a schema can make a check do without looking at any more of
+// the answer. A reference or an alternative consumes nothing, unlike a property or an item, so
+// references that come back to themselves can never finish, and alternatives that multiply
+// grow far faster than the schema that writes them.
+func alternativesIssue(root map[string]any) string {
+	finished := map[string]int{}
+	following := map[string]bool{}
+	var ways func(s map[string]any) (int, bool)
+	ways = func(s map[string]any) (int, bool) {
+		if ref, ok := s["$ref"].(string); ok {
+			if following[ref] {
+				return 0, false
+			}
+			if n, done := finished[ref]; done {
+				return n, true
+			}
+			target := schemaAt(root, ref)
+			if target == nil {
+				return 1, true
+			}
+			following[ref] = true
+			n, ok := ways(target)
+			delete(following, ref)
+			if !ok {
+				return 0, false
+			}
+			finished[ref] = n
+			return n, true
+		}
+		list, isList := s["anyOf"].([]any)
+		if !isList {
+			return 1, true
+		}
+		total := 0
+		for _, alt := range list {
+			if m, isMap := alt.(map[string]any); isMap {
+				n, ok := ways(m)
+				if !ok {
+					return 0, false
+				}
+				total = min(total+n, maxSchemaAlternatives+1)
+			}
+		}
+		return total, true
+	}
+	pending := []map[string]any{root}
+	for len(pending) > 0 {
+		cur := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		n, ok := ways(cur)
+		if !ok {
+			return "Structured output schema references must not loop without consuming part of the answer."
+		}
+		if n > maxSchemaAlternatives {
+			return "Structured output schema has too many alternatives."
+		}
+		if children, ok := childSchemas(cur); ok {
+			pending = append(pending, children...)
+		}
+	}
+	return ""
+}
+
+// schemaAt finds what a direct local reference names, or nil.
+func schemaAt(root map[string]any, ref string) map[string]any {
+	parts := strings.SplitN(strings.TrimPrefix(ref, "#/"), "/", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	defs, _ := root[parts[0]].(map[string]any)
+	target, _ := defs[parts[1]].(map[string]any)
+	return target
 }
 
 // --- ajv strict-mode compile emulation -----------------------------------------
@@ -652,17 +732,29 @@ func jsonEqual(a, b any) bool {
 	return string(ja) == string(jb)
 }
 
-// validateSchema checks v against an accepted schema (the native subset).
+// validateSchema checks v against an accepted schema (the native subset). An answer it can't
+// finish checking within the limits counts as not matching.
 func validateSchema(root, s map[string]any, v any) bool {
+	return (&schemaCheck{root: root}).valid(s, v, 0)
+}
+
+type schemaCheck struct {
+	root  map[string]any
+	steps int
+}
+
+func (c *schemaCheck) valid(s map[string]any, v any, depth int) bool {
+	c.steps++
+	if c.steps > maxValidationSteps || depth > maxValidationDepth {
+		return false
+	}
 	if ref, ok := s["$ref"].(string); ok {
-		parts := strings.SplitN(strings.TrimPrefix(ref, "#/"), "/", 2)
-		defs, _ := root[parts[0]].(map[string]any)
-		target, _ := defs[parts[1]].(map[string]any)
-		return target != nil && validateSchema(root, target, v)
+		target := schemaAt(c.root, ref)
+		return target != nil && c.valid(target, v, depth+1)
 	}
 	if any_, ok := s["anyOf"].([]any); ok {
 		for _, alt := range any_ {
-			if m, ok := alt.(map[string]any); ok && validateSchema(root, m, v) {
+			if m, ok := alt.(map[string]any); ok && c.valid(m, v, depth+1) {
 				return true
 			}
 		}
@@ -704,7 +796,7 @@ func validateSchema(root, s map[string]any, v any) bool {
 				}
 				continue
 			}
-			if !validateSchema(root, p, x) {
+			if !c.valid(p, x, depth+1) {
 				return false
 			}
 		}
@@ -717,7 +809,7 @@ func validateSchema(root, s map[string]any, v any) bool {
 		}
 		if items, ok := s["items"].(map[string]any); ok {
 			for _, x := range val {
-				if !validateSchema(root, items, x) {
+				if !c.valid(items, x, depth+1) {
 					return false
 				}
 			}
