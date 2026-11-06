@@ -236,7 +236,7 @@ document.addEventListener("htmx:responseError", (event) => {
   if (!elt?.hasAttribute?.("data-strip") || event.detail.xhr?.status !== 503) return;
   elt.removeAttribute("hx-headers");
   const strip = elt.querySelector(".strip");
-  if (strip) strip.className = "strip strip-load";
+  if (strip) strip.className = "strip strip-load strip-stale";
   const word = elt.querySelector("[data-strip-word]");
   if (word) word.textContent = "LocalBase is busy";
   const free = elt.querySelector("[data-strip-free]");
