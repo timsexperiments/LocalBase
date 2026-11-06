@@ -422,8 +422,9 @@ func smallDisk(t *testing.T) string {
 	}
 	t.Cleanup(func() {
 		workspace.KillStray()
-		if out, err := exec.Command("hdiutil", "detach", "-force", mount).CombinedOutput(); err != nil {
-			t.Errorf("detaching the scratch volume: %v %s", err, out)
+		detach := func() ([]byte, error) { return exec.Command("hdiutil", "detach", "-force", mount).CombinedOutput() }
+		if err := detachVolume(detach, func() { time.Sleep(500 * time.Millisecond) }, 20); err != nil {
+			t.Errorf("detaching the scratch volume: %v", err)
 		}
 	})
 	if real, err := filepath.EvalSymlinks(mount); err == nil {
@@ -448,7 +449,32 @@ func smallEnoughToFill(dir string) error {
 	return nil
 }
 
-// fillDisk writes until the small volume is full and returns how to free it.
+// fillMargin is the free space fillDisk leaves. A completely full APFS image can refuse the delete
+// that would free it: on macos-15 in CI the filler's delete was refused on all 50 tries, 5 s,
+// after a fill to the last 4 KiB (#671). A delete needs room to update APFS's metadata, so the fill
+// stops short. Why 4 MiB, measured on fresh 96 MB images like smallDisk's on macOS 26: a fill to
+// ENOSPC there stops with 2.43 MiB still shown free, so this APFS keeps about that much back from
+// writes, and margins of 64 KiB, 256 KiB and 1 MiB all ended at that same point and meant nothing;
+// with 4 MiB the fill stopped at 4.0 MiB. 4 MiB is real free space where macos-15 keeps less back,
+// and a delete's metadata needs a few 4 KiB nodes, far less.
+const fillMargin = 4 << 20
+
+// fillProbe is the write that shows the volume is full: one write larger than the margin, so it
+// cannot fit whatever the exact free count is. APFS refuses such a write whole: in every trial it
+// took 0 bytes, so proving the disk full costs the margin nothing.
+const fillProbe = fillMargin + 1<<20
+
+// freeBytes is what statfs says is free on dir's volume for an ordinary writer.
+func freeBytes(dir string) (int64, error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, err
+	}
+	return int64(st.Bavail) * int64(st.Bsize), nil
+}
+
+// fillDisk fills the small volume to fillMargin, proves it full with fillProbe, and returns how to
+// free it.
 func fillDisk(t *testing.T, dir string) (free func()) {
 	t.Helper()
 	if err := smallEnoughToFill(dir); err != nil {
@@ -465,34 +491,174 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 		if written >= fillDiskLimit {
 			t.Fatalf("wrote %d MiB and %s is still not full", written>>20, dir)
 		}
-		n, err := f.Write(block)
+		avail, err := freeBytes(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		room := avail - fillMargin
+		if room < 4096 {
+			break
+		}
+		chunk := block
+		if room < int64(len(block)) {
+			chunk = block[:room/4096*4096] // whole 4 KiB blocks, down to the margin
+		}
+		n, err := f.Write(chunk)
 		written += n
 		if err != nil {
-			if !errors.Is(err, syscall.ENOSPC) {
-				t.Fatalf("filling the disk: %v", err)
+			if errors.Is(err, syscall.ENOSPC) {
+				break // the volume refused before the margin, as APFS does with some still free
 			}
-			break
+			t.Fatalf("filling the disk: %v (%d bytes free)", err, avail)
 		}
 	}
-	// Down to the last bytes, so nothing small slips in.
-	small := make([]byte, 4096)
-	for written < fillDiskLimit {
-		n, err := f.Write(small)
-		written += n
-		if err != nil {
-			break
-		}
+	if err := f.Sync(); err != nil {
+		t.Fatalf("syncing the filler: %v", err)
 	}
 	f.Close()
+	if err := probeFull(dir); err != nil {
+		t.Fatalf("filled to the margin, and %v", err)
+	}
 	freed := false
 	return func() {
 		if !freed {
 			freed = true
-			if err := os.Remove(path); err != nil {
+			ops := diskOps{
+				truncate:  os.Truncate,
+				remove:    os.Remove,
+				available: func() (int64, error) { return freeBytes(dir) },
+				wait:      func() { time.Sleep(100 * time.Millisecond) },
+			}
+			if err := freeFullDisk(path, int64(written), ops, 50); err != nil {
 				t.Errorf("freeing the disk: %v", err)
 			}
 		}
 	}
+}
+
+// probeFull shows that dir's volume is full: one write of fillProbe bytes must be refused. The
+// probe file is deleted either way, while the margin is still there to delete it in.
+func probeFull(dir string) error {
+	before, err := freeBytes(dir)
+	if err != nil {
+		return err
+	}
+	p := filepath.Join(dir, "probe")
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("the probe could not be created: %w (%d bytes free)", err, before)
+	}
+	n, werr := f.Write(make([]byte, fillProbe))
+	f.Close()
+	after, _ := freeBytes(dir)
+	if rerr := os.Remove(p); rerr != nil {
+		return fmt.Errorf("the probe took %d bytes and could not be deleted: %w (%d bytes free before, %d after)", n, rerr, before, after)
+	}
+	switch {
+	case werr == nil:
+		return fmt.Errorf("a write of %d bytes fit, so it is not full (%d bytes free before it)", fillProbe, before)
+	case !errors.Is(werr, syscall.ENOSPC):
+		return fmt.Errorf("the probe failed otherwise: %w (%d bytes free)", werr, before)
+	}
+	return nil
+}
+
+// diskOps are what freeFullDisk does to the disk, so a test can make each of them fail.
+type diskOps struct {
+	truncate  func(path string, size int64) error
+	remove    func(path string) error
+	available func() (int64, error)
+	wait      func()
+}
+
+const (
+	// givenBack is how much of the filler goes when a delete is refused. freedFloor is what must be
+	// free once it has gone.
+	givenBack  = 1 << 20
+	freedFloor = 256 << 10
+)
+
+// freeFullDisk frees a full volume. With fillMargin left, the first delete is expected to work; the
+// rest is a bounded fallback for a volume something else filled the rest of the way, as the
+// gateway's own failing writes can. A completely full APFS image can refuse the very delete that
+// would free it (remove: no space left on device), and can refuse to truncate for longer than it
+// refuses to delete, so the delete comes first and giving a little back is what it tries between
+// refusals. Each refusal is recorded with the free bytes at that moment, so one failure in CI says
+// what the volume did. Then the room must really have come back, or the test after it would fail
+// for a reason nobody could see.
+func freeFullDisk(path string, size int64, ops diskOps, tries int) error {
+	removed := false
+	var err error
+	var refusals []string
+	for range tries {
+		if err = ops.remove(path); err == nil {
+			removed = true
+			break
+		}
+		free, ferr := ops.available()
+		note := fmt.Sprintf("%d bytes free: %v", free, err)
+		if ferr != nil {
+			note = fmt.Sprintf("free unknown (%v): %v", ferr, err)
+		}
+		refusals = append(refusals, note)
+		if !errors.Is(err, syscall.ENOSPC) {
+			return fmt.Errorf("%w (%s)", err, note)
+		}
+		if err := ops.truncate(path, max(size-givenBack, 0)); err != nil && !errors.Is(err, syscall.ENOSPC) {
+			return err
+		}
+		ops.wait()
+	}
+	if !removed {
+		return fmt.Errorf("deleting the filler: still refused after %d tries; each try: %s: %w", tries, runs(refusals), err)
+	}
+	var free int64
+	for range tries {
+		if free, err = ops.available(); err != nil {
+			return err
+		}
+		if free >= freedFloor {
+			return nil
+		}
+		ops.wait()
+	}
+	return fmt.Errorf("deleted the filler, and only %d bytes are free, under the floor of %d", free, freedFloor)
+}
+
+// runs puts repeated notes together, so fifty refusals of the same kind read as one line.
+func runs(notes []string) string {
+	var out []string
+	for i := 0; i < len(notes); {
+		j := i
+		for j < len(notes) && notes[j] == notes[i] {
+			j++
+		}
+		if j-i == 1 {
+			out = append(out, fmt.Sprintf("try %d: %s", i+1, notes[i]))
+		} else {
+			out = append(out, fmt.Sprintf("tries %d-%d: %s", i+1, j, notes[i]))
+		}
+		i = j
+	}
+	return strings.Join(out, "; ")
+}
+
+// detachVolume detaches a scratch image, waiting a bounded time while macOS still has it busy, as it
+// can straight after a fill and delete: hdiutil: couldn't eject "disk4" - Resource busy, on macos-14,
+// even with -force, on an image nothing else had touched.
+func detachVolume(detach func() ([]byte, error), wait func(), tries int) error {
+	var out []byte
+	var err error
+	for range tries {
+		if out, err = detach(); err == nil {
+			return nil
+		}
+		if !strings.Contains(string(out), "Resource busy") {
+			return fmt.Errorf("%w: %s", err, out)
+		}
+		wait()
+	}
+	return fmt.Errorf("still busy after %d tries: %w: %s", tries, err, out)
 }
 
 // fillDisk must refuse an ordinary directory, before writing anything to it.
@@ -513,12 +679,19 @@ func TestFillDiskFillsASmallVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	free := fillDisk(t, dir)
-	if err := os.WriteFile(filepath.Join(dir, "more"), make([]byte, 1<<20), 0o600); err == nil {
-		t.Error("a full volume took another MiB")
+	if avail, err := freeBytes(dir); err != nil || avail > fillMargin+(1<<20) {
+		t.Errorf("filled, %d bytes are still free (%v), more than the margin of %d and a MiB", avail, err, fillMargin)
 	}
+	// Full means a write larger than the margin is refused, whatever the exact free count.
+	if err := os.WriteFile(filepath.Join(dir, "more"), make([]byte, fillProbe), 0o600); err == nil {
+		avail, _ := freeBytes(dir)
+		t.Errorf("a full volume took a write of %d bytes (%d bytes free after it)", fillProbe, avail)
+	}
+	os.Remove(filepath.Join(dir, "more"))
 	free()
 	if err := os.WriteFile(filepath.Join(dir, "more"), make([]byte, 1<<20), 0o600); err != nil {
-		t.Errorf("freed, it still refuses: %v", err)
+		avail, _ := freeBytes(dir)
+		t.Errorf("freed, it still refuses: %v (%d bytes free)", err, avail)
 	}
 }
 
@@ -608,7 +781,9 @@ func TestDiskFullDuringDownload(t *testing.T) {
 // there is room.
 func TestDiskFullWhileServing(t *testing.T) {
 	disk := smallDisk(t)
-	ctx, g, c := start(t, lab.Options{Dir: filepath.Join(disk, "gw")})
+	// Twice the margin, so installing it is a write that cannot fit on the full disk.
+	big := serveArtifact(t, modelBytes(2*fillMargin))
+	ctx, g, c := start(t, lab.Options{Dir: filepath.Join(disk, "gw"), PrepareRoot: catalogEntry(big)})
 	mustChat(t, ctx, c, g, lab.ChatSmall)
 	free := fillDisk(t, disk)
 	defer free()
@@ -621,12 +796,31 @@ func TestDiskFullWhileServing(t *testing.T) {
 	if r := c.Do(ctx, "GET", "/health", "", "", nil); r.Status != 200 {
 		t.Errorf("health on a full disk: %d", r.Status)
 	}
-	// A write that cannot happen is refused, never a panic or a false success.
+	// Small writes may fit in the margin fillDisk leaves, so a key or a run may be made: either way,
+	// never a panic or a server error.
 	create := c.PostJSON(ctx, "/_localbase/api-keys", g.Keys.Admin, map[string]any{"action": "create", "name": "on-a-full-disk", "scopes": []string{"models:read"}})
 	noServerError(t, "creating a key on a full disk", create)
 	madeOnFullDisk := create.Status < 300
 	run := c.PostJSON(ctx, "/_localbase/runs/v1/chat/completions", g.Keys.Runs[0], chatBody(lab.ChatSmall, "fake:reply on a full disk"))
 	noServerError(t, "a run on a full disk", run)
+	// A write larger than the margin cannot happen, and is refused cleanly, for storage: the gateway
+	// turns the install away at once (409 insufficient_storage, measured), or it starts and fails
+	// pointing at storage. Never a server error, never a refusal for another reason, never a false
+	// success.
+	inst := c.PostJSON(ctx, "/_localbase/model-management", g.Keys.Admin, map[string]any{"modelId": dlModel, "action": "install"})
+	noServerError(t, "installing more than the margin on a full disk", inst)
+	switch {
+	case inst.Status == 202:
+		s := installEnds(t, ctx, c, g)
+		if s.Operation.State != "failed" || s.Installed {
+			t.Errorf("installing more than the margin on a full disk: %+v %+v", s, s.Operation)
+		} else if d := strings.ToLower(s.Operation.Detail); !strings.Contains(d, "storage") && !strings.Contains(d, "space") {
+			t.Errorf("the failed install does not point at storage: %q", s.Operation.Detail)
+		}
+	case inst.Code != "insufficient_storage":
+		t.Errorf("installing more than the margin on a full disk was refused, but not for storage: %d %q %.300s", inst.Status, inst.Code, inst.Body)
+	}
+	mustChat(t, ctx, c, g, lab.ChatSmall)
 	select {
 	case <-g.Done():
 		t.Fatalf("the gateway exited on a full disk: %v", g.ExitErr())
@@ -638,7 +832,7 @@ func TestDiskFullWhileServing(t *testing.T) {
 	if again.Status >= 300 {
 		t.Errorf("creating a key after freeing the disk: %d %.300s", again.Status, again.Body)
 	}
-	t.Logf("key creation on a full disk: %d (succeeded: %v); a run: %d", create.Status, madeOnFullDisk, run.Status)
+	t.Logf("key creation on a full disk: %d (succeeded: %v); a run: %d; an install of %d bytes: %d %q %.200s", create.Status, madeOnFullDisk, run.Status, 2*fillMargin, inst.Status, inst.Code, inst.Body)
 }
 
 // --- many sessions -----------------------------------------------------------
