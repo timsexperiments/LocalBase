@@ -63,7 +63,7 @@ type Deps struct {
 	Voices func(ctx context.Context) ([]voices.Voice, error)
 	// ListenAddr is where the gateway listens, for Connect's address.
 	ListenAddr func() string
-	// Log receives audit events (nil: none).
+	// Log receives audit events (nil: none) and what an import warns of (nil: the default logger).
 	Log *slog.Logger
 }
 

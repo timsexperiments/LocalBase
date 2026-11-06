@@ -207,7 +207,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	plan, err := acquire.Resolve(r.Context(), s.Root.Dir, acquire.Request{Source: in.Source, Files: in.Files, Revision: in.Revision,
 		SHA256: in.SHA256, AuthProfile: in.AuthProfile, AllowHTTP: in.AllowHTTP, ID: in.ID, Name: in.Name, Task: in.Task, HFToken: token,
-		AllowPrivate: s.Store.PrivateImportsAllowed(r.Context()), AllowLocal: s.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm})
+		AllowPrivate: s.Store.PrivateImportsAllowed(r.Context()), AllowLocal: s.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: s.Log})
 	var refused *acquire.RefusedError
 	if errors.As(err, &refused) {
 		writeError(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, strp("source"))

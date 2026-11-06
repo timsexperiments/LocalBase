@@ -100,8 +100,13 @@ func TestImportAPIKeepsToPublicAddresses(t *testing.T) {
 	}
 }
 
-func importAPIGateway(t *testing.T) (*httptest.Server, string, *store.Store, string) {
+// importAPIGateway is a gateway with a key that may manage models. Its log goes nowhere, or to log when given.
+func importAPIGateway(t *testing.T, log ...*slog.Logger) (*httptest.Server, string, *store.Store, string) {
 	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if len(log) > 0 {
+		logger = log[0]
+	}
 	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
@@ -127,7 +132,7 @@ func importAPIGateway(t *testing.T) (*httptest.Server, string, *store.Store, str
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(New(&Server{Store: st, Root: r, Catalog: cat, Library: lib, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	ts := httptest.NewServer(New(&Server{Store: st, Root: r, Catalog: cat, Library: lib, Log: logger,
 		Auth: &auth.Resolver{Store: st, Mode: "either"}}))
 	t.Cleanup(ts.Close)
 	return ts, key, st, dir

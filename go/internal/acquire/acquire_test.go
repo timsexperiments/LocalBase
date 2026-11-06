@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -339,7 +340,8 @@ func TestRedactURL(t *testing.T) {
 }
 
 // The Hugging Face token reaches a CDN origin only when the "huggingface"
-// profile lists it; anonymous CDN downloads keep working without it.
+// profile may list it, which this local one isn't; anonymous CDN downloads
+// keep working without it.
 func TestHFTokenCDNScope(t *testing.T) {
 	weights := ggufBytes(t, "qwen3", 4096)
 	cdnRec := &recorder{}
@@ -362,9 +364,10 @@ func TestHFTokenCDNScope(t *testing.T) {
 	t.Setenv("HF_ENDPOINT", hf.URL)
 	ctx := context.Background()
 	root := t.TempDir()
+	quiet := slog.New(&logRecords{})
 	run := func(id, token string) {
 		t.Helper()
-		p, err := Resolve(ctx, root, Request{Source: "hf:org/m", HFToken: token, ID: id})
+		p, err := Resolve(ctx, root, Request{Source: "hf:org/m", HFToken: token, ID: id, Log: quiet})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -377,12 +380,15 @@ func TestHFTokenCDNScope(t *testing.T) {
 	if cdnRec.anyHeader("hf_scopetest123") {
 		t.Fatal("the token reached the CDN without being allowed")
 	}
-	if err := SaveProfile(root, Profile{ID: HFProfileID, Origins: []string{cdn.URL}}); err != nil {
-		t.Fatal(err)
+	// This CDN isn't one of Hugging Face's own hosts, so the huggingface profile can't name it, and a file that
+	// does gets it nothing. TestTheTokenNeverGoesWhereTheProfileCantSendIt has one that is.
+	if err := SaveProfile(root, Profile{ID: HFProfileID, Origins: []string{cdn.URL}}); err == nil {
+		t.Fatal("the huggingface profile named an origin that isn't Hugging Face's own")
 	}
-	run("allowed", "hf_scopetest123")
-	if !cdnRec.anyHeader("hf_scopetest123") {
-		t.Fatal("the huggingface profile did not extend the token to its CDN origin")
+	writeProfileFile(t, root, `{"profiles":[{"id":"huggingface","origins":["`+cdn.URL+`"]}]}`)
+	run("planted", "hf_scopetest123")
+	if cdnRec.anyHeader("hf_scopetest123") {
+		t.Fatal("the token reached an origin the huggingface profile can't name")
 	}
 }
 
