@@ -90,7 +90,7 @@ jobs:
     # Secret names are documented in docs/install.md.
     if: github.ref_type == 'tag'
     needs: binaries
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - name: Fetch the binaries
