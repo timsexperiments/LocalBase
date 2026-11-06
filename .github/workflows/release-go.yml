@@ -39,6 +39,7 @@ jobs:
           if [ "$REF_TYPE" = tag ]; then
             [ "$TAG" = "v$version" ] || { echo "tag $TAG does not match source version $version" >&2; exit 1; }
             grep -q "^## \[$version\]" CHANGELOG.md || { echo "CHANGELOG.md has no entry for $version" >&2; exit 1; }
+            go/tools/open-items-check.sh || exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Notices are current

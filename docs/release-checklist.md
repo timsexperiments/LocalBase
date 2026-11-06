@@ -9,6 +9,7 @@
 - [ ] Transcription default decided: English, or auto-detect on multilingual models.
 - [ ] `go-dual` green. It needs #411.
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
+- [ ] `go/tools/open-items-check.sh` passes, which means `go/DESIGN.md` section 34.8 lists nothing. Run it before you tag. The release workflows run it too, but only after a tag is pushed, so they stop what the tag starts. Only a repository ruleset could stop the tag itself.
 
 ## Decisions needed from the owner
 

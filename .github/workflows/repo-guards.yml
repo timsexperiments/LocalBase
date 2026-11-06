@@ -16,6 +16,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Guard rejects what it should
         run: scripts/check-repo-hygiene.test.sh
+      - name: The release's open-items check rejects what it should, and is called
+        run: go/tools/open-items-check.test.sh
       - name: Binaries, large files, workflow pins and permissions
         run: scripts/check-repo-hygiene.sh
 

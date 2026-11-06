@@ -5773,6 +5773,10 @@ must be undone with the version that made it.
 Not accepted risks. They are being fixed, and until then the docs say to restore only a backup you
 made yourself. Each line goes when its fix is in the tree.
 
+**Nothing is released or tagged while a bullet is left here.** `go/tools/open-items-check.sh` checks
+that, and fails if it can't find this exact heading, so the heading stays when the last bullet goes.
+To retire the check, remove the heading, the script, its test and its calls in one pull request.
+
 - A file can give permissions that neither the report nor the access policy shows.
 - The report leaves out a provider's exact issuer, what everyone who signs in gets, the origin and the SMTP host.
 - The report only counts role bindings. It doesn't say who they're for or what the role gives.
