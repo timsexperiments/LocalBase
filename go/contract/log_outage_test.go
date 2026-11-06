@@ -36,7 +36,20 @@ func TestDoctorAndStatusReportALogThatCannotRotate(t *testing.T) {
 		t.Fatal(err)
 	}
 	const limit = 10 << 20
-	if err := mustGuard(guardedSparse(active, limit-64<<10)); err != nil {
+	// The commands above may have written their audit lines here already, so the file is grown to just
+	// under the limit, whether or not it exists.
+	if err := mustGuard(guardedSparse(active, 0)); err != nil { // only if it's missing
+		t.Fatal(err)
+	}
+	grow, err := mustAppend(active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = grow.Truncate(limit - 64<<10)
+	if cerr := grow.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	e.serve()

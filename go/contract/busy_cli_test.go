@@ -1,10 +1,14 @@
 package contract
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -22,13 +26,33 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 			t.Fatalf("%s on a quiet root: %d %s%s", c, r.code, r.stdout, r.stderr)
 		}
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(e.root, "local-base.db"))
+	// Under write-ahead logging a writer doesn't make a reader busy. Another connection rebuilding the
+	// WAL index does, as a crashed root's first opener does beside a second process: this process
+	// stays attached, so the -shm stays, then holds its write and recovery locks (bytes 120 and 122)
+	// and spoils the first copy of the index header. Each command, a process of its own, then waits
+	// out its busy timeout and gets SQLITE_BUSY_RECOVERY. Found by Reliability.
+	dbPath := filepath.Join(e.root, "local-base.db")
+	db, err := sql.Open("sqlite", "file:"+dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(`BEGIN EXCLUSIVE`); err != nil {
+	var tables int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&tables); err != nil {
+		t.Fatal(err)
+	}
+	shm, err := os.OpenFile(dbPath+"-shm", os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []int64{120, 122} {
+		lock := syscall.Flock_t{Type: syscall.F_WRLCK, Whence: io.SeekStart, Start: b, Len: 1}
+		if err := syscall.FcntlFlock(shm.Fd(), syscall.F_SETLK, &lock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := shm.WriteAt(bytes.Repeat([]byte{0xFF}, 48), 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range commands {
@@ -42,7 +66,10 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 		if strings.Contains(said, "SQLITE_BUSY") || strings.Contains(said, "database is locked") {
 			t.Errorf("%s shows the raw error: %s", c, said)
 		}
-		if !strings.Contains(r.stderr, "is busy") || !strings.Contains(r.stderr, "Try again") {
+		// A command that opens the store to change it is refused at the open, in #613's approved words; one
+		// that reads gets #544's. Both say to wait or stop what holds it.
+		openRefused := strings.Contains(r.stderr, "Another LocalBase process is using this root. Stop it or wait, then try again.")
+		if !openRefused && (!strings.Contains(r.stderr, "is busy") || !strings.Contains(r.stderr, "Try again")) {
 			t.Errorf("%s doesn't say what to do: %s", c, r.stderr)
 		}
 		if strings.Contains(r.stderr, " stop") && strings.Contains(r.stderr, "local-base") {
@@ -66,9 +93,7 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 	if r.code == 0 || out.Data.DatabaseProblem.Reason != "database_busy" || out.Data.Hardware == nil {
 		t.Errorf("--json doctor: %d %s", r.code, r.stdout)
 	}
-	if _, err := db.Exec(`ROLLBACK`); err != nil {
-		t.Fatal(err)
-	}
+	_ = shm.Close() // lets go of the locks; the next reader rebuilds the index from the -wal
 	for _, c := range commands {
 		if r := e.cli(nil, strings.Fields(c)...); r.code != 0 {
 			t.Errorf("%s after the writer let go: %d %s%s", c, r.code, r.stdout, r.stderr)
