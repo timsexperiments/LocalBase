@@ -539,3 +539,6 @@ export function interruptReply(message, detail) {
       artifact.state === "working" ? { id: artifact.id, label: artifact.label, state: "error", detail } : artifact),
   };
 }
+
+// Each person's under their own key, so the next person on this browser doesn't get them.
+export const personKey = () => document.documentElement.dataset.person ?? "none";

@@ -1,3 +1,5 @@
+import { personKey } from "./person.js";
+
 // The Lab's docked prompt (DESIGN §22.10): option chips show what their sheet
 // has selected, and the prompt grows with its text up to a cap. Results and
 // runs are server-rendered (htmx); nothing here is needed to submit.
@@ -30,7 +32,7 @@ syncChips();
 // --- examples and Try again --------------------------------------------------------
 // [data-fill] puts its text in the prompt (switching to its tool first when
 // data-fill-tab names another one) and focuses it, without sending.
-const fillKey = "localbase.lab.fill";
+const fillKey = () => `localbase.lab.fill.v2.${personKey()}`;
 const currentTab = () => location.pathname.split("/").pop();
 
 function fill(text) {
@@ -46,7 +48,7 @@ document.addEventListener("click", (event) => {
   if (!button) return;
   const tab = button.dataset.fillTab;
   if (tab && tab !== currentTab()) {
-    sessionStorage.setItem(fillKey, JSON.stringify({ tab, text: button.dataset.fill }));
+    sessionStorage.setItem(fillKey(), JSON.stringify({ tab, text: button.dataset.fill }));
     location.assign(`/app/studio/${encodeURIComponent(tab)}`);
     return;
   }
@@ -55,9 +57,9 @@ document.addEventListener("click", (event) => {
 
 function fillFromStorage() {
   try {
-    const saved = JSON.parse(sessionStorage.getItem(fillKey) ?? "null");
+    const saved = JSON.parse(sessionStorage.getItem(fillKey()) ?? "null");
     if (saved?.tab === currentTab()) {
-      sessionStorage.removeItem(fillKey);
+      sessionStorage.removeItem(fillKey());
       fill(saved.text);
     }
   } catch {

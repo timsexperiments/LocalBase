@@ -151,6 +151,15 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   stripWait = 3000;
   showRefused();
 });
+// Back can bring a page out of the browser's memory exactly as it was, whoever is signed in now,
+// and no-store doesn't prevent it. So a restored page is never shown:
+// it's blanked and fetched again, as whoever is here now.
+addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  document.documentElement.style.visibility = "hidden";
+  location.reload();
+});
+
 // A request this computer just refused says more than "Ready" does (chat.js). It lasts until
 // the person moves on, through refreshes.
 let refusedWord = null;
