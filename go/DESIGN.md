@@ -4962,6 +4962,25 @@ nothing. Over that, the request is dropped. The page reads the same either way, 
 again. `auth.magic-link-dropped` is logged at most once a minute, with no address. A flood can therefore delay a
 real person's link, and it can't reach anything else. SMTP has its own deadlines, so a worker always comes back.
 
+
+### 31.9 What a refused request costs
+
+A caller decides how much is wrong with a request, so what refusing it costs is bounded.
+
+- **An answer lists at most 100 problems,** and ends ", and more" if there were others.
+- **A caller's own key is cut to 64 bytes in an answer,** between characters, with "...".
+- **A list of unrecognized keys names at most 20,** then ", and more", on speech as well.
+
+Which requests are refused doesn't change. The status stays 400, `validation_failed` is unchanged, and
+`remote_media_not_allowed` still wins past the limit (§13.6 item 13). A request with few problems reads as it did.
+
+A request at the 25 MiB body limit allocates at most 4 GiB, which `TestARefusalAtTheBodyLimit` states: 2.6 GiB measured,
+and 3.6 GiB under the race detector, which turns `sync.Pool` off. An answer is at most 1 MiB, and about 14 KiB for the
+requests measured at that limit.
+
+On the decision route nothing past the limit can change the answer, so validating stops there, and it builds no text for
+what it won't list. Chat goes through everything, because content naming an address must still win.
+
 ## 27. UI v2: the Studio surfaces (2026-11-02)
 
 The second UI thread's part of §25: the Studio landing and its tools in Hearth. Each tool's
