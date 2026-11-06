@@ -82,7 +82,7 @@ func Open(path string) (*Store, error) {
 	// _txlock=immediate: writes never hit the deferred read-to-write upgrade,
 	// which returns SQLITE_BUSY without consulting the busy handler.
 	// journal_size_limit: what a checkpoint leaves of the -wal file, so a burst doesn't keep its size.
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_size_limit(" + strconv.Itoa(walSizeLimit) + ")&_txlock=immediate"
+	dsn := DSN(path, "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_size_limit("+strconv.Itoa(walSizeLimit)+")&_txlock=immediate")
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		held.letGo()
@@ -192,7 +192,7 @@ func OpenReadOnly(path string) (*Store, error) {
 		return nil, err
 	}
 	held := holdFile(read)
-	db, err := sql.Open("sqlite", "file:"+read+"?mode=ro&_pragma=busy_timeout(5000)")
+	db, err := sql.Open("sqlite", DSN(read, "mode=ro&_pragma=busy_timeout(5000)"))
 	if err == nil {
 		// Ping doesn't read the file, and a database that can't be read should fail here.
 		// Scan, not Err: only Scan gives the connection back, and sees a failure reading the row.
@@ -257,7 +257,13 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 		done = append(done, a)
 	}
+	// A read that fails partway would otherwise look like fewer migrations applied, and the rest
+	// would then be run again.
+	err = rows.Err()
 	rows.Close()
+	if err != nil {
+		return err
+	}
 	if len(done) > len(migrations) {
 		return fmt.Errorf("database has %d migrations but this build knows %d; a newer LocalBase wrote it", len(done), len(migrations))
 	}
