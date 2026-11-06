@@ -1,0 +1,222 @@
+[
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Authorization: Bearer abcdefghijklmnop token=hf_abcdefghijklmnop\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Authorization=[REDACTED] [REDACTED] token=[REDACTED]\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"payload {\\\"prompt\\\": \\\"hello\\\"}\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"[REDACTED REQUEST OR MODEL CONTENT]\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"see https://user:pass@example.com/x?api_key=secret&ok=1\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"see https://[REDACTED]@example.com/x?api_key=[REDACTED]\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"cookie: session=abc; other=1\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"cookie: [REDACTED]\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"\\u001b[31mred\\u001b[0m text\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"red text\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"token.refresh-abcdefghijklmnopqrstuvwxyz\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"token.refresh-abcdefghijklmnopqrstuvwxyz\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"Bad.Name\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"auth-token-abcdefghijklmnop\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"diagnostics\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"Gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"fatal\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"other\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"kokoro\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"not-a-uuid\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"00000000-0000-0000-0000-000000000000\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"00000000-0000-0000-0000-000000000000\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20 10:00:00\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00+02:00\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00+02:00\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-13-20T10:00:00Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"requestId\":\"req-1:a.b_c\"}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"requestId\":\"bad id\"}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"trace\":{\"traceId\":\"abababababababababababababababab\",\"spanId\":\"cdcdcdcdcdcdcdcd\"}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"trace\":{\"traceId\":\"00000000000000000000000000000000\",\"spanId\":\"cdcdcdcdcdcdcdcd\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"trace\":{\"traceId\":\"ABABABABABABABABABABABABABABABAB\",\"spanId\":\"cdcdcdcdcdcdcdcd\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"POST\",\"path\":\"/v1/chat/completions\",\"status\":200,\"durationMs\":12.5}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"POST\",\"path\":\"/v1/other\",\"status\":200,\"durationMs\":1}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"POST\",\"path\":\"/app/api/v1/models\",\"status\":200,\"durationMs\":1}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"TRACE\",\"path\":\"/health\",\"status\":200,\"durationMs\":1}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"GET\",\"path\":\"/health\",\"status\":200.5,\"durationMs\":1}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"GET\",\"path\":\"unmatched-route\",\"status\":404,\"durationMs\":3600001}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"http\":{\"method\":\"GET\",\"path\":\"/health\",\"status\":200,\"durationMs\":1,\"extra\":1}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"error\":{\"type\":\"Error\",\"message\":\"spawn failed: password=hunter2\"}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"error\":{\"message\":\"spawn failed: password=[REDACTED]\"}}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"error\":{\"type\":\"Error\",\"message\":\"failed\",\"code\":\"E1\"}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"error\":{\"message\":\"failed\"}}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"error\":{\"type\":\"\",\"message\":\"failed\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"model_id\":\"qwen\",\"api_key\":\"lb_abcdefghijklmnop\",\"prompt_tokens\":12,\"completion_tokens\":-1,\"ok\":true,\"note\":\"Bearer abcdefghijkl\",\"a.b-c_d\":1.5,\"total_tokens\":3}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"model_id\":\"qwen\",\"api_key\":\"[REDACTED]\",\"prompt_tokens\":12,\"completion_tokens\":\"[REDACTED]\",\"ok\":true,\"note\":\"Bearer [REDACTED]\",\"a.b-c_d\":1.5,\"total_tokens\":3}}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"Model\":\"x\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"model\":{\"nested\":true}}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"model\":\"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"k0\":0,\"k1\":1,\"k2\":2,\"k3\":3,\"k4\":4,\"k5\":5,\"k6\":6,\"k7\":7,\"k8\":8,\"k9\":9,\"k10\":10,\"k11\":11,\"k12\":12,\"k13\":13,\"k14\":14,\"k15\":15,\"k16\":16,\"k17\":17,\"k18\":18,\"k19\":19,\"k20\":20,\"k21\":21,\"k22\":22,\"k23\":23,\"k24\":24,\"k25\":25,\"k26\":26,\"k27\":27,\"k28\":28,\"k29\":29,\"k30\":30,\"k31\":31,\"k32\":32}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"k0\":0,\"k1\":1,\"k2\":2,\"k3\":3,\"k4\":4,\"k5\":5,\"k6\":6,\"k7\":7,\"k8\":8,\"k9\":9,\"k10\":10,\"k11\":11,\"k12\":12,\"k13\":13,\"k14\":14,\"k15\":15,\"k16\":16,\"k17\":17,\"k18\":18,\"k19\":19,\"k20\":20,\"k21\":21,\"k22\":22,\"k23\":23,\"k24\":24,\"k25\":25,\"k26\":26,\"k27\":27,\"k28\":28,\"k29\":29,\"k30\":30,\"k31\":31}}",
+  "accepted": true,
+  "diagnostics": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"k0\":0,\"k1\":1,\"k2\":2,\"k3\":3,\"k4\":4,\"k5\":5,\"k6\":6,\"k7\":7,\"k8\":8,\"k9\":9,\"k10\":10,\"k11\":11,\"k12\":12,\"k13\":13,\"k14\":14,\"k15\":15,\"k16\":16,\"k17\":17,\"k18\":18,\"k19\":19,\"k20\":20,\"k21\":21,\"k22\":22,\"k23\":23,\"k24\":24,\"k25\":25,\"k26\":26,\"k27\":27,\"k28\":28,\"k29\":29,\"k30\":30,\"k31\":31}}"
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"attributes\":{\"1\":\"one\",\"2\":\"two\",\"b\":\"b\"}}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\",\"extra\":true}",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":1,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\",\"message\":\"Request served.\"}",
+  "accepted": false
+ },
+ {
+  "line": "{",
+  "accepted": false
+ },
+ {
+  "line": "[]",
+  "accepted": false
+ },
+ {
+  "line": "\"text\"",
+  "accepted": false
+ },
+ {
+  "line": "{\"schemaVersion\":2,\"id\":\"0b7c4a62-0f3b-4f6f-9d0e-6a8a1d2c3e4f\",\"timestamp\":\"2026-10-20T10:00:00.000Z\",\"severity\":\"info\",\"eventName\":\"gateway.request\",\"category\":\"http\",\"component\":\"gateway\",\"runtime\":\"gateway\"}",
+  "accepted": false
+ }
+]

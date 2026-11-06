@@ -1,0 +1,78 @@
+[
+ {
+  "doc": "# A typical declarative config\nversion = 1\n\n[gateway]\nhost = \"127.0.0.1\"\nport = 2273\n\n[llm]\nselected = [\"qwen2.5-coder-7b-instruct-q4_k_m\", \"clef-flash-q4_k_m\"]\nactive = \"qwen2.5-coder-7b-instruct-q4_k_m\"\nctxSize = 131_072\nparallel = \"auto\"\nratio = 0.75\nexp = 1e3\nneg = -42\nhex = 0xff\n\n[memory.systemReserve]\npercent = 15.0\nminimumGb = 8\n\n[[access.users]]\nemail = 'tim@example.com'\nroles = [\"admin\", \"user\"]\n\n[[access.users]]\nemail = \"b@example.com\"\nroles = []\nmeta = { a = 1, \"b c\" = \"two\", nested.key = true }\n\n[strings]\nescaped = \"tab\\there \\\"quoted\\\" \\u00e9 \\\\ end\"\nliteral = 'C:\\path\\no\\escape'\nmulti = \"\"\"\nfirst\nsecond \\\n  joined\"\"\"\nmultilit = '''\nraw \\n text'''\n\"quoted key\" = \"x\"\ndotted.inner = 3",
+  "parsed": {
+   "version": 1,
+   "gateway": {
+    "host": "127.0.0.1",
+    "port": 2273
+   },
+   "llm": {
+    "selected": [
+     "qwen2.5-coder-7b-instruct-q4_k_m",
+     "clef-flash-q4_k_m"
+    ],
+    "active": "qwen2.5-coder-7b-instruct-q4_k_m",
+    "ctxSize": 131072,
+    "parallel": "auto",
+    "ratio": 0.75,
+    "exp": 1000,
+    "neg": -42,
+    "hex": 255
+   },
+   "memory": {
+    "systemReserve": {
+     "percent": 15,
+     "minimumGb": 8
+    }
+   },
+   "access": {
+    "users": [
+     {
+      "email": "tim@example.com",
+      "roles": [
+       "admin",
+       "user"
+      ]
+     },
+     {
+      "email": "b@example.com",
+      "roles": [],
+      "meta": {
+       "a": 1,
+       "b c": "two",
+       "nested": {
+        "key": true
+       }
+      }
+     }
+    ]
+   },
+   "strings": {
+    "escaped": "tab\there \"quoted\" é \\ end",
+    "literal": "C:\\path\\no\\escape",
+    "multi": "first\nsecond joined",
+    "multilit": "raw \\n text",
+    "quoted key": "x",
+    "dotted": {
+     "inner": 3
+    }
+   }
+  }
+ },
+ {
+  "doc": "a = [\n  1,\n  2, # comment\n  3,\n]\nempty = \"\"\nbools = [true, false]\n",
+  "parsed": {
+   "a": [
+    1,
+    2,
+    3
+   ],
+   "empty": "",
+   "bools": [
+    true,
+    false
+   ]
+  }
+ }
+]

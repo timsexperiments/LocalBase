@@ -1,5 +1,9 @@
 # Authentication and authorization
 
+> For a browser on the same computer, you don't need any of this: see the [first-run sign-in link](first-run-sign-in.md). `--no-auth` is [for local development only](no-auth.md).
+
+> GitHub sign-in applies to the older TypeScript version. The Go version offers OIDC, Cloudflare Access and magic links; existing GitHub registrations can only be listed and removed.
+
 LocalBase separates browser users from machine clients.
 
 | Caller              | Credential                                             | Configuration           |
@@ -24,7 +28,7 @@ local-base --non-interactive --json access cloudflare \
   --team-domain "$LOCALBASE_ACCESS_TEAM_DOMAIN" \
   --audience "$LOCALBASE_ACCESS_AUDIENCE" \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -41,7 +45,7 @@ local-base --non-interactive --json access oidc add \
   --client-id "$LOCALBASE_OIDC_CLIENT_ID" \
   --client-secret-env LOCALBASE_OIDC_CLIENT_SECRET \
   --origin "$LOCALBASE_PUBLIC_ORIGIN" \
-  --permissions 'inference:chat,models:read,models:manage'
+  --permissions 'inference:chat,models:read'
 local-base --non-interactive --json restart
 ```
 
@@ -50,14 +54,30 @@ environment. LocalBase stores the secret privately and never returns it from
 the CLI, management endpoint, or browser UI. Use `--public-client` only for a
 provider registration that explicitly permits public clients.
 
-The examples grant `models:manage` intentionally. Omit `--permissions` to use
-the safer defaults, which allow chat and model discovery only.
+`--permissions` applies to everyone the provider accepts, and for a public issuer
+such as Google or GitHub that may be anyone with an account. Without it, signing in
+gives nothing until a policy or an invitation says otherwise.
+
+Never give everyone a provider accepts `models:manage`, `access:manage`,
+`keys:manage` or `system:manage`. These are powerful permissions: `models:manage`
+decides what this computer downloads and runs, `access:manage` and `keys:manage`
+decide who gets in and what they may do, and `system:manage` changes how the
+service itself behaves. Give them to named people, with a role and a binding, as
+in the policy below.
+
+To give yourself access, name your address. It gets every permission, and nobody
+else gets anything:
+
+```bash
+local-base --non-interactive --json access policy starter --email you@example.com
+```
 
 Each registration has a stable ID and display name. Repeat the command with a
 different ID to add another provider; using an existing ID updates it. With
 multiple registrations, `/app/login` presents a provider picker. Automation can
 list and remove registrations with `access oidc list` and
 `access oidc remove ID`.
+Removing the last registration disables browser access.
 
 OIDC discovery keeps this integration provider-neutral. Google, Microsoft
 Entra, Okta, Auth0, Keycloak, and other standards-compliant OIDC providers use
@@ -138,6 +158,18 @@ Provider permissions apply to every verified browser user unless a local access
 policy is configured. A policy maps verified identities to named roles. Email
 bindings only match provider-verified email claims.
 
+A default role gives its permissions to everyone who signs in, whoever they are.
+It is a deliberate choice, and `local-base doctor`, `local-base status` and the
+access page say what it means. Someone with no permissions gets no session, and
+a page telling them so.
+
+Email and domain bindings trust one sign-in provider, so a provider you add
+later can't claim someone's address and take their role. With one provider
+configured, you can leave `issuer` out and LocalBase uses it. With several, each
+binding must name its provider's issuer. For OIDC that is the issuer you
+registered, for Cloudflare Access `https://<team-domain>`, and for magic links
+`<origin>/magic-link`.
+
 ```json
 {
   "roles": [
@@ -210,11 +242,22 @@ local-base --non-interactive --json access users roles \
   --roles user,video-user
 ```
 
-An invited user is pending until a provider returns that exact verified email.
-LocalBase links the provider identity and activates the user in the same
-authorization transaction. Disable a user to deny every browser permission,
-including default, email, and email-domain roles. Enable or remove users with
-`access users enable`, `access users disable`, and `access users remove`.
+An invited user is pending until their provider returns that exact verified
+email. LocalBase links the provider identity and activates the user in the same
+authorization transaction. With several providers configured, add `--issuer` to
+say which one the person will use. Disable a user to deny every browser
+permission, including default, email, and email-domain roles. Enable or remove
+users with `access users enable`, `access users disable`, and `access users remove`.
+
+Bindings and invitations from before this rule name no provider, and grant
+nothing until they do. With one provider configured, the next start gives it to
+them. With several, LocalBase doesn't guess: the gateway starts, `local-base doctor`,
+`local-base status` and the access page say how many are waiting, and you choose:
+
+```bash
+local-base --non-interactive --json access bindings adopt \
+  --issuer https://identity.example.com
+```
 
 LocalBase refuses `access policy clear` while managed users exist. Remove the
 users first if returning to provider-wide permissions is intentional.
@@ -250,7 +293,19 @@ the scope, and keys created with explicit scopes, do not receive it; add it with
 `keys scopes`.
 
 Keys that administer LocalBase need explicit management scopes. Ordinary
-inference keys do not receive them.
+inference keys do not receive them. Give a key only what its job needs. A key that
+installs models for a deployment needs only this:
+
+```bash
+local-base --non-interactive --json keys create \
+  --name model-installer \
+  --scopes 'models:read,models:manage'
+```
+
+A key holding `access:manage`, `keys:manage` and `models:manage` together is an
+admin key: it can change who has access to LocalBase, make other keys, and decide
+what this computer downloads and runs. Create one only if a piece of automation
+does all three, and keep it with that automation:
 
 ```bash
 local-base --non-interactive --json keys create \
@@ -333,6 +388,19 @@ returned. Email delivery changes are live and do not restart the gateway.
 The gateway checks `access:read`, `access:manage`, `keys:read`, or
 `keys:manage` for each operation. Provider responses omit client secrets.
 API-key creation and rotation return a new secret once.
+
+A caller can only hand out what it holds. A key or a signed-in person can grant
+only permissions they hold, and can rotate, revoke or change only keys whose
+permissions they all hold. A key with an expiry can't give anything a longer
+life than it has. These refusals answer 403 with `exceeds_caller_permissions`
+or `exceeds_caller_expiry`. A key can rotate or revoke itself; rotating returns
+the only copy of the new secret. The local CLI is not bound by these rules, and
+it is the way back if nobody is left who holds a permission.
+
+The same applies to access management. A holder of `access:manage` can assign
+only roles within what it holds, and can change only people, roles and bindings
+within it. Changing sign-in providers or email delivery needs every permission
+a sign-in can grant, because they decide who proves to be whom.
 
 Use `local-base access show --json` to inspect non-secret provider state. If a
 provider is misconfigured, correct it with the local CLI and restart LocalBase.

@@ -1,5 +1,25 @@
+# Dependencies and generated TypeScript assets (legacy src/)
 node_modules/
-dist/
-.env
 src/db/migration-assets.ts
 src/ui/assets.generated.ts
+
+# Build output. CI rejects these if they are ever committed.
+dist/
+/release/
+/release-artifacts/
+go/dist/
+go/fakebackend
+go/localbase
+go/local-base
+
+# Local research, scratch data and model files
+.design/
+.scratch/
+.cache/
+*.gguf
+*.safetensors
+
+# Secrets and machine state
+.env
+.env.*
+.DS_Store

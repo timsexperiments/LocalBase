@@ -1,0 +1,28 @@
+{
+  "modelId": "whisper-tiny-q8_0",
+  "displayName": "Whisper Tiny",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "tiny",
+  "size": "tiny",
+  "quant": "Q8_0",
+  "storageGb": 0.05,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-tiny-q8_0.bin",
+      "filename": "ggml-tiny-q8_0.bin",
+      "expectedSizeBytes": 43537433,
+      "sha256": "c2085835d3f50733e2ff6e4b41ae8a2b8d8110461e18821b09a15c40c42d1cca",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "Multilingual transcription. Vocabulary and mel filters are bundled; no Core ML encoder required."
+}

@@ -1,0 +1,336 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+)
+
+// The Go extension schema holds state the TS implementation does not have.
+// It is not a drizzle migration: TS rejects a database whose
+// __drizzle_migrations rows differ from its journal, which would break
+// binary-swap rollback. These tables are created idempotently and recorded
+// in go_schema; TS ignores tables it does not know.
+
+// goSchemaVersion stays 1 while tables are only added: a deployed binary
+// refuses a newer version, so raising it breaks rollback to it
+// (TestGoSchemaVersionForRollback, DESIGN §20.8).
+const goSchemaVersion = 1
+
+var goSchema = []string{
+	`CREATE TABLE IF NOT EXISTS go_schema (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`,
+	// Imported logical models (models.Model JSON). Device-local choices are
+	// never stored here.
+	`CREATE TABLE IF NOT EXISTS imported_models (
+		id TEXT PRIMARY KEY,
+		definition TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
+	// Manual backend choices, per model and device. Automatic mode is the
+	// absence of a row.
+	`CREATE TABLE IF NOT EXISTS model_backend_selections (
+		model_id TEXT NOT NULL,
+		device_id TEXT NOT NULL,
+		backend_id TEXT NOT NULL,
+		variant_id TEXT,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY (model_id, device_id)
+	)`,
+	// One-time local sign-in (DESIGN §28): hashes only. Added without raising
+	// goSchemaVersion, like model_placements below.
+	`CREATE TABLE IF NOT EXISTS local_login_links (
+		token_hash TEXT PRIMARY KEY,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS local_sessions (
+		id TEXT PRIMARY KEY,
+		token_hash TEXT NOT NULL UNIQUE,
+		created_at INTEGER NOT NULL,
+		last_seen_at INTEGER NOT NULL,
+		idle_expires_at INTEGER NOT NULL,
+		absolute_expires_at INTEGER NOT NULL
+	)`,
+	// Usage (DESIGN §32): hourly totals, never content, and no per-request rows. Added
+	// without raising goSchemaVersion, like model_placements below.
+	`CREATE TABLE IF NOT EXISTS usage_hourly (
+		hour INTEGER NOT NULL,
+		principal_kind TEXT NOT NULL,
+		principal_id TEXT NOT NULL,
+		route TEXT NOT NULL,
+		model_id TEXT NOT NULL,
+		status INTEGER NOT NULL,
+		requests INTEGER NOT NULL,
+		with_tokens INTEGER NOT NULL,
+		input_tokens INTEGER NOT NULL,
+		output_tokens INTEGER NOT NULL,
+		duration_ms INTEGER NOT NULL,
+		queue_ms INTEGER NOT NULL,
+		latency TEXT NOT NULL,
+		PRIMARY KEY (hour, principal_kind, principal_id, route, model_id, status)
+	) WITHOUT ROWID`,
+	// Go-only settings: one row per key (for example speech.provenance-marking).
+	`CREATE TABLE IF NOT EXISTS go_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`,
+	// CPU/GPU placement per model and device (DESIGN §20). Added without
+	// raising goSchemaVersion: the deployed Go binary refuses a newer
+	// version, and an unknown table is harmless to it and to TS (§20.8).
+	`CREATE TABLE IF NOT EXISTS model_placements (
+		model_id TEXT NOT NULL,
+		device_id TEXT NOT NULL,
+		mode TEXT NOT NULL,
+		gpu_layers INTEGER,
+		cpu_moe_layers INTEGER,
+		updated_at TEXT NOT NULL,
+		PRIMARY KEY (model_id, device_id)
+	)`,
+	// Which sign-in provider vouches for an email or domain binding (DESIGN §13.6, item
+	// 5b). The binding itself stays in its own table, which a rollback reads as it always
+	// did. value is the address or the domain.
+	`CREATE TABLE IF NOT EXISTS go_binding_issuers (
+		kind TEXT NOT NULL,
+		role_id TEXT NOT NULL,
+		value TEXT NOT NULL,
+		issuer TEXT NOT NULL,
+		PRIMARY KEY (kind, role_id, value, issuer)
+	)`,
+	// Which sign-in provider a person was invited through.
+	`CREATE TABLE IF NOT EXISTS go_invitation_issuers (
+		user_id TEXT PRIMARY KEY,
+		issuer TEXT NOT NULL
+	)`,
+}
+
+func applyGoSchema(ctx context.Context, tx *sql.Tx) error {
+	for _, stmt := range goSchema {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("go schema: %w", err)
+		}
+	}
+	var v int
+	err := tx.QueryRowContext(ctx, `SELECT version FROM go_schema WHERE id = 1`).Scan(&v)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = tx.ExecContext(ctx, `INSERT INTO go_schema (id, version) VALUES (1, ?)`, goSchemaVersion)
+		return err
+	case err != nil:
+		return err
+	case v > goSchemaVersion:
+		return fmt.Errorf("database extension schema %d is newer than this build (%d)", v, goSchemaVersion)
+	}
+	return nil
+}
+
+func nowISO() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }
+
+// ImportedModel is a stored model definition (JSON).
+type ImportedModel struct {
+	ID         string
+	Definition []byte
+	CreatedAt  string
+	UpdatedAt  string
+}
+
+// SaveImportedModel inserts or replaces a model definition.
+func (s *Store) SaveImportedModel(ctx context.Context, id string, definition []byte) error {
+	t := nowISO()
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO imported_models (id, definition, created_at, updated_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET definition = excluded.definition, updated_at = excluded.updated_at`, id, string(definition), t, t)
+	return err
+}
+
+// ImportedModels lists stored definitions by id.
+func (s *Store) ImportedModels(ctx context.Context) ([]ImportedModel, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, definition, created_at, updated_at FROM imported_models ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ImportedModel
+	for rows.Next() {
+		var m ImportedModel
+		var def string
+		if err := rows.Scan(&m.ID, &def, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		m.Definition = []byte(def)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// DeleteImportedModel removes a definition and every device's choice for it.
+func (s *Store) DeleteImportedModel(ctx context.Context, id string) (bool, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM imported_models WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	_, err = s.DB.ExecContext(ctx, `DELETE FROM model_backend_selections WHERE model_id = ?`, id)
+	return n > 0, err
+}
+
+// BackendChoice is a stored manual selection.
+type BackendChoice struct {
+	BackendID string
+	VariantID string
+	UpdatedAt string
+}
+
+// BackendChoice returns this device's manual choice for a model, or nil
+// (automatic mode).
+func (s *Store) BackendChoice(ctx context.Context, modelID, deviceID string) (*BackendChoice, error) {
+	var c BackendChoice
+	var variant sql.NullString
+	err := s.DB.QueryRowContext(ctx, `SELECT backend_id, variant_id, updated_at FROM model_backend_selections WHERE model_id = ? AND device_id = ?`,
+		modelID, deviceID).Scan(&c.BackendID, &variant, &c.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	c.VariantID = variant.String
+	return &c, err
+}
+
+// SetBackendChoice stores a manual choice for this device.
+func (s *Store) SetBackendChoice(ctx context.Context, modelID, deviceID, backendID, variantID string) error {
+	var variant any
+	if variantID != "" {
+		variant = variantID
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO model_backend_selections (model_id, device_id, backend_id, variant_id, updated_at)
+		VALUES (?, ?, ?, ?, ?) ON CONFLICT (model_id, device_id) DO UPDATE SET backend_id = excluded.backend_id,
+		variant_id = excluded.variant_id, updated_at = excluded.updated_at`, modelID, deviceID, backendID, variant, nowISO())
+	return err
+}
+
+// ResetBackendChoice returns a model to automatic mode on this device.
+func (s *Store) ResetBackendChoice(ctx context.Context, modelID, deviceID string) (bool, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM model_backend_selections WHERE model_id = ? AND device_id = ?`, modelID, deviceID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// Connection caps: Go-only settings a service-managed gateway reads at start.
+const (
+	MaxConnectionsKey      = "gateway.max-connections"
+	MaxConnectionsPerIPKey = "gateway.max-connections-per-ip"
+)
+
+// The opt-ins for imports (DESIGN §31.2). Only the CLI on the host sets them, never
+// an API route. Allowing a LAN mirror does not allow reading this machine's files.
+const (
+	PrivateImportsKey   = "imports.allow-private"
+	LocalPathImportsKey = "imports.allow-local-paths"
+)
+
+// What one import may cost, when this root sets its own limits (DESIGN §31.3). Only the
+// CLI on the host sets them. They apply to the next import.
+const (
+	ImportDeadlineKey   = "imports.deadline-hours"
+	ImportMaxUnknownKey = "imports.max-unknown-gib"
+)
+
+// SettingInt reads a positive whole-number setting. Anything else counts as unset.
+func (s *Store) SettingInt(ctx context.Context, key string) (int, bool) {
+	v, ok, err := s.Setting(ctx, key)
+	if err != nil || !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	return n, err == nil && n > 0
+}
+
+func (s *Store) settingOn(ctx context.Context, key string) bool {
+	v, ok, err := s.Setting(ctx, key)
+	return err == nil && ok && v == "on"
+}
+
+// PrivateImportsAllowed reports the opt-in to sources at private addresses. An
+// unreadable setting means no.
+func (s *Store) PrivateImportsAllowed(ctx context.Context) bool {
+	return s.settingOn(ctx, PrivateImportsKey)
+}
+
+// LocalPathImportsAllowed reports the opt-in to local paths through the API and
+// pages. An unreadable setting means no.
+func (s *Store) LocalPathImportsAllowed(ctx context.Context) bool {
+	return s.settingOn(ctx, LocalPathImportsKey)
+}
+
+// Setting reads a Go-only setting ("" and false when unset).
+func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
+	var v string
+	err := s.DB.QueryRowContext(ctx, `SELECT value FROM go_settings WHERE key = ?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return v, err == nil, err
+}
+
+// SetSetting stores a Go-only setting.
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, key, value, nowISO())
+	return err
+}
+
+// Placement is a stored placement choice (DESIGN §20.1). The context size is
+// not stored here: it is the shared ctxSize/ctxMode setting (§20.8).
+type Placement struct {
+	Mode         string
+	GPULayers    *int
+	CPUMoELayers *int
+	UpdatedAt    string
+}
+
+// Placement reads a model's placement on a device (nil: auto).
+func (s *Store) Placement(ctx context.Context, modelID, deviceID string) (*Placement, error) {
+	var p Placement
+	var gpu, moe sql.NullInt64
+	err := s.DB.QueryRowContext(ctx, `SELECT mode, gpu_layers, cpu_moe_layers, updated_at FROM model_placements WHERE model_id = ? AND device_id = ?`,
+		modelID, deviceID).Scan(&p.Mode, &gpu, &moe, &p.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if gpu.Valid {
+		v := int(gpu.Int64)
+		p.GPULayers = &v
+	}
+	if moe.Valid {
+		v := int(moe.Int64)
+		p.CPUMoELayers = &v
+	}
+	return &p, nil
+}
+
+// SetPlacement stores a placement choice.
+func (s *Store) SetPlacement(ctx context.Context, modelID, deviceID string, p Placement) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO model_placements (model_id, device_id, mode, gpu_layers, cpu_moe_layers, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (model_id, device_id) DO UPDATE SET mode = excluded.mode,
+		gpu_layers = excluded.gpu_layers, cpu_moe_layers = excluded.cpu_moe_layers, updated_at = excluded.updated_at`,
+		modelID, deviceID, p.Mode, p.GPULayers, p.CPUMoELayers, nowISO())
+	return err
+}
+
+// ResetPlacement returns a model to auto on a device.
+func (s *Store) ResetPlacement(ctx context.Context, modelID, deviceID string) (bool, error) {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM model_placements WHERE model_id = ? AND device_id = ?`, modelID, deviceID)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}

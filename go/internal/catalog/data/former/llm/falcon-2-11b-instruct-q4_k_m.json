@@ -1,0 +1,29 @@
+{
+  "modelId": "falcon-2-11b-instruct-q4_k_m",
+  "displayName": "Falcon 2 11B Instruct",
+  "kind": "llm",
+  "provider": "TII",
+  "family": "Falcon",
+  "version": "2",
+  "size": "11B",
+  "quant": "Q4_K_M",
+  "storageGb": 7,
+  "source": "https://huggingface.co/bartowski/Falcon3-10B-Instruct-GGUF",
+  "repositoryRevision": "a826d55e0af24842680260d23f7221b6138c342a",
+  "artifacts": [
+    {
+      "sourcePath": "Falcon3-10B-Instruct-Q4_K_M.gguf",
+      "filename": "Falcon3-10B-Instruct-Q4_K_M.gguf",
+      "expectedSizeBytes": 6287521472,
+      "sha256": "0a33327bd71e1788a8e9f17889824a17a65efd3f96a4b2a5e2bc6ff2f39b8241",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 32768,
+  "capabilities": ["tool-calling", "multilingual"],
+  "commercialStatus": "open",
+  "catch": "TII Falcon LLM License (falcon-llm-license): https://falconllm.tii.ae/falcon-terms-and-conditions.html.",
+  "notes": "The pinned file is bartowski's Q4_K_M GGUF of tiiuae/Falcon3-10B-Instruct (Falcon3 10B, not Falcon 2 11B). GGUF header: architecture llama, 32,768-token training context. Upstream lists English, French, Spanish and Portuguese."
+}

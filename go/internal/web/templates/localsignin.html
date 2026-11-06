@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="{{themeColor "light"}}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{themeColor "dark"}}" media="(prefers-color-scheme: dark)">
+<title>{{if eq .Mode "busy"}}Can’t check your sign-in{{else}}Sign in{{end}} · LocalBase</title>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+</head>
+<body>
+<main class="welcome signin">
+  <span aria-hidden="true" class="welcome-mark"><svg viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg></span>
+  {{if eq .Mode "redeem"}}
+  <h1 class="welcome-title">Signing you in…</h1>
+  <div class="skeleton mt-5 h-2 rounded-full" aria-hidden="true"></div>
+  <form id="redeem" method="post" action="{{.Action}}"><input type="hidden" name="token"></form>
+  <noscript><p class="mt-3 text-muted">This page needs JavaScript to finish signing in.</p></noscript>
+  <script>{{.Script}}</script>
+  {{else if eq .Mode "expired"}}
+  <h1 class="welcome-title">This link has run out</h1>
+  <p class="mt-3 text-muted">A sign-in link works once, for about ten minutes.</p>
+  {{template "localhelp" .}}
+  {{else if eq .Mode "failed"}}
+  <h1 class="welcome-title">That sign-in didn’t work</h1>
+  <p class="mt-3 text-muted">Nothing changed. You can try again.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Try again</a>
+  {{else if eq .Mode "signed-out"}}
+  <h1 class="welcome-title">You’re signed out</h1>
+  <p class="mt-3 text-muted">Your chats on this computer are still here.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in again</a>
+  {{if .Provider}}<a class="welcome-skip mt-1 w-full" href="/app/login?switch=1">Use another account</a>{{end}}
+  {{else if eq .Mode "busy"}}
+  <h1 class="welcome-title">We can’t check your sign-in right now</h1>
+  <p class="mt-3 text-muted">LocalBase is busy. Try again in a moment.</p>
+  <a class="btn btn-primary mt-5 w-full" href="">Try again</a>
+  {{else if eq .Mode "unavailable"}}
+  <h1 class="welcome-title">That way of signing in isn’t here</h1>
+  <p class="mt-3 text-muted">The link may be old.</p>
+  <a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in</a>
+  {{else if eq .Mode "wrong-address"}}
+  <h1 class="welcome-title">Sign in at the usual address</h1>
+  <p class="mt-3 text-muted">This LocalBase signs people in at its own address.</p>
+  <a class="btn btn-primary mt-5 w-full" href="{{.Origin}}/app">Go to LocalBase</a>
+  {{else if eq .Mode "too-many"}}
+  <h1 class="welcome-title">Too many tries</h1>
+  <p class="mt-3 text-muted">Wait a minute and try again.</p>
+  {{else}}
+  <h1 class="welcome-title">Sign in to LocalBase</h1>
+  {{template "localhelp" .}}
+  {{end}}
+</main>
+</body>
+</html>
+{{define "localhelp"}}{{if .Local}}<p class="mt-3 text-muted">To make a new link, run this in a terminal on this computer, then open the link it prints.</p>
+<pre class="command" tabindex="0" aria-label="Command"><code>local-base access login-link</code></pre>
+<p class="mt-4 text-sm text-muted">To sign in from a phone or another computer, set up a sign-in provider first.</p>{{else}}<p class="mt-3 text-muted">Browser sign-in is not set up. Ask the owner of this computer to set it up.</p>
+<p class="mt-2 text-muted">If this is your computer, open LocalBase in a browser on it.</p>{{end}}{{end}}

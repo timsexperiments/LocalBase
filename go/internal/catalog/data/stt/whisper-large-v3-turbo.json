@@ -1,0 +1,28 @@
+{
+  "modelId": "whisper-large-v3-turbo",
+  "displayName": "Whisper Large V3 Turbo",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "large-v3-turbo",
+  "size": "large",
+  "quant": "F16",
+  "storageGb": 1.62,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-large-v3-turbo.bin",
+      "filename": "ggml-large-v3-turbo.bin",
+      "expectedSizeBytes": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text", "multilingual", "translation"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "whisper.cpp ggml F16 conversion of OpenAI Whisper large-v3-turbo (809M parameters, multilingual): large-v3 with the decoder reduced from 32 to 4 layers. File header: 32 encoder and 4 decoder layers, 128 mel bins. Vocabulary and mel filters are bundled; no Core ML encoder required."
+}

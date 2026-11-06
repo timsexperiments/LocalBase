@@ -1,0 +1,29 @@
+{
+  "modelId": "deepseek-coder-6.7b-instruct-q4_k_m",
+  "displayName": "DeepSeek Coder 6.7B Instruct",
+  "kind": "llm",
+  "provider": "DeepSeek",
+  "family": "DeepSeek-Coder",
+  "version": "1",
+  "size": "6.7B",
+  "quant": "Q4_K_M",
+  "storageGb": 4.8,
+  "source": "https://huggingface.co/TheBloke/deepseek-coder-6.7B-Instruct-GGUF",
+  "repositoryRevision": "9e221e6b41cb1bf1c5d8f9718e81e3dc781f7557",
+  "artifacts": [
+    {
+      "sourcePath": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+      "filename": "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+      "expectedSizeBytes": 4083015904,
+      "sha256": "92da6238854f2fa902d8b2ad79d548536af1d3ab06821f323bd5bbcea2013276",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 16384,
+  "capabilities": ["tool-calling", "code-generation", "code-editing"],
+  "commercialStatus": "open",
+  "catch": "DeepSeek License; the upstream license permits commercial use.",
+  "notes": "TheBloke Q4_K_M GGUF of deepseek-ai/deepseek-coder-6.7b-instruct. GGUF header: architecture llama, 16,384-token training context."
+}

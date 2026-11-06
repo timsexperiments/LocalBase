@@ -1,0 +1,497 @@
+package runtime
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+func quietLog() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+func pidAlive(pid int) bool {
+	_, _, ok := processIdentity(pid)
+	return ok
+}
+
+// orphanLike starts a group leader on its own, as a dead gateway's backend looks to
+// its successor: not a Process of this gateway, no guard, reaped when it ends.
+func orphanLike(t *testing.T, script string) int {
+	t.Helper()
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	pid := cmd.Process.Pid
+	go func() { _ = cmd.Wait() }()
+	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+	return pid
+}
+
+func writeRecord(t *testing.T, root string, rec backendRecord) string {
+	t.Helper()
+	dir := backendRecordsDir(root)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	id, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no root identity")
+	}
+	rec.Root = id
+	b, _ := json.Marshal(rec)
+	path := filepath.Join(dir, "llm-"+strconv.Itoa(rec.PID)+".json")
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func waitGone(pid int, d time.Duration) bool {
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if !pidAlive(pid) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSweepStopsARecordedSurvivor(t *testing.T) {
+	root := t.TempDir()
+	pid := orphanLike(t, "exec sleep 60")
+	time.Sleep(50 * time.Millisecond) // past the exec, so the identity is sleep's
+	start, exe, ok := processIdentity(pid)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	path := writeRecord(t, root, backendRecord{Runtime: "llm", PID: pid, StartTime: start, Exe: exe})
+	if n := SweepBackends(root, quietLog()); n != 1 {
+		t.Errorf("stopped %d", n)
+	}
+	if !waitGone(pid, 2*time.Second) {
+		t.Error("the survivor is still running")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("the record is still there")
+	}
+}
+
+// A pid reused by something else is never touched, whichever part differs.
+func TestSweepSparesAReusedPid(t *testing.T) {
+	pid := orphanLike(t, "exec sleep 60")
+	time.Sleep(50 * time.Millisecond)
+	start, exe, ok := processIdentity(pid)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	for name, rec := range map[string]backendRecord{
+		"start time": {PID: pid, StartTime: "Thu Jan  1 00:00:00 1970", Exe: exe},
+		"executable": {PID: pid, StartTime: start, Exe: "/somewhere/else"},
+	} {
+		root := t.TempDir()
+		path := writeRecord(t, root, rec)
+		if n := SweepBackends(root, quietLog()); n != 0 {
+			t.Errorf("%s: stopped %d", name, n)
+		}
+		if !pidAlive(pid) {
+			t.Fatalf("%s: killed a process that is not ours", name)
+		}
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s: the stale record is still there", name)
+		}
+	}
+}
+
+// The whole group goes, including a member that outlived its leader.
+func TestSweepStopsGroupWhoseLeaderIsGone(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(t.TempDir(), "child")
+	// The member ignores TERM, so only the group's KILL can end it.
+	leader := orphanLike(t, `sh -c "trap '' TERM; exec sleep 60" & echo $! > `+out+`; exit 0`)
+	var child int
+	for deadline := time.Now().Add(3 * time.Second); child == 0 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		b, _ := os.ReadFile(out)
+		child, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+	}
+	if !waitGone(leader, 3*time.Second) || child == 0 {
+		t.Fatalf("setup: leader %d child %d", leader, child)
+	}
+	time.Sleep(50 * time.Millisecond) // the member is past its trap
+	writeRecord(t, root, backendRecord{PID: leader, StartTime: "any", Exe: "any"})
+	if n := SweepBackends(root, quietLog()); n != 1 {
+		t.Errorf("stopped %d", n)
+	}
+	if !waitGone(child, 2*time.Second) {
+		t.Error("the group's other member is still running")
+	}
+}
+
+func TestSweepIgnoresWhatIsAlreadyGone(t *testing.T) {
+	root := t.TempDir()
+	pid := orphanLike(t, "exit 0")
+	if !waitGone(pid, 3*time.Second) {
+		t.Fatal("setup")
+	}
+	writeRecord(t, root, backendRecord{PID: pid, StartTime: "x", Exe: "y"})
+	writeRecord(t, root, backendRecord{PID: 1, StartTime: "x", Exe: "y"})
+	if n := SweepBackends(root, quietLog()); n != 0 {
+		t.Errorf("stopped %d", n)
+	}
+	// A process whose identity cannot be read is not proof of anything: on Linux
+	// that is a root process seen by a normal user.
+	if os.Getuid() != 0 {
+		rec := backendRecord{PID: 1, StartTime: "x", Exe: "y"}
+		if sweepOne(rec) {
+			t.Error("swept pid 1")
+		}
+	}
+}
+
+// Readiness comes from the child: another server answering on the port does not
+// count while the child is alive either.
+func TestWaitHealthyRejectsForeignListener(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	err = p.WaitHealthy(context.Background(), srv.URL, 5*time.Second)
+	if err == nil || !strings.Contains(err.Error(), strconv.Itoa(os.Getpid())) {
+		t.Errorf("want a refusal naming pid %d: %v", os.Getpid(), err)
+	}
+	p.ForeignListenerOK = true // a custom launch may serve from outside its group
+	if err := p.WaitHealthy(context.Background(), srv.URL, 5*time.Second); err != nil {
+		t.Errorf("custom launch: %v", err)
+	}
+}
+
+// A backend records itself for its whole life, and stops cleanly with its guard.
+func TestBackendRecordFollowsTheProcess(t *testing.T) {
+	root := t.TempDir()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordBackend(root, "llm", 1234, p, quietLog())
+	path := filepath.Join(backendRecordsDir(root), "llm-"+strconv.Itoa(p.PID())+".json")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode %v", info.Mode().Perm())
+	}
+	began := time.Now()
+	p.Stop(5 * time.Second)
+	if d := time.Since(began); d > 2*time.Second {
+		t.Errorf("a stop took %v", d)
+	}
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if _, err := os.Stat(path); err != nil {
+			break
+		}
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("the record outlived the process")
+	}
+	if groupAlive(p.PID()) {
+		time.Sleep(200 * time.Millisecond)
+		if groupAlive(p.PID()) {
+			t.Error("the guard outlived the stop")
+		}
+	}
+}
+
+// The gateway dies with no chance to clean up: its backend still goes, with no
+// successor to sweep it. The "gateway" here is this test binary, run again.
+func TestBackendDiesWithItsGateway(t *testing.T) {
+	if os.Getenv("LB_TEST_GUARD_PARENT") == "1" {
+		p, err := StartProcess("child", "/bin/sleep", []string{"120"}, nil, quietLog())
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Stdout.WriteString("pid=" + strconv.Itoa(p.PID()) + "\n")
+		time.Sleep(time.Minute)
+		return
+	}
+	// A successor's backend is another group: nothing here may touch it.
+	successor := orphanLike(t, "exec sleep 60")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestBackendDiesWithItsGateway$", "-test.v")
+	cmd.Env = append(os.Environ(), "LB_TEST_GUARD_PARENT=1")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	pid := 0
+	sc := bufio.NewScanner(out)
+	for pid == 0 && sc.Scan() {
+		if v, ok := strings.CutPrefix(sc.Text(), "pid="); ok {
+			pid, _ = strconv.Atoi(v)
+		}
+	}
+	if pid == 0 {
+		t.Fatal("the helper reported no backend")
+	}
+	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
+	if !pidAlive(pid) {
+		t.Fatal("the backend never ran")
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if !waitGone(pid, 3*time.Second) {
+		t.Errorf("backend %d is still running after its gateway was killed", pid)
+	}
+	// The guard's whole term ends here too: wait it out, then look.
+	for deadline := time.Now().Add(7 * time.Second); groupAlive(pid) && time.Now().Before(deadline); {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if groupAlive(pid) {
+		t.Error("the dead gateway's group is still there")
+	}
+	if !pidAlive(successor) {
+		t.Error("the dead gateway's guard killed another group's backend")
+	}
+}
+
+// No guard is left behind however the backend ends.
+func TestGuardEndsWithItsBackend(t *testing.T) {
+	for name, end := range map[string]func(p *Process){
+		"stopped": func(p *Process) { p.Stop(5 * time.Second) },
+		"exited":  func(p *Process) { _ = syscall.Kill(p.PID(), syscall.SIGKILL); <-p.Done() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p.guardPID == 0 || !pidAlive(p.guardPID) {
+				t.Fatal("no guard running")
+			}
+			guard := p.guardPID
+			end(p)
+			<-p.Done()
+			if pidExists(guard) {
+				t.Errorf("guard %d outlived its backend", guard)
+			}
+		})
+	}
+}
+
+// A guard killed outright changes nothing for its backend, which keeps serving and
+// still stops normally. Only the cover for a gateway crash is lost; the sweep remains.
+func TestBackendSurvivesItsGuardBeingKilled(t *testing.T) {
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = syscall.Kill(p.guardPID, syscall.SIGKILL)
+	time.Sleep(100 * time.Millisecond)
+	if !pidAlive(p.PID()) {
+		t.Fatal("the backend died with its guard")
+	}
+	began := time.Now()
+	p.Stop(5 * time.Second)
+	<-p.Done()
+	if d := time.Since(began); d > 2*time.Second {
+		t.Errorf("stop took %v", d)
+	}
+}
+
+// A live process given the recorded pid is safe from the sweep even when it is the
+// successor's own backend, with its own group: identity comes before any signal.
+func TestSweepNeverSignalsASuccessorsBackend(t *testing.T) {
+	root := t.TempDir()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	writeRecord(t, root, backendRecord{Runtime: "llm", PID: p.PID(), StartTime: "an earlier start", Exe: "/bin/sleep"})
+	if n := SweepBackends(root, quietLog()); n != 0 {
+		t.Errorf("stopped %d", n)
+	}
+	select {
+	case <-p.Done():
+		t.Error("the sweep ended a backend that is not the recorded one")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// Media runtimes go through the same record as the LLM, so a sweep reaches them.
+// Fake backends only: no real whisper, speech, image or video server has been run
+// through this.
+func TestServiceAndLLMRecordTheirBackends(t *testing.T) {
+	for name, tc := range map[string]func(t *testing.T) (root string, pid func() int, stop func()){
+		"stt": func(t *testing.T) (string, func() int, func()) {
+			s, _ := newTestService(t)
+			s.d.RootDir = t.TempDir()
+			l, err := s.Acquire(context.Background(), "a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.Release()
+			return s.d.RootDir, func() int {
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				return s.cur.proc.PID()
+			}, s.Close
+		},
+		"llm": func(t *testing.T) (string, func() int, func()) {
+			m := newTestLLM(t, &bigHost{avail: 50_000_000_000})
+			m.d.Root = t.TempDir()
+			l, err := m.Acquire(context.Background(), modelA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			l.Release()
+			return m.d.Root, func() int {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				return m.cur.proc.PID()
+			}, m.Close
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, pid, stop := tc(t)
+			defer stop()
+			p := pid()
+			// The successor's view: this process is a survivor the sweep may stop.
+			if n := SweepBackends(root, quietLog()); n != 1 {
+				t.Fatalf("swept %d", n)
+			}
+			if !waitGone(p, 3*time.Second) {
+				t.Error("the backend is still running")
+			}
+		})
+	}
+}
+
+// A copied root carries the records of the backends its source is running, and
+// they pass every identity check. A gateway started on the copy must not stop them:
+// that would take down the live gateway's models from a scratch directory.
+func TestSweepIgnoresARecordFromAnotherRoot(t *testing.T) {
+	source, copied := t.TempDir(), t.TempDir()
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	recordBackend(source, "llm", 1234, p, quietLog())
+	name := "llm-" + strconv.Itoa(p.PID()) + ".json"
+	b, err := os.ReadFile(filepath.Join(backendRecordsDir(source), name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(backendRecordsDir(copied), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backendRecordsDir(copied), name), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var logs strings.Builder
+	if n := SweepBackends(copied, slog.New(slog.NewJSONHandler(&logs, nil))); n != 0 {
+		t.Errorf("stopped %d from a copied record", n)
+	}
+	if !strings.Contains(logs.String(), "runtime.record-ignored") || !strings.Contains(logs.String(), name) {
+		t.Errorf("no warning naming the record: %s", logs.String())
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("a gateway on a copy stopped its source's backend")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(copied), name)); err != nil {
+		t.Errorf("an unknown record must be left alone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(source), name)); err != nil {
+		t.Errorf("the source's own record went: %v", err)
+	}
+	// The source itself still sweeps it.
+	if n := SweepBackends(source, quietLog()); n != 1 {
+		t.Errorf("the source's own sweep stopped %d", n)
+	}
+}
+
+// A real clone, and a copy at the old path: neither is the root that wrote the record.
+func TestRootIdentityDiffersForACopyAtTheSamePath(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	before, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	if err := os.Rename(root, root+".moved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	after, ok := identifyRoot(root)
+	if !ok {
+		t.Fatal("no identity")
+	}
+	if before == after {
+		t.Errorf("a new directory at the same path has the same identity: %+v", after)
+	}
+	if before.Path != after.Path {
+		t.Errorf("the test expects the same path: %q %q", before.Path, after.Path)
+	}
+}
+
+// A renamed root fails safe: its records are ignored, its backends keep running, and
+// one warning names each file.
+func TestSweepLeavesARenamedRootsRecordsAlone(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p, err := StartProcess("child", "/bin/sleep", []string{"30"}, nil, quietLog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop(time.Second)
+	recordBackend(root, "llm", 1234, p, quietLog())
+	renamed := root + ".renamed"
+	if err := os.Rename(root, renamed); err != nil {
+		t.Fatal(err)
+	}
+	name := "llm-" + strconv.Itoa(p.PID()) + ".json"
+	var logs strings.Builder
+	if n := SweepBackends(renamed, slog.New(slog.NewJSONHandler(&logs, nil))); n != 0 {
+		t.Errorf("stopped %d after a rename", n)
+	}
+	if got := strings.Count(logs.String(), "runtime.record-ignored"); got != 1 || !strings.Contains(logs.String(), name) {
+		t.Errorf("%d warnings: %s", got, logs.String())
+	}
+	select {
+	case <-p.Done():
+		t.Fatal("a renamed root's sweep stopped its backend")
+	case <-time.After(300 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(backendRecordsDir(renamed), name)); err != nil {
+		t.Errorf("the record went: %v", err)
+	}
+}

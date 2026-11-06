@@ -1,0 +1,5 @@
+{
+ "url": "https://huggingface.co/Laxhar/noobai-XL-Vpred-1.0/resolve/66aa55e3469c27c29a89813cd35dd95fb7485fa1/scheduler/scheduler_config.json",
+ "status": 200,
+ "body": "{\n  \"_class_name\": \"EulerDiscreteScheduler\",\n  \"_diffusers_version\": \"0.31.0\",\n  \"beta_end\": 0.012,\n  \"beta_schedule\": \"scaled_linear\",\n  \"beta_start\": 0.00085,\n  \"clip_sample\": false,\n  \"final_sigmas_type\": \"zero\",\n  \"interpolation_type\": \"linear\",\n  \"num_train_timesteps\": 1000,\n  \"prediction_type\": \"epsilon\",\n  \"rescale_betas_zero_snr\": false,\n  \"sample_max_value\": 1.0,\n  \"set_alpha_to_one\": false,\n  \"sigma_max\": null,\n  \"sigma_min\": null,\n  \"skip_prk_steps\": true,\n  \"steps_offset\": 1,\n  \"timestep_spacing\": \"leading\",\n  \"timestep_type\": \"discrete\",\n  \"trained_betas\": null,\n  \"use_beta_sigmas\": false,\n  \"use_exponential_sigmas\": false,\n  \"use_karras_sigmas\": false\n}\n"
+}

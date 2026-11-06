@@ -1,0 +1,35 @@
+# Secret scanning. Every exception is an exact made-up value used by a test, so
+# real secrets in the same files are still caught. Never allowlist a whole path.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed test fixtures"
+regexTarget = "match"
+# Each entry is one exact value with the reason above it, checked by
+# scripts/check-gitleaks-allowlist.sh. A new fixture secret should not need an entry:
+# generate it, or name it PLANTED_* (see go/tools/README.md).
+regexes = [
+  # The AWS documentation-style key in the TypeScript log redaction test.
+  '''AKIAABCDEFGHIJKLMNOP''',
+  # A made-up video job id in the contract tests and recorded responses.
+  '''6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab''',
+  # A made-up vendor credential in the import end-to-end test.
+  '''vendor-secret-7d1e9a''',
+  # A made-up Hugging Face token in the acquire scope test.
+  '''hf_scopetest123''',
+  # A made-up OTLP header value in the configure tests.
+  '''token=abc''',
+  # A made-up voice id in the docs and the speech tests.
+  '''voice-0123456789ab''',
+  # A GGUF metadata key, not a secret.
+  '''qwen3moe\.expert_count''',
+  # A planted backup test value, in an older commit that cannot be changed.
+  '''PLANTED_OTLP_0002''',
+  # A planted backup test value, in an older commit that cannot be changed.
+  '''PLANTED_OIDC_0003''',
+  # The sample nonce from RFC 6455, section 1.3, in the route matrix test.
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
+  # A planted diagnostics test value, in an older commit that cannot be changed.
+  '''authProfileHeaderSecret31''',
+]

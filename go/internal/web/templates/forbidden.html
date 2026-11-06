@@ -1,0 +1,8 @@
+{{define "title"}}Not allowed · LocalBase{{end}}
+{{define "main"}}
+<section class="error-page" aria-labelledby="forbidden-title">
+  <h1 id="forbidden-title" class="page-title">You don’t have access to this</h1>
+  <p class="mt-2 text-muted">Your account can’t do this yet. Ask the person who runs this LocalBase to give you access.</p>
+  <details class="mt-2 text-sm text-muted"><summary class="cursor-pointer py-1">Why</summary><p>This needs the <code>{{.Permission}}</code> permission.</p></details>
+</section>
+{{end}}

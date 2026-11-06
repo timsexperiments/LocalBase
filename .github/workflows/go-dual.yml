@@ -1,0 +1,64 @@
+name: Go and TypeScript differential
+
+# Runs the contract suite against both gateways. Remove this workflow with src/.
+# The TypeScript gateway needs its active model's files to start, so the pinned
+# model is cached here. No runtimes are installed, so no inference runs.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  dual:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'dual')
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      MODEL_FILE: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+      MODEL_URL: https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/f86cb2c1fa58255f8052cc32aeede1b7482d4361/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+      MODEL_SHA256: cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Restore the model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/contract-models
+          key: contract-model-${{ env.MODEL_SHA256 }}
+      - name: Download and verify the model
+        env:
+          MODELS: ${{ runner.temp }}/contract-models
+        run: |
+          mkdir -p "$MODELS"
+          [ -f "$MODELS/$MODEL_FILE" ] || curl -fsSL --retry 3 -o "$MODELS/$MODEL_FILE" "$MODEL_URL"
+          echo "$MODEL_SHA256  $MODELS/$MODEL_FILE" | shasum -a 256 -c -
+      - name: Contract suite against both gateways
+        working-directory: go
+        env:
+          LOCALBASE_CONTRACT_MODELS: ${{ runner.temp }}/contract-models
+          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+          LOCALBASE_TEST_PORTS: 26000-26499
+        run: tools/contract.sh -args -impl=both
+      - name: Keep the failing contract run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: contract-run-dual
+          path: ${{ runner.temp }}/contract-runs
+          if-no-files-found: ignore

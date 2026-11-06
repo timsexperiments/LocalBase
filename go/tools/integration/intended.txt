@@ -1,0 +1,21 @@
+# What a folded pull request added that the tree deliberately does not hold, and why:
+#   <branch> <file> <text the line contains> | <why>
+# A branch or text of * matches any. Checked by `go run ./tools/integration -audit`.
+# Lines a later commit in the tree replaced need no entry: the audit names that commit.
+* README.md `GET /_localbase/api-keys` requires | OSS's README rewrite; docs/authentication.md "A caller can only hand out what it holds" has this
+* README.md Email and email-domain bindings use only | OSS's README rewrite; docs/authentication.md has this
+* README.md the one provider they name in `issuer` | OSS's README rewrite; docs/authentication.md has this
+* README.md configured `/app` sign-in URL | OSS's README rewrite; docs/authentication.md has this
+* README.md provider they were invited through | OSS's README rewrite; docs/authentication.md has this
+* README.md links the identity and activates the user | OSS's README rewrite; docs/authentication.md has this
+* README.md page. The first registration gives nothing | OSS's README rewrite; docs/authentication.md has this
+* README.md `--permissions` says otherwise; | OSS's README rewrite; docs/authentication.md has this
+* README.md gives one address everything | OSS's README rewrite; docs/authentication.md has this
+* README.md unless `--permissions` is supplied | OSS's README rewrite; docs/authentication.md has the list and remove commands, and now that removing the last registration disables browser access
+integration-tool go/tools/integration/order.txt pick | the tool's own branch moves on after each rebuild
+integration-tool go/tools/integration/intended.txt * | the tool's own branch moves on after each rebuild
+integration-tool go/tools/integration/audit.go * | the tool's own branch moves on after each rebuild
+integration-tool go/tools/integration/main.go * | the tool's own branch moves on after each rebuild
+integration-tool go/tools/integration/main_test.go * | the tool's own branch moves on after each rebuild
+feat-docs-tree docs/api-details.md Arrives with PR #529 | #529 is in the tree, so the sentence is dropped from this line
+feat-docs-tree go/contract/unlisted_user_test.go * | the tree's tiny-model fixture replaces this test's earlier form

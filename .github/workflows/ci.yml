@@ -6,9 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate-macos:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout

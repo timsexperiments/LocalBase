@@ -338,7 +338,9 @@ A token saved here lasts until it is cleared or replaced. `local-base configure`
 changes it only when asked:
 
 - `--hf-token <token>` always replaces the saved token, and `--hf-token ""`
-  clears it.
+  clears it. A value on the command line can be read by other users of the
+  computer while the command runs, and stays in your shell history, so
+  configure warns about it. `HF_TOKEN` or this panel avoids both.
 - An `hfToken` in a TOML file passed with `--config` is saved only when no
   token is saved yet, or when it equals the saved one. It never overwrites a
   different saved token, such as one saved in this panel, so re-running

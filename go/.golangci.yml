@@ -1,0 +1,242 @@
+# golangci-lint v2.15.0, pinned in .github/workflows/go-lint.yml. Reasons for what is
+# off or excluded are in docs/lint-baseline.md.
+version: "2"
+
+run:
+  timeout: 10m
+  go: "1.26"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*net/http.Response).Body.Close
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.DB).Close
+        - (net.Listener).Close
+        - (net.Conn).Close
+        - os.Remove
+        - os.RemoveAll
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (net/http.ResponseWriter).Write
+        - (*bytes.Buffer).Write
+        - (*bytes.Buffer).WriteString
+        - (*mime/multipart.Writer).WriteField
+        - (*mime/multipart.Writer).Close
+        - encoding/binary.Write
+    gosec:
+      includes:
+        - G101 # hardcoded credentials
+        - G102 # binding to all interfaces
+        - G106 # ssh host keys not checked
+        - G108 # pprof exposed
+        - G110 # decompression bombs
+        - G112 # slowloris
+        - G201 # SQL built with format strings
+        - G202 # SQL built with concatenation
+        - G203 # unescaped HTML in templates
+        - G301 # directory permissions
+        - G302 # file permissions on chmod
+        - G305 # archive path traversal
+        - G306 # file permissions on write
+        - G401 # weak hash
+        - G402 # TLS settings
+        - G403 # short RSA keys
+        - G404 # weak random numbers
+        - G501 # imports crypto/md5
+        - G502 # imports crypto/des
+        - G503 # imports crypto/rc4
+        - G505 # imports crypto/sha1
+    staticcheck:
+      checks:
+        - all
+        - -ST1005 # error strings: user-facing sentences that must match TS exactly
+        - -ST1000 # package comments
+        - -ST1003 # names
+        - -ST1013 # HTTP status constants
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -QF* # suggested rewrites, not defects
+  exclusions:
+    paths:
+      - internal/third_party # vendored norm: kept as upstream wrote it
+      - internal/testutil # test fixtures
+      - internal/placement/placementtest # test fixtures
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec]
+      # The errcheck baseline, per file: see docs/lint-baseline.md. A function not named
+      # here for a file still fails. Remove an entry when its calls are handled.
+      - path: ^cmd/localbase/config\.go$
+        linters: [errcheck]
+        text: "is not checked|st\\.Close"
+      - path: ^cmd/localbase/diagnostics\.go$
+        linters: [errcheck]
+        text: "d\\.Sync|st\\.Close"
+      - path: ^cmd/localbase/env\.go$
+        linters: [errcheck]
+        text: "e\\.Store\\.Close"
+      - path: ^cmd/localbase/hubcmd\.go$
+        linters: [errcheck]
+        text: "st\\.Close"
+      - path: ^cmd/localbase/maintenance\.go$
+        linters: [errcheck]
+        text: "st\\.Close"
+      - path: ^cmd/localbase/models\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^cmd/localbase/placement\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^cmd/localbase/serve\.go$
+        linters: [errcheck]
+        text: "httpServer\\.Shutdown|level\\.UnmarshalText|sink\\.Close|videoJobs\\.FailActiveForMemoryPressure|videoJobs\\.Shutdown"
+      - path: ^cmd/localbase/smoke\.go$
+        linters: [errcheck]
+        text: "e\\.Store\\.DeleteAPIKey|json\\.Unmarshal"
+      - path: ^internal/acquire/resolve\.go$
+        linters: [errcheck]
+        text: "io\\.Copy"
+      - path: ^internal/auth/email\.go$
+        linters: [errcheck]
+        text: "client\\.Close"
+      - path: ^internal/auth/policy\.go$
+        linters: [errcheck]
+        text: "rows\\.Scan"
+      - path: ^internal/catalog/catalog\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/catalog/feed\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal|is not checked|os\\.MkdirAll"
+      - path: ^internal/catalog/former\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/cli/cli\.go$
+        linters: [errcheck]
+        text: "a\\.Stdout\\.Write|c\\.Stdout\\.Write"
+      - path: ^internal/gateway/audio\.go$
+        linters: [errcheck]
+        text: "fw\\.Write|io\\.WriteString"
+      - path: ^internal/gateway/audit\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/gateway/chat\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/gateway/errors\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"
+      - path: ^internal/gateway/images\.go$
+        linters: [errcheck]
+        text: "pw\\.Write"
+      - path: ^internal/gateway/metadata\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/gateway/placement\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/gateway/runs\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/gateway/videos\.go$
+        linters: [errcheck]
+        text: "io\\.Copy"
+      - path: ^internal/hub/client\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/install/install\.go$
+        linters: [errcheck]
+        text: "conn\\.Close|conn\\.ExecContext|os\\.Chmod|os\\.Rename"
+      - path: ^internal/obs/jsonl\.go$
+        linters: [errcheck]
+        text: "os\\.Rename|s\\.Mirror\\.Write"
+      - path: ^internal/obs/read\.go$
+        linters: [errcheck]
+        text: "s\\.f\\.Seek"
+      - path: ^internal/runtime/fakebackend/images\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|\\(\\*encoding/json\\.Encoder\\)\\.Encode|png\\.Encode|r\\.ParseMultipartForm"
+      - path: ^internal/runtime/fakebackend/main\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|\\(\\*encoding/json\\.Encoder\\)\\.Encode|http\\.Serve|os\\.Stderr\\.Write"
+      - path: ^internal/runtime/fakebackend/speech\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode"
+      - path: ^internal/runtime/fakebackend/stt\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode|r\\.ParseMultipartForm"
+      - path: ^internal/runtime/fakebackend/video\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|\\(\\*encoding/json\\.Encoder\\)\\.Encode|f\\.Write"
+      - path: ^internal/runtime/process\.go$
+        linters: [errcheck]
+        text: "io\\.Copy"
+      - path: ^internal/runtime/runtime_install\.go$
+        linters: [errcheck]
+        text: "os\\.Chmod|os\\.MkdirAll|z\\.Close"
+      - path: ^internal/runtime/service\.go$
+        linters: [errcheck]
+        text: "is not checked"
+      - path: ^internal/service/service\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|r\\.ClearStale|st\\.Close"
+      - path: ^internal/video/convert\.go$
+        linters: [errcheck]
+        text: "io\\.Copy|is not checked|os\\.Chmod|syscall\\.Kill"
+      - path: ^internal/video/jobs\.go$
+        linters: [errcheck]
+        text: "os\\.Chmod"
+      - path: ^internal/web/chat\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"
+      - path: ^internal/web/csrf\.go$
+        linters: [errcheck]
+        text: "os\\.MkdirAll"
+      - path: ^internal/web/discover\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/web/lab\.go$
+        linters: [errcheck]
+        text: "fw\\.Write|json\\.Unmarshal"
+      - path: ^internal/web/labruns\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/web/labvideo\.go$
+        linters: [errcheck]
+        text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"
+      - path: ^internal/web/models\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/web/voicespage\.go$
+        linters: [errcheck]
+        text: "json\\.Unmarshal"
+      - path: ^internal/web/web\.go$
+        linters: [errcheck]
+        text: "fs\\.WalkDir|zw\\.Close|zw\\.Write"
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

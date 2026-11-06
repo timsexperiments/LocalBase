@@ -1,0 +1,18 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "llama.cpp-vulkan",
+  "name": "llama.cpp (Vulkan)",
+  "engine": "llama.cpp",
+  "adapter": "llama-server/v1",
+  "tasks": ["chat", "embeddings", "decision"],
+  "capabilities": ["vision", "audio-input", "tool-calling"],
+  "formats": ["gguf"],
+  "architectures": {
+    "supported": ["qwen2", "qwen3", "qwen35", "qwen35moe", "clef"],
+    "likely": ["llama", "llama4", "gemma", "gemma2", "gemma3", "gemma3n", "mistral3", "phi3", "phi4", "gpt-oss", "deepseek2", "qwen2moe", "qwen3moe", "qwen2vl", "qwen25vl", "command-r", "cohere2", "granite", "granitemoe", "olmo2", "falcon", "starcoder2", "glm4", "glm4moe", "exaone", "smollm3", "bert", "nomic-bert", "jina-bert-v2"]
+  },
+  "companions": {"vision": ["projector"], "audio-input": ["projector"]},
+  "platforms": [{"os":"linux","arch":"x64","accelerator":"vulkan"}],
+  "runtime": {"family": "llama-server", "executable": "llama-server", "managed": true},
+  "notes": "Supported architectures were loaded on this project's own Mac Metal and Linux Vulkan runs; likely ones are documented upstream and not qualified here."
+}

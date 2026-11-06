@@ -1,14 +1,34 @@
 version: 2
 updates:
+  - package-ecosystem: gomod
+    directory: /go
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      go-modules:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
-    allow:
-      - dependency-name: actions/checkout
-      - dependency-name: actions/upload-artifact
-      - dependency-name: actions/download-artifact
-      - dependency-name: actions/attest-build-provenance
-      - dependency-name: oven-sh/setup-bun
-      - dependency-name: softprops/action-gh-release
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: bun
+    directories: [/, /runtimes/kokoro]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      bun:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: [/, /go/tools/systemd-check]
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      docker:
+        patterns: ["*"]

@@ -1,0 +1,166 @@
+{{define "title"}}Chat · LocalBase{{end}}
+{{define "viewport"}}width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content{{end}}
+{{define "bodyclass"}}h-dvh overflow-hidden{{end}}
+{{define "boost"}}false{{end}}
+
+{{define "page"}}
+<div class="flex h-dvh">
+  {{template "sidebar" .}}
+  <dialog id="chat-drawer" aria-labelledby="drawer-title"
+    class="m-0 h-dvh max-h-none w-[min(20rem,88vw)] max-w-none border-r border-line bg-surface p-0 text-ink backdrop:bg-black/40 min-[1100px]:hidden">
+    <div class="flex h-full flex-col">
+      <div class="flex items-center justify-between gap-2 pl-4 pr-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <h2 id="drawer-title" class="text-lg font-bold">Chats</h2>
+        <button type="button" class="btn btn-quiet size-11 p-0" data-close-drawer aria-label="Close chats">{{template "icon-close"}}</button>
+      </div>
+      <div class="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">{{template "chat-history" .}}</div>
+    </div>
+  </dialog>
+
+  <div class="chat-col flex min-w-0 flex-1 flex-col">
+    <header class="chat-head">
+      <button type="button" class="icon-btn min-[1100px]:hidden" data-open-drawer aria-haspopup="dialog" aria-label="Open chats">{{template "icon-menu"}}</button>
+      <h1 class="chat-title"><button type="button" class="chat-rename" data-rename aria-haspopup="dialog" disabled><span id="chat-title" class="truncate">New chat</span><span class="sr-only">. Rename this chat.</span></button></h1>
+      <button type="button" class="icon-btn min-[1100px]:hidden" data-new-chat aria-label="New chat">{{template "icon-plus"}}</button>
+    </header>
+    {{with .Strip}}<div class="chat-strip">{{template "memory-strip" .}}</div>{{end}}
+    <div id="session-notice" role="alert" aria-live="assertive" class="px-4"></div>
+
+    <main id="main" class="relative min-h-0 flex-1">
+      <div id="chat-log" role="log" aria-live="off" aria-label="Conversation" tabindex="0" class="h-full overflow-y-auto overscroll-contain focus-visible:outline-offset-[-2px]">
+        <div class="mx-auto grid max-w-3xl grid-cols-1 gap-6 px-[max(1.25rem,env(safe-area-inset-left))] py-4 empty:hidden" data-messages></div>
+        <div class="chat-landing" data-empty>
+          {{if not .CanChat}}
+          <div class="empty-state">
+            <h2 class="text-lg font-bold">This account can’t chat</h2>
+            <p class="mt-1 text-muted">Chat needs the chat permission. Ask the person who manages this LocalBase to add it.</p>
+          </div>
+          {{else if eq .Ready 0}}
+          <div class="empty-state">
+            {{if .Downloading}}
+            <h2 class="chat-hello">A model is on its way</h2>
+            <p class="mt-1 text-muted">You can chat as soon as it finishes downloading.</p>
+            <a href="/app/welcome/choose" class="btn btn-primary mt-4">See how it’s going</a>
+            {{else}}
+            <h2 class="chat-hello">You need a model first</h2>
+            <p class="mt-1 text-muted">A model is what answers you. It downloads to this computer, and your chats stay here.</p>
+            <a href="/app/welcome/choose" class="btn btn-primary mt-4">Choose your first model</a>
+            {{end}}
+          </div>
+          {{else}}
+          <div class="chat-empty">
+            {{if .FirstChat}}
+            <h2 class="chat-hello">Ready. Say something.</h2>
+            <p class="mt-1 text-muted">The first reply takes a moment while the model loads.</p>
+            {{else}}
+            <h2 class="chat-hello">What’s on your mind?</h2>
+            <p class="mt-1 text-muted">{{with .Strip}}Everything stays on {{.Host}}.{{else}}Everything stays on this computer.{{end}}</p>
+            {{end}}
+            <p class="mt-2 text-muted" data-default-reason hidden></p>
+            <div class="chat-suggest">
+              <button type="button" class="chat-suggestion" data-suggest="Plan a three-day trip on a small budget.">Plan a three-day trip on a small budget</button>
+              <button type="button" class="chat-suggestion" data-suggest="Explain how vaccines work in plain words.">Explain how vaccines work in plain words</button>
+              <button type="button" class="chat-suggestion" data-suggest="Write a kind note to a friend who is moving away.">Write a kind note to a friend who is moving away</button>
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </div>
+      <button type="button" class="chip absolute bottom-3 left-1/2 -translate-x-1/2 gap-1 shadow-md" data-jump hidden aria-label="Jump to latest message">{{template "icon-down"}}<span aria-hidden="true">Latest</span></button>
+    </main>
+
+    <form id="composer" aria-label="Message composer" data-docked class="chat-composer bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2" novalidate>
+      <div class="mx-auto max-w-3xl">
+        <div data-error-box></div>
+        <div class="composer-box">
+          <ul class="flex flex-wrap gap-2 px-2 pt-2" data-attachments aria-label="Attachments" hidden></ul>
+          <label for="chat-input" class="sr-only">Message</label>
+          <textarea id="chat-input" rows="1" class="block max-h-[40dvh] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none" placeholder="Message" autocomplete="off" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}></textarea>
+          <p class="px-3 text-sm text-muted empty:hidden" data-composer-note role="status"></p>
+          <div class="flex items-center gap-0.5 px-1 pb-1">
+            <input type="file" multiple hidden data-attach-input aria-label="Choose attachments">
+            <button type="button" class="icon-btn" data-attach aria-label="Attach files" title="Attach files" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-clip"}}</button>
+            {{if .CanDictate}}
+            <button type="button" class="icon-btn" data-dictate data-model="{{.DictationModel}}" aria-label="Dictate message" title="Dictate with LocalBase. Tap again to stop. Text is added without sending." {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>
+              <span data-dictate-icon>{{template "icon-mic"}}</span><span data-dictate-stop hidden>{{template "icon-stop"}}</span><span data-dictate-cancel hidden>{{template "icon-close"}}</span>
+            </button>
+            {{end}}
+            <button type="button" class="icon-btn composer-spare" data-open-generation aria-haspopup="dialog" aria-label="Generation controls" title="Generation controls" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-sliders"}}</button>
+            <button type="button" class="chat-model" data-open-picker aria-haspopup="dialog" aria-label="Choose a model"><span class="truncate" data-model-name>Choose a model</span><span aria-hidden="true">▾</span></button>
+            <button type="button" class="btn btn-quiet shrink-0 text-base" data-dictate-discard hidden>Discard</button>
+            <button type="button" class="btn size-11 shrink-0 rounded-full bg-ink p-0 text-canvas" data-stop hidden aria-label="Stop generation">{{template "icon-stop"}}</button>
+            <button type="submit" class="btn btn-primary size-11 shrink-0 rounded-full p-0" data-send aria-label="Send" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>{{template "icon-send"}}</button>
+          </div>
+        </div>
+      </div>
+    </form>
+    <div id="chat-status" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+    {{template "tabbar" .}}
+  </div>
+</div>
+
+{{template "more-sheet" .}}
+
+<dialog id="model-picker" aria-labelledby="picker-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
+  <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+    <h2 id="picker-title" class="text-lg font-bold">Chat model</h2>
+    <button type="button" class="btn btn-quiet size-11 p-0" data-close-picker aria-label="Close">{{template "icon-close"}}</button>
+  </div>
+  <form method="dialog" class="grid gap-2 overflow-y-auto px-4 pt-2 pb-3" data-picker-list></form>
+  <div class="picker-more">
+    <a href="/app/models" class="list-link">Manage models</a>
+    <button type="button" class="list-link" data-open-generation aria-haspopup="dialog" {{if or (not .CanChat) (eq .Ready 0)}}disabled{{end}}>Generation controls</button>
+  </div>
+</dialog>
+
+<dialog id="rename-chat" aria-labelledby="rename-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
+  <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+    <h2 id="rename-title" class="text-lg font-bold">Rename this chat</h2>
+    <button type="button" class="btn btn-quiet size-11 p-0" data-close-rename aria-label="Close">{{template "icon-close"}}</button>
+  </div>
+  <form class="grid gap-3 px-4 pb-2" data-rename-form>
+    <label class="grid gap-1 font-semibold" for="rename-input">Name</label>
+    <input id="rename-input" class="input" maxlength="60" autocomplete="off" required>
+    <button type="submit" class="btn btn-primary w-full">Save</button>
+  </form>
+</dialog>
+
+<dialog id="generation" aria-labelledby="generation-title" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b">
+  <div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+    <h2 id="generation-title" class="text-lg font-bold">Generation controls</h2>
+    <button type="button" class="btn btn-quiet size-11 p-0" data-close-generation aria-label="Close">{{template "icon-close"}}</button>
+  </div>
+  <div class="grid gap-4 overflow-y-auto p-5" data-generation-body></div>
+</dialog>
+
+<script type="application/json" id="chat-models">{{.ModelsJSON}}</script>
+<script type="application/json" id="chat-default">{{.DefaultJSON}}</script>
+<script type="application/json" id="chat-permissions">{{.PermissionsJSON}}</script>
+<script type="module" src="{{asset "js/chat.js"}}"></script>
+{{end}}
+
+{{define "sidebar-extra"}}
+<div class="sidebar-history mt-3 flex min-h-0 flex-1 flex-col border-t border-line pt-3">{{template "chat-history" .}}</div>
+<div class="flex-1 min-[1100px]:hidden"></div>
+{{end}}
+
+{{/* New conversation, search and the list; chat.js fills the list (twice:
+     the sidebar and the phone drawer). */}}
+{{define "chat-history"}}
+<div class="flex min-h-0 flex-1 flex-col gap-3">
+  <button type="button" class="btn btn-quiet w-full" data-new-chat>{{template "icon-plus"}}New chat</button>
+  <input type="search" class="input min-h-11" data-search placeholder="Search chats" aria-label="Search chats">
+  <nav aria-label="Chats" class="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
+    <ul class="grid gap-0.5" data-conversations></ul>
+    <p class="px-2 py-3 text-sm text-muted" data-no-conversations hidden></p>
+  </nav>
+</div>
+{{end}}
+
+{{define "icon-menu"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h15M4.5 16h15"/></svg>{{end}}
+{{define "icon-close"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></svg>{{end}}
+{{define "icon-stop"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>{{end}}
+{{define "icon-down"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13M6.5 13 12 18.5l5.5-5.5"/></svg>{{end}}
+{{define "icon-clip"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11.5-7.1 7.1a4.5 4.5 0 0 1-6.4-6.4l7.4-7.3a3 3 0 0 1 4.2 4.2l-7.3 7.3a1.5 1.5 0 0 1-2.1-2.1l6.7-6.7"/></svg>{{end}}
+{{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="4" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>{{end}}
+{{define "icon-sliders"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h8M17 8h2.5M4.5 16H7M11.5 16h8"/><circle cx="14.7" cy="8" r="2.2"/><circle cx="9.2" cy="16" r="2.2"/></svg>{{end}}

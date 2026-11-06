@@ -1,0 +1,95 @@
+{
+  "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "cases": [
+    {
+      "name": "plain",
+      "program": "/usr/local/bin/local-base",
+      "args": [
+        "--root",
+        "/lb-golden/u/.local/share/local-base",
+        "serve"
+      ],
+      "root": "/lb-golden/u/.local/share/local-base",
+      "otel": {},
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/usr/local/bin/local-base\" \"--root\" \"/lb-golden/u/.local/share/local-base\" \"serve\"\nWorkingDirectory=/lb-golden/u/.local/share/local-base\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/usr/local/bin/local-base</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/usr/local/bin/local-base</string>\n    <string>--root</string>\n    <string>/lb-golden/u/.local/share/local-base</string>\n    <string>serve</string>\n  </array>\n  <key>WorkingDirectory</key><string>/lb-golden/u/.local/share/local-base</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/lb-golden/u/.local/share/local-base/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    },
+    {
+      "name": "spaces",
+      "program": "/opt/local base/lb",
+      "args": [
+        "--root",
+        "/r 1",
+        "serve"
+      ],
+      "root": "/r 1",
+      "otel": {},
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/opt/local base/lb\" \"--root\" \"/r 1\" \"serve\"\nWorkingDirectory=/r\\x201\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/opt/local base/lb</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/opt/local base/lb</string>\n    <string>--root</string>\n    <string>/r 1</string>\n    <string>serve</string>\n  </array>\n  <key>WorkingDirectory</key><string>/r 1</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/r 1/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    },
+    {
+      "name": "specials",
+      "program": "/opt/a$b%c/lb",
+      "args": [
+        "--root",
+        "/lb-golden/q\"uo'te\\back",
+        "serve",
+        "--port",
+        "2273"
+      ],
+      "root": "/lb-golden/q\"uo'te\\back",
+      "otel": {},
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/opt/a$$b%%c/lb\" \"--root\" \"/lb-golden/q\\\"uo'te\\\\back\" \"serve\" \"--port\" \"2273\"\nWorkingDirectory=/lb-golden/q\\x22uo'te\\x5cback\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/opt/a$b%c/lb</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/opt/a$b%c/lb</string>\n    <string>--root</string>\n    <string>/lb-golden/q&quot;uo&apos;te\\back</string>\n    <string>serve</string>\n    <string>--port</string>\n    <string>2273</string>\n  </array>\n  <key>WorkingDirectory</key><string>/lb-golden/q&quot;uo&apos;te\\back</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/lb-golden/q&quot;uo&apos;te\\back/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    },
+    {
+      "name": "specifiers",
+      "program": "/opt/%h/%n/lb",
+      "args": [
+        "--root",
+        "/data/%i;x",
+        "serve"
+      ],
+      "root": "/data/%i;x",
+      "otel": {},
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/opt/%%h/%%n/lb\" \"--root\" \"/data/%%i;x\" \"serve\"\nWorkingDirectory=/data/%%i;x\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/opt/%h/%n/lb</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/opt/%h/%n/lb</string>\n    <string>--root</string>\n    <string>/data/%i;x</string>\n    <string>serve</string>\n  </array>\n  <key>WorkingDirectory</key><string>/data/%i;x</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/data/%i;x/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    },
+    {
+      "name": "unicode",
+      "program": "/Users/zoë/bin/lb",
+      "args": [
+        "--root",
+        "/lb-golden/zoë/Local Base",
+        "serve"
+      ],
+      "root": "/lb-golden/zoë/Local Base",
+      "otel": {},
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/Users/zoë/bin/lb\" \"--root\" \"/lb-golden/zoë/Local Base\" \"serve\"\nWorkingDirectory=/lb-golden/zoë/Local\\x20Base\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/Users/zoë/bin/lb</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/Users/zoë/bin/lb</string>\n    <string>--root</string>\n    <string>/lb-golden/zoë/Local Base</string>\n    <string>serve</string>\n  </array>\n  <key>WorkingDirectory</key><string>/lb-golden/zoë/Local Base</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/lb-golden/zoë/Local Base/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    },
+    {
+      "name": "telemetry",
+      "program": "/usr/bin/lb",
+      "args": [
+        "--root",
+        "/r",
+        "serve"
+      ],
+      "root": "/r",
+      "otel": {
+        "OTEL_TRACES_SAMPLER": "always_on",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+        "OTEL_EXPORTER_OTLP_HEADERS": "authorization=Bearer a b"
+      },
+      "token": "6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab",
+      "systemd": "[Unit]\nDescription=LocalBase gateway\nAfter=network.target\n\n[Service]\nType=exec\nExecStart=\"/usr/bin/lb\" \"--root\" \"/r\" \"serve\"\nWorkingDirectory=/r\nRestart=on-failure\nRestartSec=2s\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=15s\nUMask=0077\nEnvironment=\"LOCALBASE_SERVICE_ID=com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nEnvironment=\"LOCALBASE_SERVICE_TOKEN=6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab\"\nEnvironment=\"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318\"\nEnvironment=\"OTEL_EXPORTER_OTLP_HEADERS=authorization=Bearer a b\"\nEnvironment=\"OTEL_TRACES_SAMPLER=always_on\"\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+      "launchd": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n  <key>Label</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n  <key>Program</key><string>/usr/bin/lb</string>\n  <key>ProgramArguments</key>\n  <array>\n    <string>/usr/bin/lb</string>\n    <string>--root</string>\n    <string>/r</string>\n    <string>serve</string>\n  </array>\n  <key>WorkingDirectory</key><string>/r</string>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n  <key>ExitTimeOut</key><integer>15</integer>\n  <key>Umask</key><integer>63</integer>\n  <key>ProcessType</key><string>Interactive</string>\n  <key>EnvironmentVariables</key>\n  <dict>\n    <key>LOCALBASE_SERVICE_ID</key><string>com.localbase.gateway.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</string>\n    <key>LOCALBASE_SERVICE_TOKEN</key><string>6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab</string>\n    <key>OTEL_EXPORTER_OTLP_ENDPOINT</key><string>http://127.0.0.1:4318</string>\n    <key>OTEL_EXPORTER_OTLP_HEADERS</key><string>authorization=Bearer a b</string>\n    <key>OTEL_TRACES_SAMPLER</key><string>always_on</string>\n  </dict>\n  <key>StandardOutPath</key><string>/dev/null</string>\n  <key>StandardErrorPath</key><string>/r/logs/service-stderr.log</string>\n</dict>\n</plist>\n"
+    }
+  ]
+}

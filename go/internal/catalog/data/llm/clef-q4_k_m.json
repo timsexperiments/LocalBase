@@ -1,0 +1,39 @@
+{
+  "modelId": "clef-q4_k_m",
+  "displayName": "Clef 27B",
+  "kind": "llm",
+  "provider": "Cloudflare",
+  "family": "Clef",
+  "version": "27B",
+  "size": "27B",
+  "quant": "Q4_K_M",
+  "storageGb": 19.86,
+  "source": "https://huggingface.co/ggml-org/Clef-GGUF",
+  "repositoryRevision": "d2aa75cb425ae922b5c3c15ef3157d417b7f7641",
+  "artifacts": [
+    {
+      "sourcePath": "Clef-Q4_K_M.gguf",
+      "filename": "Clef-Q4_K_M.gguf",
+      "expectedSizeBytes": 19232219200,
+      "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+      "role": "primary"
+    },
+    {
+      "sourcePath": "mmproj-Clef-Q8_0.gguf",
+      "filename": "mmproj-Clef-Q8_0.gguf",
+      "expectedSizeBytes": 629247456,
+      "sha256": "744ad2db24c336fc9120dd5ba06344c0601b9efd365fe96be01ce5c4e6ab64cf",
+      "role": "supplementary"
+    }
+  ],
+  "llmRuntime": {
+    "capability": "decision-only"
+  },
+  "inputModalities": ["text", "image"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
+  "capabilities": ["decision", "long-context"],
+  "commercialStatus": "open",
+  "catch": "Decision endpoint only. Chat completions and embeddings are rejected before runtime admission.",
+  "notes": "Official ggml-org Q4_K_M GGUF and Q8_0 projector of Cloudflare/clef (Apache-2.0, post-trained from Qwen3.8-27B; source revision 0b331204bb13fbd2ca93a64df1956f5b55478ce5). GGUF header: architecture clef, 64 layers, 4 decision blocks, 262,144-token training context. Answers choice, score, and noul questions through POST /v1/systemone. Clef Flash (clef-flash-q4_k_m) is the 9B default decision model."
+}

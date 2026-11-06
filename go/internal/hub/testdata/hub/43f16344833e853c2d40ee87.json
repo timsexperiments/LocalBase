@@ -1,0 +1,5 @@
+{
+ "url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/462165984030d82259a11f4367a4eed129e94a7b/scheduler/scheduler_config.json",
+ "status": 200,
+ "body": "{\n  \"_class_name\": \"EulerDiscreteScheduler\",\n  \"_diffusers_version\": \"0.19.0.dev0\",\n  \"beta_end\": 0.012,\n  \"beta_schedule\": \"scaled_linear\",\n  \"beta_start\": 0.00085,\n  \"clip_sample\": false,\n  \"interpolation_type\": \"linear\",\n  \"num_train_timesteps\": 1000,\n  \"prediction_type\": \"epsilon\",\n  \"sample_max_value\": 1.0,\n  \"set_alpha_to_one\": false,\n  \"skip_prk_steps\": true,\n  \"steps_offset\": 1,\n  \"timestep_spacing\": \"leading\",\n  \"trained_betas\": null,\n  \"use_karras_sigmas\": false\n}\n"
+}

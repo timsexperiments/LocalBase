@@ -1,0 +1,31 @@
+{
+  "modelId": "sdxl-base-1.0",
+  "displayName": "SDXL Base 1.0",
+  "kind": "image",
+  "provider": "StabilityAI",
+  "family": "Stable-Diffusion-XL",
+  "version": "1.0",
+  "size": "6.5GB",
+  "quant": "F16",
+  "storageGb": 6.46,
+  "source": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+  "repositoryRevision": "462165984030d82259a11f4367a4eed129e94a7b",
+  "artifacts": [
+    {
+      "sourcePath": "sd_xl_base_1.0.safetensors",
+      "filename": "sd_xl_base_1.0.safetensors",
+      "expectedSizeBytes": 6938078334,
+      "sha256": "31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "CreativeML Open RAIL++-M license.",
+  "notes": "Stability AI's Stable Diffusion XL 1.0 base model (1024x1024 native resolution), shipped as one F16 safetensors checkpoint."
+}

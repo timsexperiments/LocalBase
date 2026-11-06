@@ -1,0 +1,74 @@
+{{define "title"}}Running · LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="running-title">
+  <div class="flex items-center justify-between gap-3">
+    <h1 id="running-title" class="page-title">Running</h1>
+    <button type="button" class="btn btn-quiet" hx-get="/app/models/running" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML">Refresh</button>
+  </div>
+  {{/* Announced once per change (shell.js), not on every refresh. */}}
+  <p id="running-status" class="sr-only" role="status" aria-live="polite"></p>
+
+  <div id="running-live" class="mt-5 grid gap-5"
+       hx-get="/app/models/running" hx-select="#running-live" hx-target="this" hx-swap="outerHTML"
+       hx-trigger="every 10s" hx-sync="this:drop" data-poll data-announce="{{with .Notice}}{{.}}{{else}}{{.Summary}}{{end}}" data-announce-into="running-status">
+    {{with .Notice}}<p class="notice {{if $.Failed}}notice-error{{end}}">{{.}}</p>{{end}}
+    <section aria-labelledby="memory-title">
+      <h2 id="memory-title" class="sr-only">Memory on {{.Host}}</h2>
+      <div class="strip strip-here strip-{{.State}}">{{template "strip-body" .}}</div>
+      {{with .Advice}}<p class="mt-2 px-1 text-sm font-semibold">{{.}}</p>{{end}}
+      {{if not .Known}}<div class="mt-2 flex flex-wrap items-center justify-between gap-2 px-1"><p class="text-sm">LocalBase can’t read this computer’s memory right now. Your tools stay connected.</p>
+        <button type="button" class="btn btn-quiet" hx-get="/app/models/running" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML">Try again</button></div>{{end}}
+      {{with .BusyWith}}<p class="mt-2 px-1 text-sm font-semibold" role="status">{{.}}</p>{{end}}
+      <div class="running-legend">{{template "memory-legend" .}}
+        <p class="mt-3 text-sm text-muted">All LocalBase tools share this memory.</p></div>
+    </section>
+
+    <section aria-labelledby="loaded-title">
+      <h2 id="loaded-title" class="list-label mt-0">Loaded models</h2>
+      {{with .Rows}}
+      <ul class="list-group">
+        {{range .}}
+        <li class="running-row">
+          <a href="/app/models/m/{{.ID}}" class="model-row min-w-0">
+            <span aria-hidden="true" class="model-avatar">{{initial .Name}}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block font-semibold leading-snug break-words">{{.Name}}</span>
+              <span class="block text-sm text-muted">{{.Task}} · {{gib .Bytes}}, {{.Source}}{{if .Waiting}} · {{.Waiting}} waiting{{end}}</span>
+            </span>
+          </a>
+          <div class="running-actions">
+            {{if eq .State "draining"}}<span class="pill pill-warn">Finishing</span>
+            {{else if .Active}}<span class="pill pill-warn">Busy · {{.Active}} {{if eq .Active 1}}request{{else}}requests{{end}}</span>
+            {{else}}<span class="pill pill-ok"><span aria-hidden="true" class="size-1.5 rounded-full bg-current"></span>Idle</span>{{end}}
+            {{if $.CanManage}}<button type="button" class="btn btn-quiet rounded-full" aria-label="Free memory used by {{.Name}}" data-open-sheet="{{.Sheet}}" aria-haspopup="dialog">Free memory</button>{{end}}
+          </div>
+        </li>
+        {{end}}
+      </ul>
+      {{if $.CanManage}}
+      {{/* Polls pause while a sheet is open (shell.js). */}}
+      {{range .}}
+      <dialog id="{{.Sheet}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="{{.Sheet}}-title">
+        {{template "sheet-head" (dict "ID" (printf "%s-title" .Sheet) "Title" (printf "Free the memory used by %s?" .Name))}}
+        <div class="grid gap-3 px-4 pb-2">
+          <p class="text-muted">This frees {{if .Bytes}}{{aboutGib .Bytes}}{{else}}its memory{{end}}. Anything running on it finishes first, and the next request for it loads it again. Its files stay installed.</p>
+          <button type="button" class="btn btn-primary w-full" data-close-sheet
+            hx-post="/app/models/unload/{{.ID}}" hx-target="#running-live" hx-select="#running-live" hx-swap="outerHTML"
+            hx-sync="closest #running-live:replace" hx-indicator="#unload-busy">Free memory</button>
+        </div>
+      </dialog>
+      {{end}}
+      {{end}}
+      <p id="unload-busy" class="htmx-indicator mt-2 px-1 font-semibold text-muted" role="status">Freeing memory… It waits for anything running on it to finish.</p>
+      <p class="mt-2 px-1 text-sm text-muted">Models stay loaded until another one needs the memory{{if $.CanManage}}, or you free it{{end}}. Their files stay installed.</p>
+      {{else}}
+      {{if .Starting}}
+      <div class="empty-state"><p class="font-semibold">A model is starting…</p></div>
+      {{else}}
+      {{template "empty-state" (dict "Title" "Nothing loaded" "Text" "Models load when a request needs them, and stay loaded until another model needs the memory.")}}
+      {{end}}
+      {{end}}
+    </section>
+  </div>
+</section>
+{{end}}

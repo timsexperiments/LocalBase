@@ -14,6 +14,8 @@ local-base serve \
 
 The limits apply independently to each inference type. LLM concurrency comes from the running backend's resolved slot count. Speech-to-text, text-to-speech, and image generation run one request at a time.
 
+Detached runs have memory limits too. `--run-memory-limit-mib` (default 32) is what one chat run may hold, and `--runs-memory-limit-mib` (default 256) is what all retained runs may hold together, media results included. A run that passes one ends `failed` with what it had, with reason `output_limit` or `memory_limit`. Past the total, the error (code `runs_memory_full`) says what is holding the memory, how much, when the oldest finished result expires, and to remove finished results or wait. A batch of pictures frees its memory when the last one is removed. Finished runs hold theirs until they expire or are dismissed, up to 30 minutes, so a full total can stop new runs. One line or event of an upstream stream may hold 16 MiB, which isn't configurable. All three figures are proposals, not measured against real traffic.
+
 Requests keep FIFO order across model IDs. When the head request needs another model, LocalBase waits for active requests on the current model to finish before switching. Later requests cannot bypass that switch, even if they use the current model. A cold LLM starts with one admission slot. Once the backend is ready and its resolved slot count is available, LocalBase admits queued requests for the same model without waiting for the first response to finish.
 
 If the queue is full, the gateway returns HTTP `429` with OpenAI error code `inference_queue_full`. If a request waits past the queue deadline, it returns `429` with code `inference_queue_timeout`. Both responses include `Retry-After: 1`.
@@ -26,7 +28,7 @@ TTS runs one cold `llama-tts` child per admitted request. Its estimated 8 GiB jo
 
 ## Streams and telemetry
 
-For streaming responses, LocalBase holds the active runtime lease until the response body completes, fails, or the request signal is aborted. Model changes therefore wait for open streams to settle.
+For streaming responses, LocalBase holds the active runtime lease until the response body completes, fails, or the request signal is aborted. Model changes therefore wait for open streams to settle. A client that stops reading is disconnected after a minute without progress, which ends its request. A slow client that keeps reading, and a model that takes its time, are not affected.
 
 Every HTTP span records the `x-localbase-request-id` value as `localbase.request_id`. LocalBase continues valid incoming W3C trace context and forwards it to native HTTP runtimes. The JSONL `http.request` event records the final gateway status and the time until the response body settles. Sampled request and inference completion events carry the owning span's trace and span IDs even when a streaming response settles later. Successful health and readiness probes are omitted; probe failures remain visible. Requests to unknown paths record `http.route` as `unmatched-route`; the event message and the `route_family` and `route_segments` attributes (span attributes `localbase.route.family` and `localbase.route.segments`) name the nearest known route family, such as `/v1/*` or `/_localbase/*`, and the capped segment count, never the path segments or query.
 

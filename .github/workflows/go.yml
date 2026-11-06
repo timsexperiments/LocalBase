@@ -1,0 +1,90 @@
+name: Go rewrite
+
+on:
+  pull_request:
+    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
+  push:
+    branches: [main, rewrite/go]
+    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
+
+permissions:
+  contents: read
+
+# A runner has no other work on it, so tests get a wide block to pick from.
+env:
+  LOCALBASE_TEST_PORTS: 24000-29999
+
+jobs:
+  test:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race -timeout 20m ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
+      - name: Reliability tool tests
+        run: go test ./tools/soak ./tools/lab
+      - name: A killed gateway leaves no backend behind
+        run: go test ./tools/chaos -run '^TestGatewayKilledOutright$' -count=1
+      - name: Compiled CSS is current
+        run: tools/tailwind.sh --check
+      - name: Contract suite against the Go gateway
+        # tools/contract.sh keeps a failing run's full go test -json stream.
+        env:
+          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+        run: tools/contract.sh -args -impl=go
+      - name: Keep the failing contract run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: contract-run
+          path: ${{ runner.temp }}/contract-runs
+          if-no-files-found: ignore
+
+  test-linux:
+    # Linux qualification (M6 step 3): the same checks on Ubuntu.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race -timeout 20m ./internal/... ./cmd/... ./tools/upgrade-rehearsal ./tools/openapi-docs
+      - name: Reliability tool tests
+        run: go test ./tools/soak ./tools/lab
+      - name: A killed gateway leaves no backend behind
+        run: go test ./tools/chaos -run '^TestGatewayKilledOutright$' -count=1
+      - name: Contract suite against the Go gateway
+        env:
+          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+        run: tools/contract.sh -args -impl=go
+      - name: Keep the failing contract run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: contract-run-linux
+          path: ${{ runner.temp }}/contract-runs
+          if-no-files-found: ignore

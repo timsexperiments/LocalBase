@@ -1,0 +1,29 @@
+{
+  "modelId": "qwen3.5-9b-q4_k_m",
+  "displayName": "Qwen3.5 9B",
+  "kind": "llm",
+  "provider": "Qwen",
+  "family": "Qwen3.5",
+  "version": "3.5",
+  "size": "9B",
+  "quant": "Q4_K_M",
+  "storageGb": 6.17,
+  "source": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF",
+  "repositoryRevision": "182be2fd6c7bc44887d88a91cb03ff009cc9f549",
+  "artifacts": [
+    {
+      "sourcePath": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+      "filename": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+      "expectedSizeBytes": 6169341984,
+      "sha256": "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 262144,
+  "capabilities": ["text-generation", "tool-calling"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0. Text only; no vision projector or image/video input.",
+  "notes": "bartowski imatrix Q4_K_M GGUF of Qwen/Qwen3.5-9B. GGUF header: architecture qwen35 (linear-attention layers with full attention every 4th layer), 32 layers plus one multi-token-prediction layer, 262,144-token training context. Embedded tokenizer and chat template; the upstream vision projector is not pinned."
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "whisper.cpp-vulkan",
+  "name": "whisper.cpp (Vulkan)",
+  "engine": "whisper.cpp",
+  "adapter": "whisper-server/v1",
+  "tasks": ["transcription"],
+  "capabilities": [],
+  "formats": ["ggml"],
+  "architectures": {"supported": ["whisper"], "unsupported": ["parakeet", "qwen3-asr"]},
+  "platforms": [{"os":"linux","arch":"x64","accelerator":"vulkan"}],
+  "runtime": {"family": "whisper-server", "executable": "whisper-server", "managed": true},
+  "notes": "Transition backend until CrispASR speech recognition is qualified."
+}

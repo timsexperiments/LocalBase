@@ -1,477 +1,120 @@
 # LocalBase
 
-LocalBase is a Bun/TypeScript unified, OpenAI-compatible gateway for local AI runtimes. It listens on port `2273` by default and manages model processes behind one API surface.
+LocalBase runs AI models on your own computer and serves them through one OpenAI-compatible API, with a web interface on top. It downloads models and their runtimes for you, and checks each model fits in memory before loading it.
 
-## Current capabilities
+It's one Go binary with no other dependencies to install. Your prompts and outputs stay on your machine, and there is no telemetry by default.
 
-- **LLM** OpenAI-compatible chat completions, including configured-model switching.
-- **Embeddings** for local indexing and search.
-- **Decisions** through `POST /v1/systemone` for decision models such as Clef: classification, scoring, and yes/no probabilities in one forward pass.
-- **STT** audio transcriptions and translations.
-- **TTS** through `/v1/audio/speech` with the bounded Qwen3 TTS base model.
-- **Image generation** through the OpenAI-compatible `/v1/images/generations` endpoint.
-- **Image editing** through multipart `POST /v1/images/edits` for catalog image-to-image models.
-- **Image-to-video** through `POST /v1/videos` with a PNG `input_reference` on TI2V profiles.
-- Lazy preparation of LLM, STT, TTS, and image runtimes on first use.
-- Self-healing process supervision with bounded restart backoff.
-- Zod request and response validation.
-- SQLite-backed configuration and API-key storage.
-- Hardware-aware context sizing (`auto`) or an explicit persisted context ceiling (`configure --ctx-mode explicit`), with the effective limit and every reduction explained in `/v1/models`. `GET /v1/models/{model}` returns one entry of that list, under the same `models:read` scope and visibility rules; IDs a key cannot list return 404 `model_not_found`.
+**Who it's for:** people who want local chat, embeddings, speech, images and video behind a single endpoint, on hardware they already own, and developers who want to point existing OpenAI clients at that hardware.
 
-The runtime keeps one active model per service. Memory pressure can evict idle runtimes or stop all runtimes in an emergency. Simultaneous multi-model process pools are not supported.
+> **Status: pre-1.0.** The Go version described here is 0.2.0, and it **hasn't been released yet**. Until it is, the install script below installs the older TypeScript 0.1.0, so [build from source](#build-from-source) to try it. See [what is and isn't verified](#platforms-and-hardware).
 
-### Model metadata
+<!-- Screenshots to add: Chat; Models library; Get models; Running now; Studio landing; Image, Speech, Transcribe, Video and Decisions studios; Settings; Admin; Chat on a phone. -->
 
-Authenticated `GET /_localbase/models` and `GET /_localbase/models/:modelId` return catalog identity, every declared artifact checksum and size, catalog memory estimates, and local selection, installation, and runtime state. `selected` reports configured selection. `runtime` reports the observed applied supervisor, so a replacement may be selected while the previous model drains. The gateway captures both before file inspection. Runtime metadata separates resolved native slots, active admissions, arithmetic availability, immediate dispatch eligibility, and bounded waiting-room capacity. Reads do not start runtimes or hash model files. Capability fields remain `null` without an authoritative value; the TTS model reports its WAV, catalog-voice, and cold-request contract. Each `/v1/models` entry also lists `capabilities` as `[{ "id", "source" }]`, where `source` is `declared` (catalog), `detected` (installed files), or `runtime` (the running engine). `local-base models show <id>` prints one model's provenance, files, capabilities with their sources, memory figures, and fit on this machine; add `--json` for the same data. In the browser, **Details** on a catalog card opens the same view at a linkable `?panel=catalog&details=<id>` URL.
+## Quickstart
 
-TTS is disabled by default. The first supported model is `qwen3-tts-1.7b-base-q4_k_m`. Requests must set `voice` to `default`, `harbor`, `willow`, or the id of a stored custom voice (below); omitted `response_format` defaults to WAV, unlike OpenAI's MP3 default, so clients that omit the format receive WAV bytes. The only supported explicit format is `wav`. `default` uses no reference file. Harbor and Willow are fixed, checksum-pinned CC0 references from Kyutai's verified Unmute voice donations ([provenance](https://huggingface.co/kyutai/tts-voices/tree/323332d33f997de8394f24a193e1a76df720e01a/voice-donations)). Speech requests cannot supply audio paths, URLs, or uploads; only an administrator can add a reference, through the voice endpoints below. Speed is fixed at `1`, instructions are unsupported, and input is limited to 256 characters. Each request runs a cold, bounded native generation and returns PCM16 mono WAV at 24 kHz. Human voice quality has not been assessed.
-
-### Custom voices
-
-The Qwen3 TTS runtime clones a voice zero-shot from a short reference recording, so a custom voice is just a stored recording; nothing is trained. The runtime encodes the clip into a speaker embedding (ECAPA-TDNN x-vector) on each request and needs no transcript. LocalBase stores each reference as 24 kHz mono PCM16 WAV, the rate the speaker encoder resamples to, under `<root>/voices/<id>.wav` (directory `0700`, file `0600`), with its name, SHA-256, duration, creation time, creating principal and consent attestation in the database. Uploads must be 3 to 30 seconds of RIFF/WAVE PCM or float audio (8 to 192 kHz, up to 8 channels, at most 12 MiB). They are decoded and resampled in TypeScript, never by a native decoder, and the rewritten file drops every metadata chunk. Silent clips are rejected. The browser converts microphone recordings and other formats to WAV before upload. At most 32 voices are stored.
-
-| Method and path | Permission | Purpose |
-| --- | --- | --- |
-| `GET /_localbase/voices` | `models:read` | List voices, limits and the consent statement; `createdBy` only for managers |
-| `POST /_localbase/voices` | `models:manage` | Create from multipart `name`, `consent=true` and an `audio` file |
-| `GET /_localbase/voices/{id}` | `models:read` | Read one voice |
-| `PATCH /_localbase/voices/{id}` | `models:manage` | Rename with JSON `{"name": "..."}` |
-| `DELETE /_localbase/voices/{id}` | `models:manage` | Delete the voice and its recording |
-| `GET /_localbase/voices/{id}/audio` | `models:manage` | Play back the stored reference |
-
-```bash
-curl http://127.0.0.1:2273/_localbase/voices -H 'Authorization: Bearer <ADMIN_KEY>' \
-  -F name=Narrator -F consent=true -F audio=@narrator.wav
-curl http://127.0.0.1:2273/v1/audio/speech -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' \
-  -d '{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Hello.","voice":"voice-0123456789ab"}' --output speech.wav
-```
-
-`consent` must be literally `true`: the creator attests that the voice is their own or that its speaker allowed it to be cloned. Names are trimmed, at most 48 characters, unique ignoring case, and cannot be a built-in voice name. Requests address a voice by its server-issued id (`voice-` and 12 hex digits), never by name or path. Custom voices appear in `/_localbase/models` speech metadata as extra `requestValues` with their names under `voice.custom`; `/v1/models` carries no voice list. A deleted or unknown id fails with HTTP 400 `voice_not_found`. The warm `tts-server` registers voices when it starts, so the first request for a new voice reloads it once in-flight generations finish (under a second with the weights cached). Logs record voice ids, never display names or audio, and diagnostics bundles record only the number of custom voices. The CLI manages the same store: `local-base voices list`, `local-base voices add clip.wav --name Narrator --consent` and `local-base voices remove <id>`.
-
-Use [`local-base config`](docs/declarative-config.md) to validate, plan, apply, and export versioned TOML configuration without prompts.
-
-Add your own models, or adjust built-in ones, in `<root>/catalog.d/`, or find and pin chat, transcription and image models from Hugging Face with `local-base models search`, `local-base models add hf:<org>/<repo>` or the catalog's **Find more models** view. New community models, plus verified-unsupported capabilities, measured memory peaks and multi-file install recipes for Hugging Face files, also arrive between releases through a remote catalog feed the gateway refreshes daily (`local-base models feed status`). See [User catalog and Hugging Face models](docs/user-catalog.md).
-
-### Built-in catalog
-
-The built-in catalog is a small, tested set: one entry per job, with a compact chat model and two larger ones. The table lists facts from each entry's pinned files; `local-base models show <id>` has the full record.
-
-The planning minimum is LocalBase's figure for admission and fit: the accelerator demand at the reference launch (LLMs: 8,192-token context, 1 request at a time, q8_0 KV cache, or f16 for embeddings) plus a margin of 512 MiB or 10%, whichever is larger. "Measured" figures were recorded on Apple M-series 64 GiB unified memory, macOS 26 ([memory calibration](docs/memory-calibration.md)); "estimate" figures come from the formula. They are not hardware requirements: other settings and machines need different amounts, and `local-base models catalog` shows the figures this machine uses.
-
-| Kind | Band or job | Model id | Pinned build | Planning minimum |
-| --- | --- | --- | --- | --- |
-| Chat | Compact | `qwen3.5-4b-q4_k_m` | Qwen3.5-4B, Q4_K_M GGUF, 262,144-token context, text only | 5 GB (measured) |
-| Chat | Larger, mixture-of-experts | `qwen3.6-35b-a3b-iq4_nl_xl` | Qwen3.6-35B-A3B (35B, 3B active), IQ4_NL_XL GGUF and F16 vision projector, 262,144-token context, text and image input | 24 GB (estimate) |
-| Chat | Larger, dense | `qwen3.8-27b-q4_k_m` | Qwen3.8-27B, Q4_K_M GGUF, 262,144-token context, text only | 21 GB (estimate) |
-| Embeddings | Smaller | `qwen3-embedding-0.6b-q8_0` | Qwen3-Embedding-0.6B, Q8_0 GGUF, 1024 dimensions | 3 GB (estimate) |
-| Embeddings | Larger | `qwen3-embedding-4b-q4_k_m` | Qwen3-Embedding-4B, Q4_K_M GGUF, 2560 dimensions | 5 GB (estimate) |
-| Decisions | Default | `clef-flash-q4_k_m` | Cloudflare Clef Flash (9B), Q4_K_M GGUF and Q8_0 projector | 10 GB (measured) |
-| Decisions | Larger | `clef-q4_k_m` | Cloudflare Clef (27B), Q4_K_M GGUF and Q8_0 projector | 25 GB (estimate) |
-| Speech to text | Multilingual | `whisper-base-q8_0` | Whisper base (74M), ggml Q8_0 | 1 GB (estimate) |
-| Speech to text | Multilingual, translation | `whisper-large-v3-turbo` | Whisper large-v3-turbo (809M), ggml F16 | 3 GB (measured) |
-| Text to speech | Voices and cloning | `qwen3-tts-1.7b-base-q4_k_m` | Qwen3-TTS-12Hz-1.7B-Base, Q4_K_M GGUF | 5 GB (measured) |
-| Text to speech | CPU (experimental) | `kokoro-82m-v1.0-q8` | Kokoro-82M, quantized ONNX, English | 1 GB (measured) |
-| Image | Text to image | `z-image-turbo-q4_0` | Z-Image-Turbo (6B), Q4_0 GGUF, 8 steps | 15 GB (measured) |
-| Image | Text to image | `flux2-klein-4b-q4_0` | FLUX.2-klein-4B, Q4_0 GGUF, 4 steps | 13 GB (measured) |
-| Image | Text to image | `dreamshaper-8-lcm` | DreamShaper 8 LCM (Stable Diffusion 1.5), F16, 4 steps | 5 GB (measured) |
-| Image | Image to image | `juggernaut-xl-v9` | Juggernaut XL v9 (SDXL 1.0 fine-tune), F16 | 16 GB (measured) |
-| Video | Text and image to video (experimental) | `fastwan2.2-ti2v-5b-q6_k` | FastWan2.2-TI2V-5B, Q6_K GGUF, 480x832, 81 frames | 8 GB (measured) |
-| Video | Speech to video (experimental, Linux x64 NVIDIA only) | `wan2.2-s2v-14b-fp8` | Wan2.2-S2V-14B, FP8 safetensors, 480x640, 33 frames | 21 GB (estimate) |
-
-Models that earlier releases shipped and this one no longer lists keep working after an upgrade. When LocalBase finds one installed, or named in the model settings, it writes the same spec (id, pinned revision, files and checksums) to `<root>/catalog.d/` as your own entry, exactly as if you had added it from Hugging Face. API clients keep calling the same id, defaults and selections stay valid, and checked-in memory measurements still apply while the files are unchanged. The only visible difference is that it is no longer marked as qualified by LocalBase; its notes start with "No longer in the LocalBase catalog". Remove it like any user entry with `local-base models remove-entry <id>` after deselecting it.
-
-Public `GET` and `HEAD /health/ready` report whether at least one configured modality can admit a request, including bounded queue waiting. `/health` remains process liveness.
-
-### Image and video inputs
-
-`POST /v1/images/edits` accepts multipart fields `model` (optional; defaults to the active image model), `prompt`, `image` or repeated `image[]` (1–4 PNG or JPEG files), optional nonempty PNG/JPEG `mask`, `n` (1–10), `size` (`256x256`, `512x512`, or `1024x1024`), `response_format` (`url` or `b64_json`), `output_format` (`png` or `jpeg`), and optional `strength` (0–1). Each input image and mask is structurally validated before model admission and limited to 2048 pixels per side and 4.2 megapixels. PNG decompression is bounded to its declared scanline size. WebP is not accepted because the pinned image backend uses stb_image, which does not decode WebP. Requests are limited to 20 MiB total and 8 MiB per file. Responses contain base64 image data for either response format.
-
-`POST /v1/videos` retains its JSON request contract. For TI2V profiles, add top-level `input_reference` containing canonical PNG base64 or a `data:image/png;base64,...` URL; dimensions must match that profile's fixed canvas. Multipart requests may instead supply `input_reference` as a PNG file, with the remaining video fields as form values. Text-only TI2V requests remain supported. Image-to-video is experimental and unqualified; see [video qualification](docs/video-qualification.md).
-
-### Decision models
-
-Decision models answer structured questions about a state instead of generating text. `POST /v1/systemone` follows the llama.cpp System One contract used by Workers AI and Jev:
-
-```bash
-curl http://127.0.0.1:2273/v1/systemone \
-  -H "Authorization: Bearer $LOCALBASE_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "MODEL_ID",
-    "state": { "invoice": "INV-104", "due": "2026-09-01", "paid": false },
-    "questions": {
-      "status": {
-        "type": "choice",
-        "instructions": "What is the invoice status?",
-        "criteria": { "overdue": "Past the due date and unpaid", "paid": null, "open": null }
-      },
-      "urgency": { "type": "score", "criteria": ["low", "medium", "high"] },
-      "escalate": { "type": "noul", "instructions": "Should a human follow up?" }
-    }
-  }'
-```
-
-- `state` is required and may be a string, object, array, or `null`.
-- `files` and `images` are optional lists of `data:image/...;base64,` or `data:audio/...;base64,` URLs. Models without the matching projector return HTTP 501.
-- Each question has a `type`, optional `instructions`, and `criteria`. `instructions` defaults to the question ID.
-  - `choice`: 2–255 options mapped to a description or `null`.
-  - `score`: 2–10 level labels, lowest first.
-  - `noul`: optional `{ "true": "...", "false": "..." }` descriptions.
-- Responses contain `model`, per-question `answers`, and `usage: { input_tokens, output_tokens }`. Choice answers return `choice`, `probabilities`, and `confidence`. Score answers return `score`, `legend`, `probabilities`, and `confidence`. Noul answers return the true probability as `noul`.
-
-The default decision model is Clef Flash (`clef-flash-q4_k_m`, about 7.1 GB). It is Cloudflare's Apache-2.0 9B model, pinned to the ggml-org Q4_K_M GGUF and its Q8_0 image projector. Its decision launch (8,192-token context, 1 request at a time, Q8_0 projector) measured 8.62 GiB of accelerator demand on Apple M-series 64 GiB unified memory, macOS 26; other machines and settings differ:
-
-```bash
-local-base models install clef-flash-q4_k_m
-```
-
-Clef 27B (`clef-q4_k_m`, about 19.9 GB, Apache-2.0, post-trained from Qwen3.8-27B) is also built in. Its planning minimum is a 25 GB formula estimate at the same decision launch; it has not been measured. Add other decision GGUFs through the Hugging Face search. Files whose header carries decision heads are detected as decision models.
-
-Decision models list `architecture.output_modalities: ["decisions"]` in `/v1/models`. They reject chat completions and embeddings, and other models reject `/v1/systemone` with HTTP 400 `unsupported_model_capability`. The route requires the `inference:decision` scope.
-
-## Supported platforms
-
-Full managed support includes the CLI and automatic backend management:
-
-- macOS ARM64.
-- Linux x64.
-
-CLI-only compatibility is available for macOS x64 and Linux ARM64. These releases publish the Bun CLI only; LocalBase does not download, install, or verify backend runtimes. Put compatible user-managed backend executables on `PATH`, outside `$LOCALBASE_ROOT/bin` (by default `~/.local/share/local-base/bin`).
-
-Linux managed-runtime releases are built and qualified against an Ubuntu 24.04-compatible userspace and require the GNU OpenMP runtime (`libgomp`, packaged as `libgomp1` on Ubuntu).
-
-Linux STT requires one monitored NVIDIA GPU and a PCI-capable LocalBase Whisper runtime. The runtime matches the admitted NVML device's PCI address to a unique discrete Vulkan backend, including on hosts with an Intel integrated GPU. Missing or ambiguous identity and GPU initialization failure stop STT; `--bypass-memory-check` does not enable CPU-only fallback. Older user-managed Whisper binaries are unsupported. This is not multi-discrete-GPU support. macOS keeps its Metal runtime.
-
-Managed runtime versions are pinned independently from LocalBase CLI releases.
-
-## Getting started
-
-Install the latest release with POSIX `sh` (or set `LOCALBASE_VERSION`, for example `v0.1.0`, to pin a release):
+**macOS on Apple Silicon is the tested path.** On Linux x86-64 without a GPU, chat worked in testing only with the memory reserve lowered, and slowly. A 16 GB machine is refused at the default reserve. See [what runs where](docs/platforms.md).
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/timsexperiments/LocalBase/main/scripts/install.sh | sh
-```
+# 1. Install. The script verifies checksums, never uses sudo and installs to ~/.local/bin.
+curl -fsSLO https://github.com/timsexperiments/LocalBase/releases/latest/download/install.sh
+less install.sh
+sh install.sh
 
-The installer verifies the archive against `checksums.txt`, puts `local-base` in `~/.local/bin`, and installs `LICENSE` plus `THIRD_PARTY_NOTICES.txt` in `~/.local/share/local-base/licenses` by default. Set `LOCALBASE_INSTALL_DIR` or `LOCALBASE_LICENSE_DIR` to choose different destinations. Run `sh scripts/install.sh --help` for installer options. Add the CLI directory to `PATH` if needed, then run `local-base init`.
-
-For a manual install, download the archive for the host from an immutable tag on [GitHub Releases](https://github.com/timsexperiments/LocalBase/releases), along with `checksums.txt`.
-
-```bash
-ARCHIVE=local-base-macos-arm64.zip
-grep -F "  $ARCHIVE" checksums.txt > "$ARCHIVE.sha256"
-shasum -a 256 -c "$ARCHIVE.sha256" # macOS
-sha256sum -c "$ARCHIVE.sha256"     # Linux
-```
-
-Each archive contains the CLI, `LICENSE`, and `THIRD_PARTY_NOTICES.txt`. Extract and install the CLI:
-
-```bash
-unzip "$ARCHIVE"                    # macOS
-# tar -xzf "$ARCHIVE"              # Linux
-mkdir -p "$HOME/.local/bin"
-install -m 755 "${ARCHIVE%.zip}" "$HOME/.local/bin/local-base"
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-For Linux archives, install `"${ARCHIVE%.tar.gz}"` instead. Add the `PATH` export to the active shell profile to make it permanent.
-
-Configure a small LLM and create an API key:
-
-```bash
-local-base init
-local-base --non-interactive configure --defaults \
-  --llm-models qwen3.5-4b-q4_k_m \
-  --active-llm qwen3.5-4b-q4_k_m \
-  --stt-models '' \
-  --tts-models '' \
-  --image-models '' \
-  --parallel auto \
-  --create-key
-local-base models install qwen3.5-4b-q4_k_m
+# 2. Start the gateway as a user service on http://127.0.0.1:2273.
 local-base start
-```
 
-Fresh configuration defaults to Qwen3.5 4B Q4_K_M (Apache-2.0, tool-capable, about 3.01 GB). `serve` never downloads model weights without consent: install them with `local-base models install <id>`, or pass `local-base serve --install-missing` to approve missing selected models. Backend runtime binaries remain managed automatically.
+# 3. Download a small model (about 3 GB) and create an API key. Copy the secret it prints.
+local-base models install qwen3.5-4b-q4_k_m
+local-base keys create --name quickstart
+export API_KEY=<the secret>
 
-Store the displayed API key, then verify inference:
-
-```bash
-export LOCALBASE_API_KEY='lb_...'
+# First chat.
 curl http://127.0.0.1:2273/v1/chat/completions \
-  -H "Authorization: Bearer $LOCALBASE_API_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"qwen3.5-4b-q4_k_m","messages":[{"role":"user","content":"Say hello in two words."}]}'
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen3.5-4b-q4_k_m","messages":[{"role":"user","content":"Say hello."}]}'
 ```
 
-Use `local-base status` to inspect the service and `local-base logs --follow` to stream logs.
+Requests must name a model. `local-base models recommend` lists what fits your machine. The first request also downloads the model's runtime, so it takes a little longer. Models that reason before answering can use a small `max_tokens` entirely on reasoning and return empty content, so leave room.
 
-### Browser playground
+**The web interface:** `local-base start` prints a [one-time sign-in link](docs/first-run-sign-in.md), and `local-base access login-link` makes another. **The link only works from a browser on the same computer.** A phone or another computer needs an [identity provider](docs/authentication.md). API keys don't work in the browser.
 
-See [Authentication and authorization](docs/authentication.md) for the trust
-model, CI setup, identity-provider choices, access policies, API-key scopes,
-and recovery procedures.
+### Build from source
 
-Configure the human identity provider, then restart LocalBase:
+Needs the Go version in [`go/go.mod`](go/go.mod).
 
-```bash
-local-base access cloudflare \
-  --team-domain your-team.cloudflareaccess.com \
-  --audience YOUR_ACCESS_AUD_TAG \
-  --origin https://localbase.example.com
-local-base restart
+```sh
+git clone https://github.com/timsexperiments/LocalBase.git
+cd LocalBase/go
+go build -o local-base ./cmd/localbase
+./local-base --version
 ```
 
-Direct OpenID Connect uses Authorization Code with PKCE. Register
-`https://localbase.example.com/oidc/callback` as the exact redirect URI. Read a
-confidential client's secret from the environment so it never appears in the
-process arguments:
+## Platforms and hardware
 
-```bash
-export LOCALBASE_OIDC_SECRET='...'
-local-base access oidc add \
-  --id company \
-  --name "Company sign-in" \
-  --issuer https://identity.example.com \
-  --client-id YOUR_CLIENT_ID \
-  --client-secret-env LOCALBASE_OIDC_SECRET \
-  --origin https://localbase.example.com
-local-base restart
-```
+See [what runs where](docs/platforms.md) for what has actually been run.
 
-Use `--public-client` instead of `--client-secret-env` only when the provider
-registration is explicitly a public client.
+| Platform | LocalBase runs | Runtimes it can download | Status |
+| --- | --- | --- | --- |
+| macOS, Apple Silicon | yes | all | **First-class.** The development and daily-use platform |
+| Linux x86-64 | yes | all except CrispASR; the chat runtime is the Vulkan build | **Without a GPU:** chat worked in testing only with a lowered memory reserve, at about 7 tokens a second. Kokoro doesn't run, and image and transcription need Vulkan. With a GPU, untested. The tests and installer pass in CI, with a fake backend. **Not qualified as an end-user install** |
+| macOS Intel | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
+| Linux ARM64 | yes | ffmpeg only | Chat, image and transcription are refused until you supply your own backend. That hasn't been tried |
+| Windows | no | | Not planned |
 
-GitHub uses OAuth rather than OpenID Connect. Register
-`https://localbase.example.com/github/callback` as the OAuth app callback URL:
+**Not verified yet:**
 
-```bash
-export LOCALBASE_GITHUB_SECRET='...'
-local-base access github add \
-  --id github \
-  --name GitHub \
-  --client-id YOUR_GITHUB_CLIENT_ID \
-  --client-secret-env LOCALBASE_GITHUB_SECRET \
-  --origin https://localbase.example.com
-local-base restart
-```
+- **NVIDIA on Linux.** Placement and GPU admission exist, tested with synthetic fixtures only. No real NVIDIA hardware has run them, and CUDA runtimes aren't managed for you. A custom CUDA backend can be registered with `local-base backends`.
+- **Linux services and real inference.** The installer and `serve` pass in CI on Ubuntu, but `local-base start` has only run in a disposable container, and real models on Linux are unqualified.
+- **Real phones and microphones.** Phone layouts and recording were checked in simulators and test browsers only.
+- **Video through the web page.** The video API has generated real clips on a Mac, but the page has never had enough free memory for a real run.
 
-OIDC, GitHub, and magic-link registrations can coexist on the same sign-in
-page. The first registration receives the default browser permissions. Later
-additions preserve the configured permissions unless `--permissions` is
-supplied. Use the matching provider's `list` and `remove` commands. Removing
-the last registration disables browser access.
+**Memory** decides what you can run. The smallest chat model is planned at about 5 GB, and the larger ones at 20 GB or more. By default LocalBase also keeps at least 8 GiB free for the system on top of that, so even the smallest needs about 13 GiB free. A 16 GB machine may refuse it. On Apple Silicon, memory is shared between CPU and GPU. `local-base doctor` reports what LocalBase sees, and `local-base models catalog` shows what fits.
 
-Native email sign-in uses the SMTP configuration described in
-[Authentication and authorization](docs/authentication.md). It accepts only
-invited managed users:
+## Features
 
-```bash
-local-base access magic-link add \
-  --id email \
-  --name "Email sign-in" \
-  --origin https://localbase.example.com
-local-base restart
-```
+- **OpenAI-compatible API.** Chat completions, embeddings, audio transcriptions, translations and speech, image generation and edits, and video jobs. See [connect an app](docs/connect.md) and the [API overview](docs/api.md).
+- **Studio tools.** Pages for Image, Speech, Transcribe, Video and Decisions, plus Chat, in the web interface.
+- **Decisions.** `POST /v1/systemone` answers structured questions about a state with classifications, scores and yes/no probabilities, using decision models.
+- **Memory-safe admission.** Before loading a model, LocalBase checks it fits, and refuses if it doesn't. Under memory pressure it evicts idle runtimes to avoid swapping, and under critical pressure it stops active ones too.
+- **Detached runs.** Generation from the web interface carries on when you leave the page, and the page picks it back up when you return. This was checked in test browsers, not yet on a real phone. API clients keep normal behaviour: disconnecting cancels.
+- **Placement.** Each model has a setting: automatic, GPU only, CPU only or custom layers. It doesn't apply on Apple Silicon, where memory is shared. On Linux it's unverified with a real GPU.
+- **Model management.** A curated catalog, plus imports from Hugging Face, direct URLs and local files, with licenses shown. LocalBase doesn't redistribute model weights. One model per type runs at a time.
+- **Operations.** Structured logs, a redacted diagnostics bundle, declarative TOML configuration, and optional OTLP export.
 
-Use `local-base access show --json` to inspect the active non-secret configuration and `local-base access disable` to disable browser sign-in. The default browser permissions allow chat and model discovery. Grant other inference permissions and `models:manage` explicitly. Pass `--permissions` to replace the defaults. Access configuration is restart-scoped and every command supports `--non-interactive` and `--json`.
+## Security model
 
-An optional database-backed policy replaces provider-wide permissions with named
-roles and identity bindings. Subject bindings compare the exact issuer and opaque subject.
-Email and email-domain bindings use only provider-verified email addresses. A
-policy grants no permissions when no binding matches and must retain at least
-one binding whose role grants `access:manage`.
+The gateway listens on loopback (`127.0.0.1`) by default. To reach it from elsewhere, publish it through an authenticated HTTPS proxy or tunnel.
 
-```json
-{
-  "roles": [
-    {
-      "name": "admin",
-      "description": "LocalBase administrators",
-      "permissions": ["access:manage", "models:read", "models:manage"]
-    },
-    {
-      "name": "user",
-      "permissions": ["inference:chat", "models:read"]
-    }
-  ],
-  "bindings": [
-    {
-      "kind": "subject",
-      "role": "admin",
-      "issuer": "https://identity.example.com",
-      "subject": "exact-provider-subject"
-    },
-    {
-      "kind": "email-domain",
-      "role": "user",
-      "domain": "example.com"
-    }
-  ],
-  "defaultRole": null
-}
-```
+| Who | How they authenticate | What they can do |
+| --- | --- | --- |
+| API clients | A scoped API key from `local-base keys` | Only the scopes on that key. By default, inference and reading the model list |
+| Browser users | OpenID Connect (such as Google), Cloudflare Access or an emailed magic link, set up with `local-base access` | The permissions from their provider or role. By default, chat and reading the model list |
+| You, on this computer | A [one-time link](docs/first-run-sign-in.md) from `local-base access login-link` | Everything. It works only from a browser on the same computer |
+| Local administrator | Read and write access to the data directory | Everything, through the CLI. This is also the recovery path if you lock yourself out |
 
-```bash
-local-base access policy apply --file access-policy.json --json
-local-base access policy show --json
-local-base access policy test \
-  --issuer https://identity.example.com \
-  --subject exact-provider-subject \
-  --email person@example.com \
-  --json
-```
+Browser sessions are opaque, HTTP-only cookies, and mutations carry a per-session CSRF token. `--no-auth` is [for local development only](docs/no-auth.md) and must never be tunneled. See [authentication](docs/authentication.md) and [SECURITY.md](SECURITY.md).
 
-`access policy test` treats `--email` as verified input for offline evaluation.
-`access policy clear` restores the provider-wide permissions configured by
-`access cloudflare`, `access oidc`, or `access github`. Policy changes apply to
-the next request without restarting LocalBase.
+## Documentation
 
-Provision users after applying a policy with `local-base access users invite
---email person@example.com --roles user --json`. The command returns the
-configured `/app` sign-in URL. The first matching verified provider email links
-the identity and activates the user. `access users disable` denies all browser
-permissions for that linked identity, including provider-wide role matches.
-Use `access users list`, `roles`, `enable`, `disable`, and `remove` for
-automation. A policy cannot be cleared while managed users exist.
-
-Open `/app` on the configured HTTPS origin. The playground requires a verified human session from Cloudflare Access, OpenID Connect, or GitHub; gateway API keys cannot authenticate the browser UI. Direct sessions are opaque, HTTP-only cookies and are cleared when LocalBase restarts. Chat streams normal LLM responses. Models with the `tool-calling` feature can call `generate_image`, `generate_video`, and `synthesize_speech` when the corresponding models are selected and installed. The browser validates tool arguments, runs tools sequentially, and limits each turn to four model rounds and four tool calls. Text summaries and tool-call IDs continue the conversation; generated media bytes and download URLs never enter model context.
-
-Open **Access & API keys** from Settings or `/app?panel=admin` to inspect and update identity-provider configuration, access policies, API-key scopes, rotation, and revocation. The page appears only after human sign-in and each operation still requires its corresponding `access:*` or `keys:*` permission. New and rotated API-key secrets are held only in page memory and shown once.
-
-Model Lab calls models directly without generation tools. It supports chat, images, speech, audio-file transcription, text-to-video, and embeddings. Voice choices (including custom voices, which managers can record, upload, play, rename and delete under **My voices** in generation controls), embedding dimension bounds, and the fixed video profile come from model metadata. Completed videos play inline and download as MP4 in Chat and Model Lab. Speech-to-video portrait and audio inputs are not supported in Model Lab yet.
-
-The gateway converts the runtime's AVI output to MP4 using a pinned, checksum-verified converter installed automatically when needed. It does not use a system FFmpeg installation.
-
-Stop aborts inference and media requests. Video submission is allowed to return its job ID before cancellation so the browser can cancel and delete the job with the same verified identity. Cleanup failures appear as warnings without discarding completed downloads. The static shell is public, while model metadata and inference require the configured browser identity provider. Runtime admission and resource limits remain enforced by the gateway.
-
-History lasts for the open page by default. Settings can opt into device-local text history; credentials, attachment payloads, generated media, and tool protocol messages are never stored. Saved conversations with missing attachments require a new conversation before sending. The UI uses no service worker.
-
-Chat accepts up to four UTF-8 text or code attachments, limited to 128 KiB each and 256 KiB combined. Models declaring image input also accept PNG, JPEG, and WebP images up to 5 MiB each. Attachments accompany follow-ups and retries for the open page. PDF, Office documents, and archives are not supported. Managed chat models currently declare text input only.
-
-Microphone buttons dictate into text fields using the installed, enabled STT model selected in Settings. Tap once to record and again to transcribe; text is added without submitting. Recordings are limited to one minute, converted to mono 16 kHz WAV in the browser, and sent to the gateway's transcription endpoint. Navigating away or cancelling discards the recording. Microphone access requires browser permission and HTTPS or localhost; plain-HTTP LAN addresses cannot record. Password, numeric, and file inputs do not offer dictation.
-
-Open **Manage models** from the model picker or `/app?panel=catalog` to browse the catalog, disk usage, and download sizes. Only installed, enabled models can be selected for inference. Installation downloads files; enabling makes them available for requests; setting a default chooses the model used when a request omits one. Disable a model and wait for its runtime to release it before uninstalling. Shared model files are retained.
-
-Model administration requires `models:manage`; catalog reads require `models:read`. Browser sessions receive the permissions configured by `local-base access cloudflare`, `local-base access oidc`, or `local-base access github`. Machine clients can receive the same capability with `local-base keys create --scopes models:read,models:manage`. Ordinary client keys retain inference and model-read access by default.
-
-`GET /_localbase/model-management` returns catalog installation state, storage, operation progress, and `canManage`. Authorized clients use `POST` on the same endpoint with `{"modelId":"<catalog-id>","action":"install"}`. Actions are `install`, `uninstall`, `enable`, `disable`, and `activate`. Install returns HTTP 202; poll GET for completion or failure. One installation runs at a time, and progress is retained only for the running gateway process. Other actions return HTTP 200 when complete.
-
-Authentication administration uses two exact, always-authenticated endpoints:
-
-- `GET` and `POST /_localbase/access-management` require `access:read` for reads and policy tests, or `access:manage` for provider and policy changes.
-- `GET /_localbase/api-keys` requires `keys:read`. `POST` requires `keys:manage` and accepts `create`, `rotate`, `revoke`, or `set-scopes` actions.
-
-Provider responses never include client secrets. API-key creation and rotation return the new key secret once; reads and later mutations return metadata only. Provider changes require a restart; policy and key changes take effect on the next request. These permissions are not granted to browser sessions or ordinary API keys automatically. Grant them explicitly with `local-base access ... --permissions`, an access policy, or `local-base keys create --scopes ...`. The CLI remains the primary recovery and automation interface because it works directly against the local data directory.
-
-Models sharing files with an installation must be disabled and released by their runtimes. Do not run concurrent CLI installs or re-enable affected models through the CLI while an API installation is running.
-
-`bun install`, `bun run db:prepare`, and release builds prepare the browser assets. After UI edits, run `bun run db:prepare` for source execution or `bun run build` for a standalone CLI. Compiled binaries embed the assets and need no checkout or runtime build.
-
-## Structured outputs
-
-Chat completions accept OpenAI-compatible `response_format.type: "json_schema"` requests. LocalBase compiles the schema before starting a model and forwards the response format unchanged to the managed llama runtime. Schemas must use a root object, require every declared property, set `additionalProperties: false`, and fit within 10 nesting levels, 5,000 total properties, 1,000 local references, and 256 KiB. LocalBase also limits each object to 1,000 properties as a synchronous compilation resource bound; this is distinct from OpenAI's overall property limit.
-
-Chat completions default to a maximum of 4096 generated tokens when neither `max_tokens` nor `max_completion_tokens` is provided. Set the environment-only `LOCALBASE_DEFAULT_MAX_TOKENS` variable to change this server default; it is capped at the selected model's effective per-slot context. Explicit client limits are passed through. Tool requests are accepted only for catalog models with the `tool-calling` feature.
-
-The supported contract includes primitive and nullable types, strict object properties, object-valued array items, array bounds and string maximum lengths up to 10,000, safe integral integer bounds, scalar `enum` and `const` values matching their declared type, `anyOf`, and direct `#/$defs/name` or `#/definitions/name` references with ASCII identifier names. LocalBase rejects string minimum lengths, formats, remote or deeper references, other dialects, and keywords or combinations that the managed runtime would ignore.
-
-For non-streaming responses, LocalBase validates ordinary assistant content when `finish_reason` is `stop`. A mismatch returns HTTP 502 with code `structured_output_validation_failed`. Refusals, tool calls, and truncated choices retain their original response semantics. Streaming remains incremental and relies on the runtime grammar rather than whole-response buffering.
-
-See [Operating LocalBase](docs/operations.md) for queue limits, model-switch behavior, cancellation, telemetry, metadata, and compiled runtime qualification.
-
-## Logs
-
-`serve` is the single writer of redacted JSON Lines events under `$LOCALBASE_ROOT/logs`. The active file rotates at 10 MiB and retains five archives. These files are the primary operational record for foreground and managed services. A managed startup failure before the primary sink is available atomically records one private, bounded structured bootstrap event. On macOS, launchd discards stdout and appends stderr to the private `$LOCALBASE_ROOT/logs/service-stderr.log`, which catches what the structured sink cannot (Bun panics, uncaught errors, failures before logging starts); the managed gateway stops copying events to the console once its sink opens, and at startup a file over 1 MiB has its newest 1 MiB moved to `service-stderr.log.1` and is then emptied. It is raw, unredacted output, so `doctor` and `diagnostics` report only its size and path, never its content. The systemd journal remains the secondary Linux fallback.
-
-```bash
-local-base logs --level error
-local-base logs --limit 500 --since 2026-01-01T00:00:00Z
-local-base logs --runtime llm
-local-base --json logs --request-id req-123
-```
-
-Finite `logs --json` calls return the normal JSON command envelope and default to the newest 200 matching events (maximum 5,000). `logs --follow --json` streams one validated log event per JSONL line to stdout. Log records redact credentials, cookies, secret URL values, request identifiers that resemble credentials, and request or model content before they reach any sink.
-
-### OpenTelemetry export
-
-Local JSONL is the durable log record. Records with sampled span context include `trace: { traceId, spanId }`. An OTLP/HTTP endpoint enables bounded asynchronous log and trace export:
-
-```bash
-local-base configure --otel-endpoint http://localhost:4318 --otel-sample-ratio 25
-```
-
-Standard `OTEL_EXPORTER_OTLP_ENDPOINT`, signal-specific endpoint/header variables, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER`, and `OTEL_TRACES_SAMPLER_ARG` override persisted settings. LocalBase uses W3C `traceparent` and `tracestate`, propagates valid request context to backends, and correlates local logs with sampled spans. Baggage, prompts, responses, credentials, and arbitrary headers are never exported. Collector outages can drop bounded telemetry but do not delay or fail inference; shutdown gives all telemetry signals one shared five-second flush deadline.
-
-## Automation and JSON output
-
-Stored API keys default to `inference:chat`, `inference:embeddings`, `inference:decision`, `inference:image`, `inference:video`, `inference:speech`, `inference:transcription`, and `models:read`. Existing keys migrate to this set without administrative permissions or `inference:decision`; add that scope with `keys scopes`. The `LOCALBASE_API_KEY` environment credential retains full access.
-
-```bash
-local-base keys create --name chat-client --scopes inference:chat,models:read --json
-local-base keys list --json
-local-base keys scopes key_ID --scopes inference:video,models:read --json
-local-base keys rotate key_ID --json
-local-base keys revoke key_ID --json
-```
-
-`keys scopes` replaces the complete scope set and takes effect on the next request without a restart. Use `--scopes ""` to grant no permissions. Scope lists accept only these permissions:
-
-```text
-inference:chat, inference:embeddings, inference:decision, inference:image,
-inference:video, inference:speech, inference:transcription, models:read,
-models:manage, configuration:read, configuration:manage, keys:read,
-keys:manage, access:read, access:manage, sessions:read, sessions:revoke,
-system:read, system:manage
-```
-
-Duplicates are removed and scopes are returned in the order above. Invalid scopes fail before any database changes. Creation and rotation show the secret once; list and scope output contain only key metadata. Rotation preserves scopes, expiry, revocation state, and the key ID used for video ownership. Scope changes also preserve revoked status. A missing, expired, revoked, or invalid credential returns HTTP 401; an active key without the required permission returns HTTP 403. Local CLI key management uses access to the data directory and does not require an API key.
-
-Use the global `--json` option for automation. It may appear before or after a command, but not after `--`.
-
-```bash
-local-base --json models catalog
-local-base doctor --json
-```
-
-Finite commands write exactly one JSON document to stdout:
-
-```json
-{ "ok": true, "data": {} }
-```
-
-```json
-{ "ok": false, "error": { "code": "invalid_input", "message": "..." } }
-```
-
-Diagnostics, progress, and errors are written to stderr. Exit codes are `0` for success, `1` for operational failures, and `2` for invalid input. `--json` disables interactive prompts; destructive commands still require `--yes`, and `configure` creates an API key only with explicit `--create-key`.
-
-`serve --json` writes JSON Lines lifecycle events (`started`, `stopped`, and `error`) to stdout. Gateway logs remain on stderr; OpenAI-compatible HTTP and SSE responses are unchanged.
-
-## Development
-
-Install dependencies and run the source CLI with Bun:
-
-```bash
-bun install --frozen-lockfile
-bun run local-base --help
-```
-
-Useful verification commands:
-
-```bash
-bun run check
-bun test
-bun run build
-```
-
-`bun run check` formats-checks the source, type-checks the project, and runs the CLI help smoke test. `bun run build` produces `dist/local-base`.
-
-Database changes use Drizzle. Run `bun run db:generate` to create SQL migrations and `bun run db:check` to validate the tracked SQL and journal. Installation and builds generate the ignored asset module embedded by compiled CLIs.
+- [Install, service setup, uninstall](docs/install.md) and [upgrade and rollback](docs/upgrade.md), and [the upgrade command](docs/upgrade-command.md), and [backup and restore](docs/backup.md)
+- [Configuration](docs/configuration.md), [declarative config](docs/declarative-config.md) and [operations](docs/operations.md)
+- [Connect an app](docs/connect.md)
+- [Usage and activity](docs/usage.md)
+- [API overview](docs/api.md), [API reference](docs/api-reference.md) and [API details](docs/api-details.md)
+- [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md)
+- [Authentication](docs/authentication.md), [first-run sign-in](docs/first-run-sign-in.md), [`--no-auth`](docs/no-auth.md) and [user catalog entries](docs/user-catalog.md)
+- [Why a model was refused](docs/model-refusals.md), [the memory reserve](docs/memory-reserve-guide.md), [GPU memory limit](docs/gpu-memory-limit.md) and [install failures](docs/install-failures.md)
+- [Privacy](docs/privacy.md), [where secrets live](docs/secrets.md), [model licenses](docs/model-licenses.md), [speech marking](docs/speech-marking.md), [third-party notices](THIRD_PARTY_NOTICES.md) and [name and marks](TRADEMARKS.md)
+- [Design notes](go/DESIGN.md) and [changelog](CHANGELOG.md)
+- [Versioning and deprecation](docs/versioning.md), [release checklist](docs/release-checklist.md) and [TypeScript retirement](docs/typescript-retirement.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidance, and [SECURITY.md](SECURITY.md) to report vulnerabilities.
+See [CONTRIBUTING.md](CONTRIBUTING.md). New work goes in [`go/`](go/); [`src/`](src/README.md) is the legacy TypeScript version. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
 Copyright (C) 2026 TimsExperiments. LocalBase is licensed under [AGPL-3.0-or-later](LICENSE).
+
+FFmpeg, which LocalBase downloads on demand for video conversion, is GPL-licensed. It isn't included in LocalBase and runs as a separate program; see [third-party notices](THIRD_PARTY_NOTICES.md).

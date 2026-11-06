@@ -1,0 +1,36 @@
+{
+  "notes": "Variants the Go build adds to built-in catalog models. Facts are pinned upstream metadata; qualifiedOn names the builds the 2026-10-20 CrispASR TTS screen ran (Mac CPU and Metal; Linux CPU and CUDA, unpackaged here).",
+  "models": {
+    "kokoro-82m-v1.0-q8": [
+      {
+        "id": "crispasr-f16",
+        "format": {"value": "gguf", "source": "pinned-metadata"},
+        "architecture": {"value": "kokoro", "source": "pinned-metadata"},
+        "precision": {"value": "F16", "source": "pinned-metadata"},
+        "contextLength": {"value": 0, "source": ""},
+        "dimensions": {"value": 0, "source": ""},
+        "qualifiedOn": ["crispasr-metal", "crispasr-cpu"],
+        "artifacts": [
+          {
+            "filename": "kokoro-82m-f16.gguf",
+            "role": "weights",
+            "required": true,
+            "sizeBytes": 163728096,
+            "sha256": "341d5e96c2d7f06fc71dbc8d955150a5b6e3a59840f8905cb3fbe9b12120df52",
+            "hashTrust": "authoritative",
+            "source": {"kind": "huggingface", "repo": "cstr/kokoro-82m-GGUF", "revision": "ab19534a3b5cc12bc2741478e9790eadb328654a", "path": "kokoro-82m-f16.gguf"}
+          },
+          {
+            "filename": "kokoro-voice-af_heart.gguf",
+            "role": "voice",
+            "required": true,
+            "sizeBytes": 522784,
+            "sha256": "14463a5a5204a16a382b2da87b4b0206fcda225b44b7c4627999eb527f49c018",
+            "hashTrust": "authoritative",
+            "source": {"kind": "huggingface", "repo": "cstr/kokoro-voices-GGUF", "revision": "1c98db113c69e3feef9644cf0aaec5c0bea02a8e", "path": "kokoro-voice-af_heart.gguf"}
+          }
+        ]
+      }
+    ]
+  }
+}

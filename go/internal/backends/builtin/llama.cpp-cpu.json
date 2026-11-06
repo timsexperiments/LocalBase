@@ -1,0 +1,17 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "llama.cpp-cpu",
+  "name": "llama.cpp (CPU)",
+  "engine": "llama.cpp",
+  "adapter": "llama-server/v1",
+  "tasks": ["chat", "embeddings", "decision"],
+  "capabilities": ["vision", "audio-input", "tool-calling"],
+  "formats": ["gguf"],
+  "architectures": {
+    "likely": ["qwen2", "qwen3", "qwen35", "qwen35moe", "clef", "llama", "llama4", "gemma", "gemma2", "gemma3", "gemma3n", "mistral3", "phi3", "phi4", "gpt-oss", "deepseek2", "qwen2moe", "qwen3moe", "qwen2vl", "qwen25vl", "command-r", "cohere2", "granite", "granitemoe", "olmo2", "falcon", "starcoder2", "glm4", "glm4moe", "exaone", "smollm3", "bert", "nomic-bert", "jina-bert-v2"]
+  },
+  "companions": {"vision": ["projector"], "audio-input": ["projector"]},
+  "platforms": [{"os":"darwin","arch":"arm64","accelerator":"cpu"},{"os":"linux","arch":"x64","accelerator":"cpu"},{"os":"darwin","arch":"x64","accelerator":"cpu"},{"os":"linux","arch":"arm64","accelerator":"cpu"}],
+  "runtime": {"family": "llama-server", "executable": "llama-server", "managed": false},
+  "notes": "No architecture is qualified with this build here; the ones qualified on Metal and Vulkan, and those documented upstream, are likely."
+}

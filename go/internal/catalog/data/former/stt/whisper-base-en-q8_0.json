@@ -1,0 +1,28 @@
+{
+  "modelId": "whisper-base-en-q8_0",
+  "displayName": "Whisper Base (English)",
+  "kind": "stt",
+  "provider": "OpenAI/ggml",
+  "family": "Whisper",
+  "version": "base.en",
+  "size": "base.en",
+  "quant": "Q8_0",
+  "storageGb": 0.09,
+  "source": "https://huggingface.co/ggerganov/whisper.cpp",
+  "repositoryRevision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+  "artifacts": [
+    {
+      "sourcePath": "ggml-base.en-q8_0.bin",
+      "filename": "ggml-base.en-q8_0.bin",
+      "expectedSizeBytes": 81781811,
+      "sha256": "a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["audio"],
+  "outputModalities": ["text"],
+  "capabilities": ["speech-to-text"],
+  "commercialStatus": "open",
+  "catch": "MIT License.",
+  "notes": "English-only transcription. Vocabulary and mel filters are bundled; no Core ML encoder required."
+}

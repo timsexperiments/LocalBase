@@ -1,0 +1,29 @@
+{
+  "modelId": "llama-3.1-8b-instruct-q4_k_m",
+  "displayName": "Llama 3.1 8B Instruct",
+  "kind": "llm",
+  "provider": "Meta",
+  "family": "Llama",
+  "version": "3.1",
+  "size": "8B",
+  "quant": "Q4_K_M",
+  "storageGb": 4.7,
+  "source": "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+  "repositoryRevision": "bf5b95e96dac0462e2a09145ec66cae9a3f12067",
+  "artifacts": [
+    {
+      "sourcePath": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "filename": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "expectedSizeBytes": 4920739232,
+      "sha256": "7b064f5842bf9532c91456deda288a1b672397a54fa729aa665952863033557c",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
+  "capabilities": ["tool-calling", "multilingual", "reasoning"],
+  "commercialStatus": "conditional",
+  "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
+  "notes": "bartowski Q4_K_M GGUF of meta-llama/Meta-Llama-3.1-8B-Instruct (Llama 3.1 Community License). GGUF header: architecture llama, 131,072-token training context."
+}

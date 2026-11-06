@@ -1,0 +1,179 @@
+{{/* One installed model: the whole row opens its page; the status is in
+     words, and one pill says the most important state. */}}
+{{define "model-row"}}
+<li>
+  <a href="/app/models/m/{{.ID}}" class="model-row">
+    <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
+    <span class="min-w-0 flex-1">
+      <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+      <span class="block text-sm text-muted">{{.Task}}{{if .Default}} · default{{end}} · {{size .DiskBytes}}{{if eq .Trust "user" "modified"}} · your entry{{end}}</span>
+    </span>
+    {{if .Busy}}<span class="pill pill-warn">Busy</span>{{else if .Loaded}}<span class="pill pill-ok"><span aria-hidden="true" class="size-1.5 rounded-full bg-current"></span>Loaded</span>{{else if not .Enabled}}<span class="pill">Off</span>{{else}}<span class="pill">Ready</span>{{end}}
+    {{template "icon-chevron"}}
+  </a>
+</li>
+{{end}}
+
+{{/* A qualified catalog model on Get models: the row opens its page; one
+     action gets it, or says it is installed. Fit is in words. */}}
+{{define "catalog-row"}}
+<li class="model-row" id="cat-{{.ID}}">
+  <span aria-hidden="true" class="model-avatar">{{.Initial}}</span>
+  <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
+    <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
+    <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if not .Installed}} download{{end}}{{if and .Installed (eq .Fit "fits")}} · fits this computer{{else if and .Installed (eq .Fit "tight")}} · tight fit{{end}}</span>
+    {{if .Forecast}}<span class="block text-sm text-muted">{{if eq .Fit "fits"}}Fits now.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{else if eq .Fit "close-others"}}Close other apps first.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{if .FreeFirstBytes}} Free {{aboutGib .FreeFirstBytes}} first.{{end}}{{else if eq .Fit "wont-fit"}}Too big for this computer.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{end}}</span>
+    {{else if .MayNotFit}}<span class="block text-sm text-muted">{{.MayNotFit}}</span>{{end}}
+  </a>
+  <span class="catalog-action shrink-0" id="cat-{{.ID}}-action">
+  {{if .Installed}}<span class="pill pill-ok">Installed</span>
+  {{else if and (eq .Fit "wont-fit") (not .MayNotFit)}}<a class="btn btn-quiet rounded-full px-4" href="/app/models/m/{{.ID}}" aria-label="Why {{.Name}} doesn’t fit">Why?</a>
+  {{else if and $.CanManage .MayNotFit}}<button type="button" class="btn btn-quiet rounded-full px-5" aria-label="Get {{.Name}}" data-open-sheet="may-{{.ID}}" aria-haspopup="dialog">Get</button>
+  <dialog id="may-{{.ID}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="may-{{.ID}}-title">
+    {{template "sheet-head" (dict "ID" (printf "may-%s-title" .ID) "Title" (printf "%s may not fit" .Name))}}
+    <form class="grid gap-3 px-4 pb-2" hx-post="/app/models/get/recipe" hx-target="closest .catalog-action" hx-swap="innerHTML">
+      <p class="text-muted">{{mayDetail .MayNotFit}} You can download it, but it may refuse to load when you start it.</p>
+      <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
+      <button type="submit" class="btn btn-primary w-full">Download anyway</button>
+    </form>
+  </dialog>
+  {{else if $.CanManage}}<form hx-post="/app/models/get/recipe" hx-target="closest .catalog-action" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="modelId" value="{{.ID}}"><input type="hidden" name="compact" value="1">
+    <button type="submit" class="btn btn-quiet rounded-full px-5" aria-label="Get {{.Name}}">Get</button></form>
+  {{end}}
+  </span>
+</li>
+{{end}}
+
+{{/* Task filter chips (links, so Back works); one row that scrolls. */}}
+{{define "task-chips"}}
+<nav aria-label="Filter by task" class="chip-row">
+  <a class="chip" href="{{.Base}}{{with .Query}}?q={{.}}{{end}}" {{if eq .Filter "all"}}aria-current="true"{{end}}
+     hx-get="{{.Base}}?filter=all" {{with .Include}}hx-include="{{.}}"{{end}} hx-target="{{.Target}}" hx-select="{{.Target}}" hx-swap="outerHTML" hx-push-url="true">All</a>
+  {{range .Tasks}}{{$f := lower .}}
+  <a class="chip" href="{{$.Base}}?filter={{$f}}{{with $.Query}}&q={{.}}{{end}}" {{if eq $f $.Filter}}aria-current="true"{{end}}
+     hx-get="{{$.Base}}?filter={{$f}}" {{with $.Include}}hx-include="{{.}}"{{end}} hx-target="{{$.Target}}" hx-select="{{$.Target}}" hx-swap="outerHTML" hx-push-url="true">{{.}}</a>
+  {{end}}
+</nav>
+{{end}}
+
+{{/* An empty list: what is missing and the one thing to do about it. */}}
+{{define "empty-state"}}
+<div class="empty-state">
+  <h2 class="text-lg font-bold">{{.Title}}</h2>
+  <p class="mt-1 text-muted">{{.Text}}</p>
+  {{with .Href}}<a href="{{.}}" class="btn {{if $.Quiet}}btn-quiet{{else}}btn-primary{{end}} mt-4">{{$.Action}}</a>{{end}}
+</div>
+{{end}}
+
+{{/* Models: the title, the one "get" action, and Library / Get models. */}}
+{{define "models-header"}}
+<div class="flex items-center justify-between gap-3">
+  <h1 id="models-title" class="page-title">Models</h1>
+  {{if eq .Page "library"}}<a href="/app/models/get" class="btn btn-primary size-11 rounded-full p-0" aria-label="Get a model">{{template "icon-plus"}}</a>{{end}}
+</div>
+<nav aria-label="Models" class="segmented mt-4 max-w-sm">
+  <a href="/app/models" {{if eq .Page "library"}}aria-current="page"{{end}}>Library</a>
+  <a href="/app/models/get" {{if eq .Page "get"}}aria-current="page"{{end}}>Get models</a>
+</nav>
+{{end}}
+
+{{define "gauge"}}
+{{/* This computer's memory, in equal places. The words nearby say the same, so it is never
+     shape or color alone, and the picture itself is hidden from assistive technology. */}}
+<svg class="gauge" viewBox="0 0 478 20" preserveAspectRatio="none" aria-hidden="true">{{range gaugeSegments .Other .Models .Capacity}}<rect x="{{.X}}" y="{{.Y}}" width="{{.W}}" height="{{.H}}" class="gauge-{{.Kind}}"/>{{end}}</svg>
+{{end}}
+
+{{/* What the strip's picture is made of, on Running. */}}
+{{define "memory-legend"}}
+{{if .Known}}
+<dl class="gauge-legend">
+  {{if .Models}}<div><dt><span aria-hidden="true" class="gauge-key gauge-key-models"></span><span>LocalBase{{with .Source}}<span class="gauge-caption">{{.}}{{if $.GettingReady}}, {{gib $.GettingReady}} of it getting ready{{end}}.</span>{{end}}</span></dt><dd>{{gib .Models}}</dd></div>{{end}}
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-other"></span>Other apps and system</dt><dd>{{gib .Other}}</dd></div>
+  <div><dt><span aria-hidden="true" class="gauge-key gauge-key-free"></span>Free memory</dt><dd>{{gib .Available}}</dd></div>
+  <div><dt>Total</dt><dd>{{gib .Capacity}}</dd></div>
+</dl>
+{{end}}
+{{end}}
+
+{{/* The strip: which computer does the work, in what state, with how much room. All of it
+     opens Running. It refreshes itself, and shell.js marks it when the computer can't be
+     reached. */}}
+{{define "memory-strip"}}
+<div id="memory-strip" hx-get="/app/strip" hx-trigger="every 3s" hx-swap="outerHTML" hx-headers='{"X-Strip-Key": "{{.Key}}"}' data-poll data-strip>
+  <a class="strip strip-{{.State}}" href="/app/models/running">
+    {{template "strip-body" .}}<span class="sr-only">. Open Running.</span>
+  </a>
+  {{with .Advice}}<p class="strip-advice"><span>{{.}}</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
+</div>
+{{end}}
+
+{{/* A long name gives way before the state does: the name truncates, with the whole of it
+     as a tooltip, and the state wraps. */}}
+{{define "strip-body"}}<span class="strip-row"><span class="strip-host">{{template "mark"}}<b title="{{.Host}}">{{.Host}}</b></span><span class="strip-word" data-strip-word>{{.Word}}</span><span class="strip-free" data-strip-free>{{.Free}}</span></span>{{template "gauge" .}}{{end}}
+
+{{define "backend-panel"}}
+{{/* Model settings: the backend that runs this model on this device. Every
+     registered backend stays selectable; findings are labels, not locks. */}}
+<section id="backend-panel" class="card p-5" aria-labelledby="backend-h">
+  <h2 id="backend-h" class="font-bold">Backend on this device</h2>
+  {{if .Error}}<p class="mt-2 text-danger" role="alert">{{.Error}}</p>{{else}}
+  {{if .Unavailable}}
+  <p class="mt-2" role="alert"><span class="badge badge-warn">Unavailable</span> You chose <span class="font-semibold">{{.BackendID}}</span>, which is no longer registered. Nothing else was picked in its place; choose a replacement.</p>
+  {{else if not .BackendID}}
+  <p class="mt-2"><span class="badge badge-warn">No backend</span> No backend was detected as compatible. Select a backend to run this model.</p>
+  {{else}}
+  <p class="mt-2"><span class="font-semibold">{{.BackendName}}</span>
+    <span class="badge">{{if eq .Mode "manual"}}Your choice{{else}}Automatic{{end}}</span>
+    <span class="badge {{if eq .Rating "supported"}}badge-ok{{else if eq .Rating "likely"}}{{else}}badge-warn{{end}}">{{.RatingLabel}}</span></p>
+  {{range .Reasons}}<p class="mt-1 text-sm text-muted">{{.}}</p>{{end}}
+  {{range .Warnings}}<p class="mt-1 text-sm">⚠ {{.}}</p>{{end}}
+  {{if .DownloadBytes}}<p class="mt-1 text-sm">This variant needs {{size .DownloadBytes}} more to download before it can run.</p>{{end}}
+  {{end}}
+  {{if and (eq .Mode "manual") .Recommended}}<p class="mt-1 text-sm text-muted">Automatic selection would use {{.Recommended}}.</p>{{end}}
+  {{with .Message}}<p class="mt-2 text-sm" role="status">{{.}}</p>{{end}}
+  <form class="mt-3 grid gap-2" hx-post="/app/models/backend/{{.ModelID}}" hx-target="#backend-panel" hx-swap="outerHTML">
+    <label class="text-base font-semibold" for="backend-select">Run with</label>
+    <select id="backend-select" name="backend" class="input min-h-11">
+      {{if or (not .BackendID) .Unavailable}}<option value="" selected disabled>Choose a backend…</option>{{end}}
+      {{range .Options}}
+      <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}} — {{.RatingLabel}}{{if .Recommended}} (recommended){{end}} · {{.Install}}</option>
+      {{end}}
+    </select>
+    <p class="text-sm text-muted">Starting the model still checks its files, memory and hardware, and reports the backend's own errors.</p>
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="btn btn-primary">Use this backend</button>
+      {{if eq .Mode "manual"}}<button type="submit" name="reset" value="1" class="btn btn-quiet">Reset to automatic</button>{{end}}
+    </div>
+  </form>
+  <details class="mt-3">
+    <summary class="min-h-11 cursor-pointer text-base font-semibold">Why each backend is rated this way</summary>
+    <ul class="mt-2 space-y-1 text-sm">
+      {{range .Options}}<li><span class="font-semibold">{{.Name}}</span>: {{.RatingLabel}}{{with .Reason}} — {{.}}{{end}}{{range .Warnings}}; {{.}}{{end}}</li>{{end}}
+    </ul>
+  </details>
+  {{end}}
+</section>
+{{end}}
+
+{{/* Adding a voice, on My voices and from the Speech studio's picker. */}}
+{{define "voice-add"}}
+  <dialog id="voice-add" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="voice-add-title">
+    {{template "sheet-head" (dict "ID" "voice-add-title" "Title" "Add a voice")}}
+    <form class="grid gap-4 px-4 pb-2" hx-post="{{.Post}}" hx-encoding="multipart/form-data" hx-target="{{.Target}}" hx-swap="outerHTML"
+      hx-disabled-elt="find button[type=submit]" data-audio-form data-reset-on-success data-close-sheet-on-success>
+      <label class="grid gap-1"><span class="font-semibold">Name</span>
+        <input class="input" name="name" required maxlength="48" autocomplete="off"></label>
+      <div class="grid gap-1"><span id="voice-recording-label" class="font-semibold">Recording <span class="font-normal text-muted">({{.List.Limits.MinSeconds}} to {{.List.Limits.MaxSeconds}} seconds of clear speech)</span></span>
+        <div class="flex flex-wrap items-center gap-2">
+          <input class="input min-w-0 flex-1" type="file" name="audio" aria-labelledby="voice-recording-label" accept="audio/*" data-audio-input required>
+          <button type="button" class="btn btn-quiet rounded-full" data-record>Record</button>
+        </div>
+        <p class="text-sm text-muted" data-audio-status aria-live="polite">Upload a file or record here; it is converted to WAV in the browser.</p>
+        <audio controls class="hidden w-full" data-audio-preview></audio>
+      </div>
+      <label class="flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="consent" value="true" required class="size-5 shrink-0 accent-[var(--lb-accent)]"> <span>{{.List.ConsentStatement}}</span></label>
+      <button type="submit" class="btn btn-primary w-full">Add voice</button>
+    </form>
+  </dialog>
+{{end}}

@@ -1,0 +1,29 @@
+{
+  "modelId": "llama-3.3-70b-instruct-q4_k_m",
+  "displayName": "Llama 3.3 70B Instruct",
+  "kind": "llm",
+  "provider": "Meta",
+  "family": "Llama",
+  "version": "3.3",
+  "size": "70B",
+  "quant": "Q4_K_M",
+  "storageGb": 42,
+  "source": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF",
+  "repositoryRevision": "b6c5c9f176f3279204034e1d16d393105e95cb88",
+  "artifacts": [
+    {
+      "sourcePath": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+      "filename": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+      "expectedSizeBytes": 42520398816,
+      "sha256": "32df3baccb556f9840059b2528b2dee4d3d516b24afdfb9d0c56ff5f63e3a664",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
+  "capabilities": ["tool-calling", "reasoning", "multilingual"],
+  "commercialStatus": "conditional",
+  "catch": "Free unless your app has >700M monthly active users; then request a Meta license.",
+  "notes": "bartowski Q4_K_M GGUF of meta-llama/Llama-3.3-70B-Instruct (Llama 3.3 Community License). GGUF header: architecture llama, 131,072-token training context."
+}

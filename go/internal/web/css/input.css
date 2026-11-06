@@ -1,0 +1,1552 @@
+@import "tailwindcss" source(none);
+@source "../templates";
+@source "../static/js";
+@source "../*.go";
+
+@import "./theme.css";
+
+@theme inline {
+  --color-canvas: var(--lb-canvas);
+  --color-surface: var(--lb-surface);
+  --color-surface-muted: var(--lb-surface-muted);
+  --color-hover: var(--lb-hover);
+  --color-ink: var(--lb-text);
+  --color-muted: var(--lb-muted);
+  --color-line: var(--lb-border);
+  --color-bound: var(--lb-bound);
+  /* From tablet up there is room for the sidebar: no stretched phones. */
+  --breakpoint-lg: 48rem;
+  --color-accent: var(--lb-accent);
+  --color-accent-hover: var(--lb-accent-hover);
+  --color-on-accent: var(--lb-accent-text);
+  --color-accent-soft: var(--lb-accent-soft);
+  --color-accent-line: var(--lb-accent-border);
+  --color-warn: var(--lb-warn);
+  --color-warn-soft: var(--lb-warn-soft);
+  --color-danger: var(--lb-error);
+  --color-danger-soft: var(--lb-error-surface);
+  --color-danger-line: var(--lb-error-border);
+  --color-scrim: var(--lb-scrim);
+  --shadow-pop: var(--lb-shadow-pop);
+  --shadow-sheet: var(--lb-shadow-sheet);
+  --ease-lb: var(--lb-ease);
+  --font-sans: var(--lb-font-sans);
+  --font-display: var(--lb-font-display);
+  --font-reading: var(--lb-font-reading);
+  --font-mono: var(--lb-font-mono);
+  --radius-sm: var(--lb-radius-sm);
+  --radius-md: var(--lb-radius-md);
+  --radius-lg: var(--lb-radius-lg);
+  --radius-xl: var(--lb-radius-xl);
+  --radius-2xl: var(--lb-radius-2xl);
+  --radius-3xl: var(--lb-radius-3xl);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Focus and find-in-page scroll targets clear the tab bar and keyboard. */
+    scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + 1rem);
+  }
+  @media (min-width: 768px) {
+    html {
+      scroll-padding-bottom: 1rem;
+    }
+  }
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    line-height: 1.5;
+  }
+  :focus-visible {
+    outline: 2px solid var(--lb-accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* htmx request indicators (its built-in styles are off for the CSP). */
+  .htmx-indicator {
+    @apply hidden;
+  }
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    @apply inline;
+  }
+  /* Keep 44px touch targets on every interactive control. */
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-base font-semibold transition-colors;
+  }
+  .btn-primary {
+    @apply bg-accent text-on-accent hover:bg-accent-hover;
+  }
+  .btn-quiet {
+    @apply border border-[var(--lb-edge)] bg-surface text-ink hover:bg-hover;
+  }
+  .chip {
+    @apply inline-flex min-h-11 items-center rounded-full border border-[var(--lb-edge)] bg-surface px-4 text-base font-medium text-ink hover:bg-hover;
+  }
+  .chip[aria-current="true"] {
+    @apply border-accent bg-accent text-on-accent;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-md bg-surface-muted px-2 py-0.5 text-xs font-semibold text-muted;
+  }
+  .badge-ok {
+    @apply bg-accent-soft text-accent;
+  }
+  .badge-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .card {
+    @apply rounded-2xl border border-bound bg-surface;
+  }
+  .eyebrow {
+    @apply text-base font-semibold text-accent;
+  }
+  .input {
+    @apply min-h-11 w-full rounded-xl border border-[var(--lb-edge)] bg-surface px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-2 focus:outline-accent;
+  }
+}
+
+/* A line of a model's words stays readable at any width. */
+@layer components {
+  .reply :is(p, li, h1, h2, h3, h4, blockquote) {
+    max-width: var(--lb-measure);
+  }
+}
+
+/* Chat replies (markdown) and their code blocks. */
+@layer components {
+  .reply {
+    @apply min-w-0 wrap-anywhere leading-7;
+    font-family: var(--lb-font-reading);
+    font-size: 1.125rem;
+    line-height: 1.5;
+  }
+  .reply > * + * {
+    @apply mt-3;
+  }
+  .reply h3 {
+    @apply text-xl font-bold;
+  }
+  .reply h4 {
+    @apply text-lg font-bold;
+  }
+  .reply h5,
+  .reply h6,
+  .reply h7,
+  .reply h8 {
+    @apply font-bold;
+  }
+  .reply ul {
+    @apply list-disc pl-6;
+  }
+  .reply ol {
+    @apply list-decimal pl-6;
+  }
+  .reply li + li {
+    @apply mt-1;
+  }
+  .reply li > * + * {
+    @apply mt-2;
+  }
+  .reply a {
+    @apply font-semibold text-accent underline underline-offset-4;
+  }
+  .reply blockquote {
+    @apply border-l-4 border-line pl-4 text-muted;
+  }
+  .reply hr {
+    @apply border-line;
+  }
+  .reply :not(pre) > code {
+    @apply rounded-md bg-surface-muted px-1.5 py-0.5 text-[0.9em];
+  }
+  .md-code {
+    @apply overflow-hidden rounded-xl border border-bound bg-surface;
+  }
+  .md-code-bar {
+    @apply flex items-center justify-between gap-2 border-b border-line bg-surface-muted pl-3 text-xs font-semibold text-muted;
+  }
+  .md-code pre {
+    @apply overflow-x-auto p-3 text-sm leading-6;
+  }
+  .md-copy {
+    @apply inline-flex min-h-11 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 text-[0.9375rem] font-medium text-ink hover:bg-hover;
+  }
+  .md-table {
+    @apply overflow-x-auto;
+  }
+  .md-table table {
+    @apply w-full border-collapse text-sm;
+  }
+  .md-table th,
+  .md-table td {
+    @apply border border-line px-3 py-1.5 text-left align-top;
+  }
+  .md-table th {
+    @apply bg-surface-muted font-semibold;
+  }
+  .reasoning {
+    @apply mb-2 rounded-xl border border-bound bg-surface px-3;
+  }
+  .reasoning summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
+  .reasoning[open] {
+    @apply pb-3;
+  }
+  .artifact {
+    @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-bound bg-surface p-3;
+  }
+  .composer-box {
+    @apply rounded-3xl border border-[var(--lb-edge)] bg-surface focus-within:outline-2 focus-within:outline-accent;
+  }
+  /* A borderless round icon button (chat header and composer). */
+  .icon-btn {
+    @apply inline-flex size-11 shrink-0 items-center justify-center rounded-full text-base text-muted transition-colors hover:bg-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .compaction {
+    @apply rounded-xl border border-dashed border-bound px-3;
+  }
+  .compaction summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
+  .compaction[open] {
+    @apply pb-3;
+  }
+}
+
+@layer components {
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+}
+
+/* Disclosures whose summary is a flex row lose the native marker; draw one. */
+@layer components {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary {
+    @apply list-none gap-2;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::-webkit-details-marker {
+    display: none;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::before {
+    content: "▸" / "";
+    @apply inline-block w-3 text-muted transition-transform motion-reduce:transition-none;
+  }
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives)[open] > summary::before {
+    @apply rotate-90;
+  }
+}
+
+/* App shell (DESIGN §22): phones get a bottom tab bar and a "More" sheet,
+   tablets and desktops (≥768px) a sidebar. Page titles replace the old header row. */
+@layer components {
+  .page-title {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-display);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
+  }
+  .page-lead {
+    @apply mt-1 max-w-2xl text-muted;
+  }
+
+  .sidebar {
+    @apply sticky top-0 hidden h-dvh shrink-0 flex-col gap-1 overflow-y-auto border-r border-line bg-surface px-3 pt-3 pb-3 lg:flex;
+    width: var(--lb-sidebar-w);
+  }
+  .brand {
+    @apply flex min-h-11 items-center gap-2.5 rounded-xl px-2 text-lg font-bold;
+  }
+  @media (min-width: 768px) and (max-width: 1099px) {
+    .sidebar {
+      @apply items-center px-2;
+    }
+    .sidebar .rail-label {
+      @apply sr-only;
+    }
+    .sidebar .rail-hide,
+    .sidebar .sidebar-history {
+      display: none !important; /* over the flex utility on the element */
+    }
+    .sidebar nav {
+      @apply w-full;
+    }
+    .sidebar .nav-item {
+      @apply justify-center pr-0 pl-0;
+    }
+    .sidebar .account-button {
+      @apply justify-center border-0 px-0;
+    }
+    .sidebar .brand {
+      @apply px-0;
+    }
+    .page {
+      @apply px-6;
+    }
+  }
+  .brand-mark {
+    @apply inline-grid size-7 place-items-center text-accent;
+  }
+  .brand-mark svg {
+    @apply size-7;
+  }
+  .nav-item {
+    @apply flex min-h-11 items-center gap-3 rounded-xl border-l-[3px] border-transparent pr-3 pl-[calc(0.75rem-3px)] text-base font-semibold text-muted transition-colors hover:bg-hover hover:text-ink;
+  }
+  /* Being here is a mark at 3:1 or better, and not only a tint. */
+  .nav-item[aria-current="page"] {
+    @apply border-accent bg-accent-soft text-accent;
+  }
+  .account-button {
+    @apply flex min-h-12 w-full items-center gap-3 rounded-xl border border-bound px-2 text-left text-base hover:bg-hover;
+  }
+  .avatar {
+    @apply grid size-8 shrink-0 place-items-center rounded-full bg-accent-soft font-bold text-accent;
+  }
+  /* A popover menu (the Popover API: no script, light dismiss, Escape). */
+  .menu {
+    @apply m-0 w-56 rounded-xl border border-bound bg-surface p-1 text-ink shadow-pop;
+    position: fixed;
+    inset: auto auto 4.25rem 0.75rem;
+  }
+  .menu-item {
+    @apply flex min-h-11 w-full items-center rounded-lg px-3 text-left text-base font-semibold hover:bg-hover;
+  }
+
+  .tabbar {
+    @apply fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas lg:hidden;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .tabbar > ul {
+    @apply mx-auto grid max-w-lg grid-cols-5;
+    min-height: var(--lb-tabbar-h);
+  }
+  .tab {
+    @apply flex h-full min-h-12 w-full flex-col items-center justify-center gap-0.5 border-t-2 border-transparent text-base font-semibold text-muted transition-colors hover:text-ink;
+  }
+  .tab-label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .tab[aria-current="page"],
+  .tab[data-active] {
+    @apply border-accent text-accent;
+  }
+  .tab > svg {
+    @apply size-6;
+  }
+  /* While typing on a touch screen the keyboard owns the bottom edge. */
+  html[data-typing] .tabbar {
+    @apply hidden;
+  }
+  /* Pages leave room for the fixed tab bar on phones. */
+  .page {
+    @apply mx-auto w-full max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pt-[max(1rem,env(safe-area-inset-top))] lg:px-10 lg:pt-8;
+    padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 2rem);
+  }
+  @media (min-width: 768px) {
+    .page {
+      padding-bottom: 3rem;
+    }
+  }
+
+  /* Segmented control for sibling pages (Models: Library / Get models). */
+  .segmented {
+    @apply flex gap-1 rounded-xl bg-surface-muted p-1;
+  }
+  /* Items share the row by their label width (four labels fit at 360px). */
+  .segmented > a {
+    @apply flex min-h-11 flex-auto items-center justify-center rounded-lg border border-transparent px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+  }
+  .segmented > a[aria-current="page"] {
+    @apply border-[var(--lb-edge)] bg-surface text-ink;
+  }
+
+  /* Bottom sheet: a native modal <dialog> anchored to the bottom edge. */
+  .sheet {
+    @apply mx-auto mt-auto mb-0 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border border-b-0 border-bound bg-surface p-0 text-ink shadow-sheet;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  @media (min-width: 768px) {
+    .sheet {
+      inset-inline-start: var(--lb-sidebar-w);
+    }
+  }
+  .sheet::backdrop {
+    background: var(--lb-scrim);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet[open] {
+      animation: lb-sheet-in 220ms var(--lb-ease);
+    }
+  }
+
+  /* Grouped list (iOS Settings style): rows share one rounded container. */
+  .list-group {
+    @apply overflow-hidden rounded-2xl border border-bound bg-surface;
+  }
+  .list-group > li + li,
+  .list-group > * + * {
+    @apply border-t border-line;
+  }
+  .list-row {
+    @apply flex min-h-12 w-full items-center gap-3 px-4 py-2 text-left text-base font-semibold hover:bg-hover;
+  }
+  .list-label {
+    @apply mt-6 mb-2 px-1 text-sm font-semibold text-muted;
+  }
+}
+
+@keyframes lb-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* "Generating…": a run in progress elsewhere in the app; tap to return. */
+@layer components {
+  .run-pill {
+    @apply pointer-events-auto inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border border-accent-line bg-surface px-4 text-base font-semibold text-ink shadow-pop;
+  }
+  .sidebar .run-pill {
+    @apply mt-2 rounded-xl shadow-none;
+  }
+  .run-dot {
+    @apply size-2.5 shrink-0 rounded-full bg-accent;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .run-dot {
+      animation: lb-pulse 1.6s ease-in-out infinite;
+    }
+  }
+  /* On its own ground above the tab bar, or above the prompt where there is one: what scrolls
+     goes behind it, so the pill is never over words or the field you're typing in. */
+  .run-pill-dock {
+    @apply border-t border-line bg-canvas py-1.5;
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom));
+  }
+  .run-pill-dock:has([data-run-pill][hidden]) {
+    display: none !important; /* over its own flex utility */
+  }
+  body:has([data-docked]) .run-pill-dock {
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom) + var(--lb-dock-h, 10rem));
+  }
+  @media (max-width: 767px) {
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .page {
+      padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + 5.5rem);
+    }
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .lab-dock-spacer {
+      height: calc(var(--lb-dock-h, 10rem) + 4.5rem);
+    }
+  }
+  html[data-typing] .run-pill-dock {
+    @apply hidden;
+  }
+}
+
+@keyframes lb-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Chat: the tab bar sits under the composer in the page's column. */
+@layer components {
+  .chat-head {
+    @apply flex min-h-11 items-center gap-1 bg-canvas px-[max(0.25rem,env(safe-area-inset-left))] pt-[max(0.25rem,env(safe-area-inset-top))] min-[1100px]:mx-auto min-[1100px]:w-full min-[1100px]:max-w-3xl min-[1100px]:px-5;
+  }
+  .chat-title {
+    @apply min-w-0 flex-1 text-center text-base font-semibold min-[1100px]:text-left;
+  }
+  .chat-rename {
+    @apply inline-flex max-w-full min-h-11 items-center rounded-lg px-2 font-semibold enabled:hover:bg-hover;
+  }
+  .chat-strip {
+    @apply mx-auto w-full max-w-3xl px-[max(0.75rem,env(safe-area-inset-left))] pb-1;
+  }
+  /* The words reach a clean edge under the strip, not a cut line of text. */
+  .chat-col #main::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 z-10 h-3;
+    background: linear-gradient(var(--lb-canvas), transparent);
+  }
+  /* While composing the strip is one line, and it stays: this is still your computer. */
+  html[data-typing] .strip .gauge {
+    height: 0.375rem;
+  }
+  html[data-typing] .strip {
+    @apply py-1.5;
+  }
+  html[data-typing] .strip-row {
+    @apply mb-1;
+  }
+  @media (max-width: 1099px) {
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip .gauge {
+      height: 0.375rem;
+    }
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip-row {
+      @apply mb-1;
+    }
+    .chat-col:has(#chat-input:focus, #chat-input:not(:placeholder-shown)) .strip {
+      @apply py-1.5;
+    }
+  }
+  /* A short screen: the words and the error come first, and the page never outgrows it. */
+  @media (max-height: 620px) {
+    .chat-strip .strip .gauge {
+      height: 0.375rem;
+    }
+    .chat-strip .strip-row {
+      @apply mb-1;
+    }
+  }
+  [data-error-box] {
+    @apply max-h-[50dvh] overflow-y-auto;
+  }
+  /* In Chat the chat's own Stop says it, and the pill would sit on the words or the composer.
+     A run in another chat shows in the list of chats and on every other page. */
+  .chat-col .run-pill-dock {
+    display: none !important; /* over the dock's own flex utility */
+  }
+  .chat-hello {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-hello);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
+  }
+  /* Near the composer on a phone, where the thumb is. Taller than the room, it starts at
+     the top and scrolls: an automatic margin never cuts the heading off. */
+  .chat-landing:not([hidden]) {
+    @apply mx-auto flex min-h-full max-w-3xl flex-col px-4 pt-3 pb-4;
+  }
+  .chat-landing > * {
+    @apply mt-auto min-[1100px]:mb-auto;
+  }
+  .chat-empty {
+    @apply px-1;
+  }
+  .chat-suggest {
+    @apply mt-4 grid gap-1.5 min-[1100px]:grid-cols-3;
+  }
+  /* Too narrow for all of it, the model's name comes first; this one is in the picker too. */
+  @media (max-width: 359px) {
+    .composer-spare {
+      @apply hidden;
+    }
+  }
+  .picker-more {
+    @apply flex flex-wrap gap-x-4 border-t border-line px-4 pt-1;
+  }
+  .list-link {
+    @apply inline-flex min-h-11 items-center font-medium text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-50;
+  }
+  /* A short screen shows two: a third would only be cut by the composer. */
+  @media (max-height: 620px) {
+    .chat-suggestion:nth-child(n + 3) {
+      @apply hidden;
+    }
+  }
+  .tool-icon {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted;
+  }
+  .chat-suggestion {
+    @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
+  }
+  .chat-model {
+    @apply ml-1 flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-sm font-medium text-muted hover:bg-hover hover:text-ink;
+  }
+  .reply-place {
+    @apply mb-2 grid gap-2;
+  }
+  .reply-place i {
+    @apply block h-4 rounded-md;
+  }
+  .reply-place i:nth-child(2) {
+    width: 88%;
+  }
+  .reply-place i:nth-child(3) {
+    width: 60%;
+  }
+  .chat-col > .tabbar {
+    position: static;
+  }
+  .chat-composer {
+    padding-bottom: 0.75rem;
+  }
+  @media (min-width: 768px) {
+    .chat-composer {
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+  }
+}
+
+/* Lists of models (Library, Get models): one row, one link, one state. */
+@layer components {
+  .model-row {
+    @apply flex min-h-16 items-center gap-3 px-4 py-2.5;
+  }
+  a.model-row {
+    @apply text-ink hover:bg-hover focus-visible:-outline-offset-2;
+  }
+  .model-avatar {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft font-bold text-accent;
+  }
+  .pill {
+    @apply inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-muted px-2.5 py-0.5 text-sm font-semibold whitespace-nowrap text-muted;
+  }
+  .pill-ok {
+    @apply bg-accent-soft text-accent;
+  }
+  .pill-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  /* One row of filter chips that scrolls sideways instead of wrapping. */
+  .chip-row {
+    @apply -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-wrap lg:px-0;
+    scrollbar-width: none;
+  }
+  .chip-row > .chip {
+    @apply shrink-0;
+  }
+  .search-field {
+    @apply min-h-12 rounded-xl px-4;
+  }
+  .empty-state {
+    @apply rounded-2xl border border-dashed border-bound px-6 py-10 text-center;
+  }
+}
+
+/* Lab (DESIGN §22.10): results first, the prompt docked at the bottom. */
+@layer components {
+  .lab-items {
+    @apply mt-3 grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2;
+  }
+  .lab-empty {
+    @apply mt-3 rounded-2xl border border-dashed border-bound px-5 py-8 text-center text-muted;
+  }
+  .lab-results:has(#lab-items > li) .lab-empty,
+  .lab-results:has(#lab-result > *) .lab-empty {
+    @apply hidden;
+  }
+  .lab-item {
+    @apply grid content-start gap-2 rounded-2xl border border-bound bg-surface p-2;
+  }
+  .lab-item > p,
+  .lab-item > audio {
+    @apply px-2;
+  }
+  .lab-image {
+    @apply aspect-square w-full rounded-xl bg-surface-muted object-contain;
+  }
+  .lab-progress {
+    @apply flex min-h-24 items-center justify-center gap-2 rounded-xl bg-surface-muted px-3 font-semibold text-muted;
+  }
+  .lab-item-foot {
+    @apply flex flex-wrap items-center gap-1;
+  }
+  /* The prompt sits above the tab bar on phones, above the keyboard while
+     typing, and at the bottom of the page column on desktops. */
+  .lab-dock {
+    @apply fixed inset-x-0 z-20 border-t border-line bg-canvas px-[max(0.75rem,env(safe-area-inset-left))] pt-2 pb-2 lg:sticky lg:bottom-0 lg:mt-6 lg:border-0 lg:px-0 lg:pb-4;
+    bottom: calc(var(--lb-tabbar-h) + 1px + env(safe-area-inset-bottom)); /* the bar and its top border */
+  }
+  html[data-typing] .lab-dock {
+    bottom: var(--lb-kb);
+  }
+  @media (min-width: 768px) {
+    .lab-dock,
+    html[data-typing] .lab-dock {
+      bottom: 0;
+    }
+  }
+  /* The Lab uses Chat's composer box: options in one row that scrolls
+     sideways, then the field with its round action. */
+  .lab-box {
+    @apply mx-auto grid max-w-3xl gap-0.5 pt-1;
+  }
+  .lab-chips {
+    @apply flex gap-1.5 overflow-x-auto px-1.5 pt-0.5;
+    scrollbar-width: none;
+  }
+  .lab-chip {
+    @apply shrink-0 px-3 whitespace-nowrap;
+  }
+  .lab-prompt {
+    @apply block max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
+  }
+  /* Phones: room for the fixed prompt. Desktops: the column fills the
+     window, so the prompt sits at its foot until results push it down. */
+  .lab {
+    @apply lg:flex lg:min-h-[calc(100dvh-5rem)] lg:flex-col;
+  }
+  /* As tall as the prompt really is (shell.js), so it never covers a result's actions. */
+  .lab-dock-spacer {
+    @apply lg:h-auto lg:flex-1;
+    height: calc(var(--lb-dock-h, 10rem) + 1rem);
+  }
+}
+
+/* The memory gauge (DESIGN §22.22): this computer's memory, the one thing a hosted
+   app cannot show. Geometry is in the SVG; a theme sets its look. */
+@layer components {
+  .gauge {
+    @apply block w-full;
+    height: 1.25rem;
+  }
+  .gauge rect {
+    rx: var(--lb-gauge-radius);
+  }
+  .gauge-free {
+    fill: var(--lb-gauge-free);
+  }
+  .gauge-other {
+    fill: var(--lb-gauge-other);
+  }
+  .gauge-sliver {
+    fill: var(--lb-gauge-models);
+  }
+  .gauge-unknown {
+    fill: var(--lb-gauge-free);
+  }
+  .gauge-models {
+    fill: var(--lb-gauge-models);
+  }
+  .gauge-legend {
+    @apply mt-3 grid gap-x-3 gap-y-0.5;
+    grid-template-columns: 1fr auto;
+  }
+  .gauge-legend > div {
+    display: contents;
+  }
+  .gauge-legend dt {
+    @apply flex items-start gap-2 text-muted;
+  }
+  .gauge-legend dt > .gauge-key {
+    margin-top: 0.4em;
+    flex-shrink: 0;
+  }
+  .gauge-legend dd {
+    @apply text-right font-semibold tabular-nums;
+  }
+  .gauge-caption {
+    @apply block text-xs text-muted;
+  }
+  .strip-advice {
+    @apply mt-2 flex items-center justify-between gap-3 px-1 text-sm;
+  }
+  .strip-advice .btn {
+    @apply shrink-0;
+  }
+  html[data-typing] .strip-advice {
+    @apply hidden;
+  }
+  .gauge-key {
+    @apply block w-3 rounded-sm;
+  }
+  .gauge-key-free {
+    height: 0.75rem;
+    box-shadow: inset 0 0 0 1.5px var(--lb-gauge-free);
+  }
+  .gauge-key-other {
+    height: 0.4375rem;
+    background: var(--lb-gauge-other);
+  }
+  .gauge-key-models {
+    height: 0.75rem;
+    background: var(--lb-gauge-models);
+  }
+  .page-strip {
+    @apply mb-3;
+  }
+  .gauge-legend-part {
+    display: contents;
+  }
+  .gauge-legend-part > * {
+    @apply mt-2;
+  }
+  .running-legend {
+    @apply mt-3 px-1;
+  }
+  @media (min-width: 1100px) {
+    .strip:not(.strip-here) {
+      @apply flex items-center gap-4 pb-2;
+    }
+    .strip:not(.strip-here) .strip-row {
+      display: contents;
+    }
+    .strip:not(.strip-here) .gauge {
+      @apply order-1 min-w-0 flex-1;
+    }
+    .strip:not(.strip-here) .strip-free {
+      @apply order-2 ml-0;
+    }
+  }
+  /* The whole name, wherever it was cut: the strip leads here. */
+  .strip-here .strip-host b {
+    @apply whitespace-normal wrap-anywhere;
+  }
+  /* Running is one column, with the strip at its head. */
+  #running-live {
+    @apply max-w-3xl;
+  }
+  .strip {
+    @apply block rounded-xl border bg-surface px-3 pt-2 pb-2.5 text-ink hover:bg-hover;
+    border-color: var(--lb-edge);
+    min-height: 2.75rem;
+  }
+  /* Already on Running: the same strip, going nowhere. */
+  .strip-here {
+    @apply hover:bg-surface;
+  }
+  .strip-row {
+    @apply mb-1.5 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-0.5;
+    font-size: 0.8125rem;
+  }
+  .strip-host {
+    @apply inline-flex max-w-full min-w-0 items-center gap-1.5;
+  }
+  .strip-host b {
+    @apply truncate font-semibold;
+  }
+  .strip-host .mark {
+    @apply size-[17px] shrink-0;
+  }
+  .strip-word {
+    @apply min-w-0 text-muted;
+  }
+  .strip-free {
+    @apply ml-auto font-medium whitespace-nowrap tabular-nums;
+  }
+  .strip-load .strip-word {
+    @apply font-semibold;
+    color: var(--lb-lamp-text);
+  }
+  .strip-short {
+    border-color: var(--lb-error);
+  }
+  .strip-short .strip-word,
+  .strip-short .strip-free {
+    @apply font-semibold text-danger;
+  }
+  .strip-off {
+    @apply border-dashed;
+  }
+  .strip-off .strip-word {
+    @apply font-semibold text-ink;
+  }
+  .strip-off .gauge-other,
+  .strip-off .gauge-models {
+    fill: var(--lb-gauge-free);
+    opacity: 0.35;
+  }
+  .mark {
+    color: inherit;
+  }
+  .mark-light {
+    fill: var(--lb-brand);
+  }
+}
+
+/* First run: one thing to do, one column, the action under the thumb. */
+@layer components {
+  .welcome {
+    @apply mx-auto flex min-h-dvh w-full max-w-lg flex-col px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))];
+  }
+  .welcome-form {
+    @apply flex flex-1 flex-col;
+  }
+  .welcome-mark {
+    @apply mb-4 block;
+  }
+  .welcome-mark svg {
+    @apply size-10;
+  }
+  .welcome-title {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-hello);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+  .welcome-note {
+    @apply mt-4;
+  }
+  /* A short screen: the words matter more than the picture of memory. */
+  @media (max-height: 620px) {
+    .welcome .gauge {
+      height: 0.375rem;
+    }
+    .welcome .strip-row {
+      @apply mb-1;
+    }
+  }
+  .welcome-actions {
+    @apply sticky bottom-0 mt-auto grid gap-1 bg-canvas pt-4 pb-[env(safe-area-inset-bottom)] min-[768px]:static min-[768px]:mt-6;
+  }
+  .welcome-points {
+    @apply mt-4 grid list-disc gap-1.5 pl-5 text-sm text-muted;
+  }
+  /* Calm: it says what's next, and warns about nothing. */
+  .calm-banner {
+    @apply mt-3 flex min-h-14 items-center gap-3 rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2.5 text-ink hover:bg-hover;
+  }
+  .calm-banner-still {
+    @apply border-bound hover:bg-surface;
+  }
+  /* The state and the action share a line, however narrow, so a row stays two lines tall. */
+  .running-row {
+    @apply flex flex-wrap items-center;
+  }
+  .running-row > a {
+    flex: 1 1 15rem;
+  }
+  /* Stacked, state and action share a line inside the row's own padding. */
+  .running-actions {
+    @apply flex flex-wrap items-center justify-between gap-2 px-4 pb-3;
+    flex: 1 1 100%;
+  }
+  .running-actions .btn,
+  .running-actions .pill {
+    white-space: nowrap;
+  }
+  @media (min-width: 560px) {
+    .running-row > a {
+      flex-basis: 0;
+      min-width: 12rem;
+    }
+    .running-actions {
+      flex: 0 0 auto;
+      padding: 0 1rem 0 0;
+    }
+  }
+  .welcome-skip {
+    @apply inline-flex min-h-11 items-center justify-center font-medium text-muted hover:text-ink;
+  }
+  .choice {
+    @apply flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--lb-edge)] bg-surface p-3.5 hover:bg-hover has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent;
+  }
+  /* Drawn, so both schemes get the same control. */
+  .choice input {
+    @apply mt-1 size-5 shrink-0 cursor-pointer rounded-full border-2 border-[var(--lb-edge)] bg-surface;
+    appearance: none;
+  }
+  .choice input:checked {
+    border-color: var(--lb-accent);
+    box-shadow: inset 0 0 0 3px var(--lb-surface), inset 0 0 0 10px var(--lb-accent);
+  }
+  .choice input:disabled {
+    @apply cursor-not-allowed;
+  }
+  /* Picked is a heavier line in ink, at well over 3:1. */
+  .choice:has(:checked) {
+    border-color: var(--lb-accent);
+    box-shadow: inset 0 0 0 1px var(--lb-accent);
+  }
+  .choice-off {
+    @apply cursor-not-allowed hover:bg-surface;
+  }
+  .choice-name {
+    @apply block wrap-anywhere;
+    font-family: var(--lb-font-reading);
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+  /* A fact about this computer, so ink: amber is only for something happening now. */
+  .choice-fit {
+    @apply mt-1 block text-sm font-semibold text-ink;
+  }
+  .choice-tag {
+    @apply ml-1 inline-block rounded-md bg-surface-muted px-1.5 py-0.5 align-middle text-xs font-semibold whitespace-nowrap text-ink;
+    font-family: var(--lb-font-sans);
+  }
+  .choice-fit-no {
+    @apply text-danger;
+  }
+  /* Something is happening on this machine: the lamp, on a track that holds its shape. */
+  .welcome-bar {
+    @apply mt-3 block h-2 w-full overflow-hidden rounded-full border-0;
+    appearance: none;
+    background: var(--lb-surface-muted);
+  }
+  .welcome-bar::-webkit-progress-bar {
+    background: var(--lb-surface-muted);
+  }
+  .welcome-bar::-webkit-progress-value {
+    background: var(--lb-lamp);
+  }
+  .welcome-bar::-moz-progress-bar {
+    background: var(--lb-lamp);
+  }
+  /* Selects whole on a tap: this page may only run its one script, so there's no Copy. */
+  .command {
+    @apply mt-3 overflow-x-auto rounded-xl bg-surface-muted px-3.5 py-3 text-sm select-all;
+    font-family: var(--lb-font-mono);
+  }
+  .signin {
+    min-height: auto;
+  }
+  .error-page {
+    @apply mx-auto mt-8 max-w-md text-left;
+  }
+}
+
+/* A press answers at once (DESIGN §22.21). The dimming stays with reduced motion. */
+@layer components {
+  .btn:active:not(:disabled),
+  .chip:active,
+  .icon-btn:active,
+  .studio-card:active,
+  .studio-tile:active,
+  a.list-row:active,
+  button.list-row:active,
+  a.setting-row:active,
+  .model-row:active {
+    opacity: var(--lb-press-opacity);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .btn:active:not(:disabled),
+    .chip:active,
+    .icon-btn:active {
+      transform: scale(var(--lb-press-scale));
+    }
+  }
+  .player-gone {
+    @apply rounded-xl bg-surface-muted px-3 py-4 text-center text-sm font-semibold text-muted;
+  }
+}
+
+/* The Transcribe studio (DESIGN §22.20). */
+@layer components {
+  .transcribe-start {
+    @apply grid grid-cols-2 gap-2 px-1 pt-1;
+  }
+  .transcribe-start .btn {
+    @apply gap-2;
+  }
+  .transcribe-start[hidden],
+  .transcribe-panel[hidden] {
+    @apply hidden;
+  }
+  .transcribe-panel {
+    @apply grid gap-2 px-2 pt-1;
+  }
+  .transcribe-meter {
+    @apply block h-2 overflow-hidden rounded-full bg-surface-muted;
+  }
+  .transcribe-meter i {
+    @apply block h-full w-0 rounded-full bg-accent;
+  }
+  /* Stays in reach while the words scroll. */
+  .transcript-audio {
+    @apply sticky top-2 z-10 w-full;
+  }
+  .transcript-text {
+    @apply grid gap-0.5 px-1 wrap-anywhere;
+  }
+  .transcript-line {
+    @apply flex items-start gap-1;
+  }
+  .transcript-line span {
+    @apply min-w-0 flex-1 py-2.5;
+  }
+  /* A full-size target, with the time drawn small inside it. */
+  .transcript-time {
+    @apply inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-sm font-semibold tabular-nums text-accent hover:bg-hover;
+  }
+  .transcript-text.times-off .transcript-time {
+    @apply hidden;
+  }
+}
+
+/* The Speech studio (DESIGN §22.19). */
+@layer components {
+  .speech-count {
+    @apply ml-auto flex shrink-0 items-center px-2 text-sm whitespace-nowrap text-muted;
+  }
+  .speech-progress {
+    @apply h-2 w-full max-w-64 accent-[var(--lb-accent)];
+  }
+  /* The native player with what it plays drawn above it. Tap to move. */
+  .speech-wave {
+    @apply relative mb-1 block h-12 w-full cursor-pointer px-2;
+  }
+  .speech-wave svg {
+    @apply absolute inset-x-2 inset-y-0 h-full w-[calc(100%-1rem)];
+  }
+  .speech-wave-base {
+    @apply fill-line;
+  }
+  .speech-wave-played {
+    @apply fill-accent;
+    clip-path: inset(0 calc(100% - var(--played, 0%)) 0 0);
+  }
+}
+
+/* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
+@layer components {
+  .lab-item-video {
+    @apply self-start;
+  }
+  /* On a phone the player leaves room for what's around it: the strip, the title and heading above,
+     the caption and actions below, then the prompt and the tab bar. Fixed parts are in rem, so this
+     follows the screen, and the whole result is on one screen without scrolling. */
+  .video-frame {
+    @apply mx-auto max-w-full min-h-0 object-contain;
+    max-height: max(9rem, calc(100dvh - 29rem));
+  }
+  @media (max-width: 767px) {
+    body:has(.run-pill-dock [data-run-pill]:not([hidden])) .video-frame {
+      max-height: max(9rem, calc(100dvh - 32.5rem));
+    }
+  }
+  @media (min-width: 768px) {
+    .video-frame {
+      max-height: 60dvh;
+    }
+  }
+  video.video-frame {
+    @apply block;
+  }
+  .video-tall {
+    @apply aspect-[9/16];
+  }
+  .video-wide {
+    @apply aspect-video w-full;
+  }
+  .video-square {
+    @apply aspect-square w-full max-w-md;
+  }
+  video.video-tall {
+    height: 60dvh;
+  }
+  /* While it runs, Stop has to stay on screen above the prompt. */
+  .lab-progress.video-frame {
+    max-height: 36dvh;
+  }
+  .lab-progress.video-tall {
+    height: 36dvh;
+  }
+  .video-thumb {
+    @apply block size-10 shrink-0 overflow-hidden rounded-lg;
+  }
+  .video-recent {
+    @apply block size-16 overflow-hidden rounded-lg ring-1 ring-line;
+  }
+}
+
+/* Decisions (DESIGN §22.17). */
+@layer components {
+  /* The same three places in every state: the type never moves. */
+  .decide-types {
+    @apply grid auto-cols-fr grid-flow-col gap-1 rounded-xl bg-surface-muted p-1;
+  }
+  .decide-types label {
+    @apply border border-transparent flex min-h-11 cursor-pointer items-center justify-center rounded-lg px-2 text-base font-semibold whitespace-nowrap text-muted hover:text-ink;
+  }
+  .decide-types label:has(:checked) {
+    @apply bg-surface text-ink shadow-sm ring-1 ring-line border-[var(--lb-edge)];
+  }
+  .decide-types label:has(:focus-visible),
+  .decide-filter:has(:focus-visible) {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  .decide-error {
+    @apply mt-3 rounded-xl border border-danger-line bg-danger-soft px-3 py-2 font-semibold text-danger;
+  }
+  .decide-option {
+    @apply flex items-start gap-1;
+  }
+  .decide-option-fields {
+    @apply grid min-w-0 flex-1 gap-1 sm:grid-cols-2;
+  }
+  .decide-form-summary {
+    @apply mt-3 flex items-center gap-2 rounded-xl bg-surface-muted py-1.5 pr-1.5 pl-3;
+  }
+  .decide-card {
+    @apply rounded-2xl border border-bound bg-surface p-4;
+  }
+  .decide-word {
+    @apply text-sm font-bold text-muted;
+  }
+  .decide-word-strong {
+    @apply text-accent;
+  }
+  .decide-word-leaning {
+    @apply text-ink;
+  }
+  .decide-verdict {
+    @apply mt-0.5 text-2xl leading-tight font-bold break-words;
+  }
+  .decide-odds {
+    @apply text-lg font-semibold whitespace-nowrap text-muted;
+  }
+  .decide-bars {
+    @apply mt-3 grid gap-2.5;
+  }
+  .decide-bar-label {
+    @apply flex items-baseline justify-between gap-3 text-base;
+  }
+  .decide-bar-top .decide-bar-label {
+    @apply font-bold;
+  }
+  .decide-track {
+    @apply mt-1 block h-2 overflow-hidden rounded-full bg-surface-muted;
+  }
+  /* One accent and one neutral: answers are not good or bad. */
+  .decide-track i {
+    @apply block h-full origin-left rounded-full bg-muted;
+  }
+  .decide-bar-top .decide-track i {
+    @apply bg-accent;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .decide-track i {
+      animation: decide-bar 240ms ease-out;
+    }
+  }
+  .decide-summary {
+    @apply cursor-pointer py-2.5;
+  }
+  .decide-filter {
+    @apply inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bound px-3 text-sm font-semibold text-muted;
+  }
+  .decide-filter:has(:checked) {
+    @apply border-accent text-ink;
+  }
+  .decide-table {
+    @apply mt-2 grid;
+  }
+  /* Phones: each row is a small card. Wider: three columns. */
+  .decide-row {
+    @apply grid gap-1 border-t border-line py-2.5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem] md:gap-3;
+  }
+  .decide-row[hidden] {
+    @apply hidden;
+  }
+  .decide-row-head {
+    @apply hidden border-t-0 py-1 text-sm font-semibold text-muted md:grid;
+  }
+  .decide-cell-text {
+    @apply min-w-0 break-words;
+  }
+  .decide-code {
+    @apply max-h-[45dvh] overflow-auto rounded-xl bg-surface-muted p-3 text-sm;
+  }
+}
+@keyframes decide-bar {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Settings (DESIGN §22.12): one setting per row in grouped lists. */
+@layer components {
+  .setting-row {
+    @apply flex min-h-12 items-center gap-3 px-4 py-3 text-ink;
+  }
+  a.setting-row,
+  label.setting-row {
+    @apply hover:bg-hover;
+  }
+  /* A checkbox drawn as a switch; still a checkbox to assistive tech. */
+  .switch {
+    @apply relative h-7 w-12 shrink-0 cursor-pointer appearance-none rounded-full bg-muted transition-colors checked:bg-accent motion-reduce:transition-none;
+  }
+  .switch::before {
+    content: "";
+    @apply absolute top-0.5 left-0.5 size-6 rounded-full bg-surface shadow-sm transition-transform motion-reduce:transition-none;
+  }
+  .switch:checked::before {
+    @apply translate-x-5;
+  }
+}
+
+/* Shared across pages (DESIGN §22.14): a titled group of fields, the
+   outcome of an action, and destructive actions behind a confirmation. */
+@layer components {
+  .group-card {
+    @apply rounded-2xl border border-bound bg-surface p-4;
+  }
+  .group-title {
+    @apply text-base font-bold;
+  }
+  .notice {
+    @apply rounded-xl bg-accent-soft px-4 py-3 font-semibold text-accent;
+  }
+  .notice-error {
+    @apply bg-danger-soft text-danger;
+  }
+}
+
+/* Skip link: full size (iOS audits a 1px element as too small), parked
+   above the page until it has focus. */
+@layer components {
+  .skip-link {
+    @apply fixed top-3 left-3 z-50 -translate-y-24 focus:translate-y-0;
+  }
+}
+
+/* Studio (DESIGN §22.15): the landing and what its tools share. */
+@layer components {
+  .studio-head {
+    @apply -ml-2 flex items-center gap-1;
+  }
+  /* Phones: what you made, then the tools. From 1100 px: tools on the left, what you made on
+     the right, because there is room to see both at once. */
+  .studio-body {
+    @apply mt-4 grid grid-cols-[minmax(0,1fr)] gap-5;
+  }
+  .studio-tools {
+    @apply max-w-[34rem];
+  }
+  .studio-recent-box,
+  .studio-tools {
+    @apply min-w-0;
+  }
+  .studio-body-recent .studio-tools {
+    @apply max-w-none;
+  }
+  @media (min-width: 1100px) {
+    .studio-body-recent {
+      @apply grid-cols-[minmax(0,26rem)_minmax(0,1fr)] items-start gap-8;
+    }
+    .studio-body-recent .studio-recent-box {
+      @apply order-2;
+    }
+    .studio-body-recent .studio-recent {
+      @apply mx-0 grid grid-cols-3 gap-3 overflow-visible px-0;
+    }
+    .studio-body-recent .studio-recent > li {
+      @apply w-auto;
+    }
+  }
+  .studio-recent-head {
+    @apply mb-2 flex items-baseline justify-between gap-3;
+  }
+  /* On a phone the shelf runs to the screen's edge, so the next one shows. Wider, the page's
+     gutter is larger, so it ends on the content's edge. Only the shelf scrolls. */
+  .studio-recent {
+    @apply -mx-4 flex snap-x gap-3 overflow-x-auto scroll-px-4 px-4 pb-1 min-[768px]:mx-0 min-[768px]:scroll-px-0 min-[768px]:px-0;
+    scrollbar-width: none;
+  }
+  .studio-recent > li {
+    @apply w-28 shrink-0 snap-start;
+  }
+  /* Relative: the hidden words inside must scroll with the shelf. Absolute with no positioned
+     parent, they would count against the page and widen it, however well the shelf is contained. */
+  .studio-tile {
+    @apply relative block min-w-0 rounded-xl text-ink;
+  }
+  .studio-tile-media {
+    @apply relative grid aspect-square place-items-center overflow-hidden rounded-xl border border-bound bg-surface-muted;
+  }
+  .studio-tile-img {
+    @apply block size-full object-cover;
+  }
+  /* A video says it is one, on any frame: its own dark ground, whatever the picture holds. */
+  .studio-tile-badge {
+    @apply absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-md bg-[var(--lb-viewer-bg)] px-1.5 py-0.5 text-xs font-semibold text-[var(--lb-viewer-text)] tabular-nums;
+  }
+  .studio-tile-cap {
+    @apply mt-1.5 block truncate text-sm font-medium;
+  }
+  .studio-tile-meta {
+    @apply block truncate text-xs text-muted;
+  }
+  /* A transcript shows its first words, on paper, set like a model's words. */
+  .studio-tile-words {
+    @apply absolute inset-0 overflow-hidden bg-surface p-2.5 text-left;
+    font-family: var(--lb-font-reading);
+    font-size: 0.9375rem;
+    line-height: 1.25;
+  }
+  /* Speech shows its real waveform, drawn by the server from the samples. */
+  .studio-tile-wave {
+    @apply h-2/5 w-4/5 fill-[var(--lb-muted)];
+  }
+  /* The lamp means something is happening on this machine. It stays still: this can last minutes. */
+  .studio-tile-live {
+    @apply grid justify-items-center gap-1.5 px-2 text-center text-xs font-medium;
+  }
+  .studio-tile-live > i {
+    @apply block size-2 rounded-full bg-[var(--lb-lamp)];
+  }
+  .studio-tile-word {
+    @apply px-2 text-center text-xs font-semibold;
+  }
+  .studio-card {
+    @apply flex min-h-[4.25rem] items-center gap-3 px-3 py-2.5 text-ink;
+  }
+  a.studio-card {
+    @apply transition-colors hover:bg-hover motion-reduce:transition-none;
+  }
+  .tool-icon {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted text-ink;
+  }
+  .tool-name {
+    @apply block leading-tight;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
+  }
+  .tool-state {
+    @apply mt-0.5 block text-sm font-medium;
+  }
+  .studio-keep {
+    @apply mt-2 text-sm text-muted;
+  }
+  /* The labels sit on the gutter with what they label. */
+  .studio-body .list-label {
+    @apply px-0;
+  }
+  /* Waiting for a result: its place, softly moving. Still when motion is off. */
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-muted;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(100deg, transparent, color-mix(in srgb, var(--lb-surface) 45%, transparent), transparent);
+      animation: lb-shimmer 1.6s ease-in-out 3 forwards; /* about 5 s, then rests */
+    }
+  }
+}
+
+@keyframes lb-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* A result whose file is gone (kept 30 minutes): its tool's icon and a word. */
+@layer components {
+  .result-img {
+    @apply relative block size-full;
+  }
+  .result-gone {
+    @apply absolute inset-0 grid place-items-center bg-surface-muted;
+  }
+  .result-gone {
+    @apply content-center justify-items-center gap-1 text-muted;
+  }
+  .result-gone > b {
+    @apply text-xs font-semibold;
+  }
+  .lab-item:has([data-result-gone]:not([hidden])) :is([data-share], a[download]) {
+    @apply hidden;
+  }
+}
+
+/* Image studio (DESIGN §22.16): a gallery, then a full-screen viewer. */
+@layer components {
+  .image-run {
+    @apply min-w-0;
+  }
+  .image-grid {
+    @apply grid grid-cols-2 gap-1.5;
+  }
+  /* One picture takes the row; a batch shares it. */
+  .image-grid:has(> .image-tile:only-of-type) {
+    @apply grid-cols-1;
+  }
+  .image-tile {
+    @apply relative grid min-w-0 place-items-center overflow-hidden rounded-xl bg-surface-muted;
+  }
+  .image-square {
+    aspect-ratio: 1;
+  }
+  .image-portrait {
+    aspect-ratio: 2 / 3;
+  }
+  .image-landscape {
+    aspect-ratio: 3 / 2;
+  }
+  .image-open {
+    @apply block size-full;
+  }
+  .image-thumb {
+    @apply block size-full object-cover;
+  }
+  .image-stage {
+    @apply p-3 text-center text-sm font-semibold text-muted;
+  }
+  .image-cap {
+    @apply mt-1 flex min-h-11 items-center gap-2 px-1;
+  }
+  .shape-glyph {
+    @apply block shrink-0 rounded-sm border-2 border-muted;
+  }
+  .shape-square {
+    @apply size-5;
+  }
+  .shape-portrait {
+    @apply h-6 w-4;
+  }
+  .shape-landscape {
+    @apply h-4 w-6;
+  }
+  /* Always dark, whatever the theme: the picture is the page. */
+  .viewer {
+    @apply m-0 size-full max-h-none max-w-none bg-[var(--lb-viewer-bg)] p-0 text-[var(--lb-viewer-text)];
+    color-scheme: dark;
+  }
+  .viewer[open] {
+    @apply flex flex-col;
+  }
+  .viewer-top {
+    @apply flex items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))];
+  }
+  .viewer-count {
+    @apply flex-1 text-center text-sm font-semibold;
+  }
+  .viewer-btn {
+    @apply inline-flex size-11 shrink-0 items-center justify-center rounded-full hover:bg-white/10;
+  }
+  .viewer-stage {
+    @apply min-h-0 flex-1 p-2;
+  }
+  .viewer-img {
+    @apply block size-full object-contain;
+  }
+  .viewer-foot {
+    @apply flex flex-wrap items-stretch justify-around gap-1 bg-[var(--lb-viewer-bar)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
+  }
+  .viewer-caption {
+    @apply w-full truncate px-2 text-sm;
+  }
+  .viewer-foot:has(details[open]) .viewer-caption {
+    @apply hidden;
+  }
+  .viewer-act {
+    @apply flex min-h-12 min-w-14 cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-xs font-semibold hover:bg-white/10;
+  }
+  .viewer-act::-webkit-details-marker {
+    display: none;
+  }
+  .viewer-details {
+    @apply contents;
+  }
+  .viewer-panel {
+    @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[var(--lb-viewer-panel)] p-3 text-sm;
+  }
+  .viewer-facts {
+    @apply grid grid-cols-2 gap-x-4 gap-y-1;
+  }
+  .viewer-facts dt {
+    @apply text-xs text-[var(--lb-viewer-muted)];
+  }
+  .viewer-facts dd {
+    @apply wrap-anywhere font-semibold;
+  }
+  .viewer-quiet {
+    @apply border border-white/25 hover:bg-white/10;
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "source": "GPT-OSS-20B GGUF metadata (no model load; internal qualification evidence)",
+  "metadata": {
+    "general.architecture": "gpt-oss",
+    "gpt-oss.block_count": 24,
+    "gpt-oss.context_length": 131072,
+    "gpt-oss.embedding_length": 2880,
+    "gpt-oss.feed_forward_length": 2880,
+    "gpt-oss.attention.head_count": 64,
+    "gpt-oss.attention.head_count_kv": 8,
+    "gpt-oss.rope.freq_base": 150000.0,
+    "gpt-oss.attention.layer_norm_rms_epsilon": 0.000009999999747378752,
+    "gpt-oss.expert_count": 32,
+    "gpt-oss.expert_used_count": 4,
+    "gpt-oss.attention.key_length": 64,
+    "gpt-oss.attention.value_length": 64,
+    "gpt-oss.attention.sliding_window": 128,
+    "gpt-oss.expert_feed_forward_length": 2880,
+    "gpt-oss.rope.scaling.type": "yarn",
+    "gpt-oss.rope.scaling.factor": 32.0,
+    "gpt-oss.rope.scaling.original_context_length": 4096
+  }
+}

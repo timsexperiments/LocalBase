@@ -1,0 +1,31 @@
+{
+  "modelId": "stable-diffusion-v1-5",
+  "displayName": "Stable Diffusion 1.5",
+  "kind": "image",
+  "provider": "RunwayML",
+  "family": "Stable-Diffusion",
+  "version": "1.5",
+  "size": "4.3GB",
+  "quant": "F16",
+  "storageGb": 4.27,
+  "source": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "repositoryRevision": "451f4fe16113bff5a5d2269ed5ad43b0592e9a14",
+  "artifacts": [
+    {
+      "sourcePath": "v1-5-pruned-emaonly.safetensors",
+      "filename": "v1-5-pruned-emaonly.safetensors",
+      "expectedSizeBytes": 4265146304,
+      "sha256": "6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["image"],
+  "imageLaunchOptions": {
+    "diffusionFlashAttention": true
+  },
+  "capabilities": ["text-to-image", "image-to-image"],
+  "commercialStatus": "open",
+  "catch": "CreativeML Open RAIL-M license.",
+  "notes": "Stable Diffusion v1.5 checkpoint (stable-diffusion-v1-5 mirror of the RunwayML release). Generates 512x512 images."
+}

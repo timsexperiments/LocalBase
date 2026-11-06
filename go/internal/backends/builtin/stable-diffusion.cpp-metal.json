@@ -1,0 +1,18 @@
+{
+  "schema": "localbase.backend/v1",
+  "id": "stable-diffusion.cpp-metal",
+  "name": "stable-diffusion.cpp (Metal)",
+  "engine": "stable-diffusion.cpp",
+  "adapter": "sd-server/v1",
+  "tasks": ["image", "video"],
+  "capabilities": ["image-edit", "image-to-video"],
+  "formats": ["gguf", "safetensors"],
+  "architectures": {
+    "supported": ["sd1", "sdxl", "flux1", "flux2", "z-image", "wan2.1", "wan2.2"],
+    "likely": ["sd2", "sd3", "chroma", "qwen-image", "hunyuanvideo", "ltx"]
+  },
+  "companions": {"image": [], "video": ["text-encoder", "vae"]},
+  "platforms": [{"os":"darwin","arch":"arm64","accelerator":"metal"}],
+  "runtime": {"family": "sd-server", "executable": "sd-server", "managed": true},
+  "notes": "Each architecture still needs an exact launch profile; architectures without one are likely, not supported."
+}

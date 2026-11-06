@@ -1,0 +1,221 @@
+name: Release
+
+# Version tags publish a draft release; a person reviews and publishes it.
+# Pull requests that touch the build run everything up to publishing, unsigned.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "go/**"
+      - "packaging/**"
+      - "scripts/install.sh"
+      - "scripts/release/**"
+      - ".github/workflows/release-go.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  binaries:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Resolve the version
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(scripts/release/build.sh version)"
+          if [ "$REF_TYPE" = tag ]; then
+            [ "$TAG" = "v$version" ] || { echo "tag $TAG does not match source version $version" >&2; exit 1; }
+            grep -q "^## \[$version\]" CHANGELOG.md || { echo "CHANGELOG.md has no entry for $version" >&2; exit 1; }
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Notices are current
+        run: scripts/release/generate-notices.sh --check
+      - name: Cross-compile
+        run: scripts/release/build.sh binaries "$RUNNER_TEMP/out"
+      - name: Keep the binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binaries
+          path: ${{ runner.temp }}/out/bin
+          if-no-files-found: error
+
+  sign-macos:
+    # Secret names are documented in docs/install.md.
+    if: github.ref_type == 'tag'
+    needs: binaries
+    runs-on: macos-14
+    steps:
+      - name: Fetch the binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: bin
+      - name: Import the signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+        run: |
+          certificate="$RUNNER_TEMP/certificate.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$certificate"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          rm -f "$certificate"
+      - name: Sign and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          mkdir signed
+          for name in local-base-macos-arm64 local-base-macos-x64; do
+            chmod 755 "bin/$name"
+            codesign --force --options runtime --timestamp --sign "Developer ID Application:" "bin/$name"
+            codesign --verify --strict --verbose=2 "bin/$name"
+            ditto -c -k "bin/$name" "$RUNNER_TEMP/$name.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/$name.zip" \
+              --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --wait
+            cp "bin/$name" signed/
+          done
+      - name: Keep the signed binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-macos
+          path: signed
+          if-no-files-found: error
+      - name: Remove the temporary keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+  package:
+    needs: [binaries, sign-macos]
+    # sign-macos is skipped on pull requests; packaging still runs, unsigned.
+    if: ${{ !cancelled() && needs.binaries.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
+    runs-on: ubuntu-24.04
+    env:
+      SYFT_VERSION: 1.55.0
+      SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch the binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: binaries
+          path: out/bin
+      - name: Fetch the signed macOS binaries
+        if: needs.sign-macos.result == 'success'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-macos
+          path: out/bin
+      - name: Archive
+        run: scripts/release/build.sh package out
+      - name: Install syft
+        run: |
+          archive="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/$archive"
+          echo "$SYFT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" syft
+      - name: Write the SBOM
+        run: |
+          "$RUNNER_TEMP/syft" scan "file:out/bin/local-base-linux-x64" \
+            --source-name local-base --source-version "${{ needs.binaries.outputs.version }}" \
+            -o spdx-json=out/dist/local-base.spdx.json
+          jq -e '.packages | map(.name) | index("modernc.org/sqlite")' out/dist/local-base.spdx.json
+      - name: Add the installer and Homebrew formula
+        run: |
+          cp scripts/install.sh out/dist/install.sh
+          scripts/release/build.sh checksums out
+          scripts/release/render-formula.sh "${{ needs.binaries.outputs.version }}" out/dist/checksums.txt > out/dist/local-base.rb
+          ruby -c out/dist/local-base.rb
+          scripts/release/build.sh checksums out
+      - name: Keep the release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: out/dist
+          if-no-files-found: error
+
+  smoke:
+    needs: [binaries, package]
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch the release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: dist
+      - name: Install, verify and serve on a scratch root
+        env:
+          LOCALBASE_EXPECT_VERSION: ${{ needs.binaries.outputs.version }}
+        run: scripts/release/test-installer.sh dist
+
+  publish:
+    if: ${{ !cancelled() && github.ref_type == 'tag' && needs.smoke.result == 'success' }}
+    needs: [binaries, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Fetch the release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: dist
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/local-base-*.zip
+            dist/local-base-*.tar.gz
+            dist/checksums.txt
+      - name: Attest the SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: |
+            dist/local-base-*.zip
+            dist/local-base-*.tar.gz
+          sbom-path: dist/local-base.spdx.json
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.binaries.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            index($0, "## [" version "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          gh release create "$TAG" dist/* --draft --verify-tag --latest --title "LocalBase $VERSION" --notes-file notes.md

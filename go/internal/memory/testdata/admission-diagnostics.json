@@ -1,0 +1,402 @@
+{
+  "scenarios": {
+    "system-memory-with-pending": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 30
+        },
+        {
+          "op": "reserve",
+          "id": "llm",
+          "demand": {
+            "unifiedGiB": 8,
+            "acceleratorGiB": 8,
+            "confidence": "measured"
+          }
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 14,
+            "acceleratorGiB": 14,
+            "confidence": "estimated"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "system-memory",
+          "pool": "system",
+          "measured_available_bytes": 32212254720,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 8589934592,
+          "requested_bytes": 15032385536,
+          "effective_available_bytes": 23622320128,
+          "measured_pressure": "normal",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "estimated",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "system-memory-switch-credit": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 20
+        },
+        {
+          "op": "reserve",
+          "id": "image",
+          "demand": {
+            "unifiedGiB": 6,
+            "acceleratorGiB": 6,
+            "confidence": "measured"
+          },
+          "materialize": true
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 17,
+            "acceleratorGiB": 17,
+            "confidence": "measured"
+          },
+          "releasing": [
+            "image"
+          ]
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 15,
+            "acceleratorGiB": 15,
+            "confidence": "measured"
+          },
+          "releasing": [
+            "image"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "reason": "system-memory",
+          "pool": "system",
+          "measured_available_bytes": 27917287424,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 18253611008,
+          "effective_available_bytes": 27917287424,
+          "measured_pressure": "normal",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        },
+        null
+      ]
+    },
+    "observed-pressure": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 11
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 1,
+            "acceleratorGiB": 1,
+            "confidence": "measured"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "memory-pressure",
+          "pool": "system",
+          "measured_available_bytes": 11811160064,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 1073741824,
+          "effective_available_bytes": 11811160064,
+          "measured_pressure": "normal",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "hysteresis-pressure": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 5
+        },
+        {
+          "op": "poll"
+        },
+        {
+          "op": "available",
+          "gib": 40
+        },
+        {
+          "op": "poll"
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 1,
+            "acceleratorGiB": 1,
+            "confidence": "measured"
+          }
+        },
+        {
+          "op": "start",
+          "id": "stt",
+          "demand": {
+            "unifiedGiB": 1,
+            "acceleratorGiB": 1,
+            "confidence": "measured"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "memory-pressure",
+          "pool": "system",
+          "measured_available_bytes": 42949672960,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 1073741824,
+          "effective_available_bytes": 42949672960,
+          "measured_pressure": "normal",
+          "safety_state": "critical",
+          "recovery_samples": 1,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        },
+        {
+          "reason": "memory-pressure",
+          "pool": "system",
+          "measured_available_bytes": 42949672960,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 1073741824,
+          "effective_available_bytes": 42949672960,
+          "measured_pressure": "normal",
+          "safety_state": "critical",
+          "recovery_samples": 1,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "measurement-unavailable": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": null
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 2,
+            "acceleratorGiB": 2,
+            "confidence": "measured"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "measurement-unavailable",
+          "pool": "system",
+          "measured_available_bytes": "unavailable",
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 2147483648,
+          "effective_available_bytes": "unavailable",
+          "measured_pressure": "unknown",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "gpu-working-set-oversubscribed": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 60
+        },
+        {
+          "op": "reserve",
+          "id": "llm",
+          "demand": {
+            "unifiedGiB": 30,
+            "acceleratorGiB": 30,
+            "confidence": "measured"
+          },
+          "materialize": true
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 20,
+            "acceleratorGiB": 20,
+            "confidence": "measured"
+          }
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 20,
+            "acceleratorGiB": 20,
+            "confidence": "measured"
+          },
+          "releasing": [
+            "llm"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "reason": "accelerator-memory",
+          "pool": "gpu-working-set",
+          "measured_available_bytes": "unavailable",
+          "reserve_bytes": "unavailable",
+          "pending_bytes": "unavailable",
+          "requested_bytes": 21474836480,
+          "effective_available_bytes": "unavailable",
+          "measured_pressure": "unknown",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        },
+        null
+      ]
+    },
+    "gpu-working-set-permanent": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 60
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 50,
+            "acceleratorGiB": 50,
+            "confidence": "estimated"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "accelerator-memory",
+          "pool": "gpu-working-set",
+          "measured_available_bytes": "unavailable",
+          "reserve_bytes": "unavailable",
+          "pending_bytes": "unavailable",
+          "requested_bytes": 53687091200,
+          "effective_available_bytes": "unavailable",
+          "measured_pressure": "unknown",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "estimated",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "system-capacity-permanent": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 60
+        },
+        {
+          "op": "check",
+          "demand": {
+            "unifiedGiB": 56,
+            "acceleratorGiB": 10,
+            "confidence": "measured"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "system-memory",
+          "pool": "system",
+          "measured_available_bytes": 64424509440,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 60129542144,
+          "effective_available_bytes": 64424509440,
+          "measured_pressure": "normal",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        }
+      ]
+    },
+    "start-rejected": {
+      "ops": [
+        {
+          "op": "available",
+          "gib": 20
+        },
+        {
+          "op": "start",
+          "id": "image",
+          "demand": {
+            "unifiedGiB": 12,
+            "acceleratorGiB": 12,
+            "confidence": "measured"
+          }
+        },
+        {
+          "op": "start",
+          "id": "image",
+          "demand": {
+            "unifiedGiB": 4,
+            "acceleratorGiB": 4,
+            "confidence": "measured"
+          }
+        }
+      ],
+      "results": [
+        {
+          "reason": "system-memory",
+          "pool": "system",
+          "measured_available_bytes": 21474836480,
+          "reserve_bytes": 10307921510,
+          "pending_bytes": 0,
+          "requested_bytes": 12884901888,
+          "effective_available_bytes": 21474836480,
+          "measured_pressure": "normal",
+          "safety_state": "healthy",
+          "recovery_samples": 0,
+          "demand_confidence": "measured",
+          "sample_captured_at_ms": "number",
+          "sample_age_ms": "number"
+        },
+        null
+      ]
+    }
+  }
+}

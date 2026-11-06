@@ -1,0 +1,174 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="{{block "viewport" .}}width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content{{end}}">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="{{themeColor "light"}}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{themeColor "dark"}}" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="{{asset "brand/favicon.svg"}}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{{asset "brand/app-icon-180.png"}}">
+<link rel="manifest" href="{{asset "brand/manifest.webmanifest"}}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"historyCacheSize":0}'>
+<title>{{block "title" .}}LocalBase{{end}}</title>
+<link rel="preload" href="/app/assets/fonts/figtree-latin-wght-v1.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{asset "app.css"}}">
+<script src="{{asset "vendor/htmx-2.0.10.min.js"}}" defer></script>
+<script src="{{asset "js/session.js"}}" type="module"></script>
+<script src="{{asset "js/shell.js"}}" type="module"></script>
+{{block "head" .}}{{end}}
+</head>
+<body class="{{block "bodyclass" .}}min-h-dvh{{end}}" hx-boost="{{block "boost" .}}true{{end}}" hx-headers='{"X-Localbase-UI": "1", "X-CSRF-Token": "{{.CSRF}}"}'>
+<a href="#main" class="skip-link btn btn-primary">Skip to content</a>
+{{block "page" .}}
+<div class="lg:flex">
+  {{if .Principal}}{{template "sidebar" .}}{{else}}
+  <header class="mx-auto flex max-w-5xl px-[max(1rem,env(safe-area-inset-left))] pt-[max(0.75rem,env(safe-area-inset-top))]">
+    <a href="/app" hx-boost="false" class="brand -ml-2"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span>LocalBase</a>
+  </header>
+  {{end}}
+  <div class="min-w-0 flex-1">
+    <div id="session-notice" role="alert" aria-live="assertive" class="mx-auto max-w-5xl px-4 lg:px-10"></div>
+    <main id="main" class="page">
+      {{with .Strip}}<div class="page-strip">{{template "memory-strip" .}}</div>{{end}}
+      {{block "main" .}}{{end}}
+    </main>
+  </div>
+</div>
+{{if .Principal}}{{template "tabbar" .}}{{template "more-sheet" .}}{{end}}
+{{end}}
+</body>
+</html>{{end}}
+
+{{/* Desktop sidebar. On Chat it also holds the conversation history. */}}
+{{define "sidebar"}}
+{{$s := section .Page}}
+<aside class="sidebar" aria-label="LocalBase">
+  <a href="/app" hx-boost="false" class="brand"><span aria-hidden="true" class="brand-mark">{{template "mark"}}</span><span class="rail-label">LocalBase</span></a>
+  <nav aria-label="Primary" class="mt-2">
+    <ul class="grid gap-0.5">
+      <li><a class="nav-item" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} title="Chat">{{template "icon-chat"}}<span class="rail-label">Chat</span></a></li>
+      <li><a class="nav-item" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}} title="Models">{{template "icon-models"}}<span class="rail-label">Models</span></a></li>
+      <li><a class="nav-item" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}} title="Studio">{{template "icon-studio"}}<span class="rail-label">Studio</span></a></li>
+      <li><a class="nav-item" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} title="Running">{{template "icon-running"}}<span class="rail-label">Running</span></a></li>
+      <li><a class="nav-item" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}} title="My voices">{{template "icon-voices"}}<span class="rail-label">My voices</span></a></li>
+      <li><a class="nav-item" href="/app/connect" {{if eq .Page "connect"}}aria-current="page"{{end}} title="Connect an app">{{template "icon-connect"}}<span class="rail-label">Connect an app</span></a></li>
+      <li><a class="nav-item" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}} title="Settings">{{template "icon-settings"}}<span class="rail-label">Settings</span></a></li>
+      {{if canAdmin .Principal}}<li><a class="nav-item" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}} title="Admin">{{template "icon-admin"}}<span class="rail-label">Admin</span></a></li>{{end}}
+    </ul>
+  </nav>
+  {{template "run-pill" "sidebar"}}
+  {{block "sidebar-extra" .}}<div class="flex-1"></div>{{end}}
+  <div class="border-t border-line pt-3">
+    <button type="button" class="account-button" popovertarget="account-menu" aria-haspopup="menu">
+      <span aria-hidden="true" class="avatar">{{template "initial" .}}</span>
+      <span class="rail-label min-w-0 flex-1 truncate font-semibold">{{template "account-name" .}}</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="rail-hide size-4 text-muted" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5-5 5 5"/></svg>
+    </button>
+    <div id="account-menu" popover class="menu" role="menu" aria-label="Account">
+      <p class="px-3 py-2 text-sm text-muted">{{if .NoAuth}}Local access without sign-in{{else}}Signed in{{with .Principal.Name}} as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span>{{end}}{{end}}</p>
+      <a class="menu-item" role="menuitem" href="/app/settings">Settings</a>
+      {{if not .NoAuth}}<button type="button" class="menu-item text-danger" role="menuitem" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button>{{end}}
+    </div>
+  </div>
+</aside>
+{{end}}
+
+{{define "account-name"}}{{if .NoAuth}}Local access{{else}}{{with .Principal.Name}}{{.}}{{else}}Account{{end}}{{end}}{{end}}
+{{define "initial"}}{{if .NoAuth}}L{{else if .Principal}}{{initial .Principal.Name}}{{end}}{{end}}
+
+{{/* Phone tab bar: four destinations and More. */}}
+{{define "tabbar"}}
+{{$s := section .Page}}
+<div class="fixed inset-x-0 z-30 flex justify-center px-4 lg:hidden run-pill-dock">{{template "run-pill" "dock"}}</div>
+<nav class="tabbar" aria-label="Primary">
+  <ul>
+    <li><a class="tab" href="/app/chat" hx-boost="false" {{if eq $s "chat"}}aria-current="page"{{end}} aria-label="Chat">{{template "icon-chat"}}<span class="tab-label" aria-hidden="true">Chat</span></a></li>
+    <li><a class="tab" href="/app/models" {{if eq $s "models"}}aria-current="page"{{end}} aria-label="Models">{{template "icon-models"}}<span class="tab-label" aria-hidden="true">Models</span></a></li>
+    <li><a class="tab" href="/app/studio" {{if eq $s "studio"}}aria-current="page"{{end}} aria-label="Studio">{{template "icon-studio"}}<span class="tab-label" aria-hidden="true">Studio</span></a></li>
+    <li><a class="tab" href="/app/models/running" {{if eq $s "running"}}aria-current="page"{{end}} aria-label="Running">{{template "icon-running"}}<span class="tab-label" aria-hidden="true">Running</span></a></li>
+    <li><button type="button" class="tab" data-open-sheet="more-sheet" aria-haspopup="dialog" aria-label="More{{if eq $s "more"}}, current section{{end}}" {{if eq $s "more"}}data-active{{end}}>{{template "icon-more"}}<span class="tab-label" aria-hidden="true">More</span></button></li>
+  </ul>
+</nav>
+{{end}}
+
+{{define "more-sheet"}}
+<dialog id="more-sheet" class="sheet" aria-labelledby="more-title">
+  <div class="flex items-center justify-between gap-3 px-4 pt-3">
+    <h2 id="more-title" class="text-lg font-bold">More</h2>
+    <button type="button" class="btn btn-quiet size-11 p-0" data-close-sheet aria-label="Close">{{template "icon-x"}}</button>
+  </div>
+  <div class="px-4 pb-2">
+    <div class="flex min-h-12 items-center gap-3 px-1 py-3">
+      <span aria-hidden="true" class="avatar size-10">{{template "initial" .}}</span>
+      <p class="min-w-0 text-muted">{{if .NoAuth}}Local access without sign-in{{else}}Signed in{{with .Principal.Name}} as <span class="font-semibold text-ink wrap-anywhere">{{.}}</span>{{end}}{{end}}</p>
+    </div>
+    <nav aria-label="More">
+      <ul class="list-group">
+        <li><a class="list-row" href="/app/voices" {{if eq .Page "voices"}}aria-current="page"{{end}}>{{template "icon-voices"}}<span class="flex-1">My voices</span>{{template "icon-chevron"}}</a></li>
+        <li><a class="list-row" href="/app/connect" {{if eq .Page "connect"}}aria-current="page"{{end}}>{{template "icon-connect"}}<span class="flex-1">Connect an app</span>{{template "icon-chevron"}}</a></li>
+        <li><a class="list-row" href="/app/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>{{template "icon-settings"}}<span class="flex-1">Settings</span>{{template "icon-chevron"}}</a></li>
+        {{if canAdmin .Principal}}<li><a class="list-row" href="/app/admin" {{if eq .Page "admin"}}aria-current="page"{{end}}>{{template "icon-admin"}}<span class="flex-1">Admin</span>{{template "icon-chevron"}}</a></li>{{end}}
+      </ul>
+    </nav>
+    {{if not .NoAuth}}<div class="list-group mt-4"><button type="button" class="list-row text-danger" data-logout{{with .LogoutURL}} data-logout-url="{{.}}"{{end}}>Sign out</button></div>{{end}}
+  </div>
+</dialog>
+{{end}}
+
+{{/* "Generating…": a run that keeps going while the person is elsewhere
+     (filled in by shell.js; hidden until there is one). */}}
+{{define "run-pill"}}
+<a href="/app/chat" hx-boost="false" class="run-pill" data-run-pill="{{.}}" hidden>
+  <span aria-hidden="true" class="run-dot"></span><span class="rail-label min-w-0 truncate" data-run-label>Generating…</span>
+</a>
+{{end}}
+
+{{/* The mark: a doorway with a light inside. Usage: always this shape, in one color or
+     in the accent; never on a busy picture, and at 16 px or larger. */}}
+{{define "mark"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg>{{end}}
+
+{{define "icon-chat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12c0-4.2 3.4-7 7.5-7s7.5 2.8 7.5 7-3.4 7-7.5 7c-1 0-2-.2-2.9-.5L5 19.8l.9-3.5C5 15.1 4.5 13.7 4.5 12Z"/></svg>{{end}}
+{{define "icon-models"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="6" rx="1.5"/><rect x="4" y="13" width="16" height="6" rx="1.5"/><path d="M7.5 8h.01M7.5 16h.01"/></svg>{{end}}
+{{define "icon-studio"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4c.9 4.3 3.7 7.1 8 8-4.3.9-7.1 3.7-8 8-.9-4.3-3.7-7.1-8-8 4.3-.9 7.1-3.7 8-8Z"/></svg>{{end}}
+{{define "icon-back"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6 9 12l5.5 6"/></svg>{{end}}
+{{define "icon-running"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5h3.5l2.3-6.5 4 12 2.7-8 1.2 2.5h3.3"/></svg>{{end}}
+{{define "icon-voices"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h1M8 8.5v7M12 5v14M16 8.5v7M20 12h-1"/></svg>{{end}}
+{{define "icon-connect"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5 14.5 9.5M8 11l-2.2 2.2a3.8 3.8 0 0 0 5.4 5.4L13 16.5M16 13l2.2-2.2a3.8 3.8 0 0 0-5.4-5.4L11 7.5"/></svg>{{end}}
+{{define "icon-settings"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8h8M17 8h2.5M4.5 16H7M11.5 16h8"/><circle cx="14.7" cy="8" r="2.2"/><circle cx="9.2" cy="16" r="2.2"/></svg>{{end}}
+{{define "icon-admin"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 5.5 6.5V12c0 3.8 2.7 6.7 6.5 8 3.8-1.3 6.5-4.2 6.5-8V6.5Z"/></svg>{{end}}
+{{define "icon-more"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="currentColor"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>{{end}}
+{{define "icon-x"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/></svg>{{end}}
+{{define "icon-chevron"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-4 shrink-0 text-muted" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 5.5 6-5.5 6"/></svg>{{end}}
+{{define "icon-plus"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13M5.5 12h13"/></svg>{{end}}
+{{define "icon-send"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M6.5 11.5 12 6l5.5 5.5"/></svg>{{end}}
+
+{{/* A sheet's title and its close button. */}}
+{{define "sheet-head"}}
+<div class="flex items-center justify-between gap-3 px-4 pt-3 pb-2">
+  <h2 id="{{.ID}}" class="text-lg font-bold">{{.Title}}</h2>
+  <button type="button" class="btn btn-quiet size-11 p-0" data-close-sheet aria-label="Done">{{template "icon-x"}}</button>
+</div>
+{{end}}
+
+{{/* A named confirmation: dict "Label" "Text" "Confirm" and the hidden fields as "Fields". */}}
+{{define "confirm"}}
+<details class="confirm">
+  <summary class="btn min-h-11 border border-danger-line bg-danger-soft text-danger">{{.Label}}</summary>
+  <div class="mt-2 grid gap-2 rounded-xl border border-danger-line p-3" role="group" aria-label="Confirm {{.Label}}">
+    <p class="text-sm">{{.Text}}</p>
+    <button type="submit" class="btn min-h-11 justify-self-start border border-danger-line bg-danger-soft text-danger" name="action" value="{{.Action}}">{{.Confirm}}</button>
+  </div>
+</details>
+{{end}}
+
+{{/* A small drawing of what a tool makes. */}}
+{{define "icon-image"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m4.5 17 4.5-4 3.5 3 2.5-2 4.5 3.5"/></svg>{{end}}
+{{define "icon-transcribe"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M4.5 12h15M4.5 17h9"/></svg>{{end}}
+{{define "icon-video"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m10.5 9.5 4 2.5-4 2.5Z"/></svg>{{end}}
+{{define "icon-decide"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5v13M8 8h11M8 12h6.5M8 16h2.5"/></svg>{{end}}
+{{define "tool-icon"}}{{if eq . "image"}}{{template "icon-image"}}{{else if eq . "video"}}{{template "icon-video"}}{{else if eq . "speech"}}{{template "icon-voices"}}{{else if eq . "transcribe"}}{{template "icon-transcribe"}}{{else}}{{template "icon-decide"}}{{end}}{{end}}
+
+{{/* A generated picture. shell.js shows the tool's icon and "Expired" if the file
+     is gone or will not decode, so there is never a broken-image icon. */}}
+{{define "result-image"}}<span class="result-img"><img src="{{.Src}}" alt="{{.Alt}}" class="{{.Class}}" data-result-img><span class="result-gone" data-result-gone hidden>{{template "tool-icon" .Tool}}<b>Expired</b></span></span>{{end}}

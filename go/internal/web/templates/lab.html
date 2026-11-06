@@ -1,0 +1,557 @@
+{{define "title"}}{{with .ToolName}}{{.}} · {{end}}LocalBase{{end}}
+{{define "main"}}
+<section aria-labelledby="lab-title" class="lab">
+  <div class="studio-head">
+    <a class="icon-btn" href="/app/studio" aria-label="Back to Studio">{{template "icon-back"}}</a>
+    <h1 id="lab-title" class="page-title">{{.ToolName}}</h1>
+  </div>
+
+  {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
+  <section aria-labelledby="results-title" class="lab-results mt-4">
+    {{if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
+    <p id="lab-said" class="sr-only" role="status"></p>
+    {{template "lab-result" .}}
+    <ul id="lab-items" class="lab-items" aria-label="Results">{{range .Items}}{{template "lab-item" .}}{{end}}</ul>
+    {{if .Ready}}{{template "lab-empty" .Tab}}{{end}}
+  </section>
+  {{if .Ready}}<div class="lab-dock-spacer" aria-hidden="true"></div>{{end}}
+  {{end}}
+
+  {{if eq .Tab "image"}}
+  {{if not .CanImage}}{{template "lab-denied" "image generation"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "picture" "Filter" "images" "CanGet" .CanManage)}}{{else}}
+  <form class="lab-dock" data-docked aria-label="Make an image" hx-post="/app/lab/image" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    <div class="composer-box lab-box">
+      <div class="lab-chips">
+        {{template "lab-chip" (dict "Sheet" "image-shape" "Name" "shape" "Label" "Shape" "Value" "Square")}}
+        {{template "lab-chip" (dict "Sheet" "image-look" "Name" "look" "Label" "Look" "Value" "Plain")}}
+        {{template "lab-chip" (dict "Sheet" "image-count" "Name" "count" "Label" "Number" "Value" "1 picture")}}
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+        <button type="button" class="chip lab-chip" data-open-sheet="lab-more" aria-haspopup="dialog">More</button>
+      </div>
+      {{template "lab-field" (dict "Name" "prompt" "Label" "Prompt" "Max" 16384 "Placeholder" "Describe the picture" "Action" "Generate")}}
+    </div>
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    <dialog id="image-shape" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-shape-title">
+      {{template "sheet-head" (dict "ID" "image-shape-title" "Title" "Shape")}}
+      <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Shape</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="square" data-label="Square" checked class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-square"></span><span class="flex-1">Square</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="portrait" data-label="Portrait" class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-portrait"></span><span class="flex-1">Portrait</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="shape" value="landscape" data-label="Landscape" class="size-5 accent-[var(--lb-accent)]"><span aria-hidden="true" class="shape-glyph shape-landscape"></span><span class="flex-1">Landscape</span></label>
+      </fieldset>
+      <fieldset class="list-group mx-4 mb-2"><legend class="list-label mt-0 px-1">Resolution</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="resolution" value="standard" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Standard</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="resolution" value="large" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Large <span class="font-normal text-muted">· takes longer</span></span></label>
+      </fieldset>
+    </dialog>
+    <dialog id="image-look" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-look-title">
+      {{template "sheet-head" (dict "ID" "image-look-title" "Title" "Look")}}
+      <p class="px-5 pb-2 text-sm text-muted">A look adds a few words to your prompt. Results depend on the model.</p>
+      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Look</legend>
+        {{range $i, $l := .Looks}}<label class="list-row cursor-pointer"><input type="radio" name="look" value="{{$l.ID}}" data-label="{{$l.Name}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$l.Name}}</span></label>{{end}}
+      </fieldset>
+    </dialog>
+    <dialog id="image-count" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="image-count-title">
+      {{template "sheet-head" (dict "ID" "image-count-title" "Title" "Number of pictures")}}
+      <p class="px-5 pb-2 text-sm text-muted">Each picture takes its turn, so more means a longer wait.</p>
+      <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Number of pictures</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="1" data-label="1 picture" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">1 picture</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="2" data-label="2 pictures" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">2 pictures</span></label>
+        <label class="list-row cursor-pointer"><input type="radio" name="count" value="4" data-label="4 pictures" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">4 pictures</span></label>
+      </fieldset>
+    </dialog>
+    <dialog id="lab-more" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-more-title">
+      {{template "sheet-head" (dict "ID" "lab-more-title" "Title" "More settings")}}
+      <div class="grid gap-3 px-4 pb-2">
+        <label class="grid gap-1"><span class="font-semibold">Avoid <span class="font-normal text-muted">(negative prompt)</span></span>
+          <input class="input" name="negative_prompt" maxlength="16384" autocomplete="off"></label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="grid gap-1"><span class="font-semibold">Seed</span><input class="input" name="seed" inputmode="numeric" pattern="[0-9]*" placeholder="Random"></label>
+          <label class="grid gap-1"><span class="font-semibold">Steps</span><input class="input" name="steps" inputmode="numeric" pattern="[0-9]*" placeholder="Default"></label>
+        </div>
+        <p class="text-sm text-muted">A seed stays here until you clear it, so the same prompt can repeat a picture.</p>
+      </div>
+    </dialog>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{if eq .Tab "video"}}
+  {{if not .CanVideo}}{{template "lab-denied" "video generation"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "video" "Filter" "video" "CanGet" .CanManage)}}{{else}}
+  <form class="lab-dock" data-docked aria-label="Make a video" hx-post="/app/lab/video" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" data-video-form>
+    <div class="composer-box lab-box">
+      <div class="lab-chips">
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+        <button type="button" class="chip lab-chip gap-1" data-open-sheet="lab-more" aria-haspopup="dialog" data-video-chip{{if not .VideoModel.Image}} hidden{{end}}><span class="font-normal text-muted">Start from</span> <span data-video-chip-value>Words</span></button>
+        <button type="button" class="chip lab-chip" data-open-sheet="lab-more" aria-haspopup="dialog">More</button>
+      </div>
+      {{template "lab-field" (dict "Name" "prompt" "Label" "Prompt" "Max" 16384 "Placeholder" "Describe the video" "Action" "Generate video")}}
+    </div>
+    {{if eq (len .Models) 1}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    {{if gt (len .Models) 1}}<dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
+      {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
+      <fieldset class="list-group mx-4 mb-2" hx-get="/app/lab/video/options" hx-target="#lab-video-options" hx-swap="outerHTML" hx-trigger="change" hx-include="this" hx-disabled-elt="unset"><legend class="sr-only">Model</legend>
+        {{range $i, $m := .Models}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}</span></label>{{end}}
+      </fieldset>
+    </dialog>{{end}}
+    <dialog id="lab-more" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-more-title">
+      {{template "sheet-head" (dict "ID" "lab-more-title" "Title" "More settings")}}
+      <div class="grid gap-3 px-4 pb-2">
+        {{template "lab-video-options" .}}
+        <label class="grid gap-1"><span class="font-semibold">Avoid <span class="font-normal text-muted">(negative prompt)</span></span>
+          <input class="input" name="negative_prompt" maxlength="16384" autocomplete="off"></label>
+      </div>
+    </dialog>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{if eq .Tab "speech"}}
+  {{if not .CanSpeech}}{{template "lab-denied" "speech"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "speech" "Filter" "speech" "CanGet" .CanManage)}}{{else}}
+  <form class="lab-dock" data-docked aria-label="Make speech" hx-post="/app/lab/speech" hx-target="#lab-result" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+    <div class="composer-box lab-box">
+      <div class="lab-chips">
+        {{template "lab-chip" (dict "Sheet" "lab-voice" "Name" "voice" "Label" "Voice" "Value" "None")}}
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+        <span class="speech-count" data-script-count aria-live="polite" hidden></span>
+      </div>
+      <p class="px-2 text-sm text-muted" data-digits-note role="status" hidden>Long runs of digits can come out cut off or repeated.</p>
+      {{template "lab-field" (dict "Name" "input" "Label" "Script" "Max" 200000 "Placeholder" "Write a script" "Action" "Make speech")}}
+    </div>
+    {{if eq (len .Models) 1}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    {{if gt (len .Models) 1}}<dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
+      {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
+      <fieldset class="list-group mx-4 mb-2" hx-get="/app/lab/voices" hx-target="#lab-voices" hx-swap="outerHTML" hx-trigger="change" hx-include="this" hx-disabled-elt="unset"><legend class="sr-only">Model</legend>
+        {{range $i, $m := .Models}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}</span></label>{{end}}
+      </fieldset>
+    </dialog>{{end}}
+    <dialog id="lab-voice" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-voice-title">
+      {{template "sheet-head" (dict "ID" "lab-voice-title" "Title" "Voice")}}
+      {{template "lab-voices" .}}
+    </dialog>
+  </form>
+  {{end}}
+  {{end}}
+
+  {{with .VoiceAdd}}{{template "voice-add" (dict "List" . "Target" "#lab-voices" "Post" (printf "/app/voices?speech=%s" $.VoiceModel))}}{{end}}
+
+  {{if eq .Tab "transcribe"}}
+  {{if not .CanTranscribe}}{{template "lab-denied" "transcription"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "transcription" "Filter" "transcription" "CanGet" .CanManage)}}{{else}}
+  <form class="lab-dock" data-docked aria-label="Transcribe a recording" hx-post="/app/lab/transcribe" hx-encoding="multipart/form-data" hx-target="#lab-result" hx-swap="outerHTML" data-audio-form data-audio-rate="16000" data-audio-autosubmit data-transcribe>
+    <div class="composer-box lab-box pb-1">
+      <div class="lab-chips">
+        {{template "lab-chip" (dict "Sheet" "lab-language" "Name" "language" "Label" "Language" "Value" "Detect language")}}
+        <span class="flex items-center px-2 text-sm text-muted" data-english-note hidden>This model hears English only.</span>
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+      </div>
+      <div class="transcribe-start" data-transcribe-start>
+        <button type="button" class="btn btn-primary" data-record-start>{{template "icon-mic"}}Record</button>
+        <button type="button" class="btn btn-quiet" data-pick-audio>Choose a file</button>
+        <input class="sr-only text-base" type="file" name="file" aria-label="Audio file" accept="audio/*,video/*" data-audio-input tabindex="-1">
+      </div>
+      <div class="transcribe-panel" data-record-panel hidden>
+        <div class="flex items-center justify-between gap-2"><span class="font-bold tabular-nums" data-record-time>0:00</span><span class="text-sm font-semibold" data-record-word aria-live="polite">Listening…</span></div>
+        <span class="transcribe-meter" aria-hidden="true"><i data-record-level></i></span>
+        <p class="text-sm text-muted">You’ll get the text after you stop.</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" class="btn btn-quiet" data-record-pause>Pause</button>
+          <button type="button" class="btn btn-primary" data-record-stop>Stop</button>
+        </div>
+      </div>
+      <div class="transcribe-panel" data-keep hidden>
+        <p class="font-semibold" role="status" data-keep-said></p>
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" class="btn btn-quiet" data-keep-drop>Discard</button>
+          <button type="button" class="btn btn-primary" data-keep-send>Send again</button>
+        </div>
+      </div>
+      <p class="px-2 text-sm text-muted" data-audio-status aria-live="polite"></p>
+    </div>
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}" {{if (index .Models 0).EnglishOnly}}data-english-only{{end}}>{{end}}
+    <dialog id="lab-language" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-language-title">
+      {{template "sheet-head" (dict "ID" "lab-language-title" "Title" "Language")}}
+      <fieldset class="list-group mx-4 mb-3"><legend class="sr-only">Language spoken</legend>
+        <label class="list-row cursor-pointer"><input type="radio" name="language" value="auto" data-label="Detect language" checked class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">Detect it</span></label>
+        {{range .Languages}}<label class="list-row cursor-pointer"><input type="radio" name="language" value="{{.Code}}" data-label="{{.Name}}" class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{.Name}}</span></label>{{end}}
+      </fieldset>
+      <label class="mx-5 mb-3 flex min-h-11 items-center gap-3 text-base"><input type="checkbox" name="translate" class="size-5 accent-[var(--lb-accent)]"> Translate to English</label>
+    </dialog>
+  </form>
+  {{end}}
+  {{end}}
+</section>
+<script src="{{asset "js/lab.js"}}" type="module"></script>
+<script src="{{asset "js/audio.js"}}" type="module"></script>
+<script src="{{asset "js/video.js"}}" type="module"></script>
+{{if eq .Tab "speech"}}<script src="{{asset "js/speech.js"}}" type="module"></script>{{end}}
+{{if eq .Tab "transcribe"}}<script src="{{asset "js/transcribe.js"}}" type="module"></script>{{end}}
+{{if eq .Tab "decisions"}}<script src="{{asset "js/decisions.js"}}" type="module"></script>{{end}}
+{{end}}
+
+{{/* Decisions (DESIGN §22.17): decisions.js draws the options, the answer and
+     the batch from what it keeps in this browser. */}}
+{{define "decisions"}}
+<div data-decisions class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
+  {{if not .CanDecide}}{{template "lab-denied" "decisions"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "decision" "Filter" "decisions" "CanGet" .CanManage)}}{{else}}
+  <form id="decide" hx-boost="false" aria-label="Ask a question" class="lg:flex lg:flex-1 lg:flex-col">
+    <fieldset class="decide-types">
+      <legend class="sr-only">Question type</legend>
+      <label><input type="radio" name="decide-type" value="choice" class="sr-only" checked>Pick one</label>
+      <label><input type="radio" name="decide-type" value="noul" class="sr-only">Yes or no</label>
+      <label><input type="radio" name="decide-type" value="score" class="sr-only">Rate</label>
+    </fieldset>
+    <p id="decide-error" role="alert" class="decide-error" hidden></p>
+    <div data-form-open class="mt-3 grid gap-3">
+      <label class="grid gap-1"><span class="font-semibold" data-situation-title>Situation</span>
+        <textarea id="decide-situation" class="input min-h-20" rows="3" autocomplete="off"></textarea></label>
+      <div data-batch-tools class="flex flex-wrap items-center gap-2" hidden>
+        <button type="button" class="btn btn-quiet" data-pick-file>Load a file</button>
+        <input type="file" accept=".txt,.csv,text/plain,text/csv" class="sr-only text-base" data-batch-file tabindex="-1" aria-label="Situations file">
+        <span class="text-sm text-muted" data-situation-count></span>
+      </div>
+      <div data-options>
+        <p class="mb-1 font-semibold" data-options-title>Options</p>
+        <ul class="grid gap-2" data-option-rows></ul>
+        <button type="button" class="btn btn-quiet mt-1" data-add-option>Add an option</button>
+      </div>
+      <div><button type="button" class="btn btn-quiet" data-code aria-haspopup="dialog">View code</button></div>
+    </div>
+    <div data-form-summary class="decide-form-summary" hidden>
+      <div class="min-w-0 flex-1">
+        <p class="truncate" data-summary-situation></p>
+        <p class="truncate text-sm text-muted" data-summary-options></p>
+      </div>
+      <button type="button" class="btn btn-quiet shrink-0" data-edit>Edit</button>
+    </div>
+    <div data-result class="mt-3" hidden></div>
+    <div data-batch class="mt-3" hidden></div>
+    <div class="lab-dock-spacer" aria-hidden="true"></div>
+    <div class="lab-dock" data-docked>
+      <div class="composer-box lab-box">
+        <div class="lab-chips">
+          <button type="button" class="chip lab-chip gap-1" data-open-sheet="decide-template" data-template-chip aria-haspopup="dialog"><span class="font-normal text-muted">Template</span> <span data-value>None</span></button>
+          <button type="button" class="chip lab-chip gap-1" data-batch-chip aria-pressed="false"><span class="font-normal text-muted">Batch</span> <span data-value>Off</span></button>
+          {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+        </div>
+        {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask a question" "Action" "Decide" "Scripted" true)}}
+      </div>
+      {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+    </div>
+  </form>
+  <p id="decide-said" class="sr-only" role="status"></p>
+
+  <dialog id="decide-template" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="decide-template-title">
+    {{template "sheet-head" (dict "ID" "decide-template-title" "Title" "Template")}}
+    <p class="px-5 pb-2 text-sm text-muted">Fills in the question. Nothing runs until you send it.</p>
+    <ul class="list-group mx-4 mb-3" data-templates></ul>
+    <div data-saved-box hidden>
+      <h3 class="list-label mx-5 mt-0">Saved in this browser</h3>
+      <ul class="list-group mx-4 mb-3" data-saved></ul>
+    </div>
+  </dialog>
+
+  <dialog id="decide-code" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="decide-code-title">
+    {{template "sheet-head" (dict "ID" "decide-code-title" "Title" "View code")}}
+    <div class="grid gap-2 px-4 pb-3">
+      <fieldset class="decide-types">
+        <legend class="sr-only">Language</legend>
+        <label><input type="radio" name="decide-code-lang" value="curl" class="sr-only" checked>cURL</label>
+        <label><input type="radio" name="decide-code-lang" value="js" class="sr-only">JavaScript</label>
+      </fieldset>
+      <p class="text-sm text-muted" data-code-note hidden>This is the request for the first line. A batch sends one per line.</p>
+      <pre class="decide-code" tabindex="0" aria-label="Request code"><code data-code-text></code></pre>
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-sm text-muted">Set <code>LOCALBASE_API_KEY</code> to your API key.</p>
+        <button type="button" class="btn btn-quiet shrink-0" data-copy-code>Copy</button>
+      </div>
+    </div>
+  </dialog>
+  {{end}}
+</div>
+{{end}}
+
+{{/* The prompt with its one action, a round button inside the field (the
+     same composer as Chat). */}}
+{{define "lab-field"}}
+<div class="flex items-end gap-1 px-1 pb-1">
+  <label for="lab-prompt" class="sr-only">{{.Label}}</label>
+  <textarea id="lab-prompt" class="lab-prompt text-base" name="{{.Name}}" rows="1" required maxlength="{{.Max}}" placeholder="{{.Placeholder}}" autocomplete="off" data-grow></textarea>
+  <button type="submit" class="btn btn-primary size-11 shrink-0 rounded-full p-0" aria-label="{{.Action}}"{{if .Scripted}} disabled{{end}}>{{template "icon-send"}}</button>
+</div>
+{{end}}
+
+{{/* A chip that opens the sheet holding one option; lab.js keeps its value
+     in step with the sheet's radios. */}}
+{{define "lab-chip"}}
+<button type="button" class="chip lab-chip" data-open-sheet="{{.Sheet}}" aria-haspopup="dialog"><span class="sr-only">{{.Label}}: </span><span data-chip-label="{{.Name}}">{{.Value}}</span></button>
+{{end}}
+
+{{define "lab-model-sheet"}}
+<dialog id="lab-model" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="lab-model-title">
+  {{template "sheet-head" (dict "ID" "lab-model-title" "Title" "Model")}}
+  <fieldset class="list-group mx-4 mb-2"><legend class="sr-only">Model</legend>
+    {{range $i, $m := .}}<label class="list-row cursor-pointer"><input type="radio" name="model" value="{{$m.ID}}" data-label="{{$m.Name}}" {{if $m.EnglishOnly}}data-english-only{{end}} {{if eq $i 0}}checked{{end}} class="size-5 accent-[var(--lb-accent)]"><span class="flex-1">{{$m.Name}}{{if $m.Active}} <span class="font-normal text-muted">· current</span>{{end}}</span></label>{{end}}
+  </fieldset>
+</dialog>
+{{end}}
+
+{{define "lab-voices"}}
+<div id="lab-voices" class="mx-4 mb-2 grid gap-2">
+  {{with .VoiceError}}<p class="notice notice-error" role="alert">{{.}}</p>{{end}}
+  <fieldset class="list-group"><legend class="sr-only">Voice</legend>
+    {{range $v := .Voices}}<div class="flex items-center">
+      <label class="list-row min-w-0 flex-1 cursor-pointer"><input type="radio" name="voice" value="{{$v.ID}}" data-label="{{$v.Name}}" {{if $v.Checked}}checked{{end}} required class="size-5 accent-[var(--lb-accent)]"><span class="min-w-0 flex-1 wrap-anywhere">{{$v.Name}}{{if $v.Mine}} <span class="text-sm font-normal text-muted">· Mine</span>{{end}}</span></label>
+      <button type="button" class="icon-btn mr-2 shrink-0" data-voice-preview="{{$v.Preview}}" aria-label="Play a sample of {{$v.Name}}" aria-pressed="false">{{template "icon-play-small"}}</button>
+    </div>{{else}}<p class="list-row text-muted">No voices for this model.</p>{{end}}
+  </fieldset>
+  {{if and .VoiceClones .CanManage}}<button type="button" class="btn btn-quiet w-full" data-open-sheet="voice-add" aria-haspopup="dialog">Add a voice</button>{{end}}
+  <p class="px-1 text-sm text-muted" data-voice-status aria-live="polite">{{if .VoiceClones}}A sample is made the first time you play it.{{else}}This model has its own voices. A sample is made the first time you play it.{{end}}</p>
+</div>
+{{end}}
+{{define "icon-mic"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="4" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></svg>{{end}}
+{{define "icon-play-small"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5z"/></svg>{{end}}
+
+{{/* One result in the tray. While its run is active it polls itself. */}}
+{{define "lab-item"}}{{if eq .Tool "image"}}{{template "image-item" .}}{{else if eq .Tool "video"}}{{template "video-item" .}}{{else if eq .Tool "speech"}}{{template "speech-item" .}}{{else}}{{template "transcript-item" .}}{{end}}{{end}}
+
+{{/* A script: real progress by part, then a drawn waveform over the native player. */}}
+{{define "speech-item"}}
+<li id="run-{{.ID}}" class="lab-item lab-item-speech"{{if .Active}} hx-get="/app/lab/speech/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
+  {{if .Active}}<div class="lab-progress skeleton flex-col gap-2 px-4"><span>{{.Message}}</span>{{if gt .Parts 1}}<progress class="speech-progress" max="{{.Parts}}" value="{{.Part}}" aria-label="Parts made">{{.Part}} of {{.Parts}}</progress>{{end}}</div>
+  <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>
+  {{else}}
+  {{with .Message}}<p class="px-2 text-sm {{if eq $.Status "completed"}}font-semibold{{else if eq $.Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if or (eq $.Status "failed") (eq $.Status "completed")}} role="alert"{{end}}>{{.}}</p>{{end}}
+  {{with .Audio}}<div data-speech-player>
+    {{if $.Bars}}<button type="button" class="speech-wave" data-wave aria-hidden="true" tabindex="-1">
+      <svg viewBox="0 0 192 24" preserveAspectRatio="none" class="speech-wave-base">{{range $.Bars}}<rect x="{{.X}}" y="{{.Y}}" width="2" height="{{.H}}" rx="1"/>{{end}}</svg>
+      <svg viewBox="0 0 192 24" preserveAspectRatio="none" class="speech-wave-played">{{range $.Bars}}<rect x="{{.X}}" y="{{.Y}}" width="2" height="{{.H}}" rx="1"/>{{end}}</svg>
+    </button>{{end}}
+    <audio controls preload="metadata" src="{{.}}" class="w-full"></audio>
+  </div>{{end}}
+  {{end}}
+  <p class="min-w-0 px-2 text-muted"><span class="font-semibold text-ink">{{or .VoiceName "Speech"}}</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}} <span class="text-sm">{{with .Length}}· {{.}} {{end}}{{with .Ago}}· {{.}}{{end}}</span></p>
+  <div class="lab-item-foot">
+    {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/speech/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML"{{if eq .Status "stopping"}} disabled{{end}}>Stop</button>
+    {{else}}
+    {{with .Audio}}<a class="icon-btn" href="{{.}}" download="speech.wav" aria-label="Save audio">{{template "icon-download"}}</a>
+    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="speech.wav" aria-label="Share audio" hidden>{{template "icon-share"}}</button>{{end}}
+    <button type="button" class="btn btn-quiet rounded-full" hx-post="/app/lab/speech/{{.ID}}/again" hx-target="#lab-result" hx-swap="outerHTML">{{if eq .Status "completed"}}Make again{{else}}Try again{{end}}</button>
+    <button type="button" class="btn btn-quiet rounded-full" data-fill="{{.Prompt}}">Edit script</button>
+    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/speech/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this speech">{{template "icon-x"}}</button>
+    {{end}}
+  </div>
+</li>
+{{end}}
+
+{{/* A video job: its place in the final shape and its stage in words, then the
+     player. Stop works at every stage. Never a made-up percentage. */}}
+{{define "video-item"}}
+<li id="run-{{.ID}}" class="lab-item lab-item-video"{{if .Active}} hx-get="/app/lab/video/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}} data-announce="{{.Announce}}" data-announce-into="lab-said">
+  {{if .Active}}<div class="lab-progress skeleton video-frame video-{{.Shape}}"><span class="px-3 text-center">{{.Message}}</span></div>
+  <p class="px-2 text-sm text-muted">{{if .Slow}}This is taking a while. It stops by itself at the model’s limit, or you can stop it now.{{else}}You can leave this page; it keeps going.{{end}}</p>
+  {{else if .Video}}<video controls playsinline preload="metadata" src="{{.Video}}" class="video-frame video-{{.Shape}} rounded-xl bg-black"></video>
+  {{else}}<p class="px-2 text-sm {{if eq .Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if eq .Status "failed"}} role="alert"{{end}}>{{.Message}}{{if .NeedsMemory}} <a class="font-semibold underline" href="/app/models/running">See what’s running</a>{{end}}</p>{{end}}
+  <div class="flex min-w-0 items-center gap-2 px-2">
+    {{with .Thumb}}<span class="video-thumb">{{template "result-image" (dict "Src" . "Alt" "Starting picture" "Class" "size-full object-cover" "Tool" "image")}}</span>{{end}}
+    <p class="min-w-0 text-muted"><span class="font-semibold text-ink">Video</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}}{{with .Ago}} <span class="text-sm">· {{.}}</span>{{end}}</p>
+  </div>
+  <div class="lab-item-foot">
+    {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/video/{{.ID}}/cancel" hx-target="#run-{{.ID}}" hx-swap="outerHTML">Stop</button>
+    {{else}}
+    {{with .Video}}<a class="icon-btn" href="{{.}}" download="video.mp4" aria-label="Save video">{{template "icon-download"}}</a>
+    <button type="button" class="icon-btn" data-share="{{.}}" data-share-name="video.mp4" aria-label="Share video" hidden>{{template "icon-share"}}</button>{{end}}
+    {{if .Again}}<button type="button" class="btn btn-quiet rounded-full" hx-post="/app/lab/video/{{.ID}}/again" hx-target="#lab-result" hx-swap="outerHTML">{{if .Video}}Make again{{else}}Try again{{end}}</button>{{end}}
+    {{with .Prompt}}<button type="button" class="btn btn-quiet rounded-full" data-fill="{{.}}">Edit prompt</button>{{end}}
+    <button type="button" class="icon-btn ml-auto" hx-post="/app/lab/video/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this video">{{template "icon-x"}}</button>
+    {{end}}
+  </div>
+</li>
+{{end}}
+
+{{/* A transcript: the words first, with the audio to check them against. A time
+     moves the player. */}}
+{{define "transcript-item"}}
+<li id="run-{{.ID}}" class="lab-item lab-item-transcribe"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
+  {{if .Active}}<p class="lab-progress skeleton">{{.Message}}</p>
+  <p class="px-2 text-sm text-muted">You can leave this page; it keeps going.</p>{{end}}
+  {{if .Transcript}}
+  <h3 class="image-title px-2">{{firstWords .Transcript}}</h3>
+  {{with .Source}}<audio controls preload="metadata" src="{{.}}" class="transcript-audio" data-transcript-audio></audio>{{end}}
+  {{if .Translated}}<p class="px-2 text-sm text-muted">Check a translation before relying on it.</p>{{end}}
+  <div class="flex flex-wrap items-center gap-1">
+    <button type="button" class="btn btn-quiet rounded-full" data-copy-transcript>Copy</button>
+    <button type="button" class="btn btn-quiet rounded-full" data-open-sheet="export-{{.ID}}" aria-haspopup="dialog">Export</button>
+    {{if .Segments}}<button type="button" class="btn btn-quiet rounded-full" data-toggle-times aria-pressed="true">Timestamps</button>{{end}}
+  </div>
+  <p class="hidden" data-transcript>{{.Transcript}}</p>
+  {{if .Segments}}<div class="transcript-text" data-times>{{range .Segments}}
+    <p class="transcript-line"><button type="button" class="transcript-time" data-seek="{{.Start}}" aria-label="{{.Stamp}}, play from {{.Spoken}}">{{.Stamp}}</button><span>{{.Text}}</span></p>{{end}}
+  </div>
+  {{else}}<p class="transcript-text whitespace-pre-wrap">{{.Transcript}}</p>{{end}}
+  <dialog id="export-{{.ID}}" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="export-{{.ID}}-title">
+    {{template "sheet-head" (dict "ID" (printf "export-%s-title" .ID) "Title" "Export")}}
+    <ul class="list-group mx-4 mb-3">
+      <li><a class="list-row" href="/app/lab/runs/{{.ID}}/export?format=txt" download hx-boost="false"><span class="flex-1">Text <span class="text-muted">(.txt)</span></span></a></li>
+      {{if .Segments}}<li><a class="list-row" href="/app/lab/runs/{{.ID}}/export?format=srt" download hx-boost="false"><span class="flex-1">Subtitles <span class="text-muted">(.srt), for most video players</span></span></a></li>
+      <li><a class="list-row" href="/app/lab/runs/{{.ID}}/export?format=vtt" download hx-boost="false"><span class="flex-1">Web subtitles <span class="text-muted">(.vtt), for web video</span></span></a></li>
+      {{else}}<li class="list-row text-sm text-muted">This model gave no times, so there are no subtitles.</li>{{end}}
+    </ul>
+  </dialog>
+  {{end}}
+  {{if and (not .Active) .Message}}<p class="px-2 text-sm {{if eq .Status "failed"}}text-danger{{else}}text-muted{{end}}"{{if eq .Status "failed"}} role="alert"{{end}}>{{.Message}}</p>{{end}}
+  <p class="min-w-0 px-2 text-muted"><span class="font-semibold text-ink">{{if .Translated}}Translation{{else}}Transcript{{end}}</span>{{with .Caption}} · <span class="wrap-anywhere">{{.}}</span>{{end}}{{with .Language}} <span class="text-sm">· {{.}}</span>{{end}}{{with .Ago}} <span class="text-sm">· {{.}}</span>{{end}}</p>
+  <div class="lab-item-foot">
+    {{if .Active}}<button type="button" class="btn btn-quiet ml-auto rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML">Stop</button>
+    {{else}}<button type="button" class="icon-btn ml-auto" hx-post="/app/lab/runs/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this transcript">{{template "icon-x"}}</button>{{end}}
+  </div>
+</li>
+{{end}}
+
+{{/* A result made without detached runs, or why one did not start: shown above
+     the tray until the next one. */}}
+{{define "lab-result"}}
+<div id="lab-result" aria-live="polite">
+  {{with .Notice}}<p class="lab-item mt-3 text-muted">{{.}}</p>{{end}}
+  {{with .Error}}<p class="lab-item mt-3 text-danger" role="alert">{{.}}</p>{{end}}
+  {{with .Image}}<figure class="lab-item mt-3"><img src="{{.}}" alt="Generated image" class="lab-image"><figcaption class="lab-item-foot"><span class="flex-1 text-sm font-semibold">Image</span><a class="icon-btn" href="{{.}}" download="image.png" aria-label="Download image">{{template "icon-download"}}</a></figcaption></figure>{{end}}
+  {{if .Transcript}}<div class="lab-item mt-3"><p class="whitespace-pre-wrap">{{.Transcript}}</p><p class="lab-item-foot text-sm font-semibold">Transcript</p></div>{{end}}
+</div>
+{{end}}
+
+{{/* Before the first result: what the tool does and examples that fill the
+     prompt. Never names a model. */}}
+{{define "lab-empty"}}
+<div class="lab-empty" data-lab-empty>
+  {{if eq . "image"}}<p>Describe a picture, and it appears here.</p>
+  <div class="mt-3 flex flex-wrap justify-center gap-2">
+    <button type="button" class="chip" data-fill="A paper boat on a rainy street, watercolor">A paper boat on a rainy street</button>
+    <button type="button" class="chip" data-fill="A cozy reading nook with morning light, soft colors">A cozy reading nook</button>
+    <button type="button" class="chip" data-fill="A lighthouse on a cliff at dusk, oil painting">A lighthouse at dusk</button>
+  </div>
+  {{else if eq . "video"}}<p>Describe a short scene. A video takes a few minutes and a lot of memory, and keeps going if you leave.</p>
+  <div class="mt-3 flex flex-wrap justify-center gap-2">
+    <button type="button" class="chip" data-fill="Waves rolling onto a quiet beach at sunset">Waves at sunset</button>
+    <button type="button" class="chip" data-fill="A paper boat drifting down a rainy street">A drifting paper boat</button>
+  </div>
+  {{else if eq . "speech"}}<p>Write a script, and hear it in the voice you choose. A long one is made in parts and joined.</p>
+  <div class="mt-3 flex flex-wrap justify-center gap-2">
+    <button type="button" class="chip" data-fill="Welcome back! Here is what is new today.">A friendly welcome</button>
+    <button type="button" class="chip" data-fill="The quick brown fox jumps over the lazy dog.">The quick brown fox</button>
+  </div>
+  {{else}}<p>Record, or choose a recording, and the words appear here with their times. It starts as soon as you stop or choose, and up to about 13 minutes fits at a time.</p>{{end}}
+  <p class="mt-3 text-sm">Results keep going if you leave the page.</p>
+</div>
+{{end}}
+
+{{define "lab-denied"}}<div class="empty-state mt-5"><p class="text-muted">Your access does not include {{.}}.</p></div>{{end}}
+{{define "lab-none"}}<div class="empty-state mt-5"><h2 class="text-lg font-bold">No {{.Word}} model yet</h2>{{if .CanGet}}<p class="mt-1 text-muted">Choose one, and this tool is ready.</p><a class="btn btn-primary mt-4" href="/app/models/get?filter={{.Filter}}">Get a model</a>{{else}}<p class="mt-1 text-muted">Ask whoever runs this computer to add one.</p>{{end}}</div>{{end}}
+
+{{define "lab-video-options"}}
+<div id="lab-video-options" class="grid gap-3">
+  {{with .VideoModel}}
+  <p class="text-sm text-muted">{{.Length}}, {{.Shape}}. It can take up to {{.Limit}} and uses a lot of memory while it runs.</p>
+  {{if .Image}}
+  <div class="grid gap-2"><span id="lab-start-label" class="font-semibold">Starting picture <span class="font-normal text-muted">(optional)</span></span>
+    <input class="input max-w-full" type="file" name="input_reference" aria-labelledby="lab-start-label" accept="image/png,image/jpeg,image/webp" data-video-source data-width="{{.Width}}" data-height="{{.Height}}">
+    {{with $.RecentPictures}}<div class="grid gap-1"><span class="text-sm text-muted">Or use a recent picture</span>
+      <ul class="flex gap-2 overflow-x-auto">{{range .}}<li class="shrink-0"><button type="button" class="video-recent" data-video-use="{{.URL}}" aria-label="Use this picture"><img src="{{.URL}}" alt="" class="size-full object-cover" data-result-img></button></li>{{end}}</ul>
+    </div>{{end}}
+    <p class="text-sm text-muted" data-video-status aria-live="polite">It is cropped to fill the frame.</p>
+    <div class="flex items-end gap-2">
+      <img alt="Starting picture, as it will be used" class="hidden max-h-48 w-auto rounded-xl" data-video-preview>
+      <button type="button" class="btn btn-quiet" data-video-clear hidden>Remove picture</button>
+    </div>
+  </div>
+  {{else}}
+  <p class="text-sm text-muted">This model starts from words only.</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "icon-share"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4.5M8 8l4-3.5L16 8M6 12.5V19a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-6.5"/></svg>{{end}}
+{{define "icon-download"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5V15M7.5 11l4.5 4.5 4.5-4.5M5 20h14"/></svg>{{end}}
+
+{{/* One batch in the gallery: tiles while it is made, then pictures that open
+     a full-screen viewer. Polling replaces the whole item, so only a
+     just-started batch (.Fresh) shimmers. */}}
+{{define "image-item"}}
+<li id="run-{{.ID}}" class="image-run"{{if .Active}} hx-get="/app/lab/runs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-poll{{end}}>
+  {{$item := .}}{{$shape := or .Shape "square"}}
+  {{if .Active}}
+  <div class="image-grid">{{range .Tiles}}<div class="image-tile image-{{$shape}} {{if $item.Fresh}}skeleton{{end}}"></div>{{end}}</div>
+  <div class="image-cap">
+    <p class="min-w-0 flex-1"><span class="block font-semibold text-muted">{{.Message}}</span>{{with .Caption}}<span class="block truncate text-sm text-muted">{{.}}</span>{{end}}</p>
+    <button type="button" class="btn btn-quiet shrink-0 rounded-full" hx-post="/app/lab/runs/{{.ID}}/stop" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Stop {{if gt (len .Tiles) 1}}these pictures{{else}}this picture{{end}}">Stop</button>
+  </div>
+  {{else if .Pictures}}
+  <div class="image-grid">
+    {{range $p := .Pictures}}
+    <div class="image-tile image-{{$shape}}">
+      <button type="button" class="image-open" data-open-sheet="view-{{$item.ID}}-{{$p.Index}}" aria-haspopup="dialog" aria-label="Open picture{{with $item.Caption}}: {{.}}{{end}}">{{template "result-image" (dict "Src" $p.URL "Alt" "" "Class" "image-thumb" "Tool" "image")}}</button>
+    </div>
+    {{template "image-viewer" (dict "Item" $item "Picture" $p)}}
+    {{end}}
+  </div>
+  <div class="image-cap"><p class="min-w-0 flex-1 truncate text-sm text-muted">{{with .Ago}}{{.}} · {{end}}{{.Caption}}</p></div>
+  {{else}}
+  <div class="image-tile image-{{$shape}}"><p class="image-stage {{if eq .Status "failed"}}text-danger{{end}}">{{or .Message "This picture is no longer available."}}</p></div>
+  <div class="image-cap">
+    <p class="min-w-0 flex-1 truncate text-sm text-muted">{{.Caption}}</p>
+    {{if .Prompt}}<button type="button" class="btn btn-quiet shrink-0 rounded-full" data-fill="{{.Prompt}}" data-fill-tab="image">Try again</button>{{end}}
+    <button type="button" class="icon-btn" hx-post="/app/lab/runs/{{.ID}}/remove" hx-target="#run-{{.ID}}" hx-swap="outerHTML" aria-label="Remove this result">{{template "icon-x"}}</button>
+  </div>
+  {{end}}
+</li>
+{{end}}
+
+{{/* One picture, full screen. The model's name appears only under Details. */}}
+{{define "image-viewer"}}
+{{$i := .Item}}{{$p := .Picture}}
+<dialog id="view-{{$i.ID}}-{{$p.Index}}" class="viewer" aria-label="Picture{{with $i.Caption}}: {{.}}{{end}}">
+  <div class="viewer-top">
+    <button type="button" class="viewer-btn" data-close-sheet aria-label="Close">{{template "icon-x"}}</button>
+    <span class="viewer-count" data-view-count></span>
+    <button type="button" class="viewer-btn" data-view-step="-1" aria-label="Previous picture">{{template "icon-back"}}</button>
+    <button type="button" class="viewer-btn" data-view-step="1" aria-label="Next picture">{{template "icon-forward"}}</button>
+  </div>
+  <div class="viewer-stage">{{template "result-image" (dict "Src" $p.URL "Alt" (or $i.Caption "Generated picture") "Class" "viewer-img" "Tool" "image")}}</div>
+  <div class="viewer-foot">
+    {{with $i.Caption}}<p class="viewer-caption">{{.}}</p>{{end}}
+    <p class="viewer-caption font-semibold" role="status" data-share-status hidden></p>
+    <details class="viewer-details">
+      <summary class="viewer-act">{{template "icon-info"}}<span>Details</span></summary>
+      <div class="viewer-panel">
+        <p class="whitespace-pre-wrap wrap-anywhere">{{$i.Prompt}}</p>
+        <dl class="viewer-facts">
+          {{with $i.Size}}<div><dt>Size</dt><dd>{{.}}</dd></div>{{end}}
+          {{if $i.Look}}<div><dt>Look</dt><dd>{{$i.LookName}}</dd></div>{{end}}
+          <div><dt>Seed</dt><dd>{{$p.Seed}}</dd></div>
+          {{with $i.Model}}<div><dt>Model</dt><dd>{{.}}</dd></div>{{end}}
+          {{with $i.Ago}}<div><dt>Made</dt><dd>{{.}}</dd></div>{{end}}
+        </dl>
+        <p class="text-xs text-[var(--lb-viewer-muted)]">A saved copy includes its prompt. Sharing from here leaves it out.</p>
+        <p class="text-xs text-[var(--lb-viewer-muted)]" data-no-share hidden>This browser can’t share files. Use Save instead.</p>
+        <div class="flex flex-wrap gap-2">
+          {{with $i.Prompt}}<button type="button" class="btn viewer-quiet rounded-full" data-copy-text="{{.}}">Copy prompt</button>{{end}}
+          {{if $i.Size}}<button type="button" class="btn viewer-quiet rounded-full" data-reuse data-prompt="{{$i.Prompt}}" data-shape="{{$i.Shape}}" data-look="{{$i.Look}}" data-seed="{{$p.Seed}}">Reuse settings</button>{{end}}
+        </div>
+        <form hx-post="/app/lab/runs/{{$i.ID}}/remove" hx-target="#run-{{$i.ID}}" hx-swap="outerHTML">
+          <input type="hidden" name="picture" value="{{$p.Index}}">
+          {{template "confirm" (dict "Label" "Delete" "Action" "delete" "Confirm" "Delete picture" "Text" "This picture is removed from the Studio.")}}
+        </form>
+      </div>
+    </details>
+    <a class="viewer-act" href="{{$p.URL}}" download="image.png">{{template "icon-download"}}<span>Save</span></a>
+    <button type="button" class="viewer-act" data-share="{{$p.URL}}" data-share-name="image.png" hidden>{{template "icon-share"}}<span>Share</span></button>
+    {{if $i.Size}}
+    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"vary","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt with a new seed">{{template "icon-shuffle"}}<span>Vary</span></button>
+    <button type="button" class="viewer-act" data-close-sheet hx-post="/app/lab/runs/{{$i.ID}}/again" hx-vals='{"mode":"same","picture":"{{$p.Index}}"}' hx-target="#lab-result" hx-swap="outerHTML" title="The same prompt and seed">{{template "icon-repeat"}}<span>Regenerate</span></button>
+    {{end}}
+  </div>
+</dialog>
+{{end}}
+
+{{define "icon-forward"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 5.5 6-5.5 6"/></svg>{{end}}
+{{define "icon-info"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/></svg>{{end}}
+{{define "icon-shuffle"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h3.5L16.5 17H20M4 17h3.5l2.7-2.8M13.8 10l2.7-2.5H20M17.5 5 20 7.5 17.5 10M17.5 14.5 20 17l-2.5 2.5"/></svg>{{end}}
+{{define "icon-repeat"}}<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11.5V10a3 3 0 0 1 3-3h10.5M16 4.5 18.5 7 16 9.5M19 12.5V14a3 3 0 0 1-3 3H5.5M8 14.5 5.5 17 8 19.5"/></svg>{{end}}

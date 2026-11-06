@@ -1,0 +1,29 @@
+{
+  "modelId": "gpt-oss-20b-q4_k_m",
+  "displayName": "gpt-oss 20B",
+  "kind": "llm",
+  "provider": "OpenAI",
+  "family": "GPT-OSS",
+  "version": "1",
+  "size": "20B",
+  "quant": "Q4_K_M",
+  "storageGb": 11.67,
+  "source": "https://huggingface.co/bartowski/openai_gpt-oss-20b-GGUF",
+  "repositoryRevision": "e39ba3aa000c47c83dacdc9e1ca2c9dd0808c205",
+  "artifacts": [
+    {
+      "sourcePath": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "filename": "openai_gpt-oss-20b-Q4_K_M.gguf",
+      "expectedSizeBytes": 11673418816,
+      "sha256": "86a21df11afa5a40031ec1974e368ae0ab561ee3995f4d08ff432e8b2b7af9fc",
+      "role": "primary"
+    }
+  ],
+  "inputModalities": ["text"],
+  "outputModalities": ["text"],
+  "contextWindowTokens": 131072,
+  "capabilities": ["reasoning", "tool-calling"],
+  "commercialStatus": "open",
+  "catch": "Apache-2.0.",
+  "notes": "bartowski imatrix Q4_K_M GGUF of openai/gpt-oss-20b; the expert feed-forward weights stay MXFP4. Upstream: 21B parameters, 3.6B active per token. GGUF header: architecture gpt-oss, 24 layers, 32 experts with 4 active per token, 128-token sliding-window attention layers, 131,072-token training context."
+}

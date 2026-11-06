@@ -1,0 +1,356 @@
+// Command fakebackend speaks enough of llama-server's HTTP API for supervisor
+// and gateway tests: /health, /props, /v1/chat/completions (streaming and
+// not) and /v1/embeddings. It accepts llama-server's flags and ignores the
+// ones it does not need.
+//
+// Environment: FAKE_FAIL_MODEL=<substring> exits during startup when -m
+// contains it; FAKE_FAIL_FILE=<path> exits during startup while that file
+// exists, so a test can make starts fail and recover; FAKE_DELAY_MS delays each
+// completion.
+//
+// A last user message starting with "fake:" selects a behavior: "fake:reply <text>"
+// answers <text>, "fake:context" fails like an overflowing prompt,
+// "fake:overflow" fails the same way only while the request has more than
+// four messages (so a compacted retry succeeds),
+// "fake:reasoning" adds reasoning_content, "fake:truncated" ends a stream
+// without [DONE]. "fake:batch" (as the chat message, the embeddings input or
+// the decision state) fails like an input over the physical batch size, with
+// llama-server's exact 500; "fake:batch-plain" does so without the numbers.
+// "fake:slow <n>" streams n words 50 ms apart; when the client goes away
+// first it appends "cancelled" to the file FAKE_CANCEL_LOG names. "fake:burst <n>"
+// streams n words with no pause at all, for measuring what relaying them costs.
+// "fake:die" (as the chat message, the embeddings input, the decision state, the
+// image prompt, the speech input or the transcription prompt) exits at once, like
+// a crash before answering; "fake:die-body" exits halfway through its answer.
+// "fake:die-saying" prints crashLine to stderr and exits 1.
+//
+// For a GGUF model it prints llama.cpp's placement lines (DESIGN §20.5): an
+// override per expert tensor of the first --n-cpu-moe layers and the
+// offloaded layer count. FAKE_PLACEMENT_BUG=cuda0 puts the first expert on
+// CUDA0; FAKE_COMPUTE_MIB sets the CUDA0 compute buffer (default 100).
+// FAKE_STARTUP_MS delays listening, like a slow model load.
+//
+// It also answers sd-server's image routes (images.go) and tts-server's
+// /v1/generate (speech.go).
+package main
+
+import (
+	"encoding/json"
+	"regexp"
+
+	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+func main() {
+	host, port, model := "127.0.0.1", "8080", ""
+	ngl, cpuMoE, verbosity := -1, 0, 3
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--localbase-capabilities":
+			// What Linux asks of an sd-server before running it (requireSdGPUContract).
+			fmt.Println("localbase-sd-gpu-pci-v1")
+			return
+		case "--host", "--listen-ip":
+			i++
+			host = args[i]
+		case "--port", "--listen-port":
+			i++
+			port = args[i]
+		case "--diffusion-model":
+			i++
+			model = args[i]
+		case "-m":
+			i++
+			model = args[i]
+		case "-lv":
+			i++
+			verbosity, _ = strconv.Atoi(args[i])
+		case "-ngl":
+			i++
+			ngl, _ = strconv.Atoi(args[i])
+		case "--n-cpu-moe":
+			i++
+			cpuMoE, _ = strconv.Atoi(args[i])
+		}
+	}
+	// As the real build (0.7.0-dev, build 11671): its default verbosity is 3, and the
+	// placement lines need 4.
+	if verbosity >= 4 {
+		placementLines(model, ngl, cpuMoE)
+	}
+	if ms, _ := strconv.Atoi(os.Getenv("FAKE_STARTUP_MS")); ms > 0 {
+		time.Sleep(time.Duration(ms) * time.Millisecond) // a slow model load
+	}
+	if f := os.Getenv("FAKE_FAIL_MODEL"); f != "" && strings.Contains(model, f) {
+		fmt.Fprintln(os.Stderr, "fake: refusing to load", model)
+		os.Exit(3)
+	}
+	if f := os.Getenv("FAKE_FAIL_FILE"); f != "" {
+		if _, err := os.Stat(f); err == nil {
+			fmt.Fprintln(os.Stderr, "fake: refusing to start while", f, "exists")
+			os.Exit(3)
+		}
+	}
+	delay, _ := strconv.Atoi(os.Getenv("FAKE_DELAY_MS"))
+	name := model[strings.LastIndex(model, "/")+1:]
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+	addVideo(mux)
+	addImages(mux)
+	addSpeech(mux)
+	addSTT(mux)
+	mux.HandleFunc("GET /props", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"model_path": model, "build_info": "fake",
+			"chat_template": "{% if tools %}{{ tools }}{% endif %}<think>", "modalities": map[string]any{"vision": false},
+			"chat_template_caps": map[string]any{"supports_tool_calls": strings.Contains(name, "tools")}})
+	})
+	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+		maxTokens, _ := req["max_tokens"].(float64)
+		content := fmt.Sprintf("hello from %s (max_tokens=%d)", name, int(maxTokens))
+		mode := lastUser(req)
+		dieIfAsked(w, mode)
+		if batchOverflow(w, mode) {
+			return
+		}
+		switch {
+		case mode == "fake:context", mode == "fake:overflow" && messageCount(req) > 4:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			w.Write([]byte(`{"error":{"code":400,"message":"request (9000 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":9000,"n_ctx":8192}}`))
+			return
+		case strings.HasPrefix(mode, "fake:reply "):
+			content = strings.TrimPrefix(mode, "fake:reply ")
+		}
+		pause := 10 * time.Millisecond
+		if n, ok := strings.CutPrefix(mode, "fake:slow "); ok {
+			words, _ := strconv.Atoi(n)
+			var b strings.Builder
+			for i := range words {
+				fmt.Fprintf(&b, "w%d ", i+1)
+			}
+			content, pause = b.String(), 50*time.Millisecond
+		}
+		if n, ok := strings.CutPrefix(mode, "fake:burst "); ok {
+			words, _ := strconv.Atoi(n)
+			var b strings.Builder
+			for i := range words {
+				fmt.Fprintf(&b, "w%d ", i+1)
+			}
+			content, pause = b.String(), 0
+		}
+		if stream, _ := req["stream"].(bool); stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			for _, part := range parts(content) {
+				if r.Context().Err() != nil {
+					if f := os.Getenv("FAKE_CANCEL_LOG"); f != "" {
+						if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+							fmt.Fprintln(fh, "cancelled")
+							fh.Close()
+						}
+					}
+					return
+				}
+				delta := map[string]any{"content": part}
+				if mode == "fake:reasoning" {
+					delta["reasoning_content"] = "hm"
+				}
+				chunk := map[string]any{"id": "c", "object": "chat.completion.chunk", "created": 1, "model": name,
+					"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": nil}}}
+				b, _ := json.Marshal(chunk)
+				fmt.Fprintf(w, "data: %s\n\n", b)
+				w.(http.Flusher).Flush()
+				time.Sleep(pause)
+			}
+			if mode == "fake:truncated" {
+				return
+			}
+			fmt.Fprintf(w, "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":%q,\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n", name)
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": "chatcmpl-fake", "object": "chat.completion", "created": 1, "model": name,
+			"choices": []any{map[string]any{"index": 0, "finish_reason": "stop",
+				"message": message(mode, content)}},
+			"usage": map[string]any{"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+		})
+	})
+	mux.HandleFunc("POST /v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
+		in, _ := req["input"].(string)
+		dieIfAsked(w, in)
+		if batchOverflow(w, in) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"object": "list", "model": name,
+			"data":  []any{map[string]any{"object": "embedding", "index": 0, "embedding": []float64{0.1, 0.2}}},
+			"usage": map[string]any{"prompt_tokens": 2, "total_tokens": 2}})
+	})
+	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			State     string                    `json:"state"`
+			Questions map[string]map[string]any `json:"questions"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		dieIfAsked(w, req.State)
+		if batchOverflow(w, req.State) {
+			return
+		}
+		answers := map[string]any{}
+		for id, q := range req.Questions {
+			answers[id] = fakeDecision(q, req.State)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"model": name, "answers": answers,
+			"usage": map[string]any{"input_tokens": 4, "output_tokens": 1}})
+	})
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	http.Serve(ln, mux)
+}
+
+// crashLine is what "fake:die-saying" prints before it exits 1: a reason only the backend knows.
+const crashLine = "fake: ran out of device memory at layer 7"
+
+// dieIfAsked ends the process when text asks for a crash. Exiting closes the
+// connection, as a real crash does: before any answer, or partway through one.
+func dieIfAsked(w http.ResponseWriter, text string) {
+	switch {
+	case strings.Contains(text, "fake:die-body"):
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "1000")
+		w.Header().Set("X-Audio-Format", "s16le") // what a speech answer starts with
+		w.Header().Set("X-Sample-Rate", "24000")
+		w.Write([]byte(`{"partial":`))
+		w.(http.Flusher).Flush()
+		os.Exit(9)
+	case strings.Contains(text, "fake:die-saying"):
+		fmt.Fprintln(os.Stderr, crashLine)
+		os.Exit(1)
+	case strings.Contains(text, "fake:die"):
+		os.Exit(9)
+	}
+}
+
+func messageCount(req map[string]any) int {
+	msgs, _ := req["messages"].([]any)
+	return len(msgs)
+}
+
+func lastUser(req map[string]any) string {
+	msgs, _ := req["messages"].([]any)
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if m, _ := msgs[i].(map[string]any); m["role"] == "user" {
+			s, _ := m["content"].(string)
+			return s
+		}
+	}
+	return ""
+}
+
+func message(mode, content string) map[string]any {
+	m := map[string]any{"role": "assistant", "content": content}
+	if mode == "fake:reasoning" {
+		m["reasoning_content"] = "hm"
+	}
+	return m
+}
+
+// batchOverflow answers llama-server's error for an input over the physical
+// batch size (-b/-ub), which it reports as a 500 server_error.
+func batchOverflow(w http.ResponseWriter, mode string) bool {
+	msg := ""
+	switch mode {
+	case "fake:batch":
+		msg = "input (27634 tokens) is too large to process. increase the physical batch size (current batch size: 8192)"
+	case "fake:batch-plain":
+		msg = "input is too large to process. increase the physical batch size"
+	default:
+		return false
+	}
+	b, _ := json.Marshal(map[string]any{"error": map[string]any{"code": 500, "message": msg, "type": "server_error"}})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	w.Write(b)
+	return true
+}
+
+var fakeExpertRe = regexp.MustCompile(`^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_(ch|)exps`)
+
+func placementLines(model string, ngl, cpuMoE int) {
+	keys, err := memory.ReadGGUFHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
+	if err != nil {
+		return
+	}
+	blocks := 0
+	for _, v := range keys {
+		if f, ok := v.(float64); ok {
+			blocks = int(f)
+		}
+	}
+	tensors, _ := memory.ReadTensorTable(model)
+	bug := os.Getenv("FAKE_PLACEMENT_BUG") == "cuda0"
+	for _, t := range tensors {
+		m := fakeExpertRe.FindStringSubmatch(t.Name)
+		if m == nil {
+			continue
+		}
+		if l, _ := strconv.Atoi(m[1]); l < cpuMoE {
+			buft := "CPU"
+			if bug {
+				buft, bug = "CUDA0", false
+			}
+			fmt.Fprintf(os.Stderr, "tensor %s (%v f32) buffer type overridden to %s\n", t.Name, t.Dims, buft)
+		}
+	}
+	total := blocks + 1
+	if ngl < 0 || ngl > total {
+		ngl = total
+	}
+	// FAKE_NO_GPU_LINES: as a CPU-only llama.cpp build, which reports no devices and no
+	// offload. Seen on a real Linux machine with no GPU.
+	if os.Getenv("FAKE_NO_GPU_LINES") != "" {
+		fmt.Fprintln(os.Stderr, "main: Available devices: (none)")
+		return
+	}
+	fmt.Fprintf(os.Stderr, "load_tensors: offloaded %d/%d layers to GPU\n", ngl, total)
+	compute := os.Getenv("FAKE_COMPUTE_MIB")
+	if compute == "" {
+		compute = "100"
+	}
+	fmt.Fprintf(os.Stderr, "sched_reserve:      CUDA0 compute buffer size = %s MiB\n", compute)
+	os.Stderr.Write([]byte("\xff\xfe invalid bytes in the startup log\n"))
+}
+
+// parts splits a reply into streamed words. A multi-line reply keeps its
+// own whitespace (so markdown blocks survive); a one-line reply streams
+// each word followed by a space, as before.
+func parts(content string) []string {
+	if strings.Contains(content, "\n") {
+		return regexp.MustCompile(`\s*\S+\s*`).FindAllString(content, -1)
+	}
+	words := strings.Fields(content)
+	for i := range words {
+		words[i] += " "
+	}
+	return words
+}
