@@ -752,7 +752,8 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
   const visited = [];
   for (const href of ["/app/models", "/app/studio", "/app/studio/transcribe"]) {
-    await ev(`document.querySelector("a[href='${href}']").click()`);
+    const clicked = await ev(`(() => { const a = document.querySelector("a[href='${href}']"); if (!a) return false; a.click(); return true; })()`);
+    if (!clicked) { visited.push(`no link to ${href} on ${await ev("location.pathname")}`); break; }
     for (let i = 0; i < 80 && (await ev("location.pathname")) !== href; i++) await sleep(150);
     visited.push(await ev("location.pathname"));
     await sleep(300);
