@@ -814,7 +814,12 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	if _, err := auth.LoadEmail(dir); err != nil {
 		return nil, refuse("email-delivery.json in this backup is not valid: %v", err)
 	}
+	// Checked as every use of them checks them. An origin the huggingface profile can't name is left out wherever
+	// the profile is used, so it isn't a reason to refuse.
 	profiles, err := acquire.LoadProfiles(dir)
+	if err == nil {
+		err = profiles.FirstInvalid()
+	}
 	if err != nil {
 		return nil, refuse("The download credentials in this backup are not valid: %v", err)
 	}

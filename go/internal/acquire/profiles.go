@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,7 +60,48 @@ var reserved = map[string]bool{
 var (
 	profileIDRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	headerNameRe = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$")
+	// lowerASCIIHost is a host of lower-case ASCII labels, none empty, so no letter from another alphabet, and no
+	// upper case, can make a host look like one it isn't.
+	lowerASCIIHost = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
 )
+
+// hfOwnOrigin says whether the huggingface profile may name an origin: the origin HF_ENDPOINT names, or one of
+// Hugging Face's own, written as https:// and the host alone. The parsed host is compared whole: huggingface.co
+// or hf.co, or a subdomain of either at any depth, so nothing before or after it, no user or port, and no other
+// case or alphabet passes. hf.space isn't one of them, as anyone can run a Space there.
+func hfOwnOrigin(origin, endpoint string) bool {
+	origin = strings.TrimSuffix(origin, "/")
+	if endpoint != "" && origin == endpoint {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || origin != "https://"+u.Host || !lowerASCIIHost.MatchString(u.Host) {
+		return false
+	}
+	for _, own := range []string{"huggingface.co", "hf.co"} {
+		if u.Host == own || strings.HasSuffix(u.Host, "."+own) {
+			return true
+		}
+	}
+	return false
+}
+
+// hfEndpointOrigin is the origin HF_ENDPOINT names, from the environment and never from a profile.
+func hfEndpointOrigin() string {
+	o, err := Origin(HFEndpoint())
+	if err != nil {
+		return ""
+	}
+	return o
+}
+
+// shown keeps a value from a file short in a message.
+func shown(s string, max int) string {
+	if r := []rune(s); len(r) > max {
+		return string(r[:max]) + "..."
+	}
+	return s
+}
 
 // Origin returns the scheme://host[:port] of an http(s) URL.
 func Origin(raw string) (string, error) {
@@ -70,8 +112,11 @@ func Origin(raw string) (string, error) {
 	return u.Scheme + "://" + strings.ToLower(u.Host), nil
 }
 
-// Validate checks a profile.
-func (p *Profile) Validate() error {
+// Validate checks a profile, with HF_ENDPOINT as the environment says now.
+func (p *Profile) Validate() error { return p.validate(hfEndpointOrigin()) }
+
+// validate checks a profile against the origin HF_ENDPOINT named when the profiles were read.
+func (p *Profile) validate(endpoint string) error {
 	if !profileIDRe.MatchString(p.ID) {
 		return fmt.Errorf("profile id %q must be lowercase letters, digits, '.', '_' or '-'", p.ID)
 	}
@@ -79,6 +124,9 @@ func (p *Profile) Validate() error {
 		return errors.New("a profile needs at least one origin it may be sent to")
 	}
 	for i, o := range p.Origins {
+		if p.ID == HFProfileID && !hfOwnOrigin(o, endpoint) {
+			return fmt.Errorf("origin %q isn't Hugging Face's own: the huggingface profile can only name huggingface.co, hf.co, their subdomains, or the origin HF_ENDPOINT names", o)
+		}
 		norm, err := Origin(o)
 		if err != nil || strings.TrimSuffix(strings.ToLower(o), "/") != norm {
 			return fmt.Errorf("origin %q must be exactly scheme://host[:port]", o)
@@ -117,13 +165,81 @@ func profilesPath(rootDir string) string {
 	return filepath.Join(rootDir, "credentials", "auth-profiles.json")
 }
 
-// Profiles is the profile file.
+// Profiles is the profile file. Loaded with LoadProfiles, it holds only profiles that passed their checks.
 type Profiles struct {
 	Profiles []Profile `json:"profiles"`
+	// Warnings say what the huggingface profile named and can't, which was left out.
+	Warnings []string `json:"-"`
+	invalid  []invalidProfile
 }
 
-// LoadProfiles reads the profiles; a missing file is empty.
+// invalidProfile is a profile kept out of use, and why, in Validate's words, which quote what they show.
+type invalidProfile struct{ id, why string }
+
+// LoadProfiles reads the profiles for use. Each passes Validate, against HF_ENDPOINT as it is now, read once for
+// all of them. An origin the huggingface profile can't name is left out, with a warning, and the rest of that
+// profile still works. Any other profile that fails is kept out of use, and naming it is an error: see Invalid.
+// A missing file is empty.
 func LoadProfiles(rootDir string) (*Profiles, error) {
+	raw, err := readProfiles(rootDir)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := hfEndpointOrigin()
+	out := &Profiles{}
+	for _, p := range raw.Profiles {
+		if p.ID == HFProfileID {
+			var kept []string
+			for _, o := range p.Origins {
+				if hfOwnOrigin(o, endpoint) {
+					kept = append(kept, o)
+					continue
+				}
+				out.Warnings = append(out.Warnings, fmt.Sprintf("The huggingface download profile names %q, which isn't Hugging Face's own, so the Hugging Face token isn't sent there.", shown(o, 200)))
+			}
+			if p.Origins = kept; len(kept) == 0 {
+				continue // nothing left to add: the token goes to HF_ENDPOINT's origin alone
+			}
+		}
+		if err := p.validate(endpoint); err != nil {
+			out.invalid = append(out.invalid, invalidProfile{p.ID, shown(err.Error(), 300)})
+			continue
+		}
+		out.Profiles = append(out.Profiles, p)
+	}
+	return out, nil
+}
+
+// Invalid says why the profile with this id is kept out of use, or nil if it isn't.
+func (ps *Profiles) Invalid(id string) error {
+	for _, p := range ps.invalid {
+		if p.id == id {
+			return fmt.Errorf("download profile %q is not valid: %s", shown(p.id, 64), p.why)
+		}
+	}
+	return nil
+}
+
+// Problems are every profile kept out of use, as Invalid says them.
+func (ps *Profiles) Problems() []error {
+	var out []error
+	for _, p := range ps.invalid {
+		out = append(out, ps.Invalid(p.id))
+	}
+	return out
+}
+
+// FirstInvalid is the first profile kept out of use, as Invalid says it, or nil.
+func (ps *Profiles) FirstInvalid() error {
+	if len(ps.invalid) == 0 {
+		return nil
+	}
+	return ps.Invalid(ps.invalid[0].id)
+}
+
+// readProfiles reads the file as written, for the commands that change it, so a profile that fails its checks
+// can still be replaced or removed. A missing file is empty.
+func readProfiles(rootDir string) (*Profiles, error) {
 	b, err := obs.ReadOwnedRegular(profilesPath(rootDir))
 	if errors.Is(err, os.ErrNotExist) {
 		return &Profiles{}, nil
@@ -169,7 +285,7 @@ func SaveProfile(rootDir string, p Profile) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
-	ps, err := LoadProfiles(rootDir)
+	ps, err := readProfiles(rootDir)
 	if err != nil {
 		return err
 	}
@@ -183,7 +299,7 @@ func SaveProfile(rootDir string, p Profile) error {
 
 // RemoveProfile deletes a profile; false when it did not exist.
 func RemoveProfile(rootDir, id string) (bool, error) {
-	ps, err := LoadProfiles(rootDir)
+	ps, err := readProfiles(rootDir)
 	if err != nil {
 		return false, err
 	}
@@ -244,18 +360,26 @@ func (r *Redactor) Text(s string) string {
 }
 
 // HFProfileID names the profile whose origins may also receive the Hugging
-// Face token (CDNs such as cas-bridge.xethub.hf.co or a CloudFront host).
+// Face token: Hugging Face's own hosts, such as its CDN cas-bridge.xethub.hf.co.
 // Without it the token goes to the Hugging Face endpoint only, and CDN
 // downloads are anonymous, as signed CDN URLs need no token.
 const HFProfileID = "huggingface"
 
-func hfTokenOrigins(rootDir string) []string {
+// hfTokenOrigins are the origins the huggingface profile adds for the token, after its checks. What it names and
+// can't is logged, to log, or to the default logger when that's nil.
+func hfTokenOrigins(rootDir string, log *slog.Logger) []string {
 	if rootDir == "" {
 		return nil
 	}
 	ps, err := LoadProfiles(rootDir)
 	if err != nil {
 		return nil
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	for _, w := range ps.Warnings {
+		log.Warn(w, "event", "acquire.profile-origin-ignored")
 	}
 	if p := ps.Get(HFProfileID); p != nil {
 		return p.Origins

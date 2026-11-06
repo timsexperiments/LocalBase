@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -65,6 +66,8 @@ type Request struct {
 	Name      string
 	Task      string // when the source does not say
 	HFToken   string
+	// Log is where a request's warnings go; the default logger when nil.
+	Log *slog.Logger
 
 	hfOrigins []string // extra origins for the token (the "huggingface" profile)
 }
@@ -138,6 +141,9 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 			return nil, err
 		}
 		if profile = ps.Get(req.AuthProfile); profile == nil {
+			if err := ps.Invalid(req.AuthProfile); err != nil {
+				return nil, err
+			}
 			return nil, fmt.Errorf("auth profile %q does not exist", req.AuthProfile)
 		}
 	}
@@ -147,7 +153,7 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 			return nil, errors.New("--sha256 must be 64 hexadecimal characters")
 		}
 	}
-	req.hfOrigins = hfTokenOrigins(rootDir)
+	req.hfOrigins = hfTokenOrigins(rootDir, req.Log)
 	src := strings.TrimSpace(req.Source)
 	var p *Plan
 	var err error
