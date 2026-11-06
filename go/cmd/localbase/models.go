@@ -68,14 +68,14 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 		// be wrong, and exit 0.
 		st, err := store.OpenReadOnly(e.Root.DB())
 		if err != nil {
-			e.DatabaseProblem = &failedRead{Step: "opening the database", Err: err}
+			e.DatabaseProblem = &unreadableSettings{Root: e.Root.Dir, Err: &failedRead{Step: "opening the database", Err: err}}
 		} else {
 			e.Store = st
 			if persisted {
 				afterReadOpen()
 				if e.Config, err = persistedConfig(st); err != nil {
 					_ = st.Close() // Read-only.
-					e.Store, e.Config, e.DatabaseProblem = nil, nil, err
+					e.Store, e.Config, e.DatabaseProblem = nil, nil, &unreadableSettings{Root: e.Root.Dir, Err: err}
 				}
 			}
 		}

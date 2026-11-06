@@ -186,7 +186,7 @@ func TestDoctorReportsAnUnreadableDatabaseAndCarriesOn(t *testing.T) {
 	if code := a.Run([]string{"--root", dir, "doctor"}); code != 1 {
 		t.Errorf("exit %d", code)
 	}
-	if !strings.HasPrefix(errb.String(), "Database: opening the database:") {
+	if !strings.HasPrefix(errb.String(), "Database: Could not read the settings of ") || !strings.Contains(errb.String(), "root: opening the database:") {
 		t.Errorf("stderr: %s", errb.String())
 	}
 	for _, want := range []string{"LocalBase:", "OS:", "RAM:"} {

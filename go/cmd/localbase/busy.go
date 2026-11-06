@@ -40,3 +40,16 @@ func persistedConfig(st *store.Store) (*store.Config, error) {
 	}
 	return cfg, nil
 }
+
+// unreadableSettings is a database whose settings couldn't be read, in the words the operator approved:
+// "Could not read the settings of <root>: <reason>". It unwraps to what failed, so a busy database is
+// still told apart.
+type unreadableSettings struct {
+	Root string
+	Err  error
+}
+
+func (e *unreadableSettings) Error() string {
+	return "Could not read the settings of " + e.Root + ": " + e.Err.Error()
+}
+func (e *unreadableSettings) Unwrap() error { return e.Err }
