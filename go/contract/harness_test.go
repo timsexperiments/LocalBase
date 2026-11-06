@@ -117,6 +117,10 @@ func freePort() int { return testutil.FreePort() }
 // fixture builds a scratch root both implementations accept: marker, a
 // migrated database with a config row and two keys, the remote feed off,
 // and optionally the real chat model and llama-server package.
+// fixtureWithNoReserve is for a test about something past admission, with a fake backend that uses no
+// memory: a CI runner is too small to admit a real model's estimate on the default reserve.
+var fixtureWithNoReserve bool
+
 func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, err error) {
 	r, err := root.Init(dir)
 	if err != nil {
@@ -173,6 +177,12 @@ func fixture(dir string, llmPort int) (key, chatOnly, admin string, real bool, e
 		imageSel, `["wan2.1-t2v-1.3b-q8_0","fastwan2.2-ti2v-5b-q6_k"]`, chatModel)
 	if err != nil {
 		return "", "", "", false, err
+	}
+	if fixtureWithNoReserve {
+		if _, err = st.DB.Exec(`UPDATE config SET memory_system_reserve_percent = 1, memory_system_reserve_minimum_gb = 0,
+			memory_accelerator_reserve_percent = 1, memory_accelerator_reserve_minimum_gb = 0 WHERE id = 'default'`); err != nil {
+			return "", "", "", false, err
+		}
 	}
 	_, key, err = st.CreateAPIKey(context.Background(), "contract", []string{
 		"inference:chat", "inference:embeddings", "inference:decision", "inference:image", "inference:video",
