@@ -147,3 +147,66 @@ tidy
 feat-docs-tree
 pick tree-docs4 23f601e7d3
 pick feat-issuers-busy 704adb1ebc
+
+# 2026-11-05 rebuild into integration-3, by hand: the after-sign-off folds, WAL and restore.
+# OSS's e2e fold: #506, #612 and #507 picked onto the tree.
+oss-fold-e2e
+# Security, on the tree
+sec-backend-host-only
+sec-schema-limits
+sec-go-toolchain
+sec-anonymous-sign-in
+sec-magic-link-errors
+sec-validation-early-stop
+# sec-repo-settings: out of the 2026-11-05 pass; docs/repo-settings.md conflicts with the tree's newer reading, for Security to rebase
+sec-stalled-reader
+sec-jsjson-depth
+sec-backend-env
+sec-fuzz-parsers
+sec-flood-client
+sec-cancel-matrix
+sec-multipart-parts
+sec-permission-gaps
+sec-jwks-outage
+sec-small-reads
+sec-tar-links
+sec-catalog-collision
+sec-diagnostics-identity
+sec-pickled-bin
+sec-cli-care
+sec-threat-model
+# Features, on the tree
+feat-stop-names-root
+feat-docs-clone
+feat-snippets-ready
+feat-docs-restore-limits
+fix-busy-reads-meta
+# Reliability, on the tree
+rel-chaos-goodkey
+# Go, on merge-readiness and the tree
+fix-pinned-verify
+fix-unload-race
+fix-media-peaks
+fix-media-queue-timeout
+fix-run-limits
+fix-update-config
+copy-refusals
+clean-target-comment
+clean-contract-harness
+clean-telemetry-routes
+clean-admission-sweep
+clean-diff-retry
+fix-errcheck-risk
+feat-install-cancel
+tool-mutcheck
+test-admission-boundary
+# The audit sink and what stands on it, up to WAL PR A
+fix-log-rotation
+audit-cli-rest
+test-pool-bound
+rollback-wal-owner
+rel-soak-split
+# WAL PR B: the shared base brings #628 and the restore stack
+feat-wal-restore
+wal-store-side
+cli-printable
