@@ -36,8 +36,9 @@ func TestDoctorAndStatusReportALogThatCannotRotate(t *testing.T) {
 		t.Fatal(err)
 	}
 	const limit = 10 << 20
-	// The commands above may have written their audit lines here already, so the file is grown to just
-	// under the limit, whether or not it exists.
+	// The commands above write their audit lines here (#608), so the file usually exists already, and
+	// guardedSparse leaves an existing file alone: it only makes a missing one. So it's grown to just
+	// under the limit either way.
 	if err := mustGuard(guardedSparse(active, 0)); err != nil { // only if it's missing
 		t.Fatal(err)
 	}
