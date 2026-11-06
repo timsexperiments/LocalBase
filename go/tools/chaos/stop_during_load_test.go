@@ -89,6 +89,57 @@ func TestStopWithWedgedBackends(t *testing.T) {
 	case <-time.After(45 * time.Second):
 		t.Fatal("still not stopped after 45 s")
 	}
+	if took := time.Since(began); took < 12*time.Second {
+		// The backends ignore SIGTERM, so only the kill at 12 s ends them.
+		t.Errorf("stopped after %v: wedged backends should hold the stop until the kill at 12 s", took)
+	}
+	if n := len(events(t, g, "gateway.stop-deadline")); n != 1 {
+		t.Errorf("gateway.stop-deadline logged %d times, want once", n)
+	}
+	if procs, err := workspace.Backends(); err != nil || len(procs) != 0 {
+		t.Errorf("a backend outlived the gateway: %+v %v", procs, err)
+	}
+}
+
+// A request still streaming when the gateway stops has until 9 s, the drain deadline, and is then
+// cut. The backend stops when asked, so nothing is killed at 12 s.
+func TestStopGivesARunningRequestUntilTheDrain(t *testing.T) {
+	ctx, g, c := start(t, lab.Options{})
+	mustChat(t, ctx, c, g, lab.ChatSmall)
+	var stopped time.Time
+	st := c.ChatStream(ctx, g.Keys.User, streamBody(lab.ChatSmall, "fake:slow 400"), func(s *lab.Stream) bool {
+		if stopped.IsZero() && s.Chunks >= 3 {
+			stopped = time.Now()
+			if err := g.Signal(syscall.SIGTERM); err != nil {
+				t.Error(err)
+			}
+		}
+		return true
+	})
+	if stopped.IsZero() {
+		t.Fatalf("the stream ended before the stop: %+v", st)
+	}
+	cut := time.Since(stopped)
+	t.Logf("the request was cut %v after the stop", cut.Round(100*time.Millisecond))
+	if cut < 8500*time.Millisecond || cut > 10500*time.Millisecond {
+		t.Errorf("the request was cut %v after the stop; the drain deadline is 9 s", cut)
+	}
+	if st.Done {
+		t.Error("a request cut by the stop claimed [DONE]")
+	}
+	select {
+	case <-g.Done():
+		took := time.Since(stopped)
+		t.Logf("stopped in %v", took.Round(100*time.Millisecond))
+		if took > serviceStopLimit-time.Second {
+			t.Errorf("the stop took %v; the service manager kills at %v", took, serviceStopLimit)
+		}
+	case <-time.After(45 * time.Second):
+		t.Fatal("still not stopped after 45 s")
+	}
+	if n := len(events(t, g, "gateway.stop-deadline")); n != 0 {
+		t.Errorf("a backend that stops when asked was killed at the deadline (%d events)", n)
+	}
 	if procs, err := workspace.Backends(); err != nil || len(procs) != 0 {
 		t.Errorf("a backend outlived the gateway: %+v %v", procs, err)
 	}
