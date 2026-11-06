@@ -41,9 +41,23 @@ jobs:
       - name: Unit tests
         # Every package with tests runs here, so a new one is covered by default. The four left out
         # run in their own steps or workflows: contract (tools/contract.sh, below), tools/chaos
-        # (chaos.yml), tools/soak and tools/lab (the next step, without -race).
+        # (chaos.yml), tools/soak and tools/lab (the next step, without -race). Five of
+        # internal/backup's tests run in the step after this one, without -race.
+        env:
+          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
         run: |
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/contract$' -e '/go/tools/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/contract$' -e '/go/tools/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+      - name: Backup's crash and large-file tests, without -race
+        # They copy, sync and measure large files, and -race makes them 6-21 times slower while
+        # adding little to what they test: about 45% of internal/backup's time under -race. They
+        # run on macOS too, since SQLite's locking and -wal handling differ by OS. The count check
+        # keeps a renamed test from being skipped above and run nowhere.
+        env:
+          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
+        run: |
+          n=$(go test -list "$BACKUP_FILE_TESTS" ./internal/backup | grep -c '^Test')
+          if [ "$n" -ne 5 ]; then echo "expected 5 tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
+          go test -timeout 30m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
       - name: A killed gateway leaves no backend behind
@@ -84,9 +98,23 @@ jobs:
       - name: Unit tests
         # Every package with tests runs here, so a new one is covered by default. The four left out
         # run in their own steps or workflows: contract (tools/contract.sh, below), tools/chaos
-        # (chaos.yml), tools/soak and tools/lab (the next step, without -race).
+        # (chaos.yml), tools/soak and tools/lab (the next step, without -race). Five of
+        # internal/backup's tests run in the step after this one, without -race.
+        env:
+          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
         run: |
-          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/contract$' -e '/go/tools/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/contract$' -e '/go/tools/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+      - name: Backup's crash and large-file tests, without -race
+        # They copy, sync and measure large files, and -race makes them 6-21 times slower while
+        # adding little to what they test: about 45% of internal/backup's time under -race. They
+        # run on macOS too, since SQLite's locking and -wal handling differ by OS. The count check
+        # keeps a renamed test from being skipped above and run nowhere.
+        env:
+          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
+        run: |
+          n=$(go test -list "$BACKUP_FILE_TESTS" ./internal/backup | grep -c '^Test')
+          if [ "$n" -ne 5 ]; then echo "expected 5 tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
+          go test -timeout 30m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
       - name: A killed gateway leaves no backend behind
