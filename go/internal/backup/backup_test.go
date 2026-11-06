@@ -401,9 +401,9 @@ func TestBackupHoldsSecretsOrNot(t *testing.T) {
 	for name, command := range map[string]string{
 		"Hugging Face token":           "configure --hf-token",
 		"OTLP headers":                 "configure --otel-headers",
-		"OIDC client secret (google)":  "access oidc add --id google",
+		"OIDC client secret (google)":  "access oidc add --id=google",
 		"SMTP password":                "access email configure",
-		"download credential (vendor)": "auth-profiles add --id vendor --origin https://vendor.example.com --header-env X-Api-Key=",
+		"download credential (vendor)": "auth-profiles add --id=vendor --origin=https://vendor.example.com --header-env=X-Api-Key=",
 	} {
 		if !strings.Contains(names[name], command) {
 			t.Errorf("%s: %q, want %q", name, names[name], command)
