@@ -8,6 +8,11 @@ updates:
     groups:
       go-modules:
         patterns: ["*"]
+    ignore:
+      # The store runs on SQLite in write-ahead-log mode, and its locking depends on the exact
+      # SQLite build. Bump this by hand only, after re-running the WAL checks on the new version:
+      # the soak, the second-process shape test and the guard test.
+      - dependency-name: modernc.org/sqlite
   - package-ecosystem: github-actions
     directory: /
     schedule:
