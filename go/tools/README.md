@@ -40,6 +40,14 @@ under the floor and caps each file the script and its children write (64 GiB by 
 `LOCALBASE_FILE_CAP_GB`). `LOCALBASE_DISK_FLOOR_GB` moves the floor, which is 5 GB in CI. A test
 server that sends without end must stop at a bound well above the limit it tests.
 
+## Ending a process
+
+End a process by a pid you started, or by your own process group. Don't use `pkill`, `killall`, `lsof -t`
+or `fuser -k`, however narrow the pattern looks: this machine has a live gateway, other threads' runs and
+many worktrees, and a pattern can reach any of them. Don't ask the service manager to stop anything but a
+scratch root's own service, and always give `local-base stop` or `restart` a `--root`. `tools/killguard`
+fails on a new one, in `go test`. It reads files, so it can't see a command typed into a shell.
+
 ## Where things go
 
 - **Built tools:** `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE` if set. They are
