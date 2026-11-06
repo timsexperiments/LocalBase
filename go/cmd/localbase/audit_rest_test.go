@@ -114,12 +114,12 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 		{"usage recording", []string{"usage", "recording", "off"}, "usage", "set-recording", "usage", ""},
 		{"usage clear", []string{"usage", "clear", "--yes"}, "usage", "clear", "usage", ""},
 		{"models feed use", []string{"models", "feed", "use", "off"}, "feed", "use", "feed", ""},
-		{"backends add", []string{"backends", "add", "--file", write("backend.json", definition)}, "backend", "register", "backend", "audit-fake"},
+		{"backends add", []string{"backends", "add", "--file", write("backend.json", definition)}, "audit.backend-registered", "add", "backend", "audit-fake"},
 		{"models import", []string{"models", "import", weights, "--task", "chat", "--id", "audit-import", "--name", "Audit"}, "imports", "import", "model", "audit-import"},
-		{"models backend", []string{"models", "backend", "audit-import", "--auto"}, "backend", "reset", "model", "audit-import"},
+		{"models backend", []string{"models", "backend", "audit-import", "--auto"}, "audit.model-backend-changed", "reset", "model", "audit-import"},
 		{"models delete", []string{"models", "delete", "audit-import", "--yes"}, "imports", "delete", "model", "audit-import"},
 		{"models add-definition", nil, "imports", "add-definition", "model", "audit-import"},
-		{"backends remove", []string{"backends", "remove", "audit-fake"}, "backend", "unregister", "backend", "audit-fake"},
+		{"backends remove", []string{"backends", "remove", "audit-fake"}, "audit.backend-removed", "remove", "backend", "audit-fake"},
 		{"auth-profiles add", []string{"auth-profiles", "add", "--id", "audit-profile", "--origin", "https://models.example", "--header-env", "X-Planted=AUDIT_TEST_HEADER"}, "auth-profiles", "add", "auth-profile", "audit-profile"},
 		{"auth-profiles remove", []string{"auth-profiles", "remove", "audit-profile"}, "auth-profiles", "remove", "auth-profile", "audit-profile"},
 		{"voices add", []string{"voices", "add", write("voice.wav", voiceClip()), "--name", "PLANTED voice name", "--consent"}, "voices", "create", "voice", "*"},
@@ -160,7 +160,11 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 			if s.command == "voices add" {
 				voiceID = got.TargetID
 			}
-			if got.Event != "audit."+s.event+"-changed" || got.Action != s.action || got.ActorKind != "cli" || got.TargetKind != s.kind {
+			want := "audit." + s.event + "-changed"
+			if strings.HasPrefix(s.event, "audit.") { // the backend events DESIGN §31.4 names
+				want = s.event
+			}
+			if got.Event != want || got.Action != s.action || got.ActorKind != "cli" || got.TargetKind != s.kind {
 				t.Errorf("%+v", got)
 			}
 			if s.id == "*" && got.TargetID == "" || s.id != "*" && got.TargetID != s.id {

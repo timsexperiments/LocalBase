@@ -149,7 +149,7 @@ func auditLines(t *testing.T, root string) []auditLine {
 		// Ids and permission names only: anything else needs a reason to be here. The sink also
 		// redacts what looks like a key, but that is a second line of defence, and this the first.
 		for k := range ev.Attributes {
-			if !slices.Contains([]string{"action", "actor_kind", "actor_id", "target_kind", "target_id", "scopes", "count", "purpose"}, k) {
+			if !slices.Contains([]string{"action", "actor_kind", "actor_id", "target_kind", "target_id", "backend_id", "scopes", "count", "purpose"}, k) {
 				t.Errorf("an audit line has %q: %s", k, sc.Text())
 			}
 		}

@@ -176,7 +176,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		{"computer name", "PUT", "/_localbase/computer-name", jsonType, func() []byte { return js(`{"name":"PLANTED computer"}`) }, 200, "computer-name", "set", "computer-name", nil, nil},
 		{"token saved", "POST", "/_localbase/hf-token", jsonType, func() []byte { return js(`{"action":"save","token":"` + planted + `","validate":false}`) }, 200, "hf-token", "save", "hf-token", nil, nil},
 		{"token cleared", "POST", "/_localbase/hf-token", jsonType, func() []byte { return js(`{"action":"clear"}`) }, 200, "hf-token", "clear", "hf-token", nil, nil},
-		{"backend reset", "POST", "/_localbase/model-backend", jsonType, func() []byte { return js(`{"action":"reset","model":"` + chatModel + `"}`) }, 200, "backend", "reset", "model", func() string { return chatModel }, nil},
+		{"backend reset", "POST", "/_localbase/model-backend", jsonType, func() []byte { return js(`{"action":"reset","model":"` + chatModel + `"}`) }, 200, "audit.model-backend-changed", "reset", "model", func() string { return chatModel }, nil},
 		{"default models", "POST", "/_localbase/default-chat-models", jsonType, func() []byte { return js(`{"models":["` + chatModel + `"]}`) }, 200, "default-models", "set", "model", func() string { return chatModel }, nil},
 		{"model enabled", "POST", "/_localbase/model-management", jsonType, func() []byte { return js(`{"modelId":"` + chatModel + `","action":"enable"}`) }, 200, "models", "enable", "model", func() string { return chatModel }, nil},
 		{"placement set", "PUT", "/_localbase/models/" + chatModel + "/placement", jsonType, func() []byte { return js(`{"mode":"auto"}`) }, 200, "placement", "set", "model", func() string { return chatModel }, nil},
@@ -225,7 +225,11 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 				t.Fatalf("%d audit lines: %v", len(events), events)
 			}
 			ev := events[0]
-			if ev["event"] != "audit."+c.event+"-changed" || ev["action"] != c.action || ev["actor_kind"] != "api-key" || ev["actor_id"] != f.id || ev["target_kind"] != c.targetKind {
+			wantEvent := "audit." + c.event + "-changed"
+			if strings.HasPrefix(c.event, "audit.") { // the backend events DESIGN §31.4 names
+				wantEvent = c.event
+			}
+			if ev["event"] != wantEvent || ev["action"] != c.action || ev["actor_kind"] != "api-key" || ev["actor_id"] != f.id || ev["target_kind"] != c.targetKind {
 				t.Errorf("%v", ev)
 			}
 			want := ""
@@ -309,7 +313,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	for _, c := range []struct{ area, method, path, body, target string }{
 		{"computer-name", "PUT", "/_localbase/computer-name", `{"name":"x"}`, ""},
 		{"hf-token", "POST", "/_localbase/hf-token", `{"action":"save","token":"` + planted + `"}`, ""},
-		{"backend", "POST", "/_localbase/model-backend", `{"action":"set","model":"PLANTED-made-up","backendId":"x"}`, ""},
+		{"model-backend", "POST", "/_localbase/model-backend", `{"action":"set","model":"PLANTED-made-up","backendId":"x"}`, ""},
 		{"default-models", "POST", "/_localbase/default-chat-models", `{"models":["PLANTED-made-up"]}`, ""},
 		{"models", "POST", "/_localbase/model-management", `{"modelId":"PLANTED-made-up","action":"install"}`, ""},
 		{"models", "POST", "/_localbase/model-management", `{"modelId":"x\n{\"event\":\"audit.changes-summary\",\"count\":0}","action":"install"}`, ""},
