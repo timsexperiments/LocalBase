@@ -85,7 +85,6 @@ document.addEventListener("click", async (event) => {
   if (!button) return;
   button.disabled = true;
   let failure = "";
-  forgetTab();
   try {
     const answer = await fetch("/app/logout", { method: "POST", credentials: "same-origin", headers: { "X-Localbase-UI": "1" } });
     // Only a real answer ends it. A 503 means the session is still good, so saying "signed out" would be false.
@@ -99,6 +98,8 @@ document.addEventListener("click", async (event) => {
     show(failure);
     return;
   }
+  // Only now: a sign-out that failed leaves the person signed in, with their words still here.
+  forgetTab();
   // Not to /app/login: with one provider that goes straight back to it, and a provider that
   // remembers you signs you right back in.
   location.assign(button.dataset.logoutUrl || "/app?signedout=1");
