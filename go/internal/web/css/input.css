@@ -174,6 +174,15 @@
   .md-copy {
     @apply inline-flex min-h-11 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 text-[0.9375rem] font-medium text-ink hover:bg-hover;
   }
+  .composer-editing {
+    @apply mb-2 flex items-center justify-between gap-3 px-1 text-sm font-medium;
+  }
+  .composer-editing[hidden] {
+    display: none;
+  }
+  .message-actions {
+    @apply mt-1 flex flex-wrap justify-end gap-2;
+  }
   .md-table {
     @apply overflow-x-auto;
   }
@@ -200,7 +209,7 @@
     @apply mt-3 grid justify-items-start gap-2 rounded-xl border border-bound bg-surface p-3;
   }
   .composer-box {
-    @apply rounded-3xl border border-[var(--lb-edge)] bg-surface focus-within:outline-2 focus-within:outline-accent;
+    @apply rounded-3xl border border-bound bg-surface focus-within:border-[var(--lb-edge)] focus-within:outline-2 focus-within:outline-accent;
   }
   /* A borderless round icon button (chat header and composer). */
   .icon-btn {
@@ -221,22 +230,42 @@
   .btn:disabled {
     @apply cursor-not-allowed opacity-50;
   }
+  /* A box that can't be typed in says so, and what it holds stays readable. */
+  .input:disabled {
+    @apply cursor-not-allowed bg-transparent text-muted;
+  }
 }
 
 /* Disclosures whose summary is a flex row lose the native marker; draw one. */
 @layer components {
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary {
     @apply list-none gap-2;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::-webkit-details-marker {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary::-webkit-details-marker {
     display: none;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives) > summary::before {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more) > summary::before {
     content: "▸" / "";
     @apply inline-block w-3 text-muted transition-transform motion-reduce:transition-none;
   }
-  :is(.reasoning, .compaction, .discover-files, .discover-alternatives)[open] > summary::before {
+  :is(.reasoning, .compaction, .discover-files, .discover-alternatives, .setting-more)[open] > summary::before {
     @apply rotate-90;
+  }
+}
+
+/* A page with a prompt or an action bar fixed at the bottom: what takes focus clears that too, and
+   the pill's bar when it is up. */
+@layer base {
+  html:has([data-docked]) {
+    scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + var(--lb-dock-h, 10rem) + 1rem);
+  }
+  html:has([data-docked]):has(.run-pill-dock [data-run-pill]:not([hidden])) {
+    scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + var(--lb-dock-h, 10rem) + 4.5rem);
+  }
+  @media (min-width: 768px) {
+    html:has([data-docked]) {
+      scroll-padding-bottom: calc(var(--lb-dock-h, 10rem) + 1rem);
+    }
   }
 }
 
@@ -504,8 +533,16 @@
       @apply mb-1;
     }
   }
+  /* A long refusal scrolls inside itself: it never pushes the tab bar off a short screen, and
+     what to do next stays in view while it does. */
   [data-error-box] {
-    @apply max-h-[50dvh] overflow-y-auto;
+    @apply max-h-[38dvh] overflow-y-auto;
+  }
+  .refusal-actions {
+    @apply sticky bottom-0 flex flex-wrap gap-2 bg-danger-soft py-1;
+  }
+  .refusal-actions > .btn {
+    flex: 1 1 auto;
   }
   /* In Chat the chat's own Stop says it, and the pill would sit on the words or the composer.
      A run in another chat shows in the list of chats and on every other page. */
@@ -515,7 +552,7 @@
   .chat-hello {
     font-family: var(--lb-font-display);
     font-weight: var(--lb-weight-display);
-    font-size: var(--lb-size-hello);
+    font-size: 1.5rem;
     letter-spacing: var(--lb-tracking-display);
     line-height: 1.1;
   }
@@ -525,13 +562,34 @@
     @apply mx-auto flex min-h-full max-w-3xl flex-col px-4 pt-3 pb-4;
   }
   .chat-landing > * {
-    @apply mt-auto min-[1100px]:mb-auto;
+    @apply my-auto;
   }
   .chat-empty {
     @apply px-1;
   }
+  .chat-row {
+    @apply flex min-w-0 items-center gap-0.5 rounded-xl;
+  }
+  .chat-row-link {
+    @apply flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-xl px-3 py-1.5 hover:bg-hover;
+  }
+  .chat-row-link[aria-current="page"] {
+    @apply bg-accent-soft text-accent;
+  }
+  .chat-row-title {
+    @apply block truncate font-medium;
+  }
+  .chat-row-link[aria-current="page"] .chat-row-title {
+    @apply font-semibold;
+  }
+  .chat-row-line {
+    @apply block truncate text-sm text-muted;
+  }
+  .chat-row-line mark {
+    @apply rounded-sm bg-accent-soft font-semibold text-ink;
+  }
   .chat-suggest {
-    @apply mt-4 grid gap-1.5 min-[1100px]:grid-cols-3;
+    @apply mt-2 grid;
   }
   /* Too narrow for all of it, the model's name comes first; this one is in the picker too. */
   @media (max-width: 359px) {
@@ -545,17 +603,11 @@
   .list-link {
     @apply inline-flex min-h-11 items-center font-medium text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-50;
   }
-  /* A short screen shows two: a third would only be cut by the composer. */
-  @media (max-height: 620px) {
-    .chat-suggestion:nth-child(n + 3) {
-      @apply hidden;
-    }
-  }
   .tool-icon {
     @apply grid size-10 shrink-0 place-items-center rounded-xl bg-surface-muted;
   }
   .chat-suggestion {
-    @apply flex min-h-12 items-center rounded-xl border border-[var(--lb-edge)] bg-surface px-3.5 py-2 text-left font-medium hover:bg-hover;
+    @apply -mx-2 flex min-h-11 items-center rounded-lg px-2 py-1.5 text-left text-muted hover:bg-hover hover:text-ink;
   }
   .chat-model {
     @apply ml-1 flex min-h-11 min-w-0 flex-1 items-center gap-1 rounded-lg px-1.5 text-sm font-medium text-muted hover:bg-hover hover:text-ink;
@@ -626,11 +678,36 @@
   .lab-items {
     @apply mt-3 grid grid-cols-1 gap-3 min-[1100px]:grid-cols-2;
   }
+  /* A first visit: a question in the reading face, then something to start from. */
+  .lab-hello {
+    @apply mt-5 max-w-xl;
+  }
+  .lab-hello-title {
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-display);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.15;
+  }
+  .lab-examples {
+    @apply mt-3 grid gap-2;
+  }
+  .lab-example {
+    @apply min-h-11 w-full rounded-xl border border-bound bg-surface px-3.5 py-2.5 text-left text-ink hover:bg-hover;
+  }
+  .lab-example:active {
+    opacity: var(--lb-press-opacity);
+  }
+  .lab-lost {
+    @apply mt-3 flex items-center gap-3 rounded-xl border border-bound bg-surface px-3 py-1.5 text-sm text-muted;
+  }
   .lab-empty {
     @apply mt-3 rounded-2xl border border-dashed border-bound px-5 py-8 text-center text-muted;
   }
   .lab-results:has(#lab-items > li) .lab-empty,
-  .lab-results:has(#lab-result > *) .lab-empty {
+  .lab-results:has(#lab-result > *) .lab-empty,
+  .lab-results:has(#lab-items > li) .lab-hello,
+  .lab-results:has(#lab-result > *) .lab-hello {
     @apply hidden;
   }
   .lab-item {
@@ -669,12 +746,34 @@
   .lab-box {
     @apply mx-auto grid max-w-3xl gap-0.5 pt-1;
   }
+  /* A chip the row cuts off fades out before the box's rounded corner, and the row can scroll
+     far enough for the last one to clear the fade. */
   .lab-chips {
-    @apply flex gap-1.5 overflow-x-auto px-1.5 pt-0.5;
+    @apply flex gap-1.5 overflow-x-auto pt-0.5 pl-1.5;
+    padding-right: 1.5rem;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
+    mask-image: linear-gradient(to left, transparent, currentColor 1.5rem);
   }
   .lab-chip {
     @apply shrink-0 px-3 whitespace-nowrap;
+  }
+  /* Editing a picture: it sits at the top of the box, and its shape decides the new one's. */
+  .image-source {
+    @apply flex items-center gap-2.5 px-1.5 pt-0.5 pb-1;
+  }
+  .image-source[hidden] {
+    display: none;
+  }
+  .image-source-thumb {
+    @apply size-11 shrink-0 rounded-lg object-cover;
+  }
+  .lab-dock:not([data-editing]) .lab-chip:has([data-chip-label="change"]),
+  .lab-dock[data-editing] .lab-chip:has([data-chip-label="shape"]) {
+    display: none;
+  }
+  .viewer-from {
+    @apply mt-0.5 size-12 rounded-lg object-cover;
   }
   .lab-prompt {
     @apply block max-h-[30dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-ink placeholder:text-muted focus:outline-none;
@@ -741,6 +840,18 @@
   }
   .strip-advice .btn {
     @apply shrink-0;
+  }
+  .strip-advice-short {
+    @apply hidden;
+  }
+  /* On a phone's Chat, the page's room is for the conversation: one line and the way out. */
+  @media (max-width: 559px) {
+    .chat-strip .strip-advice-full {
+      @apply hidden;
+    }
+    .chat-strip .strip-advice-short {
+      @apply inline;
+    }
   }
   html[data-typing] .strip-advice {
     @apply hidden;
@@ -822,6 +933,9 @@
   .strip-free {
     @apply ml-auto font-medium whitespace-nowrap tabular-nums;
   }
+  .strip-settling .strip-word {
+    @apply font-medium text-ink;
+  }
   .strip-load .strip-word {
     @apply font-semibold;
     color: var(--lb-lamp-text);
@@ -839,8 +953,8 @@
   .strip-off .strip-word {
     @apply font-semibold text-ink;
   }
-  .strip-off .gauge-other,
-  .strip-off .gauge-models {
+  /* Unreachable, or reached but unable to read its own state: the bars are out of date, so they fade. */
+  :is(.strip-off, .strip-stale) :is(.gauge-other, .gauge-models, .gauge-sliver) {
     fill: var(--lb-gauge-free);
     opacity: 0.35;
   }
@@ -1029,6 +1143,12 @@
   .transcribe-start .btn {
     @apply gap-2;
   }
+  /* Below 360 a half-width button can't hold the icon and "Choose a file" on one line at this size, so both get a size smaller. */
+  @media (max-width: 359.98px) {
+    .transcribe-start .btn {
+      @apply gap-1 px-3 text-sm;
+    }
+  }
   .transcribe-start[hidden],
   .transcribe-panel[hidden] {
     @apply hidden;
@@ -1090,24 +1210,66 @@
 
 /* The Video studio (DESIGN §22.18): the job's place keeps the video's shape. */
 @layer components {
-  .lab-item-video {
-    @apply self-start;
+  .lab-item-video,
+  .lab-item-speech,
+  .lab-item-transcribe {
+    @apply grid content-start gap-2 self-start;
   }
-  /* On a phone the player leaves room for what's around it: the strip, the title and heading above,
-     the caption and actions below, then the prompt and the tab bar. Fixed parts are in rem, so this
-     follows the screen, and the whole result is on one screen without scrolling. */
+  /* Written out: Tailwind's tabular-nums does nothing on the floor browser (§27.4). */
+  .record-time,
+  .transcript-time {
+    font-variant-numeric: tabular-nums;
+  }
+  .result-actions [data-toggle-times][aria-pressed="true"] {
+    @apply text-ink;
+  }
+  .result-actions [data-toggle-times][aria-pressed="false"] {
+    @apply opacity-60;
+  }
+  /* On a phone the player leaves room for what's around it: the strip and heading, the words (two
+     lines at most here) and facts above, the actions below, then the prompt and the tab bar, and a
+     pill's bar when one shows. Fixed parts are in rem, so this follows the screen, and the whole
+     result is on one screen without scrolling. */
   .video-frame {
     @apply mx-auto max-w-full min-h-0 object-contain;
-    max-height: max(9rem, calc(100dvh - 29rem));
+    max-height: max(9rem, calc(100dvh - 31rem));
   }
   @media (max-width: 767px) {
     body:has(.run-pill-dock [data-run-pill]:not([hidden])) .video-frame {
-      max-height: max(9rem, calc(100dvh - 32.5rem));
+      max-height: max(9rem, calc(100dvh - 34.5rem));
     }
+    .image-title.video-title {
+      -webkit-line-clamp: 2;
+    }
+  }
+  .video-facts {
+    @apply flex items-center gap-2;
+  }
+  /* One row down to 360 with Share showing, as it does on a real phone. */
+  .result-actions {
+    @apply gap-0.5;
+  }
+  .result-actions .icon-btn {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  /* A tooltip can't help on a phone, so a first visit names the icon, and a long press shows its name. */
+  .lab-hello-icon {
+    @apply mt-2 flex items-start gap-1.5 text-sm text-muted;
+  }
+  .lab-hello-icon svg {
+    @apply size-4 shrink-0 translate-y-0.5;
+  }
+  .icon-name {
+    @apply fixed z-50 -translate-x-1/2 -translate-y-full rounded-lg bg-ink px-2 py-1 text-sm whitespace-nowrap text-canvas;
+  }
+  /* Without a card round each result, space is what separates them. */
+  .lab-items:has(.lab-item-video, .lab-item-speech, .lab-item-transcribe) {
+    row-gap: 1.75rem;
   }
   @media (min-width: 768px) {
     .video-frame {
-      max-height: 60dvh;
+      max-height: max(16rem, calc(100dvh - 26rem));
     }
   }
   video.video-frame {
@@ -1123,17 +1285,17 @@
     @apply aspect-square w-full max-w-md;
   }
   video.video-tall {
-    height: 60dvh;
+    height: 100dvh;
   }
   /* While it runs, Stop has to stay on screen above the prompt. */
   .lab-progress.video-frame {
-    max-height: 36dvh;
+    max-height: 40dvh;
   }
   .lab-progress.video-tall {
-    height: 36dvh;
+    height: 40dvh;
   }
   .video-thumb {
-    @apply block size-10 shrink-0 overflow-hidden rounded-lg;
+    @apply block size-8 shrink-0 overflow-hidden rounded-md;
   }
   .video-recent {
     @apply block size-16 overflow-hidden rounded-lg ring-1 ring-line;
@@ -1165,38 +1327,102 @@
   .decide-option-fields {
     @apply grid min-w-0 flex-1 gap-1 sm:grid-cols-2;
   }
+  /* The question leads: the first thing on the page, set like a title, and still a field. */
+  .decide-form {
+    @apply mt-3 grid max-w-3xl gap-4;
+  }
+  .decide-question-field {
+    @apply resize-none;
+    font-family: var(--lb-font-reading);
+    font-size: 1.375rem;
+    line-height: 1.25;
+  }
+  /* The same question over its answer, with a rule between what was asked and what came back. */
   .decide-form-summary {
-    @apply mt-3 flex items-center gap-2 rounded-xl bg-surface-muted py-1.5 pr-1.5 pl-3;
+    @apply mt-1 max-w-3xl border-b-2 border-accent pb-3;
+  }
+  /* A batch's table takes the page's width, and the rule goes with it. */
+  #decide:has([data-batch]:not([hidden])) .decide-form-summary {
+    @apply max-w-none;
+  }
+  .decide-question {
+    @apply wrap-anywhere;
+    font-family: var(--lb-font-reading);
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+  .decide-quote {
+    @apply mt-1 wrap-anywhere text-muted empty:hidden;
+  }
+  .decide-result {
+    @apply mt-3 max-w-3xl;
   }
   .decide-card {
     @apply rounded-2xl border border-bound bg-surface p-4;
   }
   .decide-word {
-    @apply text-sm font-bold text-muted;
-  }
-  .decide-word-strong {
-    @apply text-accent;
-  }
-  .decide-word-leaning {
-    @apply text-ink;
+    @apply text-sm font-bold;
   }
   .decide-verdict {
-    @apply mt-0.5 text-2xl leading-tight font-bold break-words;
+    @apply mt-0.5 wrap-anywhere;
+    font-family: var(--lb-font-display);
+    font-weight: var(--lb-weight-display);
+    font-size: var(--lb-size-hello);
+    letter-spacing: var(--lb-tracking-display);
+    line-height: 1.1;
   }
-  .decide-odds {
-    @apply text-lg font-semibold whitespace-nowrap text-muted;
+  .decide-verdict-place {
+    @apply mt-1 block h-8 w-2/5 rounded-md;
   }
+  .decide-note {
+    @apply mt-1;
+  }
+  /* The answer, its track, its number: equal tracks and tabular numbers, so odds compare at a
+     glance. Every row has the same fixed columns, wide enough for "under 1%", so tracks stay equal
+     and a long answer wraps. No subgrid: browsers before Chrome 117 stack the row without it. */
   .decide-bars {
-    @apply mt-3 grid gap-2.5;
+    @apply mt-3 grid gap-y-2.5;
   }
-  .decide-bar-label {
-    @apply flex items-baseline justify-between gap-3 text-base;
+  .decide-bar {
+    @apply grid items-center gap-x-3;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 4.25rem;
   }
-  .decide-bar-top .decide-bar-label {
-    @apply font-bold;
+  .decide-bar-name {
+    @apply min-w-0 wrap-anywhere;
+  }
+  /* Written out: Tailwind's tabular-nums is built from empty var() fallbacks, which older browsers
+     (Chrome 114 here) read as normal, so the figures silently stop lining up. */
+  .decide-bar-odds {
+    @apply text-right;
+    font-variant-numeric: tabular-nums;
+  }
+  .decide-bar-top {
+    @apply font-semibold;
   }
   .decide-track {
-    @apply mt-1 block h-2 overflow-hidden rounded-full bg-surface-muted;
+    @apply block h-2.5 overflow-hidden rounded-sm border border-[var(--lb-edge)] bg-surface-muted;
+  }
+  .decide-standing {
+    @apply mt-3 text-sm text-muted;
+  }
+  .decide-actions {
+    @apply mt-2 flex flex-wrap gap-1.5;
+  }
+  .decide-keep {
+    @apply mt-4 max-w-3xl text-sm text-muted;
+  }
+  .decide-actionbar {
+    @apply flex max-w-3xl items-center gap-2;
+  }
+  /* A long example's name gives way, so Batch and Decide stay whole on a small phone. */
+  .decide-chip-long {
+    @apply max-w-40;
+  }
+  [data-batch-chip][aria-pressed="true"] {
+    @apply border-accent font-semibold;
+  }
+  .decide-actionbar[hidden] {
+    @apply hidden;
   }
   /* One accent and one neutral: answers are not good or bad. */
   .decide-track i {
@@ -1224,7 +1450,7 @@
   }
   /* Phones: each row is a small card. Wider: three columns. */
   .decide-row {
-    @apply grid gap-1 border-t border-line py-2.5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem] md:gap-3;
+    @apply grid gap-1 border-t border-line py-2.5 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem] md:items-baseline md:gap-3;
   }
   .decide-row[hidden] {
     @apply hidden;
@@ -1245,8 +1471,18 @@
   }
 }
 
+@keyframes lb-viewer-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* Settings (DESIGN §22.12): one setting per row in grouped lists. */
 @layer components {
+  /* A disclosure that is one row of a settings group, not a card of its own. */
+  .setting-more > summary {
+    @apply flex min-h-11 cursor-pointer items-center text-sm font-semibold text-muted;
+  }
   .setting-row {
     @apply flex min-h-12 items-center gap-3 px-4 py-3 text-ink;
   }
@@ -1351,7 +1587,8 @@
   }
   /* A video says it is one, on any frame: its own dark ground, whatever the picture holds. */
   .studio-tile-badge {
-    @apply absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-md bg-[var(--lb-viewer-bg)] px-1.5 py-0.5 text-xs font-semibold text-[var(--lb-viewer-text)] tabular-nums;
+    @apply absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 rounded-md bg-[var(--lb-viewer-bg)] px-1.5 py-0.5 text-xs font-semibold text-[var(--lb-viewer-text)];
+    font-variant-numeric: tabular-nums;
   }
   .studio-tile-cap {
     @apply mt-1.5 block truncate text-sm font-medium;
@@ -1450,12 +1687,26 @@
   .image-run {
     @apply min-w-0;
   }
+  /* The words first: this is what you asked for. A long prompt stops at three lines here, and
+     the viewer's Details has all of it. */
+  .image-title {
+    @apply line-clamp-3 wrap-anywhere;
+    font-family: var(--lb-font-reading);
+    font-size: 1.1875rem;
+    line-height: 1.3;
+  }
+  .image-facts {
+    @apply text-sm text-muted;
+  }
+  .image-state {
+    @apply mb-1.5 flex min-h-11 items-center gap-2;
+  }
   .image-grid {
     @apply grid grid-cols-2 gap-1.5;
   }
-  /* One picture takes the row; a batch shares it. */
+  /* One picture takes the row, up to a size that still fits a wide screen; a batch shares it. */
   .image-grid:has(> .image-tile:only-of-type) {
-    @apply grid-cols-1;
+    @apply grid-cols-1 min-[768px]:max-w-md;
   }
   .image-tile {
     @apply relative grid min-w-0 place-items-center overflow-hidden rounded-xl bg-surface-muted;
@@ -1474,12 +1725,6 @@
   }
   .image-thumb {
     @apply block size-full object-cover;
-  }
-  .image-stage {
-    @apply p-3 text-center text-sm font-semibold text-muted;
-  }
-  .image-cap {
-    @apply mt-1 flex min-h-11 items-center gap-2 px-1;
   }
   .shape-glyph {
     @apply block shrink-0 rounded-sm border-2 border-muted;
@@ -1512,9 +1757,54 @@
   }
   .viewer-stage {
     @apply min-h-0 flex-1 p-2;
+    touch-action: pinch-zoom;
   }
   .viewer-img {
-    @apply block size-full object-contain;
+    @apply block size-full cursor-zoom-in object-contain;
+  }
+  /* Inspect: twice the size, moved by scrolling. */
+  .viewer-zoomed {
+    @apply overflow-auto p-0;
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+  .viewer-zoomed .result-img {
+    @apply block;
+    width: 200%;
+    height: 200%;
+  }
+  .viewer-zoomed .viewer-img {
+    @apply cursor-zoom-out;
+  }
+  /* The picture on paper, for looking at rather than checking. */
+  .viewer-matted:not(.viewer-zoomed) .result-img {
+    @apply grid place-items-center;
+  }
+  .viewer-matted:not(.viewer-zoomed) .viewer-img {
+    @apply size-auto max-h-full max-w-full rounded-xs;
+    padding: clamp(0.75rem, 6vmin, 3rem);
+    background: var(--lb-viewer-mat);
+  }
+  [data-view-mat][aria-pressed="true"],
+  [data-view-zoom][aria-pressed="true"] {
+    @apply bg-white/15;
+  }
+  .viewer-words {
+    font-family: var(--lb-font-reading);
+    font-size: 1.0625rem;
+  }
+  .viewer-hint {
+    @apply text-xs text-[var(--lb-viewer-muted)];
+  }
+  .viewer-stage:has(~ .viewer-foot [data-view-details][aria-expanded="true"]) {
+    @apply min-h-16;
+  }
+  .viewer-stage.viewer-zoomed ~ .viewer-foot .viewer-hint {
+    @apply hidden;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .viewer[open] {
+      animation: lb-viewer-in var(--lb-dur-move) var(--lb-ease);
+    }
   }
   .viewer-foot {
     @apply flex flex-wrap items-stretch justify-around gap-1 bg-[var(--lb-viewer-bar)] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))];
@@ -1522,17 +1812,19 @@
   .viewer-caption {
     @apply w-full truncate px-2 text-sm;
   }
-  .viewer-foot:has(details[open]) .viewer-caption {
+  .viewer-foot:has([data-view-details][aria-expanded="true"]) .viewer-caption {
     @apply hidden;
+  }
+  .viewer-btn:active,
+  .viewer-act:active,
+  .image-open:active {
+    opacity: var(--lb-press-opacity);
   }
   .viewer-act {
     @apply flex min-h-12 min-w-14 cursor-pointer list-none flex-col items-center justify-center gap-0.5 rounded-xl px-2 text-xs font-semibold hover:bg-white/10;
   }
-  .viewer-act::-webkit-details-marker {
+  .viewer-panel[hidden] {
     display: none;
-  }
-  .viewer-details {
-    @apply contents;
   }
   .viewer-panel {
     @apply order-first grid max-h-[50dvh] w-full gap-3 overflow-y-auto rounded-xl bg-[var(--lb-viewer-panel)] p-3 text-sm;

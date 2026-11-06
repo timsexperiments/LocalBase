@@ -8,7 +8,9 @@
 // callers keep today's direct requests.
 
 const ROOT = "/_localbase/runs";
-const PLACES = "localbase.runs.places.v1"; // run id -> { href, label, last }
+// run id -> { href, label, last }. A chat's label is its title, so each person has their own.
+// Read when used, not when the module loads: a module can load where there is no page yet (tests).
+const placesKey = () => `localbase.runs.places.v2.${globalThis.document?.documentElement?.dataset.person ?? "none"}`;
 export const ACTIVE = new Set(["queued", "in_progress"]);
 let support;
 
@@ -248,7 +250,7 @@ export function snapshotChunk(run, sent = { content: "", reasoning: "" }) {
 }
 
 // A request that reached a model while someone unloaded it (DESIGN §23).
-export const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed.";
+export const unloadingMessage = "The model’s memory was being freed, so this didn’t run. Try again: it loads again when needed.";
 
 export function endMessage(run) {
   if (run?.error?.code === "model_unloading") return unloadingMessage;
@@ -318,7 +320,7 @@ function remember(id, patch) {
 
 function readPlaces() {
   try {
-    return JSON.parse(localStorage.getItem(PLACES) ?? "{}") ?? {};
+    return JSON.parse(localStorage.getItem(placesKey()) ?? "{}") ?? {};
   } catch {
     return {};
   }
@@ -326,7 +328,7 @@ function readPlaces() {
 
 function writePlaces(places) {
   try {
-    localStorage.setItem(PLACES, JSON.stringify(places));
+    localStorage.setItem(placesKey(), JSON.stringify(places));
   } catch {
     // Storage full or blocked: re-attaching then replays from the start.
   }

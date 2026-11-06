@@ -22,6 +22,7 @@ import (
 // labTargets are the media routes a Lab run may target, by tool.
 var labTargets = map[string]string{
 	"/v1/images/generations":   "image",
+	"/v1/images/edits":         "image",
 	"/v1/audio/transcriptions": "transcribe",
 	"/v1/audio/translations":   "transcribe",
 }
@@ -35,7 +36,7 @@ type labRun struct {
 
 // unloadingMessage: a request reached a model while someone unloaded it
 // (DESIGN §23); the gateway answers 503 model_unloading.
-const unloadingMessage = "The model was being unloaded, so this didn’t run. Try again: it loads again when needed."
+const unloadingMessage = "The model’s memory was being freed, so this didn’t run. Try again: it loads again when needed."
 
 // labPicture is one image of a result.
 type labPicture struct {
@@ -185,6 +186,8 @@ type labItemView struct {
 	Fresh                              bool   // just started: its skeleton may shimmer once
 	Size, Shape, Look, LookName, Model string // how a picture was made
 	Seed                               int64
+	Edited                             bool         // started from a picture
+	From, Change, ChangeName           string       // an edit's starting picture, while it is kept, and how far it moved
 	Pictures                           []labPicture // a batch's pictures, without deleted ones
 	Tiles                              []int        // placeholders while it is made
 	Image, Audio, Transcript           string
@@ -193,6 +196,7 @@ type labItemView struct {
 	At                                 time.Time
 	Video, Thumb, Announce             string // a video job: its file, starting picture, and what to say
 	Again, Slow, NeedsMemory           bool
+	Elapsed, Limit                     string       // a running video: how long so far, in words, and the model's limit
 	VoiceName, Length                  string       // a script
 	Segments                           []labSegment // a transcript's stretches, with times
 	Source, Language                   string
@@ -239,6 +243,12 @@ func (u *UI) labItem(r *http.Request, run labRun) labItemView {
 				}
 			}
 			v.Model = q.Model
+			if q.Source != "" {
+				v.Edited, v.Change, v.ChangeName = true, q.Change, changeByID(q.Change).Name
+				if u.results.get(owner, q.Source) != nil {
+					v.From = "/app/lab/results/" + q.Source
+				}
+			}
 		}
 	}
 	if v.Model == "" {
@@ -382,6 +392,31 @@ func (u *UI) labRuns(r *http.Request) []labItemView {
 	}
 	slices.SortStableFunc(out, func(a, b labItemView) int { return b.At.Compare(a.At) })
 	return out
+}
+
+// splitLost separates runs that didn't finish and have nothing left to show. A run outlives the
+// in-memory note that held its words, so after a restart it has no prompt, nothing to try again and
+// no picture. One line says so, rather than one identical row per run.
+func splitLost(items []labItemView) (kept, lost []labItemView) {
+	for _, it := range items {
+		if it.Status == "interrupted" && it.Caption == "" {
+			lost = append(lost, it)
+		} else {
+			kept = append(kept, it)
+		}
+	}
+	return kept, lost
+}
+
+// labRunsClearLost dismisses one tool's lost runs.
+func (u *UI) labRunsClearLost(w http.ResponseWriter, r *http.Request) {
+	_, lost := splitLost(u.labRuns(r))
+	for _, it := range lost {
+		if it.Tool == r.PostFormValue("tool") {
+			u.call(r, "DELETE", "/_localbase/runs/"+it.ID, "", nil)
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
 // labRunGet re-renders one tray item (it polls while the run is active).

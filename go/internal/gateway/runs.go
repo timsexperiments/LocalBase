@@ -255,11 +255,61 @@ func (m *runManager) memoryFullError() map[string]any {
 	if oldest == nil {
 		message += " Nothing has finished yet, so wait for the running ones and try again."
 	} else {
+		// The message is read later than it's written, so the wait is said from the stop, not from now.
 		at := oldest.UTC().Format("15:04") + " UTC"
-		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.", mib(finished), at)
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires %s after this was stopped (%s). Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.",
+			mib(finished), afterTheStop(oldest.Sub(m.now())), at)
 		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
 	}
 	out["message"] = message
+	return out
+}
+
+// maxListErrorText bounds each text in a run list's error, as other error messages are bounded.
+const maxListErrorText = 1024
+
+// listErrorFields are the fields an error keeps in the run list: what LocalBase's own errors have,
+// so an entry has the same error as the run's own read. Anything else a backend sent stays there.
+var listErrorFields = []string{"type", "code", "message", "param", "heldBytes", "limitBytes", "finishedBytes", "oldestExpiresAt"}
+
+// listError is a run's error as the API gives it, in the run list and in a run's own read alike.
+// An error can come from a backend as it sent it, and the list carries every run a person has, so
+// each text is bounded and redacted, and only plain values are kept.
+func listError(e map[string]any) map[string]any {
+	if e == nil {
+		return nil
+	}
+	out := map[string]any{}
+	for _, k := range listErrorFields {
+		switch v := e[k].(type) {
+		case string:
+			out[k] = obs.BoundedText(v, maxListErrorText)
+		case int, int64, float64, bool:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// afterTheStop says a wait in whole minutes, rounded up, so it isn't shorter than it is.
+func afterTheStop(d time.Duration) string {
+	if d < time.Minute {
+		return "less than a minute"
+	}
+	minutes := int((d + time.Minute - 1) / time.Minute)
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	if minutes < 60 {
+		return plural(minutes, "minute")
+	}
+	out := plural(minutes/60, "hour")
+	if minutes%60 != 0 {
+		out += " " + plural(minutes%60, "minute")
+	}
 	return out
 }
 
@@ -445,7 +495,7 @@ func (r *run) setStatus(status, reason string) {
 // view is the public run object. Called with r.mu held.
 func (r *run) view(withOutput bool) map[string]any {
 	v := map[string]any{"id": r.ID, "object": "localbase.run", "target": r.Target, "label": r.Label, "model": r.Model,
-		"status": r.Status, "error": r.Error, "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"status": r.Status, "error": listError(r.Error), "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"startedAt": stamp(r.StartedAt), "endedAt": stamp(r.EndedAt), "expiresAt": stamp(r.ExpiresAt),
 		"lastEventId": r.lastEventID(), "resumable": false}
 	if r.Reason != "" {
@@ -1050,6 +1100,9 @@ func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
 			"createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano), "startedAt": stamp(r.StartedAt), "endedAt": stamp(r.EndedAt)}
 		if r.Reason != "" {
 			item["reason"] = r.Reason
+		}
+		if r.Error != nil { // a run that stopped says why, as its own read does
+			item["error"] = listError(r.Error)
 		}
 		r.mu.Unlock()
 		data = append(data, item)

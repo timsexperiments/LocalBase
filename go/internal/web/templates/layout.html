@@ -1,5 +1,5 @@
 {{define "layout"}}<!doctype html>
-<html lang="en">
+<html lang="en"{{with .PersonKey}} data-person="{{.}}"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="{{block "viewport" .}}width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content{{end}}">

@@ -6,7 +6,7 @@
 // markdown.js.
 import {
   chatContext, compact, contextWindow, interruptReply, learnContext, overflowContext, phaseLabel, planCompaction,
-  promptBudget, readHistory, steerAbortReason, streamText, titleFrom, toolOverhead, visibleMessages, writeHistory,
+  draftKeyFor, historyKeyFor, personKey, promptBudget, readHistory, steerAbortReason, streamText, titleFrom, toolOverhead, visibleMessages, writeHistory,
 } from "./chat-core.js";
 import { attachmentAccept, chatRequestError, readAttachments } from "./attachments.js";
 import { build, parse } from "./markdown.js";
@@ -30,7 +30,7 @@ const jump = $("[data-jump]");
 const status = $("#chat-status");
 const errorBox = $("[data-error-box]");
 // What the strip should say about the last request; shell.js keeps it through refreshes.
-const strip = { refused: (word) => document.dispatchEvent(new CustomEvent("localbase:refused", { detail: word })) };
+const strip = { refused: (word, model) => document.dispatchEvent(new CustomEvent("localbase:refused", { detail: word && { word, model } })) };
 const drawer = $("#chat-drawer");
 const picker = $("#model-picker");
 const attachButton = $("[data-attach]");
@@ -61,6 +61,7 @@ const fresh = () => ({ id: uuid(), title: "New chat", workspace: "chat", mode: "
 
 // --- state ----------------------------------------------------------------------
 
+const historyKey = historyKeyFor(personKey());
 let conversations = [];
 let persistent = false;
 let historyError = "";
@@ -76,7 +77,7 @@ const session = (() => {
   }
 })();
 try {
-  const saved = readHistory(localStorage);
+  const saved = readHistory(localStorage, historyKey);
   persistent = saved !== null;
   conversations = saved ?? [];
 } catch {
@@ -84,9 +85,9 @@ try {
 }
 if (!persistent && !historyError && session)
   try {
-    conversations = readHistory(session) ?? [];
+    conversations = readHistory(session, historyKey) ?? [];
   } catch {
-    session.removeItem("localbase.playground.history.v1");
+    session.removeItem(historyKey);
   }
 let active;
 let abort = null; // the running reply or compaction
@@ -125,6 +126,11 @@ function select(id) {
     dropRead();
     cancelDictation();
     draft = [];
+    if (editing) {
+      editing = null;
+      input.value = "";
+      $("[data-editing]").hidden = true;
+    }
   }
   active = conversations.find((c) => c.id === id);
   if (!active) {
@@ -145,14 +151,14 @@ function save() {
   if (!target) return;
   try {
     // Empty conversations are not worth keeping.
-    writeHistory(target, conversations.filter((c) => c.messages.length || c === active));
+    writeHistory(target, conversations.filter((c) => c.messages.length || c === active), historyKey);
   } catch {
     if (persistent) showError("Device storage is unavailable, so this conversation was not saved.");
   }
 }
 
 // The unsent message survives leaving the page (this tab only).
-const draftKey = "localbase.chat.draft.v1";
+const draftKey = draftKeyFor(personKey());
 function saveDraft() {
   try {
     if (input.value) session?.setItem(draftKey, JSON.stringify({ conversation: active.id, text: input.value }));
@@ -209,13 +215,24 @@ function showError(message, retry, label = "Retry") {
 // sentence and what to do next. The gateway's own sentence, with its figures, is one tap away.
 const refusals = {
   model_too_large: { title: "This model is too big for this computer", line: "It won’t fit even with everything else closed. A smaller one will." },
-  insufficient_memory: { title: "Not enough free memory for this model", line: "Unload a model or close another app, then try again." },
+  insufficient_memory: { title: "Not enough free memory for this model", line: "Free memory from a loaded model or close other apps, then try again." },
 };
+
+// A retry while memory is settling would only be refused again, so it waits with the strip.
+function holdRetry() {
+  const retry = $("[data-refusal-retry]");
+  if (!retry) return;
+  const settling = !!$("[data-strip] .strip-settling");
+  retry.disabled = settling;
+  $("[data-refusal-wait]").hidden = !settling;
+}
+document.addEventListener("htmx:afterSettle", holdRetry);
 
 function showFailure(e, retry) {
   const refusal = refusals[e.code];
   if (!refusal) return showError(e.message, retry);
-  strip.refused("Not enough memory for this model");
+  // "Too big" won't change with what's free, so it's for the card, not for the strip.
+  strip.refused(e.code === "insufficient_memory" ? "Not enough memory for this model" : null, active?.model);
   const card = errorCard();
   const title = document.createElement("p");
   title.className = "font-semibold text-danger";
@@ -232,11 +249,20 @@ function showFailure(e, retry) {
   detail.textContent = e.message;
   why.append(summary, detail);
   const actions = document.createElement("div");
-  actions.className = "grid gap-2";
-  actions.append(button("Choose a model", "btn btn-primary w-full", openPicker));
-  if (e.code === "insufficient_memory") actions.append(button("Try again", "btn btn-quiet w-full", retry));
-  actions.append(button("Dismiss", "btn btn-quiet w-full", dismissErrors));
-  card.append(title, line, why, actions);
+  actions.className = "refusal-actions";
+  actions.append(button("Choose a model", "btn btn-primary", openPicker));
+  card.append(title, line, why);
+  if (e.code === "insufficient_memory") {
+    const wait = document.createElement("p");
+    wait.className = "text-sm font-semibold";
+    wait.dataset.refusalWait = "";
+    wait.textContent = "Memory just freed, ready in a few seconds.";
+    card.append(wait);
+    actions.append(button("Try again", "btn btn-quiet", retry, { "data-refusal-retry": "" }));
+  }
+  actions.append(button("Dismiss", "btn btn-quiet", dismissErrors));
+  card.append(actions);
+  holdRetry();
   announce(`${refusal.title}. ${refusal.line}`);
 }
 
@@ -265,6 +291,25 @@ function button(label, className, onClick, attrs = {}) {
 
 // --- conversation list ------------------------------------------------------------
 
+const oneLine = (text) => text.replace(/\s+/g, " ").trim();
+
+// What a row says under its title: where a search found it, or how the chat last ended.
+function rowLine(c, query) {
+  const line = document.createElement("span");
+  line.className = "chat-row-line";
+  const hit = query && c.messages.find((m) => m.text.toLowerCase().includes(query));
+  if (!hit) {
+    line.textContent = oneLine(c.messages.at(-1)?.text ?? "");
+    return line;
+  }
+  const text = oneLine(hit.text), at = text.toLowerCase().indexOf(query);
+  const start = Math.max(0, at - 24);
+  const mark = document.createElement("mark");
+  mark.textContent = text.slice(at, at + query.length);
+  line.append((start ? "…" : "") + text.slice(start, at), mark, text.slice(at + query.length));
+  return line;
+}
+
 function renderConversations() {
   for (const menu of $$("[data-conversations]")) {
     const root = menu.closest("nav").parentElement;
@@ -273,14 +318,17 @@ function renderConversations() {
       !query || c.title.toLowerCase().includes(query) || c.messages.some((m) => m.text.toLowerCase().includes(query)));
     menu.replaceChildren(...shown.map((c) => {
       const li = document.createElement("li");
+      li.className = "chat-row";
       const a = document.createElement("a");
       a.href = `?conversation=${encodeURIComponent(c.id)}`;
-      a.className = "flex min-h-11 items-center rounded-xl px-3 wrap-anywhere hover:bg-hover";
-      a.textContent = c.title || "New chat";
-      if (c === active) {
-        a.setAttribute("aria-current", "page");
-        a.classList.add("bg-accent-soft", "font-semibold", "text-accent");
-      }
+      a.className = "chat-row-link";
+      const title = document.createElement("span");
+      title.className = "chat-row-title";
+      title.textContent = c.title || "New chat";
+      a.append(title);
+      const line = rowLine(c, query);
+      if (line.textContent) a.append(line);
+      if (c === active) a.setAttribute("aria-current", "page");
       a.addEventListener("click", (e) => {
         e.preventDefault();
         if (abort) return;
@@ -292,6 +340,11 @@ function renderConversations() {
         reattach();
       });
       li.append(a);
+      if (c.messages.length) {
+        const more = button("", "icon-btn chat-row-more", () => openChatOptions(c), { "aria-label": `Options for ${c.title || "New chat"}`, "aria-haspopup": "dialog" });
+        more.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" class="size-5" fill="currentColor"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>';
+        li.append(more);
+      }
       return li;
     }));
     const none = $("[data-no-conversations]", root);
@@ -446,6 +499,15 @@ function messageNode(m) {
       article.append(bubble);
     }
     if (m.attachments?.length) article.append(chips(m.attachments));
+    if (!m.pending && (m.text || m.attachments?.length)) {
+      const actions = document.createElement("div");
+      actions.className = "message-actions";
+      if (m.text) actions.append(copyButton(() => m.text, "Copy"));
+      // The newest message only: anything earlier would change what later replies answered.
+      const newest = active.messages.findLast((x) => x.role === "user");
+      if (m === newest && !abort && m !== editing) actions.append(button("Edit", "md-copy", () => startEdit(m), { "aria-label": "Edit your message" }));
+      if (actions.childElementCount) article.append(actions);
+    }
     if (m.attachmentsMissing) {
       const note = document.createElement("p");
       note.className = "mt-1 text-sm text-muted";
@@ -553,7 +615,8 @@ function compactingNode() {
 function render() {
   $("#chat-title").textContent = active.title;
   $("[data-rename]").disabled = !active.messages.length;
-  document.title = `${active.messages.length ? active.title : "Chat"} · LocalBase`;
+  // A chat's name reaches the browser's history, so only for someone who chose to keep chats here.
+  document.title = `${persistent && active.messages.length ? active.title : "Chat"} · LocalBase`;
   renderModel();
   renderDraft();
   const nodes = [];
@@ -724,6 +787,40 @@ function readyModel(conversation) {
 // send starts a reply, or explains why it cannot and returns false (the
 // caller keeps the draft). Sending while this conversation's reply streams
 // steers: that reply is marked interrupted and stopped.
+// Editing the newest message: nothing changes until it's sent, and Cancel leaves it all as it was.
+let editing = null;
+function showEditing() {
+  $("[data-editing]").hidden = !editing;
+}
+function startEdit(m) {
+  if (abort) return;
+  editing = m;
+  input.value = m.text;
+  draft = m.attachments ? [...m.attachments] : [];
+  renderDraft();
+  grow();
+  updateSend();
+  showEditing();
+  render();
+  input.focus();
+  announce("Editing your message.");
+}
+function cancelEdit() {
+  if (!editing) return;
+  editing = null;
+  input.value = "";
+  draft = [];
+  saveDraft();
+  renderDraft();
+  grow();
+  updateSend();
+  showEditing();
+  render();
+  input.focus();
+  announce("Edit cancelled.");
+}
+$("[data-cancel-edit]").addEventListener("click", cancelEdit);
+
 function send(text) {
   const steering = !!abort && running?.conversation === active;
   if (abort && !steering) return false;
@@ -732,9 +829,10 @@ function send(text) {
   if (!model) return false;
   const conversation = active;
   const user = { id: uuid(), role: "user", text, ...(draft.length ? { attachments: draft } : {}) };
+  const replaced = editing && conversation.messages.includes(editing) ? conversation.messages.indexOf(editing) : -1;
   let problem;
   try {
-    problem = chatRequestError([...conversation.messages, user], model);
+    problem = chatRequestError([...(replaced < 0 ? conversation.messages : conversation.messages.slice(0, replaced)), user], model);
   } catch (e) {
     problem = e.message;
   }
@@ -751,6 +849,9 @@ function send(text) {
     abort.abort(steerAbortReason);
   }
   strip.refused(null);
+  if (replaced >= 0) conversation.messages.length = replaced;
+  editing = null;
+  showEditing();
   if (!conversation.messages.length) conversation.title = text ? titleFrom(text) : "Attachments";
   conversation.messages.push(user);
   draft = [];
@@ -1234,11 +1335,66 @@ drawer.addEventListener("click", (e) => {
 $("[data-open-picker]").addEventListener("click", openPicker);
 // A chat's name is the person's to change.
 const renameSheet = $("#rename-chat");
-$("[data-rename]").addEventListener("click", () => {
-  $("#rename-input").value = active.title;
+let renaming = null;
+// A row's own actions: open over the list, so the list is still there after.
+const optionsSheet = $("#chat-options");
+let optionsFor = null;
+function openChatOptions(c) {
+  optionsFor = c;
+  $("[data-options-title]").textContent = c.title || "New chat";
+  $("[data-options-confirm]").hidden = true;
+  $("[data-options-list]").hidden = false;
+  const busy = !!abort && c === active;
+  $("[data-option-delete]").disabled = busy;
+  $("[data-options-busy]").hidden = !busy;
+  optionsSheet.showModal();
+}
+function focusList() {
+  const list = drawer.open ? drawer : document;
+  $("[data-search]", list)?.focus();
+}
+function deleteChat(c) {
+  const name = c.title || "New chat";
+  conversations.splice(conversations.indexOf(c), 1);
+  if (c === active) {
+    dismissErrors();
+    select(chatsOnly().find((other) => other.messages.length)?.id);
+  }
+  save();
+  render();
+  announce(`Deleted ${name}.`);
+}
+$("[data-close-options]").addEventListener("click", () => optionsSheet.close());
+optionsSheet.addEventListener("click", (e) => {
+  if (e.target === optionsSheet) optionsSheet.close();
+});
+$("[data-option-rename]").addEventListener("click", () => {
+  optionsSheet.close();
+  openRename(optionsFor);
+});
+$("[data-option-delete]").addEventListener("click", () => {
+  $("[data-options-list]").hidden = true;
+  $("[data-options-confirm]").hidden = false;
+  $("[data-option-keep]").focus();
+});
+$("[data-option-keep]").addEventListener("click", () => {
+  $("[data-options-confirm]").hidden = true;
+  $("[data-options-list]").hidden = false;
+  $("[data-option-delete]").focus();
+});
+$("[data-option-confirm]").addEventListener("click", () => {
+  const c = optionsFor;
+  optionsSheet.close();
+  deleteChat(c);
+  focusList();
+});
+function openRename(c) {
+  renaming = c;
+  $("#rename-input").value = c.title;
   renameSheet.showModal();
   $("#rename-input").select();
-});
+}
+$("[data-rename]").addEventListener("click", () => openRename(active));
 $("[data-close-rename]").addEventListener("click", () => renameSheet.close());
 renameSheet.addEventListener("click", (e) => {
   if (e.target === renameSheet) renameSheet.close();
@@ -1247,9 +1403,10 @@ $("[data-rename-form]").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("#rename-input").value.trim();
   if (name) {
-    active.title = name.slice(0, 60);
+    (renaming ?? active).title = name.slice(0, 60);
     save();
     render();
+    renderConversations();
   }
   renameSheet.close();
 });
@@ -1278,12 +1435,22 @@ for (const b of $$("[data-new-chat]"))
     if (drawer.open) drawer.close();
     input.focus();
   });
-for (const s of $$("[data-search]")) s.addEventListener("input", renderConversations);
+// The count is said once typing pauses, not at every letter.
+let searchSaid = 0;
+for (const s of $$("[data-search]")) s.addEventListener("input", () => {
+  renderConversations();
+  clearTimeout(searchSaid);
+  const list = s.closest("nav")?.parentElement ?? s.parentElement;
+  if (s.value.trim()) searchSaid = setTimeout(() => {
+    const n = $$(".chat-row", list).length;
+    announce(n ? `${n} ${n === 1 ? "chat" : "chats"} found.` : "No conversations match.");
+  }, 500);
+});
 window.addEventListener("storage", (e) => {
   // Another tab changed saved history: pick it up when idle.
-  if (e.key !== "localbase.playground.history.v1" || abort) return;
+  if (e.key !== historyKey || abort) return;
   try {
-    const saved = readHistory(localStorage);
+    const saved = readHistory(localStorage, historyKey);
     persistent = saved !== null;
     if (saved) {
       const id = active.id;

@@ -133,6 +133,7 @@
   --lb-viewer-bar: #10141b;
   --lb-viewer-panel: #191e27;
   --lb-viewer-muted: #aeb4be;
+  --lb-viewer-mat: #f4f2ec; /* the paper a picture sits on, when asked for */
 }
 dialog.viewer {
   --lb-canvas: #10141b;

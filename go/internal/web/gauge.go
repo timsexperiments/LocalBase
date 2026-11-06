@@ -1,7 +1,10 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"hash/fnv"
 	"net/http"
 	"os"
@@ -101,12 +104,15 @@ func computerName() string {
 
 // stripWord says what this computer is doing, from what it is really doing. busy covers every
 // modality and detached runs (host.activity, DESIGN §26).
-func stripWord(st runtime.Snapshot, pressure string, busy bool) (word, state string) {
+func stripWord(st runtime.Snapshot, pressure string, settling, busy bool) (word, state string) {
 	switch {
 	case st.State == "starting":
 		return "Getting the model ready", "load"
 	case st.State == "draining":
 		return "Finishing", "load"
+	// Memory is back and requests are still refused for a few seconds: not a shortage any more.
+	case settling:
+		return "Memory just freed, ready in a few seconds", "settling"
 	case pressure == "critical":
 		return "Not enough memory", "short"
 	case busy:
@@ -136,6 +142,7 @@ type hostReading struct {
 			Total     hostFigure `json:"total"`
 			Available hostFigure `json:"available"`
 			Pressure  *string    `json:"pressure"`
+			Settling  bool       `json:"settling"`
 			Other     hostFigure `json:"other"`
 			LocalBase struct {
 				Bytes    int64  `json:"bytes"`
@@ -221,7 +228,10 @@ func memoryRows(total, available, models int64) (shownModels, other, free int64)
 
 // stripAdvice is the way forward when memory is short. Nothing stops anyone sending: the gateway
 // decides at load, and a refusal says why.
-func stripAdvice(pressure string) string {
+func stripAdvice(pressure string, settling bool) string {
+	if settling {
+		return ""
+	}
 	switch pressure {
 	case "critical":
 		return "Free a loaded model or close other apps. You can still send, but a reply may not start."
@@ -250,7 +260,7 @@ func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
 	if u.d.LLM != nil {
 		st = u.d.LLM.Snapshot()
 	}
-	word, state := stripWord(st, pressure, h.Host.Activity.Busy)
+	word, state := stripWord(st, pressure, m.Settling, h.Host.Activity.Busy)
 	name := u.hostName(r, h)
 	// What a refresh must see change to redraw anything: the words, and places on the gauge.
 	places := [2]int64{}
@@ -260,7 +270,7 @@ func (u *UI) memoryView(r *http.Request, h *hostReading) map[string]any {
 	sum := fnv.New32a()
 	fmt.Fprint(sum, word, "|", free, "|", name, "|", places)
 	return map[string]any{"Host": name, "Word": word, "State": state, "Free": free, "Known": known, "Key": strconv.FormatUint(uint64(sum.Sum32()), 16),
-		"Capacity": capacity, "Available": available, "Other": other, "Models": models, "Source": sourceWords[m.LocalBase.Source], "Advice": stripAdvice(pressure)}
+		"Capacity": capacity, "Available": available, "Other": other, "Models": models, "Source": sourceWords[m.LocalBase.Source], "Advice": stripAdvice(pressure, m.Settling)}
 }
 
 // memoryStrip is the host-and-memory strip (DESIGN §25): this computer's name, its state in
@@ -283,4 +293,14 @@ func (u *UI) stripFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.fragment(w, r, "running", "memory-strip", strip)
+}
+
+// personKey names a person's chats in their browser's storage, without putting who they are
+// in the page: the same person gets the same key, and different people different keys.
+func personKey(p *auth.Principal) string {
+	if p == nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(p.Kind + "\x00" + p.ID))
+	return hex.EncodeToString(sum[:8])
 }

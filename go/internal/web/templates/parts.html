@@ -104,7 +104,7 @@
   <a class="strip strip-{{.State}}" href="/app/models/running">
     {{template "strip-body" .}}<span class="sr-only">. Open Running.</span>
   </a>
-  {{with .Advice}}<p class="strip-advice"><span>{{.}}</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
+  {{with .Advice}}<p class="strip-advice"><span class="strip-advice-full">{{.}}</span><span class="strip-advice-short">A reply may not start.</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
 </div>
 {{end}}
 

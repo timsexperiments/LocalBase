@@ -12,6 +12,9 @@ export const BAND_WORDS = { strong: "Strongly favored", leaning: "Leaning", clos
 
 export const STANDING_LINE = "These are the model’s odds, not a check that it is right. Judgment calls can still come back lopsided.";
 
+/** What a read asks of the person, keyed to the band table. It says what the odds show, never how often they are right. */
+export const BAND_NOTES = { close: "Neither is far ahead, so this one is worth a person’s look.", unsure: "No answer reaches half, so this one is worth a person’s look." };
+
 export const MAX_ROWS = 200;
 export const MAX_OPTIONS = { choice: 255, score: 10 };
 
@@ -51,7 +54,9 @@ export function readAnswer(answer, model) {
     verdict: close ? `${first.label} or ${next.label}` : first.label,
     odds: close ? `${percent(first.p)} and ${percent(next.p)}` : percent(first.p),
     top: first,
-    rows: rows.map((r) => ({ ...r, top: r.label === first.label, text: percent(r.p) })),
+    note: BAND_NOTES[id] ?? "",
+    // In a close result both answers lead, because the verdict names both.
+    rows: rows.map((r) => ({ ...r, top: r.label === first.label || (close && r.label === next.label), text: percent(r.p) })),
   };
 }
 
@@ -139,13 +144,13 @@ export function batchCSV(rows) {
 // Starting points. Filling one never runs it.
 export const TEMPLATES = [
   { id: "route", name: "Route a ticket", type: "choice", question: "Which team should handle this ticket?", situation: "Customer: I was charged twice for the same order.",
-    options: [{ name: "billing", note: "Charges, refunds, invoices" }, { name: "shipping", note: "Delivery and tracking" }, { name: "technical", note: "Bugs and crashes" }] },
+    options: [{ name: "Billing", note: "Charges, refunds, invoices" }, { name: "Shipping", note: "Delivery and tracking" }, { name: "Technical", note: "Bugs and crashes" }] },
   { id: "tone", name: "Read a review", type: "choice", question: "What is the sentiment?", situation: "Review: It works, and setup took two minutes. The manual is thin.",
-    options: [{ name: "positive", note: "" }, { name: "negative", note: "" }, { name: "neutral", note: "" }] },
+    options: [{ name: "Positive", note: "" }, { name: "Negative", note: "" }, { name: "Neutral", note: "" }] },
   { id: "followup", name: "Needs a person?", type: "noul", question: "Should a person follow up?", situation: "Customer says thanks, the issue is resolved and they need nothing else." },
   { id: "scam", name: "Spot a scam", type: "noul", question: "Is this message a scam?", situation: "Message: You won a free cruise. Click this link and enter your card number." },
   { id: "urgent", name: "How urgent", type: "score", question: "How urgent is this issue?", situation: "The search page is slow for some customers this morning.",
-    options: [{ name: "low", note: "" }, { name: "medium", note: "" }, { name: "high", note: "" }] },
+    options: [{ name: "Low", note: "" }, { name: "Medium", note: "" }, { name: "High", note: "" }] },
   { id: "stars", name: "Rate a review", type: "score", question: "How would you rate this review?", situation: "Review: Good value, though delivery took a while.",
-    options: ["very bad", "bad", "okay", "good", "very good"].map((name) => ({ name, note: "" })) },
+    options: ["Very bad", "Bad", "Okay", "Good", "Very good"].map((name) => ({ name, note: "" })) },
 ];
