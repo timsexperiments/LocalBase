@@ -5,6 +5,8 @@
 # binary goes (default ~/.cache/localbase).
 set -u
 cd "$(dirname "$0")/.." || exit 2
+. tools/disk-guard.sh
+disk_guard bench
 # Built to a fixed place and replaced by the next run, so there is nothing to clean up.
 bin=${LOCALBASE_TOOLS_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/localbase}/bench
 mkdir -p "${bin%/*}" || exit 2
