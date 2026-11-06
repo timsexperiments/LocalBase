@@ -105,7 +105,6 @@ func faultTook(t *testing.T, what string, status int) {
 }
 
 func TestAGoodKeyIsNeverToldItIsBad(t *testing.T) {
-	knownBug(t, 609, "a key lookup that fails answers 401 invalid_api_key")
 	for _, fault := range databaseFaults {
 		t.Run(fault.name, func(t *testing.T) {
 			ctx, g, c := start(t, lab.Options{})
@@ -231,7 +230,6 @@ func localLink(t *testing.T, ctx context.Context, g *lab.Gateway) string {
 }
 
 func TestASignedInBrowserIsNotSignedOutByTheDatabase(t *testing.T) {
-	knownBug(t, 610, "a session lookup that fails signs the browser out")
 	for _, fault := range databaseFaults {
 		t.Run(fault.name, func(t *testing.T) {
 			ctx, g, _ := start(t, lab.Options{})
