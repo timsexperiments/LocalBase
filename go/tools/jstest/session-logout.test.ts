@@ -27,7 +27,7 @@ async function load(answer: () => Promise<{ ok: boolean }>) {
     createElement: element,
     hidden: false,
   };
-  g.location = { assign: (to: string) => assigned.push(to), reload() {} };
+  setGlobal("location", { assign: (to: string) => assigned.push(to), reload() {} });
   g.fetch = answer;
   await import(`../../internal/web/static/js/session.js?${Math.random()}`);
   const button = { disabled: false, dataset: {} as Record<string, string> };
@@ -43,10 +43,14 @@ async function load(answer: () => Promise<{ ok: boolean }>) {
 // `bun test` runs every file in one process, so the stubs must not outlive each test.
 const g = globalThis as Record<string, unknown>;
 const original = { fetch: g.fetch, document: g.document, location: g.location };
+// Another test file in the same run can leave a global read-only, so it's replaced, not assigned.
+function setGlobal(name: string, value: unknown) {
+  Object.defineProperty(globalThis, name, { value, writable: true, configurable: true });
+}
 afterEach(() => {
   g.fetch = original.fetch;
   g.document = original.document;
-  g.location = original.location;
+  setGlobal("location", original.location);
 });
 
 describe("signing out", () => {

@@ -234,15 +234,6 @@ func defaultModelsChange(_ *http.Request, body, _ []byte) (auditedChange, bool) 
 	return auditedChange{"set", "model", first}, true
 }
 
-func backendChange(_ *http.Request, body, _ []byte) (auditedChange, bool) {
-	var in struct {
-		Action string `json:"action"`
-		Model  string `json:"model"`
-	}
-	_ = json.Unmarshal(body, &in) // as modelsChange
-	return auditedChange{in.Action, "model", in.Model}, true
-}
-
 func importsChange(_ *http.Request, body, response []byte) (auditedChange, bool) {
 	var in struct {
 		Action string `json:"action"`
