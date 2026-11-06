@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -190,5 +191,112 @@ func TestRerereIsTheToolsAlone(t *testing.T) {
 	file, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
 	if err != nil || !strings.Contains(string(file), "enabled = false") {
 		t.Errorf("the repository's own setting changed: %s %v", file, err)
+	}
+}
+
+// A branch that moved after the fold shows up, merged or picked, with what it lacks.
+func TestBehindSeesNewCommits(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.test"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	commit := func(subject string) { t.Helper(); git("commit", "-q", "--allow-empty", "-m", subject) }
+	git("init", "-q", "-b", "tree")
+	commit("base")
+	git("branch", "base")
+	git("checkout", "-q", "-b", "merged", "base")
+	commit("merged work")
+	git("checkout", "-q", "-b", "picked", "base")
+	commit("picked work")
+	git("checkout", "-q", "tree")
+	git("merge", "-q", "--no-ff", "-m", "merge", "merged")
+	commit("picked work")
+	for _, b := range []string{"merged", "picked"} {
+		git("update-ref", "refs/remotes/origin/"+prefix+b, b)
+	}
+	list := []string{"merged", "pick picked base", tidyStep}
+	rows, err := behind(dir, list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].behind != 0 || rows[1].behind != 0 {
+		t.Fatalf("nothing moved yet: %+v", rows)
+	}
+	git("checkout", "-q", "merged")
+	commit("merged, later")
+	git("update-ref", "refs/remotes/origin/"+prefix+"merged", "merged")
+	git("checkout", "-q", "picked")
+	commit("picked, later")
+	git("update-ref", "refs/remotes/origin/"+prefix+"picked", "picked")
+	git("checkout", "-q", "tree")
+	rows, err = behind(dir, list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].behind != 1 || !strings.Contains(rows[0].missing[0], "merged, later") || rows[1].behind != 1 || !strings.Contains(rows[1].missing[0], "picked, later") {
+		t.Errorf("%+v", rows)
+	}
+}
+
+// By hand, every conflicted file is left for a person, union files and app.css included.
+func TestByHandResolvesNothing(t *testing.T) {
+	was := byHand
+	byHand = true
+	defer func() { byHand = was }()
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil && args[0] != "merge" {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(name, text string) {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := []string{"CHANGELOG.md", generatedCSS, "plain.go"}
+	git("init", "-q", "-b", "main")
+	for _, f := range files {
+		write(f, "base\n")
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+	git("checkout", "-q", "-b", "other")
+	for _, f := range files {
+		write(f, "theirs\n")
+	}
+	git("commit", "-q", "-am", "theirs")
+	git("checkout", "-q", "main")
+	for _, f := range files {
+		write(f, "ours\n")
+	}
+	git("commit", "-q", "-am", "ours")
+	git("merge", "-q", "other")
+	left, err := resolve(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(left)
+	want := append([]string(nil), files...)
+	slices.Sort(want)
+	if !slices.Equal(left, want) {
+		t.Errorf("left for a person: %v, want %v", left, want)
+	}
+	for _, f := range files {
+		if b, _ := os.ReadFile(filepath.Join(dir, f)); !markerRe.Match(b) {
+			t.Errorf("%s was resolved: %q", f, b)
+		}
 	}
 }

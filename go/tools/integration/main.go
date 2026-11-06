@@ -45,11 +45,40 @@ func main() {
 	test := flag.Bool("test", false, "run gofmt, vet and the unit tests on the result")
 	resume := flag.Bool("resume", false, "continue in the existing worktree after resolving a conflict")
 	auditOnly := flag.Bool("audit", false, "report what folded pull requests added that the tree no longer has, in the existing worktree")
+	behindOnly := flag.Bool("behind", false, "report folded branches whose current head has commits the tree lacks, in the existing worktree")
+	flag.BoolVar(&byHand, "by-hand", false, "resolve nothing: rerere off, no file kept both ways, no side taken for app.css, no DESIGN tidy; every conflict stops for a person")
 	flag.Parse()
-	useRerere()
+	if byHand {
+		noRerere()
+	} else {
+		useRerere()
+	}
 	list, err := readOrder(orderPath())
 	check(err)
 	check(run("", "git", "fetch", "-q", "origin"))
+	if *behindOnly {
+		rows, err := behind(*dir, list)
+		check(err)
+		late := 0
+		for _, r := range rows {
+			fmt.Printf("%-28s %-6s %-9s %d", r.branch, r.kind, r.head, r.behind)
+			if r.mergesInPick > 0 {
+				fmt.Printf("  (%d merge commits, covered only by -audit)", r.mergesInPick)
+			}
+			fmt.Println()
+			for _, m := range r.missing {
+				fmt.Printf("    behind: %s\n", clip(m))
+			}
+			if r.behind > 0 {
+				late++
+			}
+		}
+		fmt.Printf("%d of %d folded branches are behind\n", late, len(rows))
+		if late > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 	if *auditOnly {
 		intended, err := readIntended(filepath.Join(filepath.Dir(orderPath()), "intended.txt"))
 		check(err)
@@ -144,6 +173,9 @@ func resolve(dir string) ([]string, error) {
 	out, err := exec.Command("git", "-C", dir, "diff", "--name-only", "--diff-filter=U").Output()
 	if err != nil {
 		return nil, err
+	}
+	if byHand {
+		return strings.Fields(string(out)), nil
 	}
 	var left []string
 	for _, f := range strings.Fields(string(out)) {
@@ -285,6 +317,14 @@ const tidyStep = "tidy"
 
 // tidy drops the repeats merging leaves in DESIGN and rebuilds what is generated.
 func tidy(dir string) {
+	if byHand {
+		// The repeats it would remove are a person's to see; app.css is rebuilt below as ever.
+		check(run(filepath.Join(dir, "go"), "tools/tailwind.sh"))
+		if out, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output(); len(out) > 0 {
+			fmt.Printf("by hand: the rebuilt app.css or another file changed; commit it yourself:\n%s", out)
+		}
+		return
+	}
 	removed, err := tidyDesign(filepath.Join(dir, "go", "DESIGN.md"))
 	check(err)
 	check(run(filepath.Join(dir, "go"), "sh", "-c", `"$(go env GOROOT)/bin/gofmt" -w contract/fsguard_test.go`))
@@ -307,6 +347,21 @@ func parsePick(line string) (branch, from string, ok bool) {
 		return "", "", false
 	}
 	return f[1], f[2], true
+}
+
+// byHand: the shared-tree rule (conflicts by hand, rerere off, no scripted resolvers).
+var byHand bool
+
+// noRerere says rerere is off for this tool's git commands, since git turns it on by itself
+// wherever a cache exists.
+func noRerere() {
+	for k, v := range map[string]string{
+		"GIT_CONFIG_COUNT":   "1",
+		"GIT_CONFIG_KEY_0":   "rerere.enabled",
+		"GIT_CONFIG_VALUE_0": "false",
+	} {
+		check(os.Setenv(k, v))
+	}
 }
 
 // useRerere turns rerere on for the git commands this tool runs, and only those. The repository
