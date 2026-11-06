@@ -10,7 +10,7 @@
   <section aria-labelledby="results-title" class="lab-results mt-4">
     {{if eq .Tab "image"}}<h2 id="results-title" class="sr-only">Pictures</h2>
     {{else if eq .Tab "video"}}<h2 id="results-title" class="sr-only">Videos</h2>
-    {{else if eq .Tab "speech"}}<h2 id="results-title" class="sr-only">Speech</h2>
+    {{else if eq .Tab "speech"}}<h2 id="results-title" class="sr-only">Scripts</h2>
     {{else if eq .Tab "transcribe"}}<h2 id="results-title" class="sr-only">Transcripts</h2>
     {{else if or .Ready .Items}}<h2 id="results-title" class="font-bold">Results <span class="font-normal text-muted">· kept for {{if eq .Tab "video"}}15{{else}}30{{end}} minutes</span></h2>{{else}}<h2 id="results-title" class="sr-only">Results</h2>{{end}}
     <p id="lab-said" class="sr-only" role="status"></p>
