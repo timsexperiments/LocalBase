@@ -789,12 +789,16 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   await sleep(600);
   await send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const beforeLost = await seen();
+  const watchNotice = `(() => { window.__noticeSaid = []; const box = document.getElementById("session-notice"); if (!box) return false; window.__noticeWatch?.disconnect(); window.__noticeWatch = new MutationObserver(() => { const t = box.textContent.trim(); if (t) window.__noticeSaid.push(t); }); window.__noticeWatch.observe(box, { childList: true, subtree: true, characterData: true }); return true; })()`;
+  const noticeSaid = `(window.__noticeSaid ?? ["no watcher"]).join(" | ")`;
+  await ev(watchNotice);
   await ev(`document.querySelector("[data-record-stop]").click()`);
   for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150);
   const lost = await ev(`({ said: document.querySelector("[data-keep-said]").textContent, start: document.querySelector("[data-transcribe-start]").hidden })`);
-  // Everything is unreachable here, the sign-in check too. The panel says it, so the page's own notice stays quiet.
+  // Everything is unreachable here, the sign-in check too. The panel says it, so the page's own notice never speaks:
+  // watched, not read once, because the next request that works clears it.
   await sleep(1200);
-  const quietOffline = await ev(`document.getElementById("session-notice")?.textContent.trim() ?? "no notice box"`);
+  const quietOffline = await ev(noticeSaid);
   await send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   check(/Your recording is still here, send again/.test(lost.said) && lost.start, `a failed send keeps the recording: ${JSON.stringify(lost)}`);
   check(quietOffline === "", `with nothing reachable, only the panel says so: ${JSON.stringify(quietOffline)}`);
@@ -823,10 +827,11 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     const panelUp = async () => { for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150); return !(await ev(`document.querySelector("[data-keep]").hidden`)); };
     // Only the send fails; the sign-in check answers.
     await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
+    await ev(watchNotice);
     await setFile(voiceFile);
     const onlySend = { panel: await panelUp() };
-    await sleep(1200);
-    onlySend.notice = await ev(noticeNow);
+    await sleep(1500);
+    onlySend.notice = await ev(noticeSaid);
     await send("Network.setBlockedURLs", { urls: [] });
     check(onlySend.panel && onlySend.notice === "", `with only the send failing, only the panel says so: ${JSON.stringify(onlySend)}`);
     await ev(`document.querySelector("[data-keep-drop]")?.click()`);
