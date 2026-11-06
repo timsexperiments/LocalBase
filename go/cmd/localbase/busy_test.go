@@ -2,16 +2,19 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -20,14 +23,101 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// A writer arriving after the database opened: the settings must not quietly become the defaults.
-func TestPersistedConfigOfABusyDatabaseIsAnError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "local-base.db")
-	created, err := store.Open(path)
+// recoveringEnv is set for the helper process recoveringElsewhere starts.
+const recoveringEnv = "LOCALBASE_TEST_RECOVERING"
+
+// TestRecoveringHelper is that process: it acts like another connection rebuilding the WAL index of
+// the database it's given. It holds the -shm's write lock (byte 120) and recovery lock (byte 122),
+// and the first copy of the index header no longer matches the second, so a reader in another process
+// can neither trust the index nor rebuild it: SQLITE_BUSY_RECOVERY, after the busy timeout. Under WAL a
+// writer no longer makes a reader busy, so this is how a busy read happens now; a crashed root's first
+// opener beside a second process does it for real. Found by Reliability. It writes a test root's -shm.
+func TestRecoveringHelper(t *testing.T) {
+	path := os.Getenv(recoveringEnv)
+	if path == "" {
+		t.Skip("only as the helper process")
+	}
+	f, err := os.OpenFile(path+"-shm", os.O_RDWR, 0)
+	if err != nil {
+		fmt.Println("FAILED", err)
+		return
+	}
+	for _, b := range []int64{120, 122} {
+		lock := syscall.Flock_t{Type: syscall.F_WRLCK, Whence: io.SeekStart, Start: b, Len: 1}
+		if err := syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &lock); err != nil {
+			fmt.Println("FAILED", err)
+			return
+		}
+	}
+	if _, err := f.WriteAt(bytes.Repeat([]byte{0xFF}, 48), 0); err != nil {
+		fmt.Println("FAILED", err)
+		return
+	}
+	fmt.Println("RECOVERING")
+	_, _ = io.ReadAll(os.Stdin) // until released
+	_ = f.Close()
+}
+
+// recoveringElsewhere starts that process on path and returns once it holds the locks. release ends
+// it; the next read rebuilds the index from the -wal.
+func recoveringElsewhere(t *testing.T, path string) (release func()) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRecoveringHelper$", "-test.count=1")
+	cmd.Env = append(os.Environ(), recoveringEnv+"="+path)
+	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	created.Close()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	released := false
+	release = func() {
+		if !released {
+			released = true
+			_ = stdin.Close()
+			_ = cmd.Wait()
+		}
+	}
+	t.Cleanup(release)
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "RECOVERING" {
+			return release
+		}
+		if strings.HasPrefix(line, "FAILED") {
+			t.Fatal(line)
+		}
+	}
+	t.Fatal("the helper process ended without taking the locks")
+	return release
+}
+
+// attachedRoot is a root with a writable store attached, so its -shm exists and a read-only store
+// reads it in place, as beside a running gateway.
+func attachedRoot(t *testing.T) (dir string) {
+	t.Helper()
+	dir = filepath.Join(t.TempDir(), "root")
+	r, err := root.Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attached, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { attached.Close() })
+	return dir
+}
+
+// The database turning busy after it opened: the settings must not quietly become the defaults.
+func TestPersistedConfigOfABusyDatabaseIsAnError(t *testing.T) {
+	path := filepath.Join(attachedRoot(t), "local-base.db")
 	st, err := store.OpenReadOnly(path)
 	if err != nil {
 		t.Fatal(err)
@@ -36,43 +126,16 @@ func TestPersistedConfigOfABusyDatabaseIsAnError(t *testing.T) {
 	if cfg, err := persistedConfig(st); err != nil || cfg != nil {
 		t.Fatalf("no settings yet: %v %v", cfg, err)
 	}
-	writer, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer writer.Close()
-	writer.SetMaxOpenConns(1)
-	if _, err := writer.Exec(`BEGIN EXCLUSIVE`); err != nil {
-		t.Fatal(err)
-	}
+	recoveringElsewhere(t, path)
 	if _, err := persistedConfig(st); !store.IsBusy(err) {
 		t.Errorf("a busy database: %v", err)
 	}
 }
 
-// The same writer, seen by the command: doctor must not go on to report the defaults.
+// The same, seen by the command: doctor must not go on to report the defaults.
 func TestReadEnvStopsWhenTheDatabaseTurnsBusy(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "root")
-	r, err := root.Init(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	created, err := store.Open(r.DB())
-	if err != nil {
-		t.Fatal(err)
-	}
-	created.Close()
-	writer, err := sql.Open("sqlite", "file:"+r.DB())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer writer.Close()
-	writer.SetMaxOpenConns(1)
-	afterReadOpen = func() {
-		if _, err := writer.Exec(`BEGIN EXCLUSIVE`); err != nil {
-			t.Fatal(err)
-		}
-	}
+	dir := attachedRoot(t)
+	afterReadOpen = func() { recoveringElsewhere(t, filepath.Join(dir, "local-base.db")) }
 	defer func() { afterReadOpen = func() {} }()
 	e, err := readEnv(&cli.Ctx{Global: cli.Global{Root: dir}}, true)
 	if !store.IsBusy(err) {
@@ -95,31 +158,18 @@ func TestABusyDatabaseNamesNoCommandToRun(t *testing.T) {
 	}
 }
 
-// busyRead is a database that a writer holds, for reads the command makes after it opened.
+// busyRead is a database read in place, beside an attached store; hold makes its next reads busy.
 func busyRead(t *testing.T) (*store.Store, func()) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "local-base.db")
-	created, err := store.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	created.Close()
+	path := filepath.Join(attachedRoot(t), "local-base.db")
 	st, err := store.OpenReadOnly(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	writer, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { writer.Close() })
-	writer.SetMaxOpenConns(1)
 	return st, func() {
 		t.Helper()
-		if _, err := writer.Exec(`BEGIN EXCLUSIVE`); err != nil {
-			t.Fatal(err)
-		}
+		recoveringElsewhere(t, path)
 	}
 }
 
