@@ -78,6 +78,7 @@ var targets []*Target
 func TestMain(m *testing.M) {
 	flag.Parse()
 	code := func() int {
+		defer removeGoCLI()
 		if *urlFlag != "" {
 			// The key may come from the environment, so it never appears on a command line.
 			if *keyFlag == "" {

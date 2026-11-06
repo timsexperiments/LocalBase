@@ -172,7 +172,7 @@ func (e *e2e) serve(extra ...string) {
 	e.t.Helper()
 	port, llmPort := freePort(), freePort()
 	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
-		"--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
+		"--stt-port", fmt.Sprint(freePort()), "--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
 	if e.noLLMPortFlag {
 		args = slices.DeleteFunc(args, func(a string) bool { return a == "--llm-port" || a == fmt.Sprint(llmPort) })
 	}

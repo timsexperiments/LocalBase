@@ -23,6 +23,13 @@ var (
 	goCLIErr  error
 )
 
+// removeGoCLI ends the one build of the binary, which every test run would otherwise leave behind.
+func removeGoCLI() {
+	if goCLIPath != "" {
+		_ = guardedRemoveAll(filepath.Dir(goCLIPath))
+	}
+}
+
 func goCLI(t *testing.T) string {
 	goCLIOnce.Do(func() {
 		dir, err := scratchTemp("lbgo-cli-bin-")
