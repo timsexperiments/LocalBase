@@ -823,7 +823,6 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   // The page's own notice and Transcribe's panel (with FE, session.js): a form that says its own send failure keeps the
   // sign-in check, and loses only the two lines that would repeat it.
   if (voiceFile) {
-    const noticeNow = `document.getElementById("session-notice")?.textContent.trim() ?? "no notice box"`;
     const panelUp = async () => { for (let i = 0; i < 40 && (await ev(`document.querySelector("[data-keep]").hidden`)); i++) await sleep(150); return !(await ev(`document.querySelector("[data-keep]").hidden`)); };
     // Only the send fails; the sign-in check answers.
     await send("Network.setBlockedURLs", { urls: ["*/app/lab/transcribe"] });
@@ -843,10 +842,12 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
       else send("Fetch.continueRequest", { requestId: m.params.requestId }); };
     ws.addEventListener("message", paused);
     await send("Fetch.enable", { patterns: [{ urlPattern: "*/app/lab/transcribe*" }, { urlPattern: "*/app/session*" }] });
+    // Watched as the two above are: a notice that came and went still counts as said.
+    await ev(watchNotice);
     await setFile(voiceFile);
     const expired = { panel: await panelUp() };
-    for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeNow)); i++) await sleep(150);
-    expired.notice = await ev(noticeNow);
+    for (let i = 0; i < 30 && !/sign-in expired/.test(await ev(noticeSaid)); i++) await sleep(150);
+    expired.notice = await ev(noticeSaid);
     await send("Fetch.disable");
     ws.removeEventListener("message", paused);
     check(expired.panel && /Your sign-in expired/.test(expired.notice), `an expired sign-in is still said on this form: ${JSON.stringify(expired)}`);
@@ -854,9 +855,10 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
     // A form that doesn't say its own failure still gets the page's notice.
     await nav("/app/studio/image");
     await send("Network.setBlockedURLs", { urls: ["*/app/lab/image"] });
+    await ev(watchNotice);
     await ev(`(() => { const f = document.querySelector("form.lab-dock"); f.querySelector("#lab-prompt").value = "a paper boat"; f.querySelector("button[type=submit]").click(); })()`);
-    for (let i = 0; i < 30 && !(await ev(noticeNow)); i++) await sleep(150);
-    const other = await ev(noticeNow);
+    for (let i = 0; i < 30 && !/didn.t load|Can.t reach/.test(await ev(noticeSaid)); i++) await sleep(150);
+    const other = await ev(noticeSaid);
     await send("Network.setBlockedURLs", { urls: [] });
     check(/didn.t load|Can.t reach/.test(other), `a form that doesn't say its own failure still gets the notice: ${JSON.stringify(other)}`);
     await nav("/app/studio/transcribe");
