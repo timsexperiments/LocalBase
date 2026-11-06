@@ -205,12 +205,18 @@ else {
   await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: globalThis.__noShare });
   await nav("/app/studio/image");
   await ev(`(() => { document.querySelector("#lab-prompt").value = "fake:slow-image stop me"; document.querySelector(".lab-dock button[type=submit]").click(); })()`);
-  for (let i = 0; i < 30 && !(await ev(`[...document.querySelectorAll("#lab-items > li button")].some((b) => b.textContent.trim() === "Stop")`)); i++) await sleep(100);
-  await ev(`[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")?.click()`);
-  await sleep(1200);
-  check(await ev(`document.querySelector("#lab-items > li").textContent.includes("Stopped.")`), "Stop stops the run");
+  // Stop is waited for and then its result is: a fixed wait, with a click that quietly found nothing, read a run that was
+  // still going as a failed Stop, and the next step then threw. Each now says what it saw.
+  const stopButton = `[...document.querySelectorAll("#lab-items > li button")].find((b) => b.textContent.trim() === "Stop")`;
+  const startedAt = Date.now();
+  for (let i = 0; i < 150 && !(await ev(`!!${stopButton}`)); i++) await sleep(100);
+  const stopShown = await ev(`!!${stopButton}`);
+  check(stopShown, `a slow picture shows Stop while it runs: after ${Date.now() - startedAt} ms`);
+  if (stopShown) await ev(`${stopButton}.click()`);
+  for (let i = 0; i < 100 && !(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`)); i++) await sleep(100);
+  check(await ev(`!!document.querySelector("#lab-items > li")?.textContent.includes("Stopped.")`), `Stop stops the run: ${JSON.stringify(await ev(`document.querySelector("#lab-items > li")?.textContent.replace(/\\s+/g, " ").trim().slice(0, 80)`))}`);
   const before = await ev(`document.querySelectorAll("#lab-items > li").length`);
-  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]").click()`);
+  await ev(`document.querySelector("#lab-items > li [aria-label=\\"Remove this result\\"]")?.click()`);
   await sleep(800);
   const after = await ev(`document.querySelectorAll("#lab-items > li").length`);
   const left = await runsNow();
@@ -774,7 +780,8 @@ if (!(await ev(`!!document.querySelector("form[data-transcribe]")`))) {
   // a slow link can otherwise leave the page where it was, and what follows would pass without moving at all.
   const visited = [];
   for (const href of ["/app/models", "/app/studio", "/app/studio/transcribe"]) {
-    await ev(`document.querySelector("a[href='${href}']").click()`);
+    const clicked = await ev(`(() => { const a = document.querySelector("a[href='${href}']"); if (!a) return false; a.click(); return true; })()`);
+    if (!clicked) { visited.push(`no link to ${href} on ${await ev("location.pathname")}`); break; }
     for (let i = 0; i < 80 && (await ev("location.pathname")) !== href; i++) await sleep(150);
     visited.push(await ev("location.pathname"));
     await sleep(300);
