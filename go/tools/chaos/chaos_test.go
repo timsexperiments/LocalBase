@@ -61,7 +61,9 @@ func start(t *testing.T, o lab.Options) (context.Context, *lab.Gateway, *lab.Cli
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testLimit)
 	t.Cleanup(cancel)
-	o.Name = strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	// The name becomes a directory, and GORACE's log_path in it: a comma there ends the option, so a
+	// race build couldn't start (exit 66, nothing logged).
+	o.Name = strings.NewReplacer("/", "_", " ", "_", ",", "_").Replace(t.Name())
 	if o.CtxSize == 0 {
 		o.CtxSize = 8192
 	}

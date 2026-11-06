@@ -29,6 +29,7 @@
 // offloaded layer count. FAKE_PLACEMENT_BUG=cuda0 puts the first expert on
 // CUDA0; FAKE_COMPUTE_MIB sets the CUDA0 compute buffer (default 100).
 // FAKE_STARTUP_MS delays listening, like a slow model load.
+// FAKE_IGNORE_TERM makes it ignore SIGTERM and SIGINT.
 //
 // Embeddings are one vector per input, in order, and made from the input's words: texts that
 // share words point the same way, so a page's ranking can be tested without a model. They mean
@@ -48,8 +49,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -91,6 +94,9 @@ func main() {
 	// placement lines need 4.
 	if verbosity >= 4 {
 		placementLines(model, ngl, cpuMoE)
+	}
+	if os.Getenv("FAKE_IGNORE_TERM") != "" {
+		signal.Ignore(syscall.SIGTERM, syscall.SIGINT) // a backend that doesn't answer a polite stop
 	}
 	if ms, _ := strconv.Atoi(os.Getenv("FAKE_STARTUP_MS")); ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond) // a slow model load

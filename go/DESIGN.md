@@ -3296,6 +3296,8 @@ browser-owned history, then dismisses the run.
   - the contract `TestCLIDiagnostics`, which plants a checkpoint holding
     `runOutputSecret55` next to the other planted secrets.
 
+**How long a stop takes.** launchd, systemd and `upgrade` allow 15 s. A stop ends any load first, drains requests for up to 9 s, sends SIGKILL to every backend's group at 12 s if any is left (`gateway.stop-deadline`), and exits at 13.5 s whatever is still going (`gateway.stop-abandoned`). A stop that reaches 12 s has cut off whatever was still running.
+
 **Shutdown.** Graceful shutdown (`StopRuns`, before the HTTP server
 drains) cancels active runs, marks them `interrupted` /
 `gateway_restart`, checkpoints them, and closes every event stream.
