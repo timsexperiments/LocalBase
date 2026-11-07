@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -87,7 +87,7 @@ func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool) (*se
 
 // readJSON reads a root's file through the check that refuses a link or another user's file.
 func readJSON(path string) ([]byte, map[string]any, error) {
-	raw, err := obs.ReadOwnedRegular(path)
+	raw, err := safefile.ReadOwnedRegular(path)
 	if err != nil {
 		return nil, nil, err
 	}
