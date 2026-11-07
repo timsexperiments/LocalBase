@@ -190,7 +190,7 @@ linters:
       - path: ^internal/runtime/service\.go$
         linters: [errcheck]
         text: "is not checked"
-      - path: ^internal/service/service\.go$
+      - path: ^internal/service/service_control\.go$
         linters: [errcheck]
         text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|r\\.ClearStale|st\\.Close"
       - path: ^internal/video/convert\.go$
