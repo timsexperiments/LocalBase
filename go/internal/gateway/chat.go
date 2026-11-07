@@ -220,9 +220,16 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("Model '%s' does not support tool calling. Choose a tool-capable model from GET /v1/models.", spec.ModelID), strp(p))
 		return
 	}
-	if t := s.importedTask(model); t == "embeddings" || t == "decision" {
-		badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not chat.", model, t), nil)
-		return
+	if spec == nil {
+		t, err := s.importedTask(r.Context(), model)
+		if err != nil {
+			serviceUnavailable(w, r, "LLM")
+			return
+		}
+		if t == "embeddings" || t == "decision" {
+			badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not chat.", model, t), nil)
+			return
+		}
 	}
 	if spec != nil && spec.LLMRuntime != nil {
 		msg := fmt.Sprintf("Model '%s' supports embeddings only.", spec.ModelID)
@@ -279,9 +286,16 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, r, fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID), nil)
 		return
 	}
-	if t := s.importedTask(model); t != "" && t != "embeddings" {
-		badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not embeddings.", model, t), nil)
-		return
+	if spec == nil {
+		t, err := s.importedTask(r.Context(), model)
+		if err != nil {
+			serviceUnavailable(w, r, "LLM")
+			return
+		}
+		if t != "" && t != "embeddings" {
+			badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not embeddings.", model, t), nil)
+			return
+		}
 	}
 	// What the backend says here names its own flags and pooling types, and it would
 	// start the model first.
@@ -322,12 +336,20 @@ func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := req["model"].(string)
-	if t := s.importedTask(model); t != "" && t != "decision" {
-		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
-			fmt.Sprintf("Model '%s' is not a decision model.", model), strp("model"))
-		return
+	spec := s.Catalog.ByID(model)
+	if spec == nil {
+		t, err := s.importedTask(r.Context(), model)
+		if err != nil {
+			serviceUnavailable(w, r, "LLM")
+			return
+		}
+		if t != "" && t != "decision" {
+			writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+				fmt.Sprintf("Model '%s' is not a decision model.", model), strp("model"))
+			return
+		}
 	}
-	if spec := s.Catalog.ByID(model); spec != nil && !spec.IsDecision() {
+	if spec != nil && !spec.IsDecision() {
 		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
 			fmt.Sprintf(`Model '%s' is not a decision model. Choose a model whose architecture.output_modalities include "decisions" from GET /v1/models.`, spec.ModelID), strp("model"))
 		return

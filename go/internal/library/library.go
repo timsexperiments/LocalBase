@@ -139,6 +139,20 @@ func (l *Library) imported(ctx context.Context) ([]Entry, error) {
 	return out, nil
 }
 
+// Imported returns one imported model, reading only its row, or nil when id isn't one. A
+// definition that doesn't decode is left out, as Entries leaves it out.
+func (l *Library) Imported(ctx context.Context, id string) (*Entry, error) {
+	row, err := l.Store.ImportedModelByID(ctx, id)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	var m models.Model
+	if err := json.Unmarshal(row.Definition, &m); err != nil {
+		return nil, nil
+	}
+	return &Entry{Model: m, Dir: acquire.ImportedDir(l.Root.Dir, m.ID), Imported: true}, nil
+}
+
 // Get returns one model.
 func (l *Library) Get(ctx context.Context, id string) (*Entry, error) {
 	if s := l.Catalog.ByID(id); s != nil {

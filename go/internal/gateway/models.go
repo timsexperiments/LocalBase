@@ -115,15 +115,6 @@ func (s *Server) ServedModels(p *auth.Principal, only string) ([]Model, []*store
 	return out, problems
 }
 
-// importedLLMs lists imported models the LLM runtime serves.
-func (s *Server) importedLLMs() []library.Entry {
-	entries, err := s.importedLLMsChecked()
-	if err != nil {
-		s.Log.Error("Could not read the imported models.", "event", "models.read-failed", "step", "reading the imported models", "error", err.Error())
-	}
-	return entries
-}
-
 func (s *Server) importedLLMsChecked() ([]library.Entry, error) {
 	if s.Library == nil {
 		return nil, nil
@@ -150,14 +141,18 @@ func importTask(m *models.Model) string {
 	return ""
 }
 
-// importedTask is an imported model's LLM task, or "".
-func (s *Server) importedTask(id string) string {
-	for _, e := range s.importedLLMs() {
-		if e.Model.ID == id {
-			return importTask(&e.Model)
-		}
+// importedTask is an imported model's LLM task, or "" when id isn't an imported LLM. It reads that
+// model's row only, with ctx. An error is the library's, and never means "not imported": a caller
+// answers it as the LLM service unavailable for now.
+func (s *Server) importedTask(ctx context.Context, id string) (string, error) {
+	if s.Library == nil {
+		return "", nil
 	}
-	return ""
+	e, err := s.Library.Imported(ctx, id)
+	if err != nil || e == nil {
+		return "", err
+	}
+	return importTask(&e.Model), nil
 }
 
 func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) (Model, []*store.ReadError) {

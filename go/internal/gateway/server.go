@@ -77,6 +77,8 @@ type Server struct {
 	adminMu sync.Mutex
 	// beforeAdminWrite runs after those checks, before the write (tests only).
 	beforeAdminWrite func()
+	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
+	speechBusyFor time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runManager
