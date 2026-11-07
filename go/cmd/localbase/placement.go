@@ -102,27 +102,38 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 			}
 			req.Mode = placement.Custom
 		}
+		// Checked first, then saved: a refused placement saves its context size no more than its mode.
+		var sized *store.Config
 		if c.Has("context-size") {
 			n, err := strconv.Atoi(c.String("context-size"))
 			if err != nil || n < 256 {
 				return nil, cli.Inputf("--context-size must be at least 256 tokens")
 			}
-			cfg := e.Config.Clone()
-			cfg.CtxSize, cfg.CtxMode = n, "explicit"
-			if err := e.save(cfg); err != nil {
-				return nil, err
-			}
-			e.Config = cfg
-			llm.SetConfig(cfg)
+			sized = e.Config.Clone()
+			sized.CtxSize, sized.CtxMode = n, "explicit"
+			llm.SetConfig(sized) // the preview sizes the placement at the new context
 		}
-		if c.Has("mode") || req.CPUMoELayers != nil || req.GPULayers != nil {
+		placing := c.Has("mode") || req.CPUMoELayers != nil || req.GPULayers != nil
+		if placing {
 			if _, err := llm.PreviewPlacement(id, req); err != nil {
+				if sized != nil {
+					llm.SetConfig(e.Config)
+				}
 				var pe *placement.Error
 				if errors.As(err, &pe) {
 					return nil, cli.Inputf("%s", pe.Message)
 				}
 				return nil, err
 			}
+		}
+		if sized != nil {
+			if err := e.save(sized); err != nil {
+				llm.SetConfig(e.Config)
+				return nil, err
+			}
+			e.Config = sized
+		}
+		if placing {
 			if err := e.Store.SetPlacement(ctx, id, lib.DeviceID, store.Placement{Mode: req.Mode, GPULayers: req.GPULayers, CPUMoELayers: req.CPUMoELayers}); err != nil {
 				return nil, err
 			}
