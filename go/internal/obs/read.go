@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Filters select events (logs.ts matchesLogFilters).
@@ -110,7 +112,7 @@ func Snapshot(rootDir string, f Filters, limit int) ([]*Event, error) {
 	files := paths(rootDir, name)
 	var out []*Event
 	for i := len(files) - 1; i >= 0 && len(out) < limit; i-- {
-		b, err := ReadOwnedRegular(files[i])
+		b, err := safefile.ReadOwnedRegular(files[i])
 		if err != nil {
 			continue
 		}
@@ -156,7 +158,7 @@ func Follow(ctx context.Context, rootDir string, f Filters, emit func(*Event) er
 		}
 		var order []string
 		for _, p := range paths(rootDir, "events") {
-			fh, err := OpenOwnedRegular(p, os.O_RDONLY)
+			fh, err := safefile.OpenOwnedRegular(p, os.O_RDONLY)
 			if err != nil {
 				continue
 			}

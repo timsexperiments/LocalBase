@@ -101,7 +101,7 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 		installSparse(t, dir, spec)
 		cfg.Active[modality], cfg.Selected[modality] = modelID, []string{modelID}
 		m := models.FromSpec(spec)
-		gate := func(_ context.Context, id string) (*runtime.Target, error) {
+		gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 			if id != modelID {
 				return nil, runtime.ErrModelNotFound
 			}

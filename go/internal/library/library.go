@@ -253,8 +253,9 @@ func (l *Library) Gate() runtime.Gate { return l.GateFor(llmTasks...) }
 
 // GateFor resolves models of the given tasks through the selection, under the
 // caller's context: a download a launch starts stops when the launch does.
+// Only a launch (install) downloads, and only with InstallMissing.
 func (l *Library) GateFor(tasks ...string) runtime.Gate {
-	return func(ctx context.Context, modelID string) (*runtime.Target, error) {
+	return func(ctx context.Context, modelID string, install bool) (*runtime.Target, error) {
 		e, err := l.Get(ctx, modelID)
 		if errors.Is(err, ErrNotFound) {
 			return nil, runtime.ErrModelNotFound
@@ -284,7 +285,7 @@ func (l *Library) GateFor(tasks ...string) runtime.Gate {
 			return t, &runtime.LaunchError{Code: "backend_not_selected", Message: "The selected variant no longer exists. Select a backend to run this model."}
 		}
 		if !e.Imported && t.Variant.ID != "default" && len(s.NeedsDownload) > 0 {
-			if !l.InstallMissing {
+			if !install || !l.InstallMissing {
 				return t, &runtime.NotInstalledError{ModelID: modelID}
 			}
 			token := ""

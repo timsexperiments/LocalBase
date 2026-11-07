@@ -62,7 +62,7 @@ func mediaGateway(t *testing.T, modality, modelID, backendID, binary string) (*h
 	mem := memory.NewController(tinyHost{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	m := models.FromSpec(spec)
-	gate := func(_ context.Context, id string) (*runtime.Target, error) {
+	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != modelID {
 			return nil, runtime.ErrModelNotFound
 		}

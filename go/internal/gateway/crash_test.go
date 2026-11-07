@@ -112,7 +112,7 @@ func newTranscriptionGatewayQueue(t *testing.T, queueTimeout time.Duration) *htt
 	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	m := models.FromSpec(spec)
-	gate := func(_ context.Context, id string) (*runtime.Target, error) {
+	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != sttModel {
 			return nil, runtime.ErrModelNotFound
 		}

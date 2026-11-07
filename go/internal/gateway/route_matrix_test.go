@@ -307,6 +307,7 @@ type rawResponse struct {
 	status   int
 	body     string
 	location string
+	allow    string
 }
 
 // raw sends a request byte for byte, so that a method or target that clients
@@ -340,7 +341,7 @@ func (g *matrixGateway) raw(t *testing.T, method, target, hostHeader string, hea
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	return rawResponse{status: resp.StatusCode, body: string(b), location: resp.Header.Get("Location")}
+	return rawResponse{status: resp.StatusCode, body: string(b), location: resp.Header.Get("Location"), allow: resp.Header.Get("Allow")}
 }
 
 // send is raw with the matrix's form body, on methods that can carry one.
