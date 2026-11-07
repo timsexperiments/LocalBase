@@ -299,7 +299,8 @@ func (a *App) Run(args []string) int {
 			reason = re.Reason
 		}
 		if ctx.streamingOK && g.JSON {
-			detail := map[string]string{"code": "operational_error", "message": err.Error()}
+			// Bounded and redacted as fail() does: the JSON line is no way around it.
+			detail := map[string]string{"code": "operational_error", "message": obs.BoundedText(err.Error(), 2048)}
 			if reason != "" {
 				detail["reason"] = reason
 			}
