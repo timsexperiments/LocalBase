@@ -107,6 +107,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 		return nil, err
 	}
 	p := &Process{Name: name, cmd: cmd, done: make(chan struct{})}
+	liveProcesses.add(p)
 	drained := make(chan struct{})
 	var drains sync.WaitGroup
 	drains.Add(2)
@@ -124,6 +125,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 		awaitOutput(drained, &lines)
 		stdout.Close()
 		stderr.Close()
+		liveProcesses.remove(p)
 		close(p.done)
 	}()
 	return p, nil
@@ -177,6 +179,38 @@ func (p *Process) drainOutput(r io.Reader, lines *atomic.Int64, log *slog.Logger
 			}
 		}
 	}
+}
+
+// liveProcesses is every backend process this gateway has started and not yet seen end, in any
+// state, for a stop that has run out of time.
+var liveProcesses = processSet{all: map[*Process]bool{}}
+
+type processSet struct {
+	mu  sync.Mutex
+	all map[*Process]bool
+}
+
+func (s *processSet) add(p *Process) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.all[p] = true
+}
+
+func (s *processSet) remove(p *Process) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.all, p)
+}
+
+// KillAllBackends sends SIGKILL to every backend's process group at once and says how many. It is
+// for a gateway out of time to stop: the managers' own stops are one at a time and polite.
+func KillAllBackends() int {
+	liveProcesses.mu.Lock()
+	defer liveProcesses.mu.Unlock()
+	for p := range liveProcesses.all {
+		_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) // Gone already is what this wants.
+	}
+	return len(liveProcesses.all)
 }
 
 // sampleFootprint reads a backend's memory. A variable so a test can hold a sample.

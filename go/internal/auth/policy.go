@@ -378,8 +378,11 @@ func ApplyPolicy(ctx context.Context, st *store.Store, p *Policy) error {
 		}
 		var held string
 		err := tx.QueryRowContext(ctx, `SELECT r.name FROM auth_user_roles u JOIN auth_roles r ON u.role_id = r.id WHERE u.role_id = ? LIMIT 1`, id).Scan(&held)
-		if err == nil {
+		switch {
+		case err == nil:
 			return &AccessError{"policy-conflict", "Cannot remove browser access role " + held + " while it is assigned to a managed user."}
+		case !errors.Is(err, sql.ErrNoRows):
+			return err // read as "nobody holds it", the role would go, and whoever holds it with it
 		}
 	}
 	for _, q := range []string{`DELETE FROM auth_subject_role_bindings`, `DELETE FROM auth_email_role_bindings`,
@@ -452,12 +455,18 @@ func ClearPolicy(ctx context.Context, st *store.Store) (bool, error) {
 	}
 	defer tx.Rollback()
 	var id string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM auth_settings WHERE id = 'default'`).Scan(&id); errors.Is(err, sql.ErrNoRows) {
+	switch err := tx.QueryRowContext(ctx, `SELECT id FROM auth_settings WHERE id = 'default'`).Scan(&id); {
+	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
+	case err != nil:
+		return false, err
 	}
 	var user string
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM auth_users WHERE status NOT IN ('removed') LIMIT 1`).Scan(&user); err == nil {
+	switch err := tx.QueryRowContext(ctx, `SELECT id FROM auth_users WHERE status NOT IN ('removed') LIMIT 1`).Scan(&user); {
+	case err == nil:
 		return false, &AccessError{"policy-conflict", "Cannot clear the browser access policy while managed users exist."}
+	case !errors.Is(err, sql.ErrNoRows):
+		return false, err // read as "nobody", every role and binding would go
 	}
 	for _, q := range []string{`DELETE FROM auth_subject_role_bindings`, `DELETE FROM auth_email_role_bindings`,
 		`DELETE FROM auth_domain_role_bindings`, `DELETE FROM go_binding_issuers`, `DELETE FROM auth_settings`, `DELETE FROM auth_roles`} {

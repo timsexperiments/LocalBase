@@ -12,6 +12,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 func TestClassifyGateway(t *testing.T) {
@@ -183,12 +184,14 @@ func TestCheckInstalled(t *testing.T) {
 	}
 }
 
-// The release build never compiles the test key in (DESIGN §33.5).
+// The release build never compiles the test key in (DESIGN §33.5). Every file is read: one that
+// moved fails this test rather than leaving it to check nothing.
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
-	for _, p := range []string{"../../tools/build.sh", "../../../scripts/release/build.sh", "../../../.github/workflows/release-go.yml"} {
-		b, err := os.ReadFile(p)
+	repo := testutil.RepoRoot(t)
+	for _, p := range []string{"go/tools/build.sh", "scripts/release/build.sh", ".github/workflows/release-go.yml"} {
+		b, err := os.ReadFile(filepath.Join(repo, p))
 		if err != nil {
-			continue // not on this branch yet
+			t.Fatalf("the release build's %s: %v", p, err)
 		}
 		if strings.Contains(string(b), "testKey") {
 			t.Errorf("%s sets the test key", p)

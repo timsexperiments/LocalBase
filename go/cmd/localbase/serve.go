@@ -65,6 +65,19 @@ func nameBindingIssuers(st *store.Store, access *auth.BrowserAccess, log *slog.L
 	}
 }
 
+// stopStuck does nothing outside a localbase_lab build, where it can stand for a stop that never
+// returns, to test what happens then.
+var stopStuck = func() {}
+
+// How long a stop gets. Requests drain until stopDrainFor, every backend is killed at stopKillAt
+// if any is left, and the process leaves at stopExitAt whatever is still going: all inside the
+// 15 s launchd, systemd and `upgrade` allow.
+const (
+	stopDrainFor = 9 * time.Second
+	stopKillAt   = 12 * time.Second
+	stopExitAt   = 13500 * time.Millisecond
+)
+
 func serveCommand() *cli.Command {
 	opt := func(name, value, help string) cli.Option { return cli.Option{Name: name, Value: value, Help: help} }
 	flag := func(name, help string) cli.Option { return cli.Option{Name: name, Bool: true, Help: help} }
@@ -507,10 +520,34 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	srv.Stopping()
+	// launchd and systemd kill at 15 s, and `upgrade` gives up on a stop then too. Everything below
+	// is polite, one thing at a time, so this is what makes the limit true.
+	stopStarted := time.Now()
+	killBackends := time.AfterFunc(stopKillAt, func() {
+		// Runs first, if nothing got that far: a killed backend would have them end as failed,
+		// and what happened to them is that the gateway stopped.
+		srv.StopRuns(time.Second)
+		log.Error("The gateway ran out of time to stop, so every backend is being killed.", "event", "gateway.stop-deadline",
+			"backends", runtime.KillAllBackends())
+	})
+	defer killBackends.Stop()
+	giveUp := time.AfterFunc(stopExitAt, func() {
+		log.Error("The gateway could not finish stopping in time and is exiting.", "event", "gateway.stop-abandoned")
+		os.Exit(1)
+	})
+	defer giveUp.Stop()
+	stopStuck()
+	// A load in flight goes first: everything below would otherwise wait on it.
+	llm.StopLoads()
+	for _, s := range []*runtime.Service{stt, tts, image, videoService} {
+		if s != nil {
+			s.StopLoads()
+		}
+	}
 	srv.StopRuns(5 * time.Second) // runs end as interrupted, and their event streams close (DESIGN §21.6)
 	close(stopPoll)
 	<-feedDone // an in-flight refresh settles first
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), stopStarted.Add(stopDrainFor))
 	defer cancel()
 	httpServer.Shutdown(ctx)
 	if videoJobs != nil {

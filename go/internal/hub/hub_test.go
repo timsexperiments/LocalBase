@@ -281,7 +281,7 @@ func TestDiscoveryGolden(t *testing.T) {
 	c := &Client{Root: t.TempDir(), Endpoint: srv.URL}
 	b, err := os.ReadFile("../../../catalog/feed-v2.json")
 	if err != nil {
-		t.Skip("published feed not found")
+		t.Fatalf("the published feed: %v", err)
 	}
 	f, err := catalog.ParseFeed(b)
 	if err != nil {
