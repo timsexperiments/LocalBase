@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
@@ -294,18 +295,11 @@ func videoFailureError(err error) map[string]any {
 	return map[string]any{"code": "video_generation_failed"}
 }
 
-func GiBText(v int64) string {
-	if v < 0 {
-		return "an unknown amount"
-	}
-	return fmt.Sprintf("%.1f GiB", float64(v)/float64(memory.GiB))
-}
-
 func videoMemoryMessage(e *memory.AdmissionError) string {
 	accelerator := e.Reason == "accelerator-memory"
 	switch {
 	case e.Reason == "memory-pressure" || e.Reason == "system-memory":
-		return MemoryRefusal(e, "video generation")
+		return httpx.MemoryRefusal(e, "video generation")
 	case e.Reason == "measurement-unavailable":
 		return "Available memory could not be measured reliably, so the video runtime was not started. Retry shortly."
 	case e.PoolID == "gpu-working-set" && !e.Permanent:
@@ -315,7 +309,7 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 		}
 		resident := e.RequestedBytes - required
 		return fmt.Sprintf("Not enough GPU working set to start the video runtime alongside the models already loaded: it needs %s, other loaded models use %s, and the GPU working-set limit is %s. Free memory from a loaded model, then try again.",
-			GiBText(required), GiBText(resident), GiBText(e.AvailableBytes))
+			httpx.GiBText(required), httpx.GiBText(resident), httpx.GiBText(e.AvailableBytes))
 	}
 	pool := "memory"
 	if accelerator {
@@ -329,5 +323,5 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 		}
 	}
 	return fmt.Sprintf("Not enough free %s to start the video runtime: it needs %s but only %s is usable after the safety reserve. %s",
-		pool, GiBText(requested), GiBText(usable), freeMemoryHint)
+		pool, httpx.GiBText(requested), httpx.GiBText(usable), freeMemoryHint)
 }

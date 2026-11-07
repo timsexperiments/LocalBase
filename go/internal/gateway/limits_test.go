@@ -21,6 +21,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -49,7 +50,7 @@ func (b byteCountBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func newLimitsGateway(t *testing.T, limits Limits, configure func(*Server)) *limitsGateway {
+func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Server)) *limitsGateway {
 	t.Helper()
 	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
@@ -147,7 +148,7 @@ func served(c net.Conn, wait time.Duration) (status int, closed bool) {
 // A client that declares a body and never sends it holds nothing for long, and is
 // answered without waiting for its deadline.
 func TestUnsentBodyCannotHoldAConnection(t *testing.T) {
-	limits := Limits{PreAuthBody: 300 * time.Millisecond, RefusedDrain: 100 * time.Millisecond, ReadHeader: 300 * time.Millisecond, Idle: 300 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 300 * time.Millisecond, RefusedDrain: 100 * time.Millisecond, ReadHeader: 300 * time.Millisecond, Idle: 300 * time.Millisecond}
 	g := newLimitsGateway(t, limits, nil)
 	for _, c := range []struct {
 		name, request string
@@ -180,7 +181,7 @@ func TestUnsentBodyCannotHoldAConnection(t *testing.T) {
 // A refusal does not wait out the body deadline: it answers at once when it has
 // not read the body, or within the drain's own short window.
 func TestRefusalsAnswerPromptly(t *testing.T) {
-	limits := Limits{PreAuthBody: 10 * time.Second, RefusedDrain: 100 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 10 * time.Second, RefusedDrain: 100 * time.Millisecond}
 	g := newLimitsGateway(t, limits, nil)
 	for _, request := range []string{
 		"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Length: 1000\r\n\r\n",
@@ -198,7 +199,7 @@ func TestRefusalsAnswerPromptly(t *testing.T) {
 
 // A refused upload is read only up to its own small cap, however much is coming.
 func TestRefusedUploadIsNotReadWhole(t *testing.T) {
-	g := newLimitsGateway(t, Limits{RefusedDrainBytes: 64 << 10, RefusedDrain: 500 * time.Millisecond}, nil)
+	g := newLimitsGateway(t, httpx.Limits{RefusedDrainBytes: 64 << 10, RefusedDrain: 500 * time.Millisecond}, nil)
 	for _, c := range []struct {
 		name, header string
 		status       int
@@ -239,7 +240,7 @@ func TestRefusedUploadIsNotReadWhole(t *testing.T) {
 
 // A small refused body is read whole, so the client keeps its connection.
 func TestSmallRefusedBodyKeepsTheConnection(t *testing.T) {
-	g := newLimitsGateway(t, Limits{}, nil)
+	g := newLimitsGateway(t, httpx.Limits{}, nil)
 	conn := g.dial(t)
 	r := bufio.NewReader(conn)
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
@@ -259,7 +260,7 @@ func TestSmallRefusedBodyKeepsTheConnection(t *testing.T) {
 
 // A client waiting for permission to send is refused without being asked to send.
 func TestRefusalDoesNotAskForTheBody(t *testing.T) {
-	g := newLimitsGateway(t, Limits{}, nil)
+	g := newLimitsGateway(t, httpx.Limits{}, nil)
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nExpect: 100-continue\r\nContent-Length: 1000000\r\n\r\n")
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -303,7 +304,7 @@ func throttled(body []byte, pieces int, gap time.Duration) io.Reader {
 // An authenticated upload may take far longer than the pre-authentication deadline,
 // as long as it keeps moving: a real one is 25 MiB at 0.5 Mbit/s, scaled here.
 func TestSlowAuthenticatedUploadSurvives(t *testing.T) {
-	g := newLimitsGateway(t, Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}, nil)
+	g := newLimitsGateway(t, httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}, nil)
 	body := paddedChat("fake:reply received", 4<<20)
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", throttled(body, 20, 60*time.Millisecond))
 	req.Header.Set("Authorization", "Bearer "+g.key)
@@ -325,7 +326,7 @@ func TestSlowAuthenticatedUploadSurvives(t *testing.T) {
 
 // An upload that stops moving is cut, and one that never ends is cut at the total.
 func TestStalledUploadIsCut(t *testing.T) {
-	g := newLimitsGateway(t, Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 300 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}, nil)
+	g := newLimitsGateway(t, httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 300 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}, nil)
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", g.key)
 	start := time.Now()
@@ -343,7 +344,7 @@ func TestStalledUploadIsCut(t *testing.T) {
 // of the failed read, and it says what happened.
 func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
 	logs := &syncBuffer{}
-	limits := Limits{PreAuthBody: 300 * time.Millisecond, UploadStall: 200 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 300 * time.Millisecond, UploadStall: 200 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}
 	g := newLimitsGateway(t, limits, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	for _, path := range []string{"/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"} {
 		key := g.key
@@ -374,7 +375,7 @@ func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
 // Only a deadline is a timeout: a client that goes away mid-upload stays a 499.
 func TestClientThatLeavesIsNotATimeout(t *testing.T) {
 	logs := &syncBuffer{}
-	g := newLimitsGateway(t, Limits{}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+	g := newLimitsGateway(t, httpx.Limits{}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", g.key)
 	time.Sleep(100 * time.Millisecond)
@@ -388,7 +389,7 @@ func TestClientThatLeavesIsNotATimeout(t *testing.T) {
 }
 
 func TestUploadTotalIsBounded(t *testing.T) {
-	g := newLimitsGateway(t, Limits{UploadStall: 300 * time.Millisecond, UploadTotal: 500 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}, nil)
+	g := newLimitsGateway(t, httpx.Limits{UploadStall: 300 * time.Millisecond, UploadTotal: 500 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}, nil)
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n", g.key)
 	go func() {
@@ -408,7 +409,7 @@ func TestUploadTotalIsBounded(t *testing.T) {
 
 // A long response outlives every body deadline: the deadline ends with the body.
 func TestLongStreamSurvivesTheDeadlines(t *testing.T) {
-	g := newLimitsGateway(t, Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 150 * time.Millisecond}, nil)
+	g := newLimitsGateway(t, httpx.Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 150 * time.Millisecond}, nil)
 	body, _ := json.Marshal(map[string]any{"model": chatModel, "stream": true,
 		"messages": []map[string]string{{"role": "user", "content": "fake:slow 24"}}})
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", bytes.NewReader(body))
@@ -433,7 +434,7 @@ func TestLongStreamSurvivesTheDeadlines(t *testing.T) {
 // Learning who the caller is after the body has ended sets no deadline: it would
 // cancel whatever the request does next.
 func TestAuthenticatingAfterTheBodySetsNoDeadline(t *testing.T) {
-	limits := Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 100 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 100 * time.Millisecond}
 	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
 		s.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -462,7 +463,7 @@ func TestAuthenticatingAfterTheBodySetsNoDeadline(t *testing.T) {
 // Draining a refused body is bounded by its own window, even for a known caller
 // whose body keeps arriving a little at a time.
 func TestDrainIsNotExtendedByTrickling(t *testing.T) {
-	g := newLimitsGateway(t, Limits{RefusedDrain: 200 * time.Millisecond, UploadStall: 5 * time.Second}, nil)
+	g := newLimitsGateway(t, httpx.Limits{RefusedDrain: 200 * time.Millisecond, UploadStall: 5 * time.Second}, nil)
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n", g.noScopes)
 	go func() {
@@ -502,7 +503,7 @@ func limitsAccess(perms ...string) *auth.BrowserAccess {
 
 // A browser session gets the same budget through /app/api, as a key does.
 func TestSlowUploadFromABrowserSession(t *testing.T) {
-	limits := Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
 	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("inference:chat"), s.Log)
 	})
@@ -526,7 +527,7 @@ func TestSlowUploadFromABrowserSession(t *testing.T) {
 
 // And through a UI page, whose handler asks who the caller is before reading.
 func TestSlowUploadToAPage(t *testing.T) {
-	limits := Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
 	var read atomic.Int64
 	g := newLimitsGateway(t, limits, func(s *Server) {
 		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
@@ -558,7 +559,7 @@ func TestSlowUploadToAPage(t *testing.T) {
 
 // --no-auth has no credential to wait for: the budget applies from the start.
 func TestSlowUploadWithoutAuthentication(t *testing.T) {
-	limits := Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
+	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
 	g := newLimitsGateway(t, limits, func(s *Server) { s.NoAuth = true })
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", throttled(paddedChat("fake:reply received", 1<<20), 12, 60*time.Millisecond))
 	req.Header.Set("Content-Type", "application/json")
@@ -575,12 +576,12 @@ func TestSlowUploadWithoutAuthentication(t *testing.T) {
 
 func TestDefaultLimitsReachTheServer(t *testing.T) {
 	var h http.Server
-	Limits{}.Apply(&h)
-	if h.ReadHeaderTimeout != DefaultLimits.ReadHeader || h.IdleTimeout != DefaultLimits.Idle || h.MaxHeaderBytes != DefaultLimits.MaxHeaderBytes ||
+	httpx.Limits{}.Apply(&h)
+	if h.ReadHeaderTimeout != httpx.DefaultLimits.ReadHeader || h.IdleTimeout != httpx.DefaultLimits.Idle || h.MaxHeaderBytes != httpx.DefaultLimits.MaxHeaderBytes ||
 		h.IdleTimeout <= 0 || h.ReadHeaderTimeout <= 0 {
 		t.Fatalf("header %v, idle %v, max header %d", h.ReadHeaderTimeout, h.IdleTimeout, h.MaxHeaderBytes)
 	}
-	if DefaultLimits.RefusedDrainBytes > 1<<20 {
-		t.Errorf("refused bodies are drained up to %d bytes", DefaultLimits.RefusedDrainBytes)
+	if httpx.DefaultLimits.RefusedDrainBytes > 1<<20 {
+		t.Errorf("refused bodies are drained up to %d bytes", httpx.DefaultLimits.RefusedDrainBytes)
 	}
 }

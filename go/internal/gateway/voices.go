@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
@@ -35,20 +36,20 @@ func voiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	if !errors.As(err, &ve) {
 		return false
 	}
-	status, param := 400, StrPtr("audio")
+	status, param := 400, httpx.StrPtr("audio")
 	switch ve.Code {
 	case "voice_not_found":
 		status, param = 404, nil
 	case "voice_name_taken", "voice_limit_reached":
-		status, param = 409, StrPtr("name")
+		status, param = 409, httpx.StrPtr("name")
 	case "audio_too_large":
 		status = 413
 	case "consent_required":
-		param = StrPtr("consent")
+		param = httpx.StrPtr("consent")
 	case "invalid_voice_name":
-		param = StrPtr("name")
+		param = httpx.StrPtr("name")
 	}
-	Error(w, r, status, "invalid_request_error", ve.Code, ve.Message, param)
+	httpx.Error(w, r, status, "invalid_request_error", ve.Code, ve.Message, param)
 	return true
 }
 
@@ -72,7 +73,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	p := s.principal(r)
 	if !p.Authenticated() {
-		Unauthorized(w, r)
+		httpx.Unauthorized(w, r)
 		return
 	}
 	if s.Voices == nil {
@@ -84,7 +85,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	fail := func(err error) {
 		if !voiceError(w, r, err) {
 			s.Log.Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
-			ServiceUnavailable(w, r, "Voices")
+			httpx.ServiceUnavailable(w, r, "Voices")
 		}
 	}
 	public := func(v *voices.Voice) voices.Voice {
@@ -98,7 +99,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	case "collection":
 		if r.Method == http.MethodGet {
 			if !canRead {
-				Forbidden(w, r)
+				httpx.Forbidden(w, r)
 				return
 			}
 			list, err := s.Voices.List(ctx)
@@ -110,18 +111,18 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			for i := range list {
 				data = append(data, public(&list[i]))
 			}
-			JSON(w, 200, map[string]any{"object": "list", "data": data, "canManage": canManage,
+			httpx.JSON(w, 200, map[string]any{"object": "list", "data": data, "canManage": canManage,
 				"limits": map[string]any{"minSeconds": voices.MinSeconds, "maxSeconds": voices.MaxSeconds,
 					"maxUploadBytes": voices.MaxUploadBytes, "maxVoices": voices.Limit},
 				"consentStatement": voices.ConsentStatement})
 			return
 		}
 		if r.Method != http.MethodPost {
-			MethodNotAllowed(w, r, "GET, POST")
+			httpx.MethodNotAllowed(w, r, "GET, POST")
 			return
 		}
 		if !canManage {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		name, consent, audio, ok := s.parseVoiceCreate(w, r)
@@ -134,16 +135,16 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.logVoice("created", v)
-		JSON(w, 201, v)
+		httpx.JSON(w, 201, v)
 
 	case "audio":
 		if r.Method != http.MethodGet {
-			MethodNotAllowed(w, r, "GET")
+			httpx.MethodNotAllowed(w, r, "GET")
 			return
 		}
 		// The reference is a recording of a person; only managers replay it.
 		if !canManage {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		path, err := s.Voices.Resolve(ctx, id)
@@ -166,7 +167,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			if !canRead {
-				Forbidden(w, r)
+				httpx.Forbidden(w, r)
 				return
 			}
 			v, err := s.Voices.Get(ctx, id)
@@ -178,10 +179,10 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				voiceError(w, r, &voices.Error{Code: "voice_not_found", Message: "Voice not found."})
 				return
 			}
-			JSON(w, 200, public(v))
+			httpx.JSON(w, 200, public(v))
 		case http.MethodPatch:
 			if !canManage {
-				Forbidden(w, r)
+				httpx.Forbidden(w, r)
 				return
 			}
 			name, ok := parseVoiceRename(w, r)
@@ -194,10 +195,10 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.logVoice("renamed", v)
-			JSON(w, 200, v)
+			httpx.JSON(w, 200, v)
 		case http.MethodDelete:
 			if !canManage {
-				Forbidden(w, r)
+				httpx.Forbidden(w, r)
 				return
 			}
 			v, err := s.Voices.Remove(ctx, id)
@@ -206,9 +207,9 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.logVoice("deleted", v)
-			JSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
+			httpx.JSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
 		default:
-			MethodNotAllowed(w, r, "GET, PATCH, DELETE")
+			httpx.MethodNotAllowed(w, r, "GET, PATCH, DELETE")
 		}
 	}
 }
@@ -225,14 +226,14 @@ func (s *Server) logVoice(action string, v *voices.Voice) {
 
 func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name string, consent bool, audio []byte, ok bool) {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data;") {
-		Error(w, r, 415, "invalid_request_error", "unsupported_media_type", "Send multipart/form-data with name, consent and audio fields.", nil)
+		httpx.Error(w, r, 415, "invalid_request_error", "unsupported_media_type", "Send multipart/form-data with name, consent and audio fields.", nil)
 		return
 	}
 	limit := int64(voices.MaxUploadBytes + voiceMultipartOverhead)
 	tooLarge := func() {
 		w.Header().Set("Connection", "close")
-		Error(w, r, 413, "invalid_request_error", "audio_too_large",
-			fmt.Sprintf("Audio exceeds the %d MiB limit.", voices.MaxUploadBytes/(1024*1024)), StrPtr("audio"))
+		httpx.Error(w, r, 413, "invalid_request_error", "audio_too_large",
+			fmt.Sprintf("Audio exceeds the %d MiB limit.", voices.MaxUploadBytes/(1024*1024)), httpx.StrPtr("audio"))
 	}
 	if r.ContentLength > limit {
 		tooLarge()
@@ -240,7 +241,7 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if err != nil {
-		BadRequest(w, r, "Invalid form data payload.", nil)
+		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	if int64(len(body)) > limit {
@@ -249,7 +250,7 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	form, err := readMultipart(r, body)
 	if err != nil {
-		BadRequest(w, r, "Invalid form data payload.", nil)
+		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	first := func(field string) *formPart {
@@ -260,11 +261,11 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	n, c, a := first("name"), first("consent"), first("audio")
 	if n == nil || n.isFile {
-		Error(w, r, 400, "invalid_request_error", "invalid_voice_name", "Voice name is required.", StrPtr("name"))
+		httpx.Error(w, r, 400, "invalid_request_error", "invalid_voice_name", "Voice name is required.", httpx.StrPtr("name"))
 		return
 	}
 	if a == nil || !a.isFile {
-		Error(w, r, 400, "invalid_request_error", "unsupported_audio_format", "Attach the reference recording as the audio field.", StrPtr("audio"))
+		httpx.Error(w, r, 400, "invalid_request_error", "unsupported_audio_format", "Attach the reference recording as the audio field.", httpx.StrPtr("audio"))
 		return
 	}
 	// The upload's filename and declared type are ignored; only its bytes count.
@@ -293,16 +294,16 @@ func parseVoiceRename(w http.ResponseWriter, r *http.Request) (string, bool) {
 	b, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if r.ContentLength > limit || len(b) > limit {
 		w.Header().Set("Connection", "close")
-		Error(w, r, 413, "invalid_request_error", "validation_failed", "Voice update body exceeds the 1024 byte limit.", nil)
+		httpx.Error(w, r, 413, "invalid_request_error", "validation_failed", "Voice update body exceeds the 1024 byte limit.", nil)
 		return "", false
 	}
 	var input any
 	if err != nil || json.Unmarshal(b, &input) != nil {
-		BadRequest(w, r, "Send a JSON body with a name.", nil)
+		httpx.BadRequest(w, r, "Send a JSON body with a name.", nil)
 		return "", false
 	}
 	invalid := func(msg string) (string, bool) {
-		Error(w, r, 400, "invalid_request_error", "invalid_voice_name", msg, StrPtr("name"))
+		httpx.Error(w, r, 400, "invalid_request_error", "invalid_voice_name", msg, httpx.StrPtr("name"))
 		return "", false
 	}
 	obj, ok := input.(map[string]any)

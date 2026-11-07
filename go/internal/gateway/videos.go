@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
@@ -37,7 +38,7 @@ var videoJobID = regexp.MustCompile(videoJobIDPattern)
 
 // videoOwner names who owns the request's jobs (TS principalOwnerId).
 func (s *Server) videoOwner(r *http.Request) string {
-	p := PrincipalFrom(r.Context())
+	p := httpx.PrincipalFrom(r.Context())
 	if s.NoAuth || p == nil || p.Kind == "anonymous" {
 		return localVideoOwner
 	}
@@ -70,7 +71,7 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 			return
 		}
 		if r.Method != http.MethodGet {
-			MethodNotAllowed(w, r, "GET, DELETE")
+			httpx.MethodNotAllowed(w, r, "GET, DELETE")
 			return
 		}
 		if s.VideoJobs == nil {
@@ -82,10 +83,10 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 			videoJobNotFound(w, r)
 			return
 		}
-		JSON(w, http.StatusOK, projectVideoJob(j))
+		httpx.JSON(w, http.StatusOK, projectVideoJob(j))
 	case "content":
 		if r.Method != http.MethodGet {
-			MethodNotAllowed(w, r, "GET")
+			httpx.MethodNotAllowed(w, r, "GET")
 			return
 		}
 		if s.VideoJobs == nil {
@@ -111,7 +112,7 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 		io.Copy(w, f)
 	case "cancel":
 		if r.Method != http.MethodPost {
-			MethodNotAllowed(w, r, "POST")
+			httpx.MethodNotAllowed(w, r, "POST")
 			return
 		}
 		if s.VideoJobs == nil {
@@ -123,18 +124,18 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 			videoJobNotFound(w, r)
 			return
 		}
-		JSON(w, http.StatusOK, projectVideoJob(j))
+		httpx.JSON(w, http.StatusOK, projectVideoJob(j))
 	}
 }
 
 func videoJobNotFound(w http.ResponseWriter, r *http.Request) {
-	Error(w, r, 404, "invalid_request_error", "video_job_not_found", "Video job not found.", nil)
+	httpx.Error(w, r, 404, "invalid_request_error", "video_job_not_found", "Video job not found.", nil)
 }
 
 // videoCreate starts a job (TS handleVideoGatewayRequest, videoCreate).
 func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, r, "POST")
+		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
 	if r.Context().Err() != nil {
@@ -156,16 +157,16 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 	model, _ := req["model"].(string)
 	spec := s.Catalog.ByID(model)
 	if spec == nil || spec.Kind != "video" || spec.VideoRuntime == nil {
-		ModelNotFound(w, r, model)
+		httpx.ModelNotFound(w, r, model)
 		return
 	}
 	input := qualifiedVideoInput(req, spec)
 	if input == nil {
-		BadRequest(w, r, videoProfileMismatchMessage(req, spec), nil)
+		httpx.BadRequest(w, r, videoProfileMismatchMessage(req, spec), nil)
 		return
 	}
 	if err := s.Video.InstallConsent(model); err != nil {
-		Error(w, r, 409, "invalid_request_error", "model_install_consent_required", err.Error(), StrPtr("model"))
+		httpx.Error(w, r, 409, "invalid_request_error", "model_install_consent_required", err.Error(), httpx.StrPtr("model"))
 		return
 	}
 	requestID := w.Header().Get("X-Localbase-Request-Id")
@@ -188,14 +189,14 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 	job, terminal, err := s.VideoJobs.Start(s.videoOwner(r), input, deadline, acquire, stop)
 	if errors.Is(err, video.ErrBusy) {
 		w.Header().Set("Retry-After", "1")
-		Error(w, r, 429, "rate_limit_error", "video_job_busy", "A local video job is already in progress.", nil)
+		httpx.Error(w, r, 429, "rate_limit_error", "video_job_busy", "A local video job is already in progress.", nil)
 		return
 	}
 	if err != nil {
-		ServiceUnavailable(w, r, "Video")
+		httpx.ServiceUnavailable(w, r, "Video")
 		return
 	}
-	principal := PrincipalFrom(r.Context())
+	principal := httpx.PrincipalFrom(r.Context())
 	go func() {
 		j := <-terminal
 		s.recordVideoJob(principal, model, videoJobStatus(j.State), j.TerminalAt.Sub(j.CreatedAt))
@@ -216,7 +217,7 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 			s.Log.Info("A local video job reached a terminal state.", attrs...)
 		}
 	}()
-	JSON(w, http.StatusAccepted, projectVideoJob(job))
+	httpx.JSON(w, http.StatusAccepted, projectVideoJob(job))
 }
 
 // videoJobStatus is how a finished job counts in usage (DESIGN §32.2).
@@ -257,7 +258,7 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 		form, err = readMultipart(r, body)
 	}
 	if err != nil {
-		BadRequest(w, r, "Invalid multipart video request.", nil)
+		httpx.BadRequest(w, r, "Invalid multipart video request.", nil)
 		return nil, false
 	}
 	get := func(name string) (formPart, bool) {
@@ -294,7 +295,7 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 	if p, ok := get("input_reference"); ok {
 		if p.isFile {
 			if len(p.file) > videoReferenceLimit || mediacheck.ImageMimeFromMagic(p.file) != "image/png" {
-				BadRequest(w, r, "input_reference must be a PNG file no larger than 4 MiB.", StrPtr("input_reference"))
+				httpx.BadRequest(w, r, "input_reference must be a PNG file no larger than 4 MiB.", httpx.StrPtr("input_reference"))
 				return nil, false
 			}
 			payload["input_reference"] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(p.file)
@@ -307,13 +308,13 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 		dec.UseNumber()
 		var v any
 		if dec.Decode(&v) != nil || dec.More() {
-			BadRequest(w, r, "input must be valid JSON.", StrPtr("input"))
+			httpx.BadRequest(w, r, "input must be valid JSON.", httpx.StrPtr("input"))
 			return nil, false
 		}
 		payload["input"] = v
 	}
 	if c := validateVideoCreate(payload); !c.ok() {
-		BadRequest(w, r, "Invalid video request.", nil)
+		httpx.BadRequest(w, r, "Invalid video request.", nil)
 		return nil, false
 	}
 	return payload, true

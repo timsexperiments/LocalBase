@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
@@ -48,7 +49,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 			io.Reader
 			io.Closer
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
-		rec := &auditRecorder{Recorder: Recorder{ResponseWriter: w}}
+		rec := &auditRecorder{Recorder: httpx.Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A method the route doesn't have asked to change nothing; an abandoned request wasn't refused.
 		refused := rec.Status >= 400 && rec.Status < 500 && rec.Status != http.StatusMethodNotAllowed &&

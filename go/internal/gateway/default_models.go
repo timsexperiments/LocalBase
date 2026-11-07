@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -17,30 +18,30 @@ import (
 func (s *Server) defaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		Unauthorized(w, r)
+		httpx.Unauthorized(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	reply := func() {
 		c := s.LLM.DefaultModel(false)
-		JSON(w, 200, map[string]any{"models": s.LLM.Config().DefaultLLMList(),
+		httpx.JSON(w, 200, map[string]any{"models": s.LLM.Config().DefaultLLMList(),
 			"effective": map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason}})
 	}
 	switch r.Method {
 	case http.MethodGet:
 		if !p.Can("models:read") {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		reply()
 		return
 	case http.MethodPost:
 	default:
-		MethodNotAllowed(w, r, "GET, POST")
+		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
 	if !p.Can("models:manage") {
-		Forbidden(w, r)
+		httpx.Forbidden(w, r)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4097))
@@ -48,7 +49,7 @@ func (s *Server) defaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 		Models []string `json:"models"`
 	}
 	if err != nil || len(body) > 4096 || json.Unmarshal(body, &in) != nil || len(in.Models) == 0 || len(in.Models) > 8 {
-		BadRequest(w, r, "Send {\"models\": [...]} with one to eight chat model IDs, first choice first.", nil)
+		httpx.BadRequest(w, r, "Send {\"models\": [...]} with one to eight chat model IDs, first choice first.", nil)
 		return
 	}
 	err = s.updateConfig(func(c *store.Config) error {
@@ -79,10 +80,10 @@ func (s *Server) defaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 	var me *mgmtError
 	switch {
 	case errors.As(err, &me):
-		Error(w, r, 400, "invalid_request_error", me.code, me.message, nil)
+		httpx.Error(w, r, 400, "invalid_request_error", me.code, me.message, nil)
 	case err != nil:
 		s.Log.Error("Default chat models update failed.", "event", "models.default-update-failed", "error", err.Error())
-		ServiceUnavailable(w, r, "Model management")
+		httpx.ServiceUnavailable(w, r, "Model management")
 	default:
 		s.Log.Info("Default chat models changed.", "event", "models.defaults-changed", "models", in.Models)
 		reply()

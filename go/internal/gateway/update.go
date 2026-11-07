@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 )
 
@@ -18,22 +19,22 @@ func (s *Server) updateAPI(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		p := s.principal(r)
 		if !p.Authenticated() {
-			Unauthorized(w, r)
+			httpx.Unauthorized(w, r)
 			return
 		}
 		if !s.NoAuth && !p.Can("models:read") {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		if s.Updates == nil {
 			notConfigured(w, r, "Update check")
 			return
 		}
-		JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
+		httpx.JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
 	case http.MethodPost:
 		s.updateChange(w, r)
 	default:
-		MethodNotAllowed(w, r, "GET, POST")
+		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }
 
@@ -41,17 +42,17 @@ func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
 	actorKind, actorID := "cli", ""
 	if r.Header.Get("X-Localbase-Instance-Token") != "" {
 		if !s.localCLI(r) {
-			Unauthorized(w, r)
+			httpx.Unauthorized(w, r)
 			return
 		}
 	} else {
 		p := s.principal(r)
 		if !p.Authenticated() {
-			Unauthorized(w, r)
+			httpx.Unauthorized(w, r)
 			return
 		}
 		if !s.NoAuth && !usage.CanChange(p.Can) {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		actorKind, actorID, _ = s.usagePrincipal(p)
@@ -62,7 +63,7 @@ func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4097))
 	if err != nil {
-		BadRequest(w, r, "Invalid update request.", nil)
+		httpx.BadRequest(w, r, "Invalid update request.", nil)
 		return
 	}
 	if len(body) > 4096 {
@@ -76,14 +77,14 @@ func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil || in.Action != "set-check" || in.Enabled == nil {
-		BadRequest(w, r, `Expected {"action":"set-check","enabled":true or false}.`, nil)
+		httpx.BadRequest(w, r, `Expected {"action":"set-check","enabled":true or false}.`, nil)
 		return
 	}
 	if err := s.Updates.SetEnabled(r.Context(), *in.Enabled); err != nil {
 		s.Log.Error("Could not change the update check.", "event", "update.change-failed", "error", err.Error())
-		ServiceUnavailable(w, r, "Update check")
+		httpx.ServiceUnavailable(w, r, "Update check")
 		return
 	}
 	s.Log.Info("Administration change.", "event", "audit.update-changed", "action", in.Action, "enabled", *in.Enabled, "actor_kind", actorKind, "actor_id", actorID)
-	JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
+	httpx.JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
 }

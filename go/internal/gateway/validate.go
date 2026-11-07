@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // Request validation for the JSON inference routes. These port the TS Zod
@@ -81,7 +83,7 @@ func (c *checker) ok() bool { return len(c.issues) == 0 }
 // issue is under it, as TS reports it.
 func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 	if c.remote != nil {
-		Error(w, r, 400, "invalid_request_error", "remote_media_not_allowed", c.remote.msg, StrPtr(c.remote.path))
+		httpx.Error(w, r, 400, "invalid_request_error", "remote_media_not_allowed", c.remote.msg, httpx.StrPtr(c.remote.path))
 		return
 	}
 	parts := make([]string, len(c.issues))
@@ -89,17 +91,17 @@ func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 	for i, is := range c.issues {
 		parts[i] = is.path + ": " + is.msg
 		if is.path == "response_format" || strings.HasPrefix(is.path, "response_format.") {
-			param = StrPtr("response_format")
+			param = httpx.StrPtr("response_format")
 		}
 		if is.path == "messages" && is.msg == emptyMessages && param == nil {
-			param = StrPtr("messages")
+			param = httpx.StrPtr("messages")
 		}
 	}
 	message := "Validation failed: " + strings.Join(parts, ", ")
 	if c.more {
 		message += ", and more"
 	}
-	BadRequest(w, r, message, param)
+	httpx.BadRequest(w, r, message, param)
 }
 
 // shortKey keeps a caller's own key short enough to repeat, cut between characters.

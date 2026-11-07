@@ -9,6 +9,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
@@ -28,11 +29,11 @@ import (
 func (s *Server) adminPrincipal(w http.ResponseWriter, r *http.Request, permission string) *auth.Principal {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		Unauthorized(w, r)
+		httpx.Unauthorized(w, r)
 		return nil
 	}
 	if !p.Can(permission) {
-		Forbidden(w, r)
+		httpx.Forbidden(w, r)
 		return nil
 	}
 	return p
@@ -40,14 +41,14 @@ func (s *Server) adminPrincipal(w http.ResponseWriter, r *http.Request, permissi
 
 func (s *Server) libraryOr503(w http.ResponseWriter, r *http.Request) *library.Library {
 	if s.Library == nil {
-		ServiceUnavailable(w, r, "Model management")
+		httpx.ServiceUnavailable(w, r, "Model management")
 	}
 	return s.Library
 }
 
 func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		MethodNotAllowed(w, r, "GET")
+		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
 	if s.adminPrincipal(w, r, "models:read") == nil {
@@ -71,7 +72,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		perm = "models:manage"
 	} else if r.Method != http.MethodGet {
-		MethodNotAllowed(w, r, "GET, POST")
+		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
 	if s.adminPrincipal(w, r, perm) == nil {
@@ -85,9 +86,9 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 	reply := func(id string, sel backends.Selection, err error) {
 		switch {
 		case errors.Is(err, library.ErrNotFound):
-			ModelNotFound(w, r, id)
+			httpx.ModelNotFound(w, r, id)
 		case err != nil:
-			BadRequest(w, r, err.Error(), nil)
+			httpx.BadRequest(w, r, err.Error(), nil)
 		default:
 			noStore(w, 200, map[string]any{"model": id, "selection": sel})
 		}
@@ -114,7 +115,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !strictDecode(body, &in) || (in.Action != "set" && in.Action != "reset") || in.Model == "" || (in.Action == "set" && in.BackendID == "") {
-		BadRequest(w, r, "Expected {action: set|reset, model, backendId (for set), variantId?}.", nil)
+		httpx.BadRequest(w, r, "Expected {action: set|reset, model, backendId (for set), variantId?}.", nil)
 		return
 	}
 	var sel backends.Selection
@@ -131,7 +132,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		MethodNotAllowed(w, r, "GET, POST")
+		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
 	if s.adminPrincipal(w, r, "models:manage") == nil {
@@ -144,7 +145,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		job := l.Job(r.URL.Query().Get("id"))
 		if job == nil {
-			Error(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", nil)
+			httpx.Error(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", nil)
 			return
 		}
 		b, _ := json.Marshal(job)
@@ -173,31 +174,31 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		Confirm     bool     `json:"confirmCustomSource"`
 	}
 	if !strictDecode(body, &in) {
-		BadRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
+		httpx.BadRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
 		return
 	}
 	if in.Action == "cancel" {
 		if in.Job == "" || !onlyFields(body, "job") {
-			BadRequest(w, r, "Expected {action: cancel, job}.", StrPtr("job"))
+			httpx.BadRequest(w, r, "Expected {action: cancel, job}.", httpx.StrPtr("job"))
 			return
 		}
 		if !l.CancelImport(in.Job) {
-			Error(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", StrPtr("job"))
+			httpx.Error(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", httpx.StrPtr("job"))
 			return
 		}
 		noStore(w, 200, l.Job(in.Job))
 		return
 	}
 	if (in.Action != "resolve" && in.Action != "start") || in.Source == "" {
-		BadRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
+		httpx.BadRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
 		return
 	}
 	if in.Task != "" && !slices.Contains(models.Tasks, in.Task) {
-		BadRequest(w, r, "Unknown task.", nil)
+		httpx.BadRequest(w, r, "Unknown task.", nil)
 		return
 	}
 	if in.Backend != "" && in.Backend != "auto" && l.Registry.Get(in.Backend) == nil {
-		BadRequest(w, r, "That backend is not registered.", nil)
+		httpx.BadRequest(w, r, "That backend is not registered.", nil)
 		return
 	}
 	cfg, _ := s.Store.LoadConfig(r.Context())
@@ -210,11 +211,11 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		AllowPrivate: s.Store.PrivateImportsAllowed(r.Context()), AllowLocal: s.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: s.Log})
 	var refused *acquire.RefusedError
 	if errors.As(err, &refused) {
-		Error(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, StrPtr("source"))
+		httpx.Error(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, httpx.StrPtr("source"))
 		return
 	}
 	if err != nil {
-		Error(w, r, 400, "invalid_request_error", "import_unresolved", obs.BoundedText(err.Error(), 1024), nil)
+		httpx.Error(w, r, 400, "invalid_request_error", "import_unresolved", obs.BoundedText(err.Error(), 1024), nil)
 		return
 	}
 	if in.Action == "resolve" {
@@ -223,30 +224,30 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(plan.Choices) > 0:
-		Error(w, r, 400, "invalid_request_error", "import_choose_file", "The repository has several weight files; choose one.", nil)
+		httpx.Error(w, r, 400, "invalid_request_error", "import_choose_file", "The repository has several weight files; choose one.", nil)
 		return
 	case plan.Custom && !in.Confirm:
-		Error(w, r, 400, "invalid_request_error", "custom_source_unconfirmed", acquire.CustomSourceWarning, nil)
+		httpx.Error(w, r, 400, "invalid_request_error", "custom_source_unconfirmed", acquire.CustomSourceWarning, nil)
 		return
 	case plan.Task == "":
-		Error(w, r, 400, "invalid_request_error", "import_task_required", "Choose what the model does.", nil)
+		httpx.Error(w, r, 400, "invalid_request_error", "import_task_required", "Choose what the model does.", nil)
 		return
 	}
 	if err := acquire.CheckSpace(s.Root.Dir, plan); errors.As(err, &refused) {
-		Error(w, r, http.StatusInsufficientStorage, "invalid_request_error", refused.Code, refused.Message, nil)
+		httpx.Error(w, r, http.StatusInsufficientStorage, "invalid_request_error", refused.Code, refused.Message, nil)
 		return
 	}
 	id, err := l.StartImport(plan, in.Backend, s.Log)
 	switch {
 	case errors.Is(err, library.ErrImportsBusy):
 		w.Header().Set("Retry-After", "5")
-		Error(w, r, 429, "rate_limit_error", "import_busy", err.Error(), nil)
+		httpx.Error(w, r, 429, "rate_limit_error", "import_busy", err.Error(), nil)
 		return
 	case errors.Is(err, library.ErrImportRunning):
-		Error(w, r, 409, "invalid_request_error", "import_running", err.Error(), nil)
+		httpx.Error(w, r, 409, "invalid_request_error", "import_running", err.Error(), nil)
 		return
 	case err != nil:
-		ServiceUnavailable(w, r, "Model management")
+		httpx.ServiceUnavailable(w, r, "Model management")
 		return
 	}
 	if in.Backend != "" && in.Backend != "auto" {
@@ -261,7 +262,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 // values never leave the credential file.
 func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		MethodNotAllowed(w, r, "GET")
+		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
 	if s.adminPrincipal(w, r, "models:manage") == nil {
@@ -269,7 +270,7 @@ func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	ps, err := acquire.LoadProfiles(s.Root.Dir)
 	if err != nil {
-		ServiceUnavailable(w, r, "Model management")
+		httpx.ServiceUnavailable(w, r, "Model management")
 		return
 	}
 	out := []acquire.PublicProfile{}

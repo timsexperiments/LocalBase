@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // What a refused request can put in the log. It is whatever the caller sent, so only
@@ -35,7 +36,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			io.Reader
 			io.Closer
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
-		rec := &auditRecorder{Recorder: Recorder{ResponseWriter: w}}
+		rec := &auditRecorder{Recorder: httpx.Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A request the client abandoned or never finished was not refused.
 		refused := rec.Status >= 400 && rec.Status < 500 && rec.Status != http.StatusRequestTimeout && rec.Status != 499
@@ -93,7 +94,7 @@ func (s *Server) auditActor(r *http.Request) (kind, id string) {
 	var p *auth.Principal
 	if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
 		p = bp
-	} else if outer, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
+	} else if outer, ok := r.Context().Value(httpx.RecKey{}).(*httpx.Recorder); ok {
 		p = outer.Auth
 	}
 	if p == nil && s.NoAuth {
@@ -209,7 +210,7 @@ func (l *limitedWriter) Write(b []byte) (int, error) {
 
 // auditRecorder keeps the start of the response to name the target.
 type auditRecorder struct {
-	Recorder
+	httpx.Recorder
 	body bytes.Buffer
 }
 
