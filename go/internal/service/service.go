@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -858,7 +859,7 @@ func stopManaged(r *root.Root, m Metadata, alsoDisable bool) error {
 // Start installs and starts the service, holding the root operation lease and
 // handing it to the gateway it launches.
 func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
-	lease, err := root.AcquireOperation(r.Dir, "service-start")
+	lease, err := lease.AcquireOperation(r.Dir, "service-start")
 	if err != nil {
 		return Inspection{}, err
 	}
@@ -869,11 +870,11 @@ func Start(r *root.Root, restart, installMissing bool) (Inspection, error) {
 // RestartWithin restarts the service for a caller holding the operation
 // lease (TS restartServiceWithinOperation); the lease is handed to the new
 // gateway.
-func RestartWithin(r *root.Root, lease *root.Lease) (Inspection, error) {
+func RestartWithin(r *root.Root, lease *lease.Lease) (Inspection, error) {
 	return start(r, lease, true, false)
 }
 
-func start(r *root.Root, lease *root.Lease, restart, installMissing bool) (Inspection, error) {
+func start(r *root.Root, lease *lease.Lease, restart, installMissing bool) (Inspection, error) {
 	if err := refuseDefaultRootInTest(r.Dir); err != nil {
 		return Inspection{}, err
 	}
@@ -949,7 +950,7 @@ func refuseDefaultRootInTest(dir string) error {
 
 // Stop stops and disables the service under the root operation lease.
 func Stop(r *root.Root) (in Inspection, err error) {
-	err = root.WithOperation(r.Dir, "stop", func() error {
+	err = lease.WithOperation(r.Dir, "stop", func() error {
 		in, err = StopWithin(r)
 		return err
 	})

@@ -11,6 +11,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -137,7 +138,7 @@ func (u *UI) backendPanel(w http.ResponseWriter, r *http.Request) {
 	msg := ""
 	switch {
 	case r.Method == http.MethodPost && r.FormValue("reset") != "":
-		err = root.WithOperation(u.d.RootDir, "update runtime configuration", func() (err error) {
+		err = lease.WithOperation(u.d.RootDir, "update runtime configuration", func() (err error) {
 			sel, err = l.ResetBackend(ctx, id)
 			return err
 		})
@@ -151,7 +152,7 @@ func (u *UI) backendPanel(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("choose a backend")
 			break
 		}
-		err = root.WithOperation(u.d.RootDir, "update runtime configuration", func() (err error) {
+		err = lease.WithOperation(u.d.RootDir, "update runtime configuration", func() (err error) {
 			sel, err = l.SetBackend(ctx, id, b, "")
 			return err
 		})

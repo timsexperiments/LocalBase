@@ -11,8 +11,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 )
 
@@ -131,7 +131,7 @@ func serviceCommands() []*cli.Command {
 			}
 			defer e.Close()
 			var in service.Inspection
-			if err := root.WithOperation(e.Root.Dir, "status", func() (err error) {
+			if err := lease.WithOperation(e.Root.Dir, "status", func() (err error) {
 				in, err = service.Inspect(e.Root, false)
 				return err
 			}); err != nil {

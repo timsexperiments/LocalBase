@@ -18,8 +18,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -401,7 +401,7 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 // updateConfig applies a change to the stored configuration under the root
 // operation lease and hands it to the runtimes.
 func (s *Server) updateConfig(fn func(*store.Config) error) error {
-	return root.WithOperation(s.Root.Dir, "update runtime configuration", func() error {
+	return lease.WithOperation(s.Root.Dir, "update runtime configuration", func() error {
 		cur, err := s.Store.LoadConfig(context.Background())
 		if err != nil {
 			return err
@@ -445,7 +445,7 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 	case "install":
 		return s.startInstall(spec)
 	case "uninstall":
-		err := root.WithOperation(s.Root.Dir, "uninstall model", func() error {
+		err := lease.WithOperation(s.Root.Dir, "uninstall model", func() error {
 			fresh, err := s.Store.LoadConfig(context.Background())
 			if err != nil {
 				return err
@@ -617,7 +617,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		defer close(finished)
 		defer cancel()
 		accepted := false
-		err := root.WithOperation(s.Root.Dir, "install model", func() error {
+		err := lease.WithOperation(s.Root.Dir, "install model", func() error {
 			fresh, err := s.Store.LoadConfig(context.Background())
 			if err != nil {
 				return err

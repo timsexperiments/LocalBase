@@ -28,6 +28,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -1555,7 +1556,7 @@ type Done struct {
 func (s *Staged) Commit() (*Done, error) {
 	s.release = func() {}
 	defer s.Discard()
-	lease, err := root.AcquireOperation(s.target, "restore")
+	lease, err := lease.AcquireOperation(s.target, "restore")
 	if err != nil {
 		return nil, err
 	}
@@ -1874,7 +1875,7 @@ func Undo(targetDir string) error {
 	if !exists(journalPath(r.Dir)) {
 		return refuse("There is no unfinished restore on %s.", r.Dir)
 	}
-	lease, err := root.AcquireOperation(r.Dir, "undo restore")
+	lease, err := lease.AcquireOperation(r.Dir, "undo restore")
 	if err != nil {
 		return err
 	}

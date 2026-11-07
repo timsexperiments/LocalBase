@@ -1,6 +1,9 @@
-package root
+package lease
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -431,29 +434,44 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 	return state, lease, err
 }
 
-// InUse reports whether another live process holds this root: a gateway, or a command holding the
-// operation lease. This process doesn't count: a command reading with its own lease isn't racing
-// itself. What it can't tell counts as held, for a caller about to read files someone may be writing.
-func InUse(dir string) bool {
-	canonical, err := Canonical(dir)
-	if err != nil {
-		canonical = dir
-	}
-	switch state, owner, _ := (&Root{Dir: canonical}).OwnerState(); state {
-	case "active":
-		if owner.PID != os.Getpid() {
-			return true
-		}
-	case "unknown":
-		return true
+// Hash is the sha256 of the canonical path; it names the root's operation lease, and root.Hash, which
+// names the service unit, is this.
+func Hash(dir string) string {
+	sum := sha256.Sum256([]byte(dir))
+	return hex.EncodeToString(sum[:])
+}
+
+// uuid is a copy of root's uuid (internal/root/lock.go), so that this package needn't import root.
+func uuid() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	h := hex.EncodeToString(b)
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
+// Held says whether a root's operation lease is held, and by which process for which operation. A
+// lease directory whose record can't be read is held by someone unknown (pid 0); a valid record is held
+// while its process is present. These are the checks root.InUse has always made of the lease.
+func Held(canonicalRoot string) (pid int, operation string, ok bool) {
+	p := operationPaths(canonicalRoot)
+	if _, err := os.Stat(p.lock); err != nil {
+		return 0, "", false
 	}
 	var o operationOwner
-	p := operationPaths(canonical)
-	if _, err := os.Stat(p.lock); err != nil {
-		return false
-	}
 	if !readJSON(p.owner, &o) || !o.valid() {
-		return true
+		return 0, "", true
 	}
-	return o.PID != os.Getpid() && presence(o.PID) != 0
+	if presence(o.PID) == 0 {
+		return 0, "", false
+	}
+	return o.PID, o.Operation, true
+}
+
+// Running says a live process holds a root's operation lease for this operation. Whatever can't be read
+// isn't running. These are the checks root's restoreRunning has always made.
+func Running(canonicalRoot, operation string) bool {
+	var o operationOwner
+	return readJSON(operationPaths(canonicalRoot).owner, &o) && o.valid() && o.Operation == operation && presence(o.PID) != 0
 }

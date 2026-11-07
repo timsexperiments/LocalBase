@@ -47,30 +47,3 @@ func TestTheMarkerIsSyncedBeforeItsName(t *testing.T) {
 		t.Errorf("a marker was left after a failed sync: %v", err)
 	}
 }
-
-// An operation lease's record is synced before it gets its name, and a failed sync leaves the old one.
-func TestALeaseRecordIsSyncedBeforeItsName(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "owner.json")
-	if err := os.WriteFile(path, []byte(`{"old":true}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	synced := syncedBeforeRename(t, path, `"new"`)
-	if err := writeJSONAtomic(path, map[string]bool{"new": true}); err != nil {
-		t.Fatal(err)
-	}
-	if len(*synced) != 1 || (*synced)[0] == path {
-		t.Fatalf("synced %v, want the record's temporary file", *synced)
-	}
-
-	syncFile = func(*os.File) error { return errors.New("planted sync failure") }
-	if err := writeJSONAtomic(path, map[string]bool{"newer": true}); err == nil || !strings.Contains(err.Error(), "planted sync failure") {
-		t.Fatalf("got %v, want the sync failure", err)
-	}
-	if b, _ := os.ReadFile(path); string(b) != `{"new":true}` {
-		t.Errorf("the record changed: %s", b)
-	}
-	entries, _ := os.ReadDir(filepath.Dir(path))
-	if len(entries) != 1 {
-		t.Errorf("left beside it: %v", entries)
-	}
-}

@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -299,7 +300,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		}
 	}
 	var changed []setting // the toggles whose value this command changes; unset counts as off
-	if err := root.WithOperation(e.Root.Dir, "configure", func() error {
+	if err := lease.WithOperation(e.Root.Dir, "configure", func() error {
 		for _, s := range settings {
 			if !s.toggle {
 				continue

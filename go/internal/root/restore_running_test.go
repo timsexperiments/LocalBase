@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 )
 
 // A restore that's really running is named as such, with the root quoted. A root's path can hold a control
@@ -29,7 +31,7 @@ func TestARunningRestoreNamesItsRootSafely(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, RestoreJournalName), []byte("{}"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			lease, err := AcquireOperation(dir, "restore")
+			lease, err := lease.AcquireOperation(dir, "restore")
 			if err != nil {
 				t.Fatal(err)
 			}
