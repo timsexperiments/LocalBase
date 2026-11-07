@@ -135,7 +135,7 @@ func New(s *Server) *Server {
 	if rootDir != "" {
 		runsDir = filepath.Join(rootDir, "runs")
 	}
-	s.runs = newRunManager(s, runsDir)
+	s.runs = newRunManager(s.runOptions(runsDir))
 	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
 	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	s.changeAudit = newChangeLimiter()
@@ -147,6 +147,12 @@ func New(s *Server) *Server {
 	}
 	s.mux = mux
 	return s
+}
+
+// runOptions is what the run manager needs from this server.
+func (s *Server) runOptions(dir string) runOptions {
+	return runOptions{handler: s, owner: s.runOwner, log: func() *slog.Logger { return s.Log }, otel: func() *otlp.Runtime { return s.Otel },
+		dir: dir, maxHeld: s.RunMemoryLimit, maxHeldTotal: s.RunsMemoryLimit}
 }
 
 // StopRuns interrupts active runs (gateway_restart) and ends their event

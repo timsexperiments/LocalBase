@@ -221,7 +221,7 @@ func TestADeleteWhoseCallerLeavesStopsWaiting(t *testing.T) {
 	req.SetPathValue("rest", r.ID)
 	rec := httptest.NewRecorder()
 	returned := make(chan struct{})
-	go func() { s.runRoute(rec, req); close(returned) }()
+	go func() { s.runs.runRoute(rec, req); close(returned) }()
 	time.AfterFunc(50*time.Millisecond, cancel)
 	select {
 	case <-returned:

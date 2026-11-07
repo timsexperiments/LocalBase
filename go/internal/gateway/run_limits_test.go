@@ -222,10 +222,10 @@ func TestALineAtTheLimitPasses(t *testing.T) {
 // The flags reach the runs.
 func TestRunMemoryLimitsAreConfigurable(t *testing.T) {
 	s := &Server{RunMemoryLimit: 5 << 20, RunsMemoryLimit: 7 << 20}
-	if m := newRunManager(s, ""); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
+	if m := newRunManager(s.runOptions("")); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
 		t.Errorf("%d %d", m.maxHeld, m.maxHeldTotal)
 	}
-	if m := newRunManager(&Server{}, ""); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
+	if m := newRunManager((&Server{}).runOptions("")); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
 		t.Errorf("defaults: %d %d", m.maxHeld, m.maxHeldTotal)
 	}
 }
@@ -270,7 +270,7 @@ func TestARestoredRunCounts(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
 	s := runServer(ts)
 	dir := t.TempDir()
-	first := newRunManager(s, dir)
+	first := newRunManager(s.runOptions(dir))
 	r := &run{m: first, notify: make(chan struct{}), done: make(chan struct{})}
 	later := time.Now().Add(time.Hour)
 	id := newRunID()
@@ -278,7 +278,7 @@ func TestARestoredRunCounts(t *testing.T) {
 	r.ID, r.Object, r.Target, r.Status, r.ExpiresAt = id, "localbase.run", chatTarget, runCompleted, &later
 	r.output.Content = strings.Repeat("x", 5000)
 	first.checkpoint(r)
-	second := newRunManager(s, dir)
+	second := newRunManager(s.runOptions(dir))
 	second.mu.Lock()
 	_, ok := second.runs[id]
 	second.mu.Unlock()
