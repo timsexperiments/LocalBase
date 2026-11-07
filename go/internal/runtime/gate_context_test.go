@@ -11,7 +11,7 @@ import (
 // context ends. A call that isn't a launch has no context to end, and gets no target at once, with
 // otherwise as its error.
 func holdingGate(entered chan<- struct{}, otherwise error) Gate {
-	return func(ctx context.Context, _ string) (*Target, error) {
+	return func(ctx context.Context, _ string, _ bool) (*Target, error) {
 		if ctx.Done() == nil {
 			return nil, otherwise
 		}

@@ -19,7 +19,7 @@ const sdBackend = "stable-diffusion.cpp-metal"
 
 func imageTarget(t *testing.T, s *Service) (*Target, *catalog.Spec) {
 	t.Helper()
-	target, err := s.d.Gate(context.Background(), missingImage)
+	target, err := s.d.Gate(context.Background(), missingImage, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestAMediaPeakIsRecordedForItsBackend(t *testing.T) {
 	sampleFootprint = func(context.Context, int) (int64, bool) { return 7 * memory.GiB, true }
 	t.Cleanup(func() { sampleFootprint = before })
 	s, spec := startService(t)
-	target, err := s.d.Gate(context.Background(), spec.ModelID)
+	target, err := s.d.Gate(context.Background(), spec.ModelID, false)
 	if err != nil {
 		t.Fatal(err)
 	}

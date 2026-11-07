@@ -167,7 +167,7 @@ func newMissingImageService(t *testing.T, host *stepHost, recovery *IdleRecovery
 	}
 	reg, _ := backends.Load("")
 	sd := reg.Get("stable-diffusion.cpp-metal")
-	gate := func(context.Context, string) (*Target, error) {
+	gate := func(context.Context, string, bool) (*Target, error) {
 		m := &models.Model{ID: missingImage, Tasks: []string{"image"}, Variants: []models.Variant{{ID: "default"}}}
 		return &Target{ModelID: missingImage, Model: m, Variant: &m.Variants[0], Backend: sd, Dir: modelsDir}, nil
 	}

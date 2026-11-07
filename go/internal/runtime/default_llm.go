@@ -207,7 +207,7 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 func (m *LLM) switchDemand(ctx context.Context, id string, running, assumeInstalled bool) (memory.Demand, error) {
 	var demand memory.Demand
 	spec := m.d.Catalog.ByID(id)
-	t, err := m.target(ctx, id)
+	t, err := m.target(ctx, id, false)
 	if err != nil {
 		return demand, err
 	}

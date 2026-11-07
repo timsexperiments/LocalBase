@@ -60,7 +60,7 @@ func newImageGateway(t *testing.T, imageModel string) *httptest.Server {
 	mem.SetSampler(nil)
 	m := models.FromSpec(spec)
 	sd := reg.Get("stable-diffusion.cpp-metal")
-	gate := func(_ context.Context, id string) (*runtime.Target, error) {
+	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != imageModel {
 			return nil, runtime.ErrModelNotFound
 		}
