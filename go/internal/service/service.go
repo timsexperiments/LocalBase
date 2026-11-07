@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -984,14 +985,34 @@ func Remove(r *root.Root) (Inspection, error) {
 	if err := stopManaged(r, m, true); err != nil {
 		return Inspection{}, err
 	}
-	os.Remove(m.DefinitionPath)
-	os.Remove(manifestPath(r.Dir))
+	// A definition left behind is loaded again at the next login, so it is never left silently.
+	if err := removeIfThere(m.DefinitionPath); err != nil {
+		return Inspection{}, errorf("Stopped the LocalBase service, but could not remove its definition, %s: %v. Remove that file by hand, or the service may start again at the next login.", m.DefinitionPath, err)
+	}
+	manifestErr := removeIfThere(manifestPath(r.Dir))
 	if m.Manager == "systemd-user" {
 		if err := must(m, "--user", "daemon-reload"); err != nil {
 			return Inspection{}, err
 		}
 	}
+	if manifestErr != nil {
+		return Inspection{}, errorf("Stopped the LocalBase service, but could not remove %s: %v. Remove that file by hand, or LocalBase will still report a service here.", manifestPath(r.Dir), manifestErr)
+	}
 	return Inspect(r, false)
+}
+
+// removeIfThere removes path, and is fine if it's already gone. A failure gives its cause alone,
+// since the message it goes in names the path.
+func removeIfThere(path string) error {
+	err := os.Remove(path)
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return pathErr.Err
+	}
+	return err
 }
 
 // WaitReady waits until the gateway answers /health/ready with ready and
