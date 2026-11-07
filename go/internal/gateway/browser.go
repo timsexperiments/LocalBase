@@ -132,8 +132,6 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }
 
-type BrowserPrincipalKey struct{}
-
 // uiAccess serves the browser-owned paths.
 func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
@@ -150,7 +148,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 			auth.Deny(w, 404)
 			return
 		}
-		fwd := r.Clone(context.WithValue(r.Context(), BrowserPrincipalKey{}, full))
+		fwd := r.Clone(context.WithValue(r.Context(), httpx.BrowserPrincipalKey{}, full))
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
 		fwd.URL.RawQuery = forwardedQuery(target, r)
 		s.mux.ServeHTTP(w, fwd)
@@ -264,7 +262,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 
 // forwardAsBrowser runs an API route as the browser identity, without credentials.
 func (s *Server) forwardAsBrowser(w http.ResponseWriter, r *http.Request, principal *auth.Principal, target string) {
-	fwd := r.Clone(context.WithValue(r.Context(), BrowserPrincipalKey{}, principal))
+	fwd := r.Clone(context.WithValue(r.Context(), httpx.BrowserPrincipalKey{}, principal))
 	for name := range fwd.Header {
 		low := strings.ToLower(name)
 		if strings.HasPrefix(low, "cf-access-") || low == "cookie" || low == "authorization" || low == "x-api-key" || low == "x-localbase-ui" {

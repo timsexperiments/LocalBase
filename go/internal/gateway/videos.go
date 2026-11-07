@@ -241,7 +241,7 @@ func (a leaseAdmission) Release()                    { a.l.Release() }
 // PNG input_reference file (TS parseCreateRequest).
 func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data;") {
-		return ReadJSON(w, r)
+		return httpx.ReadJSON(w, r)
 	}
 	if r.ContentLength > videoMultipartLimit {
 		payloadTooLargeLimit(w, r, videoMultipartLimit)

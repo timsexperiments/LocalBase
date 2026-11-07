@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // CallResult is an in-process API response.
@@ -55,7 +56,7 @@ func (b *bufferWriter) Write(p []byte) (int, error) {
 // admission and errors as an API client gets. The UI's Lab and voices pages
 // use it instead of a JSON client.
 func (s *Server) Call(ctx context.Context, p *auth.Principal, method, path, contentType string, body []byte) CallResult {
-	r, _ := http.NewRequestWithContext(context.WithValue(ctx, BrowserPrincipalKey{}, p), method, "http://localbase.internal"+path, bytes.NewReader(body))
+	r, _ := http.NewRequestWithContext(context.WithValue(ctx, httpx.BrowserPrincipalKey{}, p), method, "http://localbase.internal"+path, bytes.NewReader(body))
 	r.Host = "localhost" // in-process: this machine, whatever the URL says
 	r.RemoteAddr = "127.0.0.1:0"
 	r.RequestURI = path

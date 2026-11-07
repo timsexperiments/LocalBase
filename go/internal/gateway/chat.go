@@ -1,10 +1,8 @@
 package gateway
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,8 +15,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
 )
 
-const MaxRequestBytes = 25 << 20
-
 // DefaultMaxTokens applies when a chat request sets neither max_tokens nor
 // max_completion_tokens; LOCALBASE_DEFAULT_MAX_TOKENS overrides it.
 func DefaultMaxTokens() int {
@@ -26,48 +22,6 @@ func DefaultMaxTokens() int {
 		return v
 	}
 	return 4096
-}
-
-func PayloadTooLarge(w http.ResponseWriter, r *http.Request) {
-	// The rest of the body may still be in flight: do not reuse the connection.
-	w.Header().Set("Connection", "close")
-	httpx.Error(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
-}
-
-// ReadJSON reads a bounded JSON object body, keeping unknown fields so they
-// pass through to the backend unchanged.
-func ReadJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	if r.ContentLength > MaxRequestBytes {
-		PayloadTooLarge(w, r)
-		return nil, false
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
-	if err != nil {
-		if r.Context().Err() != nil {
-			w.WriteHeader(499)
-			return nil, false
-		}
-		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
-		return nil, false
-	}
-	if len(body) > MaxRequestBytes {
-		PayloadTooLarge(w, r)
-		return nil, false
-	}
-	var v any
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil || dec.More() {
-		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
-		return nil, false
-	}
-	req, ok := v.(map[string]any)
-	if !ok {
-		// Valid JSON that is not an object fails the request schema, as in TS.
-		httpx.BadRequest(w, r, "Validation failed: : Invalid input: expected object, received "+TypeName(v), nil)
-		return nil, false
-	}
-	return req, true
 }
 
 // toolParam names the first field that asks for tool calling, or "".
@@ -203,7 +157,7 @@ func anchorPattern(p string) string {
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
-	req, ok := ReadJSON(w, r)
+	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
 	}
@@ -266,7 +220,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
-	req, ok := ReadJSON(w, r)
+	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
 	}
@@ -317,7 +271,7 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
-	req, ok := ReadJSON(w, r)
+	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
 	}

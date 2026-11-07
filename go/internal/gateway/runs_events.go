@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // --- telemetry ---------------------------------------------------------------------
@@ -25,7 +27,7 @@ func (m *Manager) log(r *run, event string) {
 		attrs = append(attrs, "error_code", code)
 	}
 	if r.EndedAt != nil {
-		attrs = append(attrs, "duration_ms", Round2(Milliseconds(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes+len(r.result), "events", len(r.events))
+		attrs = append(attrs, "duration_ms", httpx.Round2(httpx.Milliseconds(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes+len(r.result), "events", len(r.events))
 	}
 	level := slog.LevelInfo
 	switch event {

@@ -149,7 +149,7 @@ func (m *Manager) create(w http.ResponseWriter, req *http.Request, target string
 	ctx = context.WithValue(ctx, httpx.RunHooksKey{}, hooks)
 	// The inner request acts as the caller: the /v1 guard checks its scope.
 	if p, ok := req.Context().Value(httpx.PrincipalKey{}).(*auth.Principal); ok {
-		ctx = context.WithValue(ctx, BrowserPrincipalKey{}, p)
+		ctx = context.WithValue(ctx, httpx.BrowserPrincipalKey{}, p)
 	}
 	inner, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	inner.Header.Set("Content-Type", req.Header.Get("Content-Type"))
@@ -202,7 +202,7 @@ func (m *Manager) create(w http.ResponseWriter, req *http.Request, target string
 func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byte, bool) {
 	if target != "/v1/chat/completions" {
 		if req.ContentLength > MaxBody {
-			PayloadTooLarge(w, req)
+			httpx.PayloadTooLarge(w, req)
 			return nil, false
 		}
 		b, err := io.ReadAll(io.LimitReader(req.Body, MaxBody+1))
@@ -211,12 +211,12 @@ func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byt
 			return nil, false
 		}
 		if len(b) > MaxBody {
-			PayloadTooLarge(w, req)
+			httpx.PayloadTooLarge(w, req)
 			return nil, false
 		}
 		return b, true
 	}
-	obj, ok := ReadJSON(w, req)
+	obj, ok := httpx.ReadJSON(w, req)
 	if !ok {
 		return nil, false
 	}
@@ -261,8 +261,8 @@ func (m *Manager) finish(r *run, rw *runWriter) {
 		status = runFailed
 	case r.Target != chatTarget && rw.status >= 200 && rw.status < 300:
 		r.result, r.resultType = bytes.Clone(rw.body.Bytes()), rw.header.Get("Content-Type")
-		if rw.header.Get(AudioTruncatedHeader) == "true" {
-			r.notes = append(r.notes, NoteAudioTruncated)
+		if rw.header.Get(httpx.AudioTruncatedHeader) == "true" {
+			r.notes = append(r.notes, httpx.NoteAudioTruncated)
 		}
 	case rw.status >= 400 || !rw.sse:
 		status = runFailed

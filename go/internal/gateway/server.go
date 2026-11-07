@@ -202,7 +202,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			next(w, r)
 			return
 		}
-		if bp, ok := r.Context().Value(BrowserPrincipalKey{}).(*auth.Principal); ok {
+		if bp, ok := r.Context().Value(httpx.BrowserPrincipalKey{}).(*auth.Principal); ok {
 			httpx.SetAuth(r, bp)
 			if permission != "" && !bp.Can(permission) {
 				httpx.Forbidden(w, r)
