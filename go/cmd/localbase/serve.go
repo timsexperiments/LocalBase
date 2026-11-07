@@ -144,6 +144,14 @@ func serve(c *cli.Ctx) (any, error) {
 	if effectiveUID() == 0 && !c.Bool("allow-root") {
 		return nil, cli.Inputf("Refusing to serve as root: a gateway runs the backends it downloads and reads model files from anywhere, and all of that would run as root. Run it as an ordinary user, or pass --allow-root in a container that holds nothing else.")
 	}
+	// Checked before anything starts. What slog reads is accepted as before (any case); the rest
+	// would quietly have been info.
+	var level slog.Level
+	if v := c.String("log-level"); v != "" {
+		if err := level.UnmarshalText([]byte(v)); err != nil {
+			return nil, cli.Inputf(`log-level: Invalid option: expected one of "debug"|"info"|"warn"|"error"`)
+		}
+	}
 	port, err := intOpt(c, "port", 1, 65535)
 	if err != nil {
 		return nil, err
@@ -228,8 +236,6 @@ func serve(c *cli.Ctx) (any, error) {
 	if os.Getenv("LOCALBASE_SERVICE_TOKEN") == "" && !c.Global.JSON {
 		sink.Mirror = os.Stderr // foreground serve also prints events
 	}
-	var level slog.Level
-	level.UnmarshalText([]byte(c.String("log-level")))
 	handler := obs.NewHandler(sink, level)
 	log := slog.New(handler)
 	st.Log = log
