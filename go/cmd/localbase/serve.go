@@ -126,6 +126,10 @@ func intOpt(c *cli.Ctx, name string, lo, hi int) (int, error) {
 	return n, nil
 }
 
+// afterSignals runs once serve listens for stop signals. It exists only so a test can send one at
+// that point.
+var afterSignals = func() {}
+
 // runtimePortOrder is the order of --runtime-port-base's block.
 var runtimePortOrder = []string{"llm", "stt", "tts", "image", "video"}
 
@@ -199,6 +203,14 @@ func serve(c *cli.Ctx) (any, error) {
 	if c.Global.JSON {
 		c.Streaming()
 	}
+
+	// From here on a stop signal waits its turn: it is read once startup is done, and everything
+	// started so far is closed by its defer. Before, a SIGTERM during startup ended the process
+	// with none of them.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+	afterSignals()
 
 	e, err := openEnv(c)
 	if err != nil {
@@ -442,6 +454,17 @@ func serve(c *cli.Ctx) (any, error) {
 		srv.Usage = rec
 		stopUsage = rec.Start()
 	}
+	// A start that fails from here on (a busy port, most often) stops what started; a gateway that
+	// served stops them itself, in order, below.
+	served := false
+	defer func() {
+		if !served {
+			stopUsage()
+			if videoJobs != nil {
+				videoJobs.Shutdown()
+			}
+		}
+	}()
 	// The daily check is off by default, and this makes no request unless it is on.
 	srv.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
 	stopUpdates := srv.Updates.Start()
@@ -513,11 +536,11 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- httpServer.Serve(ln) }()
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	served = true
 	var serveErr error
 	select {
 	case s := <-sigs:
+		signal.Stop(sigs) // a second signal ends the process at once, as one expects of a second Ctrl-C
 		log.Info("Shutting down on "+s.String()+".", "event", "gateway.stopping")
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {
