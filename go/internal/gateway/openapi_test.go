@@ -499,20 +499,16 @@ func TestOpenAPISubroutes(t *testing.T) {
 		t.Errorf("voices/{id} segments: document %v, code %v", got, voiceSegments)
 	}
 
-	// Whatever the browser may call by exact path is documented.
+	// Whatever the browser may call by exact path is documented: the route table's routes with ui
+	// methods, the list allowedUIRoute reads.
 	var browser []string
-	ast.Inspect(fns["allowedUIRoute"], func(n ast.Node) bool {
-		if c, ok := n.(*ast.CaseClause); ok {
-			for _, e := range c.List {
-				if s, ok := stringLit(e); ok && strings.HasPrefix(s, "/") {
-					browser = append(browser, s)
-				}
-			}
+	for _, rt := range (&Server{}).routeTable() {
+		if len(rt.ui) > 0 {
+			browser = append(browser, rt.pattern)
 		}
-		return true
-	})
+	}
 	if len(browser) == 0 {
-		t.Error("found no paths in allowedUIRoute: the test no longer reads the code")
+		t.Error("found no ui routes in the route table: the test no longer reads the code")
 	}
 	for _, p := range browser {
 		if !slices.Contains(doc, p) {
