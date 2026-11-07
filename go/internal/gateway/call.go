@@ -3,6 +3,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -16,10 +18,18 @@ type CallResult struct {
 	Body   []byte
 }
 
+// callBodyLimit is the most of a response an in-process call holds, as a run's media result.
+var callBodyLimit = runMaxResult
+
+// errCallTooLarge tells a handler its in-process caller stopped reading.
+var errCallTooLarge = errors.New("the response is over what an in-app call holds")
+
 type bufferWriter struct {
 	header http.Header
 	status int
 	body   bytes.Buffer
+	limit  int  // the most it holds; 0 is no limit
+	over   bool // past limit: what was kept is dropped, and nothing more is
 }
 
 func (b *bufferWriter) Header() http.Header { return b.header }
@@ -31,6 +41,11 @@ func (b *bufferWriter) WriteHeader(code int) {
 func (b *bufferWriter) Write(p []byte) (int, error) {
 	if b.status == 0 {
 		b.status = 200
+	}
+	if b.over || (b.limit > 0 && b.body.Len()+len(p) > b.limit) {
+		b.over = true
+		b.body = bytes.Buffer{}
+		return 0, errCallTooLarge
 	}
 	return b.body.Write(p)
 }
@@ -48,8 +63,13 @@ func (s *Server) Call(ctx context.Context, p *auth.Principal, method, path, cont
 		r.Header.Set("Content-Type", contentType)
 	}
 	r.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	w := &bufferWriter{header: http.Header{}}
+	w := &bufferWriter{header: http.Header{}, limit: callBodyLimit}
 	s.ServeHTTP(w, r)
+	if w.over {
+		over := &bufferWriter{header: http.Header{}}
+		upstreamFailure(over, r, fmt.Sprintf("The response is larger than %s, more than an in-app call can hold.", sizeText(callBodyLimit)))
+		return CallResult{Status: over.status, Header: over.header, Body: over.body.Bytes()}
+	}
 	if w.status == 0 {
 		w.status = 200
 	}
