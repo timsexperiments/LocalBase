@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -32,7 +33,7 @@ type Fit struct {
 
 // ReferenceShape is the launch-shape key of a model's catalog reference
 // launch: the LLM shape, or "default" for the other kinds.
-func ReferenceShape(spec *catalog.Spec, g *memory.Geometry) string {
+func ReferenceShape(spec *catalog.Spec, g *gguf.Geometry) string {
 	if spec.Kind != "llm" {
 		return "default"
 	}
@@ -43,7 +44,7 @@ func ReferenceShape(spec *catalog.Spec, g *memory.Geometry) string {
 // FitFor ports evaluateModelFit: observed (reference shape first, else
 // newest) > measured > feed > estimate. g is the installed GGUF geometry
 // (LLM or TTS talker), or nil; feed are the plannable feed peaks.
-func FitFor(spec *catalog.Spec, systemGB int, g *memory.Geometry, observed []store.ObservedPeak, feed []catalog.MemoryPeak) *Fit {
+func FitFor(spec *catalog.Spec, systemGB int, g *gguf.Geometry, observed []store.ObservedPeak, feed []catalog.MemoryPeak) *Fit {
 	if spec == nil {
 		return nil
 	}
@@ -118,10 +119,10 @@ func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *
 	if complete, _ := spec.Installation(dir); !complete {
 		return FitFor(spec, systemGB, nil, nil, feed), nil
 	}
-	var geo *memory.Geometry
+	var geo *gguf.Geometry
 	primary := spec.Primary()
 	if (spec.Kind == "llm" || (spec.TTSRuntime != nil && spec.TTSRuntime.Kind == "llama-tts")) && strings.HasSuffix(primary.Filename, ".gguf") {
-		geo = memory.ReadGeometry(filepath.Join(dir, primary.Filename))
+		geo = gguf.ReadGeometry(filepath.Join(dir, primary.Filename))
 	}
 	var peaks []store.ObservedPeak
 	if primary.SHA256 != "" && st != nil {

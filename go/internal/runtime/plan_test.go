@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -30,11 +30,11 @@ type tsGeometry struct {
 	DecisionType          string `json:"decisionType"`
 }
 
-func (g *tsGeometry) toGo() *memory.Geometry {
+func (g *tsGeometry) toGo() *gguf.Geometry {
 	if g == nil {
 		return nil
 	}
-	out := &memory.Geometry{Architecture: g.Architecture, BlockCount: g.BlockCount, FullKVHeads: g.FullKvHeads,
+	out := &gguf.Geometry{Architecture: g.Architecture, BlockCount: g.BlockCount, FullKVHeads: g.FullKvHeads,
 		SWAKVHeads: g.SwaKvHeads, KeyLength: g.KeyLength, ValueLength: g.ValueLength, SWAKeyLength: g.SwaKeyLength,
 		SWAValueLength: g.SwaValueLength, Q8Compatible: g.Q8Compatible, RecurrentBytesPerSlot: g.RecurrentBytesPerSlot,
 		DecisionType: g.DecisionType}
@@ -145,7 +145,7 @@ func TestGeometryMatchesTypeScript(t *testing.T) {
 		}
 		seen[c.ModelID] = true
 		path := filepath.Join(dir, cat.ByID(c.ModelID).Primary().Filename)
-		got := memory.ReadGeometry(path)
+		got := gguf.ReadGeometry(path)
 		if !reflect.DeepEqual(got, c.Geometry.toGo()) {
 			t.Errorf("%s geometry\n got %+v\nwant %+v", c.ModelID, got, c.Geometry.toGo())
 		}

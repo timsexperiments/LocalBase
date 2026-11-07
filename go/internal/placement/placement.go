@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 )
 
 // Modes (DESIGN §20.1).
@@ -446,7 +446,7 @@ func Describe(p Plan, mode string) string {
 
 // LoadModel reads a GGUF file's tensor table (no weights) for the planner.
 func LoadModel(path string, layers int) (Model, error) {
-	ts, err := memory.ReadTensorTable(path)
+	ts, err := gguf.ReadTensorTable(path)
 	if err != nil {
 		return Model{}, err
 	}

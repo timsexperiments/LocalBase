@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 )
 
 // Demand is a runtime's memory reservation per pool view.
@@ -49,7 +51,7 @@ func ObservedMargin(peak int64) int64 {
 
 // LLMShape: geometry plus allowances for compute and slot terms.
 type LLMShape struct {
-	Geometry     *Geometry
+	Geometry     *gguf.Geometry
 	QueryHeads   int
 	EmbeddingLen int
 	VocabSize    int
@@ -81,14 +83,14 @@ func FallbackShape(paramsB float64) LLMShape {
 	layers := int(math.Ceil(16*math.Pow(p, 0.4) - 1e-9))
 	embd := int(math.Round(math.Sqrt(p * 1e9 / (12 * float64(layers)))))
 	return LLMShape{
-		Geometry: &Geometry{Architecture: "llama", BlockCount: layers, FullKVHeads: layers * 8,
+		Geometry: &gguf.Geometry{Architecture: "llama", BlockCount: layers, FullKVHeads: layers * 8,
 			KeyLength: 128, ValueLength: 128, Q8Compatible: true},
 		QueryHeads: max(1, int(math.Round(float64(embd)/128))), EmbeddingLen: embd, VocabSize: 152064,
 	}
 }
 
 // ResolveShape prefers the file's geometry; compute terms keep the fallback's allowances.
-func ResolveShape(size, quant string, weights int64, g *Geometry) LLMShape {
+func ResolveShape(size, quant string, weights int64, g *gguf.Geometry) LLMShape {
 	s := FallbackShape(parameterBillions(size, weights, quant))
 	if g != nil {
 		s.Geometry, s.FromGGUF = g, true
@@ -117,7 +119,7 @@ func ContextPerSequence(ctx, slots int) int {
 func llmTerms(shape LLMShape, l LLMLaunch) (kv, compute, slotState int64) {
 	slots := max(1, l.Slots)
 	if !l.Decision {
-		kv = KVCacheBytes(shape.Geometry, l.CtxTokens, slots, l.CacheTypeK, l.CacheTypeV)
+		kv = gguf.KVCacheBytes(shape.Geometry, l.CtxTokens, slots, l.CacheTypeK, l.CacheTypeV)
 	}
 	if l.Decision {
 		ub := int64(ContextPerSequence(l.CtxTokens, slots))

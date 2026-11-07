@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -378,9 +379,9 @@ func (u *UI) details(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, _ := task(s)
-	var geo *memory.Geometry
+	var geo *gguf.Geometry
 	if s.Kind == "llm" {
-		geo = memory.ReadGeometry(filepath.Join(u.d.RootDir, "models", "llm", s.Primary().Filename))
+		geo = gguf.ReadGeometry(filepath.Join(u.d.RootDir, "models", "llm", s.Primary().Filename))
 	}
 	var peaks []store.ObservedPeak
 	readNotice := ""

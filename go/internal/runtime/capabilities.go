@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -120,7 +120,7 @@ func engineCapabilities(s *catalog.Spec) Detected {
 
 const longContextTokens = 128 * 1024
 
-func ggufCapabilities(s *catalog.Spec, h *memory.CapabilityHeader) Detected {
+func ggufCapabilities(s *catalog.Spec, h *gguf.CapabilityHeader) Detected {
 	d := Detected{Capabilities: Opinions{}}
 	if h.Architecture != "" {
 		d.Evidence = append(d.Evidence, "gguf: "+h.Architecture)
@@ -289,14 +289,14 @@ func detectFromFiles(s *catalog.Spec, dir string) *Detected {
 	primary := filepath.Join(dir, s.Primary().Filename)
 	switch s.Kind {
 	case "llm":
-		h := memory.ReadCapabilityHeader(primary)
+		h := gguf.ReadCapabilityHeader(primary)
 		if h == nil {
 			return nil
 		}
 		d := ggufCapabilities(s, h)
 		d.InputModalities = []string{"text"}
 		if a := s.Projector(); a != nil {
-			if p := memory.ReadCapabilityHeader(filepath.Join(dir, a.Filename)); p != nil {
+			if p := gguf.ReadCapabilityHeader(filepath.Join(dir, a.Filename)); p != nil {
 				if p.HasVisionEncoder {
 					d.InputModalities = append(d.InputModalities, "image")
 					d.Evidence = append(d.Evidence, "projector: vision encoder")

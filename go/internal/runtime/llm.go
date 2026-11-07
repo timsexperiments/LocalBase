@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -164,7 +165,7 @@ type LLM struct {
 
 type geometryEntry struct {
 	mod time.Time
-	g   *memory.Geometry
+	g   *gguf.Geometry
 }
 
 func NewLLM(d LLMDeps, cfg *store.Config) *LLM {
@@ -218,7 +219,7 @@ func (m *LLM) port() int {
 }
 
 // geometryFor caches GGUF geometry by path and modification time.
-func (m *LLM) geometryFor(path string) *memory.Geometry {
+func (m *LLM) geometryFor(path string) *gguf.Geometry {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil
@@ -229,7 +230,7 @@ func (m *LLM) geometryFor(path string) *memory.Geometry {
 	if ok && e.mod.Equal(info.ModTime()) {
 		return e.g
 	}
-	g := memory.ReadGeometry(path)
+	g := gguf.ReadGeometry(path)
 	m.mu.Lock()
 	m.geometry[path] = geometryEntry{info.ModTime(), g}
 	m.mu.Unlock()

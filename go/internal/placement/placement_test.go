@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 )
 
 const mib = 1 << 20
@@ -16,7 +16,7 @@ const mib = 1 << 20
 // The GPT-OSS-20B fixtures are the header-derived evidence of the operator's
 // GPU test host qualification (internal; DESIGN §20.3): the tensor table and the
 // architecture metadata, no weights.
-func loadGptoss(t *testing.T) (Model, *memory.Geometry) {
+func loadGptoss(t *testing.T) (Model, *gguf.Geometry) {
 	t.Helper()
 	var tf struct {
 		Tensors []struct {
@@ -41,7 +41,7 @@ func loadGptoss(t *testing.T) (Model, *memory.Geometry) {
 	}
 	b, _ = os.ReadFile("testdata/gptoss20b-metadata.json")
 	json.Unmarshal(b, &mf)
-	return m, memory.GeometryFromMetadata(mf.Metadata)
+	return m, gguf.GeometryFromMetadata(mf.Metadata)
 }
 
 // The planner reproduces the qualified GPT-OSS-20B offload from the header
@@ -67,7 +67,7 @@ func TestGptossGolden(t *testing.T) {
 		{5120, 76873728, 1}, {9216, 130351104, 1}, {17408, 237305856, 1},
 		{33792, 451215360, 1}, {66560, 879034368, 2}, {131072, 1721303040, 4},
 	} {
-		kv := memory.KVCacheBytes(g, c.ctx, 1, "q8_0", "q8_0")
+		kv := gguf.KVCacheBytes(g, c.ctx, 1, "q8_0", "q8_0")
 		if kv != c.kv {
 			t.Errorf("ctx %d: KV %d, want %d", c.ctx, kv, c.kv)
 		}
