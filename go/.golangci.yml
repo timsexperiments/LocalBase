@@ -148,7 +148,7 @@ linters:
       - path: ^internal/gateway/placement\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
-      - path: ^internal/gateway/runs\.go$
+      - path: ^internal/gateway/runs_http\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
       - path: ^internal/gateway/videos\.go$
