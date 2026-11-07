@@ -4,6 +4,7 @@ name: Browser suite
 # a suite that can't run fails the job.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "go/internal/web/**"
       - "go/tools/e2e/**"
@@ -26,7 +27,7 @@ concurrency:
 
 jobs:
   e2e:
-    if: github.event_name == 'pull_request' || github.repository == 'timsexperiments/LocalBase'
+    if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || (github.event_name != 'pull_request' && github.repository == 'timsexperiments/LocalBase')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

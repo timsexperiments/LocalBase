@@ -6,8 +6,8 @@ on:
   push:
     tags: ["v*"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - "go/**"
       - "packaging/**"
       - "scripts/install.sh"
       - "scripts/release/**"
