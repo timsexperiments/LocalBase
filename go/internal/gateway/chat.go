@@ -13,6 +13,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
 )
 
 const maxRequestBytes = 25 << 20
@@ -241,7 +242,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	prepareChat(req)
 	prepStart := time.Now()
-	schema, rejection := Prepare(req["response_format"])
+	schema, rejection := structuredoutput.Prepare(req["response_format"])
 	prepMs := float64(time.Since(prepStart).Microseconds()) / 1000
 	if rejection != nil {
 		writeError(w, r, 400, "invalid_request_error", rejection.Code, rejection.Message, strp("response_format.json_schema.schema"))

@@ -1,4 +1,4 @@
-package gateway
+package structuredoutput
 
 import (
 	"encoding/json"
