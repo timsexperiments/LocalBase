@@ -373,36 +373,20 @@ func TestDownloadTokenOnlyToHuggingFace(t *testing.T) {
 	}
 }
 
-func TestDownloadURL(t *testing.T) {
-	a := catalog.Artifact{SourcePath: "/dir/my file.bin"}
-	for source, want := range map[string]string{
-		"https://huggingface.co/org/repo/": "https://huggingface.co/org/repo/resolve/rev/dir/my file.bin",
-		"https://github.com/org/repo":      "https://raw.githubusercontent.com/org/repo/rev/dir/my%20file.bin",
-	} {
-		if got := DownloadURL(&catalog.Spec{Source: source, RepositoryRevision: "rev"}, a); got != want {
-			t.Errorf("%s: %s", source, got)
-		}
-	}
-	a.Source = []byte(`{"repositoryUrl":"https://huggingface.co/other/repo","revision":"pinned"}`)
-	if got := DownloadURL(&catalog.Spec{Source: "https://huggingface.co/org/repo", RepositoryRevision: "rev"}, a); got != "https://huggingface.co/other/repo/resolve/pinned/dir/my file.bin" {
-		t.Errorf("an artifact's own source: %s", got)
-	}
-}
-
 func TestRequiredBytes(t *testing.T) {
 	dir := t.TempDir()
 	a, b := artifactOf("a.bin", modelBytes), artifactOf("b.bin", modelBytes)
 	s := specWith("http://x", a, b)
 	total := int64(len(modelBytes))
-	if got := RequiredBytes(s, dir); got != 2*total {
+	if got := catalog.RequiredBytes(s, dir); got != 2*total {
 		t.Errorf("nothing there: %d", got)
 	}
 	os.WriteFile(filepath.Join(dir, "a.bin"), modelBytes, 0o600)
-	if got := RequiredBytes(s, dir); got != total {
+	if got := catalog.RequiredBytes(s, dir); got != total {
 		t.Errorf("one complete: %d", got)
 	}
 	os.WriteFile(filepath.Join(dir, "b.bin.partial"), modelBytes[:100], 0o600)
-	if got := RequiredBytes(s, dir); got != total-100 {
+	if got := catalog.RequiredBytes(s, dir); got != total-100 {
 		t.Errorf("a partial: %d", got)
 	}
 }
