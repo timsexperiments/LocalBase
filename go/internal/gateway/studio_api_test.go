@@ -230,8 +230,8 @@ func TestRunTranslationNotConfigured(t *testing.T) {
 // An event stream from a target other than chat is that target's result: it
 // used to be parsed as chat chunks, leaving a completed run with no result.
 func TestRunMediaEventStreamIsItsResult(t *testing.T) {
-	ts := newTestServer(t)
-	m := runServer(ts).runs
+	_, mgr := newRunHarness(t)
+	m := mgr
 	sse := "data: {\"type\":\"speech.audio.delta\",\"audio\":\"AAAA\"}\n\ndata: {\"type\":\"speech.audio.done\"}\n\n"
 	r := &run{m: m, runRecord: runRecord{ID: "run_t", Target: "/v1/audio/speech", Status: runInProgress, Owner: "local"},
 		notify: make(chan struct{}), done: make(chan struct{}), queuedSeen: true}

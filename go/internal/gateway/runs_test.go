@@ -495,19 +495,18 @@ func TestRunRestartInterrupted(t *testing.T) {
 func TestRunExpiry(t *testing.T) {
 	logs := &syncBuffer{}
 	testLog = logs
-	ts := newTestServer(t)
+	ts, mgr := newRunHarness(t)
 	testLog = nil
-	s := runServer(ts)
 	c := runClient{t: t, base: ts.URL}
 	id := c.start("fake:reply done")
 	c.waitStatus(id, "completed")
-	dir := filepath.Join(s.Root.Dir, "runs")
+	dir := mgr.dir
 	fi, err := os.Stat(filepath.Join(dir, id+".json"))
 	di, _ := os.Stat(dir)
 	if err != nil || fi.Mode().Perm() != 0o600 || di.Mode().Perm() != 0o700 {
 		t.Fatalf("checkpoint modes: %v %v %v", err, fi, di)
 	}
-	s.runs.now = func() time.Time { return time.Now().Add(31 * time.Minute) }
+	mgr.now = func() time.Time { return time.Now().Add(31 * time.Minute) }
 	if _, m := c.do("GET", "/_localbase/runs", ""); len(m["data"].([]any)) != 0 {
 		t.Errorf("expired run listed: %v", m)
 	}
@@ -523,7 +522,7 @@ func TestRunExpiry(t *testing.T) {
 	// The startup sweep removes expired files too.
 	os.WriteFile(filepath.Join(dir, "run_00.json"), []byte(`{"id":"run_00","owner":"local","status":"completed","expiresAt":"2020-01-01T00:00:00Z"}`), 0o600)
 	os.WriteFile(filepath.Join(dir, "junk.json"), []byte(`x`), 0o600)
-	New(&Server{Store: s.Store, Catalog: s.Catalog, Auth: s.Auth, LLM: s.LLM, Log: s.Log, NoAuth: true, Root: s.Root, Memory: s.Memory}).StopRuns(0)
+	NewManager(stubOptions(dir)).Shutdown(0)
 	if left, _ := os.ReadDir(dir); len(left) != 0 {
 		t.Errorf("left after the startup sweep: %v", left)
 	}
@@ -533,8 +532,7 @@ func TestRunExpiry(t *testing.T) {
 func TestRunLimits(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
-	ts := newTestServer(t)
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	var ids []string
 	for range ActivePerOwner {
@@ -548,7 +546,7 @@ func TestRunLimits(t *testing.T) {
 		c.do("POST", "/_localbase/runs/"+id+"/cancel", "")
 	}
 	os.Remove(cancelLog)
-	s.runs.maxOutput = 2000
+	mgr.maxOutput = 2000
 	id := c.start("fake:slow 200")
 	m = c.waitStatus(id, "failed")
 	if m["reason"] != "output_limit" || content(m) == "" {
@@ -577,8 +575,8 @@ func TestRunMemoryPressure(t *testing.T) {
 // suit Cloudflare and Safari.
 func TestRunKeepAlive(t *testing.T) {
 	t.Setenv("FAKE_DELAY_MS", "1500") // nothing to say for 1.5 s
-	ts := newTestServer(t)
-	runServer(ts).runs.ping = 100 * time.Millisecond
+	ts, mgr := newRunHarness(t)
+	mgr.ping = 100 * time.Millisecond
 	c := runClient{t: t, base: ts.URL}
 	id := c.start("fake:reply quiet")
 	_, comments, h := c.events(id, nil, "", func(e []runEv) bool { return e == nil && false })

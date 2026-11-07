@@ -14,31 +14,29 @@ import (
 
 // A chat run over what it may hold ends failed, with what it had, and the backend is told to stop.
 func TestARunOverItsMemoryLimitFailsWithWhatItHad(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
-	s.runs.maxHeld = 3000
+	mgr.maxHeld = 3000
 	m := c.waitStatus(c.start("fake:slow 200"), "failed")
 	if m["reason"] != "output_limit" || content(m) == "" {
 		t.Errorf("%v", m)
 	}
-	if got := s.runs.held.Load(); got > 3000 {
+	if got := mgr.held.Load(); got > 3000 {
 		t.Errorf("holding %d, limit 3000", got)
 	}
 }
 
 // All runs together have a limit too, with its own reason, and dropping a run gives its share back.
 func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
-	s.runs.maxHeldTotal = 3000
+	mgr.maxHeldTotal = 3000
 	id := c.start("fake:slow 200")
 	m := c.waitStatus(id, "failed")
 	if m["reason"] != "memory_limit" || content(m) == "" {
 		t.Errorf("%v", m)
 	}
-	if got := s.runs.held.Load(); got == 0 || got > 3000 {
+	if got := mgr.held.Load(); got == 0 || got > 3000 {
 		t.Errorf("holding %d, limit 3000", got)
 	}
 	e, _ := m["error"].(map[string]any)
@@ -48,34 +46,32 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 	if code, _ := c.do("DELETE", "/_localbase/runs/"+id, ""); code != 200 {
 		t.Fatalf("dismissing: %d", code)
 	}
-	if got := s.runs.held.Load(); got != 0 {
+	if got := mgr.held.Load(); got != 0 {
 		t.Errorf("holding %d after dismissing the only run", got)
 	}
 }
 
 // The other ways a run goes give it back too.
 func TestAnExpiredRunGivesBackWhatItHeld(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	id := c.start("hello")
 	c.waitStatus(id, "completed")
-	if s.runs.held.Load() == 0 {
+	if mgr.held.Load() == 0 {
 		t.Fatal("a finished run holds its output")
 	}
 	later := time.Now().Add(2 * runRetention)
-	s.runs.now = func() time.Time { return later }
-	s.runs.sweepExpired()
-	if got := s.runs.held.Load(); got != 0 {
+	mgr.now = func() time.Time { return later }
+	mgr.sweepExpired()
+	if got := mgr.held.Load(); got != 0 {
 		t.Errorf("holding %d after it expired", got)
 	}
 }
 
 // A media result counts while it arrives and stays counted if kept; a failure gives it back.
 func TestAMediaBodyCountsAndAFailureGivesItBack(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
-	m := s.runs
+	_, mgr := newRunHarness(t)
+	m := mgr
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	newRun := func() (*run, *runWriter) {
@@ -123,9 +119,8 @@ func TestAMediaBodyCountsAndAFailureGivesItBack(t *testing.T) {
 
 // Many tiny chunks are what the 8 MiB of payload doesn't see: their overhead is counted.
 func TestTinyChunksCountTheirOverhead(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
-	m := s.runs
+	_, mgr := newRunHarness(t)
+	m := mgr
 	_, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	r := &run{m: m, notify: make(chan struct{}), done: make(chan struct{}), cancel: cancel}
@@ -232,22 +227,21 @@ func TestRunMemoryLimitsAreConfigurable(t *testing.T) {
 
 // A run refused before it queues leaves nothing counted.
 func TestARefusedRunLeavesNothingCounted(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", `{"messages":[]}`)
 	if code != 400 || m["error"] == nil {
 		t.Fatalf("not refused: %d %v", code, m)
 	}
-	if got := s.runs.held.Load(); got != 0 {
+	if got := mgr.held.Load(); got != 0 {
 		t.Errorf("holding %d after a refusal", got)
 	}
 }
 
 // Runs dropped for being over an owner's retained count give back what they held.
 func TestATrimmedRunGivesBackWhatItHeld(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	m := runServer(ts).runs
+	_, mgr := newRunHarness(t)
+	m := mgr
 	now := time.Now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -267,10 +261,8 @@ func TestATrimmedRunGivesBackWhatItHeld(t *testing.T) {
 
 // A run read back after a restart holds its output again, so it counts again.
 func TestARestoredRunCounts(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
 	dir := t.TempDir()
-	first := NewManager(s.runOptions(dir))
+	first := NewManager(stubOptions(dir))
 	r := &run{m: first, notify: make(chan struct{}), done: make(chan struct{})}
 	later := time.Now().Add(time.Hour)
 	id := newRunID()
@@ -278,7 +270,7 @@ func TestARestoredRunCounts(t *testing.T) {
 	r.ID, r.Object, r.Target, r.Status, r.ExpiresAt = id, "localbase.run", chatTarget, runCompleted, &later
 	r.output.Content = strings.Repeat("x", 5000)
 	first.checkpoint(r)
-	second := NewManager(s.runOptions(dir))
+	second := NewManager(stubOptions(dir))
 	second.mu.Lock()
 	_, ok := second.runs[id]
 	second.mu.Unlock()
@@ -292,13 +284,12 @@ func TestARestoredRunCounts(t *testing.T) {
 
 // The refusal says what holds the memory, how much, when the oldest goes, and what to do.
 func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	first := c.start("hello")
 	c.waitStatus(first, "completed")
 	done := c.get(first)
-	s.runs.maxHeldTotal = s.runs.held.Load() + 1 // Full, with a finished run holding it.
+	mgr.maxHeldTotal = mgr.held.Load() + 1 // Full, with a finished run holding it.
 	m := c.waitStatus(c.start("fake:slow 200"), "failed")
 	if m["reason"] != "memory_limit" {
 		t.Fatalf("%v", m)
@@ -404,8 +395,8 @@ func TestAStreamingRequestsHeapDoesNotGrowWithTheStream(t *testing.T) {
 
 // The time given is the oldest finished result's, and only finished runs are summed.
 func TestAFullTotalNamesTheOldestFinishedResult(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	m := runServer(ts).runs
+	_, mgr := newRunHarness(t)
+	m := mgr
 	soon, later := time.Date(2026, 11, 3, 9, 15, 0, 0, time.UTC), time.Date(2026, 11, 3, 9, 45, 0, 0, time.UTC)
 	m.mu.Lock()
 	for i, exp := range []time.Time{later, soon, later} {
