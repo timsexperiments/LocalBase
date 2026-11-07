@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 )
 
 // These feed what a caller or a backend can send to what reads it first. Plain `go test` runs the
@@ -84,8 +86,8 @@ func FuzzImageChecks(f *testing.F) {
 	f.Add([]byte{0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00, 0xff, 0xd9})
 	f.Add([]byte{0xff, 0xd8})
 	f.Fuzz(func(t *testing.T, data []byte) {
-		ValidatePNG(data)
-		ValidateJPEG(data)
+		mediacheck.ValidatePNG(data)
+		mediacheck.ValidateJPEG(data)
 		decodeCanonicalBase64(string(data))
 	})
 }

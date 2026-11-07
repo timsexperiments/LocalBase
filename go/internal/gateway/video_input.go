@@ -9,6 +9,8 @@ import (
 	"io"
 	"math"
 	"regexp"
+
+	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 )
 
 // Native video input validation (TS video-input.ts videoGenerationInputSchema):
@@ -184,7 +186,7 @@ func decodeCanonicalBase64(s string) []byte {
 // critical chunks, ancillary chunks only before the image data, and exactly
 // the scanlines the header declares with valid filter bytes.
 func videoPNG(b []byte) (int, int, bool) {
-	if ValidatePNG(b) == nil || len(b) < 33 || !bytes.Equal(b[:8], PNGSignature) {
+	if mediacheck.ValidatePNG(b) == nil || len(b) < 33 || !bytes.Equal(b[:8], mediacheck.PNGSignature) {
 		return 0, 0, false
 	}
 	be := binary.BigEndian
