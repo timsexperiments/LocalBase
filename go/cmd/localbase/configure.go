@@ -269,7 +269,43 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && e.memoryGB() < 16 {
 		c.Error("Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.", p, e.memoryGB())
 	}
-	if err := root.WithOperation(e.Root.Dir, "configure", func() error { return e.saveAs(cfg, true) }); err != nil {
+	// Every setting option is checked before anything is written, then the configuration and the
+	// settings go in together, in this order: a refused command writes nothing.
+	type setting struct{ key, value string }
+	var settings []setting
+	for _, o := range []struct {
+		flag, key string
+		low       int
+	}{
+		{"max-connections", store.MaxConnectionsKey, 0}, {"max-connections-per-ip", store.MaxConnectionsPerIPKey, 0},
+		{"import-deadline-hours", store.ImportDeadlineKey, 1}, {"import-max-unknown-gib", store.ImportMaxUnknownKey, 1},
+	} {
+		if c.Has(o.flag) {
+			n, err := intOpt(c, o.flag, o.low, 10_000_000)
+			if err != nil {
+				return nil, err
+			}
+			settings = append(settings, setting{o.key, strconv.Itoa(n)})
+		}
+	}
+	for _, o := range []struct{ flag, key string }{
+		{"allow-private-imports", store.PrivateImportsKey}, {"allow-local-path-imports", store.LocalPathImportsKey},
+	} {
+		if v, ok := c.OptBool(o.flag); ok {
+			settings = append(settings, setting{o.key, map[bool]string{true: "on", false: "off"}[v]})
+		}
+	}
+	if err := root.WithOperation(e.Root.Dir, "configure", func() error {
+		if err := e.saveAs(cfg, true); err != nil {
+			return err
+		}
+		for _, s := range settings {
+			if err := e.Store.SetSetting(context.Background(), s.key, s.value); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		var inv *conf.InvalidError
 		if errors.As(err, &inv) {
 			return nil, cli.Inputf("%s", conf.Summary(inv.Issues))
@@ -295,36 +331,6 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	active := false
 	for _, k := range keys {
 		active = active || k.RevokedAt == nil
-	}
-	for flag, key := range map[string]string{"max-connections": store.MaxConnectionsKey, "max-connections-per-ip": store.MaxConnectionsPerIPKey} {
-		if c.Has(flag) {
-			n, err := intOpt(c, flag, 0, 10_000_000)
-			if err != nil {
-				return nil, err
-			}
-			if err := e.Store.SetSetting(context.Background(), key, strconv.Itoa(n)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	for flag, key := range map[string]string{"import-deadline-hours": store.ImportDeadlineKey, "import-max-unknown-gib": store.ImportMaxUnknownKey} {
-		if c.Has(flag) {
-			n, err := intOpt(c, flag, 1, 10_000_000)
-			if err != nil {
-				return nil, err
-			}
-			if err := e.Store.SetSetting(context.Background(), key, strconv.Itoa(n)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	for flag, key := range map[string]string{"allow-private-imports": store.PrivateImportsKey, "allow-local-path-imports": store.LocalPathImportsKey} {
-		if v, ok := c.OptBool(flag); ok {
-			state := map[bool]string{true: "on", false: "off"}[v]
-			if err := e.Store.SetSetting(context.Background(), key, state); err != nil {
-				return nil, err
-			}
-		}
 	}
 	create := !c.Global.JSON
 	if v, ok := c.OptBool("create-key"); ok {

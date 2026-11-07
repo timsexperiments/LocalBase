@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -149,9 +150,17 @@ func (c runClient) waitStatus(id string, statuses ...string) map[string]any {
 				return true
 			}
 		}
+		// A run that has ended won't become what is wanted, and what it says is why.
+		switch m["status"] {
+		case "completed", "failed", "cancelled", "interrupted":
+			return true
+		}
 		return false
 	}) {
 		c.t.Fatalf("run %s: status %v, want %v", id, m["status"], statuses)
+	}
+	if !slices.Contains(statuses, fmt.Sprint(m["status"])) {
+		c.t.Fatalf("run %s ended %v, want %v: reason %v, error %v", id, m["status"], statuses, m["reason"], m["error"])
 	}
 	return m
 }

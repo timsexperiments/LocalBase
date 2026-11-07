@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"time"
@@ -93,7 +94,10 @@ func invalidConfiguration(dir, detail string) error {
 func readConfigIfPresent(dir string, cat *catalog.Catalog) (*store.Config, bool, error) {
 	path := dir + "/local-base.db"
 	if _, err := os.Stat(path); err != nil {
-		return nil, false, nil
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, &unreadableSettings{Root: dir, Err: err} // there, but not to be read: not a fresh root
 	}
 	if msg := backup.UnfinishedWrite(context.Background(), dir); msg != "" {
 		return nil, false, errors.New(msg)
@@ -204,7 +208,9 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 	}
 	defer lease.Release()
 	dbExists := false
-	if _, err := os.Stat(dir + "/local-base.db"); err == nil {
+	if _, err := os.Stat(dir + "/local-base.db"); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, &unreadableSettings{Root: dir, Err: err} // there, but not to be read: not a fresh root
+	} else if err == nil {
 		dbExists = true
 		if _, err := root.Open(dir); err != nil {
 			return nil, err
