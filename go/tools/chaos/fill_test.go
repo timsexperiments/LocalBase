@@ -2,6 +2,7 @@ package chaos
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"syscall"
@@ -127,15 +128,13 @@ func TestDetachVolume(t *testing.T) {
 	}
 }
 
-// How the fill meets a volume that refuses, or reads low until a sync, planted: no volume, no
-// waiting. macos-15 in CI ended a fill with 13.5 to 13.9 MiB free, and then took 5 MiB. The first
-// two cases are the two ways that could happen; on main's fill, both end with that much free.
+// How the fill meets a volume that refuses, planted: no volume, no waiting. The first case is what
+// macos-15 did in CI: a 1 MiB write refused with about 13.5 MiB free, and 5 MiB taken just after.
 func TestFillToWaitsOutARefusal(t *testing.T) {
 	const MiB = 1 << 20
 	type volume struct {
 		free, reserve int64 // writes are refused whole past free-reserve, as APFS refuses them
 		refuseAt      int64 // one refusal, once free falls to this, that a sync clears
-		hidden        int64 // free space that reads as used until the first sync
 		syncs         int
 		fail          error
 	}
@@ -154,22 +153,21 @@ func TestFillToWaitsOutARefusal(t *testing.T) {
 				v.free -= int64(n)
 				return n, nil
 			},
-			sync: func() error { v.syncs++; v.hidden = 0; return nil },
-			free: func() (int64, error) { return v.free - v.hidden, nil },
+			sync: func() error { v.syncs++; return nil },
+			free: func() (int64, error) { return v.free, nil },
 		}
 	}
 	const margin = 4 * MiB
 	full := [2]int64{margin, margin + fillSmallest - 1}
 	for _, c := range []struct {
-		name    string
-		v       volume
-		limit   int
-		ends    [2]int64 // where free must end
-		notes   int
-		wantErr string
+		name     string
+		v        volume
+		limit    int
+		ends     [2]int64 // where free must end
+		refusals int
+		wantErr  string
 	}{
 		{"a refusal a sync clears, with 13.5 MiB free", volume{free: 90 * MiB, refuseAt: 27 * MiB / 2}, fillDiskLimit, full, 1, ""},
-		{"10 MiB that reads as used until a sync", volume{free: 90 * MiB, hidden: 10 * MiB}, fillDiskLimit, full, 1, ""},
 		{"no refusal: to the margin", volume{free: 90 * MiB}, fillDiskLimit, full, 0, ""},
 		{"a volume that keeps 2.4 MiB back, under the margin", volume{free: 90 * MiB, reserve: 12 * MiB / 5}, fillDiskLimit, full, 0, ""},
 		{"a volume that keeps 13.5 MiB back, over the margin", volume{free: 90 * MiB, reserve: 27 * MiB / 2}, fillDiskLimit, [2]int64{27 * MiB / 2, 27*MiB/2 + fillSmallest - 1}, 8 + fillStubborn, ""},
@@ -178,19 +176,82 @@ func TestFillToWaitsOutARefusal(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			v := c.v
-			_, notes, err := fillTo(margin, c.limit, ops(&v))
+			_, refusals, err := fillTo(margin, c.limit, ops(&v))
 			if (err == nil) != (c.wantErr == "") || (err != nil && !strings.Contains(err.Error(), c.wantErr)) {
 				t.Fatalf("err %v, want %q", err, c.wantErr)
 			}
 			if v.free < c.ends[0] || v.free > c.ends[1] {
-				t.Errorf("ended with %d free, want %d to %d; the fill met: %s", v.free, c.ends[0], c.ends[1], fillNotes(notes))
+				t.Errorf("ended with %d free, want %d to %d; refusals: %s", v.free, c.ends[0], c.ends[1], fillNotes(refusals))
 			}
-			if len(notes) != c.notes {
-				t.Errorf("%d notes, want %d: %s", len(notes), c.notes, fillNotes(notes))
-			}
-			if c.wantErr == "" && v.syncs == 0 {
-				t.Errorf("the fill ended without a sync")
+			if len(refusals) != c.refusals || v.syncs < len(refusals)-1 {
+				t.Errorf("%d refusals and %d syncs, want %d refusals, each but the last synced: %s", len(refusals), v.syncs, c.refusals, fillNotes(refusals))
 			}
 		})
 	}
 }
+
+// What the probe takes as full, planted. The second case is what macos-15 did in CI: with a
+// gateway's root on the volume, creating the probe's file was refused with 19312640 bytes free.
+func TestProbeTakesARefusedFileAsFull(t *testing.T) {
+	type disk struct {
+		createErr, writeErr, removeErr error
+		took                           int // what a refused write took before it was refused
+		created, removed               bool
+	}
+	ops := func(d *disk) probeOps {
+		return probeOps{
+			create: func() (io.WriteCloser, error) {
+				if d.createErr != nil {
+					return nil, d.createErr
+				}
+				d.created = true
+				return probeFile{d.writeErr, d.took}, nil
+			},
+			remove: func() error { d.removed = true; return d.removeErr },
+			free:   func() (int64, error) { return 19312640, nil },
+		}
+	}
+	for _, c := range []struct {
+		name    string
+		d       disk
+		refused string // how a full volume refused, or "" for an error
+		wantErr string
+	}{
+		{"the write is refused", disk{writeErr: syscall.ENOSPC}, "a write of 5242880 refused with 19312640 bytes free", ""},
+		{"the file is refused", disk{createErr: syscall.ENOSPC}, "creating its file refused with 19312640 bytes free", ""},
+		{"part of the write is taken, then refused", disk{writeErr: syscall.ENOSPC, took: 1 << 20}, "a write of 5242880 refused", ""},
+		{"the write fits", disk{}, "", "a write of 5242880 bytes fit, so it is not full (19312640 bytes free before it)"},
+		{"the file fails otherwise", disk{createErr: syscall.EACCES}, "", "the probe could not be created: permission denied"},
+		{"the write fails otherwise", disk{writeErr: syscall.EIO}, "", "the probe failed otherwise: input/output error"},
+		{"the probe can't be deleted", disk{writeErr: syscall.ENOSPC, removeErr: syscall.ENOSPC}, "", "could not be deleted: no space left on device"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := c.d
+			refused, err := probe(ops(&d))
+			if (err == nil) != (c.wantErr == "") || (err != nil && !strings.Contains(err.Error(), c.wantErr)) {
+				t.Fatalf("err %v, want %q", err, c.wantErr)
+			}
+			if !strings.Contains(refused, c.refused) || (c.refused == "") != (refused == "") {
+				t.Errorf("refused %q, want %q", refused, c.refused)
+			}
+			if d.created && !d.removed {
+				t.Errorf("the probe's file was left behind")
+			}
+		})
+	}
+}
+
+// probeFile is a planted probe file: its write takes took bytes and then fails with err.
+type probeFile struct {
+	err  error
+	took int
+}
+
+func (f probeFile) Write(p []byte) (int, error) {
+	if f.err != nil {
+		return f.took, f.err
+	}
+	return len(p), nil
+}
+
+func (probeFile) Close() error { return nil }

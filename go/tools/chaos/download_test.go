@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -498,11 +499,12 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 		t.Fatalf("syncing the filler: %v", err)
 	}
 	f.Close()
-	if err := probeFull(dir); err != nil {
-		t.Fatalf("filled to the margin, and %v; what the fill met: %s", err, fillNotes(notes))
+	refused, err := probeFull(dir)
+	if err != nil {
+		t.Fatalf("filled to the margin, and %v; the fill's refusals: %s", err, fillNotes(notes))
 	}
 	left, _ := freeBytes(dir)
-	t.Logf("filled with %d bytes, %d bytes left free; the fill met: %s", written, left, fillNotes(notes))
+	t.Logf("filled with %d bytes, %d bytes left free; the fill's refusals: %s; the probe: %s", written, left, fillNotes(notes), refused)
 	freed := false
 	return func() {
 		if !freed {
@@ -530,105 +532,110 @@ type fillOps struct {
 const (
 	// fillSmallest is the smallest write fillTo makes. fillStubborn is how many times in a row, each
 	// after a sync, the volume must refuse it before the fill takes the volume at its word.
-	// fillNoteLimit is the most refusals and comebacks one fill waits out.
-	fillSmallest  = 4096
-	fillStubborn  = 3
-	fillNoteLimit = 64
+	// fillRefusals is the most refusals one fill waits out.
+	fillSmallest = 4096
+	fillStubborn = 3
+	fillRefusals = 64
 )
 
-// fillTo writes until free space is down to margin, and stays there after a sync. The fill used to
-// end at its first refused write. On macos-15 in CI, a fill that ended "at the margin" left 13.5 to
-// 13.9 MiB free, and the probe's 5 MiB then fit. The log can't say whether a write was refused that
-// early or the free space read low until a sync gave it back, so fillTo meets both:
-//   - a refused write syncs, halves the next write and goes on. The smallest write refused
-//     fillStubborn times in a row ends the fill, and probeFull then decides whether that is full.
-//   - at the margin it syncs and looks again, and fills on if free space came back.
-//
-// Each refusal and each comeback is noted with the free bytes at that moment.
-func fillTo(margin int64, limit int, ops fillOps) (written int, notes []string, err error) {
-	chunk, stubborn, synced := 1<<20, 0, false
-	for len(notes) < fillNoteLimit {
+// fillTo writes until free space is down to margin. A refused write is not the end of it. On
+// macos-15 in CI, a 1 MiB write was refused with 14147584 bytes free, and once with 14577664; the
+// fill used to stop there, and the probe's 5 MiB then fit. Waited out, the same fills went on to the
+// margin. So a refusal syncs, halves the next write and goes on. The smallest write refused
+// fillStubborn times in a row ends the fill, and probeFull then decides whether that is full: a
+// volume that keeps more than the margin back ends that way. Each refusal is noted with the free
+// bytes at that moment.
+func fillTo(margin int64, limit int, ops fillOps) (written int, refusals []string, err error) {
+	chunk, stubborn := 1<<20, 0
+	for len(refusals) < fillRefusals {
 		if written >= limit {
-			return written, notes, fmt.Errorf("wrote %d MiB and it is still not full", written>>20)
+			return written, refusals, fmt.Errorf("wrote %d MiB and it is still not full", written>>20)
 		}
 		avail, err := ops.free()
 		if err != nil {
-			return written, notes, err
+			return written, refusals, err
 		}
 		if avail-margin < fillSmallest {
-			if synced {
-				return written, notes, nil
-			}
-			if err := ops.sync(); err != nil {
-				return written, notes, err
-			}
-			synced = true
-			after, err := ops.free()
-			if err != nil {
-				return written, notes, err
-			}
-			if after-margin >= fillSmallest {
-				notes = append(notes, fmt.Sprintf("at the margin, %d bytes free became %d after a sync", avail, after))
-			}
-			continue
+			return written, refusals, nil
 		}
 		n := int(min(int64(chunk), (avail-margin)/fillSmallest*fillSmallest)) // whole 4 KiB blocks, down to the margin
 		took, err := ops.write(n)
 		written += took
 		if err == nil {
-			stubborn, synced = 0, false
+			stubborn = 0
 			continue
 		}
 		if !errors.Is(err, syscall.ENOSPC) {
-			return written, notes, fmt.Errorf("filling the disk: %w (%d bytes free)", err, avail)
+			return written, refusals, fmt.Errorf("filling the disk: %w (%d bytes free)", err, avail)
 		}
-		notes = append(notes, fmt.Sprintf("a write of %d refused with %d bytes free", n, avail))
+		refusals = append(refusals, fmt.Sprintf("a write of %d refused with %d bytes free", n, avail))
 		if n <= fillSmallest {
 			if stubborn++; stubborn >= fillStubborn {
-				return written, notes, nil
+				return written, refusals, nil
 			}
 		}
 		chunk = max(n/2, fillSmallest)
 		if err := ops.sync(); err != nil {
-			return written, notes, err
+			return written, refusals, err
 		}
 	}
-	return written, notes, nil
+	return written, refusals, nil
 }
 
-// fillNotes is what a failure says about what the fill met.
-func fillNotes(notes []string) string {
-	if len(notes) == 0 {
-		return "no refusals, and no free space came back after a sync"
+// fillNotes is what a failure, or the log, says about the fill's refusals.
+func fillNotes(refusals []string) string {
+	if len(refusals) == 0 {
+		return "none"
 	}
-	return runs(notes)
+	return runs(refusals)
 }
 
-// probeFull shows that dir's volume is full: one write of fillProbe bytes must be refused. The
-// probe file is deleted either way, while the margin is still there to delete it in.
-func probeFull(dir string) error {
-	before, err := freeBytes(dir)
-	if err != nil {
-		return err
-	}
+// probeFull shows that dir's volume is full, and says how it refused.
+func probeFull(dir string) (refused string, err error) {
 	p := filepath.Join(dir, "probe")
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0o600)
+	return probe(probeOps{
+		create: func() (io.WriteCloser, error) { return os.OpenFile(p, os.O_CREATE|os.O_WRONLY, 0o600) },
+		remove: func() error { return os.Remove(p) },
+		free:   func() (int64, error) { return freeBytes(dir) },
+	})
+}
+
+// probeOps are what probe does to the disk, so a test can make the volume refuse.
+type probeOps struct {
+	create func() (io.WriteCloser, error)
+	remove func() error
+	free   func() (int64, error)
+}
+
+// probe: one write of fillProbe bytes must be refused, or the file to write it in. On macos-15 in
+// CI, a volume with a gateway's root on it refused to create the probe with 19312640 bytes shown
+// free; a volume that refuses a new file is full. A probe file that was created is deleted either
+// way, while the margin is still there to delete it in.
+func probe(ops probeOps) (refused string, err error) {
+	before, err := ops.free()
 	if err != nil {
-		return fmt.Errorf("the probe could not be created: %w (%d bytes free)", err, before)
+		return "", err
+	}
+	f, err := ops.create()
+	switch {
+	case errors.Is(err, syscall.ENOSPC):
+		return fmt.Sprintf("creating its file refused with %d bytes free", before), nil
+	case err != nil:
+		return "", fmt.Errorf("the probe could not be created: %w (%d bytes free)", err, before)
 	}
 	n, werr := f.Write(make([]byte, fillProbe))
 	f.Close()
-	after, _ := freeBytes(dir)
-	if rerr := os.Remove(p); rerr != nil {
-		return fmt.Errorf("the probe took %d bytes and could not be deleted: %w (%d bytes free before, %d after)", n, rerr, before, after)
+	after, _ := ops.free()
+	if rerr := ops.remove(); rerr != nil {
+		return "", fmt.Errorf("the probe took %d bytes and could not be deleted: %w (%d bytes free before, %d after)", n, rerr, before, after)
 	}
 	switch {
 	case werr == nil:
-		return fmt.Errorf("a write of %d bytes fit, so it is not full (%d bytes free before it)", fillProbe, before)
+		return "", fmt.Errorf("a write of %d bytes fit, so it is not full (%d bytes free before it)", fillProbe, before)
 	case !errors.Is(werr, syscall.ENOSPC):
-		return fmt.Errorf("the probe failed otherwise: %w (%d bytes free)", werr, before)
+		return "", fmt.Errorf("the probe failed otherwise: %w (%d bytes free)", werr, before)
 	}
-	return nil
+	return fmt.Sprintf("a write of %d refused with %d bytes free", fillProbe, before), nil
 }
 
 // diskOps are what freeFullDisk does to the disk, so a test can make each of them fail.
