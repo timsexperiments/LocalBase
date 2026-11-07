@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +20,7 @@ import (
 // Choosing what runs a model is on record: who, which model, which backend. What a
 // refused caller sends stays out of the log.
 func TestChoosingABackendIsAudited(t *testing.T) {
-	ts, key, st, _ := importAPIGateway(t)
+	ts, key, st, scratch := importAPIGateway(t)
 	logs := &syncBuffer{}
 	ts.Config.Handler.(*Server).Log = slog.New(slog.NewJSONHandler(logs, nil))
 	_, readOnly, err := st.CreateAPIKey(context.Background(), "read", []string{"models:read"})
@@ -128,11 +130,46 @@ func TestChoosingABackendIsAudited(t *testing.T) {
 			t.Errorf("cancel: %d %s", code, out)
 		}
 	}
+	// A cancel answers at once, and the job ends on its own: it stops its download, removes what it
+	// downloaded, and then says cancelled. Wait for that, so nothing writes under the root while
+	// the test removes it (a pool of one made the job slow enough to be caught at it).
+	for _, j := range jobs {
+		if state := importEnded(t, ts.URL, key, j); state != "cancelled" {
+			t.Errorf("job %s ended %q", j, state)
+		}
+	}
+	if left, err := os.ReadDir(filepath.Join(scratch, "root", "models", ".staging")); err == nil && len(left) != 0 {
+		t.Errorf("cancelled imports left %d downloads behind", len(left))
+	}
 	all := events("audit.model-backend-changed")
 	if len(all) != 3 {
 		t.Fatalf("%d changes after the imports: %s", len(all), logs.String())
 	}
 	if e := all[2]; e["action"] != "import" || e["target_id"] != "chose" || e["backend_id"] != "llama.cpp-cpu" || !strings.HasPrefix(e["actor_id"].(string), "key_") {
 		t.Errorf("%v", e)
+	}
+}
+
+// importEnded waits, up to 10 s, for an import to stop running, and returns the state it ended in.
+func importEnded(t *testing.T, base, key, job string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		req, _ := http.NewRequest("GET", base+"/_localbase/model-imports?id="+job, nil)
+		req.Header.Set("Authorization", "Bearer "+key)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct{ State string }
+		json.NewDecoder(resp.Body).Decode(&got)
+		resp.Body.Close()
+		if got.State != "running" {
+			return got.State
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("import %s was still running 10 s after it was cancelled", job)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

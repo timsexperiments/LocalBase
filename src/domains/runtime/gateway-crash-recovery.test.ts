@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 
+import { readLogSnapshot } from "../observability/logging";
 import {
   registerGatewayFixtureCleanup,
   startGatewayFixture,
@@ -40,6 +41,22 @@ async function expectStreamTerminated(
   if (trailing) expect(trailing).toContain('"code":"upstream_error"');
 }
 
+async function waitForCrashes(root: string, count: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const crashes = (await readLogSnapshot(root)).filter(
+      ({ eventName }) => eventName === "backend.crash",
+    ).length;
+    if (crashes >= count) return;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `The gateway saw ${crashes} of ${count} backend crashes in 5 s.`,
+      );
+    }
+    await Bun.sleep(25);
+  }
+}
+
 test("compiled gateway releases a crashed backend stream and recovers", async () => {
   const gateway = await startGatewayFixture({ llmRuntimeHttpBackend: true });
   try {
@@ -59,6 +76,8 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
     expect((await reader.read()).done).toBe(false);
     await gateway.crashLlmRuntime();
     await expectStreamTerminated(reader);
+    // Between a backend's death and its reap the TS relay answers 502 (Go answers 503 with Retry-After), so wait for the reap.
+    await waitForCrashes(gateway.root, 1);
 
     const recovered = await request(gateway.baseUrl, firstModel, "recover");
     expect(recovered.status).toBe(200);
@@ -70,6 +89,7 @@ test("compiled gateway releases a crashed backend stream and recovers", async ()
     expect((await recoveredReader.read()).done).toBe(false);
     await gateway.crashLlmRuntime();
     await expectStreamTerminated(recoveredReader);
+    await waitForCrashes(gateway.root, 2);
 
     const replacementModel = "qwen3.8-27b-q4_k_m";
     const config = gateway.readConfig();
