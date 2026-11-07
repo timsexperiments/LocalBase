@@ -105,7 +105,8 @@ class Tab {
     await this.settle();
   }
   // A page may navigate itself while it settles, as a sign-in link does. An evaluate in flight
-  // then fails with this, which says nothing about the page, so it starts again on the new one.
+  // then fails, which says nothing about the page, so it starts again on the new one. Chrome 156
+  // says the target "navigated or closed"; Chrome 114 says "Execution context was destroyed."
   async settle() {
     const deadline = Date.now() + 15_000;
     for (;;) {
@@ -116,7 +117,7 @@ class Tab {
         await this.ev(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
         return;
       } catch (e) {
-        if (!/navigated or closed/.test(String(e)) || Date.now() > deadline) throw e;
+        if (!/navigated or closed|Execution context was destroyed/.test(String(e)) || Date.now() > deadline) throw e;
       }
     }
   }
