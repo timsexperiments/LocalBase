@@ -143,6 +143,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
 		fwd.URL.RawQuery = forwardedQuery(target, r)
 		s.mux.ServeHTTP(w, fwd)
+		r.Pattern = fwd.Pattern // the route it reached: usage, the log and the span read it from r
 		return
 	}
 	if s.localUIAccess(w, r) || credentialLookupFailed(w, r) {
@@ -262,6 +263,7 @@ func (s *Server) forwardAsBrowser(w http.ResponseWriter, r *http.Request, princi
 	fwd.URL.Path, fwd.URL.RawPath, fwd.URL.RawQuery, fwd.RequestURI = target, "", "", target
 	fwd.URL.RawQuery = forwardedQuery(target, r)
 	s.mux.ServeHTTP(w, fwd)
+	r.Pattern = fwd.Pattern // the route it reached: usage, the log and the span read it from r
 }
 
 // isRunEvents reports a run's event stream path (/_localbase/runs/{id}/events).
