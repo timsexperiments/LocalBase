@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -73,9 +72,21 @@ type Browser struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), failedLog: &obs.Sampler{Every: time.Minute, Burst: 20}, Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
-		oidc: map[string]*oidcRuntime{}, spent: map[string]time.Time{}, stateKey: make([]byte, 32)}
+	b := &Browser{
+		Store:  st,
+		Root:   rootDir,
+		Config: cfg,
+		Log:    log,
+		Client: &http.Client{
+			Timeout:       5 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") },
+		},
+		oidc:      map[string]*oidcRuntime{},
+		stateKey:  make([]byte, 32),
+		spent:     map[string]time.Time{},
+		magicWork: make(chan struct{}, magicLinkWorkers),
+		failedLog: &obs.Sampler{Every: time.Minute, Burst: 20},
+	}
 	if _, err := rand.Read(b.stateKey); err != nil {
 		panic(err) // never, since Go 1.24
 	}
@@ -144,26 +155,7 @@ func (b *Browser) AuthenticateChecked(r *http.Request) (*Identity, string, error
 		return nil, "", nil
 	}
 	if b.Config.Provider.Kind == "cloudflare-access" {
-		token := r.Header.Get("Cf-Access-Jwt-Assertion")
-		if token == "" {
-			return nil, "", nil
-		}
-		issuer := "https://" + b.Config.Provider.TeamDomain
-		claims, err := b.cfJWKS.Verify(r.Context(), token, VerifyOptions{Algorithms: []string{"RS256"}, Issuer: issuer,
-			Audience: b.Config.Provider.Audience, Required: []string{"exp", "sub", "email"}})
-		if err != nil {
-			return nil, "", nil
-		}
-		sub, _ := claims["sub"].(string)
-		email, _ := claims["email"].(string)
-		typ, _ := claims["type"].(string)
-		_, cn := claims["common_name"]
-		_, sti := claims["service_token_id"]
-		if !asciiSubRe.MatchString(sub) || ValidEmail(email) == "" || strings.HasPrefix(strings.ToLower(email), "non_identity@") ||
-			typ != "app" || cn || sti || claims["service_token_status"] == true {
-			return nil, "", nil
-		}
-		return &Identity{Issuer: issuer, Subject: sub, VerifiedEmail: email}, ownerID("cloudflare-access", issuer, sub), nil
+		return b.cloudflareIdentity(r)
 	}
 	token := cookie(r, SessionCookie)
 	if token == "" {
