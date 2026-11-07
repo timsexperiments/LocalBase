@@ -73,9 +73,21 @@ type Browser struct {
 
 // NewBrowser prepares sign-in for a loaded configuration.
 func NewBrowser(st *store.Store, rootDir string, cfg *BrowserAccess, log *slog.Logger) *Browser {
-	b := &Browser{magicWork: make(chan struct{}, magicLinkWorkers), failedLog: &obs.Sampler{Every: time.Minute, Burst: 20}, Store: st, Root: rootDir, Config: cfg, Log: log, Client: &http.Client{Timeout: 5 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") }},
-		oidc: map[string]*oidcRuntime{}, spent: map[string]time.Time{}, stateKey: make([]byte, 32)}
+	b := &Browser{
+		Store:  st,
+		Root:   rootDir,
+		Config: cfg,
+		Log:    log,
+		Client: &http.Client{
+			Timeout:       5 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects are not followed") },
+		},
+		oidc:      map[string]*oidcRuntime{},
+		stateKey:  make([]byte, 32),
+		spent:     map[string]time.Time{},
+		magicWork: make(chan struct{}, magicLinkWorkers),
+		failedLog: &obs.Sampler{Every: time.Minute, Burst: 20},
+	}
 	if _, err := rand.Read(b.stateKey); err != nil {
 		panic(err) // never, since Go 1.24
 	}
