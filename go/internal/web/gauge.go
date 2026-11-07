@@ -274,10 +274,15 @@ func (u *UI) memoryStrip(r *http.Request) map[string]any {
 }
 
 // stripFragment is the strip's refresh.
-// nothing changed since the page drew it, it answers 204 and nothing is swapped.
+// nothing changed since the page drew it, it answers 204 and nothing is swapped. Everyone here
+// may read the host, so a reading that fails is the gateway's: the strip says it has no reading,
+// as Running does, rather than being drawn from nothing.
 func (u *UI) stripFragment(w http.ResponseWriter, r *http.Request) {
 	strip := u.memoryStrip(r)
-	if strip != nil && r.Header.Get("X-Strip-Key") == strip["Key"] {
+	if strip == nil {
+		strip = u.memoryView(r, &hostReading{})
+	}
+	if r.Header.Get("X-Strip-Key") == strip["Key"] {
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusNoContent)
 		return
