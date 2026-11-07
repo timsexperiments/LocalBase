@@ -257,12 +257,16 @@ reproduces them byte for byte and the table tests are ported from TS:
   immediately, so a slow page return left nothing loaded.
 - `HostProvider`: darwin uses `host_statistics64` free+inactive (vm_stat
   free + speculative + inactive, since vm_stat prints speculative pages apart),
-  `hw.memsize`, `kern.memorystatus_vm_pressure_level` and the Metal working
-  set. Linux uses `/proc/meminfo` MemAvailable plus PSI. NVIDIA VRAM is not
-  admitted yet: an NVIDIA GPU is detected (`nvidia-smi`) and reported, and
-  admission uses the system pool (§19.3).
-- The observed-peak sampler runs `footprint -p <pid>` every 5 s on darwin, or
-  reads VmHWM on Linux, and writes `model_observed_memory`.
+  `hw.memsize` and the Metal working set. Linux uses `/proc/meminfo`
+  MemAvailable. Neither reads the kernel's own pressure signal
+  (`kern.memorystatus_vm_pressure_level` on darwin, PSI on Linux): a reading
+  is `normal`, or `unknown` when it fails, and pressure comes from available
+  memory against the reserve (the controller's states and the 1.25x warning
+  margin). NVIDIA VRAM is not admitted yet: an NVIDIA GPU is detected
+  (`nvidia-smi`) and reported, and admission uses the system pool (§19.3).
+- The observed-peak sampler runs `footprint -p <pid>` every 5 s, on darwin
+  only, and writes `model_observed_memory`. Linux records no observed peaks
+  (no VmHWM reading), so its figures stay estimates.
 
 ## 4. Persistence and parity of on-disk state
 
