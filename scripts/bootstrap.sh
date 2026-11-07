@@ -2,13 +2,26 @@
 # SPDX-FileCopyrightText: TimsExperiments
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Installs the pinned contributor tools into .cache/tools/bin, verified by SHA-256.
-# Nothing is installed outside this checkout, and no sudo is used. Safe to re-run.
+# Installs the pinned tools into .cache/tools/bin, verified by SHA-256. scripts/tools.pins is
+# the one place their versions are pinned: CI fetches its tools through this script too.
+# Nothing is installed outside this checkout unless LOCALBASE_TOOLS_DIR names another directory,
+# and no sudo is used. Safe to re-run.
 #   scripts/bootstrap.sh [tool ...]      default: every tool in scripts/tools.pins
+#   scripts/bootstrap.sh --version tool  print the pinned version of one tool
 set -euo pipefail
 
 repo="$(cd "$(dirname "$0")/.." && pwd)"
-tools=$repo/.cache/tools
+pins=$repo/scripts/tools.pins
+
+if [ "${1:-}" = "--version" ]; then
+  [ $# -eq 2 ] || { echo "usage: scripts/bootstrap.sh --version tool" >&2; exit 2; }
+  version="$(awk -v t="$2" '$1 == t { print $2; exit }' "$pins")"
+  [ -n "$version" ] || { echo "bootstrap: no pin for $2" >&2; exit 1; }
+  echo "$version"
+  exit 0
+fi
+
+tools=${LOCALBASE_TOOLS_DIR:-$repo/.cache/tools}
 mkdir -p "$tools/bin"
 
 die() {
@@ -17,7 +30,8 @@ die() {
 }
 
 command -v git > /dev/null 2>&1 || die "install git first"
-command -v go > /dev/null 2>&1 || die "install Go 1.21 or newer first: https://go.dev/dl/ (it fetches the exact toolchain in go/go.mod by itself)"
+# A full contributor setup needs Go; fetching named tools, as CI does, doesn't.
+[ $# -gt 0 ] || command -v go > /dev/null 2>&1 || die "install Go 1.21 or newer first: https://go.dev/dl/ (it fetches the exact toolchain in go/go.mod by itself)"
 
 case "$(uname -s)" in
   Darwin) os=darwin ;;
@@ -74,6 +88,6 @@ while read -r tool version pin_platform want url; do
   [ "$pin_platform" = "$platform" ] || continue
   if [ $# -gt 0 ] && [ "${wanted#* "$tool" }" = "$wanted" ]; then continue; fi
   install_tool "$tool" "$version" "$want" "$url"
-done < "$repo/scripts/tools.pins"
+done < "$pins"
 
 printf 'Tools are in %s. `make` finds them by itself.\n' "${tools#"$repo"/}/bin"

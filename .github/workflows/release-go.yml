@@ -146,9 +146,6 @@ jobs:
     if: ${{ !cancelled() && needs.binaries.result == 'success' && (needs.sign-macos.result == 'success' || needs.sign-macos.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      SYFT_VERSION: 1.55.0
-      SYFT_SHA256: bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -168,15 +165,11 @@ jobs:
       - name: Archive
         run: scripts/release/build.sh package out
       - name: Install syft
-        run: |
-          archive="syft_${SYFT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$archive" \
-            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/$archive"
-          echo "$SYFT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" syft
+        # At the version and checksum in scripts/tools.pins.
+        run: LOCALBASE_TOOLS_DIR="$RUNNER_TEMP/tools" scripts/bootstrap.sh syft
       - name: Write the SBOM
         run: |
-          "$RUNNER_TEMP/syft" scan "file:out/bin/local-base-linux-x64" \
+          "$RUNNER_TEMP/tools/bin/syft" scan "file:out/bin/local-base-linux-x64" \
             --source-name local-base --source-version "${{ needs.binaries.outputs.version }}" \
             -o spdx-json=out/dist/local-base.spdx.json
           jq -e '.packages | map(.name) | index("modernc.org/sqlite")' out/dist/local-base.spdx.json
