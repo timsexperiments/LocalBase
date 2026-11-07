@@ -14,29 +14,21 @@ set -euo pipefail
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 # Archive names match v0.1.0, so older copies of the installer keep working.
 targets="macos-arm64:darwin:arm64 macos-x64:darwin:amd64 linux-x64:linux:amd64 linux-arm64:linux:arm64"
-version_package=github.com/timsexperiments/LocalBase/go/internal/version
+# go/tools/build.sh is the one build recipe; this only chooses the targets.
+build="$repo/go/tools/build.sh"
 
 source_version() {
-  local file=$repo/go/internal/version/version.go
-  [ -f "$file" ] || file=$repo/go/internal/gateway/server.go
-  sed -nE 's/^[[:space:]]*(const |var )?Version[[:space:]]*= "([^"]+)"$/\2/p' "$file"
+  "$build" --version
 }
 
 binaries() {
-  local output=$1 version commit date entry name goos goarch
+  local output=$1 version entry name goos goarch
   version="${LOCALBASE_VERSION:-$(source_version)}"
   [ -n "$version" ] || { echo "build: cannot read the version from the source" >&2; exit 1; }
-  commit="$(git -C "$repo" rev-parse HEAD)"
-  date="$(git -C "$repo" show -s --format=%cI HEAD)"
   mkdir -p "$output/bin"
   for entry in $targets; do
     IFS=: read -r name goos goarch <<< "$entry"
-    (
-      cd "$repo/go"
-      CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath -buildvcs=false \
-        -ldflags "-s -w -X $version_package.Version=$version -X $version_package.Commit=$commit -X $version_package.Date=$date" \
-        -o "$output/bin/local-base-$name" ./cmd/localbase
-    )
+    GOOS=$goos GOARCH=$goarch VERSION=$version "$build" "$output/bin/local-base-$name" > /dev/null
     printf 'built %s\n' "local-base-$name"
   done
 }
