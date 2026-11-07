@@ -9,13 +9,12 @@ import (
 // to get its cancel and its place in the wait group only after being published,
 // so Shutdown skipped it and it went on generating with no one waiting for it.
 func TestRunCreatedDuringShutdownIsStopped(t *testing.T) {
-	ts := newTestServer(t)
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	shutdown := false
-	s.runs.afterPublish = func() {
+	mgr.afterPublish = func() {
 		shutdown = true
-		s.runs.Shutdown(50 * time.Millisecond)
+		mgr.Shutdown(50 * time.Millisecond)
 	}
 	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 5"))
 	if !shutdown {
@@ -32,13 +31,12 @@ func TestRunCreatedDuringShutdownIsStopped(t *testing.T) {
 
 // Shutdown waits for a run published before it, however early that run is.
 func TestShutdownWaitsForRunJustPublished(t *testing.T) {
-	ts := newTestServer(t)
-	s := runServer(ts)
+	ts, mgr := newRunHarness(t)
 	c := runClient{t: t, base: ts.URL}
 	finished := make(chan struct{})
-	s.runs.afterPublish = func() {
+	mgr.afterPublish = func() {
 		go func() {
-			s.runs.Shutdown(30 * time.Second)
+			mgr.Shutdown(30 * time.Second)
 			close(finished)
 		}()
 		select {
