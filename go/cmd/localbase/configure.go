@@ -271,7 +271,8 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		c.Error("Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.", p, e.memoryGB())
 	}
 	// Every setting option is checked before anything is written, then the configuration and the
-	// settings go in together, in this order: a refused command writes nothing.
+	// settings go in together, in this order and in one transaction: a refused command writes
+	// nothing, and neither does one whose write fails partway.
 	type setting struct {
 		key, value string
 		toggle     bool // an import opt-in: a change to it is audited
@@ -313,15 +314,11 @@ func runConfigure(c *cli.Ctx) (any, error) {
 				changed = append(changed, s)
 			}
 		}
-		if err := e.saveAs(cfg, true); err != nil {
-			return err
+		values := make([]store.SettingValue, len(settings))
+		for i, s := range settings {
+			values[i] = store.SettingValue{Key: s.key, Value: s.value}
 		}
-		for _, s := range settings {
-			if err := e.Store.SetSetting(context.Background(), s.key, s.value); err != nil {
-				return err
-			}
-		}
-		return nil
+		return e.saveAs(cfg, true, values...)
 	}); err != nil {
 		var inv *conf.InvalidError
 		if errors.As(err, &inv) {
