@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/idle"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Managed runtime installation (TS manager/binaries.ts ensureBinary): a
@@ -229,7 +229,7 @@ func fetchVerified(ctx context.Context, url, dest string, size int64, want strin
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
-	f, err := obs.OpenOwnedRegular(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
+	f, err := safefile.OpenOwnedRegular(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
