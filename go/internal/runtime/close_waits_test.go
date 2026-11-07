@@ -115,8 +115,8 @@ func startService(t *testing.T) (*Service, *catalog.Spec) {
 	}
 	// The sample only runs for a catalog model: serve the fake under its id.
 	gate := s.d.Gate
-	s.d.Gate = func(string) (*Target, error) {
-		tgt, err := gate("a")
+	s.d.Gate = func(ctx context.Context, _ string) (*Target, error) {
+		tgt, err := gate(ctx, "a")
 		if err == nil {
 			tgt.ModelID = spec.ModelID
 		}

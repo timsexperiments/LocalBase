@@ -133,7 +133,7 @@ func TestServiceBinaryDownloadHonorsTheSwitch(t *testing.T) {
 	s.d.RuntimesDir = t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	tgt, err := s.d.Gate("a")
+	tgt, err := s.d.Gate(context.Background(), "a")
 	if err != nil {
 		t.Fatal(err)
 	}
