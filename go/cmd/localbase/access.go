@@ -11,7 +11,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 )
 
 // `access`: browser sign-in providers, email delivery, the authorization
@@ -61,7 +61,7 @@ func registrationOptions(c *cli.Ctx) (id, name string, err error) {
 
 // withOperation runs fn holding the root operation lease.
 func withOperation(e *env, operation string, fn func() error) error {
-	return root.WithOperation(e.Root.Dir, operation, fn)
+	return lease.WithOperation(e.Root.Dir, operation, fn)
 }
 
 // saveRegistration upserts a registration after validating the result.

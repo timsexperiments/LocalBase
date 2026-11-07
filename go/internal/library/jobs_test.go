@@ -15,6 +15,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -204,7 +205,7 @@ func TestADownloadDoesNotHoldTheRoot(t *testing.T) {
 	}
 	waitJob(t, l, id, downloading)
 	start := time.Now()
-	if err := root.WithOperation(l.Root.Dir, "update runtime configuration", func() error { return nil }); err != nil {
+	if err := lease.WithOperation(l.Root.Dir, "update runtime configuration", func() error { return nil }); err != nil {
 		t.Fatalf("after %v: %v", time.Since(start), err)
 	}
 	l.CancelImport(id)

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -23,7 +23,7 @@ func recordActive(rootDir string, st *store.Store, running runningConfig, kind, 
 	if running.Config().Active[kind] == modelID {
 		return nil
 	}
-	return root.WithOperation(rootDir, "update runtime configuration", func() error {
+	return lease.WithOperation(rootDir, "update runtime configuration", func() error {
 		ctx := context.Background()
 		saved, err := st.LoadConfig(ctx)
 		if errors.Is(err, store.ErrNotConfigured) {

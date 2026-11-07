@@ -24,6 +24,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -281,7 +282,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	// Hold the operation lease (or claim the one a service start handed off)
 	// until this process owns the gateway lock.
-	initLease, err := root.ServeInitialization(r.Dir, os.Getenv("LOCALBASE_SERVICE_TOKEN"))
+	initLease, err := lease.ServeInitialization(r.Dir, os.Getenv("LOCALBASE_SERVICE_TOKEN"))
 	if err != nil {
 		return nil, err
 	}

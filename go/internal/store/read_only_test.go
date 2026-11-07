@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
@@ -494,7 +495,7 @@ func TestAHeldRootIsNotCopied(t *testing.T) {
 				t.Fatal(err)
 			}
 		default:
-			lease, err := root.AcquireOperation(r.Dir, "restore")
+			lease, err := lease.AcquireOperation(r.Dir, "restore")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -639,7 +640,7 @@ func TestAProcessHoldingItsOwnLeaseCanRead(t *testing.T) {
 	if err := made.Close(); err != nil {
 		t.Fatal(err)
 	}
-	lease, err := root.AcquireOperation(r.Dir, "backup")
+	lease, err := lease.AcquireOperation(r.Dir, "backup")
 	if err != nil {
 		t.Fatal(err)
 	}

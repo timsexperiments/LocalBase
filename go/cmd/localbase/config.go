@@ -15,6 +15,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -202,7 +203,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	lease, err := root.AcquireOperation(dir, "service-start")
+	lease, err := lease.AcquireOperation(dir, "service-start")
 	if err != nil {
 		return nil, err
 	}

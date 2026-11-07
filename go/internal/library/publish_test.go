@@ -17,6 +17,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
@@ -110,7 +111,7 @@ func TestTwoDownloadsAndAConfigureInterleave(t *testing.T) {
 
 	// Mid-download, a change takes the root at once.
 	start := time.Now()
-	err = root.WithOperation(l.Root.Dir, "update runtime configuration", func() error {
+	err = lease.WithOperation(l.Root.Dir, "update runtime configuration", func() error {
 		if took := time.Since(start); took > 2*time.Second {
 			t.Errorf("waited %v for the root while two imports downloaded", took)
 		}
@@ -144,7 +145,7 @@ func TestTwoDownloadsAndAConfigureInterleave(t *testing.T) {
 // A finished download isn't thrown away because the root is busy: hours of download may
 // be behind it. A person can still stop it while it waits.
 func TestPublishWaitsForABusyRoot(t *testing.T) {
-	busy := fmt.Errorf("held: %w", root.ErrOperationBusy)
+	busy := fmt.Errorf("held: %w", lease.ErrOperationBusy)
 	realLease := withLease
 	t.Cleanup(func() { withLease = realLease; leaseRetryEvery = time.Second })
 	leaseRetryEvery = 5 * time.Millisecond

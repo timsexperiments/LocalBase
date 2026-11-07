@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 )
 
 // RestoreJournalName is left in a root by a restore that did not finish (DESIGN §34.5).
@@ -36,6 +37,5 @@ func restoreRunning(dir string) bool {
 	if err != nil {
 		return false
 	}
-	var o operationOwner
-	return readJSON(operationPaths(canonical).owner, &o) && o.valid() && o.Operation == "restore" && presence(o.PID) != 0
+	return lease.Running(canonical, "restore")
 }

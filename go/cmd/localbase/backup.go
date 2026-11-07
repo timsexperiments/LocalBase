@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
@@ -55,7 +56,7 @@ func runBackup(c *cli.Ctx) (any, error) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var res *backup.Result
-	if err := root.WithOperation(r.Dir, "backup", func() (err error) {
+	if err := lease.WithOperation(r.Dir, "backup", func() (err error) {
 		res, err = backup.Create(ctx, backup.Options{Root: r, Output: c.String("output"), ExcludeSecrets: c.Bool("exclude-secrets"),
 			DryRun: c.Bool("dry-run"), Version: version.Version, Now: time.Now()})
 		return err

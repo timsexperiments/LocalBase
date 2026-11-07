@@ -1,4 +1,4 @@
-package root
+package lease
 
 import (
 	"errors"
@@ -14,19 +14,18 @@ func TestLeaseSaysWhenItIsBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_RUNTIME_DIR", dir)
-	r, err := Init(filepath.Join(dir, "root"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// A lease names a root by its path and doesn't touch the directory, so this needs no root.Init, which
+	// this package can't import: root imports lease.
+	rootDir := filepath.Join(dir, "root")
 	old := operationWait
 	operationWait = 100 * time.Millisecond
 	t.Cleanup(func() { operationWait = old })
-	held, err := AcquireOperation(r.Dir, "first")
+	held, err := AcquireOperation(rootDir, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Release()
-	_, err = AcquireOperation(r.Dir, "second")
+	_, err = AcquireOperation(rootDir, "second")
 	if !errors.Is(err, ErrOperationBusy) {
 		t.Fatalf("%v", err)
 	}

@@ -9,10 +9,10 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
-	rootpkg "github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
 // Admin APIs for model import and backend selection (DESIGN §12.6):
@@ -118,7 +118,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sel backends.Selection
-	err := rootpkg.WithOperation(s.Root.Dir, "update runtime configuration", func() (err error) {
+	err := lease.WithOperation(s.Root.Dir, "update runtime configuration", func() (err error) {
 		if in.Action == "set" {
 			sel, err = l.SetBackend(ctx, in.Model, in.BackendID, in.VariantID)
 		} else {

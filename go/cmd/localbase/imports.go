@@ -14,9 +14,9 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
 // Model import, backend selection, backend registration and auth profiles
@@ -359,7 +359,7 @@ func modelsDeleteCommand() *cli.Command {
 			if !c.Bool("yes") {
 				return nil, cli.Inputf("this deletes %s; re-run with --yes", en.Dir)
 			}
-			err = root.WithOperation(e.Root.Dir, "uninstall model", func() error {
+			err = lease.WithOperation(e.Root.Dir, "uninstall model", func() error {
 				if _, err := e.Store.DeleteImportedModel(context.Background(), id); err != nil {
 					return err
 				}
@@ -424,7 +424,7 @@ func backendsCommand() *cli.Command {
 			if err := dec.Decode(d); err != nil {
 				return nil, cli.Inputf("invalid backend definition: %v", err)
 			}
-			if err := root.WithOperation(e.Root.Dir, "register backend", func() error { return backends.Add(e.Root.Dir, d) }); err != nil {
+			if err := lease.WithOperation(e.Root.Dir, "register backend", func() error { return backends.Add(e.Root.Dir, d) }); err != nil {
 				return nil, cli.Inputf("%v", err)
 			}
 			auditBackend(e, "audit.backend-registered", "add", d.ID, d.ID)
@@ -434,7 +434,7 @@ func backendsCommand() *cli.Command {
 		{Name: "remove", Summary: "Unregister a custom backend", Usage: "<backendId>", MinArgs: 1, MaxArgs: 1,
 			Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				var removed bool
-				err := root.WithOperation(e.Root.Dir, "register backend", func() (err error) {
+				err := lease.WithOperation(e.Root.Dir, "register backend", func() (err error) {
 					removed, err = backends.Remove(e.Root.Dir, c.Args[0])
 					return err
 				})

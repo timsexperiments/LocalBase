@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	rootpkg "github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -480,7 +480,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if in.Action == "invite-user" {
 			op = "invite browser user"
 		}
-		lease, err := rootpkg.AcquireOperation(root, op)
+		lease, err := lease.AcquireOperation(root, op)
 		if err != nil {
 			serviceUnavailable(w, r, "Access management")
 			return
@@ -1028,7 +1028,7 @@ func (s *Server) hfTokenStatus(ctx context.Context) map[string]any {
 }
 
 func (s *Server) saveHFToken(ctx context.Context, token string) error {
-	return rootpkg.WithOperation(s.Root.Dir, "update runtime configuration", func() error { return s.saveHFTokenLocked(ctx, token) })
+	return lease.WithOperation(s.Root.Dir, "update runtime configuration", func() error { return s.saveHFTokenLocked(ctx, token) })
 }
 
 func (s *Server) saveHFTokenLocked(ctx context.Context, token string) error {

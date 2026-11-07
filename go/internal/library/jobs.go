@@ -10,6 +10,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -55,7 +56,7 @@ var (
 
 // How an import takes the root, and how long it waits between tries (tests change them).
 var (
-	withLease       = root.WithOperation
+	withLease       = lease.WithOperation
 	leaseRetryEvery = time.Second
 	// publishHook marks the steps of publishing, for a test to end the process there.
 	publishHook = func(string) {}
@@ -67,7 +68,7 @@ var (
 func (l *Library) underLease(ctx context.Context, fn func() error) error {
 	for {
 		err := withLease(l.Root.Dir, "install model", fn)
-		if !errors.Is(err, root.ErrOperationBusy) {
+		if !errors.Is(err, lease.ErrOperationBusy) {
 			return err
 		}
 		select {

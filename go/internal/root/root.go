@@ -5,14 +5,14 @@
 package root
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 )
 
 const markerName = ".localbase-root.json"
@@ -80,11 +80,9 @@ func Resolve(flagValue string) string {
 	return Default()
 }
 
-// Hash is the sha256 of the canonical path; it names the service unit.
-func Hash(dir string) string {
-	sum := sha256.Sum256([]byte(dir))
-	return hex.EncodeToString(sum[:])
-}
+// Hash is the sha256 of the canonical path; it names the service unit. It is lease.Hash, which also names
+// the root's operation lease.
+func Hash(dir string) string { return lease.Hash(dir) }
 
 func canonical(dir string) (string, error) {
 	if !filepath.IsAbs(dir) {

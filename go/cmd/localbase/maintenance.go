@@ -8,6 +8,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
@@ -26,7 +27,7 @@ func maintenanceCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				lease, err := root.AcquireOperation(r.Dir, "reset")
+				lease, err := lease.AcquireOperation(r.Dir, "reset")
 				if err != nil {
 					return nil, err
 				}
@@ -76,7 +77,7 @@ func maintenanceCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				lease, err := root.AcquireOperation(r.Dir, "uninstall")
+				lease, err := lease.AcquireOperation(r.Dir, "uninstall")
 				if err != nil {
 					return nil, err
 				}
