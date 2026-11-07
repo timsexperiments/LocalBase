@@ -58,8 +58,9 @@ func markPending(ctx context.Context, db execer, c *Config) error {
 
 // SaveConfigMarking saves the config and, in the same transaction, records
 // a pending restart when the listener or memory policy changed (TS
-// persistConfiguration).
-func (s *Store) SaveConfigMarking(ctx context.Context, c *Config) error {
+// persistConfiguration), and writes settings, in order. Nothing is saved
+// unless all of it is.
+func (s *Store) SaveConfigMarking(ctx context.Context, c *Config, settings ...SettingValue) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -74,6 +75,11 @@ func (s *Store) SaveConfigMarking(ctx context.Context, c *Config) error {
 	}
 	if previous != StaticFingerprint(c) {
 		if err := markPending(ctx, tx, c); err != nil {
+			return err
+		}
+	}
+	for _, v := range settings {
+		if err := setSetting(ctx, tx, v.Key, v.Value); err != nil {
 			return err
 		}
 	}

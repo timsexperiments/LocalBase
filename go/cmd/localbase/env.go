@@ -94,8 +94,9 @@ func openEnv(c *cli.Ctx) (*env, error) {
 func (e *env) save(cfg *store.Config) error { return e.saveAs(cfg, false) }
 
 // saveAs is save; marking also records a pending restart when the listener
-// or memory policy changed (TS persistConfiguration, used by configure).
-func (e *env) saveAs(cfg *store.Config, marking bool) error {
+// or memory policy changed (TS persistConfiguration, used by configure), and
+// writes settings in the same transaction.
+func (e *env) saveAs(cfg *store.Config, marking bool, settings ...store.SettingValue) error {
 	if err := conf.Check(cfg, e.Catalog); err != nil {
 		return err
 	}
@@ -104,11 +105,16 @@ func (e *env) saveAs(cfg *store.Config, marking bool) error {
 			return err
 		}
 	}
-	save := e.Store.SaveConfig
-	if marking {
-		save = e.Store.SaveConfigMarking
+	var err error
+	switch {
+	case marking:
+		err = e.Store.SaveConfigMarking(context.Background(), cfg, settings...)
+	case len(settings) > 0:
+		return errors.New("saveAs: settings are written only with marking")
+	default:
+		err = e.Store.SaveConfig(context.Background(), cfg)
 	}
-	if err := save(context.Background(), cfg); err != nil {
+	if err != nil {
 		return err
 	}
 	e.Config = cfg

@@ -295,7 +295,14 @@ func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
 
 // SetSetting stores a Go-only setting.
 func (s *Store) SetSetting(ctx context.Context, key, value string) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
+	return setSetting(ctx, s.DB, key, value)
+}
+
+// SettingValue is a Go-only setting to write with the config (SaveConfigMarking).
+type SettingValue struct{ Key, Value string }
+
+func setSetting(ctx context.Context, db execer, key, value string) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO go_settings (key, value, updated_at) VALUES (?, ?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`, key, value, nowISO())
 	return err
 }
