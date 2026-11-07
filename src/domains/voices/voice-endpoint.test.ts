@@ -11,6 +11,22 @@ import {
 import { toneWav } from "../../test/voice-audio-fixture";
 import { customVoicePath, customVoicesDirectory } from "./voice-store";
 
+// waitForLogEvent reads the log until eventName is in it, for up to 3 s, and returns what it read
+// last either way: the assertions on it then say what was there.
+async function waitForLogEvent(root: string, eventName: string) {
+  const deadline = Date.now() + 3_000;
+  for (;;) {
+    const events = await readLogSnapshot(root);
+    if (
+      events.some((event) => event.eventName === eventName) ||
+      Date.now() >= deadline
+    ) {
+      return events;
+    }
+    await Bun.sleep(25);
+  }
+}
+
 registerGatewayFixtureCleanup();
 
 const adminKey = "lb_voice_admin_environment_key";
@@ -271,7 +287,8 @@ describe("custom voice management", () => {
     // Ids that were never created fail the same way.
     expect((await speak("voice-ffffffffffff")).status).toBe(400);
 
-    const events = await readLogSnapshot(gateway.root);
+    // The log is written after the answers, so read it once the last change is in.
+    const events = await waitForLogEvent(gateway.root, "voices.deleted");
     const changes = events.filter(({ eventName }) =>
       eventName.startsWith("voices."),
     );

@@ -1113,126 +1113,137 @@ test(
   { timeout: 30_000 },
 );
 
-test("JSON mode rejects interactive and destructive commands without consent", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "local-base-json-input-"));
-  const executable = join(directory, "local-base");
-  const root = join(directory, "data");
+// It compiles the CLI, as the other compiled-CLI tests here do, so it has their time limit: the
+// default 5 s cut it off on macOS runners (#708).
+test(
+  "JSON mode rejects interactive and destructive commands without consent",
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), "local-base-json-input-"));
+    const executable = join(directory, "local-base");
+    const root = join(directory, "data");
 
-  try {
-    await compileCli(executable);
+    try {
+      await compileCli(executable);
 
-    const interactive = await runCli(executable, [
-      "--json",
-      "configure",
-      "--all",
-    ]);
-    expect(interactive.exitCode).toBe(2);
-    expect(jsonDocument(interactive.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_input" },
-    });
+      const interactive = await runCli(executable, [
+        "--json",
+        "configure",
+        "--all",
+      ]);
+      expect(interactive.exitCode).toBe(2);
+      expect(jsonDocument(interactive.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
 
-    const malformedGlobal = await runCli(executable, ["--json", "--root"]);
-    expect(malformedGlobal.exitCode).toBe(2);
-    expect(jsonDocument(malformedGlobal.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_input" },
-    });
+      const malformedGlobal = await runCli(executable, ["--json", "--root"]);
+      expect(malformedGlobal.exitCode).toBe(2);
+      expect(jsonDocument(malformedGlobal.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
 
-    const reset = await runCli(executable, ["--root", root, "reset", "--json"]);
-    expect(reset.exitCode).toBe(2);
-    expect(jsonDocument(reset.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_input" },
-    });
-    expect(reset.stderr).toContain("--yes");
+      const reset = await runCli(executable, [
+        "--root",
+        root,
+        "reset",
+        "--json",
+      ]);
+      expect(reset.exitCode).toBe(2);
+      expect(jsonDocument(reset.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
+      expect(reset.stderr).toContain("--yes");
 
-    const literal = await runCli(executable, [
-      "--root",
-      root,
-      "configure",
-      "--json",
-      "--defaults",
-      "--no-create-key",
-    ]);
-    expect(literal.exitCode).toBe(0);
-
-    const invalidToml = join(directory, "invalid-model.toml");
-    await Bun.write(invalidToml, 'selectedLlmModels = ["unknown"]\n');
-    for (const invocation of [
-      [
+      const literal = await runCli(executable, [
         "--root",
         root,
         "configure",
         "--json",
         "--defaults",
-        "--llm-models",
-        "unknown",
-      ],
-      ["--root", root, "configure", "--json", "--config", invalidToml],
-      ["--root", root, "models", "install", "unknown", "--json"],
-    ]) {
-      const invalidCatalogModel = await runCli(executable, invocation);
-      expect(invalidCatalogModel.exitCode).toBe(2);
-      expect(jsonDocument(invalidCatalogModel.stdout)).toMatchObject({
+        "--no-create-key",
+      ]);
+      expect(literal.exitCode).toBe(0);
+
+      const invalidToml = join(directory, "invalid-model.toml");
+      await Bun.write(invalidToml, 'selectedLlmModels = ["unknown"]\n');
+      for (const invocation of [
+        [
+          "--root",
+          root,
+          "configure",
+          "--json",
+          "--defaults",
+          "--llm-models",
+          "unknown",
+        ],
+        ["--root", root, "configure", "--json", "--config", invalidToml],
+        ["--root", root, "models", "install", "unknown", "--json"],
+      ]) {
+        const invalidCatalogModel = await runCli(executable, invocation);
+        expect(invalidCatalogModel.exitCode).toBe(2);
+        expect(jsonDocument(invalidCatalogModel.stdout)).toMatchObject({
+          ok: false,
+          error: { code: "invalid_input" },
+        });
+      }
+
+      const invalidModel = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "configure",
+        "--active-llm",
+        "unknown-model",
+      ]);
+      expect(invalidModel.exitCode).toBe(2);
+      expect(jsonDocument(invalidModel.stdout)).toMatchObject({
         ok: false,
         error: { code: "invalid_input" },
       });
+
+      const incompatibleSelection = await runCli(executable, [
+        "--root",
+        root,
+        "--json",
+        "configure",
+        "--defaults",
+        "--no-create-key",
+        "--llm-models",
+        "qwen3.6-35b-a3b-iq4_nl_xl",
+        "--active-llm",
+        "qwen3.8-27b-q4_k_m",
+      ]);
+      expect(incompatibleSelection.exitCode).toBe(2);
+      expect(jsonDocument(incompatibleSelection.stdout)).toMatchObject({
+        ok: false,
+        error: { code: "invalid_input" },
+      });
+
+      const disabledServe = await runCli(executable, [
+        "--root",
+        root,
+        "serve",
+        "--json",
+        "--port",
+        String(reservePort()),
+        "--no-llm",
+        "--no-stt",
+        "--no-image",
+        "--no-auth",
+      ]);
+      expect(disabledServe.exitCode).toBe(2);
+      expect(jsonDocument(disabledServe.stdout)).toMatchObject({
+        event: "error",
+        error: { code: "invalid_input" },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
-
-    const invalidModel = await runCli(executable, [
-      "--root",
-      root,
-      "--json",
-      "configure",
-      "--active-llm",
-      "unknown-model",
-    ]);
-    expect(invalidModel.exitCode).toBe(2);
-    expect(jsonDocument(invalidModel.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_input" },
-    });
-
-    const incompatibleSelection = await runCli(executable, [
-      "--root",
-      root,
-      "--json",
-      "configure",
-      "--defaults",
-      "--no-create-key",
-      "--llm-models",
-      "qwen3.6-35b-a3b-iq4_nl_xl",
-      "--active-llm",
-      "qwen3.8-27b-q4_k_m",
-    ]);
-    expect(incompatibleSelection.exitCode).toBe(2);
-    expect(jsonDocument(incompatibleSelection.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_input" },
-    });
-
-    const disabledServe = await runCli(executable, [
-      "--root",
-      root,
-      "serve",
-      "--json",
-      "--port",
-      String(reservePort()),
-      "--no-llm",
-      "--no-stt",
-      "--no-image",
-      "--no-auth",
-    ]);
-    expect(disabledServe.exitCode).toBe(2);
-    expect(jsonDocument(disabledServe.stdout)).toMatchObject({
-      event: "error",
-      error: { code: "invalid_input" },
-    });
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
+  },
+  { timeout: 30_000 },
+);
 
 test(
   "compiled declarative config commands support files, stdin, strict errors, deterministic JSON, and re-apply",
