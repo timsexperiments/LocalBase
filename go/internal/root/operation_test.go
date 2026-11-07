@@ -24,10 +24,13 @@ func TestOperationLease(t *testing.T) {
 	}
 	// A second operation waits for the first.
 	got := make(chan time.Time, 1)
+	released2 := make(chan struct{})
 	go func() {
+		defer close(released2)
 		l2, err := AcquireOperation(rootDir, "second")
 		if err != nil {
 			t.Error(err)
+			return
 		}
 		got <- time.Now()
 		l2.Release()
@@ -38,7 +41,13 @@ func TestOperationLease(t *testing.T) {
 	if at := <-got; at.Before(released) {
 		t.Error("second operation did not wait")
 	}
-	time.Sleep(50 * time.Millisecond)
+	// The second lease is checked once its Release has returned, not after a fixed pause: a release
+	// syncs what it writes, and on a slow runner that can outlast any pause chosen here.
+	select {
+	case <-released2:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the second operation's release never returned")
+	}
 	if isDir(p.lock) {
 		t.Error("lease left behind")
 	}
