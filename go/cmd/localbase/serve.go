@@ -27,6 +27,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/netlimit"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -503,7 +504,7 @@ func serve(c *cli.Ctx) (any, error) {
 		ln.Close()
 		return nil, err
 	}
-	ln = gateway.LimitConnections(ln, connLimits, log)
+	ln = netlimit.LimitConnections(ln, connLimits, log)
 	httpServer := &http.Server{Handler: srv} //nolint:gosec // Limits.Apply sets ReadHeaderTimeout on the next line (TestDefaultLimits)
 	srv.Limits.Apply(httpServer)
 
@@ -611,26 +612,26 @@ func serve(c *cli.Ctx) (any, error) {
 
 // connectionLimits resolves the connection caps: a flag, else the configured
 // value, else the default, fitted under the open file limit.
-func connectionLimits(c *cli.Ctx, st *store.Store) (gateway.ConnLimits, error) {
+func connectionLimits(c *cli.Ctx, st *store.Store) (netlimit.ConnLimits, error) {
 	resolve := func(flag, key string, fallback int) (int, error) {
 		if c.Has(flag) {
 			return intOpt(c, flag, 0, 10_000_000)
 		}
 		return savedConnLimit(st, key, fallback), nil
 	}
-	global, err := resolve("max-connections", store.MaxConnectionsKey, gateway.DefaultConnLimits.Global)
+	global, err := resolve("max-connections", store.MaxConnectionsKey, netlimit.DefaultConnLimits.Global)
 	if err != nil {
-		return gateway.ConnLimits{}, err
+		return netlimit.ConnLimits{}, err
 	}
-	perIP, err := resolve("max-connections-per-ip", store.MaxConnectionsPerIPKey, gateway.DefaultConnLimits.PerIP)
+	perIP, err := resolve("max-connections-per-ip", store.MaxConnectionsPerIPKey, netlimit.DefaultConnLimits.PerIP)
 	if err != nil {
-		return gateway.ConnLimits{}, err
+		return netlimit.ConnLimits{}, err
 	}
 	var files syscall.Rlimit
 	if syscall.Getrlimit(syscall.RLIMIT_NOFILE, &files) == nil {
-		global = gateway.CapForFileLimit(global, files.Cur)
+		global = netlimit.CapForFileLimit(global, files.Cur)
 	}
-	return gateway.ConnLimits{Global: global, PerIP: perIP}, nil
+	return netlimit.ConnLimits{Global: global, PerIP: perIP}, nil
 }
 
 // savedConnLimit is a configured connection cap, or fallback when none is usable.

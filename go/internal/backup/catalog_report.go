@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/install"
 )
 
 // CatalogEntry is an entry of a backup's catalog.d. A root's catalog trusts those as the person's own, so a
@@ -64,7 +63,7 @@ func catalogEntries(cat *catalog.Catalog) ([]CatalogEntry, error) {
 			for _, a := range s.Artifacts {
 				plain := a
 				plain.Source = nil
-				if got := install.DownloadURL(s, a); got != install.DownloadURL(s, plain) {
+				if got := catalog.DownloadURL(s, a); got != catalog.DownloadURL(s, plain) {
 					e.Files = append(e.Files, FileSource{File: bounded(a.Filename, 120), From: bounded(got, 300)})
 				}
 			}

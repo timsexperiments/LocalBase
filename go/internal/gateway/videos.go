@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/video"
 )
@@ -292,7 +293,7 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 	}
 	if p, ok := get("input_reference"); ok {
 		if p.isFile {
-			if len(p.file) > videoReferenceLimit || imageMimeFromMagic(p.file) != "image/png" {
+			if len(p.file) > videoReferenceLimit || mediacheck.ImageMimeFromMagic(p.file) != "image/png" {
 				badRequest(w, r, "input_reference must be a PNG file no larger than 4 MiB.", strp("input_reference"))
 				return nil, false
 			}

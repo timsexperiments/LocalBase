@@ -1,4 +1,4 @@
-package gateway
+package mediacheck
 
 import (
 	"bytes"
@@ -11,13 +11,13 @@ import (
 // Upload checks for image edits (TS image-validation.ts): structural PNG and
 // JPEG validation before anything reaches the native decoder.
 
-type imageDims struct{ width, height int }
+type ImageDims struct{ Width, Height int }
 
-var pngSignature = []byte{137, 80, 78, 71, 13, 10, 26, 10}
+var PNGSignature = []byte{137, 80, 78, 71, 13, 10, 26, 10}
 
-func imageMimeFromMagic(b []byte) string {
+func ImageMimeFromMagic(b []byte) string {
 	switch {
-	case len(b) >= 8 && bytes.Equal(b[:8], pngSignature):
+	case len(b) >= 8 && bytes.Equal(b[:8], PNGSignature):
 		return "image/png"
 	case len(b) >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff:
 		return "image/jpeg"
@@ -74,15 +74,15 @@ func pngPasses(width, height, interlace int) [][2]int {
 	return out
 }
 
-// validatePNG checks structure and bounds decompression to the exact
+// ValidatePNG checks structure and bounds decompression to the exact
 // scanline size.
-func validatePNG(b []byte) *imageDims {
-	if len(b) < 8 || !bytes.Equal(b[:8], pngSignature) {
+func ValidatePNG(b []byte) *ImageDims {
+	if len(b) < 8 || !bytes.Equal(b[:8], PNGSignature) {
 		return nil
 	}
 	be := binary.BigEndian
 	offset := 8
-	var dims *imageDims
+	var dims *ImageDims
 	bitDepth, colorType, interlace := 0, 0, 0
 	sawIDAT, sawPalette, idatEnded, sawIEND := false, false, false, false
 	paletteEntries := 0
@@ -110,7 +110,7 @@ func validatePNG(b []byte) *imageDims {
 				return nil
 			}
 			interlace = int(b[dataStart+12])
-			dims = &imageDims{width, height}
+			dims = &ImageDims{width, height}
 		} else if typ == "IHDR" {
 			return nil
 		}
@@ -162,7 +162,7 @@ func validatePNG(b []byte) *imageDims {
 	}
 	bitsPerPixel := pngChannels(colorType) * bitDepth
 	expected := 0
-	for _, p := range pngPasses(dims.width, dims.height, interlace) {
+	for _, p := range pngPasses(dims.Width, dims.Height, interlace) {
 		expected += (ceilDiv(p[0]*bitsPerPixel, 8) + 1) * p[1]
 	}
 	if expected == 0 || expected >= 0x7fffffff {
@@ -178,7 +178,7 @@ func validatePNG(b []byte) *imageDims {
 	}
 	// Each scanline starts with a filter type of 0-4.
 	at := 0
-	for _, p := range pngPasses(dims.width, dims.height, interlace) {
+	for _, p := range pngPasses(dims.Width, dims.Height, interlace) {
 		row := ceilDiv(p[0]*bitsPerPixel, 8)
 		for y := 0; y < p[1]; y++ {
 			if raw[at] > 4 {
@@ -193,15 +193,15 @@ func validatePNG(b []byte) *imageDims {
 	return dims
 }
 
-// validateJPEG checks segment bounds, SOF/SOS presence, entropy markers and
+// ValidateJPEG checks segment bounds, SOF/SOS presence, entropy markers and
 // EOI.
-func validateJPEG(b []byte) *imageDims {
+func ValidateJPEG(b []byte) *ImageDims {
 	if len(b) < 4 || b[0] != 0xff || b[1] != 0xd8 {
 		return nil
 	}
 	be := binary.BigEndian
 	offset := 2
-	var dims *imageDims
+	var dims *ImageDims
 	sawSOS := false
 	for offset < len(b) {
 		if sawSOS {
@@ -256,8 +256,8 @@ func validateJPEG(b []byte) *imageDims {
 				length != 8+3*int(b[offset+7]) {
 				return nil
 			}
-			dims = &imageDims{height: int(be.Uint16(b[offset+3:])), width: int(be.Uint16(b[offset+5:]))}
-			if dims.width == 0 || dims.height == 0 {
+			dims = &ImageDims{Height: int(be.Uint16(b[offset+3:])), Width: int(be.Uint16(b[offset+5:]))}
+			if dims.Width == 0 || dims.Height == 0 {
 				return nil
 			}
 		}
