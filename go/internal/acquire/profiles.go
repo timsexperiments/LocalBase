@@ -17,7 +17,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Auth profiles are LocalBase's private credential storage for download
@@ -240,11 +240,11 @@ func (ps *Profiles) FirstInvalid() error {
 // readProfiles reads the file as written, for the commands that change it, so a profile that fails its checks
 // can still be replaced or removed. A missing file is empty.
 func readProfiles(rootDir string) (*Profiles, error) {
-	b, err := obs.ReadOwnedRegular(profilesPath(rootDir))
+	b, err := safefile.ReadOwnedRegular(profilesPath(rootDir))
 	if errors.Is(err, os.ErrNotExist) {
 		return &Profiles{}, nil
 	}
-	var unsafe *obs.UnsafeFileError
+	var unsafe *safefile.UnsafeFileError
 	if errors.As(err, &unsafe) {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func saveProfiles(rootDir string, ps *Profiles) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(ps, "", "  ")
-	return obs.WritePrivateChecked(profilesPath(rootDir), b)
+	return safefile.WritePrivateChecked(profilesPath(rootDir), b)
 }
 
 // SaveProfile adds or replaces a profile.

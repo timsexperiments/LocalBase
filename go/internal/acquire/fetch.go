@@ -18,7 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Progress reports a transfer. It names files only, never URLs or headers.
@@ -286,7 +286,7 @@ func download(ctx context.Context, client *http.Client, url, partial string, exp
 			resp.Body.Close()
 			return fmt.Errorf("download failed: HTTP %d from %s", resp.StatusCode, red.Text(RedactURL(resp.Request.URL.String())))
 		}
-		f, err := obs.OpenOwnedRegular(partial, flags)
+		f, err := safefile.OpenOwnedRegular(partial, flags)
 		if err != nil {
 			resp.Body.Close()
 			return err
@@ -359,7 +359,7 @@ func (v validator) usable() bool { return v != "" && v != validatorNone && v != 
 func validatorPath(partial string) string { return partial + ".validator" }
 
 func readValidator(partial string) validator {
-	b, err := obs.ReadOwnedRegular(validatorPath(partial))
+	b, err := safefile.ReadOwnedRegular(validatorPath(partial))
 	if err != nil {
 		return ""
 	}
@@ -368,7 +368,7 @@ func readValidator(partial string) validator {
 
 func writeValidator(partial string, v validator) {
 	// Without it the next attempt starts over, which costs time and is safe.
-	_ = obs.WritePrivateAtomic(validatorPath(partial), []byte(v))
+	_ = safefile.WritePrivateAtomic(validatorPath(partial), []byte(v))
 }
 
 func clearValidator(partial string) {
@@ -392,7 +392,7 @@ func copyFile(ctx context.Context, src, dst string, b *budget, progress func(int
 		return err
 	}
 	defer in.Close()
-	out, err := obs.OpenOwnedRegular(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
+	out, err := safefile.OpenOwnedRegular(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
