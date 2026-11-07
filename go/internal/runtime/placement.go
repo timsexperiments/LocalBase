@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/childenv"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 )
@@ -45,7 +46,7 @@ func (m *LLM) placeWith(modelID string, plan *LLMPlan, t *Target, req placement.
 	}
 	dev := m.d.Placement.Device(t)
 	model.HostExtraBytes = memory.HostExtraBytes(memory.ResolveShape(planSize(m, modelID, t), planQuant(m, modelID, t), plan.ArtifactBytes, plan.Geometry), plan.Launch)
-	kv := memory.KVCacheBytes(plan.Geometry, plan.Launch.CtxTokens, max(1, plan.Launch.Slots), plan.Launch.CacheTypeK, plan.Launch.CacheTypeV)
+	kv := gguf.KVCacheBytes(plan.Geometry, plan.Launch.CtxTokens, max(1, plan.Launch.Slots), plan.Launch.CacheTypeK, plan.Launch.CacheTypeV)
 	p, err := placement.Resolve(model, kv, dev, req)
 	if err != nil {
 		code := "placement_unsupported"

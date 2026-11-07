@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 )
 
 // Measurement is a checked-in calibration record (memory-measurements.ts),
@@ -122,7 +123,7 @@ func EstimateSTT(s *catalog.Spec) Demand {
 
 // EstimateTTS: the Qwen3-TTS talker (f16 KV at the speech context), the
 // projector loaded twice and the codec, all in one process. Kokoro is CPU only.
-func EstimateTTS(s *catalog.Spec, talker *Geometry) Demand {
+func EstimateTTS(s *catalog.Spec, talker *gguf.Geometry) Demand {
 	if s.TTSRuntime != nil && s.TTSRuntime.Kind == "kokoro-onnx" {
 		total := s.TotalArtifactBytes() + kokoroSessionBytes + RuntimeHostOverhead
 		return estimated(0, total, total, "estimated")
@@ -273,7 +274,7 @@ func EstimateVideo(s *catalog.Spec) Demand {
 
 // LLMReference is the catalog fit launch: 8K (or the model window), one
 // slot, the launcher's KV type, no prompt cache.
-func LLMReference(s *catalog.Spec, g *Geometry) (weights int64, shape LLMShape, l LLMLaunch) {
+func LLMReference(s *catalog.Spec, g *gguf.Geometry) (weights int64, shape LLMShape, l LLMLaunch) {
 	weights = s.TotalArtifactBytes()
 	shape = ResolveShape(s.Size, s.Quant, weights, g)
 	kv := "q8_0"
@@ -289,7 +290,7 @@ func LLMReference(s *catalog.Spec, g *Geometry) (weights int64, shape LLMShape, 
 
 // EstimateCatalog is a catalog model's estimate at its reference shape.
 // geometry is the installed GGUF's (LLM, or the TTS talker), or nil.
-func EstimateCatalog(s *catalog.Spec, geometry *Geometry) Demand {
+func EstimateCatalog(s *catalog.Spec, geometry *gguf.Geometry) Demand {
 	switch s.Kind {
 	case "llm":
 		w, shape, l := LLMReference(s, geometry)
@@ -306,7 +307,7 @@ func EstimateCatalog(s *catalog.Spec, geometry *Geometry) Demand {
 
 // MeasuredCatalog is the measured demand at the reference shape, when the
 // model is qualified and was measured there.
-func MeasuredCatalog(s *catalog.Spec, geometry *Geometry) (Demand, bool) {
+func MeasuredCatalog(s *catalog.Spec, geometry *gguf.Geometry) (Demand, bool) {
 	if !s.UsesReferenceMeasurements() {
 		return Demand{}, false
 	}
@@ -375,7 +376,7 @@ var ttsShapeRe = regexp.MustCompile(`^ctx=\d+$`)
 // LocalBase plans for s (TS feedPeakMatchesLaunch): LLMs at the exact
 // reference shape, image at the same --diffusion-fa, video at its
 // qualification bounds, speech at its fixed shape.
-func FeedPeakMatchesLaunch(s *catalog.Spec, shape string, geometry *Geometry) bool {
+func FeedPeakMatchesLaunch(s *catalog.Spec, shape string, geometry *gguf.Geometry) bool {
 	switch s.Kind {
 	case "llm":
 		_, _, l := LLMReference(s, geometry)
@@ -399,7 +400,7 @@ func FeedPeakMatchesLaunch(s *catalog.Spec, shape string, geometry *Geometry) bo
 }
 
 // SelectFeedPeak is the largest plannable feed peak at the planned shape.
-func SelectFeedPeak(s *catalog.Spec, peaks []catalog.MemoryPeak, geometry *Geometry) *catalog.MemoryPeak {
+func SelectFeedPeak(s *catalog.Spec, peaks []catalog.MemoryPeak, geometry *gguf.Geometry) *catalog.MemoryPeak {
 	var best *catalog.MemoryPeak
 	for i := range peaks {
 		p := &peaks[i]

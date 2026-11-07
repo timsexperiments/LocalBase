@@ -47,7 +47,7 @@ import (
 	"regexp"
 
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"net"
 	"net/http"
 	"os"
@@ -348,7 +348,7 @@ func batchOverflow(w http.ResponseWriter, mode string) bool {
 var fakeExpertRe = regexp.MustCompile(`^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_(ch|)exps`)
 
 func placementLines(model string, ngl, cpuMoE int) {
-	keys, err := memory.ReadGGUFHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
+	keys, err := gguf.ReadGGUFHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
 	if err != nil {
 		return
 	}
@@ -358,7 +358,7 @@ func placementLines(model string, ngl, cpuMoE int) {
 			blocks = int(f)
 		}
 	}
-	tensors, _ := memory.ReadTensorTable(model)
+	tensors, _ := gguf.ReadTensorTable(model)
 	bug := os.Getenv("FAKE_PLACEMENT_BUG") == "cuda0"
 	for _, t := range tensors {
 		m := fakeExpertRe.FindStringSubmatch(t.Name)

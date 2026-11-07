@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gguf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -157,7 +158,7 @@ type LLMPlan struct {
 	Decision       bool
 	KVType         string
 	PromptCacheMiB int
-	Geometry       *memory.Geometry
+	Geometry       *gguf.Geometry
 	ArtifactBytes  int64
 	Demand         memory.Demand
 	Budget         ContextBudget
@@ -200,7 +201,7 @@ type PlanInput struct {
 	// ReadHeader reads the GGUF geometry; false skips file reads (listing).
 	ReadHeader bool
 	// Geometry, when set, is used instead of reading the header.
-	Geometry *memory.Geometry
+	Geometry *gguf.Geometry
 	// ModelFile overrides the catalog's primary file (serve --llm-model-file).
 	ModelFile string
 	// For a model without a catalog entry (imports): its task, projector
@@ -257,7 +258,7 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 	if in.Geometry != nil {
 		p.Geometry = in.Geometry
 	} else if in.ReadHeader {
-		p.Geometry = memory.ReadGeometry(p.ModelPath)
+		p.Geometry = gguf.ReadGeometry(p.ModelPath)
 	}
 
 	// Context: override > explicit ceiling > min(recommended, ceiling).
@@ -293,7 +294,7 @@ func PlanLLM(in PlanInput) (*LLMPlan, error) {
 	case p.Geometry != nil:
 		g := p.Geometry
 		kvGB = func(s int) float64 {
-			return float64(memory.KVCacheBytes(g, window, s, p.KVType, p.KVType)) / float64(memory.GiB)
+			return float64(gguf.KVCacheBytes(g, window, s, p.KVType, p.KVType)) / float64(memory.GiB)
 		}
 	}
 	par, err := AllocateParallel(cfg.Parallel, in.MemoryGB, float64(p.ArtifactBytes)/float64(memory.GiB), window, kvGB)
