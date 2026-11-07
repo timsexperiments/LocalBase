@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 const (
@@ -103,7 +105,7 @@ func (s *Sink) archive(i int) string {
 func (s *Sink) rotatingPath() string { return filepath.Join(s.dir, s.name+".rotating.jsonl") }
 
 func (s *Sink) open() error {
-	f, err := OpenOwnedRegular(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY)
+	f, err := safefile.OpenOwnedRegular(s.path(), os.O_CREATE|os.O_APPEND|os.O_WRONLY)
 	if err != nil {
 		return err
 	}
@@ -211,7 +213,7 @@ func reason(err error) error {
 	if errors.As(err, &path) {
 		return path.Err
 	}
-	var unsafe *UnsafeFileError
+	var unsafe *safefile.UnsafeFileError
 	if errors.As(err, &unsafe) {
 		return errors.New(unsafe.Problem)
 	}

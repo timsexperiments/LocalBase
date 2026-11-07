@@ -1156,7 +1156,7 @@ change. TS has one sentence for every cause, so this is Go only and additive.
 | `unknown` | Anything else, including other local file errors, and failures recorded before reasons existed |
 ### 13.5b Log and checkpoint files are opened safely
 
-As TS does, log and stderr files open through `obs.OpenOwnedRegular`: no following a link
+As TS does, log and stderr files open through `safefile.OpenOwnedRegular`: no following a link
 (`O_NOFOLLOW`), a regular file, owned by this user, one hard link, the same file before and after
 the open, and 0600 afterwards. Without this, a link planted at `logs/service-stderr.log` got its
 target truncated. The port had lost this.
@@ -1165,7 +1165,7 @@ target truncated. The port had lost this.
 capture, `runs/*.json` or `runtime/model-operations.json`, or a linked `logs`, `runs` or `runtime`
 directory. The message names the file and says to remove it and check who can write to its
 directory. `doctor` reports the same (`unsafeFiles`, only when there are any) without starting
-anything. Checkpoints write through `obs.WritePrivateAtomic`, with a fresh exclusive temporary
+anything. Checkpoints write through `safefile.WritePrivateAtomic`, with a fresh exclusive temporary
 name instead of a fixed `.tmp`.
 
 **Difference from TS:** TS also refuses a log directory other users can read. Go does not, and a
@@ -1179,7 +1179,7 @@ stderr is all there is. `doctor` says how long it has been refusing (`startRefus
 **A hard link** refuses as in TS, and the message explains it: a second name for the same file,
 which a backup made with `ln` creates. A `cp` copy is fine.
 
-**Settings, caches and downloads** do not stop the gateway. `obs.WritePrivateChecked` writes
+**Settings, caches and downloads** do not stop the gateway. `safefile.WritePrivateChecked` writes
 `ui-access.json`, `email-delivery.json`, `catalog.d`, custom backends, auth profiles, the feed and
 Hub caches, the service manifest and unit, and `.checksums.json`: a planted link at the path fails
 that write with the same clear error rather than being quietly replaced, and its target stays
