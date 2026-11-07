@@ -29,11 +29,11 @@ type placementBody struct {
 func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string) {
 	w.Header().Set("Cache-Control", "no-store")
 	if s.Placement == nil || s.LLM == nil {
-		routeDisabled(w, r)
+		RouteDisabled(w, r)
 		return
 	}
 	if _, _, err := s.LLM.Resolve(id); err != nil {
-		modelNotFound(w, r, id)
+		ModelNotFound(w, r, id)
 		return
 	}
 	switch r.Method {
@@ -42,21 +42,21 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 		return
 	case http.MethodPut, http.MethodDelete:
 	default:
-		methodNotAllowed(w, r, "GET, PUT, DELETE")
+		MethodNotAllowed(w, r, "GET, PUT, DELETE")
 		return
 	}
 	if p := s.principal(r); !s.NoAuth && !p.Can("models:manage") {
-		forbidden(w, r)
+		Forbidden(w, r)
 		return
 	}
 	if s.LLM.Loading(id) {
-		writeError(w, r, 409, "invalid_request_error", "model_loading", "The model is loading. Change its placement once it has loaded; the change then applies on the next load.", nil)
+		Error(w, r, 409, "invalid_request_error", "model_loading", "The model is loading. Change its placement once it has loaded; the change then applies on the next load.", nil)
 		return
 	}
 	ctx := r.Context()
 	if r.Method == http.MethodDelete {
 		if _, err := s.Store.ResetPlacement(ctx, id, s.Placement.DeviceID); err != nil {
-			serviceUnavailable(w, r, "Model management")
+			ServiceUnavailable(w, r, "Model management")
 			return
 		}
 		s.placementState(w, r, id, nil)
@@ -65,18 +65,18 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 4097))
 	var in placementBody
 	if err != nil || len(raw) > 4096 || json.Unmarshal(raw, &in) != nil {
-		badRequest(w, r, `Send {"mode": "auto"|"gpu"|"cpu"|"custom", "cpuMoeLayers"?, "gpuLayers"?, "contextSize"?}.`, nil)
+		BadRequest(w, r, `Send {"mode": "auto"|"gpu"|"cpu"|"custom", "cpuMoeLayers"?, "gpuLayers"?, "contextSize"?}.`, nil)
 		return
 	}
 	if in.Mode == "" {
 		in.Mode = placement.Auto
 	}
 	if in.Mode != placement.Custom && (in.CPUMoELayers != nil || in.GPULayers != nil) {
-		writeError(w, r, 400, "invalid_request_error", "placement_unsupported", "CPU expert layers and GPU layers apply to custom placement only.", nil)
+		Error(w, r, 400, "invalid_request_error", "placement_unsupported", "CPU expert layers and GPU layers apply to custom placement only.", nil)
 		return
 	}
 	if in.ContextSize != nil && (*in.ContextSize < 256 || *in.ContextSize > 2_147_483_647) {
-		writeError(w, r, 400, "invalid_request_error", "placement_unsupported", "The context size must be at least 256 tokens.", strp("contextSize"))
+		Error(w, r, 400, "invalid_request_error", "placement_unsupported", "The context size must be at least 256 tokens.", StrPtr("contextSize"))
 		return
 	}
 	req := placement.Request{Mode: in.Mode, CPUMoELayers: in.CPUMoELayers, GPULayers: in.GPULayers}
@@ -89,7 +89,7 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 			if pe.Code == "placement_does_not_fit" || pe.Code == "model_too_large" {
 				status = 409
 			}
-			writeError(w, r, status, "invalid_request_error", pe.Code, pe.Message, nil)
+			Error(w, r, status, "invalid_request_error", pe.Code, pe.Message, nil)
 			return
 		}
 	}
@@ -98,12 +98,12 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 			c.CtxSize, c.CtxMode = *in.ContextSize, "explicit"
 			return nil
 		}); err != nil {
-			serviceUnavailable(w, r, "Model management")
+			ServiceUnavailable(w, r, "Model management")
 			return
 		}
 	}
 	if err := s.Store.SetPlacement(ctx, id, s.Placement.DeviceID, store.Placement{Mode: in.Mode, GPULayers: in.GPULayers, CPUMoELayers: in.CPUMoELayers}); err != nil {
-		serviceUnavailable(w, r, "Model management")
+		ServiceUnavailable(w, r, "Model management")
 		return
 	}
 	s.Log.Info("Placement changed for "+id+"; it applies on the next load.", "event", "models.placement-changed", "model_id", id, "mode", in.Mode)
@@ -133,7 +133,7 @@ func (s *Server) placementState(w http.ResponseWriter, r *http.Request, id strin
 			out["nextError"] = map[string]any{"code": pe.Code, "message": pe.Message}
 		}
 	}
-	writeJSON(w, 200, out)
+	JSON(w, 200, out)
 }
 
 func placementJSON(plan *runtime.LLMPlan) map[string]any {
@@ -175,5 +175,5 @@ func (s *Server) placementRuntimeState(w http.ResponseWriter, r *http.Request) {
 		}
 		out["loadedRequest"] = req
 	}
-	writeJSON(w, 200, out)
+	JSON(w, 200, out)
 }

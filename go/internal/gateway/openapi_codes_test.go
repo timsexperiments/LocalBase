@@ -64,7 +64,7 @@ var codeConstant = regexp.MustCompile(`^code[A-Z]`)
 // sourceErrorCodes reads the code out of the source, so that a new one can't be missed by a test
 // that has to think of asking for it. It reads each way this code base hands over a code:
 //
-//	writeError(w, r, 400, "t", "code", ...)      any function with a parameter named code
+//	Error(w, r, 400, "t", "code", ...)      any function with a parameter named code
 //	Error{Code: "code"}, map[string]string{"code": "code"}
 //	mgmtError{"code", "message"}                 positional, by the struct's field name
 //	code := "code"
@@ -146,11 +146,18 @@ func sourceErrorCodes(t *testing.T) map[string]string {
 			if !ok {
 				continue
 			}
+			// A function is known by its package and name, so a call to another package's function
+			// of the same name (a logger's Error, say) isn't taken for it. A method is known by its
+			// name alone: which one a call reaches would take types to say.
+			key := f.Name.Name + "." + fn.Name.Name
+			if fn.Recv != nil {
+				key = "." + fn.Name.Name
+			}
 			i := 0
 			for _, field := range fn.Type.Params.List {
 				for _, name := range field.Names {
 					if isCodeName(name.Name) {
-						codeArg[fn.Name.Name] = i
+						codeArg[key] = i
 					}
 					i++
 				}
@@ -170,6 +177,7 @@ func sourceErrorCodes(t *testing.T) map[string]string {
 		}
 	}
 	for _, f := range files {
+		pkg := f.Name.Name
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.BasicLit:
@@ -179,14 +187,19 @@ func sourceErrorCodes(t *testing.T) map[string]string {
 					}
 				}
 			case *ast.CallExpr:
-				name := ""
+				i, ok := -1, false
 				switch fn := x.Fun.(type) {
-				case *ast.Ident:
-					name = fn.Name
+				case *ast.Ident: // this package's own function
+					i, ok = codeArg[pkg+"."+fn.Name]
 				case *ast.SelectorExpr:
-					name = fn.Sel.Name
+					if id, isIdent := fn.X.(*ast.Ident); isIdent {
+						i, ok = codeArg[id.Name+"."+fn.Sel.Name] // another package's function
+					}
+					if !ok {
+						i, ok = codeArg["."+fn.Sel.Name] // a method
+					}
 				}
-				if i, ok := codeArg[name]; ok && i < len(x.Args) {
+				if ok && i < len(x.Args) {
 					add(x.Args[i])
 				}
 			case *ast.KeyValueExpr:

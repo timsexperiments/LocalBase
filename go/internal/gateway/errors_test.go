@@ -40,13 +40,13 @@ func TestRuntimeErrorRetrySemantics(t *testing.T) {
 	}
 	for _, c := range cases {
 		w := httptest.NewRecorder()
-		runtimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")
+		RuntimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")
 		if w.Code != c.status || !strings.Contains(w.Body.String(), `"code":"`+c.code+`"`) || w.Header().Get("Retry-After") != c.retry {
 			t.Errorf("%s: %d Retry-After=%q %s", c.name, w.Code, w.Header().Get("Retry-After"), w.Body.String())
 		}
 	}
 	w := httptest.NewRecorder()
-	runtimeError(w, httptest.NewRequest("POST", "/v1/audio/speech", nil), runtime.ErrStartupFailed, "m", "TTS")
+	RuntimeError(w, httptest.NewRequest("POST", "/v1/audio/speech", nil), runtime.ErrStartupFailed, "m", "TTS")
 	if !strings.Contains(w.Body.String(), "TTS service is currently restarting") {
 		t.Errorf("service name: %s", w.Body.String())
 	}
@@ -57,7 +57,7 @@ func TestRuntimeErrorRetrySemantics(t *testing.T) {
 // unavailable, whichever modality was asked.
 func TestMemoryEmergencyResponse(t *testing.T) {
 	w := httptest.NewRecorder()
-	runtimeError(w, httptest.NewRequest("POST", "/v1/audio/transcriptions", nil), runtime.ErrMemoryEmergency, "m", "STT")
+	RuntimeError(w, httptest.NewRequest("POST", "/v1/audio/transcriptions", nil), runtime.ErrMemoryEmergency, "m", "STT")
 	if w.Code != 503 || !strings.Contains(w.Body.String(), "Inference service is currently restarting or unavailable. Please try again shortly.") {
 		t.Errorf("%d %s", w.Code, w.Body.String())
 	}
@@ -81,7 +81,7 @@ func TestModelTooLarge(t *testing.T) {
 			"This model requires about 20.0 GiB of memory, but only 8.0 GiB is available for models on this host (16.0 GiB total, after the safety reserve). It cannot be loaded here even when nothing else is running. Use a smaller quantization or a smaller model, a smaller context size, or keep less for the computer: set memory.systemReserve (percent and minimumGb) with local-base configure --config."},
 	} {
 		w := httptest.NewRecorder()
-		runtimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")
+		RuntimeError(w, httptest.NewRequest("POST", "/v1/images/generations", nil), c.err, "m", "Image")
 		var body struct {
 			Error struct {
 				Message, Type, Code string
@@ -99,14 +99,14 @@ func TestModelTooLarge(t *testing.T) {
 	}
 	// The GPU pool says GPU memory. Also permanent.
 	w := httptest.NewRecorder()
-	runtimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "gpu-memory", PoolID: "gpu:0", Permanent: true,
+	RuntimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "gpu-memory", PoolID: "gpu:0", Permanent: true,
 		RequestedBytes: 13 * gib, AvailableBytes: 11 * gib, CapacityBytes: 12 * gib}, "m", "LLM")
 	if w.Code != 422 || w.Header().Get("Retry-After") != "" || !strings.Contains(w.Body.String(), "model_too_large") || !strings.Contains(w.Body.String(), "GPU memory") {
 		t.Errorf("gpu:0: %d %s", w.Code, w.Body)
 	}
 	// A shortage that can pass stays a retryable 503.
 	w = httptest.NewRecorder()
-	runtimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "system-memory", PoolID: "system"}, "m", "LLM")
+	RuntimeError(w, httptest.NewRequest("POST", "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "system-memory", PoolID: "system"}, "m", "LLM")
 	if w.Code != 503 || w.Header().Get("Retry-After") != "5" {
 		t.Errorf("transient: %d %q", w.Code, w.Header().Get("Retry-After"))
 	}

@@ -191,14 +191,14 @@ func (b countingBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// fromRejectionDrain reports a read by writeError, which discards the rest of a
+// fromRejectionDrain reports a read by Error, which discards the rest of a
 // refused request's body. It is the one read that is not a handler using the body.
 func fromRejectionDrain() bool {
 	pcs := make([]uintptr, 24)
 	frames := goruntime.CallersFrames(pcs[:goruntime.Callers(2, pcs)])
 	for {
 		f, more := frames.Next()
-		if strings.HasSuffix(f.Function, "gateway.writeError") {
+		if strings.HasSuffix(f.Function, "gateway.Error") {
 			return true
 		}
 		if !more {

@@ -47,7 +47,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r, "GET")
+		MethodNotAllowed(w, r, "GET")
 		return
 	}
 	snap := s.LLM.Snapshot()
@@ -57,18 +57,18 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		raw := strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/")
 		id, err := url.PathUnescape(raw)
 		if raw == "" || err != nil {
-			routeDisabled(w, r)
+			RouteDisabled(w, r)
 			return
 		}
 		spec := s.Catalog.ByID(id)
 		if spec == nil {
-			modelNotFound(w, r, id)
+			ModelNotFound(w, r, id)
 			return
 		}
 		m, problems := meta.Project(r.Context(), in, spec)
 		s.reportReads(w, problems)
 		if len(problems) == 0 && (spec.Kind != "llm" || s.Placement == nil) {
-			writeJSON(w, 200, m)
+			JSON(w, 200, m)
 			return
 		}
 		// Go only (DESIGN §20.2): device.placement is the split the loaded
@@ -89,7 +89,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 				dev["placement"] = pj
 			}
 		}
-		writeJSON(w, 200, out)
+		JSON(w, 200, out)
 		return
 	}
 	var data []meta.Model
@@ -131,5 +131,5 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		s.reportReads(w, problems)
 		out["degraded"], out["readProblems"], out["unknown"] = true, readProblemsJSON(problems), unknown
 	}
-	writeJSON(w, 200, out)
+	JSON(w, 200, out)
 }

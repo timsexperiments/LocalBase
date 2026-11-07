@@ -33,14 +33,14 @@ func (s *stallingFlusher) Flush() { _ = s.FlushError() } // as net/http's: the e
 // stream was cut, so the request is a 499, not the 200 that went out first.
 func TestAFlushThatStallsIsAFailedSend(t *testing.T) {
 	s := &stallingFlusher{deadlineWriter: deadlineWriter{header: http.Header{}}}
-	rec := &recorder{ResponseWriter: s}
-	rec.sendsWithin(50 * time.Millisecond)
+	rec := &Recorder{ResponseWriter: s}
+	rec.SendsWithin(50 * time.Millisecond)
 	rec.WriteHeader(200)
 	if _, err := rec.Write([]byte("data: {}\n\n")); err != nil {
 		t.Fatal(err)
 	}
 	rec.Flush()
-	if got := rec.finalStatus(); got != 499 {
+	if got := rec.FinalStatus(); got != 499 {
 		t.Errorf("a stream cut at a flush came to %d, want 499", got)
 	}
 }
@@ -53,9 +53,9 @@ func TestAStreamCutAtAFlushIsA499(t *testing.T) {
 	const stall = 300 * time.Millisecond
 	final := make(chan int, 1)
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := &recorder{ResponseWriter: w}
-		rec.sendsWithin(stall)
-		defer func() { final <- rec.finalStatus() }()
+		rec := &Recorder{ResponseWriter: w}
+		rec.SendsWithin(stall)
+		defer func() { final <- rec.FinalStatus() }()
 		rec.Header().Set("Content-Type", "text/event-stream")
 		rec.WriteHeader(200)
 		event := append(append([]byte("data: "), bytes.Repeat([]byte("x"), 1000)...), "\n\n"...)

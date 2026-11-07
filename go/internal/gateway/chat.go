@@ -30,7 +30,7 @@ func DefaultMaxTokens() int {
 func payloadTooLarge(w http.ResponseWriter, r *http.Request) {
 	// The rest of the body may still be in flight: do not reuse the connection.
 	w.Header().Set("Connection", "close")
-	writeError(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
+	Error(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
 }
 
 // readJSON reads a bounded JSON object body, keeping unknown fields so they
@@ -46,7 +46,7 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 			w.WriteHeader(499)
 			return nil, false
 		}
-		badRequest(w, r, "Invalid JSON payload.", nil)
+		BadRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
 	if len(body) > maxRequestBytes {
@@ -57,13 +57,13 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&v); err != nil || dec.More() {
-		badRequest(w, r, "Invalid JSON payload.", nil)
+		BadRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
 	req, ok := v.(map[string]any)
 	if !ok {
 		// Valid JSON that is not an object fails the request schema, as in TS.
-		badRequest(w, r, "Validation failed: : Invalid input: expected object, received "+typeName(v), nil)
+		BadRequest(w, r, "Validation failed: : Invalid input: expected object, received "+typeName(v), nil)
 		return nil, false
 	}
 	return req, true
@@ -203,7 +203,7 @@ func anchorPattern(p string) string {
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	req, ok := readJSON(w, r)
@@ -217,18 +217,18 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	model := req["model"].(string)
 	spec := s.Catalog.ByID(model)
 	if p := toolParam(req); p != "" && spec != nil && !s.capabilities(r.Context(), spec).Has("tool-calling") {
-		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
-			fmt.Sprintf("Model '%s' does not support tool calling. Choose a tool-capable model from GET /v1/models.", spec.ModelID), strp(p))
+		Error(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+			fmt.Sprintf("Model '%s' does not support tool calling. Choose a tool-capable model from GET /v1/models.", spec.ModelID), StrPtr(p))
 		return
 	}
 	if spec == nil {
 		t, err := s.importedTask(r.Context(), model)
 		if err != nil {
-			serviceUnavailable(w, r, "LLM")
+			ServiceUnavailable(w, r, "LLM")
 			return
 		}
 		if t == "embeddings" || t == "decision" {
-			badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not chat.", model, t), nil)
+			BadRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not chat.", model, t), nil)
 			return
 		}
 	}
@@ -237,7 +237,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		if spec.IsDecision() {
 			msg = fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID)
 		}
-		badRequest(w, r, msg, nil)
+		BadRequest(w, r, msg, nil)
 		return
 	}
 	prepareChat(req)
@@ -245,7 +245,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	schema, rejection := structuredoutput.Prepare(req["response_format"])
 	prepMs := float64(time.Since(prepStart).Microseconds()) / 1000
 	if rejection != nil {
-		writeError(w, r, 400, "invalid_request_error", rejection.Code, rejection.Message, strp("response_format.json_schema.schema"))
+		Error(w, r, 400, "invalid_request_error", rejection.Code, rejection.Message, StrPtr("response_format.json_schema.schema"))
 		return
 	}
 	streaming := req["stream"] == true
@@ -270,7 +270,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	req, ok := readJSON(w, r)
@@ -284,25 +284,25 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 	model := req["model"].(string)
 	spec := s.Catalog.ByID(model)
 	if spec != nil && spec.IsDecision() {
-		badRequest(w, r, fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID), nil)
+		BadRequest(w, r, fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID), nil)
 		return
 	}
 	if spec == nil {
 		t, err := s.importedTask(r.Context(), model)
 		if err != nil {
-			serviceUnavailable(w, r, "LLM")
+			ServiceUnavailable(w, r, "LLM")
 			return
 		}
 		if t != "" && t != "embeddings" {
-			badRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not embeddings.", model, t), nil)
+			BadRequest(w, r, fmt.Sprintf("Model '%s' is imported for %s, not embeddings.", model, t), nil)
 			return
 		}
 	}
 	// What the backend says here names its own flags and pooling types, and it would
 	// start the model first.
 	if spec != nil && spec.Kind == "llm" && !spec.IsEmbedding() {
-		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
-			fmt.Sprintf("Model '%s' is a chat model and cannot produce embeddings. Choose an embedding model from GET /v1/models.", model), strp("model"))
+		Error(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+			fmt.Sprintf("Model '%s' is a chat model and cannot produce embeddings. Choose an embedding model from GET /v1/models.", model), StrPtr("model"))
 		return
 	}
 	if spec != nil && spec.IsEmbedding() && len(spec.LLMRuntime.Dimensions) > 0 {
@@ -315,7 +315,7 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 				if d.Minimum == d.Maximum {
 					msg = fmt.Sprintf("Model '%s' supports %s dimensions.", model, trimFloat(d.Minimum))
 				}
-				badRequest(w, r, msg, nil)
+				BadRequest(w, r, msg, nil)
 				return
 			}
 		}
@@ -325,7 +325,7 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	req, ok := readJSON(w, r)
@@ -341,18 +341,18 @@ func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
 	if spec == nil {
 		t, err := s.importedTask(r.Context(), model)
 		if err != nil {
-			serviceUnavailable(w, r, "LLM")
+			ServiceUnavailable(w, r, "LLM")
 			return
 		}
 		if t != "" && t != "decision" {
-			writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
-				fmt.Sprintf("Model '%s' is not a decision model.", model), strp("model"))
+			Error(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+				fmt.Sprintf("Model '%s' is not a decision model.", model), StrPtr("model"))
 			return
 		}
 	}
 	if spec != nil && !spec.IsDecision() {
-		writeError(w, r, 400, "invalid_request_error", "unsupported_model_capability",
-			fmt.Sprintf(`Model '%s' is not a decision model. Choose a model whose architecture.output_modalities include "decisions" from GET /v1/models.`, spec.ModelID), strp("model"))
+		Error(w, r, 400, "invalid_request_error", "unsupported_model_capability",
+			fmt.Sprintf(`Model '%s' is not a decision model. Choose a model whose architecture.output_modalities include "decisions" from GET /v1/models.`, spec.ModelID), StrPtr("model"))
 		return
 	}
 	// A missing or blank instructions defaults to the question id.
@@ -396,19 +396,19 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 	started := time.Now()
 	requestID := w.Header().Get("X-Localbase-Request-Id")
 	if _, _, err := s.LLM.Resolve(model); err != nil {
-		modelNotFound(w, r, model)
+		ModelNotFound(w, r, model)
 		return
 	}
-	hooks := runHooksFrom(r.Context())
-	hooks.queue()
+	hooks := RunHooksFrom(r.Context())
+	hooks.Queue()
 	lease, err := s.LLM.Acquire(r.Context(), model)
 	if err != nil {
 		s.logAdmissionRejection(requestID, "llm", model, err)
-		runtimeError(w, r, err, model, "LLM")
+		RuntimeError(w, r, err, model, "LLM")
 		return
 	}
 	defer lease.Release()
-	hooks.admit()
+	hooks.Admit()
 	if finish != nil {
 		finish(leaseInfo{spec: lease.Spec, ctxSize: lease.Plan.CtxSize, slots: lease.Plan.Parallel.Slots})
 	}

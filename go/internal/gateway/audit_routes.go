@@ -48,12 +48,12 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 			io.Reader
 			io.Closer
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
-		rec := &auditRecorder{recorder: recorder{ResponseWriter: w}}
+		rec := &auditRecorder{Recorder: Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A method the route doesn't have asked to change nothing; an abandoned request wasn't refused.
-		refused := rec.status >= 400 && rec.status < 500 && rec.status != http.StatusMethodNotAllowed &&
-			rec.status != http.StatusRequestTimeout && rec.status != 499
-		if rec.status >= 300 && !refused {
+		refused := rec.Status >= 400 && rec.Status < 500 && rec.Status != http.StatusMethodNotAllowed &&
+			rec.Status != http.StatusRequestTimeout && rec.Status != 499
+		if rec.Status >= 300 && !refused {
 			return
 		}
 		change, ok := describe(r, seen.Bytes(), rec.body.Bytes())
@@ -71,7 +71,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 			if change.targetKind != "model" || s.Catalog == nil || s.Catalog.ByID(change.targetID) == nil {
 				change.targetID = ""
 			}
-			s.auditRefused(area, change.action, actorKind, actorID, change.targetKind, change.targetID, rec.status, rec.body.Bytes())
+			s.auditRefused(area, change.action, actorKind, actorID, change.targetKind, change.targetID, rec.Status, rec.body.Bytes())
 			return
 		}
 		now := time.Now()

@@ -125,7 +125,7 @@ const (
 
 func New(s *Server) *Server {
 	s.started = time.Now()
-	s.Limits = s.Limits.withDefaults()
+	s.Limits = s.Limits.WithDefaults()
 	rootDir := ""
 	if s.Root != nil {
 		rootDir = s.Root.Dir
@@ -233,11 +233,11 @@ func (s *Server) anonymousSummary(held int) {
 		"refused_total", s.anonRefused.Load(), "admin_refused_total", s.anonAdminRefused.Load())
 }
 
-type principalKey struct{}
+type PrincipalKey struct{}
 
 // PrincipalFrom returns the request's resolved principal.
 func PrincipalFrom(ctx context.Context) *auth.Principal {
-	if p, ok := ctx.Value(principalKey{}).(*auth.Principal); ok {
+	if p, ok := ctx.Value(PrincipalKey{}).(*auth.Principal); ok {
 		return p
 	}
 	return auth.Anonymous
@@ -253,71 +253,71 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			return
 		}
 		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
-			setAuth(r, bp)
+			SetAuth(r, bp)
 			if permission != "" && !bp.Can(permission) {
-				forbidden(w, r)
+				Forbidden(w, r)
 				return
 			}
-			next(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, bp)))
+			next(w, r.WithContext(context.WithValue(r.Context(), PrincipalKey{}, bp)))
 			return
 		}
 		p := s.resolveCredential(r)
 		if !p.Authenticated() {
-			unauthorized(w, r)
+			Unauthorized(w, r)
 			return
 		}
 		if permission != "" && !p.Can(permission) {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+		next(w, r.WithContext(context.WithValue(r.Context(), PrincipalKey{}, p)))
 	}
 }
 
 // --- request middleware -------------------------------------------------------
 
-type recorder struct {
+type Recorder struct {
 	http.ResponseWriter
-	status int
-	auth   *auth.Principal
-	body   *bodyGuard // nil: no body, or no connection
-	// timeoutAnswer: the 408 is being written, past discarding.
-	timeoutAnswer bool
+	Status int
+	Auth   *auth.Principal
+	Body   *bodyGuard // nil: no body, or no connection
+	// TimeoutAnswer: the 408 is being written, past discarding.
+	TimeoutAnswer bool
 	// errBody is the start of an error response, read only for the error
 	// envelope's type and code (never its message).
 	errBody []byte
-	// usage is what the handler knew, for the hourly totals (DESIGN §32).
-	usage usageNote
+	// Usage is what the handler knew, for the hourly totals (DESIGN §32).
+	Usage UsageNote
 	// writes sets the connection's write deadline, and writeStall is how far off. A recorder made
 	// for something inside the gateway has neither.
 	writes     *http.ResponseController
 	writeStall time.Duration
-	// sendFailed says the client didn't get the whole answer.
-	sendFailed bool
+	// SendFailed says the client didn't get the whole answer.
+	SendFailed bool
 }
 
-// finalStatus is what the request came to. A status is sent before the answer, so a client that
+// FinalStatus is what the request came to. A status is sent before the answer, so a client that
 // went away or stopped reading partway through an answer is a 499, whatever was sent first. An error
 // stays the error it was.
-func (r *recorder) finalStatus() int {
-	status := r.status
+func (r *Recorder) FinalStatus() int {
+	status := r.Status
 	if status == 0 {
 		status = 200
 	}
-	if r.sendFailed && status < 400 {
+	if r.SendFailed && status < 400 {
 		return 499
 	}
 	return status
 }
 
-// sendsWithin gives each piece of the answer this long to leave. net/http clears the deadline when
+// SendsWithin gives each piece of the answer this long to leave. net/http clears the deadline when
 // the answer has gone, so it doesn't reach the next one on the connection.
-func (r *recorder) sendsWithin(stall time.Duration) {
+func (r *Recorder) SendsWithin(stall time.Duration) {
 	r.writes, r.writeStall = http.NewResponseController(r.ResponseWriter), stall
 }
 
-// armWrite starts the deadline for what is about to be sent. Silence between writes costs nothing.
-func (r *recorder) armWrite() {
+// ArmWrite starts the deadline for what is about to be sent. Silence between writes costs nothing.
+func (r *Recorder) ArmWrite() {
 	if r.writes != nil {
 		_ = r.writes.SetWriteDeadline(time.Now().Add(r.writeStall)) // Not every connection has one, and nothing depends on it.
 	}
@@ -325,16 +325,16 @@ func (r *recorder) armWrite() {
 
 // send writes an answer in pieces, each with its own deadline, so that a client that has stopped
 // reading is let go and a slow one isn't.
-func (r *recorder) send(b []byte) (int, error) {
+func (r *Recorder) send(b []byte) (int, error) {
 	whole := b
 	if r.writes == nil {
 		return r.ResponseWriter.Write(b)
 	}
 	sent := 0
-	defer func() { r.sendFailed = r.sendFailed || sent < len(whole) }()
+	defer func() { r.SendFailed = r.SendFailed || sent < len(whole) }()
 	for {
-		piece := b[:min(len(b), writePiece)]
-		r.armWrite()
+		piece := b[:min(len(b), WritePiece)]
+		r.ArmWrite()
 		n, err := r.ResponseWriter.Write(piece)
 		sent += n
 		b = b[len(piece):]
@@ -346,9 +346,9 @@ func (r *recorder) send(b []byte) (int, error) {
 
 const errSniffBytes = 8 << 10
 
-// errorKind is the error envelope's type and code ("" when the response is
+// ErrorKind is the error envelope's type and code ("" when the response is
 // not one).
-func (r *recorder) errorKind() (typ, code string) {
+func (r *Recorder) ErrorKind() (typ, code string) {
 	var env struct {
 		Error *struct {
 			Type any `json:"type"`
@@ -370,47 +370,47 @@ func (r *recorder) errorKind() (typ, code string) {
 	return typ, code
 }
 
-// discarding reports a request whose body deadline passed before any answer
+// Discarding reports a request whose body deadline passed before any answer
 // started. Whatever the handler makes of the failed read, the answer is a 408.
-func (r *recorder) discarding() bool {
-	return r.status == 0 && !r.timeoutAnswer && r.body != nil && r.body.expired.Load()
+func (r *Recorder) Discarding() bool {
+	return r.Status == 0 && !r.TimeoutAnswer && r.Body != nil && r.Body.expired.Load()
 }
 
-func (r *recorder) WriteHeader(code int) {
-	if r.discarding() {
+func (r *Recorder) WriteHeader(code int) {
+	if r.Discarding() {
 		return
 	}
-	if r.status == 0 {
-		r.status = code
+	if r.Status == 0 {
+		r.Status = code
 		// A refusal does not wait for a body it has not read: the server would
 		// otherwise try to read it before sending the answer.
-		if code >= 400 && r.body != nil && !r.body.done.Load() {
+		if code >= 400 && r.Body != nil && !r.Body.done.Load() {
 			r.Header().Set("Connection", "close")
 		}
 	}
 	r.ResponseWriter.WriteHeader(code)
 }
 
-func (r *recorder) Write(b []byte) (int, error) {
-	if r.discarding() {
+func (r *Recorder) Write(b []byte) (int, error) {
+	if r.Discarding() {
 		return len(b), nil
 	}
-	if r.status == 0 {
-		r.status = 200
+	if r.Status == 0 {
+		r.Status = 200
 	}
-	if r.status >= 400 && len(r.errBody) < errSniffBytes {
+	if r.Status >= 400 && len(r.errBody) < errSniffBytes {
 		r.errBody = append(r.errBody, b[:min(len(b), errSniffBytes-len(r.errBody))]...)
 	}
 	return r.send(b)
 }
 
-func (r *recorder) Flush() { _ = r.FlushError() }
+func (r *Recorder) Flush() { _ = r.FlushError() }
 
 // FlushError sends what is buffered. A flush that doesn't get out before the write deadline is a
 // failed send, as a short write is: net/http closes the connection after it, and the handler may see
 // the client's cancel before it writes again, so nothing else would record it.
-func (r *recorder) FlushError() error {
-	if r.discarding() {
+func (r *Recorder) FlushError() error {
+	if r.Discarding() {
 		return nil
 	}
 	if r.writes == nil {
@@ -419,23 +419,23 @@ func (r *recorder) FlushError() error {
 		}
 		return nil
 	}
-	r.armWrite()
+	r.ArmWrite()
 	err := r.writes.Flush()
 	if err != nil && !errors.Is(err, http.ErrNotSupported) {
-		r.sendFailed = true
+		r.SendFailed = true
 	}
 	return err
 }
 
-func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+func (r *Recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
-type recKey struct{}
+type RecKey struct{}
 
-func setAuth(r *http.Request, p *auth.Principal) {
-	if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
-		rec.auth = p
+func SetAuth(r *http.Request, p *auth.Principal) {
+	if rec, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
+		rec.Auth = p
 		if p.Authenticated() {
-			rec.body.authenticated()
+			rec.Body.Authenticated()
 		}
 	}
 }
@@ -469,12 +469,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
-	rec := &recorder{ResponseWriter: w}
-	rec.sendsWithin(s.Limits.WriteStall)
-	if rec.body = guardBody(s.Limits, rec, r); rec.body != nil {
-		r.Body = rec.body
+	rec := &Recorder{ResponseWriter: w}
+	rec.SendsWithin(s.Limits.WriteStall)
+	if rec.Body = GuardBody(s.Limits, rec, r); rec.Body != nil {
+		r.Body = rec.Body
 		if s.NoAuth {
-			rec.body.authenticated()
+			rec.Body.Authenticated()
 		}
 	}
 	// The server span (TS serve): named by the canonical route, parented by
@@ -492,10 +492,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.family", family)
 		span.SetAttr("localbase.route.segments", segments)
 	}
-	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), recKey{}, rec))
+	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), RecKey{}, rec))
 	startLabel := label
 	defer func() {
-		rec.armWrite() // what's still buffered leaves when this returns
+		rec.ArmWrite() // what's still buffered leaves when this returns
 		abort := false
 		// Last of all, once usage, the log and the span are done: a panic after the answer started
 		// resets the connection, so a client never takes half a stream for the whole of it, and
@@ -508,8 +508,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if v := recover(); v != nil {
 			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
 			err, _ := v.(error)
-			if rec.status == 0 && !errors.Is(err, http.ErrAbortHandler) {
-				serviceUnavailable(rec, r, "Gateway")
+			if rec.Status == 0 && !errors.Is(err, http.ErrAbortHandler) {
+				ServiceUnavailable(rec, r, "Gateway")
 			} else {
 				abort = true
 			}
@@ -520,7 +520,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			span.SetName(r.Method + " " + label)
 			span.SetAttr("http.route", label)
 		}
-		status := rec.finalStatus()
+		status := rec.FinalStatus()
 		duration := time.Since(start)
 		s.recordUsage(rec, label, status, duration)
 		auth := s.authTelemetry(r, rec)
@@ -529,7 +529,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if status >= 500 || r.Context().Err() != nil {
 			span.SetError("")
 		}
-		errType, errCode := rec.errorKind()
+		errType, errCode := rec.ErrorKind()
 		if errType != "" {
 			span.SetAttr("localbase.error.type", errType)
 		}
@@ -547,7 +547,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if quietRoute(label, r.URL.Path) && status < 400 {
 			return // successful probes and polls are not logged
 		}
-		anonymous := !s.NoAuth && status < 500 && (rec.auth == nil || rec.auth.Kind == "anonymous")
+		anonymous := !s.NoAuth && status < 500 && (rec.Auth == nil || rec.Auth.Kind == "anonymous")
 		if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
 			s.anonRefused.Add(1)
 		}
@@ -581,7 +581,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	if s.NoAuth {
 		if why := noAuthRefusal(r); why != "" {
-			writeError(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
+			Error(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
 			return
 		}
 	}
@@ -590,21 +590,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// is refused before any handler, as TS does.
 	if r.Method == http.MethodOptions && !IsUIAccessPath(r.URL.Path) {
 		r.Pattern = probe.Pattern
-		forbidden(rec, r)
+		Forbidden(rec, r)
 		return
 	}
 	s.mux.ServeHTTP(rec, r)
-	if rec.discarding() {
-		rec.timeoutAnswer = true
-		requestTimedOut(rec)
+	if rec.Discarding() {
+		rec.TimeoutAnswer = true
+		RequestTimedOut(rec)
 	}
 }
 
 // authTelemetry describes who a request acted as, without credentials (TS
 // GatewayRequestAuth.telemetry): disabled for public routes and no-auth
 // gateways, invalid when a credential was presented but not accepted.
-func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
-	p := rec.auth
+func (s *Server) authTelemetry(r *http.Request, rec *Recorder) []any {
+	p := rec.Auth
 	switch {
 	case auth.LookupFailed(r.Context()):
 		return []any{"auth_outcome", "unavailable"}
@@ -627,11 +627,11 @@ func (s *Server) authTelemetry(r *http.Request, rec *recorder) []any {
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 	if !s.NoAuth {
 		if p := s.resolveCredential(r); !p.Authenticated() {
-			unauthorized(w, r)
+			Unauthorized(w, r)
 			return
 		}
 	}
-	routeDisabled(w, r)
+	RouteDisabled(w, r)
 }
 
 // --- health ------------------------------------------------------------------
@@ -668,7 +668,7 @@ func (s *Server) modalityHealth() map[string]any {
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		methodNotAllowed(w, r, "GET, HEAD")
+		MethodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
 	body := map[string]any{"status": "ok", "version": version.Version,
@@ -682,12 +682,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		return
 	}
-	writeJSON(w, status, body)
+	JSON(w, status, body)
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		methodNotAllowed(w, r, "GET, HEAD")
+		MethodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
 	admitting := []string{}
@@ -711,7 +711,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		return
 	}
-	writeJSON(w, status, body)
+	JSON(w, status, body)
 }
 
 // Ready reports whether some modality admits requests and the gateway is
@@ -739,7 +739,7 @@ func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := s.LLM.DefaultModel(false)
-	writeJSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
+	JSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
 		"defaults": s.LLM.Config().DefaultLLMList()})
 }
 
@@ -755,5 +755,5 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 			out["logOutages"] = outages // Only then, so the usual answer doesn't change.
 		}
 	}
-	writeJSON(w, 200, out)
+	JSON(w, 200, out)
 }

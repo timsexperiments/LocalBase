@@ -39,9 +39,9 @@ type Limits struct {
 	WriteStall time.Duration
 }
 
-// writePiece is how much of an answer has one deadline. At a minute for each, a client has to read
+// WritePiece is how much of an answer has one deadline. At a minute for each, a client has to read
 // about 1 KiB/s to keep up, however long the answer is.
-const writePiece = 64 << 10
+const WritePiece = 64 << 10
 
 // DefaultLimits are the limits of a gateway that sets none.
 var DefaultLimits = Limits{
@@ -57,7 +57,7 @@ var DefaultLimits = Limits{
 	WriteStall:        time.Minute,
 }
 
-func (l Limits) withDefaults() Limits {
+func (l Limits) WithDefaults() Limits {
 	d := DefaultLimits
 	if l.ReadHeader > 0 {
 		d.ReadHeader = l.ReadHeader
@@ -91,7 +91,7 @@ func (l Limits) withDefaults() Limits {
 
 // Apply sets the server-wide part of the limits on an HTTP server.
 func (l Limits) Apply(h *http.Server) {
-	l = l.withDefaults()
+	l = l.WithDefaults()
 	h.ReadHeaderTimeout, h.IdleTimeout, h.MaxHeaderBytes = l.ReadHeader, l.Idle, l.MaxHeaderBytes
 }
 
@@ -111,9 +111,9 @@ type bodyGuard struct {
 	expired  atomic.Bool // its deadline passed while a handler was reading it
 }
 
-// guardBody starts a request's deadline. It returns nil when there is no body, or no
+// GuardBody starts a request's deadline. It returns nil when there is no body, or no
 // connection to set a deadline on (an in-process request).
-func guardBody(l Limits, w http.ResponseWriter, r *http.Request) *bodyGuard {
+func GuardBody(l Limits, w http.ResponseWriter, r *http.Request) *bodyGuard {
 	if r.Body == nil || r.Body == http.NoBody {
 		return nil
 	}
@@ -144,21 +144,21 @@ func (b *bodyGuard) extend() {
 	if end := b.started.Add(b.limits.UploadTotal); deadline.After(end) {
 		deadline = end
 	}
-	_ = b.rc.SetReadDeadline(deadline) // guardBody proved deadlines work here; if this fails, the earlier, shorter deadline stays
+	_ = b.rc.SetReadDeadline(deadline) // GuardBody proved deadlines work here; if this fails, the earlier, shorter deadline stays
 }
 
-// authenticated gives the caller the longer budget.
-func (b *bodyGuard) authenticated() {
+// Authenticated gives the caller the longer budget.
+func (b *bodyGuard) Authenticated() {
 	if b == nil || b.done.Load() || b.authed.Swap(true) {
 		return
 	}
 	b.extend()
 }
 
-// markAuthenticated gives the request's caller the longer budget.
-func markAuthenticated(r *http.Request) {
-	if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
-		rec.body.authenticated()
+// MarkAuthenticated gives the request's caller the longer budget.
+func MarkAuthenticated(r *http.Request) {
+	if rec, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
+		rec.Body.Authenticated()
 	}
 }
 
@@ -171,10 +171,10 @@ func drainRefused(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limits := DefaultLimits
-	rec, _ := r.Context().Value(recKey{}).(*recorder)
+	rec, _ := r.Context().Value(RecKey{}).(*Recorder)
 	var g *bodyGuard
 	if rec != nil {
-		g = rec.body
+		g = rec.Body
 	}
 	if g != nil {
 		limits = g.limits
@@ -195,10 +195,10 @@ func drainRefused(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// requestTimedOut answers a request whose body stopped arriving. It is best effort:
+// RequestTimedOut answers a request whose body stopped arriving. It is best effort:
 // the connection may already be dead. A client that went away is a 499 instead, from
 // the handler that noticed.
-func requestTimedOut(w http.ResponseWriter) {
-	writeJSON(w, http.StatusRequestTimeout, map[string]any{"error": apiError{Message: "The request body did not arrive in time.",
+func RequestTimedOut(w http.ResponseWriter) {
+	JSON(w, http.StatusRequestTimeout, map[string]any{"error": APIError{Message: "The request body did not arrive in time.",
 		Type: "invalid_request_error", Code: "request_timeout"}})
 }

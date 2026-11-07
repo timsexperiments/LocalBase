@@ -35,20 +35,20 @@ func voiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	if !errors.As(err, &ve) {
 		return false
 	}
-	status, param := 400, strp("audio")
+	status, param := 400, StrPtr("audio")
 	switch ve.Code {
 	case "voice_not_found":
 		status, param = 404, nil
 	case "voice_name_taken", "voice_limit_reached":
-		status, param = 409, strp("name")
+		status, param = 409, StrPtr("name")
 	case "audio_too_large":
 		status = 413
 	case "consent_required":
-		param = strp("consent")
+		param = StrPtr("consent")
 	case "invalid_voice_name":
-		param = strp("name")
+		param = StrPtr("name")
 	}
-	writeError(w, r, status, "invalid_request_error", ve.Code, ve.Message, param)
+	Error(w, r, status, "invalid_request_error", ve.Code, ve.Message, param)
 	return true
 }
 
@@ -72,7 +72,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	p := s.principal(r)
 	if !p.Authenticated() {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	if s.Voices == nil {
@@ -84,7 +84,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	fail := func(err error) {
 		if !voiceError(w, r, err) {
 			s.Log.Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
-			serviceUnavailable(w, r, "Voices")
+			ServiceUnavailable(w, r, "Voices")
 		}
 	}
 	public := func(v *voices.Voice) voices.Voice {
@@ -98,7 +98,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	case "collection":
 		if r.Method == http.MethodGet {
 			if !canRead {
-				forbidden(w, r)
+				Forbidden(w, r)
 				return
 			}
 			list, err := s.Voices.List(ctx)
@@ -110,18 +110,18 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			for i := range list {
 				data = append(data, public(&list[i]))
 			}
-			writeJSON(w, 200, map[string]any{"object": "list", "data": data, "canManage": canManage,
+			JSON(w, 200, map[string]any{"object": "list", "data": data, "canManage": canManage,
 				"limits": map[string]any{"minSeconds": voices.MinSeconds, "maxSeconds": voices.MaxSeconds,
 					"maxUploadBytes": voices.MaxUploadBytes, "maxVoices": voices.Limit},
 				"consentStatement": voices.ConsentStatement})
 			return
 		}
 		if r.Method != http.MethodPost {
-			methodNotAllowed(w, r, "GET, POST")
+			MethodNotAllowed(w, r, "GET, POST")
 			return
 		}
 		if !canManage {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		name, consent, audio, ok := s.parseVoiceCreate(w, r)
@@ -134,16 +134,16 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.logVoice("created", v)
-		writeJSON(w, 201, v)
+		JSON(w, 201, v)
 
 	case "audio":
 		if r.Method != http.MethodGet {
-			methodNotAllowed(w, r, "GET")
+			MethodNotAllowed(w, r, "GET")
 			return
 		}
 		// The reference is a recording of a person; only managers replay it.
 		if !canManage {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		path, err := s.Voices.Resolve(ctx, id)
@@ -166,7 +166,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			if !canRead {
-				forbidden(w, r)
+				Forbidden(w, r)
 				return
 			}
 			v, err := s.Voices.Get(ctx, id)
@@ -178,10 +178,10 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				voiceError(w, r, &voices.Error{Code: "voice_not_found", Message: "Voice not found."})
 				return
 			}
-			writeJSON(w, 200, public(v))
+			JSON(w, 200, public(v))
 		case http.MethodPatch:
 			if !canManage {
-				forbidden(w, r)
+				Forbidden(w, r)
 				return
 			}
 			name, ok := parseVoiceRename(w, r)
@@ -194,10 +194,10 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.logVoice("renamed", v)
-			writeJSON(w, 200, v)
+			JSON(w, 200, v)
 		case http.MethodDelete:
 			if !canManage {
-				forbidden(w, r)
+				Forbidden(w, r)
 				return
 			}
 			v, err := s.Voices.Remove(ctx, id)
@@ -206,9 +206,9 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.logVoice("deleted", v)
-			writeJSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
+			JSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
 		default:
-			methodNotAllowed(w, r, "GET, PATCH, DELETE")
+			MethodNotAllowed(w, r, "GET, PATCH, DELETE")
 		}
 	}
 }
@@ -225,14 +225,14 @@ func (s *Server) logVoice(action string, v *voices.Voice) {
 
 func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name string, consent bool, audio []byte, ok bool) {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data;") {
-		writeError(w, r, 415, "invalid_request_error", "unsupported_media_type", "Send multipart/form-data with name, consent and audio fields.", nil)
+		Error(w, r, 415, "invalid_request_error", "unsupported_media_type", "Send multipart/form-data with name, consent and audio fields.", nil)
 		return
 	}
 	limit := int64(voices.MaxUploadBytes + voiceMultipartOverhead)
 	tooLarge := func() {
 		w.Header().Set("Connection", "close")
-		writeError(w, r, 413, "invalid_request_error", "audio_too_large",
-			fmt.Sprintf("Audio exceeds the %d MiB limit.", voices.MaxUploadBytes/(1024*1024)), strp("audio"))
+		Error(w, r, 413, "invalid_request_error", "audio_too_large",
+			fmt.Sprintf("Audio exceeds the %d MiB limit.", voices.MaxUploadBytes/(1024*1024)), StrPtr("audio"))
 	}
 	if r.ContentLength > limit {
 		tooLarge()
@@ -240,7 +240,7 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if err != nil {
-		badRequest(w, r, "Invalid form data payload.", nil)
+		BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	if int64(len(body)) > limit {
@@ -249,7 +249,7 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	form, err := readMultipart(r, body)
 	if err != nil {
-		badRequest(w, r, "Invalid form data payload.", nil)
+		BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	first := func(field string) *formPart {
@@ -260,11 +260,11 @@ func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name 
 	}
 	n, c, a := first("name"), first("consent"), first("audio")
 	if n == nil || n.isFile {
-		writeError(w, r, 400, "invalid_request_error", "invalid_voice_name", "Voice name is required.", strp("name"))
+		Error(w, r, 400, "invalid_request_error", "invalid_voice_name", "Voice name is required.", StrPtr("name"))
 		return
 	}
 	if a == nil || !a.isFile {
-		writeError(w, r, 400, "invalid_request_error", "unsupported_audio_format", "Attach the reference recording as the audio field.", strp("audio"))
+		Error(w, r, 400, "invalid_request_error", "unsupported_audio_format", "Attach the reference recording as the audio field.", StrPtr("audio"))
 		return
 	}
 	// The upload's filename and declared type are ignored; only its bytes count.
@@ -293,16 +293,16 @@ func parseVoiceRename(w http.ResponseWriter, r *http.Request) (string, bool) {
 	b, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	if r.ContentLength > limit || len(b) > limit {
 		w.Header().Set("Connection", "close")
-		writeError(w, r, 413, "invalid_request_error", "validation_failed", "Voice update body exceeds the 1024 byte limit.", nil)
+		Error(w, r, 413, "invalid_request_error", "validation_failed", "Voice update body exceeds the 1024 byte limit.", nil)
 		return "", false
 	}
 	var input any
 	if err != nil || json.Unmarshal(b, &input) != nil {
-		badRequest(w, r, "Send a JSON body with a name.", nil)
+		BadRequest(w, r, "Send a JSON body with a name.", nil)
 		return "", false
 	}
 	invalid := func(msg string) (string, bool) {
-		writeError(w, r, 400, "invalid_request_error", "invalid_voice_name", msg, strp("name"))
+		Error(w, r, 400, "invalid_request_error", "invalid_voice_name", msg, StrPtr("name"))
 		return "", false
 	}
 	obj, ok := input.(map[string]any)

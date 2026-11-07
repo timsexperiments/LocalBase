@@ -727,17 +727,17 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	// The command line on this machine, with the instance token, may cancel an install, and nothing else.
 	localCLI := r.Method == http.MethodPost && s.localCLI(r)
 	if !p.Authenticated() && !localCLI {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
 		if !p.Can("models:read") {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		storage, models := s.readManagement()
-		writeJSON(w, 200, struct {
+		JSON(w, 200, struct {
 			Storage   mgmtStorage `json:"storage"`
 			Models    []mgmtEntry `json:"models"`
 			CanManage bool        `json:"canManage"`
@@ -745,22 +745,22 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "GET, POST")
+		MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
 	if !p.Can("models:manage") && !localCLI {
-		forbidden(w, r)
+		Forbidden(w, r)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1025))
 	if r.ContentLength > 1024 || len(body) > 1024 {
 		w.Header().Set("Connection", "close")
-		writeError(w, r, 413, "invalid_request_error", "validation_failed", "Model management body exceeds the 1024 byte limit.", nil)
+		Error(w, r, 413, "invalid_request_error", "validation_failed", "Model management body exceeds the 1024 byte limit.", nil)
 		return
 	}
 	var raw any
 	if err != nil || json.Unmarshal(body, &raw) != nil {
-		badRequest(w, r, "Invalid model management payload.", nil)
+		BadRequest(w, r, "Invalid model management payload.", nil)
 		return
 	}
 	in, ok := raw.(map[string]any)
@@ -769,11 +769,11 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	valid := ok && len(in) == 2 && len([]rune(modelID)) >= 1 && utf16Length(modelID) <= 200 &&
 		slices.Contains([]string{"install", "uninstall", "enable", "disable", "activate", "cancel"}, action)
 	if !valid {
-		badRequest(w, r, "Invalid model management payload.", nil)
+		BadRequest(w, r, "Invalid model management payload.", nil)
 		return
 	}
 	if action != "cancel" && !p.Can("models:manage") {
-		forbidden(w, r)
+		Forbidden(w, r)
 		return
 	}
 	var op *mgmtOperation
@@ -786,21 +786,21 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 		var me *mgmtError
 		if !errors.As(err, &me) {
 			s.Log.Error("Model management failed.", "event", "models.management-failed", "error", err.Error())
-			serviceUnavailable(w, r, "Model management")
+			ServiceUnavailable(w, r, "Model management")
 			return
 		}
 		status := 409
 		if me.code == "invalid_request" {
 			status = 400
 		}
-		writeError(w, r, status, "invalid_request_error", me.code, me.message, nil)
+		Error(w, r, status, "invalid_request_error", me.code, me.message, nil)
 		return
 	}
 	status := 200
 	if op.State == "running" {
 		status = 202
 	}
-	writeJSON(w, status, op)
+	JSON(w, status, op)
 }
 
 // WaitManagementIdle waits for an accepted install to settle. Call it after

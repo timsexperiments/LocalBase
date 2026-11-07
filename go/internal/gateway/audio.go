@@ -75,7 +75,7 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	if r.ContentLength > maxRequestBytes {
@@ -84,7 +84,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
 	if err != nil {
-		badRequest(w, r, "Invalid form data payload.", nil)
+		BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	if len(body) > maxRequestBytes {
@@ -93,7 +93,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	}
 	form, err := readMultipart(r, body)
 	if err != nil {
-		badRequest(w, r, "Invalid form data payload.", nil)
+		BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
 	// The TS zod schema: file (a Blob), optional model, language, prompt,
@@ -125,7 +125,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	if v, ok := single("response_format"); ok {
 		if !slices.Contains(transcriptionFormats, v) {
 			issues = append(issues, `response_format: Invalid option: expected one of "json"|"text"|"srt"|"verbose_json"|"vtt"`)
-			param = strp("response_format")
+			param = StrPtr("response_format")
 		} else {
 			format = v
 		}
@@ -154,7 +154,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(issues) > 0 {
-		badRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
+		BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
 		return
 	}
 	if s.STT == nil {
@@ -167,16 +167,16 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		notConfigured(w, r, "STT")
 		return
 	case errors.Is(err, runtime.ErrModelNotFound):
-		modelNotFound(w, r, model)
+		ModelNotFound(w, r, model)
 		return
 	}
-	runHooksFrom(r.Context()).queue()
+	RunHooksFrom(r.Context()).Queue()
 	lease, err := s.STT.Acquire(r.Context(), id)
 	if err != nil {
-		runtimeError(w, r, err, id, "STT")
+		RuntimeError(w, r, err, id, "STT")
 		return
 	}
-	runHooksFrom(r.Context()).admit()
+	RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
 	tel := &inference{s: s, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
@@ -265,7 +265,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		tel.finish("error", 502, "response_validation")
 		return
 	}
-	writeJSON(w, resp.StatusCode, normalizeTranscriptionJSON(data, format))
+	JSON(w, resp.StatusCode, normalizeTranscriptionJSON(data, format))
 	tel.finish("completed", resp.StatusCode, "")
 }
 
@@ -353,7 +353,7 @@ func normalizeTranscriptionJSON(d map[string]any, format string) map[string]any 
 }
 
 func notConfigured(w http.ResponseWriter, r *http.Request, feature string) {
-	writeError(w, r, 501, "invalid_request_error", "route_disabled", feature+" route is disabled.", nil)
+	Error(w, r, 501, "invalid_request_error", "route_disabled", feature+" route is disabled.", nil)
 }
 
 // fileTypeOf is Bun's File.type for an uploaded file: the MIME type of the

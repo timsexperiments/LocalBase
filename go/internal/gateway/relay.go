@@ -51,7 +51,7 @@ type inference struct {
 	span *otlp.Span
 	ctx  context.Context
 	// hooks tell a detached run (§21) how the request ended.
-	hooks *runHooks
+	hooks *RunHooks
 }
 
 var knownFinishReasons = []string{"stop", "length", "tool_calls", "content_filter", "function_call"}
@@ -106,7 +106,7 @@ func (t *inference) observe(v map[string]any) {
 // the admission facts (TS InferenceTelemetry constructor).
 func (t *inference) begin(ctx context.Context, method string) {
 	if t.hooks == nil {
-		t.hooks = runHooksFrom(ctx)
+		t.hooks = RunHooksFrom(ctx)
 	}
 	if t.ctx != nil {
 		return
@@ -169,7 +169,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 		return
 	}
 	t.finished = true
-	t.hooks.finish(source)
+	t.hooks.Finish(source)
 	t.noteUsage(outcome, status)
 	attrs := []any{"model_id", t.modelID}
 	if t.spec != nil {
@@ -229,19 +229,19 @@ func (t *inference) noteUsage(outcome string, status int) {
 	if t.ctx == nil {
 		return
 	}
-	rec, ok := t.ctx.Value(recKey{}).(*recorder)
+	rec, ok := t.ctx.Value(RecKey{}).(*Recorder)
 	if !ok {
 		return
 	}
-	n := &rec.usage
-	n.model, n.trusted, n.outcome, n.status, n.queue = t.modelID, true, outcome, status, t.queueWait
+	n := &rec.Usage
+	n.Model, n.Trusted, n.Outcome, n.Status, n.Queue = t.modelID, true, outcome, status, t.queueWait
 	if t.promptTokens != nil || t.completionTokens != nil {
-		n.hasTokens = true
+		n.HasTokens = true
 		if t.promptTokens != nil {
-			n.in = int64(*t.promptTokens)
+			n.In = int64(*t.promptTokens)
 		}
 		if t.completionTokens != nil {
-			n.out = int64(*t.completionTokens)
+			n.Out = int64(*t.completionTokens)
 		}
 	}
 }
@@ -385,7 +385,7 @@ var proxyClient = &http.Client{Transport: &http.Transport{
 // with Retry-After (DESIGN §13.6, item 10), not a 502. A backend that answers
 // with something invalid is still an upstream failure.
 func backendGone(w http.ResponseWriter, r *http.Request, t *inference, service string) {
-	serviceUnavailable(w, r, service)
+	ServiceUnavailable(w, r, service)
 	t.finish("error", 503, "")
 }
 
@@ -398,7 +398,7 @@ func relayService(kind string) string {
 }
 
 func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
-	writeError(w, r, 502, "server_error", "upstream_error", message, nil)
+	Error(w, r, 502, "server_error", "upstream_error", message, nil)
 }
 
 // relay posts body to the backend and writes its response: event streams
@@ -489,7 +489,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		t.schemaValidation = outcome
 		t.schemaSkipReasons = skipReasons(obj)
 		if outcome == "failed" {
-			writeError(w, r, 502, "server_error", "structured_output_validation_failed",
+			Error(w, r, 502, "server_error", "structured_output_validation_failed",
 				"The backend returned a completed response that did not match the requested JSON Schema.", nil)
 			t.finish("error", 502, "response_validation")
 			return
@@ -524,7 +524,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	if st := t.serverTiming(); st != "" {
 		w.Header().Set("Server-Timing", st)
 	}
-	writeJSON(w, resp.StatusCode, obj)
+	JSON(w, resp.StatusCode, obj)
 	t.finish("completed", resp.StatusCode, "")
 }
 
@@ -725,14 +725,14 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 	}
 	typ := e.Type.(string)
 	if typ == "exceed_context_size_error" {
-		writeError(w, r, 400, "invalid_request_error", "context_length_exceeded", e.Message.(string), strp("messages"))
+		Error(w, r, 400, "invalid_request_error", "context_length_exceeded", e.Message.(string), StrPtr("messages"))
 		return 400
 	}
 	if msg := e.Message.(string); typ == "server_error" && batchOverflowRe.MatchString(msg) {
-		writeError(w, r, 400, "invalid_request_error", "context_length_exceeded", batchOverflowMessage(msg, kind), strp(inputParam(kind)))
+		Error(w, r, 400, "invalid_request_error", "context_length_exceeded", batchOverflowMessage(msg, kind), StrPtr(inputParam(kind)))
 		return 400
 	}
-	writeJSON(w, status, map[string]any{"error": apiError{Message: e.Message.(string), Type: typ, Param: param, Code: code}})
+	JSON(w, status, map[string]any{"error": APIError{Message: e.Message.(string), Type: typ, Param: param, Code: code}})
 	return status
 }
 
@@ -741,7 +741,7 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 const upstreamInvalidStream = `data: {"error":{"message":"The upstream service returned an invalid event stream.","type":"server_error","param":null,"code":"upstream_error"}}` + "\n\n"
 
 func upstreamErrorEvent(message string) string {
-	b, _ := json.Marshal(map[string]any{"error": apiError{Message: message, Type: "server_error", Code: "upstream_error"}})
+	b, _ := json.Marshal(map[string]any{"error": APIError{Message: message, Type: "server_error", Code: "upstream_error"}})
 	return "data: " + string(b) + "\n\n"
 }
 
@@ -894,7 +894,7 @@ const memoryEmergencyEvent = `data: {"error":{"message":"Inference service is cu
 // memory turned critical: 503 with Retry-After, not a truncated response
 // (a Go difference: TS answers 502 upstream_error, DESIGN §13.6).
 func memoryInterrupted(w http.ResponseWriter, r *http.Request, t *inference) {
-	runtimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
+	RuntimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
 	t.finish("error", 503, "memory_emergency")
 }
 

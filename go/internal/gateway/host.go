@@ -197,7 +197,7 @@ func (s *Server) hostActivity() map[string]any {
 // hostAPI serves GET /_localbase/host (models:read).
 func (s *Server) hostAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r, "GET")
+		MethodNotAllowed(w, r, "GET")
 		return
 	}
 	name, source := s.computerName(r.Context())
@@ -206,7 +206,7 @@ func (s *Server) hostAPI(w http.ResponseWriter, r *http.Request) {
 		named = &name
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, map[string]any{"host": map[string]any{
+	JSON(w, 200, map[string]any{"host": map[string]any{
 		"name": named, "nameSource": source, "memory": s.hostMemory(r.Context()), "activity": s.hostActivity(),
 	}, "capturedAt": time.Now().UnixMilli()})
 }
@@ -216,15 +216,15 @@ func (s *Server) hostAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) computerNameAPI(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	if r.Method != http.MethodPut {
-		methodNotAllowed(w, r, "PUT")
+		MethodNotAllowed(w, r, "PUT")
 		return
 	}
 	if !p.Can("models:manage") {
-		forbidden(w, r)
+		Forbidden(w, r)
 		return
 	}
 	var in struct {
@@ -232,23 +232,23 @@ func (s *Server) computerNameAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1025))
 	if err != nil || len(body) > 1024 || json.Unmarshal(body, &in) != nil || in.Name == nil {
-		badRequest(w, r, "Provide a name.", nil)
+		BadRequest(w, r, "Provide a name.", nil)
 		return
 	}
 	name := strings.TrimSpace(*in.Name)
 	if len([]rune(name)) > 64 || strings.ContainsFunc(name, unicode.IsControl) {
-		badRequest(w, r, "A computer name is at most 64 characters, with no control characters.", nil)
+		BadRequest(w, r, "A computer name is at most 64 characters, with no control characters.", nil)
 		return
 	}
 	if err := s.Store.SetSetting(r.Context(), computerNameKey, name); err != nil {
-		serviceUnavailable(w, r, "Settings")
+		ServiceUnavailable(w, r, "Settings")
 		return
 	}
 	got, source := s.computerName(r.Context())
-	writeJSON(w, 200, map[string]any{"name": got, "nameSource": source})
+	JSON(w, 200, map[string]any{"name": got, "nameSource": source})
 }
 
-// refusalWriter captures what runtimeError answers, so a preview shows the real
+// refusalWriter captures what RuntimeError answers, so a preview shows the real
 // refusal's status, code and message.
 type refusalWriter struct {
 	header http.Header
@@ -269,7 +269,7 @@ func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[
 		return map[string]any{"status": nil, "jobFailure": true, "code": f["code"], "message": f["message"], "permanent": permanent, "retryAfter": nil}
 	}
 	rec := &refusalWriter{header: http.Header{}}
-	runtimeError(rec, r.WithContext(r.Context()), err, id, service)
+	RuntimeError(rec, r.WithContext(r.Context()), err, id, service)
 	var parsed struct {
 		Error struct {
 			Code    any    `json:"code"`
@@ -290,7 +290,7 @@ func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[
 // outcome through the real refusal, and starts, stops and installs nothing.
 func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r, "GET")
+		MethodNotAllowed(w, r, "GET")
 		return
 	}
 	var (
@@ -306,7 +306,7 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 	if spec := s.Catalog.ByID(id); spec != nil {
 		name = spec.Kind
 	} else if _, _, err := s.LLM.Resolve(id); err != nil {
-		modelNotFound(w, r, id) // neither in the catalog nor imported
+		ModelNotFound(w, r, id) // neither in the catalog nor imported
 		return
 	}
 	switch name {
@@ -322,7 +322,7 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 		preview, demand, err = svc.PreviewAdmission(r.Context(), id, assume)
 	}
 	if errors.Is(err, runtime.ErrModelNotFound) {
-		modelNotFound(w, r, id)
+		ModelNotFound(w, r, id)
 		return
 	}
 	if err == nil {
@@ -343,5 +343,5 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 		body["refusal"] = s.refusalFor(r, err, id, service)
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, 200, body)
+	JSON(w, 200, body)
 }

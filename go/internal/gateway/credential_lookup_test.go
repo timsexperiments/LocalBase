@@ -93,13 +93,13 @@ func TestAPermissionCheckAfterAFailedLookupIsNotARefusal(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
 	ctx := auth.WithLookupState(r.Context())
 	auth.MarkLookupFailed(ctx)
-	forbidden(rec, r.WithContext(ctx))
+	Forbidden(rec, r.WithContext(ctx))
 	if rec.Code != 503 || rec.Header().Get("Retry-After") == "" {
 		t.Errorf("%d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
 	}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/", nil)
-	forbidden(rec, r.WithContext(auth.WithLookupState(r.Context())))
+	Forbidden(rec, r.WithContext(auth.WithLookupState(r.Context())))
 	if rec.Code != 403 {
 		t.Errorf("a real refusal: %d", rec.Code)
 	}

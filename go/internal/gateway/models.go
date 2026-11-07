@@ -237,7 +237,7 @@ func (s *Server) principalForListing(r *http.Request) *auth.Principal {
 
 func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r, "GET")
+		MethodNotAllowed(w, r, "GET")
 		return
 	}
 	// A client's list stays a list: what was missing is in a header and the log, not an outage.
@@ -246,7 +246,7 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		data = []Model{}
 	}
-	writeJSON(w, 200, map[string]any{"object": "list", "data": data})
+	JSON(w, 200, map[string]any{"object": "list", "data": data})
 }
 
 // retrieveModel serves GET /v1/models/{model}: percent-decoded, the rest of
@@ -255,11 +255,11 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimPrefix(r.URL.EscapedPath(), "/v1/models/")
 	id, err := url.PathUnescape(raw)
 	if raw == "" || err != nil {
-		routeDisabled(w, r)
+		RouteDisabled(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {
-		methodNotAllowed(w, r, "GET")
+		MethodNotAllowed(w, r, "GET")
 		return
 	}
 	data, problems := s.ServedModels(s.principalForListing(r), id)
@@ -269,15 +269,15 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		for _, p := range problems {
 			if p.Kind == store.ReadLibrary {
 				w.Header().Set("Retry-After", "5")
-				writeError(w, r, 503, "api_error", "service_unavailable",
+				Error(w, r, 503, "api_error", "service_unavailable",
 					"Could not finish "+p.Step+", so this model may exist. Try again shortly.", nil)
 				return
 			}
 		}
-		modelNotFound(w, r, id)
+		ModelNotFound(w, r, id)
 		return
 	}
-	writeJSON(w, 200, data[0])
+	JSON(w, 200, data[0])
 }
 
 // capabilities resolves a model's effective capabilities (declared, detected

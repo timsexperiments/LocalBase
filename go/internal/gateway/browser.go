@@ -117,7 +117,7 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 		auth.MarkLookupFailed(r.Context()) // Authorize has logged it
 		return nil, nil
 	}
-	markAuthenticated(r)
+	MarkAuthenticated(r)
 	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }
 
@@ -131,7 +131,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		// --no-auth (loopback development): the UI acts with every permission.
 		full := &auth.Principal{Kind: "browser-session", ID: "no-auth", Permissions: auth.Permissions}
 		if p == "/app/session" {
-			writeJSON(w, 200, map[string]any{"authenticated": true, "permissions": full.Permissions})
+			JSON(w, 200, map[string]any{"authenticated": true, "permissions": full.Permissions})
 			return
 		}
 		target := strings.TrimPrefix(p, "/app/api")
@@ -146,7 +146,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		r.Pattern = fwd.Pattern // the route it reached: usage, the log and the span read it from r
 		return
 	}
-	if s.localUIAccess(w, r) || credentialLookupFailed(w, r) {
+	if s.localUIAccess(w, r) || CredentialLookupFailed(w, r) {
 		return
 	}
 	if !b.Enabled() {
@@ -230,12 +230,12 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	principal, id := s.BrowserPrincipal(r)
 	if principal == nil {
-		if !credentialLookupFailed(w, r) {
+		if !CredentialLookupFailed(w, r) {
 			auth.Deny(w, 401)
 		}
 		return
 	}
-	setAuth(r, principal)
+	SetAuth(r, principal)
 	if session {
 		body := map[string]any{"authenticated": true, "permissions": principal.Permissions}
 		if id.VerifiedEmail != "" {
@@ -245,7 +245,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 			body["logoutUrl"] = out
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, 200, body)
+		JSON(w, 200, body)
 		return
 	}
 	s.forwardAsBrowser(w, r, principal, target)
