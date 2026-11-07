@@ -234,21 +234,34 @@ func waitIdle(ask func() (bool, string, error), limit time.Duration, sleep func(
 // another root's backend on a default port is not one this gateway started, and could not be
 // told apart from a survivor.
 func backendPorts(e *env, arguments []string) []int {
-	type backend struct{ kind, flag string }
-	ports := map[backend]int{{"llm", "llm-port"}: e.Config.Port, {"stt", "stt-port"}: e.Config.SttPort,
-		{"image", "image-port"}: 8090, {"video", "video-port"}: 8091, {"tts", "tts-port"}: 8092}
-	for b := range ports {
+	// serve's flags as given: "--x value" or "--x=value".
+	flag := func(name string) (int, bool) {
 		for i, a := range arguments {
-			if strings.TrimPrefix(a, "--") == b.flag && i+1 < len(arguments) {
-				if n, err := strconv.Atoi(arguments[i+1]); err == nil {
-					ports[b] = n
-				}
+			if v, ok := strings.CutPrefix(a, "--"+name+"="); ok {
+				n, err := strconv.Atoi(v)
+				return n, err == nil
+			}
+			if a == "--"+name && i+1 < len(arguments) {
+				n, err := strconv.Atoi(arguments[i+1])
+				return n, err == nil
 			}
 		}
+		return 0, false
 	}
-	out := make([]int, 0, len(ports))
-	for b, p := range ports {
-		if p > 0 && (len(e.Config.Selected[b.kind]) > 0 || e.Config.Active[b.kind] != "") {
+	// The same resolution as serve's: an explicit port, else --runtime-port-base's block, else the
+	// configured or default port.
+	base, _ := flag("runtime-port-base")
+	defaults := map[string]int{"llm": e.Config.Port, "stt": e.Config.SttPort}
+	for kind, p := range mediaDefaultPorts {
+		defaults[kind] = p
+	}
+	out := make([]int, 0, len(runtimePortOrder))
+	for _, kind := range runtimePortOrder {
+		p, explicit := flag(kind + "-port")
+		if !explicit {
+			p = runtimePort(base, kind, defaults[kind])
+		}
+		if p > 0 && (len(e.Config.Selected[kind]) > 0 || e.Config.Active[kind] != "") {
 			out = append(out, p)
 		}
 	}

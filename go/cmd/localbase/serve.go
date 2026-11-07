@@ -130,6 +130,10 @@ func intOpt(c *cli.Ctx, name string, lo, hi int) (int, error) {
 // that point.
 var afterSignals = func() {}
 
+// mediaDefaultPorts are the speech, image and video backends' ports with no flag and no base. upgrade's
+// survivor check reads them too.
+var mediaDefaultPorts = map[string]int{"tts": 8092, "image": 8090, "video": 8091}
+
 // runtimePortOrder is the order of --runtime-port-base's block.
 var runtimePortOrder = []string{"llm", "stt", "tts", "image", "video"}
 
@@ -388,15 +392,15 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	tts, err := service("tts", "speech", "127.0.0.1", 8092)
+	tts, err := service("tts", "speech", "127.0.0.1", mediaDefaultPorts["tts"])
 	if err != nil {
 		return nil, err
 	}
-	image, err := service("image", "image", "127.0.0.1", 8090)
+	image, err := service("image", "image", "127.0.0.1", mediaDefaultPorts["image"])
 	if err != nil {
 		return nil, err
 	}
-	videoService, err := service("video", "video", "127.0.0.1", 8091)
+	videoService, err := service("video", "video", "127.0.0.1", mediaDefaultPorts["video"])
 	if err != nil {
 		return nil, err
 	}
