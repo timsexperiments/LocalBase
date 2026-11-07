@@ -42,7 +42,7 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 		t.Errorf("holding %d, limit 3000", got)
 	}
 	e, _ := m["error"].(map[string]any)
-	if e == nil || e["code"] != CodeRunsMemoryFull || !strings.Contains(e["message"].(string), "wait for the running ones") {
+	if e == nil || e["code"] != CodeMemoryFull || !strings.Contains(e["message"].(string), "wait for the running ones") {
 		t.Errorf("nothing else had finished: %v", e)
 	}
 	if code, _ := c.do("DELETE", "/_localbase/runs/"+id, ""); code != 200 {
@@ -222,10 +222,10 @@ func TestALineAtTheLimitPasses(t *testing.T) {
 // The flags reach the runs.
 func TestRunMemoryLimitsAreConfigurable(t *testing.T) {
 	s := &Server{RunMemoryLimit: 5 << 20, RunsMemoryLimit: 7 << 20}
-	if m := newRunManager(s.runOptions("")); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
+	if m := NewManager(s.runOptions("")); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
 		t.Errorf("%d %d", m.maxHeld, m.maxHeldTotal)
 	}
-	if m := newRunManager((&Server{}).runOptions("")); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
+	if m := NewManager((&Server{}).runOptions("")); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
 		t.Errorf("defaults: %d %d", m.maxHeld, m.maxHeldTotal)
 	}
 }
@@ -270,7 +270,7 @@ func TestARestoredRunCounts(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
 	s := runServer(ts)
 	dir := t.TempDir()
-	first := newRunManager(s.runOptions(dir))
+	first := NewManager(s.runOptions(dir))
 	r := &run{m: first, notify: make(chan struct{}), done: make(chan struct{})}
 	later := time.Now().Add(time.Hour)
 	id := newRunID()
@@ -278,7 +278,7 @@ func TestARestoredRunCounts(t *testing.T) {
 	r.ID, r.Object, r.Target, r.Status, r.ExpiresAt = id, "localbase.run", chatTarget, runCompleted, &later
 	r.output.Content = strings.Repeat("x", 5000)
 	first.checkpoint(r)
-	second := newRunManager(s.runOptions(dir))
+	second := NewManager(s.runOptions(dir))
 	second.mu.Lock()
 	_, ok := second.runs[id]
 	second.mu.Unlock()
@@ -304,7 +304,7 @@ func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
 		t.Fatalf("%v", m)
 	}
 	e, _ := m["error"].(map[string]any)
-	if e == nil || e["code"] != CodeRunsMemoryFull {
+	if e == nil || e["code"] != CodeMemoryFull {
 		t.Fatalf("error: %v", e)
 	}
 	expires, err := time.Parse(time.RFC3339Nano, done["expiresAt"].(string))

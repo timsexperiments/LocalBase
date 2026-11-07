@@ -33,33 +33,33 @@ func formRequest() *http.Request {
 }
 
 func TestAFormUpToTheLimitIsRead(t *testing.T) {
-	form, err := readMultipart(formRequest(), formOf(maxFormParts))
+	form, err := readMultipart(formRequest(), formOf(MaxFormParts))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := len(form["x"]); got != maxFormParts {
-		t.Errorf("%d parts were read, want %d", got, maxFormParts)
+	if got := len(form["x"]); got != MaxFormParts {
+		t.Errorf("%d parts were read, want %d", got, MaxFormParts)
 	}
 }
 
 func TestAFormPastTheLimitIsRefused(t *testing.T) {
-	if form, err := readMultipart(formRequest(), formOf(maxFormParts+1)); err == nil {
+	if form, err := readMultipart(formRequest(), formOf(MaxFormParts+1)); err == nil {
 		t.Errorf("it was read, with %d parts", len(form["x"]))
 	}
 }
 
 func TestTheLimitIsTheStatedOne(t *testing.T) {
-	if maxFormParts != 1000 {
-		t.Errorf("maxFormParts is %d, and DESIGN says 1000", maxFormParts)
+	if MaxFormParts != 1000 {
+		t.Errorf("MaxFormParts is %d, and DESIGN says 1000", MaxFormParts)
 	}
 }
 
 func TestAFormsModelIsFoundWithinTheLimit(t *testing.T) {
 	model := "--b\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nthe-model\r\n"
-	if got := requestModel(formType, formOf(maxFormParts-1, model)); got != "the-model" {
+	if got := requestModel(formType, formOf(MaxFormParts-1, model)); got != "the-model" {
 		t.Errorf("the last part allowed: %q", got)
 	}
-	if got := requestModel(formType, formOf(maxFormParts, model)); got != "" {
+	if got := requestModel(formType, formOf(MaxFormParts, model)); got != "" {
 		t.Errorf("past the limit: %q", got)
 	}
 }
@@ -76,7 +76,7 @@ func TestAFormAtTheBodyLimitCostsLittle(t *testing.T) {
 		return after.TotalAlloc - before.TotalAlloc
 	}
 	smallest := "--b\r\n\r\n\r\n"
-	for _, size := range []int{1 << 20, maxRequestBytes} {
+	for _, size := range []int{1 << 20, MaxRequestBytes} {
 		body := []byte(strings.Repeat(smallest, size/len(smallest)))
 		cost := allocated(func() {
 			if _, err := readMultipart(formRequest(), body); err == nil {
@@ -108,11 +108,11 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 		{"voice", "/_localbase/voices", "Invalid form data payload."},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(maxFormParts+1)))
+			r := g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(MaxFormParts+1)))
 			if r.status != 400 || !strings.Contains(r.body, c.refusal) {
 				t.Errorf("past the limit: %d %.300s", r.status, r.body)
 			}
-			r = g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(maxFormParts)))
+			r = g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(MaxFormParts)))
 			if strings.Contains(r.body, c.refusal) {
 				t.Errorf("at the limit: %d %.300s", r.status, r.body)
 			}
@@ -134,10 +134,10 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 			return w.Code, answer.Error.Message
 		}
 		const refusal = "Invalid multipart video request."
-		if code, message := send(maxFormParts + 1); code != 400 || message != refusal {
+		if code, message := send(MaxFormParts + 1); code != 400 || message != refusal {
 			t.Errorf("past the limit: %d %q", code, message)
 		}
-		if code, message := send(maxFormParts); message == refusal {
+		if code, message := send(MaxFormParts); message == refusal {
 			t.Errorf("at the limit: %d %q", code, message)
 		}
 	})

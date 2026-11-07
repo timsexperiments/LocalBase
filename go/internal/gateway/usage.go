@@ -236,7 +236,7 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body) > 4096 {
-		payloadTooLarge(w, r)
+		PayloadTooLarge(w, r)
 		return
 	}
 	var in struct {

@@ -55,7 +55,7 @@ func oldAllowedUIRoute(method, p string) bool {
 	}
 	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
 		if target, ok := strings.CutPrefix(rest, "v1/"); ok {
-			_, known := runTargets["/v1/"+target]
+			_, known := Targets["/v1/"+target]
 			return known && method == "POST"
 		}
 		id, action, _ := strings.Cut(rest, "/")
@@ -102,7 +102,7 @@ func TestTheUIAllowListIsTheOracle(t *testing.T) {
 	for _, p := range oraclePaths(t) {
 		base[p] = true
 	}
-	for target := range runTargets {
+	for target := range Targets {
 		base["/_localbase/runs"+target] = true
 	}
 	for _, p := range []string{"/_localbase/voices/", "/_localbase/models/", "/_localbase/runs/", "/v1/videos/", "/_localbase/runs/v1/", "/_localbase/runs/v1/nope"} {

@@ -12,11 +12,11 @@ import (
 
 // --- checkpoints ------------------------------------------------------------------
 
-func (m *runManager) path(id string) string { return filepath.Join(m.dir, id+".json") }
+func (m *Manager) path(id string) string { return filepath.Join(m.dir, id+".json") }
 
 // checkpoint writes the run's state, output included, for a restart to
 // report (DESIGN §21.6). Called with r.mu held.
-func (m *runManager) checkpoint(r *run) {
+func (m *Manager) checkpoint(r *run) {
 	if m.dir == "" {
 		return
 	}
@@ -33,11 +33,11 @@ func (m *runManager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	obs.WarnRefusedWrite(m.opts.log(), obs.WritePrivateAtomic(m.path(r.ID), b))
+	obs.WarnRefusedWrite(m.opts.Log(), obs.WritePrivateAtomic(m.path(r.ID), b))
 	r.saved = m.now()
 }
 
-func (m *runManager) remove(id string) {
+func (m *Manager) remove(id string) {
 	if m.dir != "" {
 		os.Remove(m.path(id))
 	}
@@ -45,7 +45,7 @@ func (m *runManager) remove(id string) {
 
 // sweepStart reads the checkpoints a previous gateway left: unfinished runs
 // become interrupted (gateway_restart), expired and unreadable files go.
-func (m *runManager) sweepStart() {
+func (m *Manager) sweepStart() {
 	if m.dir == "" {
 		return
 	}
@@ -94,7 +94,7 @@ func (m *runManager) sweepStart() {
 }
 
 // sweepExpired deletes finished runs past their retention.
-func (m *runManager) sweepExpired() {
+func (m *Manager) sweepExpired() {
 	now := m.now()
 	m.mu.Lock()
 	var gone []*run
@@ -114,7 +114,7 @@ func (m *runManager) sweepExpired() {
 	}
 }
 
-func (m *runManager) janitor() {
+func (m *Manager) Janitor() {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {

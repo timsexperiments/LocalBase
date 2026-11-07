@@ -444,9 +444,9 @@ func TestOpenAPISubroutes(t *testing.T) {
 		t.Errorf("models/{id} suffixes: document %v, code %v", got, modelSuffixes)
 	}
 
-	// /_localbase/runs/{id}/<action>: the cases runRoute switches on.
+	// /_localbase/runs/{id}/<action>: the cases Route switches on.
 	var actions []string
-	ast.Inspect(fns["runRoute"], func(n ast.Node) bool {
+	ast.Inspect(fns["Route"], func(n ast.Node) bool {
 		sw, ok := n.(*ast.SwitchStmt)
 		if !ok {
 			return true
@@ -465,20 +465,20 @@ func TestOpenAPISubroutes(t *testing.T) {
 	})
 	sort.Strings(actions)
 	if len(actions) == 0 {
-		t.Error("found no actions in runRoute: the test no longer reads the code")
+		t.Error("found no actions in Route: the test no longer reads the code")
 	}
 	if got := under("/_localbase/runs/{run_id}"); !slices.Equal(got, actions) {
 		t.Errorf("runs/{id} actions: document %v, code %v", got, actions)
 	}
 
-	// /_localbase/runs/v1/…: exactly runTargets.
-	targets := slices.Sorted(maps.Keys(runTargets))
+	// /_localbase/runs/v1/…: exactly Targets.
+	targets := slices.Sorted(maps.Keys(Targets))
 	var documented []string
 	for _, rest := range under("/_localbase/runs/v1/") {
 		documented = append(documented, "/v1/"+rest)
 	}
 	if !slices.Equal(documented, targets) {
-		t.Errorf("run targets: document %v, runTargets %v", documented, targets)
+		t.Errorf("run targets: document %v, Targets %v", documented, targets)
 	}
 
 	// /_localbase/voices/{id}/<segment>: what voicesAPI compares parts[1] with.
@@ -1362,11 +1362,11 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/_localbase/runs/v1/systemone", `{"model":"`+chatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
 	as(reader, "POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"), 403)
 	as("", "GET", "/_localbase/runs", "", 401)
-	for target := range runTargets {
+	for target := range Targets {
 		check("POST", "/_localbase/runs"+target, `{}`, 400, 501)
 	}
 	check("POST", "/_localbase/runs/v1/chat/completions", `{"x":"`+strings.Repeat("x", 26<<20)+`"}`, 413)
-	check("POST", "/_localbase/runs/v1/audio/speech", `{"x":"`+strings.Repeat("x", runMaxBody)+`"}`, 413)
+	check("POST", "/_localbase/runs/v1/audio/speech", `{"x":"`+strings.Repeat("x", MaxBody)+`"}`, 413)
 
 	// A run that fails, one that is interrupted, and the limit on active runs.
 	failing := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:context"), 202))
@@ -1376,7 +1376,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("GET", "/_localbase/runs/"+failing+"/result", "", 409)
 	active := []string{}
-	for range runActivePerOwner {
+	for range ActivePerOwner {
 		active = append(active, idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 200"), 202)))
 	}
 	check("GET", "/_localbase/runs", "", 200) // running and queued
