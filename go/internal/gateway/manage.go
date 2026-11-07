@@ -56,7 +56,7 @@ func noStore(w http.ResponseWriter, status int, v any) {
 // principal resolves the caller for routes that do their own permission
 // checks: a forwarded browser identity, --no-auth, or an API credential.
 func (s *Server) principal(r *http.Request) *auth.Principal {
-	if bp, ok := r.Context().Value(BrowserPrincipalKey{}).(*auth.Principal); ok {
+	if bp, ok := r.Context().Value(httpx.BrowserPrincipalKey{}).(*auth.Principal); ok {
 		return bp
 	}
 	if s.NoAuth {

@@ -124,26 +124,8 @@ func join(path string, key any) string {
 	return path + "." + k
 }
 
-func TypeName(v any) string {
-	switch v.(type) {
-	case nil:
-		return "null"
-	case string:
-		return "string"
-	case json.Number, float64:
-		return "number"
-	case bool:
-		return "boolean"
-	case []any:
-		return "array"
-	case map[string]any:
-		return "object"
-	}
-	return "unknown"
-}
-
 func expected(want string, v any, present bool) string {
-	got := TypeName(v)
+	got := httpx.TypeName(v)
 	if !present {
 		got = "undefined"
 	}
@@ -425,7 +407,7 @@ func (c *checker) chatMessage(m any, path string) {
 			}
 		}
 		if _, present := msg["function_call"]; present {
-			c.fail(join(path, "function_call"), "Invalid input: expected never, received "+TypeName(msg["function_call"]))
+			c.fail(join(path, "function_call"), "Invalid input: expected never, received "+httpx.TypeName(msg["function_call"]))
 		}
 		if msg["content"] == nil && calls == 0 && msg["refusal"] == nil && msg["reasoning"] == nil && msg["reasoning_content"] == nil {
 			c.fail(path, "assistant messages require content, reasoning, tool_calls, or refusal")

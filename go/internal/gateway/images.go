@@ -305,7 +305,7 @@ func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLea
 
 func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	req, ok := ReadJSON(w, r)
+	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
 	}

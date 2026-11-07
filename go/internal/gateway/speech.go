@@ -33,13 +33,6 @@ const (
 	speechTimeout       = 120 * time.Second
 )
 
-const (
-	// AudioTruncatedHeader marks speech cut at the runtime's frame cap (DESIGN §24).
-	AudioTruncatedHeader = "X-Localbase-Audio-Truncated"
-	// NoteAudioTruncated is the same flag in a detached run's result.notes.
-	NoteAudioTruncated = "audio_truncated"
-)
-
 var (
 	builtInVoices = []string{"default", "harbor", "willow", "af_heart", "af_bella"}
 	customVoiceRe = regexp.MustCompile(`^voice-[0-9a-f]{12}$`)
@@ -209,7 +202,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	if lease.Target.Backend.Adapter == "tts-server/v1" && len(pcm) == speechMaxPCMBytes {
 		// tts-server stops at the frame cap and answers normally; the audio is
 		// kept as it is, and the cut is made visible. Never the text.
-		w.Header().Set(AudioTruncatedHeader, "true")
+		w.Header().Set(httpx.AudioTruncatedHeader, "true")
 		s.Log.WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
 			"runtime", "tts", "request_id", tel.requestID, "model_id", lease.ModelID, "frames", runtime.SpeechMaxFrames,
 			"input_chars", utf8.RuneCountInString(req.Input))
@@ -401,11 +394,11 @@ func (s *Server) customVoiceExists(r *http.Request, id string) bool {
 
 // readBody reads a bounded request body (25 MiB, TS MAX_REQUEST_BYTES).
 func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
-	if r.ContentLength > MaxRequestBytes {
-		PayloadTooLarge(w, r)
+	if r.ContentLength > httpx.MaxRequestBytes {
+		httpx.PayloadTooLarge(w, r)
 		return nil, false
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
+	body, err := io.ReadAll(io.LimitReader(r.Body, httpx.MaxRequestBytes+1))
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -414,8 +407,8 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
-	if len(body) > MaxRequestBytes {
-		PayloadTooLarge(w, r)
+	if len(body) > httpx.MaxRequestBytes {
+		httpx.PayloadTooLarge(w, r)
 		return nil, false
 	}
 	return body, true

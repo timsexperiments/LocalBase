@@ -68,7 +68,7 @@ func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(body) > 4096 {
-		PayloadTooLarge(w, r)
+		httpx.PayloadTooLarge(w, r)
 		return
 	}
 	var in struct {
