@@ -63,6 +63,10 @@ installer "$dist" > "$work/out.log"
 "$bin" --version > /dev/null || fail "upgraded binary does not run"
 [ ! -e "$HOME/.local/bin/.local-base.new" ] || fail "temp file left behind"
 
+step "LOCALBASE_LICENSE_DIR chooses where the license texts go"
+LOCALBASE_LICENSE_DIR="$work/licenses" installer "$dist" > "$work/out.log"
+[ -f "$work/licenses/LICENSE" ] || fail "LOCALBASE_LICENSE_DIR was ignored"
+
 step "tampered archive is refused and the installed binary is untouched"
 before="$(cksum < "$bin")"
 bad="$work/bad"
