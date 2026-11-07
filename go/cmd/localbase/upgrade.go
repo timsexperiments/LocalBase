@@ -160,12 +160,14 @@ func checkInstalled(binary string) error {
 	return nil
 }
 
-// gatewayActivity asks the running gateway how busy it is, with a key that lasts this long.
-func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string, err error) {
+// waitGatewayIdle waits for the running gateway's work to finish (waitIdle), asking with one
+// temporary key for the whole wait: created once, and deleted once at the end, each audited.
+// Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
+func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep func(time.Duration)) error {
 	ctx := context.Background()
 	k, raw, err := e.Store.CreateAPIKeyExpiring(ctx, "local-base upgrade (temporary)", []string{"models:read"}, 1)
 	if err != nil {
-		return false, "", err
+		return fmt.Errorf("Could not ask the gateway how busy it is: %w. Nothing was changed. --force goes ahead anyway.", err)
 	}
 	auditKeyChange(e, "create", k, "purpose", "upgrade")
 	defer func() {
@@ -175,6 +177,11 @@ func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string,
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
+	return waitIdle(func() (bool, string, error) { return gatewayActivity(base, raw) }, limit, sleep)
+}
+
+// gatewayActivity asks the running gateway how busy it is, with the key it is given.
+func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 	req, err := http.NewRequest(http.MethodGet, base+"/_localbase/host", nil)
 	if err != nil {
 		return false, "", err
@@ -234,21 +241,34 @@ func waitIdle(ask func() (bool, string, error), limit time.Duration, sleep func(
 // another root's backend on a default port is not one this gateway started, and could not be
 // told apart from a survivor.
 func backendPorts(e *env, arguments []string) []int {
-	type backend struct{ kind, flag string }
-	ports := map[backend]int{{"llm", "llm-port"}: e.Config.Port, {"stt", "stt-port"}: e.Config.SttPort,
-		{"image", "image-port"}: 8090, {"video", "video-port"}: 8091, {"tts", "tts-port"}: 8092}
-	for b := range ports {
+	// serve's flags as given: "--x value" or "--x=value".
+	flag := func(name string) (int, bool) {
 		for i, a := range arguments {
-			if strings.TrimPrefix(a, "--") == b.flag && i+1 < len(arguments) {
-				if n, err := strconv.Atoi(arguments[i+1]); err == nil {
-					ports[b] = n
-				}
+			if v, ok := strings.CutPrefix(a, "--"+name+"="); ok {
+				n, err := strconv.Atoi(v)
+				return n, err == nil
+			}
+			if a == "--"+name && i+1 < len(arguments) {
+				n, err := strconv.Atoi(arguments[i+1])
+				return n, err == nil
 			}
 		}
+		return 0, false
 	}
-	out := make([]int, 0, len(ports))
-	for b, p := range ports {
-		if p > 0 && (len(e.Config.Selected[b.kind]) > 0 || e.Config.Active[b.kind] != "") {
+	// The same resolution as serve's: an explicit port, else --runtime-port-base's block, else the
+	// configured or default port.
+	base, _ := flag("runtime-port-base")
+	defaults := map[string]int{"llm": e.Config.Port, "stt": e.Config.SttPort}
+	for kind, p := range mediaDefaultPorts {
+		defaults[kind] = p
+	}
+	out := make([]int, 0, len(runtimePortOrder))
+	for _, kind := range runtimePortOrder {
+		p, explicit := flag(kind + "-port")
+		if !explicit {
+			p = runtimePort(base, kind, defaults[kind])
+		}
+		if p > 0 && (len(e.Config.Selected[kind]) > 0 || e.Config.Active[kind] != "") {
 			out = append(out, p)
 		}
 	}
@@ -408,7 +428,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if state == gatewayManaged && !c.Bool("force") {
 		_, owner, _ := e.Root.OwnerState()
 		base := strings.TrimSuffix(owner.HealthURL(), "/health")
-		if err := waitIdle(func() (bool, string, error) { return gatewayActivity(c, e, base) }, time.Duration(wait)*time.Second, time.Sleep); err != nil {
+		if err := waitGatewayIdle(c, e, base, time.Duration(wait)*time.Second, time.Sleep); err != nil {
 			return nil, err
 		}
 	}

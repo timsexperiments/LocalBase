@@ -14,6 +14,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
@@ -216,7 +217,7 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 		}
 		defer env.Close()
 		before := len(auditLines(t, root))
-		_, _, _ = gatewayActivity(c, env, ts.URL)
+		_ = waitGatewayIdle(c, env, ts.URL, 0, func(time.Duration) {})
 		lines := auditLines(t, root)[before:]
 		if len(lines) != 2 || lines[0].Action != "create" || lines[1].Action != "delete" || lines[0].TargetID == "" || lines[0].TargetID != lines[1].TargetID ||
 			lines[0].Purpose != "upgrade" || lines[1].Purpose != "upgrade" {
