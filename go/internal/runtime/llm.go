@@ -134,7 +134,7 @@ type LLM struct {
 	cancelSwitch context.CancelCauseFunc
 	stopping     bool // the gateway is stopping: no model starts, and what is loaded still serves
 	active       int
-	queue        []*waiter
+	queue        waitQueue[*Lease]
 	closed       bool
 	geometry     map[string]geometryEntry
 	probes       sync.WaitGroup

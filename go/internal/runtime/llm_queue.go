@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"slices"
 	"sync"
 	"time"
 
@@ -10,18 +9,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
-type waiter struct {
-	model       string
-	parent      *otlp.Span // the request's span, for a start it triggers
-	key         string
-	ready       chan error
-	lease       *Lease
-	dispatching bool
-	done        bool
-	// dispatched is when the request left the queue: granted, or its own
-	// model switch began (TS queueWaitMs excludes the activation).
-	dispatched time.Time
-}
+// waiter is a request in the LLM's queue.
+type waiter = queued[*Lease]
 
 // Lease is an admitted request. Release it when the response body completes.
 type Lease struct {
@@ -65,54 +54,17 @@ func (m *LLM) Acquire(ctx context.Context, modelID string) (*Lease, error) {
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &waiter{model: modelID, key: key, ready: make(chan error, 1), parent: otlp.FromContext(ctx)}
+	w := newQueued[*Lease](ctx, modelID, key)
 	m.queue = append(m.queue, w)
 	m.pump()
 	m.mu.Unlock()
 
-	timer := time.NewTimer(m.d.QueueTimeout)
-	defer timer.Stop()
-	for {
-		select {
-		case err := <-w.ready:
-			if err != nil {
-				return nil, err
-			}
-			w.lease.Waited = w.dispatched.Sub(start)
-			return w.lease, nil
-		case <-ctx.Done():
-			m.abandon(w)
-			return nil, ctx.Err()
-		case <-timer.C:
-			m.mu.Lock()
-			if w.dispatching || w.done {
-				m.mu.Unlock()
-				continue // its own backend start is not limited by the queue deadline
-			}
-			m.remove(w)
-			m.pump()
-			m.mu.Unlock()
-			return nil, ErrQueueTimeout
-		}
+	lease, err := m.queue.wait(ctx, &m.mu, w, m.d.QueueTimeout, m.pump, (*Lease).Release)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func (m *LLM) remove(w *waiter) {
-	if i := slices.Index(m.queue, w); i >= 0 {
-		m.queue = slices.Delete(m.queue, i, i+1)
-	}
-}
-
-// abandon drops a cancelled waiter, returning a lease it was already granted.
-func (m *LLM) abandon(w *waiter) {
-	m.mu.Lock()
-	granted := w.done && w.lease != nil
-	m.remove(w)
-	m.pump()
-	m.mu.Unlock()
-	if granted {
-		w.lease.Release()
-	}
+	lease.Waited = w.dispatched.Sub(start)
+	return lease, nil
 }
 
 func (m *LLM) grant(w *waiter) {
@@ -128,7 +80,7 @@ func (m *LLM) grant(w *waiter) {
 }
 
 func (m *LLM) fail(w *waiter, err error) {
-	m.remove(w)
+	m.queue.remove(w)
 	w.done = true
 	w.ready <- err
 }
