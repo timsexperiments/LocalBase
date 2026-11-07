@@ -33,7 +33,12 @@ type Target struct {
 // Gate resolves a model for launch. It returns ErrModelNotFound for an
 // unknown id and a *LaunchError when the selection cannot launch. ctx bounds
 // everything it does, a download it starts for the launch included.
-type Gate func(ctx context.Context, modelID string) (*Target, error)
+//
+// install is for a launch alone: it lets the gate fetch files the selected
+// variant is missing, where this device allows downloads. A question about a
+// model (a preview, a plan, whether it fits) leaves it unset and downloads
+// nothing: it gets the target with a *NotInstalledError instead.
+type Gate func(ctx context.Context, modelID string, install bool) (*Target, error)
 
 // LaunchError is a selection problem found before anything starts.
 type LaunchError struct {

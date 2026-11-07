@@ -38,7 +38,7 @@ func TestALaunchsDownloadStopsWithTheLaunch(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := l.GateFor("speech")(ctx, model)
+		_, err := l.GateFor("speech")(ctx, model, true)
 		done <- err
 	}()
 	select {

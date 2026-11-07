@@ -188,7 +188,7 @@ func (m *LLM) Resolve(model string) (string, *catalog.Spec, error) {
 	}
 	if !slices.Contains(ConfiguredIDs(cfg, "llm"), model) {
 		// Imported models run without being configured.
-		if t, _ := m.target(context.Background(), model); t == nil || !t.Imported || t.task() == "" {
+		if t, _ := m.target(context.Background(), model, false); t == nil || !t.Imported || t.task() == "" {
 			return "", nil, ErrModelNotFound
 		}
 	}
@@ -223,17 +223,18 @@ func (m *LLM) geometryFor(path string) *gguf.Geometry {
 
 // target resolves the model through the gate; nil without one. A target may
 // come back together with a *LaunchError. A launch passes its own context, so
-// a download the gate starts for it ends with it.
-func (m *LLM) target(ctx context.Context, modelID string) (*Target, error) {
+// a download the gate starts for it ends with it, and install, which nothing
+// else passes: a question about a model downloads nothing.
+func (m *LLM) target(ctx context.Context, modelID string, install bool) (*Target, error) {
 	if m.d.Gate == nil {
 		return nil, nil
 	}
-	return m.d.Gate(ctx, modelID)
+	return m.d.Gate(ctx, modelID, install)
 }
 
 // Plan computes the launch plan for a model without starting anything.
 func (m *LLM) Plan(modelID string) (*LLMPlan, error) {
-	t, _ := m.target(context.Background(), modelID)
+	t, _ := m.target(context.Background(), modelID, false)
 	return m.planFor(modelID, t)
 }
 
