@@ -44,6 +44,22 @@ function fake(answer: (m: any) => any): Fake {
   };
 }
 
+// nobodyHome is a WebSocket address on a port the system gave out and nothing listens on now.
+async function nobodyHome() {
+  const f = fake(() => undefined);
+  const url = f.url;
+  f.stop();
+  await Bun.sleep(10);
+  return url;
+}
+
+// silent accepts connections and never says a word, as a stuck Chrome would.
+function silent() {
+  const sockets: any[] = [];
+  const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open: (s) => void sockets.push(s), data() {} } });
+  return { port: listener.port, stop: () => { for (const s of sockets) s.end(); listener.stop(true); } };
+}
+
 const servers: Fake[] = [];
 const serve = (answer: (m: any) => any) => { const f = fake(answer); servers.push(f); return f; };
 const keep = () => {}; // onClose for the tests: the default would end the test run
@@ -124,12 +140,36 @@ describe("the connection", () => {
     expect(closed).toBe(true);
   });
 
-  test("with rejectOpenError, a connection that can't open rejects", async () => {
-    const f = serve(() => undefined);
-    const url = f.url;
-    f.stop();
-    servers.length = 0;
-    await expect(connect(url, { onClose: keep, rejectOpenError: true })).rejects.toBeDefined();
+  test("with rejectOpenError, a connection that can't open rejects, saying where and why", async () => {
+    const url = await nobodyHome();
+    await expect(connect(url, { onClose: keep, rejectOpenError: true })).rejects.toThrow(`could not connect to Chrome's DevTools at ${url}: the connection failed`);
+  });
+
+  test("without it, a connection that can't open ends the open, saying where and why", async () => {
+    const url = await nobodyHome();
+    const said: string[] = [];
+    await expect(connect(url, { onClose: keep, onOpenFailure: (m) => said.push(m) })).rejects.toThrow("the connection failed");
+    expect(said).toEqual([`could not connect to Chrome's DevTools at ${url}: the connection failed`]);
+  });
+
+  test("a connection that never opens is given up on in time", async () => {
+    const quiet = silent();
+    const said: string[] = [];
+    const began = Date.now();
+    await expect(connect(`ws://127.0.0.1:${quiet.port}/devtools/page/1`, { onClose: keep, openTimeoutMs: 100, onOpenFailure: (m) => said.push(m) })).rejects.toThrow("it didn't open in 0.1 s");
+    expect(Date.now() - began).toBeLessThan(2000);
+    expect(said.length).toBe(1);
+    quiet.stop();
+  });
+
+  test("asking for a tab is given up on in time too, and a refused one says so", async () => {
+    const quiet = silent();
+    const said: string[] = [];
+    await expect(openPage(`http://127.0.0.1:${quiet.port}`, { onClose: keep, openTimeoutMs: 100, onOpenFailure: (m) => said.push(m) })).rejects.toThrow("no answer in 0.1 s");
+    quiet.stop();
+    const gone = (await nobodyHome()).replace(/^ws:/, "http:").replace(/\/devtools.*$/, "");
+    await expect(openPage(gone, { onClose: keep, onOpenFailure: (m) => said.push(m) })).rejects.toThrow(`could not open a tab through Chrome's DevTools at ${gone}`);
+    expect(said.length).toBe(2);
   });
 
   test("openPage asks for a new tab with PUT, then talks to that tab", async () => {
