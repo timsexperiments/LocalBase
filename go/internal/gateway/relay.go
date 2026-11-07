@@ -484,7 +484,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if o.schema != nil {
-		outcome := structuredOutcome(obj, o.schema)
+		outcome := Outcome(obj, o.schema)
 		t.schemaValidation = outcome
 		t.schemaSkipReasons = skipReasons(obj)
 		if outcome == "failed" {

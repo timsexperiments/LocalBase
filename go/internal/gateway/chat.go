@@ -241,10 +241,10 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	prepareChat(req)
 	prepStart := time.Now()
-	schema, rejection := prepareStructuredOutput(req["response_format"])
+	schema, rejection := Prepare(req["response_format"])
 	prepMs := float64(time.Since(prepStart).Microseconds()) / 1000
 	if rejection != nil {
-		writeError(w, r, 400, "invalid_request_error", rejection.code, rejection.message, strp("response_format.json_schema.schema"))
+		writeError(w, r, 400, "invalid_request_error", rejection.Code, rejection.Message, strp("response_format.json_schema.schema"))
 		return
 	}
 	streaming := req["stream"] == true

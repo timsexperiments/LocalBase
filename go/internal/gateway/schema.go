@@ -41,14 +41,14 @@ var (
 	supportedRefRe = regexp.MustCompile(`^#/(?:\$defs|definitions)/[A-Za-z0-9_-]+$`)
 )
 
-type schemaRejection struct{ code, message string }
+type Rejection struct{ Code, Message string }
 
-func (e *schemaRejection) Error() string { return e.message }
+func (e *Rejection) Error() string { return e.Message }
 
-// prepareStructuredOutput returns the root schema to validate completed
+// Prepare returns the root schema to validate completed
 // responses against, nil when the request has no json_schema format, or a
 // rejection.
-func prepareStructuredOutput(responseFormat any) (map[string]any, *schemaRejection) {
+func Prepare(responseFormat any) (map[string]any, *Rejection) {
 	rf, _ := responseFormat.(map[string]any)
 	if rf == nil || rf["type"] != "json_schema" {
 		return nil, nil
@@ -56,25 +56,25 @@ func prepareStructuredOutput(responseFormat any) (map[string]any, *schemaRejecti
 	js, _ := rf["json_schema"].(map[string]any)
 	schema, _ := js["schema"].(map[string]any)
 	if b, _ := json.Marshal(schema); len(b) > maxSchemaBytes {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, "Structured output schema exceeds LocalBase's 256 KiB compile limit."}
+		return nil, &Rejection{codeUnsupportedJSONSchma, "Structured output schema exceeds LocalBase's 256 KiB compile limit."}
 	}
 	if msg := precompileBudgetIssue(schema); msg != "" {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, msg}
+		return nil, &Rejection{codeUnsupportedJSONSchma, msg}
 	}
 	if s, present := schema["$schema"]; present && s != draft7URI {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, "Structured output schemas must use JSON Schema draft 7."}
+		return nil, &Rejection{codeUnsupportedJSONSchma, "Structured output schemas must use JSON Schema draft 7."}
 	}
 	if err := strictCompile(schema, schema, nil); err != nil {
-		return nil, &schemaRejection{codeInvalidJSONSchema, "Structured output schema is not valid JSON Schema draft 7."}
+		return nil, &Rejection{codeInvalidJSONSchema, "Structured output schema is not valid JSON Schema draft 7."}
 	}
 	if msg := inspectNative(schema); msg != "" {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, msg}
+		return nil, &Rejection{codeUnsupportedJSONSchma, msg}
 	}
 	if msg := alternativesIssue(schema); msg != "" {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, msg}
+		return nil, &Rejection{codeUnsupportedJSONSchma, msg}
 	}
 	if schema["type"] != "object" {
-		return nil, &schemaRejection{codeUnsupportedJSONSchma, "Structured output schema root must be an object type."}
+		return nil, &Rejection{codeUnsupportedJSONSchma, "Structured output schema root must be an object type."}
 	}
 	return schema, nil
 }
@@ -837,10 +837,10 @@ func (c *schemaCheck) valid(s map[string]any, v any, depth int) bool {
 	return true
 }
 
-// structuredOutcome validates a completed chat response: "passed",
+// Outcome validates a completed chat response: "passed",
 // "failed" or "skipped" (refusals, tool calls, truncation and unfinished
 // choices are not checked).
-func structuredOutcome(resp map[string]any, schema map[string]any) string {
+func Outcome(resp map[string]any, schema map[string]any) string {
 	choices, _ := resp["choices"].([]any)
 	validated := false
 	for _, c := range choices {

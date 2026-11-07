@@ -24,12 +24,12 @@ func FuzzStructuredOutput(f *testing.F) {
 		if json.Unmarshal([]byte(schema), &s) != nil {
 			return
 		}
-		accepted, rejection := prepareStructuredOutput(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "n", "schema": s}})
+		accepted, rejection := Prepare(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "n", "schema": s}})
 		if rejection != nil || accepted == nil {
 			return
 		}
 		resp := map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]any{"content": answer}}}}
-		switch outcome := structuredOutcome(resp, accepted); outcome {
+		switch outcome := Outcome(resp, accepted); outcome {
 		case "passed", "failed":
 		default:
 			t.Errorf("outcome %q", outcome)
