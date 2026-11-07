@@ -486,39 +486,23 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 		t.Fatal(err)
 	}
 	block := bytes.Repeat([]byte{0xAA}, 1<<20)
-	written := 0
-	for {
-		if written >= fillDiskLimit {
-			t.Fatalf("wrote %d MiB and %s is still not full", written>>20, dir)
-		}
-		avail, err := freeBytes(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		room := avail - fillMargin
-		if room < 4096 {
-			break
-		}
-		chunk := block
-		if room < int64(len(block)) {
-			chunk = block[:room/4096*4096] // whole 4 KiB blocks, down to the margin
-		}
-		n, err := f.Write(chunk)
-		written += n
-		if err != nil {
-			if errors.Is(err, syscall.ENOSPC) {
-				break // the volume refused before the margin, as APFS does with some still free
-			}
-			t.Fatalf("filling the disk: %v (%d bytes free)", err, avail)
-		}
+	written, notes, err := fillTo(fillMargin, fillDiskLimit, fillOps{
+		write: func(n int) (int, error) { return f.Write(block[:n]) },
+		sync:  f.Sync,
+		free:  func() (int64, error) { return freeBytes(dir) },
+	})
+	if err != nil {
+		t.Fatalf("filling %s: %v", dir, err)
 	}
 	if err := f.Sync(); err != nil {
 		t.Fatalf("syncing the filler: %v", err)
 	}
 	f.Close()
 	if err := probeFull(dir); err != nil {
-		t.Fatalf("filled to the margin, and %v", err)
+		t.Fatalf("filled to the margin, and %v; what the fill met: %s", err, fillNotes(notes))
 	}
+	left, _ := freeBytes(dir)
+	t.Logf("filled with %d bytes, %d bytes left free; the fill met: %s", written, left, fillNotes(notes))
 	freed := false
 	return func() {
 		if !freed {
@@ -534,6 +518,90 @@ func fillDisk(t *testing.T, dir string) (free func()) {
 			}
 		}
 	}
+}
+
+// fillOps are what fillTo does to the disk, so a test can make the volume refuse.
+type fillOps struct {
+	write func(n int) (int, error) // n bytes of filler
+	sync  func() error
+	free  func() (int64, error)
+}
+
+const (
+	// fillSmallest is the smallest write fillTo makes. fillStubborn is how many times in a row, each
+	// after a sync, the volume must refuse it before the fill takes the volume at its word.
+	// fillNoteLimit is the most refusals and comebacks one fill waits out.
+	fillSmallest  = 4096
+	fillStubborn  = 3
+	fillNoteLimit = 64
+)
+
+// fillTo writes until free space is down to margin, and stays there after a sync. The fill used to
+// end at its first refused write. On macos-15 in CI, a fill that ended "at the margin" left 13.5 to
+// 13.9 MiB free, and the probe's 5 MiB then fit. The log can't say whether a write was refused that
+// early or the free space read low until a sync gave it back, so fillTo meets both:
+//   - a refused write syncs, halves the next write and goes on. The smallest write refused
+//     fillStubborn times in a row ends the fill, and probeFull then decides whether that is full.
+//   - at the margin it syncs and looks again, and fills on if free space came back.
+//
+// Each refusal and each comeback is noted with the free bytes at that moment.
+func fillTo(margin int64, limit int, ops fillOps) (written int, notes []string, err error) {
+	chunk, stubborn, synced := 1<<20, 0, false
+	for len(notes) < fillNoteLimit {
+		if written >= limit {
+			return written, notes, fmt.Errorf("wrote %d MiB and it is still not full", written>>20)
+		}
+		avail, err := ops.free()
+		if err != nil {
+			return written, notes, err
+		}
+		if avail-margin < fillSmallest {
+			if synced {
+				return written, notes, nil
+			}
+			if err := ops.sync(); err != nil {
+				return written, notes, err
+			}
+			synced = true
+			after, err := ops.free()
+			if err != nil {
+				return written, notes, err
+			}
+			if after-margin >= fillSmallest {
+				notes = append(notes, fmt.Sprintf("at the margin, %d bytes free became %d after a sync", avail, after))
+			}
+			continue
+		}
+		n := int(min(int64(chunk), (avail-margin)/fillSmallest*fillSmallest)) // whole 4 KiB blocks, down to the margin
+		took, err := ops.write(n)
+		written += took
+		if err == nil {
+			stubborn, synced = 0, false
+			continue
+		}
+		if !errors.Is(err, syscall.ENOSPC) {
+			return written, notes, fmt.Errorf("filling the disk: %w (%d bytes free)", err, avail)
+		}
+		notes = append(notes, fmt.Sprintf("a write of %d refused with %d bytes free", n, avail))
+		if n <= fillSmallest {
+			if stubborn++; stubborn >= fillStubborn {
+				return written, notes, nil
+			}
+		}
+		chunk = max(n/2, fillSmallest)
+		if err := ops.sync(); err != nil {
+			return written, notes, err
+		}
+	}
+	return written, notes, nil
+}
+
+// fillNotes is what a failure says about what the fill met.
+func fillNotes(notes []string) string {
+	if len(notes) == 0 {
+		return "no refusals, and no free space came back after a sync"
+	}
+	return runs(notes)
 }
 
 // probeFull shows that dir's volume is full: one write of fillProbe bytes must be refused. The

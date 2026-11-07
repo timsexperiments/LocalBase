@@ -126,3 +126,71 @@ func TestDetachVolume(t *testing.T) {
 		t.Errorf("any other failure is not waited out: %v after %d", err, *calls)
 	}
 }
+
+// How the fill meets a volume that refuses, or reads low until a sync, planted: no volume, no
+// waiting. macos-15 in CI ended a fill with 13.5 to 13.9 MiB free, and then took 5 MiB. The first
+// two cases are the two ways that could happen; on main's fill, both end with that much free.
+func TestFillToWaitsOutARefusal(t *testing.T) {
+	const MiB = 1 << 20
+	type volume struct {
+		free, reserve int64 // writes are refused whole past free-reserve, as APFS refuses them
+		refuseAt      int64 // one refusal, once free falls to this, that a sync clears
+		hidden        int64 // free space that reads as used until the first sync
+		syncs         int
+		fail          error
+	}
+	ops := func(v *volume) fillOps {
+		return fillOps{
+			write: func(n int) (int, error) {
+				switch {
+				case v.fail != nil:
+					return 0, v.fail
+				case v.refuseAt > 0 && v.free <= v.refuseAt:
+					v.refuseAt = 0
+					return 0, syscall.ENOSPC
+				case int64(n) > v.free-v.reserve:
+					return 0, syscall.ENOSPC
+				}
+				v.free -= int64(n)
+				return n, nil
+			},
+			sync: func() error { v.syncs++; v.hidden = 0; return nil },
+			free: func() (int64, error) { return v.free - v.hidden, nil },
+		}
+	}
+	const margin = 4 * MiB
+	full := [2]int64{margin, margin + fillSmallest - 1}
+	for _, c := range []struct {
+		name    string
+		v       volume
+		limit   int
+		ends    [2]int64 // where free must end
+		notes   int
+		wantErr string
+	}{
+		{"a refusal a sync clears, with 13.5 MiB free", volume{free: 90 * MiB, refuseAt: 27 * MiB / 2}, fillDiskLimit, full, 1, ""},
+		{"10 MiB that reads as used until a sync", volume{free: 90 * MiB, hidden: 10 * MiB}, fillDiskLimit, full, 1, ""},
+		{"no refusal: to the margin", volume{free: 90 * MiB}, fillDiskLimit, full, 0, ""},
+		{"a volume that keeps 2.4 MiB back, under the margin", volume{free: 90 * MiB, reserve: 12 * MiB / 5}, fillDiskLimit, full, 0, ""},
+		{"a volume that keeps 13.5 MiB back, over the margin", volume{free: 90 * MiB, reserve: 27 * MiB / 2}, fillDiskLimit, [2]int64{27 * MiB / 2, 27*MiB/2 + fillSmallest - 1}, 8 + fillStubborn, ""},
+		{"a write that fails otherwise", volume{free: 90 * MiB, fail: syscall.EIO}, fillDiskLimit, [2]int64{90 * MiB, 90 * MiB}, 0, "input/output error"},
+		{"a volume bigger than the limit", volume{free: 90 * MiB}, 10 * MiB, [2]int64{0, 90 * MiB}, 0, "still not full"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			v := c.v
+			_, notes, err := fillTo(margin, c.limit, ops(&v))
+			if (err == nil) != (c.wantErr == "") || (err != nil && !strings.Contains(err.Error(), c.wantErr)) {
+				t.Fatalf("err %v, want %q", err, c.wantErr)
+			}
+			if v.free < c.ends[0] || v.free > c.ends[1] {
+				t.Errorf("ended with %d free, want %d to %d; the fill met: %s", v.free, c.ends[0], c.ends[1], fillNotes(notes))
+			}
+			if len(notes) != c.notes {
+				t.Errorf("%d notes, want %d: %s", len(notes), c.notes, fillNotes(notes))
+			}
+			if c.wantErr == "" && v.syncs == 0 {
+				t.Errorf("the fill ended without a sync")
+			}
+		})
+	}
+}
