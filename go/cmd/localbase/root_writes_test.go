@@ -8,7 +8,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Every settings writer: a planted link fails that write with the clear error and
@@ -35,7 +35,7 @@ func TestSettingsWritersRefuseAPlantedLink(t *testing.T) {
 			path := filepath.Join(root, c.rel)
 			os.MkdirAll(filepath.Dir(path), 0o700)
 			os.Symlink(target, path)
-			var unsafe *obs.UnsafeFileError
+			var unsafe *safefile.UnsafeFileError
 			if err := c.write(root); !errors.As(err, &unsafe) {
 				t.Errorf("want a refusal: %v", err)
 			}

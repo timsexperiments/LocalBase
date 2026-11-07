@@ -33,6 +33,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
@@ -240,7 +241,7 @@ func serve(c *cli.Ctx) (any, error) {
 	obs.ClearStartRefusal(r.Dir)
 	if os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
 		if err := obs.BoundServiceStderr(r.Dir); err != nil { // #357: launchd never rotates the capture
-			var unsafe *obs.UnsafeFileError
+			var unsafe *safefile.UnsafeFileError
 			if errors.As(err, &unsafe) {
 				return nil, err
 			}
