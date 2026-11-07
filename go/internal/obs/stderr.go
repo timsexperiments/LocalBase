@@ -3,6 +3,8 @@ package obs
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // The managed macOS gateway's stderr goes to one private, size-bounded file
@@ -19,7 +21,7 @@ func stderrPaths(rootDir string) (string, string) {
 // .1 archive and truncates the active file (launchd appends from zero).
 func BoundServiceStderr(rootDir string) error {
 	active, archive := stderrPaths(rootDir)
-	f, err := OpenOwnedRegular(active, os.O_RDWR)
+	f, err := safefile.OpenOwnedRegular(active, os.O_RDWR)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
