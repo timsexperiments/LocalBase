@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // launchd opens the stderr path itself, so preparing it must not create or touch
@@ -20,7 +20,7 @@ func TestPrepareStderrRefusesALink(t *testing.T) {
 	os.Symlink(target, filepath.Join(logs, "service-stderr.log"))
 	d := Definition{Metadata: Metadata{Manager: "launchd", DefinitionPath: filepath.Join(t.TempDir(), "unit.plist")}, Contents: "x"}
 	err := d.write(root)
-	var unsafe *obs.UnsafeFileError
+	var unsafe *safefile.UnsafeFileError
 	if !errors.As(err, &unsafe) {
 		t.Fatalf("want a refusal: %v", err)
 	}
