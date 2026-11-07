@@ -66,13 +66,6 @@ func FuzzMultipart(f *testing.F) {
 	})
 }
 
-func FuzzRequestModel(f *testing.F) {
-	gatewaytest.MultipartSeeds(f)
-	f.Fuzz(func(t *testing.T, boundary string, body []byte) {
-		_ = requestModel("multipart/form-data; boundary="+boundary, body)
-	})
-}
-
 func FuzzImageChecks(f *testing.F) {
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC")
 	f.Add(png)

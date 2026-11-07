@@ -12,6 +12,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 )
 
 // setFor sets a package limit for one test.
@@ -122,7 +123,7 @@ func TestAnInAppCallOverTheLimitIsRefused(t *testing.T) {
 		!strings.Contains(string(got.Body), "The response is larger than 64 bytes, more than an in-app call can hold.") {
 		t.Errorf("a response over the limit: %d %s", got.Status, got.Body)
 	}
-	callBodyLimit = MaxResult
+	callBodyLimit = runs.MaxResult
 	if got := s.Call(context.Background(), p, "GET", "/v1/models", "", nil); got.Status != 200 {
 		t.Errorf("a response under it: %d %s", got.Status, got.Body)
 	}

@@ -11,7 +11,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
-// The runs tests run against a stub (runs_harness_test.go). These, with runs_test.go's tests that
+// The runs tests run against a stub (runs/harness_test.go). These, with runs_test.go's tests that
 // go through a whole gateway (create and stream, resume, cancel, results, restart), keep the real
 // relay and the fake backend in the loop, through HTTP only, so the stub can't drift from what the
 // real routes send unnoticed.

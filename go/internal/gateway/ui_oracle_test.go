@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 )
 
 // oldAllowedUIRoute is allowedUIRoute as it was written by hand, before the route table (wave 2,
@@ -55,7 +57,7 @@ func oldAllowedUIRoute(method, p string) bool {
 	}
 	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
 		if target, ok := strings.CutPrefix(rest, "v1/"); ok {
-			_, known := Targets["/v1/"+target]
+			_, known := runs.Targets["/v1/"+target]
 			return known && method == "POST"
 		}
 		id, action, _ := strings.Cut(rest, "/")
@@ -102,7 +104,7 @@ func TestTheUIAllowListIsTheOracle(t *testing.T) {
 	for _, p := range oraclePaths(t) {
 		base[p] = true
 	}
-	for target := range Targets {
+	for target := range runs.Targets {
 		base["/_localbase/runs"+target] = true
 	}
 	for _, p := range []string{"/_localbase/voices/", "/_localbase/models/", "/_localbase/runs/", "/v1/videos/", "/_localbase/runs/v1/", "/_localbase/runs/v1/nope"} {
