@@ -3,8 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ["go/**"]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["go/**"]
 
 permissions:
   contents: read
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   validate-macos:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-15
     timeout-minutes: 20
 
@@ -41,6 +45,7 @@ jobs:
         run: bun run check
 
   validate:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -67,6 +72,7 @@ jobs:
         run: bun run check
 
   runtime-smoke-linux:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
