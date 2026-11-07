@@ -198,7 +198,7 @@ func fromRejectionDrain() bool {
 	frames := goruntime.CallersFrames(pcs[:goruntime.Callers(2, pcs)])
 	for {
 		f, more := frames.Next()
-		if strings.HasSuffix(f.Function, "gateway.Error") {
+		if strings.HasSuffix(f.Function, "httpx.Error") {
 			return true
 		}
 		if !more {

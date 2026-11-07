@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
@@ -33,7 +34,7 @@ func TestMemoryRefusalWords(t *testing.T) {
 		{"pressure, nothing loaded", refusal("memory-pressure", 0), "This computer is under memory pressure, so this model wasn't started. It needs 8.0 GiB. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."},
 		{"anything else keeps the general sentence", refusal("measurement-unavailable", held), "Insufficient available memory to start the requested runtime. Please try again shortly."},
 	} {
-		if got := MemoryRefusal(c.e, "this model"); got != c.want {
+		if got := httpx.MemoryRefusal(c.e, "this model"); got != c.want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got, c.want)
 		}
 	}
@@ -44,12 +45,12 @@ func TestAMemoryRefusalKeepsItsCodeStatusAndRetryAfter(t *testing.T) {
 	for _, e := range []*memory.AdmissionError{refusal("system-memory", memory.GiB), refusal("memory-pressure", 0), refusal("measurement-unavailable", 0)} {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		RuntimeError(rec, req, e, "m", "Inference")
+		httpx.RuntimeError(rec, req, e, "m", "Inference")
 		if rec.Code != 503 || rec.Header().Get("Retry-After") != "5" {
 			t.Errorf("%s: %d, Retry-After %q", e.Reason, rec.Code, rec.Header().Get("Retry-After"))
 		}
 		body := rec.Body.String()
-		if want := jsonEscaped(MemoryRefusal(e, "this model")); !strings.Contains(body, want) {
+		if want := jsonEscaped(httpx.MemoryRefusal(e, "this model")); !strings.Contains(body, want) {
 			t.Errorf("%s: the API doesn't send the words: %s", e.Reason, body)
 		}
 		if !strings.Contains(body, `"code":"insufficient_memory"`) || !strings.Contains(body, `"type":"api_error"`) {
@@ -163,7 +164,7 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		t.Fatalf("read only %d source files", checked)
 	}
 	// What the tests above pin must be what people read.
-	for _, text := range []string{freeMemoryHint, MemoryRefusal(refusal("system-memory", memory.GiB), "this model")} {
+	for _, text := range []string{freeMemoryHint, httpx.MemoryRefusal(refusal("system-memory", memory.GiB), "this model")} {
 		if !strings.Contains(text, "Free memory from a loaded model") {
 			t.Errorf("%q", text)
 		}
@@ -173,7 +174,7 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		t.Errorf("%q", working)
 	}
 	rec := httptest.NewRecorder()
-	RuntimeError(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"}, "m", "Inference")
+	httpx.RuntimeError(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil), &memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"}, "m", "Inference")
 	if !strings.Contains(rec.Body.String(), "Retry once another model is idle, or free memory from one.") {
 		t.Errorf("%s", rec.Body.String())
 	}
@@ -198,7 +199,7 @@ func TestTheRefusalWordsArePinnedInTheGolden(t *testing.T) {
 	e := refusal("memory-pressure", 0)
 	e.Diagnostics = nil
 	e.RequestedBytes = 0
-	if got := MemoryRefusal(e, "video generation"); !strings.Contains(string(raw), jsonEscaped(got)) {
+	if got := httpx.MemoryRefusal(e, "video generation"); !strings.Contains(string(raw), jsonEscaped(got)) {
 		t.Errorf("the code's words aren't the golden's: %s", got)
 	}
 }

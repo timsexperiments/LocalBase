@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -99,7 +100,7 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 	if f, ok := str("response_format"); ok {
 		if f != "wav" && f != "pcm" {
 			issues = append(issues, "response_format: response_format supports only 'wav' or 'pcm'")
-			param = StrPtr("response_format")
+			param = httpx.StrPtr("response_format")
 		} else {
 			req.ResponseFormat = f
 		}
@@ -134,7 +135,7 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, r, "POST")
+		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
 	body, ok := readBody(w, r)
@@ -142,21 +143,21 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !json.Valid(body) {
-		BadRequest(w, r, "Invalid JSON payload.", nil)
+		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
 		return
 	}
 	req, issues, param := validateSpeech(body)
 	if len(issues) > 0 {
-		BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
+		httpx.BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
 		return
 	}
 	if spec := s.Catalog.ByID(req.Model); spec != nil && spec.Kind == "tts" && !ttsVoiceAllowed(spec.TTSRuntime, req.Voice) {
-		BadRequest(w, r, fmt.Sprintf(`Voice "%s" is not supported by model "%s".`, req.Voice, req.Model), nil)
+		httpx.BadRequest(w, r, fmt.Sprintf(`Voice "%s" is not supported by model "%s".`, req.Voice, req.Model), nil)
 		return
 	}
 	if customVoiceRe.MatchString(req.Voice) && !s.customVoiceExists(r, req.Voice) {
-		Error(w, r, 400, "invalid_request_error", "voice_not_found",
-			"The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.", StrPtr("voice"))
+		httpx.Error(w, r, 400, "invalid_request_error", "voice_not_found",
+			"The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.", httpx.StrPtr("voice"))
 		return
 	}
 	if s.TTS == nil {
@@ -169,16 +170,16 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		notConfigured(w, r, "TTS")
 		return
 	case errors.Is(err, runtime.ErrModelNotFound):
-		ModelNotFound(w, r, req.Model)
+		httpx.ModelNotFound(w, r, req.Model)
 		return
 	}
-	RunHooksFrom(r.Context()).Queue()
+	httpx.RunHooksFrom(r.Context()).Queue()
 	lease, err := s.TTS.Acquire(r.Context(), id)
 	if err != nil {
-		RuntimeError(w, r, err, id, "TTS")
+		httpx.RuntimeError(w, r, err, id, "TTS")
 		return
 	}
-	RunHooksFrom(r.Context()).Admit()
+	httpx.RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
 	tel := &inference{s: s, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
@@ -193,12 +194,12 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		case lease.Interrupted():
 			memoryInterrupted(w, r, tel)
 		case errors.As(err, &voice):
-			Error(w, r, 400, "invalid_request_error", "voice_not_supported", voice.Error(), StrPtr("voice"))
+			httpx.Error(w, r, 400, "invalid_request_error", "voice_not_supported", voice.Error(), httpx.StrPtr("voice"))
 			tel.finish("error", 400, "")
 		case errors.Is(err, errSpeechBackendGone):
 			backendGone(w, r, tel, "TTS")
 		case errors.Is(err, errSpeechBackendBusy):
-			ServiceUnavailable(w, r, "TTS")
+			httpx.ServiceUnavailable(w, r, "TTS")
 			tel.finish("error", 503, "")
 		default:
 			upstreamFailure(w, r, err.Error())
@@ -411,7 +412,7 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 			w.WriteHeader(499)
 			return nil, false
 		}
-		BadRequest(w, r, "Invalid JSON payload.", nil)
+		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
 	if len(body) > maxRequestBytes {

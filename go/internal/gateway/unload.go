@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -18,11 +19,11 @@ var unloadWait = 30 * time.Second
 // runs included) are in flight.
 func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, r, "POST")
+		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
 	if p := s.principal(r); !s.NoAuth && !p.Can("models:manage") {
-		Forbidden(w, r)
+		httpx.Forbidden(w, r)
 		return
 	}
 	wait := unloadWait
@@ -31,7 +32,7 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	case "false":
 		wait = 0
 	default:
-		BadRequest(w, r, "wait must be true or false.", StrPtr("wait"))
+		httpx.BadRequest(w, r, "wait must be true or false.", httpx.StrPtr("wait"))
 		return
 	}
 	name, unload := s.loadedRuntime(id)
@@ -39,15 +40,15 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		if s.Catalog.ByID(id) == nil {
 			t, err := s.importedTask(r.Context(), id)
 			if err != nil {
-				ServiceUnavailable(w, r, "LLM")
+				httpx.ServiceUnavailable(w, r, "LLM")
 				return
 			}
 			if t == "" {
-				ModelNotFound(w, r, id)
+				httpx.ModelNotFound(w, r, id)
 				return
 			}
 		}
-		Error(w, r, 404, "invalid_request_error", "model_not_loaded", "Model '"+id+"' is not loaded.", StrPtr("model"))
+		httpx.Error(w, r, 404, "invalid_request_error", "model_not_loaded", "Model '"+id+"' is not loaded.", httpx.StrPtr("model"))
 		return
 	}
 	started := time.Now()
@@ -55,7 +56,7 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	var busy *runtime.BusyError
 	switch {
 	case errors.Is(err, runtime.ErrNotLoaded):
-		Error(w, r, 404, "invalid_request_error", "model_not_loaded", "Model '"+id+"' is not loaded.", StrPtr("model"))
+		httpx.Error(w, r, 404, "invalid_request_error", "model_not_loaded", "Model '"+id+"' is not loaded.", httpx.StrPtr("model"))
 	case errors.As(err, &busy):
 		msg := "Model '" + id + "' is busy: " + strconv.Itoa(busy.InFlight) + " request(s) in flight."
 		if wait > 0 {
@@ -63,12 +64,12 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		} else {
 			msg += " Try again when they finish, or unload with waiting."
 		}
-		JSON(w, 409, map[string]any{"error": map[string]any{"message": msg, "type": "invalid_request_error",
+		httpx.JSON(w, 409, map[string]any{"error": map[string]any{"message": msg, "type": "invalid_request_error",
 			"param": nil, "code": "model_busy", "in_flight": busy.InFlight}})
 	case err != nil:
-		ServiceUnavailable(w, r, "Model unload")
+		httpx.ServiceUnavailable(w, r, "Model unload")
 	default:
-		JSON(w, 200, map[string]any{"id": id, "object": "localbase.model.unload", "unloaded": true, "runtime": name,
+		httpx.JSON(w, 200, map[string]any{"id": id, "object": "localbase.model.unload", "unloaded": true, "runtime": name,
 			"memoryFreedBytes": freed, "drainedMs": time.Since(started).Milliseconds()})
 	}
 }

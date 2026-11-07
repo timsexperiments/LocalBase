@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // Review 02, M3: a run refused before the queue is visible for a moment, and a DELETE in that moment
@@ -97,7 +99,7 @@ func TestTheActiveRunLimitComesBeforeTheBody(t *testing.T) {
 	if rec.Code != 429 || !strings.Contains(rec.Body.String(), "too_many_runs") {
 		t.Errorf("over the active limit: %d %s", rec.Code, rec.Body)
 	}
-	if limit := int(DefaultLimits.RefusedDrainBytes) + 1; body.read > limit {
+	if limit := int(httpx.DefaultLimits.RefusedDrainBytes) + 1; body.read > limit {
 		t.Errorf("read %d bytes of a body it was going to refuse; a refusal drains at most %d", body.read, limit)
 	}
 }

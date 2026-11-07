@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
@@ -79,40 +80,6 @@ const (
 	runCancelled   = "cancelled"
 	runInterrupted = "interrupted"
 )
-
-// RunHooks tell a run how its inner request progresses: queue() before
-// admission (a queued run holds no memory admission), admit() once
-// admitted, finish() with the inference's terminal source. A nil *RunHooks
-// (every ordinary request) does nothing.
-type RunHooks struct {
-	Queued, Admitted func()
-	Finished         func(source string)
-}
-
-type RunHooksKey struct{}
-
-func RunHooksFrom(ctx context.Context) *RunHooks {
-	h, _ := ctx.Value(RunHooksKey{}).(*RunHooks)
-	return h
-}
-
-func (h *RunHooks) Queue() {
-	if h != nil && h.Queued != nil {
-		h.Queued()
-	}
-}
-
-func (h *RunHooks) Admit() {
-	if h != nil && h.Admitted != nil {
-		h.Admitted()
-	}
-}
-
-func (h *RunHooks) Finish(source string) {
-	if h != nil && h.Finished != nil {
-		h.Finished(source)
-	}
-}
 
 // runOutput is a chat run's result so far, accumulated from its chunks.
 type runOutput struct {
@@ -295,7 +262,7 @@ func (m *runManager) dismiss(r *run) {
 // tooManyRuns is the refusal over runActivePerOwner or runActiveTotal.
 func tooManyRuns(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Retry-After", "5")
-	Error(w, req, 429, "rate_limit_error", "too_many_runs",
+	httpx.Error(w, req, 429, "rate_limit_error", "too_many_runs",
 		fmt.Sprintf("Too many generations are running (at most %d per account). Wait for one to finish or stop one.", runActivePerOwner), nil)
 }
 
@@ -719,7 +686,7 @@ func (s *Server) runOwner(r *http.Request) string {
 	if s.NoAuth {
 		return "local"
 	}
-	return PrincipalFrom(r.Context()).OwnerID()
+	return httpx.PrincipalFrom(r.Context()).OwnerID()
 }
 
 // create starts a run of target with the request's body. A request the /v1
@@ -728,11 +695,11 @@ func (s *Server) runOwner(r *http.Request) string {
 func (m *runManager) create(w http.ResponseWriter, req *http.Request, target string) {
 	label, ok := runTargets[target]
 	if !ok {
-		RouteDisabled(w, req)
+		httpx.RouteDisabled(w, req)
 		return
 	}
 	if req.Method != http.MethodPost {
-		MethodNotAllowed(w, req, "POST")
+		httpx.MethodNotAllowed(w, req, "POST")
 		return
 	}
 	owner := m.s.runOwner(req)
@@ -765,7 +732,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	if m.closing {
 		m.mu.Unlock()
 		m.held.Add(-size)
-		ServiceUnavailable(w, req, "Gateway")
+		httpx.ServiceUnavailable(w, req, "Gateway")
 		return
 	}
 	if m.overActive(owner) {
@@ -792,7 +759,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		m.log(r, "run.failed")
 		w.Header().Set("Location", "/_localbase/runs/"+r.ID)
 		w.Header().Set("Cache-Control", "no-store")
-		JSON(w, 202, v)
+		httpx.JSON(w, 202, v)
 		return
 	}
 	r.body = size
@@ -816,7 +783,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	var readyOnce sync.Once
 	signal := func() { readyOnce.Do(func() { close(ready) }) }
 	rw := &runWriter{r: r, header: http.Header{}}
-	hooks := &RunHooks{
+	hooks := &httpx.RunHooks{
 		Queued: func() {
 			r.mu.Lock()
 			r.queuedSeen = true
@@ -841,9 +808,9 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 			r.mu.Unlock()
 		},
 	}
-	ctx = context.WithValue(ctx, RunHooksKey{}, hooks)
+	ctx = context.WithValue(ctx, httpx.RunHooksKey{}, hooks)
 	// The inner request acts as the caller: the /v1 guard checks its scope.
-	if p, ok := req.Context().Value(PrincipalKey{}).(*auth.Principal); ok {
+	if p, ok := req.Context().Value(httpx.PrincipalKey{}).(*auth.Principal); ok {
 		ctx = context.WithValue(ctx, browserPrincipalKey{}, p)
 	}
 	inner, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
@@ -888,7 +855,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	r.mu.Unlock()
 	w.Header().Set("Location", "/_localbase/runs/"+r.ID)
 	w.Header().Set("Cache-Control", "no-store")
-	JSON(w, 202, v)
+	httpx.JSON(w, 202, v)
 }
 
 // readRunBody reads the /v1 body. Chat runs always stream upstream so that
@@ -902,7 +869,7 @@ func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byt
 		}
 		b, err := io.ReadAll(io.LimitReader(req.Body, runMaxBody+1))
 		if err != nil {
-			BadRequest(w, req, "The request body could not be read.", nil)
+			httpx.BadRequest(w, req, "The request body could not be read.", nil)
 			return nil, false
 		}
 		if len(b) > runMaxBody {
@@ -1097,14 +1064,14 @@ func (m *runManager) lookup(req *http.Request, id string) *run {
 }
 
 func runNotFound(w http.ResponseWriter, req *http.Request) {
-	Error(w, req, 404, "invalid_request_error", "run_not_found", "No such run.", nil)
+	httpx.Error(w, req, 404, "invalid_request_error", "run_not_found", "No such run.", nil)
 }
 
 // runsList is GET /_localbase/runs: the caller's runs for the
 // "Generating…" indicator, newest first, without output or request text.
 func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
-		MethodNotAllowed(w, req, "GET")
+		httpx.MethodNotAllowed(w, req, "GET")
 		return
 	}
 	m := s.runs
@@ -1131,7 +1098,7 @@ func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
 		data = append(data, item)
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	JSON(w, 200, map[string]any{"object": "list", "data": data})
+	httpx.JSON(w, 200, map[string]any{"object": "list", "data": data})
 }
 
 // runRoute serves /_localbase/runs/{rest...}: v1/<route> creates; {id},
@@ -1158,7 +1125,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 			v := r.view(true)
 			r.mu.Unlock()
 			w.Header().Set("Cache-Control", "no-store")
-			JSON(w, 200, v)
+			httpx.JSON(w, 200, v)
 		case http.MethodDelete:
 			m.stop(r, runCancelled, "stopped")
 			select {
@@ -1168,13 +1135,13 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 			case <-time.After(m.stopWait):
 			}
 			m.dismiss(r)
-			JSON(w, 200, map[string]any{"id": r.ID, "object": "localbase.run.deleted", "deleted": true})
+			httpx.JSON(w, 200, map[string]any{"id": r.ID, "object": "localbase.run.deleted", "deleted": true})
 		default:
-			MethodNotAllowed(w, req, "GET, DELETE")
+			httpx.MethodNotAllowed(w, req, "GET, DELETE")
 		}
 	case "cancel":
 		if req.Method != http.MethodPost {
-			MethodNotAllowed(w, req, "POST")
+			httpx.MethodNotAllowed(w, req, "POST")
 			return
 		}
 		m.stop(r, runCancelled, "stopped")
@@ -1185,17 +1152,17 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		v := r.view(true)
 		r.mu.Unlock()
-		JSON(w, 200, v)
+		httpx.JSON(w, 200, v)
 	case "result":
 		if req.Method != http.MethodGet {
-			MethodNotAllowed(w, req, "GET")
+			httpx.MethodNotAllowed(w, req, "GET")
 			return
 		}
 		r.mu.Lock()
 		body, ctype := r.result, r.resultType
 		r.mu.Unlock()
 		if body == nil {
-			Error(w, req, 409, "invalid_request_error", "run_result_unavailable",
+			httpx.Error(w, req, 409, "invalid_request_error", "run_result_unavailable",
 				"This run has no result to fetch: it has not completed, or it is not a media run.", nil)
 			return
 		}
@@ -1205,7 +1172,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		w.Write(body)
 	case "events":
 		if req.Method != http.MethodGet {
-			MethodNotAllowed(w, req, "GET")
+			httpx.MethodNotAllowed(w, req, "GET")
 			return
 		}
 		m.events(w, req, r)
@@ -1244,7 +1211,7 @@ func (r *run) eventsAfter(after int) (pending []runEvent, notify chan struct{}, 
 func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
 	after, ok := eventCursor(req)
 	if !ok {
-		Error(w, req, 400, "invalid_request_error", "invalid_event_cursor",
+		httpx.Error(w, req, 400, "invalid_request_error", "invalid_event_cursor",
 			"The event cursor must be a whole number, 0 or more.", nil)
 		return
 	}

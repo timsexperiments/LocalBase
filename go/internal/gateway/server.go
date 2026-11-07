@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -65,7 +65,7 @@ type Server struct {
 	// Otel exports traces (nil: disabled).
 	Otel *otlp.Runtime
 	// Limits bounds what a request can cost (zero values take the defaults).
-	Limits Limits
+	Limits httpx.Limits
 	// Usage keeps hourly totals (DESIGN §32; nil: not recorded, and the route is disabled).
 	Usage *usage.Recorder
 	// Updates is the optional daily check for a newer version (DESIGN §33; nil: the route is disabled).
@@ -233,16 +233,6 @@ func (s *Server) anonymousSummary(held int) {
 		"refused_total", s.anonRefused.Load(), "admin_refused_total", s.anonAdminRefused.Load())
 }
 
-type PrincipalKey struct{}
-
-// PrincipalFrom returns the request's resolved principal.
-func PrincipalFrom(ctx context.Context) *auth.Principal {
-	if p, ok := ctx.Value(PrincipalKey{}).(*auth.Principal); ok {
-		return p
-	}
-	return auth.Anonymous
-}
-
 // guard enforces a route permission. An empty permission admits any
 // authenticated principal. API routes authenticate with API keys;
 // browser sessions arrive with the auth milestone.
@@ -253,192 +243,28 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			return
 		}
 		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
-			SetAuth(r, bp)
+			httpx.SetAuth(r, bp)
 			if permission != "" && !bp.Can(permission) {
-				Forbidden(w, r)
+				httpx.Forbidden(w, r)
 				return
 			}
-			next(w, r.WithContext(context.WithValue(r.Context(), PrincipalKey{}, bp)))
+			next(w, r.WithContext(context.WithValue(r.Context(), httpx.PrincipalKey{}, bp)))
 			return
 		}
 		p := s.resolveCredential(r)
 		if !p.Authenticated() {
-			Unauthorized(w, r)
+			httpx.Unauthorized(w, r)
 			return
 		}
 		if permission != "" && !p.Can(permission) {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
-		next(w, r.WithContext(context.WithValue(r.Context(), PrincipalKey{}, p)))
+		next(w, r.WithContext(context.WithValue(r.Context(), httpx.PrincipalKey{}, p)))
 	}
 }
 
 // --- request middleware -------------------------------------------------------
-
-type Recorder struct {
-	http.ResponseWriter
-	Status int
-	Auth   *auth.Principal
-	Body   *bodyGuard // nil: no body, or no connection
-	// TimeoutAnswer: the 408 is being written, past discarding.
-	TimeoutAnswer bool
-	// errBody is the start of an error response, read only for the error
-	// envelope's type and code (never its message).
-	errBody []byte
-	// Usage is what the handler knew, for the hourly totals (DESIGN §32).
-	Usage UsageNote
-	// writes sets the connection's write deadline, and writeStall is how far off. A recorder made
-	// for something inside the gateway has neither.
-	writes     *http.ResponseController
-	writeStall time.Duration
-	// SendFailed says the client didn't get the whole answer.
-	SendFailed bool
-}
-
-// FinalStatus is what the request came to. A status is sent before the answer, so a client that
-// went away or stopped reading partway through an answer is a 499, whatever was sent first. An error
-// stays the error it was.
-func (r *Recorder) FinalStatus() int {
-	status := r.Status
-	if status == 0 {
-		status = 200
-	}
-	if r.SendFailed && status < 400 {
-		return 499
-	}
-	return status
-}
-
-// SendsWithin gives each piece of the answer this long to leave. net/http clears the deadline when
-// the answer has gone, so it doesn't reach the next one on the connection.
-func (r *Recorder) SendsWithin(stall time.Duration) {
-	r.writes, r.writeStall = http.NewResponseController(r.ResponseWriter), stall
-}
-
-// ArmWrite starts the deadline for what is about to be sent. Silence between writes costs nothing.
-func (r *Recorder) ArmWrite() {
-	if r.writes != nil {
-		_ = r.writes.SetWriteDeadline(time.Now().Add(r.writeStall)) // Not every connection has one, and nothing depends on it.
-	}
-}
-
-// send writes an answer in pieces, each with its own deadline, so that a client that has stopped
-// reading is let go and a slow one isn't.
-func (r *Recorder) send(b []byte) (int, error) {
-	whole := b
-	if r.writes == nil {
-		return r.ResponseWriter.Write(b)
-	}
-	sent := 0
-	defer func() { r.SendFailed = r.SendFailed || sent < len(whole) }()
-	for {
-		piece := b[:min(len(b), WritePiece)]
-		r.ArmWrite()
-		n, err := r.ResponseWriter.Write(piece)
-		sent += n
-		b = b[len(piece):]
-		if err != nil || len(b) == 0 {
-			return sent, err
-		}
-	}
-}
-
-const errSniffBytes = 8 << 10
-
-// ErrorKind is the error envelope's type and code ("" when the response is
-// not one).
-func (r *Recorder) ErrorKind() (typ, code string) {
-	var env struct {
-		Error *struct {
-			Type any `json:"type"`
-			Code any `json:"code"`
-		} `json:"error"`
-	}
-	if len(r.errBody) == 0 || json.Unmarshal(r.errBody, &env) != nil || env.Error == nil {
-		return "", ""
-	}
-	if t, ok := env.Error.Type.(string); ok {
-		typ = t
-	}
-	switch c := env.Error.Code.(type) {
-	case string:
-		code = c
-	case float64:
-		code = strconv.FormatFloat(c, 'f', -1, 64)
-	}
-	return typ, code
-}
-
-// Discarding reports a request whose body deadline passed before any answer
-// started. Whatever the handler makes of the failed read, the answer is a 408.
-func (r *Recorder) Discarding() bool {
-	return r.Status == 0 && !r.TimeoutAnswer && r.Body != nil && r.Body.expired.Load()
-}
-
-func (r *Recorder) WriteHeader(code int) {
-	if r.Discarding() {
-		return
-	}
-	if r.Status == 0 {
-		r.Status = code
-		// A refusal does not wait for a body it has not read: the server would
-		// otherwise try to read it before sending the answer.
-		if code >= 400 && r.Body != nil && !r.Body.done.Load() {
-			r.Header().Set("Connection", "close")
-		}
-	}
-	r.ResponseWriter.WriteHeader(code)
-}
-
-func (r *Recorder) Write(b []byte) (int, error) {
-	if r.Discarding() {
-		return len(b), nil
-	}
-	if r.Status == 0 {
-		r.Status = 200
-	}
-	if r.Status >= 400 && len(r.errBody) < errSniffBytes {
-		r.errBody = append(r.errBody, b[:min(len(b), errSniffBytes-len(r.errBody))]...)
-	}
-	return r.send(b)
-}
-
-func (r *Recorder) Flush() { _ = r.FlushError() }
-
-// FlushError sends what is buffered. A flush that doesn't get out before the write deadline is a
-// failed send, as a short write is: net/http closes the connection after it, and the handler may see
-// the client's cancel before it writes again, so nothing else would record it.
-func (r *Recorder) FlushError() error {
-	if r.Discarding() {
-		return nil
-	}
-	if r.writes == nil {
-		if f, ok := r.ResponseWriter.(http.Flusher); ok {
-			f.Flush()
-		}
-		return nil
-	}
-	r.ArmWrite()
-	err := r.writes.Flush()
-	if err != nil && !errors.Is(err, http.ErrNotSupported) {
-		r.SendFailed = true
-	}
-	return err
-}
-
-func (r *Recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
-
-type RecKey struct{}
-
-func SetAuth(r *http.Request, p *auth.Principal) {
-	if rec, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
-		rec.Auth = p
-		if p.Authenticated() {
-			rec.Body.Authenticated()
-		}
-	}
-}
 
 func newRequestID() string {
 	b := make([]byte, 16)
@@ -469,9 +295,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
-	rec := &Recorder{ResponseWriter: w}
+	rec := &httpx.Recorder{ResponseWriter: w}
 	rec.SendsWithin(s.Limits.WriteStall)
-	if rec.Body = GuardBody(s.Limits, rec, r); rec.Body != nil {
+	if rec.Body = httpx.GuardBody(s.Limits, rec, r); rec.Body != nil {
 		r.Body = rec.Body
 		if s.NoAuth {
 			rec.Body.Authenticated()
@@ -492,7 +318,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.family", family)
 		span.SetAttr("localbase.route.segments", segments)
 	}
-	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), RecKey{}, rec))
+	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), httpx.RecKey{}, rec))
 	startLabel := label
 	defer func() {
 		rec.ArmWrite() // what's still buffered leaves when this returns
@@ -509,7 +335,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
 			err, _ := v.(error)
 			if rec.Status == 0 && !errors.Is(err, http.ErrAbortHandler) {
-				ServiceUnavailable(rec, r, "Gateway")
+				httpx.ServiceUnavailable(rec, r, "Gateway")
 			} else {
 				abort = true
 			}
@@ -581,7 +407,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	if s.NoAuth {
 		if why := noAuthRefusal(r); why != "" {
-			Error(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
+			httpx.Error(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
 			return
 		}
 	}
@@ -590,20 +416,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// is refused before any handler, as TS does.
 	if r.Method == http.MethodOptions && !IsUIAccessPath(r.URL.Path) {
 		r.Pattern = probe.Pattern
-		Forbidden(rec, r)
+		httpx.Forbidden(rec, r)
 		return
 	}
 	s.mux.ServeHTTP(rec, r)
 	if rec.Discarding() {
 		rec.TimeoutAnswer = true
-		RequestTimedOut(rec)
+		httpx.RequestTimedOut(rec)
 	}
 }
 
 // authTelemetry describes who a request acted as, without credentials (TS
 // GatewayRequestAuth.telemetry): disabled for public routes and no-auth
 // gateways, invalid when a credential was presented but not accepted.
-func (s *Server) authTelemetry(r *http.Request, rec *Recorder) []any {
+func (s *Server) authTelemetry(r *http.Request, rec *httpx.Recorder) []any {
 	p := rec.Auth
 	switch {
 	case auth.LookupFailed(r.Context()):
@@ -627,11 +453,11 @@ func (s *Server) authTelemetry(r *http.Request, rec *Recorder) []any {
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 	if !s.NoAuth {
 		if p := s.resolveCredential(r); !p.Authenticated() {
-			Unauthorized(w, r)
+			httpx.Unauthorized(w, r)
 			return
 		}
 	}
-	RouteDisabled(w, r)
+	httpx.RouteDisabled(w, r)
 }
 
 // --- health ------------------------------------------------------------------
@@ -668,7 +494,7 @@ func (s *Server) modalityHealth() map[string]any {
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		MethodNotAllowed(w, r, "GET, HEAD")
+		httpx.MethodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
 	body := map[string]any{"status": "ok", "version": version.Version,
@@ -682,12 +508,12 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		return
 	}
-	JSON(w, status, body)
+	httpx.JSON(w, status, body)
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		MethodNotAllowed(w, r, "GET, HEAD")
+		httpx.MethodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
 	admitting := []string{}
@@ -711,7 +537,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		return
 	}
-	JSON(w, status, body)
+	httpx.JSON(w, status, body)
 }
 
 // Ready reports whether some modality admits requests and the gateway is
@@ -739,7 +565,7 @@ func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := s.LLM.DefaultModel(false)
-	JSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
+	httpx.JSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
 		"defaults": s.LLM.Config().DefaultLLMList()})
 }
 
@@ -755,5 +581,5 @@ func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 			out["logOutages"] = outages // Only then, so the usual answer doesn't change.
 		}
 	}
-	JSON(w, 200, out)
+	httpx.JSON(w, 200, out)
 }

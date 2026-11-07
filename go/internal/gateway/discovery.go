@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/hub"
 )
 
@@ -112,37 +113,37 @@ func parseDiscovery(b []byte) (*discoveryRequest, bool) {
 var upstreamHubRe = regexp.MustCompile(`Could not reach|answered \d|not JSON|does not understand`)
 
 func discoveryFailure(w http.ResponseWriter, r *http.Request, status int, code, message string) {
-	Error(w, r, status, "invalid_request_error", code, message, nil)
+	httpx.Error(w, r, status, "invalid_request_error", code, message, nil)
 }
 
 func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		Unauthorized(w, r)
+		httpx.Unauthorized(w, r)
 		return
 	}
 	if r.Method != http.MethodPost {
-		MethodNotAllowed(w, r, "POST")
+		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
 	if !p.Can("models:manage") {
-		Forbidden(w, r)
+		httpx.Forbidden(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	body, err := io.ReadAll(io.LimitReader(r.Body, 2049))
 	if r.ContentLength > 2048 || len(body) > 2048 {
 		w.Header().Set("Connection", "close")
-		Error(w, r, 413, "invalid_request_error", "validation_failed", "Model discovery body exceeds the 2048 byte limit.", nil)
+		httpx.Error(w, r, 413, "invalid_request_error", "validation_failed", "Model discovery body exceeds the 2048 byte limit.", nil)
 		return
 	}
 	if err != nil || !json.Valid(body) {
-		BadRequest(w, r, "Invalid model discovery payload.", nil)
+		httpx.BadRequest(w, r, "Invalid model discovery payload.", nil)
 		return
 	}
 	req, ok := parseDiscovery(body)
 	if !ok {
-		BadRequest(w, r, "Invalid model discovery payload.", nil)
+		httpx.BadRequest(w, r, "Invalid model discovery payload.", nil)
 		return
 	}
 	cfg := s.LLM.Config()
@@ -169,7 +170,7 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 			discoveryFailure(w, r, status, code, he.Message)
 		default:
 			s.Log.Error("Model discovery failed.", "event", "models.discovery-failed", "error", err.Error())
-			ServiceUnavailable(w, r, "Model discovery")
+			httpx.ServiceUnavailable(w, r, "Model discovery")
 		}
 	}
 	switch req.Action {
@@ -179,14 +180,14 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 			fail(err)
 			return
 		}
-		JSON(w, 200, map[string]any{"query": req.Query, "kind": req.Kind, "cached": cached, "hits": hits})
+		httpx.JSON(w, 200, map[string]any{"query": req.Query, "kind": req.Kind, "cached": cached, "hits": hits})
 	case "preview":
 		preview, err := hub.PreviewRepository(ctx, client, s.Catalog, req.Repo, s.MemoryGB)
 		if err != nil {
 			fail(err)
 			return
 		}
-		JSON(w, 200, map[string]any{"repo": req.Repo, "url": hub.RepoURL(req.Repo), "preview": preview})
+		httpx.JSON(w, 200, map[string]any{"repo": req.Repo, "url": hub.RepoURL(req.Repo), "preview": preview})
 	case "install-recipe":
 		model := s.Catalog.ByID(req.ModelID)
 		if model == nil {
@@ -197,7 +198,7 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 			discoveryFailure(w, r, 400, "no_recipe", `The catalog feed has no install recipe for "`+req.ModelID+`".`)
 			return
 		}
-		JSON(w, 200, map[string]any{"modelId": model.ModelID, "displayName": model.Name(), "kind": model.Kind, "replaced": false,
+		httpx.JSON(w, 200, map[string]any{"modelId": model.ModelID, "displayName": model.Name(), "kind": model.Kind, "replaced": false,
 			"operation": s.discoveryInstall(model.ModelID)})
 	default: // add
 		added, err := hub.AddFromHub(ctx, client, s.Catalog, req.Repo, req.Selector, req.ModelID)
@@ -217,7 +218,7 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 		for _, f := range added.Entry.Weights {
 			files = append(files, map[string]any{"path": f.Path, "sizeBytes": f.Size, "sha256": f.SHA256})
 		}
-		JSON(w, 200, map[string]any{"modelId": added.Model.ModelID, "displayName": added.Model.Name(), "kind": added.Entry.Kind,
+		httpx.JSON(w, 200, map[string]any{"modelId": added.Model.ModelID, "displayName": added.Model.Name(), "kind": added.Entry.Kind,
 			"repo": added.Entry.Repo, "revision": added.Entry.Revision, "files": files, "replaced": added.Replaced, "operation": operation})
 	}
 }

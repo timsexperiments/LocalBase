@@ -10,6 +10,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -232,12 +233,12 @@ func (s *Server) principalForListing(r *http.Request) *auth.Principal {
 	if s.NoAuth {
 		return nil
 	}
-	return PrincipalFrom(r.Context())
+	return httpx.PrincipalFrom(r.Context())
 }
 
 func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		MethodNotAllowed(w, r, "GET")
+		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
 	// A client's list stays a list: what was missing is in a header and the log, not an outage.
@@ -246,7 +247,7 @@ func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
 	if data == nil {
 		data = []Model{}
 	}
-	JSON(w, 200, map[string]any{"object": "list", "data": data})
+	httpx.JSON(w, 200, map[string]any{"object": "list", "data": data})
 }
 
 // retrieveModel serves GET /v1/models/{model}: percent-decoded, the rest of
@@ -255,11 +256,11 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimPrefix(r.URL.EscapedPath(), "/v1/models/")
 	id, err := url.PathUnescape(raw)
 	if raw == "" || err != nil {
-		RouteDisabled(w, r)
+		httpx.RouteDisabled(w, r)
 		return
 	}
 	if r.Method != http.MethodGet {
-		MethodNotAllowed(w, r, "GET")
+		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
 	data, problems := s.ServedModels(s.principalForListing(r), id)
@@ -269,15 +270,15 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		for _, p := range problems {
 			if p.Kind == store.ReadLibrary {
 				w.Header().Set("Retry-After", "5")
-				Error(w, r, 503, "api_error", "service_unavailable",
+				httpx.Error(w, r, 503, "api_error", "service_unavailable",
 					"Could not finish "+p.Step+", so this model may exist. Try again shortly.", nil)
 				return
 			}
 		}
-		ModelNotFound(w, r, id)
+		httpx.ModelNotFound(w, r, id)
 		return
 	}
-	JSON(w, 200, data[0])
+	httpx.JSON(w, 200, data[0])
 }
 
 // capabilities resolves a model's effective capabilities (declared, detected

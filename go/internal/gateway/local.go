@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // LoginPages renders the browser pages of local sign-in (DESIGN §28). The UI
@@ -226,10 +227,10 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 		auth.Deny(w, 404)
 		return true
 	}
-	SetAuth(r, principal)
+	httpx.SetAuth(r, principal)
 	if session {
 		w.Header().Set("Cache-Control", "no-store")
-		JSON(w, 200, map[string]any{"authenticated": true, "permissions": principal.Permissions, "localSession": true})
+		httpx.JSON(w, 200, map[string]any{"authenticated": true, "permissions": principal.Permissions, "localSession": true})
 		return true
 	}
 	s.forwardAsBrowser(w, r, principal, target)
@@ -241,25 +242,25 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		Unauthorized(w, r)
+		httpx.Unauthorized(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
 		if !p.Can("sessions:read") {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		list, err := auth.ListLocalSessions(r.Context(), s.Store)
 		if err != nil {
-			ServiceUnavailable(w, r, "Local sessions")
+			httpx.ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
-		JSON(w, 200, map[string]any{"sessions": list})
+		httpx.JSON(w, 200, map[string]any{"sessions": list})
 	case http.MethodPost:
 		if !p.Can("sessions:revoke") {
-			Forbidden(w, r)
+			httpx.Forbidden(w, r)
 			return
 		}
 		var in struct {
@@ -268,7 +269,7 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1025))
 		if err != nil || len(body) > 1024 || json.Unmarshal(body, &in) != nil {
-			BadRequest(w, r, "Invalid local session payload.", nil)
+			httpx.BadRequest(w, r, "Invalid local session payload.", nil)
 			return
 		}
 		revoked := 0
@@ -282,17 +283,17 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 				revoked = 1
 			}
 		default:
-			BadRequest(w, r, "Invalid local session payload.", nil)
+			httpx.BadRequest(w, r, "Invalid local session payload.", nil)
 			return
 		}
 		if err != nil {
-			ServiceUnavailable(w, r, "Local sessions")
+			httpx.ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
 		s.Log.Info("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", p.Kind, "actor_id", p.ID,
 			"session_id", in.ID, "count", revoked)
-		JSON(w, 200, map[string]any{"revoked": revoked})
+		httpx.JSON(w, 200, map[string]any{"revoked": revoked})
 	default:
-		MethodNotAllowed(w, r, "GET, POST")
+		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }

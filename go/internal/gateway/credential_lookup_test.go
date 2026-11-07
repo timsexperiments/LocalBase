@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // When a credential can't be looked up, nothing about it is known. On every route and method, a
@@ -93,13 +94,13 @@ func TestAPermissionCheckAfterAFailedLookupIsNotARefusal(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/", nil)
 	ctx := auth.WithLookupState(r.Context())
 	auth.MarkLookupFailed(ctx)
-	Forbidden(rec, r.WithContext(ctx))
+	httpx.Forbidden(rec, r.WithContext(ctx))
 	if rec.Code != 503 || rec.Header().Get("Retry-After") == "" {
 		t.Errorf("%d, Retry-After %q", rec.Code, rec.Header().Get("Retry-After"))
 	}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodPost, "/", nil)
-	Forbidden(rec, r.WithContext(auth.WithLookupState(r.Context())))
+	httpx.Forbidden(rec, r.WithContext(auth.WithLookupState(r.Context())))
 	if rec.Code != 403 {
 		t.Errorf("a real refusal: %d", rec.Code)
 	}

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -51,7 +52,7 @@ type inference struct {
 	span *otlp.Span
 	ctx  context.Context
 	// hooks tell a detached run (§21) how the request ended.
-	hooks *RunHooks
+	hooks *httpx.RunHooks
 }
 
 var knownFinishReasons = []string{"stop", "length", "tool_calls", "content_filter", "function_call"}
@@ -106,7 +107,7 @@ func (t *inference) observe(v map[string]any) {
 // the admission facts (TS InferenceTelemetry constructor).
 func (t *inference) begin(ctx context.Context, method string) {
 	if t.hooks == nil {
-		t.hooks = RunHooksFrom(ctx)
+		t.hooks = httpx.RunHooksFrom(ctx)
 	}
 	if t.ctx != nil {
 		return
@@ -229,7 +230,7 @@ func (t *inference) noteUsage(outcome string, status int) {
 	if t.ctx == nil {
 		return
 	}
-	rec, ok := t.ctx.Value(RecKey{}).(*Recorder)
+	rec, ok := t.ctx.Value(httpx.RecKey{}).(*httpx.Recorder)
 	if !ok {
 		return
 	}
@@ -385,7 +386,7 @@ var proxyClient = &http.Client{Transport: &http.Transport{
 // with Retry-After (DESIGN §13.6, item 10), not a 502. A backend that answers
 // with something invalid is still an upstream failure.
 func backendGone(w http.ResponseWriter, r *http.Request, t *inference, service string) {
-	ServiceUnavailable(w, r, service)
+	httpx.ServiceUnavailable(w, r, service)
 	t.finish("error", 503, "")
 }
 
@@ -398,7 +399,7 @@ func relayService(kind string) string {
 }
 
 func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
-	Error(w, r, 502, "server_error", "upstream_error", message, nil)
+	httpx.Error(w, r, 502, "server_error", "upstream_error", message, nil)
 }
 
 // relay posts body to the backend and writes its response: event streams
@@ -489,7 +490,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		t.schemaValidation = outcome
 		t.schemaSkipReasons = skipReasons(obj)
 		if outcome == "failed" {
-			Error(w, r, 502, "server_error", "structured_output_validation_failed",
+			httpx.Error(w, r, 502, "server_error", "structured_output_validation_failed",
 				"The backend returned a completed response that did not match the requested JSON Schema.", nil)
 			t.finish("error", 502, "response_validation")
 			return
@@ -524,7 +525,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	if st := t.serverTiming(); st != "" {
 		w.Header().Set("Server-Timing", st)
 	}
-	JSON(w, resp.StatusCode, obj)
+	httpx.JSON(w, resp.StatusCode, obj)
 	t.finish("completed", resp.StatusCode, "")
 }
 
@@ -725,14 +726,14 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 	}
 	typ := e.Type.(string)
 	if typ == "exceed_context_size_error" {
-		Error(w, r, 400, "invalid_request_error", "context_length_exceeded", e.Message.(string), StrPtr("messages"))
+		httpx.Error(w, r, 400, "invalid_request_error", "context_length_exceeded", e.Message.(string), httpx.StrPtr("messages"))
 		return 400
 	}
 	if msg := e.Message.(string); typ == "server_error" && batchOverflowRe.MatchString(msg) {
-		Error(w, r, 400, "invalid_request_error", "context_length_exceeded", batchOverflowMessage(msg, kind), StrPtr(inputParam(kind)))
+		httpx.Error(w, r, 400, "invalid_request_error", "context_length_exceeded", batchOverflowMessage(msg, kind), httpx.StrPtr(inputParam(kind)))
 		return 400
 	}
-	JSON(w, status, map[string]any{"error": APIError{Message: e.Message.(string), Type: typ, Param: param, Code: code}})
+	httpx.JSON(w, status, map[string]any{"error": httpx.APIError{Message: e.Message.(string), Type: typ, Param: param, Code: code}})
 	return status
 }
 
@@ -741,7 +742,7 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 const upstreamInvalidStream = `data: {"error":{"message":"The upstream service returned an invalid event stream.","type":"server_error","param":null,"code":"upstream_error"}}` + "\n\n"
 
 func upstreamErrorEvent(message string) string {
-	b, _ := json.Marshal(map[string]any{"error": APIError{Message: message, Type: "server_error", Code: "upstream_error"}})
+	b, _ := json.Marshal(map[string]any{"error": httpx.APIError{Message: message, Type: "server_error", Code: "upstream_error"}})
 	return "data: " + string(b) + "\n\n"
 }
 
@@ -894,7 +895,7 @@ const memoryEmergencyEvent = `data: {"error":{"message":"Inference service is cu
 // memory turned critical: 503 with Retry-After, not a truncated response
 // (a Go difference: TS answers 502 upstream_error, DESIGN §13.6).
 func memoryInterrupted(w http.ResponseWriter, r *http.Request, t *inference) {
-	RuntimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
+	httpx.RuntimeError(w, r, runtime.ErrMemoryEmergency, "", "Inference")
 	t.finish("error", 503, "memory_emergency")
 }
 
