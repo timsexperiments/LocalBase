@@ -12,6 +12,7 @@ jobs:
   preflight:
     name: Release preflight
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -65,6 +66,7 @@ jobs:
             managed: false
             smoke: qemu
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -256,6 +258,7 @@ jobs:
     name: Package and Release Qualified Artifacts
     needs: qualify
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
       id-token: write
