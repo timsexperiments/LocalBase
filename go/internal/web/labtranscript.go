@@ -125,15 +125,18 @@ func transcriptVTT(segments []labSegment) string {
 // labTranscriptExport downloads a transcript as text or subtitles.
 func (u *UI) labTranscriptExport(w http.ResponseWriter, r *http.Request) {
 	note := u.notes.get(u.caller(r).OwnerID(), r.PathValue("id"))
-	if note == nil || note.text == "" {
+	if note == nil {
+		http.NotFound(w, r)
+		return
+	}
+	d := note.snapshot()
+	if d.text == "" {
 		http.NotFound(w, r)
 		return
 	}
 	var body, ext string
-	u.notes.collecting.Lock()
-	segments := note.segments
-	text := note.text
-	u.notes.collecting.Unlock()
+	segments := d.segments
+	text := d.text
 	switch format := r.URL.Query().Get("format"); {
 	case format == "srt" && len(segments) > 0:
 		body, ext = transcriptSRT(segments), "srt"

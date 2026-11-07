@@ -150,14 +150,18 @@ func (u *UI) startImages(w http.ResponseWriter, r *http.Request, q imageRequest)
 // with a new one.
 func (u *UI) labImageAgain(w http.ResponseWriter, r *http.Request) {
 	note := u.notes.get(u.caller(r).OwnerID(), r.PathValue("id"))
-	if note == nil || note.image == nil {
+	var d noteData
+	if note != nil {
+		d = note.snapshot()
+	}
+	if note == nil || d.image == nil {
 		u.labOutcome(w, r, map[string]any{"Error": "The settings for this picture are no longer available. Generate it again."})
 		return
 	}
-	q := *note.image
+	q := *d.image
 	q.N = 1
 	if r.PostFormValue("mode") == "same" {
-		if p := note.picture(r.PostFormValue("picture")); p != nil {
+		if p := d.picture(r.PostFormValue("picture")); p != nil {
 			q.Seed = p.Seed
 		}
 	} else {
