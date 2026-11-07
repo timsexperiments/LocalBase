@@ -9,8 +9,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -196,9 +196,9 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	if info, err := os.Lstat(file); err == nil && info.Mode().IsRegular() && root.WritableByOthers(info) {
 		return nil, refuse("Refusing to use %s: other users can change it, and restoring it decides who can sign in and what runs as you. If you trust it, run: chmod go-w '%s'", file, file)
 	}
-	in, err := obs.OpenOwnedRegular(file, os.O_RDONLY)
+	in, err := safefile.OpenOwnedRegular(file, os.O_RDONLY)
 	if err != nil {
-		var unsafe *obs.UnsafeFileError
+		var unsafe *safefile.UnsafeFileError
 		if errors.As(err, &unsafe) {
 			return nil, &Refused{err.Error()}
 		}

@@ -31,6 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -824,7 +825,7 @@ func TestBackupRefusesPlantedLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := Create(context.Background(), Options{Root: r, Output: filepath.Join(dir(t), "b"+Extension)})
-		var unsafe *obs.UnsafeFileError
+		var unsafe *safefile.UnsafeFileError
 		if err == nil || !strings.Contains(err.Error(), "link") {
 			t.Errorf("%s: %v (%T)", rel, err, unsafe)
 		}

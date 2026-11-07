@@ -30,8 +30,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -611,7 +611,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 		} else {
 			body, reduced := secrets.reduced[rel]
 			if !reduced {
-				if body, err = obs.ReadOwnedRegular(filepath.Join(o.Root.Dir, filepath.FromSlash(rel))); err != nil {
+				if body, err = safefile.ReadOwnedRegular(filepath.Join(o.Root.Dir, filepath.FromSlash(rel))); err != nil {
 					return nil, err
 				}
 			}

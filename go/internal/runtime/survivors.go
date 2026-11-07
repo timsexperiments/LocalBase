@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Backends run in their own process groups, so they outlive a gateway that dies
@@ -108,7 +108,7 @@ func recordBackend(root, runtimeName string, port int, p *Process, log *slog.Log
 		dir := backendRecordsDir(root)
 		if err = os.MkdirAll(dir, 0o700); err == nil {
 			path := filepath.Join(dir, fmt.Sprintf("%s-%d.json", runtimeName, p.PID()))
-			if err = obs.WritePrivateAtomic(path, b); err == nil {
+			if err = safefile.WritePrivateAtomic(path, b); err == nil {
 				go func() {
 					<-p.Done()
 					_ = os.Remove(path)

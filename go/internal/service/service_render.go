@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 var otelNames = []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
@@ -86,7 +86,7 @@ func atomicWrite(path string, b []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return obs.WritePrivateChecked(path, b)
+	return safefile.WritePrivateChecked(path, b)
 }
 
 func (d Definition) write(rootDir string) error {
@@ -95,7 +95,7 @@ func (d Definition) write(rootDir string) error {
 		if err := os.MkdirAll(filepath.Join(rootDir, "logs"), 0o700); err != nil {
 			return err
 		}
-		f, err := obs.OpenOwnedRegular(filepath.Join(rootDir, "logs", "service-stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND)
+		f, err := safefile.OpenOwnedRegular(filepath.Join(rootDir, "logs", "service-stderr.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND)
 		if err != nil {
 			return err
 		}

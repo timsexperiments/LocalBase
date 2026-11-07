@@ -27,7 +27,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/netguard"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 
 	_ "modernc.org/sqlite"
@@ -190,7 +190,7 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 	}
 	// Before anything reads its size or hashes it: a link here could otherwise be
 	// verified by what it points at and then published as the model.
-	if err := obs.CheckOwnedRegular(partial); err != nil {
+	if err := safefile.CheckOwnedRegular(partial); err != nil {
 		return err
 	}
 	if p, ok := size(partial); ok {
@@ -307,7 +307,7 @@ func download(ctx context.Context, src, partial string, expected int64, token st
 		removeIfEmpty(partial)
 		return err
 	}
-	f, err := obs.OpenOwnedRegular(partial, os.O_CREATE|os.O_WRONLY|os.O_APPEND)
+	f, err := safefile.OpenOwnedRegular(partial, os.O_CREATE|os.O_WRONLY|os.O_APPEND)
 	if err != nil {
 		return err
 	}
@@ -472,7 +472,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 
 func writeCache(dir string, c cacheFile) error {
 	b, _ := json.MarshalIndent(c, "", "  ")
-	return obs.WritePrivateChecked(filepath.Join(dir, ".checksums.json"), b)
+	return safefile.WritePrivateChecked(filepath.Join(dir, ".checksums.json"), b)
 }
 
 // hashFile is what Verify hashes with (tests count the full hashes).

@@ -20,7 +20,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/netguard"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // The remote catalog feed (TS catalog/remote-feed.ts): the project publishes
@@ -326,7 +326,7 @@ func WriteFeedSettings(rootDir, url string) error {
 }
 
 func writePrivate(path string, b []byte) error {
-	return obs.WritePrivateChecked(path, b)
+	return safefile.WritePrivateChecked(path, b)
 }
 
 // --- cache ------------------------------------------------------------------

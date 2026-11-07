@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // A link at the partial path gets no downloaded bytes, and the cache file is not
@@ -28,7 +28,7 @@ func TestDownloadRefusesAPlantedPartial(t *testing.T) {
 	os.WriteFile(target, content, 0o644)
 	os.Symlink(target, filepath.Join(dir, "m.bin.partial"))
 	_, err := Model(context.Background(), spec, dir, Options{AllowPrivate: true, Available: func(string) (int64, error) { return 1 << 40, nil }})
-	var unsafe *obs.UnsafeFileError
+	var unsafe *safefile.UnsafeFileError
 	if !errors.As(err, &unsafe) {
 		t.Fatalf("want a refusal: %v", err)
 	}

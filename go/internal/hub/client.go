@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/netguard"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 const (
@@ -121,7 +121,7 @@ func (c *Client) writeCache(u string, body []byte, now time.Time) {
 	b, _ := json.Marshal(cacheEntry{URL: u, FetchedAt: float64(now.UnixMilli()), Body: body})
 	path := c.cachePath(u)
 	// A cache: failing to save it costs a refetch, but a refusal should be findable.
-	obs.WarnRefusedWrite(c.Log, obs.WritePrivateChecked(path, b))
+	safefile.WarnRefusedWrite(c.Log, safefile.WritePrivateChecked(path, b))
 }
 
 // getJSON fetches JSON with caching and offline-safe errors.

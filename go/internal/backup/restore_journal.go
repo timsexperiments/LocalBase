@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -118,7 +119,7 @@ func (s *Staged) Commit() (*Done, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
+	if err := safefile.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, err
 	}
 	if err := syncDir(r.Dir); err != nil {
@@ -141,7 +142,7 @@ func (s *Staged) Commit() (*Done, error) {
 	if raw, err = json.Marshal(j); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
-	if err := obs.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
+	if err := safefile.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := syncDir(r.Dir); err != nil {
@@ -339,7 +340,7 @@ func undo(dir string, j *journal, release func()) error {
 
 // readJournal treats the journal as input: it may have been left by a crash, or by someone else.
 func readJournal(dir string) (*journal, error) {
-	raw, err := obs.ReadOwnedRegular(journalPath(dir))
+	raw, err := safefile.ReadOwnedRegular(journalPath(dir))
 	if err != nil {
 		return nil, err
 	}
