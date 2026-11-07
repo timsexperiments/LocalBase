@@ -292,6 +292,21 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 	return &matrixGateway{ts: probe, srv: srv, stt: stt, llm: llm, store: st, bodyRead: bodyRead, noScopes: noScopes, patterns: uiPatterns(t)}
 }
 
+// runsLeft is how many runs are unfinished, and how many runs have a checkpoint in the gateway's runs
+// directory. A run that is kept is saved from when it's queued, or as it fails if it fails first,
+// and a run refused before the queue is forgotten, so together they see every run, finished or not.
+func (g *matrixGateway) runsLeft(t *testing.T) (active, saved int) {
+	t.Helper()
+	if g.srv.Root == nil {
+		t.Fatal("the gateway has no root, so its runs are never saved")
+	}
+	entries, err := os.ReadDir(filepath.Join(g.srv.Root.Dir, "runs"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return g.srv.runs.ActiveCount(), len(entries)
+}
+
 // matrixBody is a well-formed form that every handler that reads a body would read.
 func matrixBody() (string, string) {
 	var b bytes.Buffer
@@ -537,11 +552,8 @@ func (g *matrixGateway) checkNoSideEffects(t *testing.T) {
 	if s := g.llm.Snapshot().State; s != "idle" {
 		t.Errorf("a refused request changed the LLM runtime: %q", s)
 	}
-	g.srv.runs.mu.Lock()
-	n := len(g.srv.runs.runs)
-	g.srv.runs.mu.Unlock()
-	if n != 0 {
-		t.Errorf("%d runs exist after refused requests", n)
+	if active, saved := g.runsLeft(t); active != 0 || saved != 0 {
+		t.Errorf("runs exist after refused requests: %d unfinished, %d saved", active, saved)
 	}
 	keys, err := g.store.ListAPIKeys(context.Background())
 	if err != nil || len(keys) != 1 {

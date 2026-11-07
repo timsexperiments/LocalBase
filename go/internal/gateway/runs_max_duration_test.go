@@ -62,7 +62,7 @@ func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 	}) {
 		t.Fatalf("the run did not end: %s", firstBytes(out))
 	}
-	if run.Status != runInterrupted || run.Reason != "max_duration" || len(run.Continuation) == 0 {
+	if run.Status != "interrupted" || run.Reason != "max_duration" || len(run.Continuation) == 0 {
 		t.Errorf("an interrupted run: status %q, reason %q, continuation %s", run.Status, run.Reason, run.Continuation)
 	}
 }

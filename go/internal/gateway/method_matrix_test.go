@@ -69,11 +69,8 @@ func TestEveryRouteAnswersEveryMethodAsPinned(t *testing.T) {
 	if s := g.llm.Snapshot().State; s != "idle" {
 		t.Errorf("the LLM runtime is %q", s)
 	}
-	g.srv.runs.mu.Lock()
-	runs := len(g.srv.runs.runs)
-	g.srv.runs.mu.Unlock()
-	if runs != 0 {
-		t.Errorf("%d runs exist", runs)
+	if active, saved := g.runsLeft(t); active != 0 || saved != 0 {
+		t.Errorf("runs exist: %d unfinished, %d saved", active, saved)
 	}
 	if keys, err := g.store.ListAPIKeys(context.Background()); err != nil || len(keys) != 2 {
 		t.Errorf("API keys: %d, %v; want the two this test made", len(keys), err)

@@ -15,6 +15,7 @@ for target in \
 	./internal/gateway:FuzzImageChecks \
 	./internal/gateway:FuzzMultipart \
 	./internal/gateway:FuzzRelayStream \
+	./internal/gateway:FuzzRequestModel \
 	./internal/gateway:FuzzStructuredOutput \
 	./internal/gateway:FuzzValidateSpeech \
 	./internal/gateway:FuzzValidators \

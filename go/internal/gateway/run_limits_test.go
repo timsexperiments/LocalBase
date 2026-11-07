@@ -214,13 +214,23 @@ func TestALineAtTheLimitPasses(t *testing.T) {
 	}
 }
 
-// The flags reach the runs.
+// The flags reach the runs' options, and unset they leave them unset, for the defaults.
 func TestRunMemoryLimitsAreConfigurable(t *testing.T) {
 	s := &Server{RunMemoryLimit: 5 << 20, RunsMemoryLimit: 7 << 20}
-	if m := NewManager(s.runOptions("")); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
+	if o := s.runOptions(""); o.MaxHeld != 5<<20 || o.MaxHeldTotal != 7<<20 {
+		t.Errorf("%d %d", o.MaxHeld, o.MaxHeldTotal)
+	}
+	if o := (&Server{}).runOptions(""); o.MaxHeld != 0 || o.MaxHeldTotal != 0 {
+		t.Errorf("defaults: %d %d", o.MaxHeld, o.MaxHeldTotal)
+	}
+}
+
+// The limits in the options are the runs' limits, and unset they are the defaults.
+func TestRunMemoryLimitsAreTheOptions(t *testing.T) {
+	if m := NewManager(Options{MaxHeld: 5 << 20, MaxHeldTotal: 7 << 20}); m.maxHeld != 5<<20 || m.maxHeldTotal != 7<<20 {
 		t.Errorf("%d %d", m.maxHeld, m.maxHeldTotal)
 	}
-	if m := NewManager((&Server{}).runOptions("")); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
+	if m := NewManager(Options{}); m.maxHeld != runMaxHeld || m.maxHeldTotal != runsMaxHeld {
 		t.Errorf("defaults: %d %d", m.maxHeld, m.maxHeldTotal)
 	}
 }
