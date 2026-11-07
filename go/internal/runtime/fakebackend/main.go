@@ -17,7 +17,9 @@
 // the decision state) fails like an input over the physical batch size, with
 // llama-server's exact 500; "fake:batch-plain" does so without the numbers.
 // "fake:slow <n>" streams n words 50 ms apart; when the client goes away
-// first it appends "cancelled" to the file FAKE_CANCEL_LOG names. "fake:burst <n>"
+// first it appends "cancelled" to the file FAKE_CANCEL_LOG names. "fake:stall"
+// streams one word and then nothing until the client goes away, and notes that
+// the same way. "fake:burst <n>"
 // streams n words with no pause at all, for measuring what relaying them costs.
 // "fake:die" (as the chat message, the embeddings input, the decision state, the
 // image prompt, the speech input or the transcription prompt) exits at once, like
@@ -165,14 +167,17 @@ func main() {
 		}
 		if stream, _ := req["stream"].(bool); stream {
 			w.Header().Set("Content-Type", "text/event-stream")
+			noteCancelled := func() {
+				if f := os.Getenv("FAKE_CANCEL_LOG"); f != "" {
+					if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+						fmt.Fprintln(fh, "cancelled")
+						fh.Close()
+					}
+				}
+			}
 			for _, part := range parts(content) {
 				if r.Context().Err() != nil {
-					if f := os.Getenv("FAKE_CANCEL_LOG"); f != "" {
-						if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-							fmt.Fprintln(fh, "cancelled")
-							fh.Close()
-						}
-					}
+					noteCancelled()
 					return
 				}
 				delta := map[string]any{"content": part}
@@ -184,6 +189,11 @@ func main() {
 				b, _ := json.Marshal(chunk)
 				fmt.Fprintf(w, "data: %s\n\n", b)
 				w.(http.Flusher).Flush()
+				if mode == "fake:stall" {
+					<-r.Context().Done()
+					noteCancelled()
+					return
+				}
 				time.Sleep(pause)
 			}
 			if mode == "fake:truncated" {

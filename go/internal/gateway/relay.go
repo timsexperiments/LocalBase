@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -310,6 +311,69 @@ func (s *Server) logAdmissionRejection(requestID, modality, model string, err er
 
 // --- relay -------------------------------------------------------------------------
 
+// relayBodyLimit is the most of an upstream answer that is read whole (JSON, an image, an error):
+// a 2048x2048 image, the largest real one, is well under it. streamIdleLimit is how long a chat
+// stream may go quiet once it has started: none before its first byte, since a long prompt can take
+// many minutes to process, and the client can always cancel.
+var (
+	relayBodyLimit  = 64 << 20
+	streamIdleLimit = 5 * time.Minute
+)
+
+// sizeText says a limit in MiB when it is whole MiB, else in bytes.
+func sizeText(n int) string {
+	if n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MiB", n>>20)
+	}
+	return fmt.Sprintf("%d bytes", n)
+}
+
+// errStreamIdle ends the read of a stream that went quiet past streamIdleLimit.
+var errStreamIdle = errors.New("the stream went quiet")
+
+// idleReader is a stream body that gives up when it goes quiet. Once its first bytes have come,
+// limit with nothing more cancels the backend call, and the read ends with errStreamIdle. Read and
+// stop are called from one goroutine.
+type idleReader struct {
+	r      io.Reader
+	limit  time.Duration
+	cancel context.CancelFunc
+	timer  *time.Timer
+	quiet  atomic.Bool
+}
+
+func (i *idleReader) Read(p []byte) (int, error) {
+	n, err := i.r.Read(p)
+	if i.quiet.Load() {
+		return n, errStreamIdle
+	}
+	if n > 0 {
+		if i.timer == nil {
+			i.timer = time.AfterFunc(i.limit, func() { i.quiet.Store(true); i.cancel() })
+		} else {
+			i.timer.Reset(i.limit)
+		}
+	}
+	return n, err
+}
+
+func (i *idleReader) stop() {
+	if i.timer != nil {
+		i.timer.Stop()
+	}
+}
+
+// idleText says how long a stream was quiet: in minutes when it is whole minutes.
+func idleText(d time.Duration) string {
+	switch {
+	case d == time.Minute:
+		return "1 minute"
+	case d > 0 && d%time.Minute == 0:
+		return fmt.Sprintf("%d minutes", int(d/time.Minute))
+	}
+	return d.String()
+}
+
 var proxyClient = &http.Client{Transport: &http.Transport{
 	Proxy: nil, MaxIdleConnsPerHost: 16, IdleConnTimeout: 90 * time.Second, DisableCompression: true,
 }}
@@ -341,7 +405,9 @@ func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
 // the backend call when the client goes away; the backend stays up (#276).
 func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string, o inferOpts, t *inference) {
 	t.begin(r.Context(), r.Method)
-	up, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(body))
+	upCtx, cancelUp := context.WithCancel(r.Context()) // a stream that goes quiet ends the backend call
+	defer cancelUp()
+	up, _ := http.NewRequestWithContext(upCtx, http.MethodPost, url, bytes.NewReader(body))
 	ct := "application/json"
 	if o.contentType != "" {
 		ct = o.contentType
@@ -371,11 +437,13 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 			w.Header().Set("Cache-Control", v)
 		}
 		w.WriteHeader(resp.StatusCode)
-		outcome, source := relaySSE(r.Context(), w, resp.Body, modelID, t, o.interrupted)
+		stream := &idleReader{r: resp.Body, limit: streamIdleLimit, cancel: cancelUp}
+		outcome, source := relaySSE(r.Context(), w, stream, modelID, t, o.interrupted)
+		stream.stop()
 		t.finish(outcome, resp.StatusCode, source)
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(relayBodyLimit)+1))
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -391,6 +459,11 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	}
 	if !ok && o.interrupted != nil && o.interrupted() {
 		memoryInterrupted(w, r, t)
+		return
+	}
+	if len(raw) > relayBodyLimit { // said as it is, not as the malformed JSON a cut answer would be
+		upstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", sizeText(relayBodyLimit)))
+		t.finish("error", 502, "response_size_limit")
 		return
 	}
 	if !ok {
@@ -790,6 +863,10 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 			if interrupted != nil && interrupted() {
 				write(memoryEmergencyEvent)
 				return "error", "memory_emergency"
+			}
+			if errors.Is(err, errStreamIdle) {
+				write(upstreamErrorEvent(fmt.Sprintf("The model stopped sending output for %s.", idleText(streamIdleLimit))))
+				return "error", "response_idle"
 			}
 			if err != io.EOF {
 				write(upstreamErrorEvent("The upstream stream failed."))
