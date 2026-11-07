@@ -162,8 +162,34 @@ func patternPath(pattern string) string {
 	})
 }
 
-func gatewayPatterns(t *testing.T) []string { return registeredPatterns(t, "server.go", "mux") }
-func uiPatterns(t *testing.T) []string      { return registeredPatterns(t, "../web/web.go", "m") }
+func gatewayPatterns(t *testing.T) []string { return tablePatterns(t, "routes.go") }
+
+// tablePatterns reads the route table's patterns from its source, so that every route is seen,
+// whatever a running server registers: each pattern: "..." in the file.
+func tablePatterns(t *testing.T, file string) []string {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		if kv, ok := n.(*ast.KeyValueExpr); ok {
+			if k, ok := kv.Key.(*ast.Ident); ok && k.Name == "pattern" {
+				if b, ok := kv.Value.(*ast.BasicLit); ok {
+					s, _ := strconv.Unquote(b.Value)
+					out = append(out, s)
+				}
+			}
+		}
+		return true
+	})
+	if len(out) == 0 {
+		t.Fatalf("no routes found in %s: has the table changed shape?", file)
+	}
+	return out
+}
+func uiPatterns(t *testing.T) []string { return registeredPatterns(t, "../web/web.go", "m") }
 
 // matrixGateway is a whole gateway with authentication on: API routes, browser
 // routes and UI pages. body counts the request body bytes read by anything.

@@ -140,61 +140,12 @@ func New(s *Server) *Server {
 	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	s.changeAudit = newChangeLimiter()
 	go s.runs.janitor()
-	mux := newRouteMux()
-	mux.HandleFunc("/health", s.health)
-	mux.HandleFunc("/openapi.json", s.openAPI)
-	for _, p := range []string{"/app/login", auth.LocalOncePath, "/oidc/callback", "/github/callback", "/app/login/magic", "/magic-link/callback",
-		"/app/logout", "/app/session", "/app/api", "/app/api/"} {
-		mux.HandleFunc(p, s.uiAccess)
+	mux := http.NewServeMux()
+	for _, rt := range s.routeTable() {
+		mux.Handle(rt.pattern, rt.handler)
+		s.routes = append(s.routes, rt.pattern)
 	}
-	mux.HandleFunc("/health/ready", s.ready)
-	mux.HandleFunc("/_localbase/instance", s.instance)
-	mux.HandleFunc("/_localbase/host", s.guard("models:read", s.hostAPI))
-	mux.HandleFunc("/_localbase/computer-name", s.auditedRoute("computer-name", computerNameChange, s.computerNameAPI))
-	mux.HandleFunc("/_localbase/default-model", s.defaultModel) // for the local CLI: an empty 404 without its instance token, by design
-	mux.HandleFunc("/_localbase/placement-state", s.placementRuntimeState)
-	mux.HandleFunc("/v1/models", s.guard("models:read", s.listModels))
-	mux.HandleFunc("/v1/models/{model...}", s.guard("models:read", s.retrieveModel))
-	mux.HandleFunc("/v1/chat/completions", s.guard("inference:chat", s.chat))
-	mux.HandleFunc("/v1/embeddings", s.guard("inference:embeddings", s.embeddings))
-	mux.HandleFunc("/v1/systemone", s.guard("inference:decision", s.systemone))
-	mux.HandleFunc("/v1/audio/transcriptions", s.guard("inference:transcription", s.transcription))
-	mux.HandleFunc("/v1/audio/translations", s.guard("inference:transcription", s.transcription))
-	mux.HandleFunc("/v1/audio/speech", s.guard("inference:speech", s.speech))
-	mux.HandleFunc("/v1/images/generations", s.guard("inference:image", s.imageGeneration))
-	mux.HandleFunc("/v1/images/edits", s.guard("inference:image", s.imageEdit))
-	mux.HandleFunc("/v1/videos", s.guard("inference:video", s.videoCreate))
-	mux.HandleFunc("/v1/videos/{job_id}", s.videoJobRoute("status"))
-	mux.HandleFunc("/v1/videos/{job_id}/content", s.videoJobRoute("content"))
-	mux.HandleFunc("/v1/videos/{job_id}/cancel", s.videoJobRoute("cancel"))
-	mux.HandleFunc("/_localbase/runs", s.guard("", s.runsList))
-	mux.HandleFunc("/_localbase/runs/{rest...}", s.guard("", s.runRoute))
-	mux.HandleFunc("/_localbase/models", s.guard("models:read", s.modelMetadata))
-	mux.HandleFunc("/_localbase/models/{model_id...}", s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
-		s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)
-	}))
-	mux.HandleFunc("/_localbase/access-management", s.audited("access", s.accessManagement))
-	mux.HandleFunc("/_localbase/api-keys", s.audited("api-key", s.apiKeys))
-	mux.HandleFunc("/_localbase/hf-token", s.auditedRoute("hf-token", hfTokenChange, s.hfToken))
-	mux.HandleFunc("/_localbase/backends", s.backendsAPI)
-	mux.HandleFunc("/_localbase/model-backend", s.audited("model-backend", s.modelBackendAPI))
-	mux.HandleFunc("/_localbase/model-management", s.auditedRoute("models", modelsChange, s.modelManagementAPI))
-	mux.HandleFunc("/_localbase/default-chat-models", s.auditedRoute("default-models", defaultModelsChange, s.defaultChatModelsAPI))
-	mux.HandleFunc("/_localbase/model-discovery", s.auditedRoute("discovery", discoveryChange, s.modelDiscoveryAPI))
-	mux.HandleFunc("/_localbase/model-imports", s.auditedRoute("imports", importsChange, s.modelImportsAPI))
-	mux.HandleFunc("/_localbase/auth-profiles", s.authProfilesAPI)
-	mux.HandleFunc("/_localbase/local-sessions", s.localSessionsAPI)
-	mux.HandleFunc("/_localbase/usage", s.usageAPI)
-	mux.HandleFunc("/_localbase/update", s.updateAPI)
-	mux.HandleFunc("/_localbase/voices", s.auditedRoute("voices", voicesChange, s.voicesAPI))
-	mux.HandleFunc("/_localbase/voices/", s.auditedRoute("voices", voicesChange, s.voicesAPI))
-	if s.UI != nil {
-		mux.Handle("/app", s.UI)
-		mux.Handle("/app/", s.UI)
-		mux.Handle("/{$}", s.UI)
-	}
-	mux.HandleFunc("/", s.unmatched)
-	s.mux, s.routes = mux.ServeMux, mux.patterns
+	s.mux = mux
 	return s
 }
 
