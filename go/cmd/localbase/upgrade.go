@@ -160,12 +160,14 @@ func checkInstalled(binary string) error {
 	return nil
 }
 
-// gatewayActivity asks the running gateway how busy it is, with a key that lasts this long.
-func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string, err error) {
+// waitGatewayIdle waits for the running gateway's work to finish (waitIdle), asking with one
+// temporary key for the whole wait: created once, and deleted once at the end, each audited.
+// Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
+func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep func(time.Duration)) error {
 	ctx := context.Background()
 	k, raw, err := e.Store.CreateAPIKeyExpiring(ctx, "local-base upgrade (temporary)", []string{"models:read"}, 1)
 	if err != nil {
-		return false, "", err
+		return fmt.Errorf("Could not ask the gateway how busy it is: %w. Nothing was changed. --force goes ahead anyway.", err)
 	}
 	auditKeyChange(e, "create", k, "purpose", "upgrade")
 	defer func() {
@@ -175,6 +177,11 @@ func gatewayActivity(c *cli.Ctx, e *env, base string) (busy bool, detail string,
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
+	return waitIdle(func() (bool, string, error) { return gatewayActivity(base, raw) }, limit, sleep)
+}
+
+// gatewayActivity asks the running gateway how busy it is, with the key it is given.
+func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 	req, err := http.NewRequest(http.MethodGet, base+"/_localbase/host", nil)
 	if err != nil {
 		return false, "", err
@@ -421,7 +428,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if state == gatewayManaged && !c.Bool("force") {
 		_, owner, _ := e.Root.OwnerState()
 		base := strings.TrimSuffix(owner.HealthURL(), "/health")
-		if err := waitIdle(func() (bool, string, error) { return gatewayActivity(c, e, base) }, time.Duration(wait)*time.Second, time.Sleep); err != nil {
+		if err := waitGatewayIdle(c, e, base, time.Duration(wait)*time.Second, time.Sleep); err != nil {
 			return nil, err
 		}
 	}

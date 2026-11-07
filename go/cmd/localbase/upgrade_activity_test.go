@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -32,7 +34,7 @@ func TestActivityKeyIsGoneAfterAsking(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL); err != nil {
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, 0, func(time.Duration) {}); err != nil {
 		t.Fatal(err)
 	}
 	keys, err := st.ListAPIKeys(context.Background())
@@ -54,10 +56,34 @@ func TestActivityKeyThatCannotBeDeletedIsReported(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if _, _, err := gatewayActivity(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL); err != nil {
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, 0, func(time.Duration) {}); err != nil {
 		t.Fatalf("the answer was good, so the question should still succeed: %v", err)
 	}
 	if got := stderr.String(); !strings.Contains(got, "temporary key") || !strings.Contains(got, "local-base keys revoke ") {
 		t.Errorf("stderr should name the key and how to revoke it: %q", got)
+	}
+}
+
+// A --wait that polls many times asks with one temporary key for the whole wait: one key created
+// and deleted, not one per poll (review 01-M2).
+func TestWaitingForAnIdleGatewayUsesOneKey(t *testing.T) {
+	st := activityStore(t)
+	polls, keys := 0, map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		polls++
+		keys[r.Header.Get("Authorization")] = true
+		busy := polls <= 3
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"host":{"activity":{"busy":%v}}}`, busy)))
+	}))
+	defer srv.Close()
+	var stderr bytes.Buffer
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, time.Minute, func(time.Duration) {}); err != nil {
+		t.Fatal(err)
+	}
+	if polls != 4 || len(keys) != 1 {
+		t.Errorf("%d polls with %d different keys; want 4 polls with one key", polls, len(keys))
+	}
+	if left, err := st.ListAPIKeys(context.Background()); err != nil || len(left) != 0 {
+		t.Errorf("keys left: %v %v", left, err)
 	}
 }
