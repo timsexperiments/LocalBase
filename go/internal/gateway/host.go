@@ -197,10 +197,6 @@ func (s *Server) hostActivity() map[string]any {
 
 // hostAPI serves GET /_localbase/host (models:read).
 func (s *Server) hostAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, r, "GET")
-		return
-	}
 	name, source := s.computerName(r.Context())
 	var named *string
 	if name != "" {
@@ -221,6 +217,7 @@ func (s *Server) computerNameAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPut {
+		// Checked here, not by the route table's gate: this handler authenticates the caller first, and 401 comes before 405.
 		httpx.MethodNotAllowed(w, r, "PUT")
 		return
 	}
@@ -291,6 +288,7 @@ func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[
 // outcome through the real refusal, and starts, stops and installs nothing.
 func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet {
+		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}

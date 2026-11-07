@@ -48,6 +48,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Method != http.MethodGet {
+		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}

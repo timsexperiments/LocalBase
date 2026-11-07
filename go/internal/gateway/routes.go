@@ -2,10 +2,12 @@ package gateway
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
 // route is one path the gateway serves. The table is the one list: it builds the mux, the list
@@ -22,6 +24,10 @@ type route struct {
 	// uiSub says the same for the paths under a pattern that ends in a wildcard or "/", given what
 	// follows the pattern's fixed part.
 	uiSub func(rest, method string) bool
+	// methods, when set, are the only methods the route takes: any other is answered 405 with them as
+	// Allow, once the caller may use the route at all (see compose). Routes whose methods depend on
+	// the path below them, or that answer something before their method check, check their own.
+	methods []string
 	// guarded routes check the caller first (guard), for permission; "" is any authenticated caller.
 	guarded    bool
 	permission string
@@ -32,9 +38,13 @@ type route struct {
 }
 
 // compose wraps a route's handler in what the table says, in the order the routes had it: the
-// permission check innermost, around the handler, and the audit around that.
+// method gate innermost, around the handler, the permission check around that, and the audit
+// around that. A caller who may not use a route is refused before it learns the route's methods.
 func (s *Server) compose(rt route) http.HandlerFunc {
 	h := rt.handler
+	if len(rt.methods) > 0 {
+		h = methodGate(rt.methods, h)
+	}
 	if rt.guarded {
 		h = s.guard(rt.permission, h)
 	}
@@ -50,8 +60,8 @@ func (s *Server) compose(rt route) http.HandlerFunc {
 // routeTable is every path the gateway serves, in the order they are registered.
 func (s *Server) routeTable() []route {
 	routes := []route{
-		{pattern: "/health", handler: s.health},
-		{pattern: "/openapi.json", handler: s.openAPI},
+		{pattern: "/health", methods: []string{"GET", "HEAD"}, handler: s.health},
+		{pattern: "/openapi.json", methods: []string{"GET", "HEAD"}, handler: s.openAPI},
 		{pattern: "/app/login", handler: s.uiAccess},
 		{pattern: auth.LocalOncePath, handler: s.uiAccess},
 		{pattern: "/oidc/callback", handler: s.uiAccess},
@@ -62,27 +72,27 @@ func (s *Server) routeTable() []route {
 		{pattern: "/app/session", handler: s.uiAccess},
 		{pattern: "/app/api", handler: s.uiAccess},
 		{pattern: "/app/api/", handler: s.uiAccess},
-		{pattern: "/health/ready", handler: s.ready},
+		{pattern: "/health/ready", methods: []string{"GET", "HEAD"}, handler: s.ready},
 		{pattern: "/_localbase/instance", handler: s.instance},
-		{pattern: "/_localbase/host", guarded: true, permission: "models:read", handler: s.hostAPI, ui: []string{"GET"}},
+		{pattern: "/_localbase/host", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.hostAPI, ui: []string{"GET"}},
 		{pattern: "/_localbase/computer-name", audit: "computer-name", describe: computerNameChange, handler: s.computerNameAPI, ui: []string{"PUT"}},
 		{pattern: "/_localbase/default-model", handler: s.defaultModel}, // for the local CLI: an empty 404 without its instance token, by design
 		{pattern: "/_localbase/placement-state", handler: s.placementRuntimeState},
-		{pattern: "/v1/models", guarded: true, permission: "models:read", handler: s.listModels},
+		{pattern: "/v1/models", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.listModels},
 		{pattern: "/v1/models/{model...}", guarded: true, permission: "models:read", handler: s.retrieveModel},
-		{pattern: "/v1/chat/completions", guarded: true, permission: "inference:chat", handler: s.chat, usage: "chat", ui: []string{"POST"}},
-		{pattern: "/v1/embeddings", guarded: true, permission: "inference:embeddings", handler: s.embeddings, usage: "embeddings", ui: []string{"POST"}},
-		{pattern: "/v1/systemone", guarded: true, permission: "inference:decision", handler: s.systemone, usage: "decision", ui: []string{"POST"}},
-		{pattern: "/v1/audio/transcriptions", guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "transcription", ui: []string{"POST"}},
-		{pattern: "/v1/audio/translations", guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "translation"},
-		{pattern: "/v1/audio/speech", guarded: true, permission: "inference:speech", handler: s.speech, usage: "speech", ui: []string{"POST"}},
-		{pattern: "/v1/images/generations", guarded: true, permission: "inference:image", handler: s.imageGeneration, usage: "image", ui: []string{"POST"}},
-		{pattern: "/v1/images/edits", guarded: true, permission: "inference:image", handler: s.imageEdit, usage: "image-edit", ui: []string{"POST"}},
-		{pattern: "/v1/videos", guarded: true, permission: "inference:video", handler: s.videoCreate, usage: "video", ui: []string{"POST"}},
+		{pattern: "/v1/chat/completions", methods: []string{"POST"}, guarded: true, permission: "inference:chat", handler: s.chat, usage: "chat", ui: []string{"POST"}},
+		{pattern: "/v1/embeddings", methods: []string{"POST"}, guarded: true, permission: "inference:embeddings", handler: s.embeddings, usage: "embeddings", ui: []string{"POST"}},
+		{pattern: "/v1/systemone", methods: []string{"POST"}, guarded: true, permission: "inference:decision", handler: s.systemone, usage: "decision", ui: []string{"POST"}},
+		{pattern: "/v1/audio/transcriptions", methods: []string{"POST"}, guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "transcription", ui: []string{"POST"}},
+		{pattern: "/v1/audio/translations", methods: []string{"POST"}, guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "translation"},
+		{pattern: "/v1/audio/speech", methods: []string{"POST"}, guarded: true, permission: "inference:speech", handler: s.speech, usage: "speech", ui: []string{"POST"}},
+		{pattern: "/v1/images/generations", methods: []string{"POST"}, guarded: true, permission: "inference:image", handler: s.imageGeneration, usage: "image", ui: []string{"POST"}},
+		{pattern: "/v1/images/edits", methods: []string{"POST"}, guarded: true, permission: "inference:image", handler: s.imageEdit, usage: "image-edit", ui: []string{"POST"}},
+		{pattern: "/v1/videos", methods: []string{"POST"}, guarded: true, permission: "inference:video", handler: s.videoCreate, usage: "video", ui: []string{"POST"}},
 		{pattern: "/v1/videos/{job_id}", handler: s.videoJobRoute("status"), uiSub: uiVideoJob},
 		{pattern: "/v1/videos/{job_id}/content", handler: s.videoJobRoute("content")},
 		{pattern: "/v1/videos/{job_id}/cancel", handler: s.videoJobRoute("cancel")},
-		{pattern: "/_localbase/runs", guarded: true, permission: "", handler: s.runsList, ui: []string{"GET"}},
+		{pattern: "/_localbase/runs", methods: []string{"GET"}, guarded: true, permission: "", handler: s.runsList, ui: []string{"GET"}},
 		{pattern: "/_localbase/runs/{rest...}", guarded: true, permission: "", handler: s.runRoute, uiSub: uiRun},
 		{pattern: "/_localbase/models", guarded: true, permission: "models:read", handler: s.modelMetadata, ui: []string{"GET"}},
 		{pattern: "/_localbase/models/{model_id...}", handler: s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
@@ -91,13 +101,13 @@ func (s *Server) routeTable() []route {
 		{pattern: "/_localbase/access-management", audit: "access", handler: s.accessManagement, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/api-keys", audit: "api-key", handler: s.apiKeys, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/hf-token", audit: "hf-token", describe: hfTokenChange, handler: s.hfToken, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/backends", handler: s.backendsAPI, ui: []string{"GET"}},
-		{pattern: "/_localbase/model-backend", audit: "model-backend", handler: s.modelBackendAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/backends", methods: []string{"GET"}, handler: s.backendsAPI, ui: []string{"GET"}},
+		{pattern: "/_localbase/model-backend", methods: []string{"GET", "POST"}, audit: "model-backend", handler: s.modelBackendAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/model-management", audit: "models", describe: modelsChange, handler: s.modelManagementAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/default-chat-models", audit: "default-models", describe: defaultModelsChange, handler: s.defaultChatModelsAPI},
 		{pattern: "/_localbase/model-discovery", audit: "discovery", describe: discoveryChange, handler: s.modelDiscoveryAPI, ui: []string{"POST"}},
-		{pattern: "/_localbase/model-imports", audit: "imports", describe: importsChange, handler: s.modelImportsAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/auth-profiles", handler: s.authProfilesAPI, ui: []string{"GET"}},
+		{pattern: "/_localbase/model-imports", methods: []string{"GET", "POST"}, audit: "imports", describe: importsChange, handler: s.modelImportsAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/auth-profiles", methods: []string{"GET"}, handler: s.authProfilesAPI, ui: []string{"GET"}},
 		{pattern: "/_localbase/local-sessions", handler: s.localSessionsAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/usage", handler: s.usageAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/update", handler: s.updateAPI, ui: []string{"GET", "POST"}},
@@ -158,3 +168,16 @@ var (
 
 // usageRoutes names what is counted, by the route that served it, from the table.
 func usageRoutes() map[string]string { return tableIndex().usage }
+
+// methodGate answers 405, with Allow, to a method the route doesn't take, as each handler did for
+// itself before.
+func methodGate(methods []string, h http.HandlerFunc) http.HandlerFunc {
+	allow := strings.Join(methods, ", ")
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !slices.Contains(methods, r.Method) {
+			httpx.MethodNotAllowed(w, r, allow)
+			return
+		}
+		h(w, r)
+	}
+}

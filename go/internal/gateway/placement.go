@@ -43,6 +43,7 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 		return
 	case http.MethodPut, http.MethodDelete:
 	default:
+		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "GET, PUT, DELETE")
 		return
 	}

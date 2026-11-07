@@ -71,6 +71,7 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 			return
 		}
 		if r.Method != http.MethodGet {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "GET, DELETE")
 			return
 		}
@@ -86,6 +87,7 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 		httpx.JSON(w, http.StatusOK, projectVideoJob(j))
 	case "content":
 		if r.Method != http.MethodGet {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "GET")
 			return
 		}
@@ -112,6 +114,7 @@ func (s *Server) videoJob(w http.ResponseWriter, r *http.Request, action, id str
 		io.Copy(w, f)
 	case "cancel":
 		if r.Method != http.MethodPost {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "POST")
 			return
 		}
@@ -134,10 +137,6 @@ func videoJobNotFound(w http.ResponseWriter, r *http.Request) {
 
 // videoCreate starts a job (TS handleVideoGatewayRequest, videoCreate).
 func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	if r.Context().Err() != nil {
 		w.WriteHeader(499)
 		return

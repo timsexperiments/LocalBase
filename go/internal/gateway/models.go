@@ -237,10 +237,6 @@ func (s *Server) principalForListing(r *http.Request) *auth.Principal {
 }
 
 func (s *Server) listModels(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, r, "GET")
-		return
-	}
 	// A client's list stays a list: what was missing is in a header and the log, not an outage.
 	data, problems := s.ServedModels(s.principalForListing(r), "")
 	s.reportReads(w, problems)
@@ -260,6 +256,7 @@ func (s *Server) retrieveModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodGet {
+		// Checked here, not by the route table's gate: an id that can't be read is answered 404 first.
 		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}

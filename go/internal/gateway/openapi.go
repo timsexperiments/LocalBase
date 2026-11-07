@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -28,10 +27,6 @@ var openAPIServed = sync.OnceValues(func() ([]byte, string) {
 })
 
 func (s *Server) openAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		httpx.MethodNotAllowed(w, r, "GET, HEAD")
-		return
-	}
 	body, etag := openAPIServed()
 	h := w.Header()
 	h.Set("Content-Type", "application/json; charset=utf-8")

@@ -444,10 +444,6 @@ func (s *Server) modalityHealth() map[string]any {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		httpx.MethodNotAllowed(w, r, "GET, HEAD")
-		return
-	}
 	body := map[string]any{"status": "ok", "version": version.Version,
 		"uptimeSeconds": int(time.Since(s.started).Seconds()), "modalities": s.modalityHealth()}
 	status := 200
@@ -463,10 +459,6 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		httpx.MethodNotAllowed(w, r, "GET, HEAD")
-		return
-	}
 	admitting := []string{}
 	for _, kind := range store.Kinds {
 		if _, _, admits := s.modality(kind); admits {

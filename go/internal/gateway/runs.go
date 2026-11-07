@@ -699,6 +699,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		return
 	}
 	if req.Method != http.MethodPost {
+		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, req, "POST")
 		return
 	}
@@ -1070,10 +1071,6 @@ func runNotFound(w http.ResponseWriter, req *http.Request) {
 // runsList is GET /_localbase/runs: the caller's runs for the
 // "Generating…" indicator, newest first, without output or request text.
 func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
-	if req.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, req, "GET")
-		return
-	}
 	m := s.runs
 	m.sweepExpired()
 	owner := s.runOwner(req)
@@ -1137,10 +1134,12 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 			m.dismiss(r)
 			httpx.JSON(w, 200, map[string]any{"id": r.ID, "object": "localbase.run.deleted", "deleted": true})
 		default:
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, req, "GET, DELETE")
 		}
 	case "cancel":
 		if req.Method != http.MethodPost {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, req, "POST")
 			return
 		}
@@ -1155,6 +1154,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		httpx.JSON(w, 200, v)
 	case "result":
 		if req.Method != http.MethodGet {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, req, "GET")
 			return
 		}
@@ -1172,6 +1172,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		w.Write(body)
 	case "events":
 		if req.Method != http.MethodGet {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, req, "GET")
 			return
 		}

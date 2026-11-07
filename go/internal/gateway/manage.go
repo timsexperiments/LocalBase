@@ -1047,6 +1047,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		// Checked here, not by the route table's gate: this handler authenticates the caller first, and 401 comes before 405.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
