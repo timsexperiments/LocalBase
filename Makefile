@@ -15,8 +15,8 @@ help: ## List the commands
 bootstrap: ## Install the pinned tools into .cache/tools, verified by checksum
 	scripts/bootstrap.sh
 
-build: ## Build go/local-base
-	cd go && go build -o local-base ./cmd/localbase
+build: ## Build go/local-base, as the release builds it
+	go/tools/build.sh go/local-base
 
 run: build ## Run a gateway on a throwaway root in .scratch (PORT=26400, runtimes on 26410-26414)
 	mkdir -p .scratch
