@@ -1,0 +1,554 @@
+# method	path	status	Allow	error type	error code
+GET	/	302	-	-	-
+HEAD	/	302	-	-	-
+OPTIONS	/	403	-	invalid_request_error	insufficient_permissions
+POST	/	405	GET, HEAD	-	-
+PUT	/	405	GET, HEAD	-	-
+DELETE	/	405	GET, HEAD	-	-
+PATCH	/	405	GET, HEAD	-	-
+GET	/_localbase/access-management	200	-	-	-
+HEAD	/_localbase/access-management	405	GET, POST	-	-
+OPTIONS	/_localbase/access-management	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/access-management	400	-	-	validation_failed
+PUT	/_localbase/access-management	405	GET, POST	-	-
+DELETE	/_localbase/access-management	405	GET, POST	-	-
+PATCH	/_localbase/access-management	405	GET, POST	-	-
+GET	/_localbase/api-keys	200	-	-	-
+HEAD	/_localbase/api-keys	405	GET, POST	-	-
+OPTIONS	/_localbase/api-keys	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/api-keys	400	-	-	validation_failed
+PUT	/_localbase/api-keys	405	GET, POST	-	-
+DELETE	/_localbase/api-keys	405	GET, POST	-	-
+PATCH	/_localbase/api-keys	405	GET, POST	-	-
+GET	/_localbase/auth-profiles	200	-	-	-
+HEAD	/_localbase/auth-profiles	405	GET	-	-
+OPTIONS	/_localbase/auth-profiles	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/auth-profiles	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/auth-profiles	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/auth-profiles	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/auth-profiles	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/backends	503	-	api_error	service_unavailable
+HEAD	/_localbase/backends	405	GET	-	-
+OPTIONS	/_localbase/backends	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/backends	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/backends	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/backends	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/backends	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/computer-name	405	PUT	invalid_request_error	method_not_allowed
+HEAD	/_localbase/computer-name	405	PUT	-	-
+OPTIONS	/_localbase/computer-name	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/computer-name	405	PUT	invalid_request_error	method_not_allowed
+PUT	/_localbase/computer-name	400	-	invalid_request_error	validation_failed
+DELETE	/_localbase/computer-name	405	PUT	invalid_request_error	method_not_allowed
+PATCH	/_localbase/computer-name	405	PUT	invalid_request_error	method_not_allowed
+GET	/_localbase/default-chat-models	200	-	-	-
+HEAD	/_localbase/default-chat-models	405	GET, POST	-	-
+OPTIONS	/_localbase/default-chat-models	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/default-chat-models	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/default-chat-models	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/default-chat-models	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/default-chat-models	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/default-model	404	-	-	-
+HEAD	/_localbase/default-model	404	-	-	-
+OPTIONS	/_localbase/default-model	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/default-model	404	-	-	-
+PUT	/_localbase/default-model	404	-	-	-
+DELETE	/_localbase/default-model	404	-	-	-
+PATCH	/_localbase/default-model	404	-	-	-
+GET	/_localbase/hf-token	200	-	-	-
+HEAD	/_localbase/hf-token	405	GET, POST	-	-
+OPTIONS	/_localbase/hf-token	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/hf-token	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/hf-token	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/hf-token	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/hf-token	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/host	200	-	-	-
+HEAD	/_localbase/host	405	GET	-	-
+OPTIONS	/_localbase/host	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/host	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/host	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/host	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/host	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/instance	404	-	-	-
+HEAD	/_localbase/instance	404	-	-	-
+OPTIONS	/_localbase/instance	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/instance	404	-	-	-
+PUT	/_localbase/instance	404	-	-	-
+DELETE	/_localbase/instance	404	-	-	-
+PATCH	/_localbase/instance	404	-	-	-
+GET	/_localbase/local-sessions	200	-	-	-
+HEAD	/_localbase/local-sessions	405	GET, POST	-	-
+OPTIONS	/_localbase/local-sessions	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/local-sessions	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/local-sessions	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/local-sessions	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/local-sessions	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/model-backend	503	-	api_error	service_unavailable
+HEAD	/_localbase/model-backend	405	GET, POST	-	-
+OPTIONS	/_localbase/model-backend	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/model-backend	503	-	api_error	service_unavailable
+PUT	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/model-discovery	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/model-discovery	405	POST	-	-
+OPTIONS	/_localbase/model-discovery	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/model-discovery	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/model-discovery	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/model-discovery	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/model-discovery	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/model-imports	503	-	api_error	service_unavailable
+HEAD	/_localbase/model-imports	405	GET, POST	-	-
+OPTIONS	/_localbase/model-imports	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/model-imports	503	-	api_error	service_unavailable
+PUT	/_localbase/model-imports	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/model-imports	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/model-imports	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/model-management	200	-	-	-
+HEAD	/_localbase/model-management	405	GET, POST	-	-
+OPTIONS	/_localbase/model-management	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/model-management	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/model-management	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/model-management	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/model-management	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/models	200	-	-	-
+HEAD	/_localbase/models	405	GET	-	-
+OPTIONS	/_localbase/models	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/models	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/models	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/models	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/models/no-such-model	404	-	invalid_request_error	model_not_found
+HEAD	/_localbase/models/no-such-model	405	GET	-	-
+OPTIONS	/_localbase/models/no-such-model	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/models/no-such-model/placement	404	-	invalid_request_error	model_not_found
+HEAD	/_localbase/models/no-such-model/placement	404	-	-	-
+OPTIONS	/_localbase/models/no-such-model/placement	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/no-such-model/placement	404	-	invalid_request_error	model_not_found
+PUT	/_localbase/models/no-such-model/placement	404	-	invalid_request_error	model_not_found
+DELETE	/_localbase/models/no-such-model/placement	404	-	invalid_request_error	model_not_found
+PATCH	/_localbase/models/no-such-model/placement	404	-	invalid_request_error	model_not_found
+GET	/_localbase/models/no-such-model/unload	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/models/no-such-model/unload	405	POST	-	-
+OPTIONS	/_localbase/models/no-such-model/unload	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/no-such-model/unload	404	-	invalid_request_error	model_not_found
+PUT	/_localbase/models/no-such-model/unload	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/models/no-such-model/unload	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/models/no-such-model/unload	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/models/qwen3.5-9b-q4_k_m	200	-	-	-
+HEAD	/_localbase/models/qwen3.5-9b-q4_k_m	405	GET	-	-
+OPTIONS	/_localbase/models/qwen3.5-9b-q4_k_m	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/models/qwen3.5-9b-q4_k_m/placement	200	-	-	-
+HEAD	/_localbase/models/qwen3.5-9b-q4_k_m/placement	405	GET, PUT, DELETE	-	-
+OPTIONS	/_localbase/models/qwen3.5-9b-q4_k_m/placement	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/qwen3.5-9b-q4_k_m/placement	405	GET, PUT, DELETE	invalid_request_error	method_not_allowed
+PUT	/_localbase/models/qwen3.5-9b-q4_k_m/placement	400	-	invalid_request_error	validation_failed
+DELETE	/_localbase/models/qwen3.5-9b-q4_k_m/placement	200	-	-	-
+PATCH	/_localbase/models/qwen3.5-9b-q4_k_m/placement	405	GET, PUT, DELETE	invalid_request_error	method_not_allowed
+GET	/_localbase/models/qwen3.5-9b-q4_k_m/unload	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/models/qwen3.5-9b-q4_k_m/unload	405	POST	-	-
+OPTIONS	/_localbase/models/qwen3.5-9b-q4_k_m/unload	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/models/qwen3.5-9b-q4_k_m/unload	404	-	invalid_request_error	model_not_loaded
+PUT	/_localbase/models/qwen3.5-9b-q4_k_m/unload	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/models/qwen3.5-9b-q4_k_m/unload	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/models/qwen3.5-9b-q4_k_m/unload	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/placement-state	404	-	-	-
+HEAD	/_localbase/placement-state	404	-	-	-
+OPTIONS	/_localbase/placement-state	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/placement-state	404	-	-	-
+PUT	/_localbase/placement-state	404	-	-	-
+DELETE	/_localbase/placement-state	404	-	-	-
+PATCH	/_localbase/placement-state	404	-	-	-
+GET	/_localbase/runs	200	-	-	-
+HEAD	/_localbase/runs	405	GET	-	-
+OPTIONS	/_localbase/runs	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/runs	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/runs	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/runs	405	GET	invalid_request_error	method_not_allowed
+GET	/_localbase/runs/run_x	404	-	invalid_request_error	run_not_found
+HEAD	/_localbase/runs/run_x	404	-	-	-
+OPTIONS	/_localbase/runs/run_x	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/run_x	404	-	invalid_request_error	run_not_found
+PUT	/_localbase/runs/run_x	404	-	invalid_request_error	run_not_found
+DELETE	/_localbase/runs/run_x	404	-	invalid_request_error	run_not_found
+PATCH	/_localbase/runs/run_x	404	-	invalid_request_error	run_not_found
+GET	/_localbase/runs/run_x/cancel	404	-	invalid_request_error	run_not_found
+HEAD	/_localbase/runs/run_x/cancel	404	-	-	-
+OPTIONS	/_localbase/runs/run_x/cancel	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/run_x/cancel	404	-	invalid_request_error	run_not_found
+PUT	/_localbase/runs/run_x/cancel	404	-	invalid_request_error	run_not_found
+DELETE	/_localbase/runs/run_x/cancel	404	-	invalid_request_error	run_not_found
+PATCH	/_localbase/runs/run_x/cancel	404	-	invalid_request_error	run_not_found
+GET	/_localbase/runs/run_x/events	404	-	invalid_request_error	run_not_found
+HEAD	/_localbase/runs/run_x/events	404	-	-	-
+OPTIONS	/_localbase/runs/run_x/events	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/run_x/events	404	-	invalid_request_error	run_not_found
+PUT	/_localbase/runs/run_x/events	404	-	invalid_request_error	run_not_found
+DELETE	/_localbase/runs/run_x/events	404	-	invalid_request_error	run_not_found
+PATCH	/_localbase/runs/run_x/events	404	-	invalid_request_error	run_not_found
+GET	/_localbase/runs/run_x/result	404	-	invalid_request_error	run_not_found
+HEAD	/_localbase/runs/run_x/result	404	-	-	-
+OPTIONS	/_localbase/runs/run_x/result	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/run_x/result	404	-	invalid_request_error	run_not_found
+PUT	/_localbase/runs/run_x/result	404	-	invalid_request_error	run_not_found
+DELETE	/_localbase/runs/run_x/result	404	-	invalid_request_error	run_not_found
+PATCH	/_localbase/runs/run_x/result	404	-	invalid_request_error	run_not_found
+GET	/_localbase/runs/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/runs/v1/audio/transcriptions	405	POST	-	-
+OPTIONS	/_localbase/runs/v1/audio/transcriptions	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/v1/audio/transcriptions	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/runs/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/runs/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/runs/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/runs/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/runs/v1/audio/translations	405	POST	-	-
+OPTIONS	/_localbase/runs/v1/audio/translations	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/v1/audio/translations	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/runs/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/runs/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/runs/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/runs/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+HEAD	/_localbase/runs/v1/chat/completions	405	POST	-	-
+OPTIONS	/_localbase/runs/v1/chat/completions	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/runs/v1/chat/completions	400	-	invalid_request_error	validation_failed
+PUT	/_localbase/runs/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/runs/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/runs/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+GET	/_localbase/update	501	-	invalid_request_error	route_disabled
+HEAD	/_localbase/update	405	GET, POST	-	-
+OPTIONS	/_localbase/update	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/update	501	-	invalid_request_error	route_disabled
+PUT	/_localbase/update	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/update	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/update	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/usage	501	-	invalid_request_error	route_disabled
+HEAD	/_localbase/usage	405	GET, POST	-	-
+OPTIONS	/_localbase/usage	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/usage	501	-	invalid_request_error	route_disabled
+PUT	/_localbase/usage	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/usage	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/usage	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/voices	200	-	-	-
+HEAD	/_localbase/voices	405	GET, POST	-	-
+OPTIONS	/_localbase/voices	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/voices	415	-	invalid_request_error	unsupported_media_type
+PUT	/_localbase/voices	405	GET, POST	invalid_request_error	method_not_allowed
+DELETE	/_localbase/voices	405	GET, POST	invalid_request_error	method_not_allowed
+PATCH	/_localbase/voices	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/voices/	404	-	invalid_request_error	route_disabled
+HEAD	/_localbase/voices/	404	-	-	-
+OPTIONS	/_localbase/voices/	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/voices/	404	-	invalid_request_error	route_disabled
+PUT	/_localbase/voices/	404	-	invalid_request_error	route_disabled
+DELETE	/_localbase/voices/	404	-	invalid_request_error	route_disabled
+PATCH	/_localbase/voices/	404	-	invalid_request_error	route_disabled
+GET	/_localbase/voices/not-a-voice	404	-	invalid_request_error	route_disabled
+HEAD	/_localbase/voices/not-a-voice	404	-	-	-
+OPTIONS	/_localbase/voices/not-a-voice	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/voices/not-a-voice	404	-	invalid_request_error	route_disabled
+PUT	/_localbase/voices/not-a-voice	404	-	invalid_request_error	route_disabled
+DELETE	/_localbase/voices/not-a-voice	404	-	invalid_request_error	route_disabled
+PATCH	/_localbase/voices/not-a-voice	404	-	invalid_request_error	route_disabled
+GET	/_localbase/voices/voice-000000000000	404	-	invalid_request_error	voice_not_found
+HEAD	/_localbase/voices/voice-000000000000	405	GET, PATCH, DELETE	-	-
+OPTIONS	/_localbase/voices/voice-000000000000	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/voices/voice-000000000000	405	GET, PATCH, DELETE	invalid_request_error	method_not_allowed
+PUT	/_localbase/voices/voice-000000000000	405	GET, PATCH, DELETE	invalid_request_error	method_not_allowed
+DELETE	/_localbase/voices/voice-000000000000	404	-	invalid_request_error	voice_not_found
+PATCH	/_localbase/voices/voice-000000000000	400	-	invalid_request_error	validation_failed
+GET	/_localbase/voices/voice-000000000000/audio	404	-	invalid_request_error	voice_not_found
+HEAD	/_localbase/voices/voice-000000000000/audio	405	GET	-	-
+OPTIONS	/_localbase/voices/voice-000000000000/audio	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/voices/voice-000000000000/audio	405	GET	invalid_request_error	method_not_allowed
+PUT	/_localbase/voices/voice-000000000000/audio	405	GET	invalid_request_error	method_not_allowed
+DELETE	/_localbase/voices/voice-000000000000/audio	405	GET	invalid_request_error	method_not_allowed
+PATCH	/_localbase/voices/voice-000000000000/audio	405	GET	invalid_request_error	method_not_allowed
+GET	/app	302	-	-	-
+HEAD	/app	302	-	-	-
+OPTIONS	/app	403	-	invalid_request_error	insufficient_permissions
+POST	/app	307	-	-	-
+PUT	/app	307	-	-	-
+DELETE	/app	307	-	-	-
+PATCH	/app	307	-	-	-
+GET	/app/	404	-	-	-
+HEAD	/app/	404	-	-	-
+OPTIONS	/app/	403	-	invalid_request_error	insufficient_permissions
+POST	/app/	404	-	-	-
+PUT	/app/	404	-	-	-
+DELETE	/app/	404	-	-	-
+PATCH	/app/	404	-	-	-
+GET	/app/api	401	-	authentication_error	ui_access_denied
+HEAD	/app/api	401	-	-	-
+OPTIONS	/app/api	401	-	authentication_error	ui_access_denied
+POST	/app/api	401	-	authentication_error	ui_access_denied
+PUT	/app/api	401	-	authentication_error	ui_access_denied
+DELETE	/app/api	401	-	authentication_error	ui_access_denied
+PATCH	/app/api	401	-	authentication_error	ui_access_denied
+GET	/app/api/	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/	401	-	-	-
+OPTIONS	/app/api/	401	-	authentication_error	ui_access_denied
+POST	/app/api/	401	-	authentication_error	ui_access_denied
+PUT	/app/api/	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/access-management	401	-	-	-
+OPTIONS	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/access-management	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/api-keys	401	-	-	-
+OPTIONS	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/api-keys	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/hf-token	401	-	-	-
+OPTIONS	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/model-imports	401	-	-	-
+OPTIONS	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	-	-
+OPTIONS	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/models/qwen3.5-9b-q4_k_m/unload	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/runs	401	-	-	-
+OPTIONS	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/runs	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/runs/run_x/events	401	-	-	-
+OPTIONS	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/runs/run_x/events	401	-	authentication_error	ui_access_denied
+GET	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/v1/audio/transcriptions	401	-	-	-
+OPTIONS	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+POST	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+PUT	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/v1/audio/transcriptions	401	-	authentication_error	ui_access_denied
+GET	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/v1/audio/translations	401	-	-	-
+OPTIONS	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+POST	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+PUT	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/v1/audio/translations	401	-	authentication_error	ui_access_denied
+GET	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/v1/chat/completions	401	-	-	-
+OPTIONS	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+POST	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+PUT	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/v1/chat/completions	401	-	authentication_error	ui_access_denied
+GET	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/v1/videos	401	-	-	-
+OPTIONS	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+POST	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+PUT	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/v1/videos	401	-	authentication_error	ui_access_denied
+GET	/app/login	401	-	authentication_error	ui_access_denied
+HEAD	/app/login	401	-	-	-
+OPTIONS	/app/login	401	-	authentication_error	ui_access_denied
+POST	/app/login	401	-	authentication_error	ui_access_denied
+PUT	/app/login	401	-	authentication_error	ui_access_denied
+DELETE	/app/login	401	-	authentication_error	ui_access_denied
+PATCH	/app/login	401	-	authentication_error	ui_access_denied
+GET	/app/login/magic	401	-	authentication_error	ui_access_denied
+HEAD	/app/login/magic	401	-	-	-
+OPTIONS	/app/login/magic	401	-	authentication_error	ui_access_denied
+POST	/app/login/magic	401	-	authentication_error	ui_access_denied
+PUT	/app/login/magic	401	-	authentication_error	ui_access_denied
+DELETE	/app/login/magic	401	-	authentication_error	ui_access_denied
+PATCH	/app/login/magic	401	-	authentication_error	ui_access_denied
+GET	/app/logout	401	-	authentication_error	ui_access_denied
+HEAD	/app/logout	401	-	-	-
+OPTIONS	/app/logout	401	-	authentication_error	ui_access_denied
+POST	/app/logout	401	-	authentication_error	ui_access_denied
+PUT	/app/logout	401	-	authentication_error	ui_access_denied
+DELETE	/app/logout	401	-	authentication_error	ui_access_denied
+PATCH	/app/logout	401	-	authentication_error	ui_access_denied
+GET	/app/session	401	-	authentication_error	ui_access_denied
+HEAD	/app/session	401	-	-	-
+OPTIONS	/app/session	401	-	authentication_error	ui_access_denied
+POST	/app/session	401	-	authentication_error	ui_access_denied
+PUT	/app/session	401	-	authentication_error	ui_access_denied
+DELETE	/app/session	401	-	authentication_error	ui_access_denied
+PATCH	/app/session	401	-	authentication_error	ui_access_denied
+GET	/github/callback	401	-	authentication_error	ui_access_denied
+HEAD	/github/callback	401	-	-	-
+OPTIONS	/github/callback	401	-	authentication_error	ui_access_denied
+POST	/github/callback	401	-	authentication_error	ui_access_denied
+PUT	/github/callback	401	-	authentication_error	ui_access_denied
+DELETE	/github/callback	401	-	authentication_error	ui_access_denied
+PATCH	/github/callback	401	-	authentication_error	ui_access_denied
+GET	/health	200	-	-	-
+HEAD	/health	200	-	-	-
+OPTIONS	/health	403	-	invalid_request_error	insufficient_permissions
+POST	/health	405	GET, HEAD	invalid_request_error	method_not_allowed
+PUT	/health	405	GET, HEAD	invalid_request_error	method_not_allowed
+DELETE	/health	405	GET, HEAD	invalid_request_error	method_not_allowed
+PATCH	/health	405	GET, HEAD	invalid_request_error	method_not_allowed
+GET	/health/ready	200	-	-	-
+HEAD	/health/ready	200	-	-	-
+OPTIONS	/health/ready	403	-	invalid_request_error	insufficient_permissions
+POST	/health/ready	405	GET, HEAD	invalid_request_error	method_not_allowed
+PUT	/health/ready	405	GET, HEAD	invalid_request_error	method_not_allowed
+DELETE	/health/ready	405	GET, HEAD	invalid_request_error	method_not_allowed
+PATCH	/health/ready	405	GET, HEAD	invalid_request_error	method_not_allowed
+GET	/magic-link/callback	401	-	authentication_error	ui_access_denied
+HEAD	/magic-link/callback	401	-	-	-
+OPTIONS	/magic-link/callback	401	-	authentication_error	ui_access_denied
+POST	/magic-link/callback	401	-	authentication_error	ui_access_denied
+PUT	/magic-link/callback	401	-	authentication_error	ui_access_denied
+DELETE	/magic-link/callback	401	-	authentication_error	ui_access_denied
+PATCH	/magic-link/callback	401	-	authentication_error	ui_access_denied
+GET	/oidc/callback	401	-	authentication_error	ui_access_denied
+HEAD	/oidc/callback	401	-	-	-
+OPTIONS	/oidc/callback	401	-	authentication_error	ui_access_denied
+POST	/oidc/callback	401	-	authentication_error	ui_access_denied
+PUT	/oidc/callback	401	-	authentication_error	ui_access_denied
+DELETE	/oidc/callback	401	-	authentication_error	ui_access_denied
+PATCH	/oidc/callback	401	-	authentication_error	ui_access_denied
+GET	/openapi.json	200	-	-	-
+HEAD	/openapi.json	200	-	-	-
+OPTIONS	/openapi.json	403	-	invalid_request_error	insufficient_permissions
+POST	/openapi.json	405	GET, HEAD	invalid_request_error	method_not_allowed
+PUT	/openapi.json	405	GET, HEAD	invalid_request_error	method_not_allowed
+DELETE	/openapi.json	405	GET, HEAD	invalid_request_error	method_not_allowed
+PATCH	/openapi.json	405	GET, HEAD	invalid_request_error	method_not_allowed
+GET	/v1/audio/speech	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/audio/speech	405	POST	-	-
+OPTIONS	/v1/audio/speech	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/audio/speech	400	-	invalid_request_error	validation_failed
+PUT	/v1/audio/speech	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/audio/speech	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/audio/speech	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/audio/transcriptions	405	POST	-	-
+OPTIONS	/v1/audio/transcriptions	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/audio/transcriptions	400	-	invalid_request_error	validation_failed
+PUT	/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/audio/transcriptions	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/audio/translations	405	POST	-	-
+OPTIONS	/v1/audio/translations	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/audio/translations	400	-	invalid_request_error	validation_failed
+PUT	/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/audio/translations	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/chat/completions	405	POST	-	-
+OPTIONS	/v1/chat/completions	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/chat/completions	400	-	invalid_request_error	validation_failed
+PUT	/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/chat/completions	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/embeddings	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/embeddings	405	POST	-	-
+OPTIONS	/v1/embeddings	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/embeddings	400	-	invalid_request_error	validation_failed
+PUT	/v1/embeddings	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/embeddings	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/embeddings	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/images/edits	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/images/edits	405	POST	-	-
+OPTIONS	/v1/images/edits	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/images/edits	400	-	invalid_request_error	validation_failed
+PUT	/v1/images/edits	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/images/edits	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/images/edits	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/images/generations	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/images/generations	405	POST	-	-
+OPTIONS	/v1/images/generations	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/images/generations	400	-	invalid_request_error	validation_failed
+PUT	/v1/images/generations	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/images/generations	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/images/generations	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/models	200	-	-	-
+HEAD	/v1/models	405	GET	-	-
+OPTIONS	/v1/models	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/models	405	GET	invalid_request_error	method_not_allowed
+PUT	/v1/models	405	GET	invalid_request_error	method_not_allowed
+DELETE	/v1/models	405	GET	invalid_request_error	method_not_allowed
+PATCH	/v1/models	405	GET	invalid_request_error	method_not_allowed
+GET	/v1/models/no-such-model	404	-	invalid_request_error	model_not_found
+HEAD	/v1/models/no-such-model	405	GET	-	-
+OPTIONS	/v1/models/no-such-model	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+PUT	/v1/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+DELETE	/v1/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+PATCH	/v1/models/no-such-model	405	GET	invalid_request_error	method_not_allowed
+GET	/v1/models/qwen3.5-9b-q4_k_m	200	-	-	-
+HEAD	/v1/models/qwen3.5-9b-q4_k_m	405	GET	-	-
+OPTIONS	/v1/models/qwen3.5-9b-q4_k_m	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+PUT	/v1/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+DELETE	/v1/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+PATCH	/v1/models/qwen3.5-9b-q4_k_m	405	GET	invalid_request_error	method_not_allowed
+GET	/v1/systemone	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/systemone	405	POST	-	-
+OPTIONS	/v1/systemone	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/systemone	400	-	invalid_request_error	validation_failed
+PUT	/v1/systemone	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/systemone	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/systemone	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/videos	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/videos	405	POST	-	-
+OPTIONS	/v1/videos	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/videos	501	-	invalid_request_error	route_disabled
+PUT	/v1/videos	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/videos	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/videos	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/videos/00000000-0000-0000-0000-000000000000	404	-	invalid_request_error	video_job_not_found
+HEAD	/v1/videos/00000000-0000-0000-0000-000000000000	405	GET, DELETE	-	-
+OPTIONS	/v1/videos/00000000-0000-0000-0000-000000000000	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/videos/00000000-0000-0000-0000-000000000000	405	GET, DELETE	invalid_request_error	method_not_allowed
+PUT	/v1/videos/00000000-0000-0000-0000-000000000000	405	GET, DELETE	invalid_request_error	method_not_allowed
+DELETE	/v1/videos/00000000-0000-0000-0000-000000000000	404	-	invalid_request_error	video_job_not_found
+PATCH	/v1/videos/00000000-0000-0000-0000-000000000000	405	GET, DELETE	invalid_request_error	method_not_allowed
+GET	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	405	POST	invalid_request_error	method_not_allowed
+HEAD	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	405	POST	-	-
+OPTIONS	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	404	-	invalid_request_error	video_job_not_found
+PUT	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	405	POST	invalid_request_error	method_not_allowed
+DELETE	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	405	POST	invalid_request_error	method_not_allowed
+PATCH	/v1/videos/00000000-0000-0000-0000-000000000000/cancel	405	POST	invalid_request_error	method_not_allowed
+GET	/v1/videos/00000000-0000-0000-0000-000000000000/content	404	-	invalid_request_error	video_job_not_found
+HEAD	/v1/videos/00000000-0000-0000-0000-000000000000/content	405	GET	-	-
+OPTIONS	/v1/videos/00000000-0000-0000-0000-000000000000/content	403	-	invalid_request_error	insufficient_permissions
+POST	/v1/videos/00000000-0000-0000-0000-000000000000/content	405	GET	invalid_request_error	method_not_allowed
+PUT	/v1/videos/00000000-0000-0000-0000-000000000000/content	405	GET	invalid_request_error	method_not_allowed
+DELETE	/v1/videos/00000000-0000-0000-0000-000000000000/content	405	GET	invalid_request_error	method_not_allowed
+PATCH	/v1/videos/00000000-0000-0000-0000-000000000000/content	405	GET	invalid_request_error	method_not_allowed
