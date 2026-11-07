@@ -152,10 +152,22 @@ func (r *run) terminal() bool {
 	return false
 }
 
+// runOptions is what the run manager needs from the gateway around it.
+type runOptions struct {
+	handler http.Handler               // the gateway, which serves a run's inner request
+	owner   func(*http.Request) string // whose runs a request may see (runOwner)
+	// log and otel are read when they are used, as the server's fields were: a test may set them
+	// after New.
+	log                   func() *slog.Logger
+	otel                  func() *otlp.Runtime
+	dir                   string // "" keeps runs in memory only
+	maxHeld, maxHeldTotal int64  // 0: runMaxHeld and runsMaxHeld
+}
+
 type runManager struct {
-	s   *Server
-	dir string // "" keeps runs in memory only
-	now func() time.Time
+	opts runOptions
+	dir  string // "" keeps runs in memory only
+	now  func() time.Time
 
 	retention, maxDuration, ping time.Duration
 	stopWait                     time.Duration
@@ -173,14 +185,14 @@ type runManager struct {
 	afterPublish func()
 }
 
-func newRunManager(s *Server, dir string) *runManager {
-	m := &runManager{s: s, dir: dir, now: time.Now, retention: runRetention, maxDuration: runMaxDuration,
+func newRunManager(o runOptions) *runManager {
+	m := &runManager{opts: o, dir: o.dir, now: time.Now, retention: runRetention, maxDuration: runMaxDuration,
 		ping: runPing, stopWait: runStopWait, maxOutput: runMaxOutput, maxResult: runMaxResult, maxHeld: runMaxHeld, maxHeldTotal: runsMaxHeld, runs: map[string]*run{}, quit: make(chan struct{})}
-	if s.RunMemoryLimit > 0 {
-		m.maxHeld = s.RunMemoryLimit
+	if o.maxHeld > 0 {
+		m.maxHeld = o.maxHeld
 	}
-	if s.RunsMemoryLimit > 0 {
-		m.maxHeldTotal = s.RunsMemoryLimit
+	if o.maxHeldTotal > 0 {
+		m.maxHeldTotal = o.maxHeldTotal
 	}
 	m.sweepStart()
 	return m
@@ -305,7 +317,7 @@ func (m *runManager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	obs.WarnRefusedWrite(m.s.Log, obs.WritePrivateAtomic(m.path(r.ID), b))
+	obs.WarnRefusedWrite(m.opts.log(), obs.WritePrivateAtomic(m.path(r.ID), b))
 	r.saved = m.now()
 }
 
@@ -429,7 +441,7 @@ func (m *runManager) log(r *run, event string) {
 	msg := map[string]string{"run.started": "Run started.", "run.completed": "Run completed.", "run.failed": "Run failed.",
 		"run.cancelled": "Run stopped.", "run.interrupted": "Run interrupted.", "run.expired": "Run expired.",
 		"run.dismissed": "Run dismissed."}[event]
-	m.s.Log.Log(context.Background(), level, msg, attrs...)
+	m.opts.log().Log(context.Background(), level, msg, attrs...)
 }
 
 // --- events ------------------------------------------------------------------------
@@ -703,7 +715,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		httpx.MethodNotAllowed(w, req, "POST")
 		return
 	}
-	owner := m.s.runOwner(req)
+	owner := m.opts.owner(req)
 	// Before the body is read (up to runMaxBody), and again below, where it counts.
 	m.mu.Lock()
 	over := m.overActive(owner)
@@ -777,7 +789,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		m.afterPublish()
 	}
 
-	ctx, r.span = m.s.Otel.Start(ctx, "localbase.run", otlp.KindInternal)
+	ctx, r.span = m.opts.otel().Start(ctx, "localbase.run", otlp.KindInternal)
 	r.span.SetAttr("localbase.run.id", r.ID)
 	r.span.SetAttr("localbase.run.target", target)
 	ready := make(chan struct{})
@@ -822,7 +834,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	go func() {
 		defer m.wg.Done()
 		defer timer.Stop()
-		m.s.ServeHTTP(rw, inner)
+		m.opts.handler.ServeHTTP(rw, inner)
 		m.finish(r, rw)
 		signal()
 	}()
@@ -1058,7 +1070,7 @@ func (m *runManager) lookup(req *http.Request, id string) *run {
 	m.mu.Lock()
 	r := m.runs[id]
 	m.mu.Unlock()
-	if r == nil || r.Owner != m.s.runOwner(req) {
+	if r == nil || r.Owner != m.opts.owner(req) {
 		return nil
 	}
 	return r
@@ -1070,10 +1082,9 @@ func runNotFound(w http.ResponseWriter, req *http.Request) {
 
 // runsList is GET /_localbase/runs: the caller's runs for the
 // "Generating…" indicator, newest first, without output or request text.
-func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
-	m := s.runs
+func (m *runManager) runsList(w http.ResponseWriter, req *http.Request) {
 	m.sweepExpired()
-	owner := s.runOwner(req)
+	owner := m.opts.owner(req)
 	m.mu.Lock()
 	var mine []*run
 	for _, r := range m.runs {
@@ -1100,8 +1111,7 @@ func (s *Server) runsList(w http.ResponseWriter, req *http.Request) {
 
 // runRoute serves /_localbase/runs/{rest...}: v1/<route> creates; {id},
 // {id}/events and {id}/cancel act on one run.
-func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
-	m := s.runs
+func (m *runManager) runRoute(w http.ResponseWriter, req *http.Request) {
 	rest := req.PathValue("rest")
 	if target, ok := strings.CutPrefix(rest, "v1/"); ok {
 		m.create(w, req, "/v1/"+target)
