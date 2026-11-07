@@ -395,3 +395,45 @@ func TestPartialSuccessIsReported(t *testing.T) {
 		})
 	}
 }
+
+// A server span is named before its route is known when a request is forwarded inside the
+// gateway (/app/api): SetName gives it the route it reached, and the export carries that name.
+func TestSpanSetName(t *testing.T) {
+	var mu sync.Mutex
+	var traces []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if strings.HasSuffix(r.URL.Path, "/traces") {
+			m, err := DecodeTraces(b)
+			if err != nil {
+				t.Error(err)
+			}
+			mu.Lock()
+			traces = append(traces, m)
+			mu.Unlock()
+		}
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+	cfg, err := obs.ResolveOtel(srv.URL, "", 100, func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := New(cfg, "test", func(string, string, map[string]any) {})
+	_, span := rt.Start(context.Background(), "POST /app/api/", KindServer)
+	span.SetName("POST /v1/chat/completions")
+	span.End()
+	span.SetName("too late")
+	rt.Shutdown()
+	var nilSpan *Span
+	nilSpan.SetName("safe on nil")
+	mu.Lock()
+	defer mu.Unlock()
+	if len(traces) != 1 {
+		t.Fatalf("traces %d", len(traces))
+	}
+	list := traces[0]["resourceSpans"].([]any)[0].(map[string]any)["scopeSpans"].([]any)[0].(map[string]any)["spans"].([]any)
+	if got := list[0].(map[string]any)["name"]; got != "POST /v1/chat/completions" {
+		t.Errorf("exported name %q", got)
+	}
+}

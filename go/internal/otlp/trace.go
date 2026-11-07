@@ -104,6 +104,20 @@ func (s *Span) SetAttr(key string, value any) {
 	}
 }
 
+// SetName renames the span before it ends. A server span is started before the
+// gateway knows the route a request forwarded inside it (/app/api) reaches.
+func (s *Span) SetName(name string) {
+	if !s.Recording() {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ended {
+		return
+	}
+	s.name = name
+}
+
 // SetError marks the span failed.
 func (s *Span) SetError(message string) {
 	if !s.Recording() {

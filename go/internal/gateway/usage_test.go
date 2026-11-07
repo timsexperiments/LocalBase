@@ -625,3 +625,23 @@ func TestUsageOutOfOTLP(t *testing.T) {
 		}
 	}
 }
+
+// A browser's call through /app/api counts once, as the person (DESIGN §32), under the route it
+// reached: the forwarded request, not /app/api/, is what the end of ServeHTTP must see.
+func TestUsageCountsAUICallThroughAppAPI(t *testing.T) {
+	ts := openAPIGateway(t)
+	s := runServer(ts)
+	s.NoAuth, s.LoginPages = false, localPages{}
+	c := localClient{t, ts.URL}
+	cookie := sessionCookie(t, c, s)
+	before := usageOf(t, s, "").Totals.Requests
+	headers := localUI(cookie, ts.URL)
+	headers["Content-Type"] = "application/json"
+	resp, body := c.send("POST", "/app/api/v1/chat/completions", chatBody("hi"), headers)
+	if resp.StatusCode != 200 {
+		t.Fatalf("a chat through /app/api: %d %s", resp.StatusCode, body)
+	}
+	if !waitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests == before+1 }) {
+		t.Errorf("a chat through /app/api counted %d times, want 1", usageOf(t, s, "").Totals.Requests-before)
+	}
+}

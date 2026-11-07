@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -477,16 +478,33 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.segments", segments)
 	}
 	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), recKey{}, rec))
+	startLabel := label
 	defer func() {
 		rec.armWrite() // what's still buffered leaves when this returns
+		abort := false
+		// Last of all, once usage, the log and the span are done: a panic after the answer started
+		// resets the connection, so a client never takes half a stream for the whole of it, and
+		// http.ErrAbortHandler aborts as net/http defines it.
+		defer func() {
+			if abort {
+				panic(http.ErrAbortHandler)
+			}
+		}()
 		if v := recover(); v != nil {
 			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
-			if rec.status == 0 {
+			err, _ := v.(error)
+			if rec.status == 0 && !errors.Is(err, http.ErrAbortHandler) {
 				serviceUnavailable(rec, r, "Gateway")
+			} else {
+				abort = true
 			}
 		}
 		defer span.End()
 		label, family, segments := routeLabel(r)
+		if r.Pattern != "" && label != startLabel { // forwarded inside the gateway (/app/api): name the route it reached
+			span.SetName(r.Method + " " + label)
+			span.SetAttr("http.route", label)
+		}
 		status := rec.finalStatus()
 		duration := time.Since(start)
 		s.recordUsage(rec, label, status, duration)
