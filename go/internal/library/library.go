@@ -251,10 +251,10 @@ var llmTasks = []string{"chat", "embeddings", "decision"}
 // Gate resolves a model for the LLM runtime through the selection.
 func (l *Library) Gate() runtime.Gate { return l.GateFor(llmTasks...) }
 
-// GateFor resolves models of the given tasks through the selection.
+// GateFor resolves models of the given tasks through the selection, under the
+// caller's context: a download a launch starts stops when the launch does.
 func (l *Library) GateFor(tasks ...string) runtime.Gate {
-	return func(modelID string) (*runtime.Target, error) {
-		ctx := context.Background()
+	return func(ctx context.Context, modelID string) (*runtime.Target, error) {
 		e, err := l.Get(ctx, modelID)
 		if errors.Is(err, ErrNotFound) {
 			return nil, runtime.ErrModelNotFound

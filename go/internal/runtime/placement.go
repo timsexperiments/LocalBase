@@ -227,7 +227,7 @@ func (m *LLM) PreviewPlacement(modelID string, req placement.Request) (*LLMPlan,
 	if m.d.Placement == nil {
 		return nil, errors.New("placement planning is not available")
 	}
-	t, _ := m.target(modelID)
+	t, _ := m.target(context.Background(), modelID)
 	plan, err := m.planFor(modelID, t)
 	if err != nil {
 		return nil, err
@@ -249,7 +249,7 @@ func (m *LLM) NextLoadBytes(modelID string) (need int64, ok bool) {
 	if m.d.Memory == nil {
 		return 0, false
 	}
-	t, _ := m.target(modelID)
+	t, _ := m.target(context.Background(), modelID)
 	plan, err := m.planFor(modelID, t)
 	if err != nil {
 		return 0, false

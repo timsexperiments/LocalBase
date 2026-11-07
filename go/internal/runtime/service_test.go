@@ -42,7 +42,7 @@ func newTestServiceWith(t *testing.T, mem *memory.Controller) (*Service, *[]stri
 	}
 	cpu := *reg.Get("whisper.cpp-metal")
 	cpu.Platforms = []backends.Platform{{OS: "*", Arch: "*", Accelerator: "cpu"}}
-	gate := func(id string) (*Target, error) {
+	gate := func(_ context.Context, id string) (*Target, error) {
 		if id != "a" && id != "b" {
 			return nil, ErrModelNotFound
 		}

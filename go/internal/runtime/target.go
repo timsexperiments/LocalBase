@@ -31,8 +31,9 @@ type Target struct {
 }
 
 // Gate resolves a model for launch. It returns ErrModelNotFound for an
-// unknown id and a *LaunchError when the selection cannot launch.
-type Gate func(modelID string) (*Target, error)
+// unknown id and a *LaunchError when the selection cannot launch. ctx bounds
+// everything it does, a download it starts for the launch included.
+type Gate func(ctx context.Context, modelID string) (*Target, error)
 
 // LaunchError is a selection problem found before anything starts.
 type LaunchError struct {

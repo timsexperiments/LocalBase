@@ -42,7 +42,7 @@ func (m *LLM) doSwitch(ctx context.Context, modelID, key string, parent *otlp.Sp
 			return demand, err
 		}
 	}
-	t, err := m.target(modelID)
+	t, err := m.target(ctx, modelID)
 	if err != nil {
 		return demand, err
 	}

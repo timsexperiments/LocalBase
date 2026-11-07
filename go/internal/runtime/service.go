@@ -159,7 +159,7 @@ func (s *Service) Resolve(model string) (string, error) {
 		}
 	}
 	if s.d.Gate != nil {
-		if t, _ := s.d.Gate(model); t != nil && t.Imported && t.Model.HasTask(taskOf(s.d.Modality)) {
+		if t, _ := s.d.Gate(context.Background(), model); t != nil && t.Imported && t.Model.HasTask(taskOf(s.d.Modality)) {
 			return model, nil
 		}
 	}
@@ -267,7 +267,7 @@ func (s *Service) doSwitch(ctx context.Context, modelID, key string, parent *otl
 	if s.d.Gate == nil {
 		return demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
-	t, err := s.d.Gate(modelID)
+	t, err := s.d.Gate(ctx, modelID)
 	if err != nil {
 		return demand, err
 	}
@@ -399,7 +399,7 @@ func (s *Service) reloadRestored(ctx context.Context, modelID string) {
 			"category", "runtime", "component", modalityComponents[s.d.Modality], "runtime", s.d.Modality,
 			"error", err.Error(), slog.Group("attributes", "model", modelID))
 	}
-	t, err := s.d.Gate(modelID)
+	t, err := s.d.Gate(ctx, modelID)
 	if err != nil {
 		failed(err)
 		return
@@ -612,7 +612,7 @@ func (s *Service) PreviewAdmission(ctx context.Context, id string, assumeInstall
 	if s.d.Gate == nil {
 		return memory.AdmissionPreview{}, demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
-	t, err := s.d.Gate(id)
+	t, err := s.d.Gate(ctx, id)
 	if err != nil {
 		return memory.AdmissionPreview{}, demand, err
 	}

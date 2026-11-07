@@ -189,7 +189,7 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 	if running && margin == 0 {
 		return nil
 	}
-	demand, err := m.switchDemand(id, running, false)
+	demand, err := m.switchDemand(context.Background(), id, running, false)
 	if err != nil {
 		return err
 	}
@@ -204,10 +204,10 @@ func (m *LLM) fitsNow(id string, margin int64) error {
 
 // switchDemand is the demand a switch to id would be admitted with, computed as
 // doSwitch does, without installing or starting anything.
-func (m *LLM) switchDemand(id string, running, assumeInstalled bool) (memory.Demand, error) {
+func (m *LLM) switchDemand(ctx context.Context, id string, running, assumeInstalled bool) (memory.Demand, error) {
 	var demand memory.Demand
 	spec := m.d.Catalog.ByID(id)
-	t, err := m.target(id)
+	t, err := m.target(ctx, id)
 	if err != nil {
 		return demand, err
 	}
@@ -238,7 +238,7 @@ func (m *LLM) PreviewAdmission(ctx context.Context, id string, assumeInstalled b
 	m.mu.Lock()
 	running := m.cur != nil && m.cur.modelID == id
 	m.mu.Unlock()
-	demand, err := m.switchDemand(id, running, assumeInstalled)
+	demand, err := m.switchDemand(ctx, id, running, assumeInstalled)
 	if errors.Is(err, errNotInstalled) {
 		return memory.AdmissionPreview{}, demand, &NotInstalledError{ModelID: id}
 	}
