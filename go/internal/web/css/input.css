@@ -53,6 +53,16 @@
       scroll-padding-bottom: 1rem;
     }
   }
+  /* A tool page's prompt is docked over the foot of the page (fixed on phones and tablets,
+     sticky on desktops), so they clear it too. shell.js measures it as --lb-dock-h. */
+  html:has(.lab-dock) {
+    scroll-padding-bottom: calc(var(--lb-tabbar-h) + env(safe-area-inset-bottom) + var(--lb-kb) + var(--lb-dock-h, 10rem) + 1rem);
+  }
+  @media (min-width: 768px) {
+    html:has(.lab-dock) {
+      scroll-padding-bottom: calc(var(--lb-dock-h, 10rem) + 1rem);
+    }
+  }
   body {
     @apply bg-canvas text-ink font-sans antialiased;
     line-height: 1.5;
