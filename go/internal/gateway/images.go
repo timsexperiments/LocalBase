@@ -497,7 +497,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 			bad("Each image file must be between 1 byte and 8 MiB.", param)
 			return
 		}
-		mime := imageMimeFromMagic(f.data)
+		mime := ImageMimeFromMagic(f.data)
 		if mime == "" {
 			bad("Images must be PNG or JPEG by file signature.", param)
 			return
@@ -506,13 +506,13 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 			bad("Image content type does not match its file signature.", param)
 			return
 		}
-		var d *imageDims
+		var d *ImageDims
 		if mime == "image/png" {
-			d = validatePNG(f.data)
+			d = ValidatePNG(f.data)
 		} else {
-			d = validateJPEG(f.data)
+			d = ValidateJPEG(f.data)
 		}
-		if d == nil || d.width < 1 || d.height < 1 || d.width > 2048 || d.height > 2048 || d.width*d.height > 4_194_304 {
+		if d == nil || d.Width < 1 || d.Height < 1 || d.Width > 2048 || d.Height > 2048 || d.Width*d.Height > 4_194_304 {
 			bad("Images must have valid dimensions no larger than 2048x2048 (4.2 megapixels).", param)
 			return
 		}

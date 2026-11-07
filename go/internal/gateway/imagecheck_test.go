@@ -40,7 +40,7 @@ func rawPNG(w, h uint32, depth, color, interlace byte, raw []byte, extra ...[]by
 	zw := zlib.NewWriter(&z)
 	zw.Write(raw)
 	zw.Close()
-	out := append([]byte{}, pngSignature...)
+	out := append([]byte{}, PNGSignature...)
 	out = append(out, chunk("IHDR", ihdr)...)
 	for _, e := range extra {
 		out = append(out, e...)
@@ -58,11 +58,11 @@ func TestValidatePNG(t *testing.T) {
 		// 3x2 gray 8-bit, interlaced: Adam7 passes 1, 4 and 6 hold one pixel, pass 7 three.
 		"interlaced": rawPNG(3, 2, 8, 0, 1, []byte{0, 1, 0, 2, 0, 3, 0, 4, 5, 6}),
 	} {
-		if d := validatePNG(b); d == nil {
+		if d := ValidatePNG(b); d == nil {
 			t.Errorf("%s: rejected", name)
 		}
 	}
-	if d := validatePNG(encodePNG(t, rgba)); d == nil || d.width != 7 || d.height != 3 {
+	if d := ValidatePNG(encodePNG(t, rgba)); d == nil || d.Width != 7 || d.Height != 3 {
 		t.Errorf("dimensions %+v", d)
 	}
 	good := rawPNG(2, 1, 8, 0, 0, []byte{0, 1, 2})
@@ -77,20 +77,20 @@ func TestValidatePNG(t *testing.T) {
 		"no IEND":          good[:len(good)-12],
 		"palette missing":  rawPNG(2, 1, 8, 3, 0, []byte{0, 1, 2}),
 		"critical unknown": rawPNG(2, 1, 8, 0, 0, []byte{0, 1, 2}, []byte{0, 0, 0, 0, 'A', 'B', 'C', 'D', 0, 0, 0, 0}),
-		"signature only":   pngSignature,
+		"signature only":   PNGSignature,
 	} {
-		if validatePNG(b) != nil {
+		if ValidatePNG(b) != nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
 	// An ancillary chunk (lowercase first letter) is allowed.
-	if validatePNG(rawPNG(2, 1, 8, 0, 0, []byte{0, 1, 2}, []byte{0, 0, 0, 0, 't', 'E', 'X', 't', 0, 0, 0, 0})) == nil {
+	if ValidatePNG(rawPNG(2, 1, 8, 0, 0, []byte{0, 1, 2}, []byte{0, 0, 0, 0, 't', 'E', 'X', 't', 0, 0, 0, 0})) == nil {
 		t.Error("ancillary chunk rejected")
 	}
 	// Corrupt zlib data.
 	broken := append([]byte{}, good...)
 	broken[8+25+8+3] ^= 0xff
-	if validatePNG(broken) != nil {
+	if ValidatePNG(broken) != nil {
 		t.Error("corrupt IDAT accepted")
 	}
 }
@@ -99,7 +99,7 @@ func TestValidateJPEG(t *testing.T) {
 	var b bytes.Buffer
 	jpeg.Encode(&b, image.NewGray(image.Rect(0, 0, 9, 4)), nil)
 	good := b.Bytes()
-	if d := validateJPEG(good); d == nil || d.width != 9 || d.height != 4 {
+	if d := ValidateJPEG(good); d == nil || d.Width != 9 || d.Height != 4 {
 		t.Fatalf("valid jpeg: %+v", d)
 	}
 	for name, x := range map[string][]byte{
@@ -109,11 +109,11 @@ func TestValidateJPEG(t *testing.T) {
 		"just SOI+EOI":  {0xff, 0xd8, 0xff, 0xd9},
 		"short segment": {0xff, 0xd8, 0xff, 0xe0, 0x00},
 	} {
-		if validateJPEG(x) != nil {
+		if ValidateJPEG(x) != nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if imageMimeFromMagic(good) != "image/jpeg" || imageMimeFromMagic([]byte("GIF89a")) != "" {
+	if ImageMimeFromMagic(good) != "image/jpeg" || ImageMimeFromMagic([]byte("GIF89a")) != "" {
 		t.Error("magic")
 	}
 }

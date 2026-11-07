@@ -184,7 +184,7 @@ func decodeCanonicalBase64(s string) []byte {
 // critical chunks, ancillary chunks only before the image data, and exactly
 // the scanlines the header declares with valid filter bytes.
 func videoPNG(b []byte) (int, int, bool) {
-	if validatePNG(b) == nil || len(b) < 33 || !bytes.Equal(b[:8], pngSignature) {
+	if ValidatePNG(b) == nil || len(b) < 33 || !bytes.Equal(b[:8], PNGSignature) {
 		return 0, 0, false
 	}
 	be := binary.BigEndian
