@@ -108,6 +108,9 @@ type Server struct {
 	// RunMemoryLimit and RunsMemoryLimit are what a detached chat run, and all retained runs
 	// together, may hold in memory; 0 is the default.
 	RunMemoryLimit, RunsMemoryLimit int64
+	// RunMaxDuration is how long a detached run may take before it is interrupted; 0 is the default
+	// (15 minutes). No flag or setting sets it: tests do.
+	RunMaxDuration time.Duration
 	// Overrides applies what only this process has (the environment, serve's flags) to a saved
 	// configuration, before it is published to the runtimes.
 	Overrides func(*store.Config)
@@ -152,7 +155,7 @@ func New(s *Server) *Server {
 // runOptions is what the run manager needs from this server.
 func (s *Server) runOptions(dir string) runOptions {
 	return runOptions{handler: s, owner: s.runOwner, log: func() *slog.Logger { return s.Log }, otel: func() *otlp.Runtime { return s.Otel },
-		dir: dir, maxHeld: s.RunMemoryLimit, maxHeldTotal: s.RunsMemoryLimit}
+		dir: dir, maxHeld: s.RunMemoryLimit, maxHeldTotal: s.RunsMemoryLimit, maxDuration: s.RunMaxDuration}
 }
 
 // StopRuns interrupts active runs (gateway_restart) and ends their event
