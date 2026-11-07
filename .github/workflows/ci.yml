@@ -3,11 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["go/**"]
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore: ["go/**"]
 
 permissions:
   contents: read
@@ -19,8 +17,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # "validate" is a required check, so this workflow runs on every pull request and its jobs skip
+  # instead (a skipped job satisfies a required check; a workflow that never starts does not). The
+  # legacy TS suite runs only when something outside go/ changed, and never on a draft.
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      ts: ${{ steps.scope.outputs.ts }}
+    steps:
+      - name: Does anything outside go/ change?
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then echo ts=false >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$EVENT" = pull_request ]; then
+            files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --jq '.files[].filename')"
+          else
+            echo ts=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if printf '%s\n' "$files" | grep -qv '^go/'; then echo ts=true >> "$GITHUB_OUTPUT"; else echo ts=false >> "$GITHUB_OUTPUT"; fi
+
   validate-macos:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: scope
+    if: needs.scope.outputs.ts == 'true'
     runs-on: macos-15
     timeout-minutes: 20
 
@@ -45,7 +76,8 @@ jobs:
         run: bun run check
 
   validate:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: scope
+    if: needs.scope.outputs.ts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -72,7 +104,8 @@ jobs:
         run: bun run check
 
   runtime-smoke-linux:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: scope
+    if: needs.scope.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
