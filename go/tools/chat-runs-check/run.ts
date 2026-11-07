@@ -21,13 +21,10 @@ const [cdpBase, base] = process.argv.slice(2);
 }
 // With its browser gone nothing here can finish: the client stops the run. A failed command reads
 // as the method and Chrome's words run together, as it always has here.
-const page = await openPage(cdpBase, { errorText: (method, message) => method + message });
-const { ws } = page;
-const send = (method, params = {}) => { if (method === "Emulation.setDeviceMetricsOverride") askedWidth = params.width; return page.send(method, params); };
+const { send, ws } = await openPage(cdpBase, { errorText: (method, message) => method + message });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
 // to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
-let askedWidth = 0;
 const pageFits = () => `document.documentElement.scrollWidth <= document.documentElement.clientWidth`;
 const ev = (expression) => evaluate(send, expression, (details) => JSON.stringify(details).slice(0, 400));
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
@@ -246,8 +243,17 @@ await ev(`document.querySelector("#unload-sheet button.btn-primary").click()`);
 await sleep(400);
 const waitingText = await ev(`(() => { const b = document.getElementById("unload-busy"); return b && getComputedStyle(b).display !== "none" ? b.textContent.trim() : ""; })()`);
 check(/^Freeing memory…/.test(waitingText), `while draining it says so: ${JSON.stringify(waitingText)}`);
+// Freeing waits for the request in flight, so the words can take most of 10 s to show. They show
+// when the list is swapped in, and the announcement follows once htmx has settled it. So the
+// announcement and the closed sheet get up to 5 s of their own, rather than being read the moment
+// the words show.
 for (let i = 0; i < 40 && !(await ev(`document.getElementById("running-live").textContent.includes("Freed")`)); i++) await sleep(250);
-const unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
+let unloaded;
+for (let i = 0; i < 20; i++) {
+  unloaded = await ev(`({ shown: document.getElementById("running-live").textContent.includes("Freed"), said: document.getElementById("running-status").textContent, empty: !document.getElementById("unload-sheet") })`);
+  if (unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty) break;
+  await sleep(250);
+}
 check(unloaded.shown && /^Freed/.test(unloaded.said) && unloaded.empty, `unloaded, shown and announced: ${JSON.stringify(unloaded)}`);
 // 9. My voices: add one through the sheet (it closes and the list says so),
 // then Play shows as pressed. Needs any 3 to 30 second audio file in
