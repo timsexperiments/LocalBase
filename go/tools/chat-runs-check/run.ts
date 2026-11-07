@@ -1,6 +1,8 @@
 // Drives headless Chrome for tools/chat-runs-check.sh: detached chat runs
 // end to end (leave and return, the pill, Stop, the draft, a dropped
 // connection). Exits 1 when any check fails.
+import { evaluate, openPage } from "../cdp/cdp.ts";
+
 const [cdpBase, base] = process.argv.slice(2);
 // This script leaves its gateway changed, and on one it has already used it fails in ways that
 // say nothing about the page. So: once per gateway, known by when it started.
@@ -17,20 +19,17 @@ const [cdpBase, base] = process.argv.slice(2);
     await Bun.write(marker, base + " " + started + "\n");
   }
 }
-const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-await new Promise((r) => ws.addEventListener("open", r, { once: true }));
-// With its browser gone nothing here can finish: stop rather than wait on it.
-ws.addEventListener("close", () => process.exit(2));
-let id = 0; const waiting = new Map();
-ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-const send = (method, params = {}) => new Promise((res, rej) => { if (method === "Emulation.setDeviceMetricsOverride") askedWidth = params.width; const n = ++id; waiting.set(n, (m) => m.error ? rej(new Error(method + m.error.message)) : res(m.result)); ws.send(JSON.stringify({ id: n, method, params })); });
+// With its browser gone nothing here can finish: the client stops the run. A failed command reads
+// as the method and Chrome's words run together, as it always has here.
+const page = await openPage(cdpBase, { errorText: (method, message) => method + message });
+const { ws } = page;
+const send = (method, params = {}) => { if (method === "Emulation.setDeviceMetricsOverride") askedWidth = params.width; return page.send(method, params); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Whether the page fits the width last asked for. Not innerWidth: mobile emulation grows it
 // to fit wide content, so scrollWidth - innerWidth stays 0 on a page that overflows.
 let askedWidth = 0;
 const pageFits = () => `document.documentElement.scrollWidth <= document.documentElement.clientWidth`;
-const ev = async (expression) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
+const ev = (expression) => evaluate(send, expression, (details) => JSON.stringify(details).slice(0, 400));
 const nav = async (path) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const runsNow = () => ev(`fetch("/app/api/_localbase/runs",{headers:{"x-localbase-ui":"1"}}).then(r=>r.json()).then(b=>b.data.map(r=>r.status+":"+r.label))`);
 let fails = 0; const check = (ok, msg) => { console.log((ok ? "ok   " : "FAIL ") + msg); if (!ok) fails++; };

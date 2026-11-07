@@ -1,5 +1,7 @@
 // Drives headless Chrome for tools/ui-shots.sh: every page at every width in both color
 // schemes, a contact sheet per scheme, and, with a baseline folder, a pixel comparison.
+import { evaluate, openPage } from "../cdp/cdp.ts";
+
 const [cdpBase, base, out, baseline] = process.argv.slice(2);
 const WIDTHS: [number, number][] = [[320, 568], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]];
 const SCHEMES = ["light", "dark"];
@@ -46,15 +48,9 @@ const PAGES: [string, string, string?][] = [
 // by themselves; contact sheets keep them, because they are the point.
 const STEADY = `const s=document.createElement("style");s.textContent="*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";document.head.append(s);${baseline ? `for(const n of document.querySelectorAll("[data-strip-free],.gauge,.gauge-legend dd,#running-live .text-muted"))n.style.visibility="hidden";` : ""}`;
 
-const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-await new Promise((r) => ws.addEventListener("open", r, { once: true }));
-// With its browser gone nothing here can finish: stop rather than wait on it.
-ws.addEventListener("close", () => process.exit(2));
-let id = 0; const waiting = new Map();
-ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-const send = (method: string, params: any = {}) => new Promise<any>((res, rej) => { const n = ++id; waiting.set(n, (m: any) => (m.error ? rej(new Error(method + ": " + m.error.message)) : res(m.result))); ws.send(JSON.stringify({ id: n, method, params })); });
-const ev = async (expression: string) => { const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+// With its browser gone nothing here can finish: the client stops the run.
+const { send, ws } = await openPage(cdpBase);
+const ev = (expression: string) => evaluate(send, expression, (details) => JSON.stringify(details).slice(0, 300));
 await send("Page.enable");
 
 const shots: { page: string; width: number; scheme: string; file: string }[] = [];
