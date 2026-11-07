@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // DecodeSpec validates a catalog entry like a built-in one.
@@ -48,7 +48,7 @@ func WriteUserEntry(rootDir string, spec *jsjson.Object) (string, *Spec, error) 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", nil, err
 	}
-	if err := obs.WritePrivateChecked(path, append(jsjson.Indent(spec), '\n')); err != nil {
+	if err := safefile.WritePrivateChecked(path, append(jsjson.Indent(spec), '\n')); err != nil {
 		return "", nil, err
 	}
 	return path, s, nil
