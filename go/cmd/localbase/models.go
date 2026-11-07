@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -210,7 +211,13 @@ func modelsCancel() *cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			state, owner, _ := e.Root.OwnerState()
+			state, owner, detail := service.VerifiedOwnerState(e.Root) // the cancel goes only to a proven gateway
+			if state == "unknown" || state == "invalid" {
+				if detail == "" {
+					detail = "its lock could not be read"
+				}
+				return nil, errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing changed.")
+			}
 			if state != "active" || owner == nil {
 				return nil, errors.New("No gateway is running on this root, so it isn't installing anything. An install started with local-base models install stops with Ctrl-C in its terminal.")
 			}

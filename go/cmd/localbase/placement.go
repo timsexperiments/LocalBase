@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -192,11 +194,16 @@ type livePlacement struct {
 
 // gatewayPlacement asks a running gateway, with its instance token.
 func gatewayPlacement(e *env, id string) *livePlacement {
-	state, o, _ := e.Root.OwnerState()
+	state, o, _ := service.VerifiedOwnerState(e.Root)
 	if state != "active" || o == nil {
 		return nil
 	}
-	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/placement-state?model="+id, nil)
+	// The id is a query value: escaped, so an id with &, a space or a control byte can't break the
+	// URL (or make NewRequest fail, which used to leave req nil).
+	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/placement-state?model="+url.QueryEscape(id), nil)
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
 	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
 	if err != nil {

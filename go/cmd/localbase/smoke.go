@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"io"
 	"net/http"
 	"strings"
@@ -48,7 +49,10 @@ func (s *smoker) do(method, path string, body any, timeout time.Duration) (int, 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, method, s.base+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, s.base+path, rd)
+	if err != nil {
+		return 0, nil, failf("request failed: %v", err)
+	}
 	if s.key != "" {
 		req.Header.Set("Authorization", "Bearer "+s.key)
 		req.Header.Set("X-Api-Key", s.key)
@@ -350,7 +354,7 @@ func runSmoke(c *cli.Ctx) (any, error) {
 	}
 	run := func() error {
 		if err := step("health", "", func() (string, error) {
-			state, owner, detail := e.Root.OwnerState()
+			state, owner, detail := service.VerifiedOwnerState(e.Root) // smoke sends its key there: proven first
 			if state != "active" {
 				switch state {
 				case "missing":

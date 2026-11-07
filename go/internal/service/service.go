@@ -553,13 +553,24 @@ type Inspection struct {
 }
 
 // ownerState verifies a live owner by its identity endpoint (#PID reuse).
+// VerifiedOwnerState is root.OwnerState with the gateway's identity proven: "active" only when the
+// process at the recorded address answers with this root's instance id and root hash. A live PID
+// alone can be a reused one, and something else can listen on the port. Anything that sends the
+// instance token or writes through the gateway asks this first.
+func VerifiedOwnerState(r *root.Root) (state string, o *root.Owner, detail string) {
+	return ownerState(r)
+}
+
 func ownerState(r *root.Root) (state string, o *root.Owner, detail string) {
 	state, o, detail = r.OwnerState()
 	if state != "active" {
 		return
 	}
 	url := strings.TrimSuffix(o.HealthURL(), "/health") + "/_localbase/instance"
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil { // an address in owner.json that isn't one: not proven
+		return "unknown", o, "gateway process is present but did not prove its instance identity"
+	}
 	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
 	client := &http.Client{Timeout: 750 * time.Millisecond}
 	resp, err := client.Do(req)

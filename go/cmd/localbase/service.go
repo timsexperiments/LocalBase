@@ -175,11 +175,14 @@ type statusWithDefault struct {
 // reportLogOutages says which logs the running gateway can't rotate or write. Only that gateway
 // knows, so with none running there is nothing to report.
 func reportLogOutages(c *cli.Ctx, e *env) []obs.LogOutage {
-	state, o, _ := e.Root.OwnerState()
+	state, o, _ := service.VerifiedOwnerState(e.Root)
 	if state != "active" || o == nil {
 		return nil
 	}
-	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/instance", nil)
+	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/instance", nil)
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
 	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
 	if err != nil {
@@ -207,11 +210,14 @@ type gatewayDefault struct {
 
 // gatewayDefault asks the running gateway, with its instance token.
 func gatewayDefaultModel(e *env) *gatewayDefault {
-	state, o, _ := e.Root.OwnerState()
+	state, o, _ := service.VerifiedOwnerState(e.Root)
 	if state != "active" || o == nil {
 		return nil
 	}
-	req, _ := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/default-model", nil)
+	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/default-model", nil)
+	if err != nil {
+		return nil
+	}
 	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
 	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
 	if err != nil {
