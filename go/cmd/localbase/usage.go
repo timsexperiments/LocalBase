@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"net/http"
 	"slices"
 	"strconv"
@@ -231,7 +232,7 @@ func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error)
 // with one running, the change goes through it, and otherwise this refuses. It writes the database
 // only when no gateway has the root.
 func writeThroughGateway(e *env, route string, body map[string]any, direct func() (map[string]any, error)) (map[string]any, error) {
-	state, owner, detail := e.Root.OwnerState()
+	state, owner, detail := service.VerifiedOwnerState(e.Root) // a write goes only to a proven gateway
 	switch state {
 	case "active":
 		return throughGateway(e.Root.Dir, owner, route, body)

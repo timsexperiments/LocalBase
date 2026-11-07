@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"net"
 	"strconv"
 	"time"
@@ -34,7 +35,7 @@ func loginLinkBase(hostport string) (string, error) {
 
 // gatewayListen is the running gateway's address, else the configured one.
 func gatewayListen(e *env) (addr string, running bool) {
-	if state, owner, _ := e.Root.OwnerState(); state == "active" && owner != nil && owner.Port > 0 {
+	if state, owner, _ := service.VerifiedOwnerState(e.Root); state == "active" && owner != nil && owner.Port > 0 {
 		return net.JoinHostPort(owner.Host, strconv.Itoa(owner.Port)), true
 	}
 	return net.JoinHostPort(e.Config.GatewayHost, strconv.Itoa(e.Config.GatewayPort)), false
