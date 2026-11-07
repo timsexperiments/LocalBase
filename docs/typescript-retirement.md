@@ -34,3 +34,9 @@ Removal starts only after the maintainer signs off on all of these:
 **After step 1 and before step 5,** a rollback to 0.1.0 must keep working. No Go-only drizzle migration lands until a release explicitly drops that rollback, and the changelog says so.
 
 Keep the old stack branches until step 5, so deployed SHAs stay easy to find.
+
+## Known gaps, left as they are
+
+The TypeScript gateway keeps these until it's removed. The Go gateway doesn't have them.
+
+- **A request just after a backend crash gets 502.** Between a backend process dying and Bun reaping it, the supervisor still counts the backend as running. So the relay sends the request to the dead port and answers 502 `upstream_error` ("The upstream service could not be reached."). The first request after the reap restarts the backend as it should. The Go gateway answers a backend that's gone with 503 and `Retry-After`. Found on 2026-11-07 through a flaky `gateway-crash-recovery.test.ts`, which now waits for the gateway to log the crash before its next request.

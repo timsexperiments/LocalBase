@@ -81,15 +81,32 @@ describe("bounded speech supervisor", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  // waitForEvent waits up to 3 s. A wait that times out takes its observer back, so it can't take
+  // the next test's events.
   async function waitForEvent(
     name: FixtureEvent["event"],
   ): Promise<FixtureEvent> {
+    const deadline = Date.now() + 3_000;
     while (true) {
       const index = reportedEvents.findIndex(({ event }) => event === name);
       if (index >= 0) return reportedEvents.splice(index, 1)[0]!;
-      const event = await new Promise<FixtureEvent>((resolve) => {
-        eventObservers.push(resolve);
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error(`The speech fixture reported no "${name}" within 3 s.`);
+      }
+      let observer: (event: FixtureEvent) => void = () => {};
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const event = await new Promise<FixtureEvent | undefined>((resolve) => {
+        observer = resolve;
+        eventObservers.push(observer);
+        timer = setTimeout(() => resolve(undefined), remaining);
       });
+      clearTimeout(timer);
+      if (event === undefined) {
+        const at = eventObservers.indexOf(observer);
+        if (at >= 0) eventObservers.splice(at, 1);
+        continue;
+      }
       if (event.event === name) return event;
       reportedEvents.push(event);
     }
@@ -210,7 +227,11 @@ describe("bounded speech supervisor", () => {
     const releasePath = join(root, `release-${crypto.randomUUID()}`);
     const exitReleasePath = join(root, `exit-release-${crypto.randomUUID()}`);
     await writeControl({ mode: "hold", releasePath, exitReleasePath });
-    const { supervisor, memoryEvents } = createSupervisor();
+    // The child reports "stopping" before it waits for its release: a stop grace it can always
+    // report within, not the supervisor's 500 ms, which a loaded machine overran.
+    const { supervisor, memoryEvents } = createSupervisor({
+      childStopGraceMs: 4_000,
+    });
     const cancellation = new AbortController();
     const generation = supervisor.generateSpeech({
       text: "cancel this speech",
@@ -252,7 +273,10 @@ describe("bounded speech supervisor", () => {
     const releasePath = join(root, `release-${crypto.randomUUID()}`);
     const exitReleasePath = join(root, `exit-release-${crypto.randomUUID()}`);
     await writeControl({ mode: "hold", releasePath, exitReleasePath });
-    const { supervisor, memoryEvents } = createSupervisor();
+    // As above: time for the child to report "stopping" before it is killed.
+    const { supervisor, memoryEvents } = createSupervisor({
+      childStopGraceMs: 4_000,
+    });
     const generation = supervisor.generateSpeech({ text: "shutdown speech" });
     const generationFailure = generation.catch((error: unknown) => error);
     let shutdown: Promise<void> | undefined;
