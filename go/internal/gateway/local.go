@@ -294,6 +294,7 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 			"session_id", in.ID, "count", revoked)
 		httpx.JSON(w, 200, map[string]any{"revoked": revoked})
 	default:
+		// Checked here, not by the route table's gate: the caller is authenticated first, and the 405 carries Cache-Control.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }

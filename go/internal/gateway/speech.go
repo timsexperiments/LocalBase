@@ -134,10 +134,6 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 
 func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	body, ok := readBody(w, r)
 	if !ok {
 		return

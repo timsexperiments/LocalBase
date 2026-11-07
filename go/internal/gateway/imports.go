@@ -47,10 +47,6 @@ func (s *Server) libraryOr503(w http.ResponseWriter, r *http.Request) *library.L
 }
 
 func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, r, "GET")
-		return
-	}
 	if s.adminPrincipal(w, r, "models:read") == nil {
 		return
 	}
@@ -71,9 +67,6 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 	perm := "models:read"
 	if r.Method == http.MethodPost {
 		perm = "models:manage"
-	} else if r.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, r, "GET, POST")
-		return
 	}
 	if s.adminPrincipal(w, r, perm) == nil {
 		return
@@ -131,10 +124,6 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "GET, POST")
-		return
-	}
 	if s.adminPrincipal(w, r, "models:manage") == nil {
 		return
 	}
@@ -261,10 +250,6 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 // authProfilesAPI lists auth profiles: ids, origins and header names. Header
 // values never leave the credential file.
 func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		httpx.MethodNotAllowed(w, r, "GET")
-		return
-	}
 	if s.adminPrincipal(w, r, "models:manage") == nil {
 		return
 	}

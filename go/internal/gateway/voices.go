@@ -118,6 +118,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if r.Method != http.MethodPost {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "GET, POST")
 			return
 		}
@@ -139,6 +140,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 
 	case "audio":
 		if r.Method != http.MethodGet {
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "GET")
 			return
 		}
@@ -209,6 +211,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			s.logVoice("deleted", v)
 			httpx.JSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
 		default:
+			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 			httpx.MethodNotAllowed(w, r, "GET, PATCH, DELETE")
 		}
 	}

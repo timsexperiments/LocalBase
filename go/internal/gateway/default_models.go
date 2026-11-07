@@ -37,6 +37,7 @@ func (s *Server) defaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	case http.MethodPost:
 	default:
+		// Checked here, not by the route table's gate: the caller is authenticated first, and the 405 carries Cache-Control.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}

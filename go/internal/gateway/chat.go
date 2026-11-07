@@ -203,10 +203,6 @@ func anchorPattern(p string) string {
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	req, ok := readJSON(w, r)
 	if !ok {
 		return
@@ -270,10 +266,6 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	req, ok := readJSON(w, r)
 	if !ok {
 		return
@@ -325,10 +317,6 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	req, ok := readJSON(w, r)
 	if !ok {
 		return

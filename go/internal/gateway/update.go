@@ -34,6 +34,7 @@ func (s *Server) updateAPI(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.updateChange(w, r)
 	default:
+		// Checked here, not by the route table's gate: the 405 carries this handler's Cache-Control.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }

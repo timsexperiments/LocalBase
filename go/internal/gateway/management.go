@@ -746,6 +746,7 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodPost {
+		// Checked here, not by the route table's gate: GET is answered above, with its own checks.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 		return
 	}

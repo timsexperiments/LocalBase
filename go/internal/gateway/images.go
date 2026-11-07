@@ -304,10 +304,6 @@ func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLea
 }
 
 func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	started := time.Now()
 	req, ok := readJSON(w, r)
 	if !ok {
@@ -353,10 +349,6 @@ type editFile struct {
 }
 
 func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		httpx.MethodNotAllowed(w, r, "POST")
-		return
-	}
 	started := time.Now()
 	if r.ContentLength > imageEditMaxBytes {
 		payloadTooLargeLimit(w, r, imageEditMaxBytes)

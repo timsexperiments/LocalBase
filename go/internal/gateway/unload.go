@@ -19,6 +19,7 @@ var unloadWait = 30 * time.Second
 // runs included) are in flight.
 func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodPost {
+		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
