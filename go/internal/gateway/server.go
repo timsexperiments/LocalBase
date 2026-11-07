@@ -404,14 +404,27 @@ func (r *recorder) Write(b []byte) (int, error) {
 	return r.send(b)
 }
 
-func (r *recorder) Flush() {
+func (r *recorder) Flush() { _ = r.FlushError() }
+
+// FlushError sends what is buffered. A flush that doesn't get out before the write deadline is a
+// failed send, as a short write is: net/http closes the connection after it, and the handler may see
+// the client's cancel before it writes again, so nothing else would record it.
+func (r *recorder) FlushError() error {
 	if r.discarding() {
-		return
+		return nil
+	}
+	if r.writes == nil {
+		if f, ok := r.ResponseWriter.(http.Flusher); ok {
+			f.Flush()
+		}
+		return nil
 	}
 	r.armWrite()
-	if f, ok := r.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
+	err := r.writes.Flush()
+	if err != nil && !errors.Is(err, http.ErrNotSupported) {
+		r.sendFailed = true
 	}
+	return err
 }
 
 func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
