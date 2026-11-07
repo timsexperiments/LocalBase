@@ -67,6 +67,7 @@ const (
 	runRetention       = 30 * time.Minute
 	runPing            = 15 * time.Second
 	runCheckpointEvery = time.Second
+	runStopWait        = 10 * time.Second // how long a cancel or a DELETE waits for a stopped run to end
 )
 
 // Run statuses.
@@ -169,7 +170,9 @@ type run struct {
 	stopReason string
 	source     string // the inference's terminal source
 	queuedSeen bool
-	restored   bool // read back from a checkpoint after a restart
+	restored   bool  // read back from a checkpoint after a restart
+	body       int64 // the request body, counted in runManager.held while the inner request holds it
+	dismissed  bool  // deleted before it ended: finish gives back what it held since
 	saved      time.Time
 	span       *otlp.Span
 }
@@ -188,6 +191,7 @@ type runManager struct {
 	now func() time.Time
 
 	retention, maxDuration, ping time.Duration
+	stopWait                     time.Duration
 	maxOutput, maxResult         int
 	maxHeld, maxHeldTotal        int64
 	held                         atomic.Int64 // what all retained runs hold
@@ -204,7 +208,7 @@ type runManager struct {
 
 func newRunManager(s *Server, dir string) *runManager {
 	m := &runManager{s: s, dir: dir, now: time.Now, retention: runRetention, maxDuration: runMaxDuration,
-		ping: runPing, maxOutput: runMaxOutput, maxResult: runMaxResult, maxHeld: runMaxHeld, maxHeldTotal: runsMaxHeld, runs: map[string]*run{}, quit: make(chan struct{})}
+		ping: runPing, stopWait: runStopWait, maxOutput: runMaxOutput, maxResult: runMaxResult, maxHeld: runMaxHeld, maxHeldTotal: runsMaxHeld, runs: map[string]*run{}, quit: make(chan struct{})}
 	if s.RunMemoryLimit > 0 {
 		m.maxHeld = s.RunMemoryLimit
 	}
@@ -269,9 +273,46 @@ func mib(b int64) int64 { return (b + 1<<20 - 1) >> 20 }
 // release ends what a run holds, when it is dropped.
 func (m *runManager) release(r *run) {
 	r.mu.Lock()
-	m.held.Add(-r.held)
-	r.held = 0
+	m.held.Add(-r.held - r.body)
+	r.held, r.body = 0, 0
 	r.mu.Unlock()
+}
+
+// dismiss drops a run its owner deleted. A run that hadn't ended by then (a stop it took longer than
+// stopWait to obey) is given back once more when it ends, by finish.
+func (m *runManager) dismiss(r *run) {
+	m.mu.Lock()
+	delete(m.runs, r.ID)
+	m.mu.Unlock()
+	r.mu.Lock()
+	r.dismissed = true
+	r.mu.Unlock()
+	m.release(r)
+	m.remove(r.ID)
+	m.log(r, "run.dismissed")
+}
+
+// tooManyRuns is the refusal over runActivePerOwner or runActiveTotal.
+func tooManyRuns(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Retry-After", "5")
+	writeError(w, req, 429, "rate_limit_error", "too_many_runs",
+		fmt.Sprintf("Too many generations are running (at most %d per account). Wait for one to finish or stop one.", runActivePerOwner), nil)
+}
+
+// overActive reports whether owner may start no more runs. Called with m.mu held.
+func (m *runManager) overActive(owner string) bool {
+	active, mine := 0, 0
+	for _, o := range m.runs {
+		o.mu.Lock()
+		if !o.terminal() {
+			active++
+			if o.Owner == owner {
+				mine++
+			}
+		}
+		o.mu.Unlock()
+	}
+	return mine >= runActivePerOwner || active >= runActiveTotal
 }
 
 // --- checkpoints ------------------------------------------------------------------
@@ -694,40 +735,67 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		methodNotAllowed(w, req, "POST")
 		return
 	}
+	owner := m.s.runOwner(req)
+	// Before the body is read (up to runMaxBody), and again below, where it counts.
+	m.mu.Lock()
+	over := m.overActive(owner)
+	m.mu.Unlock()
+	if over {
+		tooManyRuns(w, req)
+		return
+	}
 	body, ok := readRunBody(w, req, target)
 	if !ok {
 		return
 	}
-	owner := m.s.runOwner(req)
 	now := m.now()
 	r := &run{m: m, runRecord: runRecord{ID: newRunID(), Object: "localbase.run", Owner: owner, Target: target, Label: label,
 		Status: runQueued, CreatedAt: now}, notify: make(chan struct{}), done: make(chan struct{})}
 	r.Model = requestModel(req.Header.Get("Content-Type"), body)
+	// The body counts towards what runs hold while the inner request holds it. One that doesn't fit
+	// gives a run that has already ended, as a run stopped by that limit ends.
+	size := int64(len(body))
+	var fullError map[string]any
+	if m.held.Add(size) > m.maxHeldTotal {
+		m.held.Add(-size)
+		size, fullError = 0, m.memoryFullError()
+	}
 
 	m.mu.Lock()
 	if m.closing {
 		m.mu.Unlock()
+		m.held.Add(-size)
 		serviceUnavailable(w, req, "Gateway")
 		return
 	}
-	active, mine := 0, 0
-	for _, o := range m.runs {
-		o.mu.Lock()
-		if !o.terminal() {
-			active++
-			if o.Owner == owner {
-				mine++
-			}
-		}
-		o.mu.Unlock()
-	}
-	if mine >= runActivePerOwner || active >= runActiveTotal {
+	if m.overActive(owner) {
 		m.mu.Unlock()
-		w.Header().Set("Retry-After", "5")
-		writeError(w, req, 429, "rate_limit_error", "too_many_runs",
-			fmt.Sprintf("Too many generations are running (at most %d per account). Wait for one to finish or stop one.", runActivePerOwner), nil)
+		m.held.Add(-size)
+		tooManyRuns(w, req)
 		return
 	}
+	if fullError != nil {
+		r.Error = fullError
+		exp := now.Add(m.retention)
+		r.EndedAt, r.ExpiresAt = &now, &exp
+		r.setStatus(runFailed, "memory_limit")
+		end, _ := json.Marshal(r.view(false))
+		r.emit("end", end)
+		close(r.done)
+		m.runs[r.ID] = r
+		m.trim(owner)
+		m.mu.Unlock()
+		r.mu.Lock()
+		m.checkpoint(r)
+		v := r.view(true)
+		r.mu.Unlock()
+		m.log(r, "run.failed")
+		w.Header().Set("Location", "/_localbase/runs/"+r.ID)
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, 202, v)
+		return
+	}
+	r.body = size
 	// Everything Shutdown needs is in place before the run can be seen, and
 	// under the lock that checked closing: it either refused this run above or
 	// finds it here, stops it and waits for it.
@@ -862,6 +930,8 @@ func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byt
 func (m *runManager) finish(r *run, rw *runWriter) {
 	r.mu.Lock()
 	full := r.stopReason == "memory_limit"
+	m.held.Add(-r.body) // the inner request is done with it
+	r.body = 0
 	r.mu.Unlock()
 	var fullError map[string]any
 	if full { // Before taking r.mu for the rest: this reads other runs, with m.mu first.
@@ -869,6 +939,7 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 	}
 	r.mu.Lock()
 	if !r.queuedSeen {
+		close(r.done) // create forgets it; a DELETE may be waiting for it
 		r.mu.Unlock()
 		return
 	}
@@ -911,7 +982,12 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 	r.emit("end", end)
 	m.checkpoint(r)
 	close(r.done)
+	dismissed := r.dismissed
 	r.mu.Unlock()
+	if dismissed {
+		m.release(r)
+		m.remove(r.ID)
+	}
 	r.span.SetAttr("localbase.run.status", status)
 	if status == runFailed {
 		r.span.SetError("")
@@ -1085,13 +1161,13 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 			writeJSON(w, 200, v)
 		case http.MethodDelete:
 			m.stop(r, runCancelled, "stopped")
-			<-r.done
-			m.mu.Lock()
-			delete(m.runs, r.ID)
-			m.mu.Unlock()
-			m.release(r)
-			m.remove(r.ID)
-			m.log(r, "run.dismissed")
+			select {
+			case <-r.done:
+			case <-req.Context().Done():
+				return // the caller left: the run is stopped, and stays until it expires
+			case <-time.After(m.stopWait):
+			}
+			m.dismiss(r)
 			writeJSON(w, 200, map[string]any{"id": r.ID, "object": "localbase.run.deleted", "deleted": true})
 		default:
 			methodNotAllowed(w, req, "GET, DELETE")
@@ -1104,7 +1180,7 @@ func (s *Server) runRoute(w http.ResponseWriter, req *http.Request) {
 		m.stop(r, runCancelled, "stopped")
 		select {
 		case <-r.done:
-		case <-time.After(10 * time.Second):
+		case <-time.After(m.stopWait):
 		}
 		r.mu.Lock()
 		v := r.view(true)
