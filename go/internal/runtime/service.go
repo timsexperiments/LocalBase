@@ -33,7 +33,7 @@ type Service struct {
 	mu        sync.Mutex
 	cur       *svcBackend
 	busy      bool
-	queue     []*svcWaiter
+	queue     waitQueue[*ServiceLease]
 	closed    bool
 	failed    bool
 	switching bool   // a model is being stopped or started
@@ -105,17 +105,8 @@ type svcBackend struct {
 	emergency atomic.Bool
 }
 
-type svcWaiter struct {
-	model, key string
-	parent     *otlp.Span // the request's span, for a start it triggers
-	ready      chan error
-	lease      *ServiceLease
-	done       bool
-	// dispatching: its own backend start is running. The start has its own budget, so the queue's
-	// deadline no longer applies.
-	dispatching bool
-	dispatched  time.Time // left the queue (TS queueWaitMs)
-}
+// svcWaiter is a request in a service's queue.
+type svcWaiter = queued[*ServiceLease]
 
 // ServiceLease is exclusive use of the resident backend for one request.
 type ServiceLease struct {
@@ -206,58 +197,16 @@ func (s *Service) Acquire(ctx context.Context, modelID string) (*ServiceLease, e
 		s.mu.Unlock()
 		return nil, ErrQueueFull
 	}
-	w := &svcWaiter{model: modelID, key: key, ready: make(chan error, 1), parent: otlp.FromContext(ctx)}
+	w := newQueued[*ServiceLease](ctx, modelID, key)
 	s.queue = append(s.queue, w)
 	s.pump()
 	s.mu.Unlock()
-	timer := time.NewTimer(s.d.QueueTimeout)
-	defer timer.Stop()
-	for {
-		select {
-		case err := <-w.ready:
-			if err != nil {
-				return nil, err
-			}
-			w.lease.Waited = w.dispatched.Sub(start)
-			return w.lease, nil
-		case <-ctx.Done():
-			s.abandon(w)
-			return nil, ctx.Err()
-		case <-timer.C:
-			s.mu.Lock()
-			if w.dispatching || w.done {
-				s.mu.Unlock()
-				continue // its own backend start is not limited by the queue deadline
-			}
-			s.remove(w)
-			s.mu.Unlock()
-			return nil, ErrQueueTimeout
-		}
+	lease, err := s.queue.wait(ctx, &s.mu, w, s.d.QueueTimeout, s.pump, (*ServiceLease).Release)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func (s *Service) remove(w *svcWaiter) {
-	for i, q := range s.queue {
-		if q == w {
-			s.queue = append(s.queue[:i], s.queue[i+1:]...)
-			return
-		}
-	}
-}
-
-func (s *Service) abandon(w *svcWaiter) {
-	s.mu.Lock()
-	granted := w.done && w.lease != nil
-	s.remove(w)
-	s.pump()
-	s.mu.Unlock()
-	if granted {
-		select {
-		case <-w.ready:
-		default:
-		}
-		w.lease.Release()
-	}
+	lease.Waited = w.dispatched.Sub(start)
+	return lease, nil
 }
 
 // pump dispatches the head of the queue. Called with mu held.

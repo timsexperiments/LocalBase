@@ -116,7 +116,7 @@ func (s *Service) Unload(ctx context.Context, modelID string, wait time.Duration
 	s.unloaders++
 	for _, w := range append([]*svcWaiter(nil), s.queue...) {
 		if w.model == modelID && !w.done {
-			s.remove(w)
+			s.queue.remove(w)
 			w.done = true
 			w.ready <- ErrUnloading
 		}
