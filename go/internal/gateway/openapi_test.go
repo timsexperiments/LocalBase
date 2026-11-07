@@ -1381,14 +1381,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("GET", "/_localbase/runs", "", 200) // running and queued
 	check("POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"), 429)
-	s.runs.mu.Lock()
-	cut := s.runs.runs[active[0]]
-	s.runs.mu.Unlock()
-	s.runs.stop(cut, runInterrupted, "max_duration")
-	finished(active[0])
-	if out := check("GET", "/_localbase/runs/"+active[0], "", 200); !bytes.Contains(out, []byte(`"continuation"`)) {
-		t.Errorf("an interrupted run: %s", firstBytes(out))
-	}
+	// An interrupted run: TestARunPastItsMaxDurationIsInterrupted.
 	for _, id := range active {
 		check("DELETE", "/_localbase/runs/"+id, "", 200)
 	}

@@ -160,8 +160,9 @@ type runOptions struct {
 	// after New.
 	log                   func() *slog.Logger
 	otel                  func() *otlp.Runtime
-	dir                   string // "" keeps runs in memory only
-	maxHeld, maxHeldTotal int64  // 0: runMaxHeld and runsMaxHeld
+	dir                   string        // "" keeps runs in memory only
+	maxHeld, maxHeldTotal int64         // 0: runMaxHeld and runsMaxHeld
+	maxDuration           time.Duration // 0: runMaxDuration
 }
 
 type runManager struct {
@@ -193,6 +194,9 @@ func newRunManager(o runOptions) *runManager {
 	}
 	if o.maxHeldTotal > 0 {
 		m.maxHeldTotal = o.maxHeldTotal
+	}
+	if o.maxDuration > 0 {
+		m.maxDuration = o.maxDuration
 	}
 	m.sweepStart()
 	return m

@@ -49,7 +49,9 @@ var openAPIHasMedia = goruntime.GOOS == "darwin"
 // openAPIGateway is the whole gateway, every modality wired over the fake backend, with
 // authentication on from the start: every route answers as it would in production, and
 // nothing changes under a running server.
-func openAPIGateway(t *testing.T) *httptest.Server {
+// openAPIGateway is a whole gateway on a scratch root, as the OpenAPI tests use it; configure, if
+// given, sets what a test needs on the server before it starts.
+func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 	t.Helper()
 	r, err := root.Init(filepath.Join(scratchDir(t), "root"))
 	if err != nil {
@@ -150,6 +152,9 @@ func openAPIGateway(t *testing.T) *httptest.Server {
 	s.Usage, err = usage.New(st, log)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, c := range configure {
+		c(s)
 	}
 	ts := httptest.NewServer(New(s))
 	t.Cleanup(ts.Close)
