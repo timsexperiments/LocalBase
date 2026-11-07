@@ -80,7 +80,8 @@ func (r *Root) LockAs(host string, port int, serviceID, serviceToken string) (re
 				return nil, err
 			}
 			r.owner = &owner
-			return func() { os.RemoveAll(lockDir) }, nil
+			token := owner.InstanceToken
+			return func() { releaseIfOurs(lockDir, ownerPath, token) }, nil
 		} else if !errors.Is(err, os.ErrExist) {
 			return nil, err
 		}
@@ -103,6 +104,19 @@ func (r *Root) LockAs(host string, port int, serviceID, serviceToken string) (re
 		}
 	}
 	return nil, fmt.Errorf("could not take the gateway lock on %s", r.Dir)
+}
+
+// releaseIfOurs removes the gateway lock only while its owner record is still this gateway's, as
+// the TS gateway's release does. A lock taken over meanwhile, as LockAs does with one whose owner
+// can't be read, belongs to the gateway that took it, and removing it would let a third start
+// beside that one.
+func releaseIfOurs(lockDir, ownerPath, token string) {
+	var o gatewayOwner
+	raw, err := os.ReadFile(ownerPath)
+	if err != nil || json.Unmarshal(raw, &o) != nil || o.InstanceToken != token {
+		return
+	}
+	os.RemoveAll(lockDir)
 }
 
 // OwnerState is what the lock directory says about the gateway owner:
