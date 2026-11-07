@@ -46,22 +46,3 @@ func (s *Server) openAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Write(body)
 }
-
-// routeMux records what is registered, so a test can compare the routes with
-// the document: a ServeMux cannot list its own.
-type routeMux struct {
-	*http.ServeMux
-	patterns []string
-}
-
-func newRouteMux() *routeMux { return &routeMux{ServeMux: http.NewServeMux()} }
-
-func (m *routeMux) HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request)) {
-	m.patterns = append(m.patterns, pattern)
-	m.ServeMux.HandleFunc(pattern, handler)
-}
-
-func (m *routeMux) Handle(pattern string, handler http.Handler) {
-	m.patterns = append(m.patterns, pattern)
-	m.ServeMux.Handle(pattern, handler)
-}

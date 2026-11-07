@@ -24,19 +24,6 @@ import (
 // here, at the end of ServeHTTP, so a request refused anywhere counts once, and a detached
 // run counts as its inner request.
 
-// usageRoutes names what is counted, by the route that served it.
-var usageRoutes = map[string]string{
-	"/v1/chat/completions":     "chat",
-	"/v1/embeddings":           "embeddings",
-	"/v1/systemone":            "decision",
-	"/v1/audio/speech":         "speech",
-	"/v1/audio/transcriptions": "transcription",
-	"/v1/audio/translations":   "translation",
-	"/v1/images/generations":   "image",
-	"/v1/images/edits":         "image-edit",
-	"/v1/videos":               "video",
-}
-
 // usagePrincipal says who to count a request under. A browser identity is its opaque owner
 // hash and nothing else: never an email or a name.
 func (s *Server) usagePrincipal(p *auth.Principal) (kind, id string, ok bool) {
@@ -86,7 +73,7 @@ func (s *Server) recordUsage(rec *httpx.Recorder, label string, status int, d ti
 	if s.Usage == nil {
 		return
 	}
-	route, counted := usageRoutes[label]
+	route, counted := usageRoutes()[label]
 	if !counted {
 		return
 	}
