@@ -226,10 +226,10 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 		auth.Deny(w, 404)
 		return true
 	}
-	setAuth(r, principal)
+	SetAuth(r, principal)
 	if session {
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, 200, map[string]any{"authenticated": true, "permissions": principal.Permissions, "localSession": true})
+		JSON(w, 200, map[string]any{"authenticated": true, "permissions": principal.Permissions, "localSession": true})
 		return true
 	}
 	s.forwardAsBrowser(w, r, principal, target)
@@ -241,25 +241,25 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
 		if !p.Can("sessions:read") {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		list, err := auth.ListLocalSessions(r.Context(), s.Store)
 		if err != nil {
-			serviceUnavailable(w, r, "Local sessions")
+			ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
-		writeJSON(w, 200, map[string]any{"sessions": list})
+		JSON(w, 200, map[string]any{"sessions": list})
 	case http.MethodPost:
 		if !p.Can("sessions:revoke") {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		var in struct {
@@ -268,7 +268,7 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1025))
 		if err != nil || len(body) > 1024 || json.Unmarshal(body, &in) != nil {
-			badRequest(w, r, "Invalid local session payload.", nil)
+			BadRequest(w, r, "Invalid local session payload.", nil)
 			return
 		}
 		revoked := 0
@@ -282,17 +282,17 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 				revoked = 1
 			}
 		default:
-			badRequest(w, r, "Invalid local session payload.", nil)
+			BadRequest(w, r, "Invalid local session payload.", nil)
 			return
 		}
 		if err != nil {
-			serviceUnavailable(w, r, "Local sessions")
+			ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
 		s.Log.Info("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", p.Kind, "actor_id", p.ID,
 			"session_id", in.ID, "count", revoked)
-		writeJSON(w, 200, map[string]any{"revoked": revoked})
+		JSON(w, 200, map[string]any{"revoked": revoked})
 	default:
-		methodNotAllowed(w, r, "GET, POST")
+		MethodNotAllowed(w, r, "GET, POST")
 	}
 }

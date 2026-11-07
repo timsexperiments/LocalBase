@@ -28,7 +28,7 @@ var openAPIServed = sync.OnceValues(func() ([]byte, string) {
 
 func (s *Server) openAPI(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		methodNotAllowed(w, r, "GET, HEAD")
+		MethodNotAllowed(w, r, "GET, HEAD")
 		return
 	}
 	body, etag := openAPIServed()

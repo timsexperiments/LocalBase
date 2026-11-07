@@ -36,20 +36,20 @@ var usageRoutes = map[string]string{
 	"/v1/videos":               "video",
 }
 
-// usageNote is what a handler knows that the middleware cannot see.
-type usageNote struct {
-	model     string
-	trusted   bool // the model came from a lease, so the gateway resolved it
-	outcome   string
-	status    int
-	in, out   int64
-	hasTokens bool
-	queue     time.Duration
+// UsageNote is what a handler knows that the middleware cannot see.
+type UsageNote struct {
+	Model     string
+	Trusted   bool // the model came from a lease, so the gateway resolved it
+	Outcome   string
+	Status    int
+	In, Out   int64
+	HasTokens bool
+	Queue     time.Duration
 }
 
-func noteFrom(r *http.Request) *usageNote {
-	if rec, ok := r.Context().Value(recKey{}).(*recorder); ok {
-		return &rec.usage
+func NoteFrom(r *http.Request) *UsageNote {
+	if rec, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
+		return &rec.Usage
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func (s *Server) knownUsageModel(id string) bool {
 }
 
 // recordUsage counts a finished request. It never fails one.
-func (s *Server) recordUsage(rec *recorder, label string, status int, d time.Duration) {
+func (s *Server) recordUsage(rec *Recorder, label string, status int, d time.Duration) {
 	if s.Usage == nil {
 		return
 	}
@@ -107,29 +107,29 @@ func (s *Server) recordUsage(rec *recorder, label string, status int, d time.Dur
 	if !counted {
 		return
 	}
-	kind, id, ok := s.usagePrincipal(rec.auth)
+	kind, id, ok := s.usagePrincipal(rec.Auth)
 	if !ok {
 		return
 	}
-	if route == "video" && rec.status == http.StatusAccepted { // what was sent, whether or not it arrived
+	if route == "video" && rec.Status == http.StatusAccepted { // what was sent, whether or not it arrived
 		return // the job counts once, when it ends
 	}
-	n := rec.usage
-	switch n.outcome {
+	n := rec.Usage
+	switch n.Outcome {
 	case "error": // a stream that fails after it started has already sent 200
-		status = n.status
+		status = n.Status
 		if status < 400 {
 			status = http.StatusBadGateway
 		}
 	case "cancelled":
 		status = 499
 	}
-	model := n.model
-	if !n.trusted && !s.knownUsageModel(model) {
+	model := n.Model
+	if !n.Trusted && !s.knownUsageModel(model) {
 		model = ""
 	}
-	s.Usage.Add(usage.Event{Kind: kind, Principal: id, Route: route, Model: model, Status: status, Duration: d, QueueWait: n.queue,
-		InputTokens: n.in, OutputTokens: n.out, HasTokens: n.hasTokens})
+	s.Usage.Add(usage.Event{Kind: kind, Principal: id, Route: route, Model: model, Status: status, Duration: d, QueueWait: n.Queue,
+		InputTokens: n.In, OutputTokens: n.Out, HasTokens: n.HasTokens})
 }
 
 // recordVideoJob counts a job when it ends: the only place a job is counted.
@@ -154,14 +154,14 @@ func (s *Server) usageAPI(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.usageChange(w, r)
 	default:
-		methodNotAllowed(w, r, "GET, POST")
+		MethodNotAllowed(w, r, "GET, POST")
 	}
 }
 
 func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	if s.Usage == nil {
@@ -175,14 +175,14 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 		scope = "self"
 	case "self", "all":
 	default:
-		badRequest(w, r, "scope must be self or all.", strp("scope"))
+		BadRequest(w, r, "scope must be self or all.", StrPtr("scope"))
 		return
 	}
 	_, own, _ := s.usagePrincipal(p)
 	principal := query.Get("principal")
 	if scope == "all" || (principal != "" && principal != own) {
 		if !s.NoAuth && !usage.CanSeeAll(p.Can) {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 	}
@@ -190,34 +190,34 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	if scope == "self" {
 		// A caller's own view stays its own, whatever it can see otherwise.
 		if principal != "" && principal != own {
-			badRequest(w, r, "scope=self covers your own usage. Use scope=all to name another principal.", strp("principal"))
+			BadRequest(w, r, "scope=self covers your own usage. Use scope=all to name another principal.", StrPtr("principal"))
 			return
 		}
 		q.Principal = own
 	}
 	for _, g := range q.Group {
 		if g != "principal" && g != "model" && g != "route" {
-			badRequest(w, r, "group must be principal, model or route.", strp("group"))
+			BadRequest(w, r, "group must be principal, model or route.", StrPtr("group"))
 			return
 		}
 	}
 	if q.Route != "" && !slices.Contains(usage.Routes, q.Route) {
-		badRequest(w, r, "route is not one of the routes usage counts.", strp("route"))
+		BadRequest(w, r, "route is not one of the routes usage counts.", StrPtr("route"))
 		return
 	}
 	var err error
 	if q.From, q.To, err = usage.ParseRange(query.Get("range"), query.Get("from"), query.Get("to"), time.Now()); err != nil {
-		badRequest(w, r, err.Error()+".", strp("range"))
+		BadRequest(w, r, err.Error()+".", StrPtr("range"))
 		return
 	}
 	report, err := s.Usage.Report(r.Context(), q)
 	if err != nil {
 		s.Log.Error("Could not read usage.", "event", "usage.read-failed", "error", err.Error())
-		serviceUnavailable(w, r, "Usage")
+		ServiceUnavailable(w, r, "Usage")
 		return
 	}
 	report.Scope = scope
-	writeJSON(w, http.StatusOK, report)
+	JSON(w, http.StatusOK, report)
 }
 
 // localCLI: this machine's CLI, holding the token from the root's lock file, on a request that
@@ -240,17 +240,17 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 	actorKind, actorID := "cli", ""
 	if r.Header.Get("X-Localbase-Instance-Token") != "" {
 		if !s.localCLI(r) {
-			unauthorized(w, r)
+			Unauthorized(w, r)
 			return
 		}
 	} else {
 		p := s.principal(r)
 		if !p.Authenticated() {
-			unauthorized(w, r)
+			Unauthorized(w, r)
 			return
 		}
 		if !s.NoAuth && !usage.CanChange(p.Can) {
-			forbidden(w, r)
+			Forbidden(w, r)
 			return
 		}
 		actorKind, actorID, _ = s.usagePrincipal(p)
@@ -261,7 +261,7 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4097))
 	if err != nil {
-		badRequest(w, r, "Invalid usage request.", nil)
+		BadRequest(w, r, "Invalid usage request.", nil)
 		return
 	}
 	if len(body) > 4096 {
@@ -277,7 +277,7 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&in); err != nil {
-		badRequest(w, r, "Invalid usage request.", nil)
+		BadRequest(w, r, "Invalid usage request.", nil)
 		return
 	}
 	ctx := r.Context()
@@ -285,14 +285,14 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 	switch in.Action {
 	case "clear":
 		if in.Days != nil || in.Enabled != nil {
-			badRequest(w, r, "clear takes only before.", nil)
+			BadRequest(w, r, "clear takes only before.", nil)
 			return
 		}
 		var before *time.Time
 		if in.Before != nil {
 			t, perr := time.Parse(time.RFC3339, *in.Before)
 			if perr != nil {
-				badRequest(w, r, "before must be an RFC 3339 time.", strp("before"))
+				BadRequest(w, r, "before must be an RFC 3339 time.", StrPtr("before"))
 				return
 			}
 			before = &t
@@ -301,31 +301,31 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 		cleared = true
 	case "set-retention":
 		if in.Days == nil || in.Before != nil || in.Enabled != nil || *in.Days != float64(int(*in.Days)) {
-			badRequest(w, r, "set-retention takes days, a whole number.", strp("days"))
+			BadRequest(w, r, "set-retention takes days, a whole number.", StrPtr("days"))
 			return
 		}
 		err = s.Usage.SetRetention(ctx, int(*in.Days))
 		var invalid *usage.InvalidRetention
 		if errors.As(err, &invalid) {
-			badRequest(w, r, invalid.Error()+".", strp("days"))
+			BadRequest(w, r, invalid.Error()+".", StrPtr("days"))
 			return
 		}
 	case "set-recording":
 		if in.Enabled == nil || in.Before != nil || in.Days != nil {
-			badRequest(w, r, "set-recording takes enabled.", strp("enabled"))
+			BadRequest(w, r, "set-recording takes enabled.", StrPtr("enabled"))
 			return
 		}
 		err = s.Usage.SetRecording(ctx, *in.Enabled)
 	default:
-		badRequest(w, r, "action must be clear, set-retention or set-recording.", strp("action"))
+		BadRequest(w, r, "action must be clear, set-retention or set-recording.", StrPtr("action"))
 		return
 	}
 	if err != nil {
 		s.Log.Error("Could not change usage.", "event", "usage.change-failed", "error", err.Error())
-		serviceUnavailable(w, r, "Usage")
+		ServiceUnavailable(w, r, "Usage")
 		return
 	}
 	s.Log.Info("Administration change.", "event", "audit.usage-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID)
 	recording, days := s.Usage.Settings()
-	writeJSON(w, http.StatusOK, map[string]any{"object": "localbase.usage.settings", "recording": recording, "retentionDays": days, "cleared": cleared})
+	JSON(w, http.StatusOK, map[string]any{"object": "localbase.usage.settings", "recording": recording, "retentionDays": days, "cleared": cleared})
 }

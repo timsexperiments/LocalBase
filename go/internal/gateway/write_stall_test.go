@@ -47,9 +47,9 @@ func (d *deadlineWriter) Write(b []byte) (int, error) {
 
 func TestEachPieceOfAnAnswerHasItsOwnDeadline(t *testing.T) {
 	d := &deadlineWriter{header: http.Header{}}
-	rec := &recorder{ResponseWriter: d}
-	rec.sendsWithin(time.Minute)
-	const size = writePiece*3 + 10
+	rec := &Recorder{ResponseWriter: d}
+	rec.SendsWithin(time.Minute)
+	const size = WritePiece*3 + 10
 	start := time.Now()
 	n, err := rec.Write(make([]byte, size))
 	if n != size || err != nil {
@@ -61,7 +61,7 @@ func TestEachPieceOfAnAnswerHasItsOwnDeadline(t *testing.T) {
 	total := 0
 	for i, p := range d.pieces {
 		total += p
-		if p > writePiece {
+		if p > WritePiece {
 			t.Errorf("piece %d is %d bytes", i, p)
 		}
 		// Set just before its piece, and far enough off.
@@ -79,10 +79,10 @@ func TestEachPieceOfAnAnswerHasItsOwnDeadline(t *testing.T) {
 
 func TestAFailedPieceEndsTheAnswer(t *testing.T) {
 	d := &deadlineWriter{header: http.Header{}, failOn: 2, partial: 7}
-	rec := &recorder{ResponseWriter: d}
-	rec.sendsWithin(time.Minute)
-	n, err := rec.Write(make([]byte, writePiece*4))
-	if err == nil || n != writePiece+7 {
+	rec := &Recorder{ResponseWriter: d}
+	rec.SendsWithin(time.Minute)
+	n, err := rec.Write(make([]byte, WritePiece*4))
+	if err == nil || n != WritePiece+7 {
 		t.Errorf("%d %v", n, err)
 	}
 	if len(d.pieces) != 2 {
@@ -92,8 +92,8 @@ func TestAFailedPieceEndsTheAnswer(t *testing.T) {
 
 func TestAFlushHasItsOwnDeadline(t *testing.T) {
 	d := &deadlineWriter{header: http.Header{}}
-	rec := &recorder{ResponseWriter: d}
-	rec.sendsWithin(time.Minute)
+	rec := &Recorder{ResponseWriter: d}
+	rec.SendsWithin(time.Minute)
 	before := len(d.deadlines)
 	rec.Flush()
 	if len(d.deadlines) != before+1 || d.deadlines[before].IsZero() || d.flushes != 1 {
@@ -104,8 +104,8 @@ func TestAFlushHasItsOwnDeadline(t *testing.T) {
 // Nothing says how long to wait, in a recorder made for something inside the gateway.
 func TestARecorderWithNoLimitOnlyWrites(t *testing.T) {
 	d := &deadlineWriter{header: http.Header{}}
-	rec := &recorder{ResponseWriter: d}
-	if n, err := rec.Write(make([]byte, writePiece*2)); n != writePiece*2 || err != nil {
+	rec := &Recorder{ResponseWriter: d}
+	if n, err := rec.Write(make([]byte, WritePiece*2)); n != WritePiece*2 || err != nil {
 		t.Fatalf("%d %v", n, err)
 	}
 	rec.Flush()
@@ -115,13 +115,13 @@ func TestARecorderWithNoLimitOnlyWrites(t *testing.T) {
 }
 
 func TestTheWriteLimitIsTheStatedOne(t *testing.T) {
-	if DefaultLimits.WriteStall != time.Minute || writePiece != 64<<10 {
-		t.Errorf("%v, %d", DefaultLimits.WriteStall, writePiece)
+	if DefaultLimits.WriteStall != time.Minute || WritePiece != 64<<10 {
+		t.Errorf("%v, %d", DefaultLimits.WriteStall, WritePiece)
 	}
-	if got := (Limits{}).withDefaults().WriteStall; got != time.Minute {
+	if got := (Limits{}).WithDefaults().WriteStall; got != time.Minute {
 		t.Errorf("a gateway that sets none gets %v", got)
 	}
-	if got := (Limits{WriteStall: time.Second}).withDefaults().WriteStall; got != time.Second {
+	if got := (Limits{WriteStall: time.Second}).WithDefaults().WriteStall; got != time.Second {
 		t.Errorf("a gateway that sets one gets %v", got)
 	}
 }
@@ -213,8 +213,8 @@ func TestAFailedAnswerIsNotASuccess(t *testing.T) {
 		{404, true, 404},
 		{500, true, 500},
 	} {
-		r := &recorder{status: c.status, sendFailed: c.failed}
-		if got := r.finalStatus(); got != c.want {
+		r := &Recorder{Status: c.status, SendFailed: c.failed}
+		if got := r.FinalStatus(); got != c.want {
 			t.Errorf("status %d, failed %v: %d, want %d", c.status, c.failed, got, c.want)
 		}
 	}
@@ -222,17 +222,17 @@ func TestAFailedAnswerIsNotASuccess(t *testing.T) {
 
 func TestOnlyAFailedPieceCountsAsFailed(t *testing.T) {
 	d := &deadlineWriter{header: http.Header{}}
-	rec := &recorder{ResponseWriter: d}
-	rec.sendsWithin(time.Minute)
-	rec.Write(make([]byte, writePiece*2))
-	if rec.sendFailed {
+	rec := &Recorder{ResponseWriter: d}
+	rec.SendsWithin(time.Minute)
+	rec.Write(make([]byte, WritePiece*2))
+	if rec.SendFailed {
 		t.Error("a whole answer counted as failed")
 	}
 	d = &deadlineWriter{header: http.Header{}, failOn: 2, partial: 7}
-	rec = &recorder{ResponseWriter: d}
-	rec.sendsWithin(time.Minute)
-	rec.Write(make([]byte, writePiece*2))
-	if !rec.sendFailed {
+	rec = &Recorder{ResponseWriter: d}
+	rec.SendsWithin(time.Minute)
+	rec.Write(make([]byte, WritePiece*2))
+	if !rec.SendFailed {
 		t.Error("an answer cut short counted as whole")
 	}
 }
@@ -293,8 +293,8 @@ func TestAVideoStartThatFailsToSendCountsNothing(t *testing.T) {
 	who := &auth.Principal{Kind: "api-key", ID: id}
 	send := func(label string, sent int) {
 		t.Helper()
-		rec := &recorder{status: sent, sendFailed: true, auth: who}
-		s.recordUsage(rec, label, rec.finalStatus(), time.Millisecond)
+		rec := &Recorder{Status: sent, SendFailed: true, Auth: who}
+		s.recordUsage(rec, label, rec.FinalStatus(), time.Millisecond)
 		if err := s.Usage.Flush(t.Context()); err != nil {
 			t.Fatal(err)
 		}

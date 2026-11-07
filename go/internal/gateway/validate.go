@@ -81,7 +81,7 @@ func (c *checker) ok() bool { return len(c.issues) == 0 }
 // issue is under it, as TS reports it.
 func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 	if c.remote != nil {
-		writeError(w, r, 400, "invalid_request_error", "remote_media_not_allowed", c.remote.msg, strp(c.remote.path))
+		Error(w, r, 400, "invalid_request_error", "remote_media_not_allowed", c.remote.msg, StrPtr(c.remote.path))
 		return
 	}
 	parts := make([]string, len(c.issues))
@@ -89,17 +89,17 @@ func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 	for i, is := range c.issues {
 		parts[i] = is.path + ": " + is.msg
 		if is.path == "response_format" || strings.HasPrefix(is.path, "response_format.") {
-			param = strp("response_format")
+			param = StrPtr("response_format")
 		}
 		if is.path == "messages" && is.msg == emptyMessages && param == nil {
-			param = strp("messages")
+			param = StrPtr("messages")
 		}
 	}
 	message := "Validation failed: " + strings.Join(parts, ", ")
 	if c.more {
 		message += ", and more"
 	}
-	badRequest(w, r, message, param)
+	BadRequest(w, r, message, param)
 }
 
 // shortKey keeps a caller's own key short enough to repeat, cut between characters.

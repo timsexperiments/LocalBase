@@ -267,7 +267,7 @@ func loraUnusable(w http.ResponseWriter, r *http.Request, spec *catalog.Spec, st
 	if strength == nil || spec == nil || spec.Kind != "image" || runtime.ImageLoraPath(spec, "") != "" {
 		return false
 	}
-	badRequest(w, r, fmt.Sprintf("Model '%s' has no LoRA; lora_strength applies only to image models added with one.", spec.ModelID), strp("lora_strength"))
+	BadRequest(w, r, fmt.Sprintf("Model '%s' has no LoRA; lora_strength applies only to image models added with one.", spec.ModelID), StrPtr("lora_strength"))
 	return true
 }
 
@@ -283,17 +283,17 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 		notConfigured(w, r, "Image")
 		return nil, false
 	case errors.Is(err, runtime.ErrModelNotFound):
-		modelNotFound(w, r, model)
+		ModelNotFound(w, r, model)
 		return nil, false
 	}
-	runHooksFrom(r.Context()).queue()
+	RunHooksFrom(r.Context()).Queue()
 	lease, err := s.Image.Acquire(r.Context(), id)
 	if err != nil {
 		s.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
-		runtimeError(w, r, err, id, "Image")
+		RuntimeError(w, r, err, id, "Image")
 		return nil, false
 	}
-	runHooksFrom(r.Context()).admit()
+	RunHooksFrom(r.Context()).Admit()
 	return lease, true
 }
 
@@ -304,7 +304,7 @@ func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLea
 
 func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	started := time.Now()
@@ -353,7 +353,7 @@ type editFile struct {
 
 func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "POST")
+		MethodNotAllowed(w, r, "POST")
 		return
 	}
 	started := time.Now()
@@ -367,12 +367,12 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data;") {
-		badRequest(w, r, "Expected multipart/form-data.", strp("content-type"))
+		BadRequest(w, r, "Expected multipart/form-data.", StrPtr("content-type"))
 		return
 	}
 	form, ferr := readMultipart(r, body)
 	if err != nil || ferr != nil {
-		badRequest(w, r, "Invalid multipart image edit request.", nil)
+		BadRequest(w, r, "Invalid multipart image edit request.", nil)
 		return
 	}
 	text := func(name string) (string, bool) {
@@ -382,7 +382,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		return "", false
 	}
 	present := func(name string) bool { return len(form[name]) > 0 }
-	bad := func(msg, param string) { badRequest(w, r, msg, strp(param)) }
+	bad := func(msg, param string) { BadRequest(w, r, msg, StrPtr(param)) }
 
 	promptValue, _ := text("prompt")
 	prompt := strings.TrimFunc(promptValue, isJSWhitespace)
@@ -404,7 +404,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	spec := s.Catalog.ByID(modelID)
 	if spec == nil || spec.Kind != "image" {
-		modelNotFound(w, r, modelID)
+		ModelNotFound(w, r, modelID)
 		return
 	}
 	if !s.capabilities(r.Context(), spec).Has("image-to-image") {
@@ -604,6 +604,6 @@ func jsNumber(s string) float64 {
 
 func payloadTooLargeLimit(w http.ResponseWriter, r *http.Request, limit int) {
 	w.Header().Set("Connection", "close")
-	writeError(w, r, 413, "invalid_request_error", "payload_too_large",
+	Error(w, r, 413, "invalid_request_error", "payload_too_large",
 		fmt.Sprintf("Request body exceeds the %d MiB limit.", limit/(1024*1024)), nil)
 }

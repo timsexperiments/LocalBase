@@ -44,12 +44,12 @@ var managementMessages = map[string]string{
 
 func managementError(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": managementMessages[code]}})
+	JSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": managementMessages[code]}})
 }
 
 func noStore(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, status, v)
+	JSON(w, status, v)
 }
 
 // principal resolves the caller for routes that do their own permission
@@ -65,14 +65,14 @@ func (s *Server) principal(r *http.Request) *auth.Principal {
 }
 
 // resolveCredential is every path from an API credential to a principal. A lookup that failed says
-// nothing about the key, so the request is marked (BrowserPrincipal does the same for a session), and unauthorized and forbidden answer 503 for it:
+// nothing about the key, so the request is marked (BrowserPrincipal does the same for a session), and Unauthorized and Forbidden answer 503 for it:
 // a client told 401 may treat a good key as revoked and throw it away.
 func (s *Server) resolveCredential(r *http.Request) *auth.Principal {
 	p, err := s.Auth.ResolveAPI(r.Context(), r)
 	if err != nil {
 		s.lookupFailed(r, err)
 	}
-	setAuth(r, p)
+	SetAuth(r, p)
 	return p
 }
 
@@ -82,12 +82,12 @@ func (s *Server) lookupFailed(r *http.Request, err error) {
 	auth.MarkLookupFailed(r.Context())
 }
 
-// credentialLookupFailed answers for a request whose credential couldn't be looked up.
-func credentialLookupFailed(w http.ResponseWriter, r *http.Request) bool {
+// CredentialLookupFailed answers for a request whose credential couldn't be looked up.
+func CredentialLookupFailed(w http.ResponseWriter, r *http.Request) bool {
 	if !auth.LookupFailed(r.Context()) {
 		return false
 	}
-	serviceUnavailable(w, r, "Authentication")
+	ServiceUnavailable(w, r, "Authentication")
 	return true
 }
 
@@ -171,7 +171,7 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 	case "would-lock-out-admins", "exceeds-caller-permissions", "exceeds-caller-expiry", "issuer-required", "issuer-unknown":
 		// Rules of this gateway: the error carries its own explanation.
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, mapped[1].(int), map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
+		JSON(w, mapped[1].(int), map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
 		return true
 	}
 	managementError(w, mapped[1].(int), mapped[0].(string))
@@ -208,7 +208,7 @@ func validScopes(scopes []string) ([]string, bool) {
 func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		if credentialLookupFailed(w, r) {
+		if CredentialLookupFailed(w, r) {
 			return
 		}
 		managementError(w, 401, "invalid_api_key")
@@ -222,7 +222,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		}
 		keys, err := s.Store.ListAPIKeys(ctx)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		out := []map[string]any{}
@@ -291,7 +291,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		managementError(w, 401, "invalid_api_key")
 		return
 	case err != nil:
-		serviceUnavailable(w, r, "Key management")
+		ServiceUnavailable(w, r, "Key management")
 		return
 	case !slices.Contains(caller.Holds, "keys:manage"):
 		managementError(w, 403, "insufficient_permissions")
@@ -303,7 +303,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 			if missing := (*store.ErrKeyNotFound)(nil); errors.As(err, &missing) {
 				managementError(w, 404, "key_not_found")
 			} else {
-				serviceUnavailable(w, r, "Key management") // a key that can't be read may still be there
+				ServiceUnavailable(w, r, "Key management") // a key that can't be read may still be there
 			}
 			return
 		}
@@ -330,12 +330,12 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	if in.Action != "create" {
 		cfg, err := auth.LoadAccess(s.Root.Dir)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		g, err := auth.LoadGuard(ctx, s.Store, cfg)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		if err := g.CheckKeyChange(caller.KeyID(), target, in.Action, scopes); err != nil {
@@ -350,28 +350,28 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	case "create":
 		k, raw, err := s.Store.CreateAPIKeyExpiring(ctx, *in.Name, scopes, days)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		noStore(w, 201, map[string]any{"key": publicKey(k), "secret": raw})
 	case "rotate":
 		k, raw, err := s.Store.RotateAPIKey(ctx, keyID)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		noStore(w, 200, map[string]any{"key": publicKey(k), "secret": raw})
 	case "revoke":
 		k, err := s.Store.RevokeAPIKey(ctx, keyID)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		noStore(w, 200, map[string]any{"key": publicKey(k)})
 	case "set-scopes":
 		k, err := s.Store.SetAPIKeyScopes(ctx, keyID, scopes)
 		if err != nil {
-			serviceUnavailable(w, r, "Key management")
+			ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		noStore(w, 200, map[string]any{"key": publicKey(k)})
@@ -383,7 +383,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		if credentialLookupFailed(w, r) {
+		if CredentialLookupFailed(w, r) {
 			return
 		}
 		managementError(w, 401, "invalid_api_key")
@@ -401,7 +401,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		users, uerr := auth.ListUsers(ctx, s.Store)
 		email, eerr := auth.LoadEmail(root)
 		if err != nil || perr != nil || uerr != nil || eerr != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		var summary, emailSummary any
@@ -423,7 +423,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		signedIn, err := auth.SignedIn(ctx, s.Store)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		if len(signedIn) > 0 {
@@ -432,7 +432,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if len(cfg.Issuers()) > 0 {
 			left, err := auth.CountUnbound(ctx, s.Store.DB)
 			if err != nil {
-				serviceUnavailable(w, r, "Access management")
+				ServiceUnavailable(w, r, "Access management")
 				return
 			}
 			if left.Total() > 0 {
@@ -482,7 +482,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		lease, err := lease.AcquireOperation(root, op)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		defer lease.Release()
@@ -492,7 +492,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	}
 	current, err := auth.LoadAccess(root)
 	if err != nil {
-		serviceUnavailable(w, r, "Access management")
+		ServiceUnavailable(w, r, "Access management")
 		return
 	}
 	if in.Action != "test-policy" && in.Action != "test-email-delivery" {
@@ -502,7 +502,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			managementError(w, 401, "invalid_api_key")
 			return
 		case err != nil:
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		case !slices.Contains(caller.Holds, "access:manage"):
 			managementError(w, 403, "insufficient_permissions")
@@ -510,7 +510,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		g, err := auth.LoadGuard(ctx, s.Store, current)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		if err := prepareAccessChange(g, caller.Holds, p.Identity, in); err != nil {
@@ -524,7 +524,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	lockout := func(email string, self bool, change func(*auth.Guard)) bool {
 		g, err := auth.LoadGuard(ctx, s.Store, current)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return true
 		}
 		var caller *auth.Identity
@@ -572,12 +572,12 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		policy, err := auth.LoadPolicy(ctx, s.Store.DB)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		d, err := auth.ResolvePolicy(ctx, s.Store, *in.Identity, false)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		if d == nil {
@@ -656,7 +656,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if _, err := auth.DisableAccess(root); err != nil {
-				serviceUnavailable(w, r, "Access management")
+				ServiceUnavailable(w, r, "Access management")
 				return
 			}
 			noStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": nil, "restartRequired": true})
@@ -671,7 +671,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		disabled, err := auth.DisableAccess(root)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		noStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
@@ -692,7 +692,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		disabled, err := auth.DisableEmail(root)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		noStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
@@ -739,7 +739,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		existing, err := auth.LoadPolicy(ctx, s.Store.DB)
 		if err != nil {
-			serviceUnavailable(w, r, "Access management")
+			ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		rev := auth.Revision(existing)
@@ -774,7 +774,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			cleared, err := auth.ClearPolicy(ctx, s.Store)
 			if err != nil {
 				if !s.domainError(w, err) {
-					serviceUnavailable(w, r, "Access management")
+					ServiceUnavailable(w, r, "Access management")
 				}
 				return
 			}
@@ -1051,32 +1051,32 @@ func (s *Server) saveHFTokenLocked(ctx context.Context, token string) error {
 func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 	p := s.principal(r)
 	if !p.Authenticated() {
-		unauthorized(w, r)
+		Unauthorized(w, r)
 		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
-		methodNotAllowed(w, r, "GET, POST")
+		MethodNotAllowed(w, r, "GET, POST")
 		return
 	}
 	if !p.Can("models:manage") {
-		forbidden(w, r)
+		Forbidden(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	ctx := r.Context()
 	if r.Method == http.MethodGet {
-		writeJSON(w, 200, s.hfTokenStatus(ctx))
+		JSON(w, 200, s.hfTokenStatus(ctx))
 		return
 	}
 	if r.ContentLength > 1024 {
 		w.Header().Set("Connection", "close")
-		writeError(w, r, 413, "invalid_request_error", "validation_failed", "Hugging Face token body exceeds the 1024 byte limit.", nil)
+		Error(w, r, 413, "invalid_request_error", "validation_failed", "Hugging Face token body exceeds the 1024 byte limit.", nil)
 		return
 	}
 	b, err := io.ReadAll(io.LimitReader(r.Body, 1025))
 	if err != nil || len(b) > 1024 {
 		w.Header().Set("Connection", "close")
-		writeError(w, r, 413, "invalid_request_error", "validation_failed", "Hugging Face token body exceeds the 1024 byte limit.", nil)
+		Error(w, r, 413, "invalid_request_error", "validation_failed", "Hugging Face token body exceeds the 1024 byte limit.", nil)
 		return
 	}
 	var in struct {
@@ -1085,7 +1085,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 		Validate *bool   `json:"validate"`
 	}
 	if !json.Valid(b) {
-		badRequest(w, r, "Invalid Hugging Face token payload.", nil)
+		BadRequest(w, r, "Invalid Hugging Face token payload.", nil)
 		return
 	}
 	token := ""
@@ -1102,16 +1102,16 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 		ok = false
 	}
 	if !ok {
-		badRequest(w, r, "Expected a Hugging Face access token without spaces (8 to 256 characters).", nil)
+		BadRequest(w, r, "Expected a Hugging Face access token without spaces (8 to 256 characters).", nil)
 		return
 	}
 	switch in.Action {
 	case "clear":
 		if err := s.saveHFToken(ctx, ""); err != nil {
-			serviceUnavailable(w, r, "Configuration")
+			ServiceUnavailable(w, r, "Configuration")
 			return
 		}
-		writeJSON(w, 200, s.hfTokenStatus(ctx))
+		JSON(w, 200, s.hfTokenStatus(ctx))
 	case "validate":
 		cfg, _ := s.Store.LoadConfig(ctx)
 		t := os.Getenv("HF_TOKEN")
@@ -1119,31 +1119,31 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 			t = cfg.HFToken
 		}
 		if t == "" {
-			writeError(w, r, 409, "invalid_request_error", "hf_token_missing", "No Hugging Face token is saved or set in HF_TOKEN.", nil)
+			Error(w, r, 409, "invalid_request_error", "hf_token_missing", "No Hugging Face token is saved or set in HF_TOKEN.", nil)
 			return
 		}
 		out := s.hfTokenStatus(ctx)
 		out["check"] = CheckHFToken(ctx, t)
-		writeJSON(w, 200, out)
+		JSON(w, 200, out)
 	case "save":
 		var check map[string]any
 		if in.Validate == nil || *in.Validate {
 			check = CheckHFToken(ctx, token)
 			if check["state"] == "invalid" {
-				writeError(w, r, 400, "invalid_request_error", "hf_token_invalid",
+				Error(w, r, 400, "invalid_request_error", "hf_token_invalid",
 					"Hugging Face rejected that token, so it was not saved. Copy a fresh read token from huggingface.co/settings/tokens.", nil)
 				return
 			}
 		}
 		if err := s.saveHFToken(ctx, token); err != nil {
-			serviceUnavailable(w, r, "Configuration")
+			ServiceUnavailable(w, r, "Configuration")
 			return
 		}
 		out := s.hfTokenStatus(ctx)
 		if check != nil {
 			out["check"] = check
 		}
-		writeJSON(w, 200, out)
+		JSON(w, 200, out)
 	}
 }
 

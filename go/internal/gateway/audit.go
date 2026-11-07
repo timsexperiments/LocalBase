@@ -35,11 +35,11 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			io.Reader
 			io.Closer
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
-		rec := &auditRecorder{recorder: recorder{ResponseWriter: w}}
+		rec := &auditRecorder{Recorder: Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A request the client abandoned or never finished was not refused.
-		refused := rec.status >= 400 && rec.status < 500 && rec.status != http.StatusRequestTimeout && rec.status != 499
-		if rec.status >= 300 && !refused {
+		refused := rec.Status >= 400 && rec.Status < 500 && rec.Status != http.StatusRequestTimeout && rec.Status != 499
+		if rec.Status >= 300 && !refused {
 			return
 		}
 		var in struct {
@@ -69,7 +69,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			if !auditKeyIDRe.MatchString(id) {
 				id = ""
 			}
-			s.auditRefused(area, in.Action, actorKind, actorID, kind, id, rec.status, rec.body.Bytes())
+			s.auditRefused(area, in.Action, actorKind, actorID, kind, id, rec.Status, rec.body.Bytes())
 			return
 		}
 		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}
@@ -93,8 +93,8 @@ func (s *Server) auditActor(r *http.Request) (kind, id string) {
 	var p *auth.Principal
 	if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
 		p = bp
-	} else if outer, ok := r.Context().Value(recKey{}).(*recorder); ok {
-		p = outer.auth
+	} else if outer, ok := r.Context().Value(RecKey{}).(*Recorder); ok {
+		p = outer.Auth
 	}
 	if p == nil && s.NoAuth {
 		p = &auth.Principal{Kind: "environment"}
@@ -209,7 +209,7 @@ func (l *limitedWriter) Write(b []byte) (int, error) {
 
 // auditRecorder keeps the start of the response to name the target.
 type auditRecorder struct {
-	recorder
+	Recorder
 	body bytes.Buffer
 }
 
@@ -217,5 +217,5 @@ func (a *auditRecorder) Write(b []byte) (int, error) {
 	if a.body.Len() < 64<<10 {
 		a.body.Write(b)
 	}
-	return a.recorder.Write(b)
+	return a.Recorder.Write(b)
 }
