@@ -25,7 +25,7 @@ func setFor[T any](t *testing.T, v *T, to T) {
 // waited 30 s.
 func streamChat(t *testing.T, base, content string) (int, string) {
 	t.Helper()
-	body := `{"model":"` + chatModel + `","stream":true,"messages":[{"role":"user","content":"` + content + `"}]}`
+	body := `{"model":"` + ChatModel + `","stream":true,"messages":[{"role":"user","content":"` + content + `"}]}`
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(base+"/v1/chat/completions", "application/json", strings.NewReader(body))
 	if err != nil {
@@ -43,13 +43,13 @@ func streamChat(t *testing.T, base, content string) (int, string) {
 func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
 	ts := newTestServer(t)
 	setFor(t, &relayBodyLimit, 64)
-	r := post(t, ts, "/v1/chat/completions", chatBody("hi"))
+	r := post(t, ts, "/v1/chat/completions", ChatBody("hi"))
 	if r.status != 502 || r.code() != "upstream_error" ||
 		!strings.Contains(r.body, "The upstream service returned a response larger than 64 bytes.") {
 		t.Errorf("an answer over the limit: %d %s", r.status, r.body)
 	}
 	relayBodyLimit = 64 << 20
-	if r := post(t, ts, "/v1/chat/completions", chatBody("hi")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
 		t.Errorf("an answer under it: %d %s", r.status, r.body)
 	}
 	if got := sizeText(64 << 20); got != "64 MiB" {
@@ -71,7 +71,7 @@ func TestAStreamThatGoesQuietEnds(t *testing.T) {
 	if !strings.Contains(body, "The model stopped sending output for 300ms.") || !strings.Contains(body, `"code":"upstream_error"`) {
 		t.Errorf("no error event: %q", body)
 	}
-	if !waitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
+	if !WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Error("the backend call went on")
 	}
 	if got := idleText(5 * time.Minute); got != "5 minutes" {

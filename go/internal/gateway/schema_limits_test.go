@@ -21,7 +21,7 @@ func schemaRequest(t *testing.T, schema, reply string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return `{"model":"` + chatModel + `","messages":[{"role":"user","content":` + string(content) + `}],` +
+	return `{"model":"` + ChatModel + `","messages":[{"role":"user","content":` + string(content) + `}],` +
 		`"response_format":{"type":"json_schema","json_schema":{"name":"n","schema":` + schema + `}}}`
 }
 

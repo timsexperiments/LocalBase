@@ -116,7 +116,7 @@ func jsonString(t *testing.T, s string) string {
 }
 
 func userParts(parts ...string) string {
-	return `{"model":"` + chatModel + `","messages":[{"role":"user","content":[` + strings.Join(parts, ",") + `]}]}`
+	return `{"model":"` + ChatModel + `","messages":[{"role":"user","content":[` + strings.Join(parts, ",") + `]}]}`
 }
 
 const textPartJSON = `{"type":"text","text":"look"}`
@@ -173,14 +173,14 @@ func TestTheRefusalNamesTheFirstAddressAndWinsOverOtherProblems(t *testing.T) {
 	g, routes := newMediaGateway(t)
 	url := imagePart(t, "https://example.test/a.png")
 	cases := []struct{ name, body, param string }{
-		{"a later message", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yes"},{"role":"user","content":[` + url + `]}]}`,
+		{"a later message", `{"model":"` + ChatModel + `","messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"yes"},{"role":"user","content":[` + url + `]}]}`,
 			"messages.2.content.0.image_url.url"},
 		{"after a good image", userParts(imagePart(t, onePixelPNG), url), "messages.0.content.1.image_url.url"},
 		{"two addresses", userParts(url, imagePart(t, "https://example.test/b.png")), "messages.0.content.0.image_url.url"},
-		{"another field is wrong", `{"model":"` + chatModel + `","temperature":9,"messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
+		{"another field is wrong", `{"model":"` + ChatModel + `","temperature":9,"messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
 		{"no model", `{"messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
 		{"a model this gateway lacks", `{"model":"no-such-model","messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
-		{"streaming", `{"model":"` + chatModel + `","stream":true,"messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
+		{"streaming", `{"model":"` + ChatModel + `","stream":true,"messages":[{"role":"user","content":[` + url + `]}]}`, "messages.0.content.0.image_url.url"},
 		{"a bad detail", userParts(`{"type":"image_url","image_url":{"detail":"x","url":"https://example.test/a.png"}}`), "messages.0.content.0.image_url.url"},
 		{"audio in a bad format", userParts(`{"type":"input_audio","input_audio":{"format":"ogg","data":"https://example.test/a"}}`), "messages.0.content.0.input_audio.data"},
 		{"a file with an extra field", userParts(`{"type":"file","file":{"filename":"a","file_id":"b","file_data":"https://example.test/a"}}`), "messages.0.content.0.file.file_data"},
@@ -216,9 +216,9 @@ func TestPartsThatWereNeverAcceptedStayRefused(t *testing.T) {
 		bodies["user "+p] = userParts(p)
 	}
 	for _, role := range []string{"system", "developer", "assistant"} {
-		bodies[role+" image"] = `{"model":"` + chatModel + `","messages":[{"role":"` + role + `","content":[{"type":"image_url","image_url":{"url":` + u + `}}]}]}`
+		bodies[role+" image"] = `{"model":"` + ChatModel + `","messages":[{"role":"` + role + `","content":[{"type":"image_url","image_url":{"url":` + u + `}}]}]}`
 	}
-	bodies["tool image"] = `{"model":"` + chatModel + `","messages":[{"role":"tool","tool_call_id":"c","content":[{"type":"image_url","image_url":{"url":` + u + `}}]}]}`
+	bodies["tool image"] = `{"model":"` + ChatModel + `","messages":[{"role":"tool","tool_call_id":"c","content":[{"type":"image_url","image_url":{"url":` + u + `}}]}]}`
 	for _, route := range routes {
 		for name, body := range bodies {
 			t.Run(route.name+"/"+name, func(t *testing.T) {
@@ -234,7 +234,7 @@ func TestPartsThatWereNeverAcceptedStayRefused(t *testing.T) {
 func TestContentSentDirectlyStillWorks(t *testing.T) {
 	g, routes := newMediaGateway(t)
 	cases := map[string]string{
-		"text":              `{"model":"` + chatModel + `","messages":[{"role":"user","content":"hello"}]}`,
+		"text":              `{"model":"` + ChatModel + `","messages":[{"role":"user","content":"hello"}]}`,
 		"text parts":        userParts(textPartJSON),
 		"an image":          userParts(textPartJSON, imagePart(t, onePixelPNG)),
 		"an image only":     userParts(imagePart(t, onePixelPNG)),
@@ -263,8 +263,8 @@ func TestContentSentDirectlyStillWorks(t *testing.T) {
 			})
 		}
 	}
-	if id, _, _ := g.llm.Running(); id != chatModel {
-		t.Errorf("the backend should be running %q, got %q", chatModel, id)
+	if id, _, _ := g.llm.Running(); id != ChatModel {
+		t.Errorf("the backend should be running %q, got %q", ChatModel, id)
 	}
 }
 
@@ -272,13 +272,13 @@ func TestContentSentDirectlyStillWorks(t *testing.T) {
 // and no run is left behind.
 func TestADetachedRunIsRefusedTheSameWay(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
-	c := runClient{t: t, base: ts.URL}
-	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", userParts(imagePart(t, "https://example.test/a.png")))
+	c := RunClient{T: t, Base: ts.URL}
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", userParts(imagePart(t, "https://example.test/a.png")))
 	e, _ := m["error"].(map[string]any)
 	if code != 400 || e["code"] != "remote_media_not_allowed" {
 		t.Errorf("create: %d %v", code, m)
 	}
-	if _, list := c.do("GET", "/_localbase/runs", ""); len(list["data"].([]any)) != 0 {
+	if _, list := c.Do("GET", "/_localbase/runs", ""); len(list["data"].([]any)) != 0 {
 		t.Errorf("a run was left behind: %v", list)
 	}
 	if id, _, _ := llm.Running(); id != "" {

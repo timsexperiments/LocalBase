@@ -25,7 +25,7 @@ func TestARunRefusedForMemoryEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := loadOpenAPI(t)
-	req, err := http.NewRequest("POST", ts.URL+"/_localbase/runs/v1/chat/completions", bytes.NewReader([]byte(chatBody("hi"))))
+	req, err := http.NewRequest("POST", ts.URL+"/_localbase/runs/v1/chat/completions", bytes.NewReader([]byte(ChatBody("hi"))))
 	if err != nil {
 		t.Fatal(err)
 	}

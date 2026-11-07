@@ -17,7 +17,7 @@ import (
 // waited forever for an end that never came.
 func TestADeleteOfARunRefusedBeforeTheQueueReturns(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	type answer struct {
 		code int
 		err  error
@@ -42,9 +42,9 @@ func TestADeleteOfARunRefusedBeforeTheQueueReturns(t *testing.T) {
 			deleted <- answer{resp.StatusCode, nil}
 		}()
 		// The DELETE has found the run and stopped it, and now waits for it to end.
-		waitFor(5*time.Second, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.stopStatus != "" })
+		WaitFor(5*time.Second, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.stopStatus != "" })
 	}
-	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", `{"model":"nope","messages":[{"role":"user","content":"x"}]}`)
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", `{"model":"nope","messages":[{"role":"user","content":"x"}]}`)
 	if code != 404 || m["error"] == nil {
 		t.Errorf("the refusal: %d %v", code, m)
 	}
@@ -57,7 +57,7 @@ func TestADeleteOfARunRefusedBeforeTheQueueReturns(t *testing.T) {
 		close(r.done) // so the test can end
 		t.Fatal("a DELETE of a run refused before the queue was still waiting after 15 s")
 	}
-	if _, m := c.do("GET", "/_localbase/runs", ""); len(m["data"].([]any)) != 0 {
+	if _, m := c.Do("GET", "/_localbase/runs", ""); len(m["data"].([]any)) != 0 {
 		t.Errorf("runs left: %v", m)
 	}
 }
@@ -78,14 +78,14 @@ func (t *readTracker) Read(p []byte) (int, error) {
 // is read whole (up to MaxBody) before the route sees it; a refusal drains only a bounded part.
 func TestTheActiveRunLimitComesBeforeTheBody(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	var ids []string
 	for range ActivePerOwner {
-		ids = append(ids, c.start("fake:slow 200"))
+		ids = append(ids, c.Start("fake:slow 200"))
 	}
 	defer func() {
 		for _, id := range ids {
-			c.do("POST", "/_localbase/runs/"+id+"/cancel", "")
+			c.Do("POST", "/_localbase/runs/"+id+"/cancel", "")
 		}
 	}()
 	const size = 8 << 20 // over the drain of a refused body, under MaxBody
@@ -115,12 +115,12 @@ func (zeros) Read(p []byte) (int, error) {
 // that fits still runs, and the body is given back when its request ends.
 func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	mgr.maxHeldTotal = 8000
 
-	big := chatBody(words(2000))
-	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", big)
-	if code != 202 || m["status"] != "failed" || m["reason"] != "memory_limit" || content(m) != "" {
+	big := ChatBody(Words(2000))
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", big)
+	if code != 202 || m["status"] != "failed" || m["reason"] != "memory_limit" || Content(m) != "" {
 		t.Fatalf("a body over the limit: %d %v", code, m)
 	}
 	e, _ := m["error"].(map[string]any)
@@ -128,17 +128,17 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 		!strings.Contains(e["message"].(string), "Results are holding") {
 		t.Errorf("its error: %v", e)
 	}
-	if got := c.get(m["id"].(string)); got["status"] != "failed" || got["reason"] != "memory_limit" {
+	if got := c.Get(m["id"].(string)); got["status"] != "failed" || got["reason"] != "memory_limit" {
 		t.Errorf("read back: %v", got)
 	}
 	if got := mgr.held.Load(); got != 0 {
 		t.Errorf("holding %d after a body that was never kept", got)
 	}
 
-	small := chatBody("fake:slow 3")
+	small := ChatBody("fake:slow 3")
 	var atPublish int64
 	mgr.afterPublish = func() { atPublish = mgr.held.Load() }
-	code, m = c.do("POST", "/_localbase/runs/v1/chat/completions", small)
+	code, m = c.Do("POST", "/_localbase/runs/v1/chat/completions", small)
 	if code != 202 {
 		t.Fatalf("a body that fits: %d %v", code, m)
 	}
@@ -146,8 +146,8 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 	if atPublish < int64(len(small)) {
 		t.Errorf("holding %d while the request holds a body of %d", atPublish, len(small))
 	}
-	if m = c.waitStatus(id, "completed"); content(m) != words(3) {
-		t.Errorf("output %q", content(m))
+	if m = c.WaitStatus(id, "completed"); Content(m) != Words(3) {
+		t.Errorf("output %q", Content(m))
 	}
 	mgr.mu.Lock()
 	r := mgr.runs[id]
@@ -180,9 +180,9 @@ func TestADeleteOfARunThatWontStopIsBounded(t *testing.T) {
 	m := mgr
 	m.stopWait = 50 * time.Millisecond
 	r := stuckRun(m)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	started := time.Now()
-	if code, body := c.do("DELETE", "/_localbase/runs/"+r.ID, ""); code != 200 || body["deleted"] != true {
+	if code, body := c.Do("DELETE", "/_localbase/runs/"+r.ID, ""); code != 200 || body["deleted"] != true {
 		t.Fatalf("the DELETE: %d %v", code, body)
 	}
 	// The DELETE answers once stopWait has passed, not when the run gives up: 2 s is generous for 50 ms.
@@ -205,7 +205,7 @@ func TestADeleteOfARunThatWontStopIsBounded(t *testing.T) {
 			t.Errorf("the dismissed run's checkpoint is back: %v", err)
 		}
 	}
-	if _, list := c.do("GET", "/_localbase/runs", ""); len(list["data"].([]any)) != 0 {
+	if _, list := c.Do("GET", "/_localbase/runs", ""); len(list["data"].([]any)) != 0 {
 		t.Errorf("runs left: %v", list)
 	}
 }

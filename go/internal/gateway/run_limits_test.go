@@ -15,10 +15,10 @@ import (
 // A chat run over what it may hold ends failed, with what it had, and the backend is told to stop.
 func TestARunOverItsMemoryLimitFailsWithWhatItHad(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	mgr.maxHeld = 3000
-	m := c.waitStatus(c.start("fake:slow 200"), "failed")
-	if m["reason"] != "output_limit" || content(m) == "" {
+	m := c.WaitStatus(c.Start("fake:slow 200"), "failed")
+	if m["reason"] != "output_limit" || Content(m) == "" {
 		t.Errorf("%v", m)
 	}
 	if got := mgr.held.Load(); got > 3000 {
@@ -29,11 +29,11 @@ func TestARunOverItsMemoryLimitFailsWithWhatItHad(t *testing.T) {
 // All runs together have a limit too, with its own reason, and dropping a run gives its share back.
 func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	mgr.maxHeldTotal = 3000
-	id := c.start("fake:slow 200")
-	m := c.waitStatus(id, "failed")
-	if m["reason"] != "memory_limit" || content(m) == "" {
+	id := c.Start("fake:slow 200")
+	m := c.WaitStatus(id, "failed")
+	if m["reason"] != "memory_limit" || Content(m) == "" {
 		t.Errorf("%v", m)
 	}
 	if got := mgr.held.Load(); got == 0 || got > 3000 {
@@ -43,7 +43,7 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 	if e == nil || e["code"] != CodeMemoryFull || !strings.Contains(e["message"].(string), "wait for the running ones") {
 		t.Errorf("nothing else had finished: %v", e)
 	}
-	if code, _ := c.do("DELETE", "/_localbase/runs/"+id, ""); code != 200 {
+	if code, _ := c.Do("DELETE", "/_localbase/runs/"+id, ""); code != 200 {
 		t.Fatalf("dismissing: %d", code)
 	}
 	if got := mgr.held.Load(); got != 0 {
@@ -54,9 +54,9 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 // The other ways a run goes give it back too.
 func TestAnExpiredRunGivesBackWhatItHeld(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
-	id := c.start("hello")
-	c.waitStatus(id, "completed")
+	c := RunClient{T: t, Base: ts.URL}
+	id := c.Start("hello")
+	c.WaitStatus(id, "completed")
 	if mgr.held.Load() == 0 {
 		t.Fatal("a finished run holds its output")
 	}
@@ -238,8 +238,8 @@ func TestRunMemoryLimitsAreTheOptions(t *testing.T) {
 // A run refused before it queues leaves nothing counted.
 func TestARefusedRunLeavesNothingCounted(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
-	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", `{"messages":[]}`)
+	c := RunClient{T: t, Base: ts.URL}
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", `{"messages":[]}`)
 	if code != 400 || m["error"] == nil {
 		t.Fatalf("not refused: %d %v", code, m)
 	}
@@ -295,12 +295,12 @@ func TestARestoredRunCounts(t *testing.T) {
 // The refusal says what holds the memory, how much, when the oldest goes, and what to do.
 func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := runClient{t: t, base: ts.URL}
-	first := c.start("hello")
-	c.waitStatus(first, "completed")
-	done := c.get(first)
+	c := RunClient{T: t, Base: ts.URL}
+	first := c.Start("hello")
+	c.WaitStatus(first, "completed")
+	done := c.Get(first)
 	mgr.maxHeldTotal = mgr.held.Load() + 1 // Full, with a finished run holding it.
-	m := c.waitStatus(c.start("fake:slow 200"), "failed")
+	m := c.WaitStatus(c.Start("fake:slow 200"), "failed")
 	if m["reason"] != "memory_limit" {
 		t.Fatalf("%v", m)
 	}

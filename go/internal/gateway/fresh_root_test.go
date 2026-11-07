@@ -18,7 +18,7 @@ func TestHeldModels(t *testing.T) {
 		t.Fatal("the test needs an active model")
 	}
 	done := make(chan result, 1)
-	go func() { done <- post(t, ts, "/v1/chat/completions", chatBody("hi")) }()
+	go func() { done <- post(t, ts, "/v1/chat/completions", ChatBody("hi")) }()
 	deadline := time.Now().Add(5 * time.Second)
 	for len(llm.LoadedOrLoading()) == 0 {
 		if time.Now().After(deadline) {
@@ -29,13 +29,13 @@ func TestHeldModels(t *testing.T) {
 	if id, _, _ := llm.Running(); id != "" {
 		t.Errorf("already running (%s): the startup delay did not apply", id)
 	}
-	if !slices.Contains(llm.LoadedOrLoading(), chatModel) {
+	if !slices.Contains(llm.LoadedOrLoading(), ChatModel) {
 		t.Errorf("loading: %v", llm.LoadedOrLoading())
 	}
 	if r := <-done; r.status != 200 {
 		t.Fatalf("chat: %d %s", r.status, r.body)
 	}
-	if !slices.Contains(llm.LoadedOrLoading(), chatModel) {
+	if !slices.Contains(llm.LoadedOrLoading(), ChatModel) {
 		t.Errorf("running: %v", llm.LoadedOrLoading())
 	}
 }

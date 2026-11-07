@@ -16,11 +16,11 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
-func anonymousLogGateway(t *testing.T, every time.Duration, burst int) (*httptest.Server, *Server, *syncBuffer, string) {
+func anonymousLogGateway(t *testing.T, every time.Duration, burst int) (*httptest.Server, *Server, *SyncBuffer, string) {
 	t.Helper()
 	ts, _, _ := newTestGateway(t, host{})
 	srv := ts.Config.Handler.(*Server)
-	logs := &syncBuffer{}
+	logs := &SyncBuffer{}
 	srv.Log = slog.New(slog.NewJSONHandler(logs, nil))
 	srv.NoAuth = false
 	srv.anonLog = &obs.Sampler{Every: every, Burst: burst}
@@ -233,7 +233,7 @@ func (refusingProvider) RoundTrip(r *http.Request) (*http.Response, error) {
 // line of its own or in a count.
 func TestShutdownSaysWhatFailedSignInsHeldBack(t *testing.T) {
 	c, srv, _ := oidcGateway(t)
-	logs := &syncBuffer{}
+	logs := &SyncBuffer{}
 	srv.Browser.Log = slog.New(slog.NewJSONHandler(logs, nil))
 	srv.Browser.Client = &http.Client{Transport: refusingProvider{}}
 	// Both answers redirect to places that don't exist: they're read here, not followed.
@@ -305,7 +305,7 @@ func postKeys(t *testing.T, base, credential string) int {
 }
 
 // anonymousEvents counts the request lines with no accepted credential and returns the summaries.
-func anonymousEvents(t *testing.T, logs *syncBuffer) (lines int, summaries []map[string]any) {
+func anonymousEvents(t *testing.T, logs *SyncBuffer) (lines int, summaries []map[string]any) {
 	t.Helper()
 	for _, line := range strings.Split(logs.String(), "\n") {
 		if line == "" {

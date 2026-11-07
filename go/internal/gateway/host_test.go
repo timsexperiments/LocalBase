@@ -53,7 +53,7 @@ func bytesOf(t *testing.T, m map[string]any, key string) float64 {
 func TestHostMemorySplit(t *testing.T) {
 	ts, _, mem := newTestGateway(t, fixedHost{64 * memory.GiB, 40 * memory.GiB})
 	mem.SetSampler(func(context.Context, int) (int64, bool) { return 3 * memory.GiB, true })
-	if r := post(t, ts, "/v1/chat/completions", chatBody("hi")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d %s", r.status, r.body)
 	}
 	res, err := mem.Reserve(context.Background(), "image", memory.Demand{UnifiedBytes: 2 * memory.GiB, HostBytes: 2 * memory.GiB, Confidence: "derived"})
@@ -83,7 +83,7 @@ func TestHostMemorySplit(t *testing.T) {
 	if img["runtime"] != "image" || img["source"] != "planned" || img["measuredBytes"] != nil || img["bytes"].(float64) != 2*gib {
 		t.Errorf("image: %v", img)
 	}
-	if llm["runtime"] != "llm" || llm["source"] != "measured" || llm["bytes"].(float64) != 3*gib || llm["modelId"] != chatModel {
+	if llm["runtime"] != "llm" || llm["source"] != "measured" || llm["bytes"].(float64) != 3*gib || llm["modelId"] != ChatModel {
 		t.Errorf("llm: %v", llm)
 	}
 	if bytesOf(t, h, "other") != (64-40-5)*gib || h["other"].(map[string]any)["source"] != "derived" {
@@ -145,7 +145,7 @@ func TestHostReadsAreCached(t *testing.T) {
 	var reads, samples atomic.Int64
 	ts, _, mem := newTestGateway(t, countingHost{fixedHost{64 * memory.GiB, 50 * memory.GiB}, &reads})
 	mem.SetSampler(func(context.Context, int) (int64, bool) { samples.Add(1); return memory.GiB, true })
-	if r := post(t, ts, "/v1/chat/completions", chatBody("hi")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d", r.status)
 	}
 	time.Sleep(1100 * time.Millisecond)
@@ -155,7 +155,7 @@ func TestHostReadsAreCached(t *testing.T) {
 		if code, _ := getJSON(t, ts.URL+"/_localbase/host"); code != 200 {
 			t.Fatal(code)
 		}
-		getJSON(t, ts.URL+"/_localbase/models/"+chatModel+"/admission")
+		getJSON(t, ts.URL+"/_localbase/models/"+ChatModel+"/admission")
 	}
 	if r, s := reads.Load(), samples.Load(); r > 3 || s > 3 {
 		t.Errorf("60 reads sampled the host %d times and footprints %d times", r, s)
@@ -175,7 +175,7 @@ func TestHostActivity(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 30"}]}`)
+		post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 30"}]}`)
 	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -190,8 +190,8 @@ func TestHostActivity(t *testing.T) {
 	}
 	<-done
 	// A detached run counts even with nothing yet holding the model.
-	c := runClient{t: t, base: ts.URL}
-	code, run := c.do("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 20"))
+	c := RunClient{T: t, Base: ts.URL}
+	code, run := c.Do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("fake:slow 20"))
 	if code != 202 {
 		t.Fatalf("run: %d %v", code, run)
 	}
@@ -199,7 +199,7 @@ func TestHostActivity(t *testing.T) {
 	if a["runs"].(map[string]any)["active"] != 1.0 || a["busy"] != true {
 		t.Errorf("with a run: %v", a)
 	}
-	c.waitStatus(run["id"].(string), "completed")
+	c.WaitStatus(run["id"].(string), "completed")
 	if a = activity(); a["runs"].(map[string]any)["active"] != 0.0 {
 		t.Errorf("after the run: %v", a)
 	}
@@ -215,17 +215,17 @@ func TestAdmissionPreviewMatchesRefusal(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			logs := &lockedBuffer{}
-			testLog = logs
+			Log = logs
 			ts, llm, _ := newTestGateway(t, h)
-			testLog = nil
-			code, p := getJSON(t, ts.URL+"/_localbase/models/"+chatModel+"/admission")
+			Log = nil
+			code, p := getJSON(t, ts.URL+"/_localbase/models/"+ChatModel+"/admission")
 			if code != 200 || p["admitted"] != false {
 				t.Fatalf("preview: %d %v", code, p)
 			}
 			if id, _, _ := llm.Running(); id != "" {
 				t.Errorf("the preview started %s", id)
 			}
-			real := post(t, ts, "/v1/chat/completions", chatBody("hi"))
+			real := post(t, ts, "/v1/chat/completions", ChatBody("hi"))
 			ref := p["refusal"].(map[string]any)
 			var e struct {
 				Error struct {
@@ -269,17 +269,17 @@ func TestAdmissionPreviewMatchesRefusal(t *testing.T) {
 func TestAdmissionPreviewOutcomes(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
 	base := ts.URL + "/_localbase/models/"
-	code, p := getJSON(t, base+chatModel+"/admission")
+	code, p := getJSON(t, base+ChatModel+"/admission")
 	if code != 200 || p["admitted"] != true || p["refusal"] != nil || p["requestedBytes"].(float64) <= 0 || p["availableBytes"].(float64) <= 0 || p["reserveBytes"].(float64) <= 0 || p["runtime"] != "llm" {
 		t.Errorf("fits: %d %v", code, p)
 	}
 	if id, _, _ := llm.Running(); id != "" {
 		t.Errorf("the preview started %s", id)
 	}
-	if r := post(t, ts, "/v1/chat/completions", chatBody("hi")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d", r.status)
 	}
-	if _, p := getJSON(t, base+chatModel+"/admission"); p["admitted"] != true {
+	if _, p := getJSON(t, base+ChatModel+"/admission"); p["admitted"] != true {
 		t.Errorf("already loaded: %v", p)
 	}
 	if code, _ := getJSON(t, base+"no-such-model/admission"); code != 404 {
@@ -351,7 +351,7 @@ func TestHostRoutesNeedPermission(t *testing.T) {
 	if code, _ := getJSON(t, ts.URL+"/_localbase/host"); code != 401 {
 		t.Errorf("host with no key: %d", code)
 	}
-	if code, _ := getJSON(t, ts.URL+"/_localbase/models/"+chatModel+"/admission"); code != 401 {
+	if code, _ := getJSON(t, ts.URL+"/_localbase/models/"+ChatModel+"/admission"); code != 401 {
 		t.Errorf("admission with no key: %d", code)
 	}
 	_, reader, _ := s.Store.CreateAPIKey(context.Background(), "reader", []string{"models:read"})

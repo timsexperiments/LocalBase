@@ -29,7 +29,7 @@ func placementGateway(t *testing.T, platform string, free int64) (string, *runti
 	h.avail.Store(60 * memory.GiB)
 	ts, llm, _ := newTestGateway(t, h)
 	cat, _ := catalog.LoadWithFormer()
-	spec := cat.ByID(chatModel)
+	spec := cat.ByID(ChatModel)
 	path := filepath.Join(llm.Config().Root, "models", "llm", spec.Primary().Filename)
 	placementtest.WriteMoEGGUF(t, path, spec.Primary().ExpectedSizeBytes)
 	return ts.URL, llm, spec.Primary().ExpectedSizeBytes
@@ -60,7 +60,7 @@ func errCode(m map[string]any) string {
 // next load only, and refuse while the model loads.
 func TestPlacementAPI(t *testing.T) {
 	base, llm, _ := placementGateway(t, placement.Discrete, 0)
-	url := base + "/_localbase/models/" + chatModel + "/placement"
+	url := base + "/_localbase/models/" + ChatModel + "/placement"
 
 	code, m := placementCall(t, "GET", url, "")
 	if code != 200 || m["requested"].(map[string]any)["mode"] != "auto" || m["loaded"] != false {
@@ -105,16 +105,16 @@ func TestPlacementAPI(t *testing.T) {
 // pending and never restarts the runtime. Changes are refused mid-load.
 func TestPlacementAppliesOnNextLoad(t *testing.T) {
 	base, llm, _ := placementGateway(t, placement.Discrete, 0)
-	url := base + "/_localbase/models/" + chatModel + "/placement"
+	url := base + "/_localbase/models/" + ChatModel + "/placement"
 	placementCall(t, "PUT", url, `{"mode":"cpu"}`)
 	t.Setenv("FAKE_STARTUP_MS", "1500")
 	done := make(chan int)
 	go func() {
-		code, _ := placementCall(t, "POST", base+"/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+		code, _ := placementCall(t, "POST", base+"/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
 		done <- code
 	}()
 	deadline := time.Now().Add(3 * time.Second)
-	for !llm.Loading(chatModel) && time.Now().Before(deadline) {
+	for !llm.Loading(ChatModel) && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	if code, m := placementCall(t, "PUT", url, `{"mode":"auto"}`); code != 409 || errCode(m) != "model_loading" {
@@ -148,7 +148,7 @@ func TestPlacementAppliesOnNextLoad(t *testing.T) {
 // (preview) until the model loads.
 func TestModelMetadataPlacement(t *testing.T) {
 	base, _, _ := placementGateway(t, placement.Discrete, 0)
-	code, m := placementCall(t, "GET", base+"/_localbase/models/"+chatModel, "")
+	code, m := placementCall(t, "GET", base+"/_localbase/models/"+ChatModel, "")
 	dev, _ := m["device"].(map[string]any)
 	p, _ := dev["placement"].(map[string]any)
 	if code != 200 || p == nil || p["preview"] != true || p["platform"] != placement.Discrete || p["note"] == "" {
@@ -160,11 +160,11 @@ func TestModelMetadataPlacement(t *testing.T) {
 func TestChatOnACPUOnlyMachine(t *testing.T) {
 	t.Setenv("FAKE_NO_GPU_LINES", "1")
 	base, llm, _ := placementGateway(t, placement.CPUOnly, 0)
-	code, m := placementCall(t, "POST", base+"/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+	code, m := placementCall(t, "POST", base+"/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
 	if code != 200 {
 		t.Fatalf("chat: %d %v", code, m)
 	}
-	if id, _, _ := llm.Running(); id != chatModel {
+	if id, _, _ := llm.Running(); id != ChatModel {
 		t.Errorf("running %q", id)
 	}
 }

@@ -19,8 +19,8 @@ func TestModelRoutesAskForTheirOwnPermission(t *testing.T) {
 		return map[string]string{"Authorization": "Bearer " + secret, "Content-Type": "application/json"}
 	}
 	reader, manager := key("models:read"), key("models:manage")
-	placement := "/_localbase/models/" + chatModel + "/placement"
-	unload := "/_localbase/models/" + chatModel + "/unload"
+	placement := "/_localbase/models/" + ChatModel + "/placement"
+	unload := "/_localbase/models/" + ChatModel + "/unload"
 	for _, c := range []struct {
 		name         string
 		method, path string

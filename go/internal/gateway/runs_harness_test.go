@@ -43,8 +43,8 @@ func newRunHarness(t *testing.T) (*httptest.Server, *Manager) {
 // its runs in dir.
 func stubOptions(dir string) Options {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if testLog != nil { // as newTestGateway does
-		log = slog.New(slog.NewJSONHandler(testLog, nil))
+	if Log != nil { // as newTestGateway does
+		log = slog.New(slog.NewJSONHandler(Log, nil))
 	}
 	return Options{
 		Handler: stubInner(),
@@ -82,7 +82,7 @@ func stubInner() http.Handler {
 			w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"invalid_value","message":"Invalid input"}}`))
 			return
 		}
-		if req.Model != chatModel { // refused before the queue, as the chat route refuses it
+		if req.Model != ChatModel { // refused before the queue, as the chat route refuses it
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(404)
 			w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"model_not_found","message":"The model does not exist."}}`))
@@ -124,7 +124,7 @@ func stubInner() http.Handler {
 			}
 		}
 		chunk := func(delta map[string]any, finish any) {
-			b, _ := json.Marshal(map[string]any{"id": "chatcmpl-stub", "object": "chat.completion.chunk", "model": chatModel,
+			b, _ := json.Marshal(map[string]any{"id": "chatcmpl-stub", "object": "chat.completion.chunk", "model": ChatModel,
 				"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}}})
 			fmt.Fprintf(w, "data: %s\n\n", b)
 			flush()

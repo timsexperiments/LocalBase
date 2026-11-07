@@ -9,7 +9,7 @@ import (
 // What a page reads from the preview is what a request then meets, to the byte, and asking
 // loads nothing. Each figure gets its own gateway, as the controller's reading lasts a second.
 func TestAdmissionPreviewAgreesWithALoadToTheByte(t *testing.T) {
-	url := func(ts string) string { return ts + "/_localbase/models/" + chatModel + "/admission" }
+	url := func(ts string) string { return ts + "/_localbase/models/" + ChatModel + "/admission" }
 	for _, total := range []int64{64 * memory.GiB, 640 * memory.GiB} { // the model decides, then a floor of a whole number of bytes
 		ts, _, _ := newTestGateway(t, fixedHost{total, total})
 		_, p := getJSON(t, url(ts.URL))
@@ -37,7 +37,7 @@ func TestAdmissionPreviewAgreesWithALoadToTheByte(t *testing.T) {
 			if held := srv.Memory.Reserved(); len(held) != 0 {
 				t.Errorf("the preview holds memory: %v", held)
 			}
-			r := post(t, ts, "/v1/chat/completions", chatBody("hi"))
+			r := post(t, ts, "/v1/chat/completions", ChatBody("hi"))
 			if (r.status == 200) != step.fits {
 				t.Errorf("%d total, %d free (need %d): the load answered %d %.200s", total, step.avail, need, r.status, r.body)
 			}

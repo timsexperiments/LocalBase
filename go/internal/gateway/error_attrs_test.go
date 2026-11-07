@@ -32,15 +32,15 @@ func (l *lockedBuffer) String() string {
 // never its message (operator observability audit).
 func TestHTTPRequestLogsErrorKind(t *testing.T) {
 	buf := &lockedBuffer{}
-	testLog = buf
-	defer func() { testLog = nil }()
+	Log = buf
+	defer func() { Log = nil }()
 	h := &steppedHost{}
 	h.avail.Store(50 * memory.GiB)
 	ts, _, _ := newTestGateway(t, h)
-	testLog = nil
+	Log = nil
 	post(t, ts, "/v1/systemone", `{"model":"`+decisionModel+`","state":"fake:batch","questions":{"ok":{"type":"noul"}}}`)
-	post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[]}`)
-	post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+	post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[]}`)
+	post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
 	want := map[string][2]string{
 		"POST /v1/systemone -> 400":        {"invalid_request_error", "context_length_exceeded"},
 		"POST /v1/chat/completions -> 400": {"invalid_request_error", "validation_failed"},

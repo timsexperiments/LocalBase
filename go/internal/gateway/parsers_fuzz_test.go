@@ -56,8 +56,8 @@ func FuzzValidateSpeech(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) { validateSpeech(data) })
 }
 
-// multipartSeeds are the forms FuzzMultipart and FuzzRequestModel start from.
-func multipartSeeds(f *testing.F) {
+// MultipartSeeds are the forms FuzzMultipart and FuzzRequestModel start from.
+func MultipartSeeds(f *testing.F) {
 	const b = "BOUNDARY"
 	part := func(name, filename, body string) string {
 		if filename != "" {
@@ -73,7 +73,7 @@ func multipartSeeds(f *testing.F) {
 }
 
 func FuzzMultipart(f *testing.F) {
-	multipartSeeds(f)
+	MultipartSeeds(f)
 	f.Fuzz(func(t *testing.T, boundary string, body []byte) {
 		ctype := "multipart/form-data; boundary=" + boundary
 		r := httptest.NewRequest("POST", "/", bytes.NewReader(body))
@@ -83,7 +83,7 @@ func FuzzMultipart(f *testing.F) {
 }
 
 func FuzzRequestModel(f *testing.F) {
-	multipartSeeds(f)
+	MultipartSeeds(f)
 	f.Fuzz(func(t *testing.T, boundary string, body []byte) {
 		_ = requestModel("multipart/form-data; boundary="+boundary, body)
 	})

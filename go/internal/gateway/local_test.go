@@ -319,8 +319,8 @@ func TestLoginHelpPage(t *testing.T) {
 // Ids only: the token, and a URL with it, never reach a log.
 func TestLoginLinkAudit(t *testing.T) {
 	var logs bytes.Buffer
-	testLog = &logs
-	defer func() { testLog = nil }()
+	Log = &logs
+	defer func() { Log = nil }()
 	c, s := newLocalGateway(t)
 	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
 	c.redeem(token, nil)

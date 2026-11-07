@@ -253,7 +253,7 @@ func TestImportCancelRoute(t *testing.T) {
 	if status, out := do("POST", "/_localbase/model-imports", key, map[string]any{"action": "cancel", "job": started.Job}); status != 200 {
 		t.Errorf("cancel: %d %s", status, out)
 	}
-	if !waitFor(10*time.Second, func() bool {
+	if !WaitFor(10*time.Second, func() bool {
 		_, out := do("GET", "/_localbase/model-imports?id="+started.Job, key, nil)
 		return strings.Contains(out, acquire.CodeCancelled)
 	}) {

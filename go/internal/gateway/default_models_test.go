@@ -27,30 +27,30 @@ func TestDefaultChatModelsAPI(t *testing.T) {
 		json.Unmarshal(b, &m)
 		return resp.StatusCode, m
 	}
-	if code, m := get(); code != 200 || m["models"].([]any)[0] != chatModel {
+	if code, m := get(); code != 200 || m["models"].([]any)[0] != ChatModel {
 		t.Fatalf("get: %d %v", code, m)
 	}
 	for _, bad := range []string{`{}`, `{"models":[]}`, `{"models":["` + decisionModel + `"]}`, `{"models":["nope"]}`,
-		`{"models":["` + chatModel + `","` + chatModel + `"]}`, `{"models":["` + embeddingModel + `"]}`} {
+		`{"models":["` + ChatModel + `","` + ChatModel + `"]}`, `{"models":["` + embeddingModel + `"]}`} {
 		if r := post(t, ts, "/_localbase/default-chat-models", bad); r.status != 400 {
 			t.Errorf("%s: %d %s", bad, r.status, r.body)
 		}
 	}
 	// Two chat models: a list. The first becomes the active model.
-	r := post(t, ts, "/_localbase/default-chat-models", `{"models":["qwen3.5-4b-q4_k_m","`+chatModel+`"]}`)
+	r := post(t, ts, "/_localbase/default-chat-models", `{"models":["qwen3.5-4b-q4_k_m","`+ChatModel+`"]}`)
 	if r.status != 200 || !strings.Contains(r.body, `"preferredModelId":"qwen3.5-4b-q4_k_m"`) {
 		t.Fatalf("post: %d %s", r.status, r.body)
 	}
 	// A list leaves activeLlmModel alone (a rollback to TS launches it).
 	got := llm.Config()
-	if len(got.DefaultLLMs) != 2 || got.DefaultLLMs[0] != "qwen3.5-4b-q4_k_m" || got.Active["llm"] != chatModel {
+	if len(got.DefaultLLMs) != 2 || got.DefaultLLMs[0] != "qwen3.5-4b-q4_k_m" || got.Active["llm"] != ChatModel {
 		t.Errorf("config after post: defaults %v active %s", got.DefaultLLMs, got.Active["llm"])
 	}
 	// One model: the active model alone, no list.
-	if r := post(t, ts, "/_localbase/default-chat-models", `{"models":["`+chatModel+`"]}`); r.status != 200 {
+	if r := post(t, ts, "/_localbase/default-chat-models", `{"models":["`+ChatModel+`"]}`); r.status != 200 {
 		t.Fatalf("post one: %d %s", r.status, r.body)
 	}
-	if got := llm.Config(); got.DefaultLLMs != nil || got.Active["llm"] != chatModel {
+	if got := llm.Config(); got.DefaultLLMs != nil || got.Active["llm"] != ChatModel {
 		t.Errorf("one default: list %v active %s", got.DefaultLLMs, got.Active["llm"])
 	}
 }

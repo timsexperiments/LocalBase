@@ -10,11 +10,11 @@ import (
 // answers first, without starting anything.
 func TestEmbeddingsOnAChatModelAreRefusedClearly(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
-	r := post(t, ts, "/v1/embeddings", `{"model":"`+chatModel+`","input":"hello"}`)
+	r := post(t, ts, "/v1/embeddings", `{"model":"`+ChatModel+`","input":"hello"}`)
 	if r.status != 400 || r.code() != "unsupported_model_capability" {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
-	for _, want := range []string{chatModel, "chat model", "embedding model", "/v1/models"} {
+	for _, want := range []string{ChatModel, "chat model", "embedding model", "/v1/models"} {
 		if !strings.Contains(r.body, want) {
 			t.Errorf("no %q in %s", want, r.body)
 		}

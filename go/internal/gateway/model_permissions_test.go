@@ -33,7 +33,7 @@ func TestModelRoutePermissions(t *testing.T) {
 		defer resp.Body.Close()
 		return resp.StatusCode
 	}
-	model := "/_localbase/models/" + chatModel
+	model := "/_localbase/models/" + ChatModel
 	for _, c := range []struct {
 		method, path, body string
 		manage, read       bool

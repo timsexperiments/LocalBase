@@ -43,7 +43,7 @@ func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 	}
 
 	// fake:slow 200 streams 200 words 50 ms apart: about ten seconds, against a limit of 200 ms.
-	status, out := do("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 200"))
+	status, out := do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("fake:slow 200"))
 	var created struct {
 		ID string `json:"id"`
 	}
@@ -56,7 +56,7 @@ func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 		EndedAt      *string         `json:"endedAt"`
 		Continuation json.RawMessage `json:"continuation"`
 	}
-	if !waitFor(openAPIWait, func() bool {
+	if !WaitFor(openAPIWait, func() bool {
 		_, out = do("GET", "/_localbase/runs/"+created.ID, "")
 		return json.Unmarshal(out, &run) == nil && run.EndedAt != nil
 	}) {

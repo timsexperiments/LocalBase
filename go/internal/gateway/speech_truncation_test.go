@@ -114,7 +114,7 @@ func loggedEvent(t *testing.T, jsonl, name string) map[string]any {
 // Audio cut at the frame cap is unchanged, and says so: a warn event without
 // the text, and a header on every way /v1 can answer.
 func TestSpeechTruncationVisible(t *testing.T) {
-	logs := &syncBuffer{}
+	logs := &SyncBuffer{}
 	ts := newSpeechGateway(t, logs)
 	numbers := numberList()
 	if len(numbers) != 256 {
@@ -158,18 +158,18 @@ func TestSpeechTruncationVisible(t *testing.T) {
 // Run results keep no headers, so the same flag is result.notes, on the run
 // object and on its end event; the audio is the same bytes.
 func TestSpeechTruncationInRun(t *testing.T) {
-	logs := &syncBuffer{}
+	logs := &SyncBuffer{}
 	ts := newSpeechGateway(t, logs)
-	c := runClient{t: t, base: ts.URL}
+	c := RunClient{T: t, Base: ts.URL}
 	start := func(input string) string {
-		code, m := c.do("POST", "/_localbase/runs/v1/audio/speech", speechBody(input, ""))
+		code, m := c.Do("POST", "/_localbase/runs/v1/audio/speech", speechBody(input, ""))
 		if code != 202 {
 			t.Fatalf("create: %d %v", code, m)
 		}
 		return m["id"].(string)
 	}
 	id := start(numberList())
-	m := c.waitStatus(id, "completed")
+	m := c.WaitStatus(id, "completed")
 	notes := func(run map[string]any) []any {
 		res, _ := run["result"].(map[string]any)
 		n, _ := res["notes"].([]any)
@@ -178,10 +178,10 @@ func TestSpeechTruncationInRun(t *testing.T) {
 	if n := notes(m); len(n) != 1 || n[0] != "audio_truncated" {
 		t.Fatalf("notes: %v", m)
 	}
-	evs, _, _ := c.events(id, nil, "", nil)
+	evs, _, _ := c.Events(id, nil, "", nil)
 	var end map[string]any
-	json.Unmarshal([]byte(evs[len(evs)-1].data), &end)
-	if n := notes(end); evs[len(evs)-1].name != "end" || len(n) != 1 || n[0] != "audio_truncated" {
+	json.Unmarshal([]byte(evs[len(evs)-1].Data), &end)
+	if n := notes(end); evs[len(evs)-1].Name != "end" || len(n) != 1 || n[0] != "audio_truncated" {
 		t.Errorf("end event: %v", end)
 	}
 	resp, err := http.Get(ts.URL + "/_localbase/runs/" + id + "/result")
@@ -198,7 +198,7 @@ func TestSpeechTruncationInRun(t *testing.T) {
 		t.Errorf("run.completed: %v", attrs)
 	}
 	id = start(speechProse)
-	m = c.waitStatus(id, "completed")
+	m = c.WaitStatus(id, "completed")
 	if res, _ := m["result"].(map[string]any); res == nil || res["notes"] != nil {
 		t.Errorf("prose run: %v", m)
 	}

@@ -14,7 +14,7 @@ import (
 func TestAnUnloadGivingUpLeavesTheOtherDraining(t *testing.T) {
 	_, llm, _ := newTestGateway(t, host{})
 	ctx := t.Context()
-	held, err := llm.Acquire(ctx, chatModel)
+	held, err := llm.Acquire(ctx, ChatModel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,13 +24,13 @@ func TestAnUnloadGivingUpLeavesTheOtherDraining(t *testing.T) {
 	}
 	patient := make(chan result, 1)
 	go func() {
-		freed, err := llm.Unload(ctx, chatModel, 20*time.Second)
+		freed, err := llm.Unload(ctx, ChatModel, 20*time.Second)
 		patient <- result{freed, err}
 	}()
 	waitDraining := time.Now().Add(5 * time.Second)
 	for {
 		short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-		l, err := llm.Acquire(short, chatModel)
+		l, err := llm.Acquire(short, ChatModel)
 		cancel()
 		if errors.Is(err, runtime.ErrUnloading) {
 			break
@@ -44,12 +44,12 @@ func TestAnUnloadGivingUpLeavesTheOtherDraining(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	var busy *runtime.BusyError
-	if _, err := llm.Unload(ctx, chatModel, 50*time.Millisecond); !errors.As(err, &busy) {
+	if _, err := llm.Unload(ctx, ChatModel, 50*time.Millisecond); !errors.As(err, &busy) {
 		t.Fatalf("the impatient unload: %v", err)
 	}
 	short, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	l, err := llm.Acquire(short, chatModel)
+	l, err := llm.Acquire(short, ChatModel)
 	if l != nil {
 		l.Release()
 	}

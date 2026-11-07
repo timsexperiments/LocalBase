@@ -58,7 +58,7 @@ func repeated(item string, n int) string {
 }
 
 func chatRefusal(messages string) string {
-	return `{"model":"` + chatModel + `","messages":[` + messages + `]}`
+	return `{"model":"` + ChatModel + `","messages":[` + messages + `]}`
 }
 
 func scoreRefusal(id string, n int) string {
@@ -103,9 +103,9 @@ func smallRefusals() map[string]struct{ path, body string } {
 	return map[string]struct{ path, body string }{
 		"messages":            {"/v1/chat/completions", chatRefusal(repeated("1", 10_000))},
 		"content parts":       {"/v1/chat/completions", chatRefusal(`{"role":"user","content":[` + repeated("1", 10_000) + `]}`)},
-		"stop":                {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"stop":[` + repeated("1", 10_000) + `]}`},
-		"tools":               {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"tools":[` + repeated("1", 10_000) + `]}`},
-		"logit_bias":          {"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[],"logit_bias":{"` + long + `":"x"}}`},
+		"stop":                {"/v1/chat/completions", `{"model":"` + ChatModel + `","messages":[],"stop":[` + repeated("1", 10_000) + `]}`},
+		"tools":               {"/v1/chat/completions", `{"model":"` + ChatModel + `","messages":[],"tools":[` + repeated("1", 10_000) + `]}`},
+		"logit_bias":          {"/v1/chat/completions", `{"model":"` + ChatModel + `","messages":[],"logit_bias":{"` + long + `":"x"}}`},
 		"unknown keys":        {"/v1/systemone", unknownKeys(2_000)},
 		"unknown speech keys": {"/v1/audio/speech", speechKeys(2_000)},
 		"long question id":    {"/v1/systemone", scoreRefusal(long, 2_000)},
@@ -158,7 +158,7 @@ func TestARefusalAtTheBodyLimit(t *testing.T) {
 	}
 	id := strings.Repeat("a", httpx.MaxRequestBytes/2)
 	for name, c := range map[string]struct{ path, body string }{
-		"numbers":     {"/v1/chat/completions", fill(`{"model":"`+chatModel+`","messages":[`, "1", `]}`)},
+		"numbers":     {"/v1/chat/completions", fill(`{"model":"`+ChatModel+`","messages":[`, "1", `]}`)},
 		"question id": {"/v1/systemone", scoreRefusal(id, (httpx.MaxRequestBytes/2-256)/2)},
 	} {
 		if len(c.body) > httpx.MaxRequestBytes {
