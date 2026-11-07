@@ -300,7 +300,11 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	var target *store.APIKey
 	if in.Action != "create" {
 		if target, err = s.Store.APIKeyByID(ctx, keyID); err != nil {
-			managementError(w, 404, "key_not_found")
+			if missing := (*store.ErrKeyNotFound)(nil); errors.As(err, &missing) {
+				managementError(w, 404, "key_not_found")
+			} else {
+				serviceUnavailable(w, r, "Key management") // a key that can't be read may still be there
+			}
 			return
 		}
 	}

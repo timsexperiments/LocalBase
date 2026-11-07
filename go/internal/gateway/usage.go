@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -89,7 +90,12 @@ func (s *Server) knownUsageModel(id string) bool {
 	if s.Catalog != nil && s.Catalog.ByID(id) != nil {
 		return true
 	}
-	return s.importedTask(id) != ""
+	// Counted after the answer, so a failed read only leaves the model out of the row.
+	t, err := s.importedTask(context.Background(), id)
+	if err != nil {
+		s.Log.Error("Could not read the imported models.", "event", "models.read-failed", "step", "reading the imported models", "error", err.Error())
+	}
+	return t != ""
 }
 
 // recordUsage counts a finished request. It never fails one.

@@ -166,6 +166,22 @@ func (s *Store) ImportedModels(ctx context.Context) ([]ImportedModel, error) {
 	return out, rows.Err()
 }
 
+// ImportedModelByID returns one definition, or nil when id has none.
+func (s *Store) ImportedModelByID(ctx context.Context, id string) (*ImportedModel, error) {
+	var m ImportedModel
+	var def string
+	err := s.DB.QueryRowContext(ctx, `SELECT id, definition, created_at, updated_at FROM imported_models WHERE id = ?`, id).
+		Scan(&m.ID, &def, &m.CreatedAt, &m.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	m.Definition = []byte(def)
+	return &m, nil
+}
+
 // DeleteImportedModel removes a definition and every device's choice for it.
 func (s *Store) DeleteImportedModel(ctx context.Context, id string) (bool, error) {
 	res, err := s.DB.ExecContext(ctx, `DELETE FROM imported_models WHERE id = ?`, id)

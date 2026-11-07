@@ -36,9 +36,16 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	name, unload := s.loadedRuntime(id)
 	if unload == nil {
-		if s.Catalog.ByID(id) == nil && s.importedTask(id) == "" {
-			modelNotFound(w, r, id)
-			return
+		if s.Catalog.ByID(id) == nil {
+			t, err := s.importedTask(r.Context(), id)
+			if err != nil {
+				serviceUnavailable(w, r, "LLM")
+				return
+			}
+			if t == "" {
+				modelNotFound(w, r, id)
+				return
+			}
 		}
 		writeError(w, r, 404, "invalid_request_error", "model_not_loaded", "Model '"+id+"' is not loaded.", strp("model"))
 		return

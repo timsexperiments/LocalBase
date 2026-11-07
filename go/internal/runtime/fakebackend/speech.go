@@ -26,6 +26,11 @@ func addSpeech(mux *http.ServeMux) {
 		var body struct{ Input string }
 		json.NewDecoder(r.Body).Decode(&body)
 		dieIfAsked(w, body.Input)
+		if strings.Contains(body.Input, "fake:busy") {
+			// tts-server's answer while its slot is still taken, here for good.
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if strings.Contains(body.Input, "fake:slow") {
 			time.Sleep(400 * time.Millisecond)
 		}

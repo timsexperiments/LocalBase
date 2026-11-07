@@ -197,6 +197,9 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 			tel.finish("error", 400, "")
 		case errors.Is(err, errSpeechBackendGone):
 			backendGone(w, r, tel, "TTS")
+		case errors.Is(err, errSpeechBackendBusy):
+			serviceUnavailable(w, r, "TTS")
+			tel.finish("error", 503, "")
 		default:
 			upstreamFailure(w, r, err.Error())
 			tel.finish("error", 502, "")
@@ -218,6 +221,10 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 // errSpeechBackendGone is a speech backend that could not be reached or closed
 // the connection before its audio was complete.
 var errSpeechBackendGone = errors.New("the speech backend went away")
+
+// errSpeechBackendBusy is a tts-server that stayed busy (503) for as long as a speech request may
+// take.
+var errSpeechBackendBusy = errors.New("the speech backend stayed busy")
 
 type voiceUnavailable struct{ voice, backend string }
 
@@ -272,6 +279,11 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 		return pcm, nil
 	case "tts-server/v1":
 		b, _ := json.Marshal(map[string]string{"input": req.Input, "voice": req.Voice})
+		busyFor := s.speechBusyFor
+		if busyFor <= 0 {
+			busyFor = speechTimeout
+		}
+		busyUntil := time.Now().Add(busyFor)
 		for {
 			hr, _ := http.NewRequestWithContext(ctx, http.MethodPost, lease.BaseURL+"/v1/generate", bytes.NewReader(b))
 			hr.Header.Set("Content-Type", "application/json")
@@ -282,6 +294,9 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 			if resp.StatusCode == 503 {
 				// A cancelled generation finishes its window before the slot frees.
 				resp.Body.Close()
+				if time.Now().After(busyUntil) {
+					return nil, errSpeechBackendBusy
+				}
 				select {
 				case <-ctx.Done():
 					return nil, ctx.Err()
