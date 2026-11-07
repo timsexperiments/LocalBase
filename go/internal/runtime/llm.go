@@ -449,7 +449,7 @@ func (m *LLM) pump() {
 // (#355), so a switch that cannot fit never stops the current model. If the
 // new model fails after the old one stopped, the old one is restored (#296).
 func (m *LLM) switchTo(ctx context.Context, modelID, key string, parent *otlp.Span) {
-	err := m.d.Recovery.retryAfterRecovery("llm", func() (memory.Demand, error) {
+	err := m.d.Recovery.retryAfterRecovery(ctx, "llm", func() (memory.Demand, error) {
 		return m.doSwitch(ctx, modelID, key, parent)
 	})
 	m.mu.Lock()
@@ -517,7 +517,10 @@ func (m *LLM) doSwitch(ctx context.Context, modelID, key string, parent *otlp.Sp
 		// Memory must settle before the new model starts; if it never does,
 		// the previous model is restored (TS rollBackRejectedSwitch).
 		if prev.modelID != modelID && ctx.Err() == nil {
-			if err := settleAfterStop(m.d.Memory, demand); err != nil {
+			if err := settleAfterStop(ctx, m.d.Memory, demand); err != nil {
+				if ctx.Err() != nil {
+					return demand, context.Cause(ctx) // ended on purpose: nothing is restored
+				}
 				logRolledBack(m.d.Log, "llm", prev.modelID, modelID, true, err)
 				m.restore(ctx, prev, parent)
 				return demand, err
@@ -673,8 +676,11 @@ func (m *LLM) startBackend(life context.Context, modelID string, spec *catalog.S
 	if err := checkPortFree(plan.Host, plan.Port); err != nil {
 		return nil, fail(err)
 	}
-	res, err := m.d.Memory.Reserve(context.Background(), "llm", demand)
+	res, err := m.d.Memory.Reserve(life, "llm", demand)
 	if err != nil {
+		if life.Err() != nil {
+			return nil, context.Cause(life) // ended on purpose, not refused for memory
+		}
 		logAdmissionRejected(m.d.Log, "llm", name, err)
 		return nil, err
 	}
@@ -957,6 +963,9 @@ func (m *LLM) Snapshot() Snapshot {
 
 // restore starts the previous model again after a switch failed.
 func (m *LLM) restore(ctx context.Context, prev *backend, parent *otlp.Span) {
+	if ctx.Err() != nil {
+		return // the switch was ended; a backend started now would be stopped at once
+	}
 	if rb, err := m.startBackend(ctx, prev.modelID, prev.spec, prev.plan, prev.demand, prev.target, parent); err == nil {
 		rb.key = prev.key
 		_ = m.install(ctx, rb) // its only refusal is an ended switch, which already reported

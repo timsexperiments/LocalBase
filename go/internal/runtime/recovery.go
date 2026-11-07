@@ -92,7 +92,7 @@ func recoverable(err error) bool {
 // recover stops idle peers of modality when that makes demand admissible and
 // waits for the host to show the memory. It reports whether a retry should
 // follow.
-func (r *IdleRecovery) recover(modality string, demand memory.Demand) bool {
+func (r *IdleRecovery) recover(ctx context.Context, modality string, demand memory.Demand) bool {
 	if r == nil || r.Memory == nil {
 		return false
 	}
@@ -113,7 +113,6 @@ func (r *IdleRecovery) recover(modality string, demand memory.Demand) bool {
 		claims = append(claims, p)
 		ids = append(ids, p.runtimeID())
 	}
-	ctx := context.Background()
 	if err := r.Memory.CheckAdmission(ctx, demand, ids); err != nil {
 		return false
 	}
@@ -133,6 +132,9 @@ func (r *IdleRecovery) recover(modality string, demand memory.Demand) bool {
 	}
 	deadline := time.Now().Add(timeout)
 	for {
+		if ctx.Err() != nil { // the switch was ended: no retry
+			return false
+		}
 		err := r.Memory.CheckAdmission(ctx, demand, nil)
 		if err == nil {
 			return true
@@ -140,16 +142,19 @@ func (r *IdleRecovery) recover(modality string, demand memory.Demand) bool {
 		if !recoverable(err) || time.Now().After(deadline) {
 			return false
 		}
-		time.Sleep(min(interval, time.Until(deadline)+time.Millisecond))
+		select {
+		case <-ctx.Done():
+		case <-time.After(min(interval, time.Until(deadline)+time.Millisecond)):
+		}
 	}
 }
 
 // retryAfterRecovery runs a switch, and once more after idle recovery when
 // the first attempt was refused for memory. A retry refused for memory again
 // answers the first refusal, as TS does.
-func (r *IdleRecovery) retryAfterRecovery(modality string, attempt func() (memory.Demand, error)) error {
+func (r *IdleRecovery) retryAfterRecovery(ctx context.Context, modality string, attempt func() (memory.Demand, error)) error {
 	demand, err := attempt()
-	if !recoverable(err) || !r.recover(modality, demand) {
+	if !recoverable(err) || !r.recover(ctx, modality, demand) {
 		return err
 	}
 	if _, retryErr := attempt(); !recoverable(retryErr) {

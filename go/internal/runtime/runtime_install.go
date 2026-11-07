@@ -95,7 +95,20 @@ func release(name string) (family string, a manifestArtifact, support []SupportF
 	return family, manifestArtifact{}, nil, false
 }
 
-var installMu sync.Mutex
+// installLocks holds one lock per runtime family, so an install downloading one family doesn't
+// hold up another's, and a wait for a family's lock ends with its context (an ended switch, Close).
+var installLocks sync.Map // family -> chan struct{} with room for one
+
+func lockInstall(ctx context.Context, family string) (unlock func(), err error) {
+	v, _ := installLocks.LoadOrStore(family, make(chan struct{}, 1))
+	held := v.(chan struct{})
+	select {
+	case held <- struct{}{}:
+		return func() { <-held }, nil
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	}
+}
 
 // EnsureBinary returns a managed executable, installing its pinned release
 // the first time.
@@ -107,8 +120,11 @@ func EnsureBinary(ctx context.Context, runtimesDir, name string) (string, error)
 	if p, err := ResolveBinary(runtimesDir, name); err == nil && supportComplete(filepath.Dir(p), support) {
 		return p, nil
 	}
-	installMu.Lock()
-	defer installMu.Unlock()
+	unlock, err := lockInstall(ctx, family)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
 	packageDir := filepath.Join(runtimesDir, family, strings.ToLower(rel.SHA256))
 	dest := filepath.Join(packageDir, name)
 	if fileExists(dest) && supportComplete(packageDir, support) {
