@@ -92,7 +92,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 // twice), or the local command line holding the instance token.
 func (s *Server) auditActor(r *http.Request) (kind, id string) {
 	var p *auth.Principal
-	if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
+	if bp, ok := r.Context().Value(BrowserPrincipalKey{}).(*auth.Principal); ok {
 		p = bp
 	} else if outer, ok := r.Context().Value(httpx.RecKey{}).(*httpx.Recorder); ok {
 		p = outer.Auth

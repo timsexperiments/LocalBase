@@ -29,8 +29,8 @@ func newRunID() string {
 // create starts a run of target with the request's body. A request the /v1
 // handler refuses before queueing (validation, scope, unknown model) is
 // answered here as /v1 would, and no run exists.
-func (m *runManager) create(w http.ResponseWriter, req *http.Request, target string) {
-	label, ok := runTargets[target]
+func (m *Manager) create(w http.ResponseWriter, req *http.Request, target string) {
+	label, ok := Targets[target]
 	if !ok {
 		httpx.RouteDisabled(w, req)
 		return
@@ -40,8 +40,8 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		httpx.MethodNotAllowed(w, req, "POST")
 		return
 	}
-	owner := m.opts.owner(req)
-	// Before the body is read (up to runMaxBody), and again below, where it counts.
+	owner := m.opts.Owner(req)
+	// Before the body is read (up to MaxBody), and again below, where it counts.
 	m.mu.Lock()
 	over := m.overActive(owner)
 	m.mu.Unlock()
@@ -114,7 +114,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 		m.afterPublish()
 	}
 
-	ctx, r.span = m.opts.otel().Start(ctx, "localbase.run", otlp.KindInternal)
+	ctx, r.span = m.opts.Otel().Start(ctx, "localbase.run", otlp.KindInternal)
 	r.span.SetAttr("localbase.run.id", r.ID)
 	r.span.SetAttr("localbase.run.target", target)
 	ready := make(chan struct{})
@@ -149,7 +149,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	ctx = context.WithValue(ctx, httpx.RunHooksKey{}, hooks)
 	// The inner request acts as the caller: the /v1 guard checks its scope.
 	if p, ok := req.Context().Value(httpx.PrincipalKey{}).(*auth.Principal); ok {
-		ctx = context.WithValue(ctx, browserPrincipalKey{}, p)
+		ctx = context.WithValue(ctx, BrowserPrincipalKey{}, p)
 	}
 	inner, _ := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	inner.Header.Set("Content-Type", req.Header.Get("Content-Type"))
@@ -159,7 +159,7 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 	go func() {
 		defer m.wg.Done()
 		defer timer.Stop()
-		m.opts.handler.ServeHTTP(rw, inner)
+		m.opts.Handler.ServeHTTP(rw, inner)
 		m.finish(r, rw)
 		signal()
 	}()
@@ -201,22 +201,22 @@ func (m *runManager) create(w http.ResponseWriter, req *http.Request, target str
 // or multipart) pass through as they are, for the /v1 route to check.
 func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byte, bool) {
 	if target != "/v1/chat/completions" {
-		if req.ContentLength > runMaxBody {
-			payloadTooLarge(w, req)
+		if req.ContentLength > MaxBody {
+			PayloadTooLarge(w, req)
 			return nil, false
 		}
-		b, err := io.ReadAll(io.LimitReader(req.Body, runMaxBody+1))
+		b, err := io.ReadAll(io.LimitReader(req.Body, MaxBody+1))
 		if err != nil {
 			httpx.BadRequest(w, req, "The request body could not be read.", nil)
 			return nil, false
 		}
-		if len(b) > runMaxBody {
-			payloadTooLarge(w, req)
+		if len(b) > MaxBody {
+			PayloadTooLarge(w, req)
 			return nil, false
 		}
 		return b, true
 	}
-	obj, ok := readJSON(w, req)
+	obj, ok := ReadJSON(w, req)
 	if !ok {
 		return nil, false
 	}
@@ -232,7 +232,7 @@ func readRunBody(w http.ResponseWriter, req *http.Request, target string) ([]byt
 }
 
 // finish settles a run once its inner request has returned.
-func (m *runManager) finish(r *run, rw *runWriter) {
+func (m *Manager) finish(r *run, rw *runWriter) {
 	r.mu.Lock()
 	full := r.stopReason == "memory_limit"
 	m.held.Add(-r.body) // the inner request is done with it
@@ -261,8 +261,8 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 		status = runFailed
 	case r.Target != chatTarget && rw.status >= 200 && rw.status < 300:
 		r.result, r.resultType = bytes.Clone(rw.body.Bytes()), rw.header.Get("Content-Type")
-		if rw.header.Get(audioTruncatedHeader) == "true" {
-			r.notes = append(r.notes, noteAudioTruncated)
+		if rw.header.Get(AudioTruncatedHeader) == "true" {
+			r.notes = append(r.notes, NoteAudioTruncated)
 		}
 	case rw.status >= 400 || !rw.sse:
 		status = runFailed
@@ -302,8 +302,8 @@ func (m *runManager) finish(r *run, rw *runWriter) {
 		runInterrupted: "run.interrupted"}[status])
 }
 
-// activeCount is how many runs have not finished, whoever owns them.
-func (m *runManager) activeCount() int {
+// ActiveCount is how many runs have not finished, whoever owns them.
+func (m *Manager) ActiveCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	n := 0
@@ -318,7 +318,7 @@ func (m *runManager) activeCount() int {
 }
 
 // stop cancels an active run with a final status. The first stop wins.
-func (m *runManager) stop(r *run, status, reason string) {
+func (m *Manager) stop(r *run, status, reason string) {
 	r.mu.Lock()
 	if r.terminal() || r.stopStatus != "" || r.cancel == nil {
 		r.mu.Unlock()
@@ -332,7 +332,7 @@ func (m *runManager) stop(r *run, status, reason string) {
 
 // trim drops the owner's oldest finished runs over the retained limit.
 // Called with m.mu held.
-func (m *runManager) trim(owner string) {
+func (m *Manager) trim(owner string) {
 	var mine []*run
 	for _, r := range m.runs {
 		if r.Owner == owner {
@@ -363,7 +363,7 @@ func (m *runManager) trim(owner string) {
 
 // Shutdown interrupts active runs (gateway_restart) and ends every event
 // stream, before the HTTP server drains and the runtimes stop.
-func (m *runManager) Shutdown(wait time.Duration) {
+func (m *Manager) Shutdown(wait time.Duration) {
 	m.mu.Lock()
 	if m.closing {
 		m.mu.Unlock()

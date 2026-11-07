@@ -124,7 +124,7 @@ func (t *inference) begin(ctx context.Context, method string) {
 	sp.SetAttr("localbase.inference.admission.slots", t.slots)
 	sp.SetAttr("localbase.inference.admission.waiting", t.waiting)
 	sp.SetAttr("localbase.request_id", t.requestID)
-	sp.SetAttr("localbase.inference.queue.duration_ms", ms(t.queueWait))
+	sp.SetAttr("localbase.inference.queue.duration_ms", Milliseconds(t.queueWait))
 	if t.prepareMs != nil {
 		sp.SetAttr("localbase.inference.json_schema.requested", true)
 		sp.SetAttr("localbase.inference.json_schema.native_mode", "requested")
@@ -142,9 +142,9 @@ func (t *inference) revision() string {
 	return rev
 }
 
-func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
+func Milliseconds(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
-func round2(f float64) float64 { return math.Round(f*100) / 100 }
+func Round2(f float64) float64 { return math.Round(f*100) / 100 }
 
 // serverTiming is the Server-Timing header for non-streaming responses.
 func (t *inference) serverTiming() string {
@@ -152,7 +152,7 @@ func (t *inference) serverTiming() string {
 		return ""
 	}
 	var parts []string
-	parts = append(parts, fmt.Sprintf("queue;dur=%.2f", ms(t.queueWait)))
+	parts = append(parts, fmt.Sprintf("queue;dur=%.2f", Milliseconds(t.queueWait)))
 	if t.prepareMs != nil {
 		parts = append(parts, fmt.Sprintf("prepare;dur=%.2f", *t.prepareMs))
 	}
@@ -181,13 +181,13 @@ func (t *inference) finish(outcome string, status int, source string) {
 	if t.upstreamStatus != 0 {
 		attrs = append(attrs, "upstream_status", t.upstreamStatus)
 	}
-	attrs = append(attrs, "total_duration_ms", round2(ms(time.Since(t.started))), "queue_wait_ms", round2(ms(t.queueWait)))
+	attrs = append(attrs, "total_duration_ms", Round2(Milliseconds(time.Since(t.started))), "queue_wait_ms", Round2(Milliseconds(t.queueWait)))
 	if source != "" {
 		attrs = append(attrs, "terminal_source", source)
 	}
 	if t.prepareMs != nil && t.schemaValidation != "" {
 		attrs = append(attrs, "json_schema_requested", true, "json_schema_native_mode", "requested",
-			"json_schema_preparation_ms", round2(*t.prepareMs), "json_schema_validation", t.schemaValidation)
+			"json_schema_preparation_ms", Round2(*t.prepareMs), "json_schema_validation", t.schemaValidation)
 		if t.schemaSkipReasons != "" {
 			attrs = append(attrs, "json_schema_skip_reasons", t.schemaSkipReasons)
 		}
@@ -249,7 +249,7 @@ func (t *inference) noteUsage(outcome string, status int) {
 
 func (t *inference) finishSpan(outcome string, status int, source string) {
 	sp := t.span
-	sp.SetAttr("localbase.inference.total.duration_ms", ms(time.Since(t.started)))
+	sp.SetAttr("localbase.inference.total.duration_ms", Milliseconds(time.Since(t.started)))
 	sp.SetAttr("localbase.inference.outcome", outcome)
 	sp.SetAttr("http.response.status_code", status)
 	if t.upstreamStatus != 0 {

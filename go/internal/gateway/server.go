@@ -81,7 +81,7 @@ type Server struct {
 	speechBusyFor time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
-	runs *runManager
+	runs *Manager
 	// anonLog keeps what requests with no credential write to the log small.
 	anonLog *obs.Sampler
 	// anonRefused counts the 401s and 403s for those requests since start, logged or not.
@@ -138,11 +138,11 @@ func New(s *Server) *Server {
 	if rootDir != "" {
 		runsDir = filepath.Join(rootDir, "runs")
 	}
-	s.runs = newRunManager(s.runOptions(runsDir))
+	s.runs = NewManager(s.runOptions(runsDir))
 	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
 	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	s.changeAudit = newChangeLimiter()
-	go s.runs.janitor()
+	go s.runs.Janitor()
 	mux := http.NewServeMux()
 	for _, rt := range s.routeTable() {
 		mux.Handle(rt.pattern, rt.handler)
@@ -153,9 +153,9 @@ func New(s *Server) *Server {
 }
 
 // runOptions is what the run manager needs from this server.
-func (s *Server) runOptions(dir string) runOptions {
-	return runOptions{handler: s, owner: s.runOwner, log: func() *slog.Logger { return s.Log }, otel: func() *otlp.Runtime { return s.Otel },
-		dir: dir, maxHeld: s.RunMemoryLimit, maxHeldTotal: s.RunsMemoryLimit, maxDuration: s.RunMaxDuration}
+func (s *Server) runOptions(dir string) Options {
+	return Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel },
+		Dir: dir, MaxHeld: s.RunMemoryLimit, MaxHeldTotal: s.RunsMemoryLimit, MaxDuration: s.RunMaxDuration}
 }
 
 // StopRuns interrupts active runs (gateway_restart) and ends their event
@@ -202,7 +202,7 @@ func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFun
 			next(w, r)
 			return
 		}
-		if bp, ok := r.Context().Value(browserPrincipalKey{}).(*auth.Principal); ok {
+		if bp, ok := r.Context().Value(BrowserPrincipalKey{}).(*auth.Principal); ok {
 			httpx.SetAuth(r, bp)
 			if permission != "" && !bp.Can(permission) {
 				httpx.Forbidden(w, r)

@@ -20,11 +20,11 @@ import (
 
 // lookup returns the caller's run, or nil: someone else's run is as
 // unknown as a missing one.
-func (m *runManager) lookup(req *http.Request, id string) *run {
+func (m *Manager) lookup(req *http.Request, id string) *run {
 	m.mu.Lock()
 	r := m.runs[id]
 	m.mu.Unlock()
-	if r == nil || r.Owner != m.opts.owner(req) {
+	if r == nil || r.Owner != m.opts.Owner(req) {
 		return nil
 	}
 	return r
@@ -34,11 +34,11 @@ func runNotFound(w http.ResponseWriter, req *http.Request) {
 	httpx.Error(w, req, 404, "invalid_request_error", "run_not_found", "No such run.", nil)
 }
 
-// runsList is GET /_localbase/runs: the caller's runs for the
+// List is GET /_localbase/runs: the caller's runs for the
 // "Generating…" indicator, newest first, without output or request text.
-func (m *runManager) runsList(w http.ResponseWriter, req *http.Request) {
+func (m *Manager) List(w http.ResponseWriter, req *http.Request) {
 	m.sweepExpired()
-	owner := m.opts.owner(req)
+	owner := m.opts.Owner(req)
 	m.mu.Lock()
 	var mine []*run
 	for _, r := range m.runs {
@@ -63,9 +63,9 @@ func (m *runManager) runsList(w http.ResponseWriter, req *http.Request) {
 	httpx.JSON(w, 200, map[string]any{"object": "list", "data": data})
 }
 
-// runRoute serves /_localbase/runs/{rest...}: v1/<route> creates; {id},
+// Route serves /_localbase/runs/{rest...}: v1/<route> creates; {id},
 // {id}/events and {id}/cancel act on one run.
-func (m *runManager) runRoute(w http.ResponseWriter, req *http.Request) {
+func (m *Manager) Route(w http.ResponseWriter, req *http.Request) {
 	rest := req.PathValue("rest")
 	if target, ok := strings.CutPrefix(rest, "v1/"); ok {
 		m.create(w, req, "/v1/"+target)
@@ -173,7 +173,7 @@ func (r *run) eventsAfter(after int) (pending []runEvent, notify chan struct{}, 
 
 // events streams a run: everything after Last-Event-ID (or ?after=), then
 // live, with a comment keep-alive, until the end event (DESIGN §21.3).
-func (m *runManager) events(w http.ResponseWriter, req *http.Request, r *run) {
+func (m *Manager) events(w http.ResponseWriter, req *http.Request, r *run) {
 	after, ok := eventCursor(req)
 	if !ok {
 		httpx.Error(w, req, 400, "invalid_request_error", "invalid_event_cursor",
@@ -255,7 +255,7 @@ func requestModel(ctype string, body []byte) string {
 		return probe.Model
 	}
 	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
-	for range maxFormParts {
+	for range MaxFormParts {
 		p, err := mr.NextPart()
 		if err != nil {
 			return ""

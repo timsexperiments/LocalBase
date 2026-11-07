@@ -537,7 +537,7 @@ func TestRunLimits(t *testing.T) {
 	s := runServer(ts)
 	c := runClient{t: t, base: ts.URL}
 	var ids []string
-	for range runActivePerOwner {
+	for range ActivePerOwner {
 		ids = append(ids, c.start("fake:slow 200"))
 	}
 	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"))

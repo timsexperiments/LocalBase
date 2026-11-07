@@ -124,7 +124,7 @@ func join(path string, key any) string {
 	return path + "." + k
 }
 
-func typeName(v any) string {
+func TypeName(v any) string {
 	switch v.(type) {
 	case nil:
 		return "null"
@@ -143,7 +143,7 @@ func typeName(v any) string {
 }
 
 func expected(want string, v any, present bool) string {
-	got := typeName(v)
+	got := TypeName(v)
 	if !present {
 		got = "undefined"
 	}
@@ -425,7 +425,7 @@ func (c *checker) chatMessage(m any, path string) {
 			}
 		}
 		if _, present := msg["function_call"]; present {
-			c.fail(join(path, "function_call"), "Invalid input: expected never, received "+typeName(msg["function_call"]))
+			c.fail(join(path, "function_call"), "Invalid input: expected never, received "+TypeName(msg["function_call"]))
 		}
 		if msg["content"] == nil && calls == 0 && msg["refusal"] == nil && msg["reasoning"] == nil && msg["reasoning_content"] == nil {
 			c.fail(path, "assistant messages require content, reasoning, tool_calls, or refusal")

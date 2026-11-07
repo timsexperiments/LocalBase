@@ -32,10 +32,10 @@ type formPart struct {
 	isFile   bool
 }
 
-// maxFormParts is how many parts a form may have. Every part costs memory however little is in it,
+// MaxFormParts is how many parts a form may have. Every part costs memory however little is in it,
 // so the body limit alone lets a form cost gigabytes. These routes take a few fields each, and this
 // is the limit the standard library sets for its own form reader.
-const maxFormParts = 1000
+const MaxFormParts = 1000
 
 // readMultipart parses a bounded multipart body: values per field, in order.
 // include[] and timestamp_granularities[] are repeated fields.
@@ -54,7 +54,7 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 		if err != nil {
 			return nil, err
 		}
-		if parts == maxFormParts {
+		if parts == MaxFormParts {
 			return nil, errors.New("too many parts")
 		}
 		data, err := io.ReadAll(p)
@@ -75,17 +75,17 @@ func readMultipart(r *http.Request, body []byte) (map[string][]formPart, error) 
 
 func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
-	if r.ContentLength > maxRequestBytes {
-		payloadTooLarge(w, r)
+	if r.ContentLength > MaxRequestBytes {
+		PayloadTooLarge(w, r)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
-	if len(body) > maxRequestBytes {
-		payloadTooLarge(w, r)
+	if len(body) > MaxRequestBytes {
+		PayloadTooLarge(w, r)
 		return
 	}
 	form, err := readMultipart(r, body)

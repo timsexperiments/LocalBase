@@ -76,13 +76,13 @@ func (t *readTracker) Read(p []byte) (int, error) {
 }
 
 // Review 02, M7: the limit on active runs is checked before a body is read, not after. A media body
-// is read whole (up to runMaxBody) before the route sees it; a refusal drains only a bounded part.
+// is read whole (up to MaxBody) before the route sees it; a refusal drains only a bounded part.
 func TestTheActiveRunLimitComesBeforeTheBody(t *testing.T) {
 	ts := newTestServer(t)
 	s := runServer(ts)
 	c := runClient{t: t, base: ts.URL}
 	var ids []string
-	for range runActivePerOwner {
+	for range ActivePerOwner {
 		ids = append(ids, c.start("fake:slow 200"))
 	}
 	defer func() {
@@ -90,7 +90,7 @@ func TestTheActiveRunLimitComesBeforeTheBody(t *testing.T) {
 			c.do("POST", "/_localbase/runs/"+id+"/cancel", "")
 		}
 	}()
-	const size = 8 << 20 // over the drain of a refused body, under runMaxBody
+	const size = 8 << 20 // over the drain of a refused body, under MaxBody
 	body := &readTracker{r: io.LimitReader(zeros{}, size)}
 	req := httptest.NewRequest("POST", "/_localbase/runs/v1/images/generations", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -127,7 +127,7 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 		t.Fatalf("a body over the limit: %d %v", code, m)
 	}
 	e, _ := m["error"].(map[string]any)
-	if e == nil || e["code"] != CodeRunsMemoryFull || e["type"] != "server_error" ||
+	if e == nil || e["code"] != CodeMemoryFull || e["type"] != "server_error" ||
 		!strings.Contains(e["message"].(string), "Results are holding") {
 		t.Errorf("its error: %v", e)
 	}
@@ -165,7 +165,7 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 
 // stuckRun is a run whose inner request has not ended and won't obey a stop, holding output and a
 // body.
-func stuckRun(m *runManager) *run {
+func stuckRun(m *Manager) *run {
 	r := &run{m: m, notify: make(chan struct{}), done: make(chan struct{}), cancel: func() {}, queuedSeen: true}
 	r.ID, r.Object, r.Owner, r.Target, r.Status = newRunID(), "localbase.run", "local", chatTarget, runInProgress
 	r.held, r.body = 1000, 500
@@ -221,7 +221,7 @@ func TestADeleteWhoseCallerLeavesStopsWaiting(t *testing.T) {
 	req.SetPathValue("rest", r.ID)
 	rec := httptest.NewRecorder()
 	returned := make(chan struct{})
-	go func() { s.runs.runRoute(rec, req); close(returned) }()
+	go func() { s.runs.Route(rec, req); close(returned) }()
 	time.AfterFunc(50*time.Millisecond, cancel)
 	select {
 	case <-returned:

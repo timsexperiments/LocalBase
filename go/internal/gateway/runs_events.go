@@ -10,7 +10,7 @@ import (
 // --- telemetry ---------------------------------------------------------------------
 
 // log records a lifecycle event: ids and outcomes, never content.
-func (m *runManager) log(r *run, event string) {
+func (m *Manager) log(r *run, event string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	attrs := []any{"event", event, "category", "run", "run_id", r.ID, "target", r.Target, "model_id", r.Model,
@@ -25,7 +25,7 @@ func (m *runManager) log(r *run, event string) {
 		attrs = append(attrs, "error_code", code)
 	}
 	if r.EndedAt != nil {
-		attrs = append(attrs, "duration_ms", round2(ms(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes+len(r.result), "events", len(r.events))
+		attrs = append(attrs, "duration_ms", Round2(Milliseconds(r.EndedAt.Sub(r.CreatedAt))), "output_bytes", r.bytes+len(r.result), "events", len(r.events))
 	}
 	level := slog.LevelInfo
 	switch event {
@@ -37,7 +37,7 @@ func (m *runManager) log(r *run, event string) {
 	msg := map[string]string{"run.started": "Run started.", "run.completed": "Run completed.", "run.failed": "Run failed.",
 		"run.cancelled": "Run stopped.", "run.interrupted": "Run interrupted.", "run.expired": "Run expired.",
 		"run.dismissed": "Run dismissed."}[event]
-	m.opts.log().Log(context.Background(), level, msg, attrs...)
+	m.opts.Log().Log(context.Background(), level, msg, attrs...)
 }
 
 // --- events ------------------------------------------------------------------------

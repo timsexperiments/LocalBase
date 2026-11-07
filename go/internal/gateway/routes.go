@@ -92,8 +92,8 @@ func (s *Server) routeTable() []route {
 		{pattern: "/v1/videos/{job_id}", handler: s.videoJobRoute("status"), uiSub: uiVideoJob},
 		{pattern: "/v1/videos/{job_id}/content", handler: s.videoJobRoute("content")},
 		{pattern: "/v1/videos/{job_id}/cancel", handler: s.videoJobRoute("cancel")},
-		{pattern: "/_localbase/runs", methods: []string{"GET"}, guarded: true, permission: "", handler: s.runs.runsList, ui: []string{"GET"}},
-		{pattern: "/_localbase/runs/{rest...}", guarded: true, permission: "", handler: s.runs.runRoute, uiSub: uiRun},
+		{pattern: "/_localbase/runs", methods: []string{"GET"}, guarded: true, permission: "", handler: s.runs.List, ui: []string{"GET"}},
+		{pattern: "/_localbase/runs/{rest...}", guarded: true, permission: "", handler: s.runs.Route, uiSub: uiRun},
 		{pattern: "/_localbase/models", guarded: true, permission: "models:read", handler: s.modelMetadata, ui: []string{"GET"}},
 		{pattern: "/_localbase/models/{model_id...}", handler: s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
 			s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)

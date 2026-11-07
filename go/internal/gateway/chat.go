@@ -17,7 +17,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
 )
 
-const maxRequestBytes = 25 << 20
+const MaxRequestBytes = 25 << 20
 
 // DefaultMaxTokens applies when a chat request sets neither max_tokens nor
 // max_completion_tokens; LOCALBASE_DEFAULT_MAX_TOKENS overrides it.
@@ -28,20 +28,20 @@ func DefaultMaxTokens() int {
 	return 4096
 }
 
-func payloadTooLarge(w http.ResponseWriter, r *http.Request) {
+func PayloadTooLarge(w http.ResponseWriter, r *http.Request) {
 	// The rest of the body may still be in flight: do not reuse the connection.
 	w.Header().Set("Connection", "close")
 	httpx.Error(w, r, 413, "invalid_request_error", "payload_too_large", "Request body exceeds the 25 MiB limit.", nil)
 }
 
-// readJSON reads a bounded JSON object body, keeping unknown fields so they
+// ReadJSON reads a bounded JSON object body, keeping unknown fields so they
 // pass through to the backend unchanged.
-func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	if r.ContentLength > maxRequestBytes {
-		payloadTooLarge(w, r)
+func ReadJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+	if r.ContentLength > MaxRequestBytes {
+		PayloadTooLarge(w, r)
 		return nil, false
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBytes+1))
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -50,8 +50,8 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 		httpx.BadRequest(w, r, "Invalid JSON payload.", nil)
 		return nil, false
 	}
-	if len(body) > maxRequestBytes {
-		payloadTooLarge(w, r)
+	if len(body) > MaxRequestBytes {
+		PayloadTooLarge(w, r)
 		return nil, false
 	}
 	var v any
@@ -64,7 +64,7 @@ func readJSON(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
 	req, ok := v.(map[string]any)
 	if !ok {
 		// Valid JSON that is not an object fails the request schema, as in TS.
-		httpx.BadRequest(w, r, "Validation failed: : Invalid input: expected object, received "+typeName(v), nil)
+		httpx.BadRequest(w, r, "Validation failed: : Invalid input: expected object, received "+TypeName(v), nil)
 		return nil, false
 	}
 	return req, true
@@ -203,7 +203,7 @@ func anchorPattern(p string) string {
 }
 
 func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
-	req, ok := readJSON(w, r)
+	req, ok := ReadJSON(w, r)
 	if !ok {
 		return
 	}
@@ -266,7 +266,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
-	req, ok := readJSON(w, r)
+	req, ok := ReadJSON(w, r)
 	if !ok {
 		return
 	}
@@ -317,7 +317,7 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
-	req, ok := readJSON(w, r)
+	req, ok := ReadJSON(w, r)
 	if !ok {
 		return
 	}

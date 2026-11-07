@@ -19,7 +19,7 @@ type CallResult struct {
 }
 
 // callBodyLimit is the most of a response an in-process call holds, as a run's media result.
-var callBodyLimit = runMaxResult
+var callBodyLimit = MaxResult
 
 // errCallTooLarge tells a handler its in-process caller stopped reading.
 var errCallTooLarge = errors.New("the response is over what an in-app call holds")
@@ -55,7 +55,7 @@ func (b *bufferWriter) Write(p []byte) (int, error) {
 // admission and errors as an API client gets. The UI's Lab and voices pages
 // use it instead of a JSON client.
 func (s *Server) Call(ctx context.Context, p *auth.Principal, method, path, contentType string, body []byte) CallResult {
-	r, _ := http.NewRequestWithContext(context.WithValue(ctx, browserPrincipalKey{}, p), method, "http://localbase.internal"+path, bytes.NewReader(body))
+	r, _ := http.NewRequestWithContext(context.WithValue(ctx, BrowserPrincipalKey{}, p), method, "http://localbase.internal"+path, bytes.NewReader(body))
 	r.Host = "localhost" // in-process: this machine, whatever the URL says
 	r.RemoteAddr = "127.0.0.1:0"
 	r.RequestURI = path

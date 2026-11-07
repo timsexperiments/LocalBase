@@ -121,7 +121,7 @@ func TestAnInAppCallOverTheLimitIsRefused(t *testing.T) {
 		!strings.Contains(string(got.Body), "The response is larger than 64 bytes, more than an in-app call can hold.") {
 		t.Errorf("a response over the limit: %d %s", got.Status, got.Body)
 	}
-	callBodyLimit = runMaxResult
+	callBodyLimit = MaxResult
 	if got := s.Call(context.Background(), p, "GET", "/v1/models", "", nil); got.Status != 200 {
 		t.Errorf("a response under it: %d %s", got.Status, got.Body)
 	}

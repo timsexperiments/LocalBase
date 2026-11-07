@@ -188,7 +188,7 @@ func (s *Server) hostActivity() map[string]any {
 	}
 	runs := 0
 	if s.runs != nil {
-		runs = s.runs.activeCount()
+		runs = s.runs.ActiveCount()
 	}
 	out["runs"] = map[string]int{"active": runs}
 	out["busy"] = busy || runs > 0

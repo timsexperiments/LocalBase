@@ -154,12 +154,12 @@ func TestARefusalAtTheBodyLimit(t *testing.T) {
 	if t.Failed() {
 		t.Fatal("the limits aren't working, so the larger requests would cost too much to try")
 	}
-	id := strings.Repeat("a", maxRequestBytes/2)
+	id := strings.Repeat("a", MaxRequestBytes/2)
 	for name, c := range map[string]struct{ path, body string }{
 		"numbers":     {"/v1/chat/completions", fill(`{"model":"`+chatModel+`","messages":[`, "1", `]}`)},
-		"question id": {"/v1/systemone", scoreRefusal(id, (maxRequestBytes/2-256)/2)},
+		"question id": {"/v1/systemone", scoreRefusal(id, (MaxRequestBytes/2-256)/2)},
 	} {
-		if len(c.body) > maxRequestBytes {
+		if len(c.body) > MaxRequestBytes {
 			t.Fatalf("%s: %d bytes is over the limit", name, len(c.body))
 		}
 		status, answer, allocated := refusalCost(t, ts.URL+c.path, c.body)
@@ -178,7 +178,7 @@ func TestARefusalAtTheBodyLimit(t *testing.T) {
 
 // fill makes a list of item up to the body limit.
 func fill(head, item, tail string) string {
-	n := (maxRequestBytes - len(head) - len(tail)) / (len(item) + 1)
+	n := (MaxRequestBytes - len(head) - len(tail)) / (len(item) + 1)
 	return head + repeated(item, n) + tail
 }
 
