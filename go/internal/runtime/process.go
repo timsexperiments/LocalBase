@@ -168,11 +168,14 @@ func (p *Process) drainOutput(r io.Reader, lines *atomic.Int64, log *slog.Logger
 			p.startup = append(p.startup, '\n')
 		}
 		p.startupMu.Unlock()
-		line := string(chunk)
-		if len(line) > maxLogLine {
-			line = line[:maxLogLine]
+		// Only when someone keeps debug lines: the copy and the redaction would otherwise run on
+		// every line a backend prints, for nothing.
+		if log.Enabled(context.Background(), slog.LevelDebug) {
+			if len(chunk) > maxLogLine {
+				chunk = chunk[:maxLogLine]
+			}
+			log.Debug(redactOutputURLs(string(chunk)), "event", "runtime.output", "runtime", p.Name)
 		}
-		log.Debug(redactOutputURLs(line), "event", "runtime.output", "runtime", p.Name)
 		for more { // the rest of a line too long to keep
 			if _, more, err = br.ReadLine(); err != nil {
 				return
