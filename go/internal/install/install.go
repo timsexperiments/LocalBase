@@ -28,6 +28,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/idle"
 	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 
 	_ "modernc.org/sqlite"
 )
@@ -559,7 +560,7 @@ func lockModel(ctx context.Context, key string) (func(), error) {
 // `.checksums.json.lock.db`; the kernel releases it if the holder dies.
 func withCacheLock(dir string, fn func() error) error {
 	path := filepath.Join(dir, ".checksums.json.lock.db")
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(0)")
+	db, err := sql.Open("sqlite", store.DSN(path, "_pragma=busy_timeout(0)"))
 	if err != nil {
 		return err
 	}

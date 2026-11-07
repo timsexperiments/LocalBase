@@ -1,27 +1,11 @@
 // Drives headless Chrome over the DevTools protocol for tools/phone-check.sh.
 // Exits 1 when any check fails.
+import { evaluate as evaluateIn, openPage } from "../cdp/cdp.ts";
+
 const [cdpBase, base] = process.argv.slice(2);
-const target = await (await fetch(`${cdpBase}/json/new?about:blank`, { method: "PUT" })).json();
-const ws = new WebSocket(target.webSocketDebuggerUrl);
-await new Promise((r) => ws.addEventListener("open", r, { once: true }));
-// With its browser gone nothing here can finish: stop rather than wait on it.
-ws.addEventListener("close", () => process.exit(2));
-let id = 0;
-const waiting = new Map<number, (m: any) => void>();
-ws.addEventListener("message", (e) => {
-  const m = JSON.parse(String(e.data));
-  if (m.id && waiting.has(m.id)) { waiting.get(m.id)!(m); waiting.delete(m.id); }
-});
-const send = (method: string, params: any = {}) => new Promise<any>((resolve, reject) => {
-  const n = ++id;
-  waiting.set(n, (m) => (m.error ? reject(new Error(`${method}: ${m.error.message}`)) : resolve(m.result)));
-  ws.send(JSON.stringify({ id: n, method, params }));
-});
-const evaluate = async (expression: string) => {
-  const r = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
-  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
-  return r.result.value;
-};
+// With its browser gone nothing here can finish: the client stops the run.
+const { send, ws } = await openPage(cdpBase);
+const evaluate = (expression: string) => evaluateIn(send, expression);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const viewport = (width: number, height: number, mobile: boolean) => Promise.all([
   send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: mobile ? 3 : 1, mobile }),

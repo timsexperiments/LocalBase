@@ -5,6 +5,8 @@
 // Two parts: journeys (sign in, chat, Studio, failure) and a matrix of pages x widths x
 // themes. E2E_PAGES, E2E_WIDTHS and E2E_THEMES narrow the matrix; E2E_PART picks
 // "journeys" or "matrix".
+import { connect, evaluate, exceptionText } from "../cdp/cdp.ts";
+
 const [cdpBase, base, control, out, axePath, wavPath] = process.argv.slice(2);
 const { mkdirSync, readFileSync, writeFileSync } = await import("node:fs");
 const captures = `${out}/captures`;
@@ -47,25 +49,17 @@ const version = await (await fetch(`${cdpBase}/json/version`)).json();
 // The driver checked the files it was pointed at, so this is what those files say they are.
 const pinned = process.env.E2E_CHROME_VERSION;
 if (pinned && !String(version.Browser).endsWith(`/${pinned}`)) { console.error(`the suite stopped: Chrome says it is ${version.Browser}, and the pin is ${pinned}`); process.exit(2); }
-const ws = new WebSocket(version.webSocketDebuggerUrl);
-await new Promise((r, j) => { ws.addEventListener("open", r, { once: true }); ws.addEventListener("error", j, { once: true }); });
 // With no browser there is nothing left to check, and nothing here should linger.
 let finished = false;
-ws.addEventListener("close", () => { if (!finished) { console.error("the suite stopped: the connection to Chrome closed"); process.exit(2); } });
-let nextId = 0;
-const waiting = new Map<number, (m: any) => void>();
+// The browser's own connection, not a tab's: each tab is a target reached through its session.
+// A command waits 30 s for its answer at most.
+const { ws, send, onEvent } = await connect(version.webSocketDebuggerUrl, {
+  rejectOpenError: true,
+  timeoutMs: 30_000,
+  onClose: () => { if (!finished) { console.error("the suite stopped: the connection to Chrome closed"); process.exit(2); } },
+});
 const listeners = new Map<string, (method: string, params: any) => void>();
-ws.addEventListener("message", (e) => {
-  const m = JSON.parse(String(e.data));
-  if (m.id && waiting.has(m.id)) { waiting.get(m.id)!(m); waiting.delete(m.id); return; }
-  if (m.sessionId && listeners.has(m.sessionId)) listeners.get(m.sessionId)!(m.method, m.params);
-});
-const send = (method: string, params: any = {}, sessionId?: string) => new Promise<any>((res, rej) => {
-  const n = ++nextId;
-  const timer = setTimeout(() => { waiting.delete(n); rej(new Error(`${method}: no answer in 30 s`)); }, 30_000);
-  waiting.set(n, (m) => { clearTimeout(timer); m.error ? rej(new Error(`${method}: ${m.error.message}`)) : res(m.result); });
-  ws.send(JSON.stringify({ id: n, method, params, ...(sessionId ? { sessionId } : {}) }));
-});
+onEvent((m) => { if (m.sessionId && listeners.has(m.sessionId)) listeners.get(m.sessionId)!(m.method!, m.params); });
 
 class Stuck extends Error {}
 let selfTesting = false;
@@ -90,10 +84,8 @@ class Tab {
     return t;
   }
   cmd(method: string, params: any = {}) { return send(method, params, this.session); }
-  async ev(expression: string) {
-    const r = await this.cmd("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
-    if (r.exceptionDetails) throw new Error(`in the page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`.slice(0, 400));
-    return r.result.value;
+  ev(expression: string) {
+    return evaluate(send, expression, (details) => `in the page: ${exceptionText(details)}`.slice(0, 400), this.session);
   }
   async until(what: string, expression: string, ms = 15_000) {
     const deadline = Date.now() + ms;
@@ -113,7 +105,8 @@ class Tab {
     await this.settle();
   }
   // A page may navigate itself while it settles, as a sign-in link does. An evaluate in flight
-  // then fails with this, which says nothing about the page, so it starts again on the new one.
+  // then fails, which says nothing about the page, so it starts again on the new one. Chrome 156
+  // says the target "navigated or closed"; Chrome 114 says "Execution context was destroyed."
   async settle() {
     const deadline = Date.now() + 15_000;
     for (;;) {
@@ -124,7 +117,7 @@ class Tab {
         await this.ev(`new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
         return;
       } catch (e) {
-        if (!/navigated or closed/.test(String(e)) || Date.now() > deadline) throw e;
+        if (!/navigated or closed|Execution context was destroyed/.test(String(e)) || Date.now() > deadline) throw e;
       }
     }
   }

@@ -76,6 +76,10 @@ For any script that starts Chrome:
 - Start it in its own process group, and stop that group on every way out, including a
   watcher for when the script itself is killed. `tools/e2e/main.go` shows all of this.
 
+To talk to Chrome, a check imports `tools/cdp/cdp.ts` rather than carrying its own client. It
+holds the connection, commands and their answers, events, an optional time limit per command,
+and a stop with status 2 when the browser goes away. Every browser check under `tools/` uses it.
+
 A tab in its own `Target.createBrowserContext` happens not to stall, because that context
 keeps no cookies on disk. Don't rely on that: it doesn't cover anything else in the browser
 that wants the key. Use the flags.

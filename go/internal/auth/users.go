@@ -312,7 +312,6 @@ const (
 	SessionAbsoluteTTL  = 30 * 24 * time.Hour
 	sessionTouchEvery   = time.Hour
 	MagicLinkTTL        = 15 * time.Minute
-	magicLinkCooldown   = time.Minute
 	sessionCookieMaxAge = int(SessionAbsoluteTTL / time.Second)
 )
 
@@ -455,7 +454,8 @@ var magicTokenRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 func MagicIssuer(origin string) string { return origin + "/magic-link" }
 
 // IssueMagicLink creates a one-time token for an invited or active user who can sign
-// in through issuer, at most once a minute; nil when the address cannot sign in.
+// in through issuer, unless their last link is still unused and unexpired; nil when
+// the address cannot sign in, or no new link is due.
 func IssueMagicLink(ctx context.Context, st *store.Store, email, issuer string) (token, address string, err error) {
 	if email = ValidEmail(email); email == "" {
 		return "", "", nil
@@ -476,11 +476,17 @@ func IssueMagicLink(ctx context.Context, st *store.Store, email, issuer string) 
 	case err != nil:
 		return "", "", err
 	}
-	var created string
-	if tx.QueryRowContext(ctx, `SELECT created_at FROM auth_magic_link_tokens WHERE user_id = ?`, userID).Scan(&created) == nil {
-		if t, err := time.Parse(time.RFC3339Nano, created); err == nil && time.Since(t) < magicLinkCooldown {
+	// A link that is still unused and unexpired stays the one that works, so a new request sends nothing:
+	// asking can't replace the link the person was sent, or send them another every minute. A used link's
+	// row is gone, and so is one that couldn't be delivered.
+	var expires string
+	switch err := tx.QueryRowContext(ctx, `SELECT expires_at FROM auth_magic_link_tokens WHERE user_id = ?`, userID).Scan(&expires); {
+	case err == nil:
+		if t, perr := time.Parse(time.RFC3339Nano, expires); perr == nil && t.After(time.Now()) {
 			return "", "", nil
 		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return "", "", err
 	}
 	token = RandomToken(32)
 	n := time.Now().UTC()
