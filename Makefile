@@ -38,7 +38,7 @@ ui: ## Compiled CSS is current, and the browser JavaScript tests pass (needs Bun
 	bun test go/tools/jstest
 
 lint: ## golangci-lint, as CI runs it. Needs make bootstrap
-	@if [ -f go/.golangci.yml ]; then cd go && golangci-lint run --config=.golangci.yml; else echo "go/.golangci.yml isn't in this tree yet, so there's nothing to lint against."; fi
+	cd go && golangci-lint run --config=.golangci.yml
 
 fmt: ## Format Go code
 	cd go && "$$(go env GOROOT)/bin/gofmt" -w .
