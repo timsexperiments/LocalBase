@@ -724,7 +724,7 @@ func readForm(r *http.Request, max int64, field string) (string, bool) {
 // whether or not the address can sign in.
 func (b *Browser) RequestMagicLink(w http.ResponseWriter, r *http.Request, deliver func(to, link string) error) {
 	done := func() {
-		page(w, `<h1 class="welcome-title">Check your email</h1><p class="mt-3 text-muted">If that address can sign in, a link is on its way. It works once, for 15 minutes.</p>`, formCSP, "same-origin")
+		page(w, `<h1 class="welcome-title">Check your email</h1><p class="mt-3 text-muted">If that address can sign in, a link is on its way. It works once, for 15 minutes, and asking again before then doesn’t send another.</p>`, formCSP, "same-origin")
 	}
 	reg := b.HasMagicLink()
 	if reg == nil || r.URL.Query().Get("provider") != reg.ID || !formOK(r, b.Config.Origin) {
