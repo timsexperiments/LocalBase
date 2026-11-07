@@ -145,7 +145,7 @@ type job struct {
 	reason      string
 	backendID   string
 	admission   Admission
-	terminating chan struct{} // closed when a termination finished; nil if none
+	terminating *termination  // the termination under way; nil if none
 	completing  chan struct{} // an artifact being persisted
 
 	admitted chan struct{} // closed once admission settled
@@ -468,6 +468,13 @@ func (m *Manager) expire(j *job) {
 	}
 }
 
+// termination is one attempt to terminate a job. Another caller waits on done and then reads err: a stop
+// that failed leaves the runtime possibly running, so no caller may report it stopped.
+type termination struct {
+	done chan struct{}
+	err  error
+}
+
 // terminate stops a job: cancelled with reason, or failed with failure. The
 // runtime is stopped (supervised stop) before files are removed; a stop that
 // fails leaves the job running so it can be retried.
@@ -479,13 +486,13 @@ func (m *Manager) terminate(j *job, reason string, failure error) error {
 	}
 	if t := j.terminating; t != nil {
 		m.mu.Unlock()
-		<-t
-		return nil
+		<-t.done
+		return t.err
 	}
-	t := make(chan struct{})
+	t := &termination{done: make(chan struct{})}
 	j.terminating = t
 	m.mu.Unlock()
-	defer close(t)
+	defer close(t.done)
 
 	j.cancel()
 	<-j.admitted
@@ -496,6 +503,7 @@ func (m *Manager) terminate(j *job, reason string, failure error) error {
 		m.mu.Lock()
 		j.terminating = nil
 		m.mu.Unlock()
+		t.err = err // whoever waited on this termination hears it failed
 		return err
 	}
 	if completing != nil {

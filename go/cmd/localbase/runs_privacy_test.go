@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // Run checkpoints are the one place model output touches disk (DESIGN
@@ -48,7 +50,8 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 
 	// tools/shadow.sh copies an allowlist of root entries; runs/ is not on it,
 	// and no tool copies a whole root.
-	b, err := os.ReadFile("../../tools/shadow.sh")
+	tooldir := filepath.Join(testutil.RepoRoot(t), "go", "tools")
+	b, err := os.ReadFile(filepath.Join(tooldir, "shadow.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +59,16 @@ func TestRunCheckpointsStayOutOfBundles(t *testing.T) {
 	if list == nil || strings.Contains(" "+string(list[1])+" ", " runs ") {
 		t.Errorf("shadow.sh copy list: %q", list)
 	}
-	tools, _ := filepath.Glob("../../tools/*.sh")
+	tools, err := filepath.Glob(filepath.Join(tooldir, "*.sh"))
+	if err != nil || len(tools) == 0 {
+		t.Fatalf("no tool scripts in %s to check: %v", tooldir, err)
+	}
 	whole := regexp.MustCompile(`(cp|rsync|ditto)[^\n]*"\$(src|root|LOCALBASE_ROOT)"/?["\s]`)
 	for _, p := range tools {
-		s, _ := os.ReadFile(p)
+		s, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if m := whole.Find(s); m != nil {
 			t.Errorf("%s copies a whole root: %s", p, m)
 		}

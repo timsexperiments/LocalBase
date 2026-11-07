@@ -20,6 +20,9 @@ import (
 const labDebugEnv = "LOCALBASE_LAB_DEBUG_ADDR"
 
 func init() {
+	if os.Getenv("LOCALBASE_LAB_STOP_STUCK") != "" {
+		stopStuck = func() { select {} }
+	}
 	addr := os.Getenv(labDebugEnv)
 	if addr == "" {
 		return

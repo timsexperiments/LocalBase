@@ -407,7 +407,9 @@ func (c *Client) ModelInfo(ctx context.Context, repo string) (*ModelInfo, error)
 		return nil, err
 	}
 	info, ok := parseModelInfo(body)
-	if !ok {
+	// The id the Hub answers with is built into entries and addresses, so it has to be a repository id too.
+	// It can differ from the one asked for: a renamed repository answers with its new name.
+	if !ok || !ValidRepoID(info.ID) {
 		return nil, &Error{Message: fmt.Sprintf("Hugging Face returned model information for %s that LocalBase does not understand.", repo)}
 	}
 	info.SchedulerPrediction = c.schedulerPrediction(ctx, info)

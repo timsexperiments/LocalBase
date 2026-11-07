@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // errorCodeShape is what a code looks like: `model_not_found`. It leaves out the hyphenated codes
@@ -268,9 +270,10 @@ var documentedStatusCode = regexp.MustCompile("\\b[45][0-9][0-9]`?(?: with| and)
 func documentedErrorCodes(t *testing.T) map[string]string {
 	t.Helper()
 	paths := []string{filepath.Join("..", "..", "DESIGN.md")}
-	pages, err := filepath.Glob(filepath.Join("..", "..", "..", "docs", "*.md"))
-	if err != nil {
-		t.Fatal(err)
+	docs := filepath.Join(testutil.RepoRoot(t), "docs")
+	pages, err := filepath.Glob(filepath.Join(docs, "*.md"))
+	if err != nil || len(pages) == 0 {
+		t.Fatalf("no pages in %s to read codes from: %v", docs, err)
 	}
 	found := map[string]string{}
 	for _, p := range append(paths, pages...) {

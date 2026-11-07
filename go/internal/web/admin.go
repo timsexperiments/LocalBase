@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strconv"
@@ -490,11 +491,11 @@ func (u *UI) adminAccess(w http.ResponseWriter, r *http.Request) {
 	case "save-role":
 		role := auth.Role{Name: f("name"), Description: f("description"), Permissions: formPermissions(r, "permissions")}
 		withPolicy(func(p *auth.Policy) error {
-			for i := range p.Roles {
-				if p.Roles[i].Name == role.Name {
-					p.Roles[i] = role
-				}
+			i := slices.IndexFunc(p.Roles, func(x auth.Role) bool { return x.Name == role.Name })
+			if i < 0 {
+				return errors.New("No role named " + role.Name + ".")
 			}
+			p.Roles[i] = role
 			return nil
 		}, "Role "+role.Name+" saved.")
 	case "remove-role":

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -43,44 +42,62 @@ func (k *APIKey) Active(now time.Time) bool {
 	return err == nil && t.After(now)
 }
 
+// keyRowColumns are what scanAPIKey reads, in its order.
+const keyRowColumns = `id, name, prefix, key_hash, scopes, created_at, last_rotated_at, expires_at, revoked_at`
+
+// scanAPIKey reads one row of keyRowColumns.
+func scanAPIKey(scan func(...any) error) (APIKey, error) {
+	var k APIKey
+	var scopes string
+	if err := scan(&k.ID, &k.Name, &k.Prefix, &k.KeyHash, &scopes, &k.CreatedAt, &k.LastRotatedAt, &k.ExpiresAt, &k.RevokedAt); err != nil {
+		return k, err
+	}
+	if err := json.Unmarshal([]byte(scopes), &k.Scopes); err != nil {
+		return k, fmt.Errorf("api key %s: invalid scopes: %w", k.ID, err)
+	}
+	return k, nil
+}
+
 func (s *Store) ListAPIKeys(ctx context.Context) ([]APIKey, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, name, prefix, key_hash, scopes, created_at, last_rotated_at, expires_at, revoked_at FROM api_keys ORDER BY created_at, id`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+keyRowColumns+` FROM api_keys ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []APIKey
 	for rows.Next() {
-		var k APIKey
-		var scopes string
-		if err := rows.Scan(&k.ID, &k.Name, &k.Prefix, &k.KeyHash, &scopes, &k.CreatedAt, &k.LastRotatedAt, &k.ExpiresAt, &k.RevokedAt); err != nil {
+		k, err := scanAPIKey(rows.Scan)
+		if err != nil {
 			return nil, err
-		}
-		if err := json.Unmarshal([]byte(scopes), &k.Scopes); err != nil {
-			return nil, fmt.Errorf("api key %s: invalid scopes: %w", k.ID, err)
 		}
 		out = append(out, k)
 	}
 	return out, rows.Err()
 }
 
-// ResolveAPIKey returns the active key whose hash matches, comparing in constant time.
+// ResolveAPIKey returns the active key whose hash matches. It reads that key's own row, so another row that
+// can't be read doesn't stop it working. The raw key is random, so finding it by its hash tells a caller
+// nothing a guess could use.
 func (s *Store) ResolveAPIKey(ctx context.Context, presented string) (*APIKey, error) {
 	if presented == "" {
 		return nil, nil
 	}
-	hash := HashKey(presented)
-	keys, err := s.ListAPIKeys(ctx)
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+keyRowColumns+` FROM api_keys WHERE key_hash = ? ORDER BY created_at, id`, HashKey(presented))
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	now := time.Now()
-	for i := range keys {
-		if keys[i].Active(now) && subtle.ConstantTimeCompare([]byte(keys[i].KeyHash), []byte(hash)) == 1 {
-			return &keys[i], nil
+	for rows.Next() {
+		k, err := scanAPIKey(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		if k.Active(now) {
+			return &k, nil
 		}
 	}
-	return nil, nil
+	return nil, rows.Err()
 }
 
 // CreateAPIKey inserts a key and returns the record plus the raw secret, shown once.

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -87,7 +88,9 @@ func Parse(b []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := dec.Token(); err == nil {
+	// Only whitespace may follow, as for JSON.parse. Anything else is trailing data, whether or not it is a
+	// JSON token itself.
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("trailing data")
 	}
 	return v, nil

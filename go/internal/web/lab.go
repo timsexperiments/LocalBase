@@ -62,30 +62,80 @@ type labResult struct {
 type resultStore struct {
 	mu    sync.Mutex
 	items map[string]*labResult
-	order []string
+	order []string       // oldest first
+	bytes int            // the bodies held, in all
+	each  map[string]int // the bodies held, per person
 }
 
 const (
 	resultLimit = 48 // batches of up to four
 	resultTTL   = 30 * time.Minute
+	// resultBytes bounds every result body held in memory, on a computer that is also running the models (03-M1).
+	resultBytes = 256 << 20
+	// resultBytesEach bounds one person's share, so one person's results never push out someone else's.
+	resultBytesEach = 128 << 20
 )
 
 func (s *resultStore) put(owner, ctype string, body []byte) string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	id := hex.EncodeToString(b)
+	s.putAs(id, owner, ctype, body)
+	return id
+}
+
+// putAs keeps body under id. Expired results go first; then, oldest first, the person's own until
+// they are within their share, then anyone's while the whole store is over its count or bytes.
+func (s *resultStore) putAs(id, owner, ctype string, body []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.items == nil {
 		s.items = map[string]*labResult{}
+		s.each = map[string]int{}
+	}
+	s.drop(id)
+	for _, k := range slices.Clone(s.order) {
+		if time.Since(s.items[k].at) > resultTTL {
+			s.drop(k)
+		}
 	}
 	s.items[id] = &labResult{owner: owner, ctype: ctype, body: body, at: time.Now()}
 	s.order = append(s.order, id)
-	for len(s.order) > resultLimit {
-		delete(s.items, s.order[0])
-		s.order = s.order[1:]
+	s.bytes += len(body)
+	s.each[owner] += len(body)
+	for i := 0; s.each[owner] > resultBytesEach && i < len(s.order); {
+		if k := s.order[i]; s.items[k].owner == owner {
+			s.drop(k)
+			continue
+		}
+		i++
 	}
-	return id
+	for len(s.order) > 0 && (len(s.order) > resultLimit || s.bytes > resultBytes) {
+		s.drop(s.order[0])
+	}
+}
+
+// forget drops the person's result under id, if it is theirs.
+func (s *resultStore) forget(owner, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r := s.items[id]; r != nil && r.owner == owner {
+		s.drop(id)
+	}
+}
+
+// drop forgets one result, with s.mu held.
+func (s *resultStore) drop(id string) {
+	r := s.items[id]
+	if r == nil {
+		return
+	}
+	delete(s.items, id)
+	s.order = slices.DeleteFunc(s.order, func(k string) bool { return k == id })
+	s.bytes -= len(r.body)
+	if s.each[r.owner] -= len(r.body); s.each[r.owner] <= 0 {
+		delete(s.each, r.owner)
+	}
 }
 
 func (s *resultStore) get(owner, id string) *labResult {

@@ -74,6 +74,18 @@ Public `GET` and `HEAD /health/ready` report request admission readiness. HTTP `
 
 After a deploy, run `local-base smoke` to prove inference works end to end: it checks `/health`, then sends a 4-token chat completion to the resident (or default) LLM, or one yes/no question to `POST /v1/systemone` when that LLM is a decision model, and exits `1` with the failing step if either fails. It authenticates with a temporary `inference:chat`/`inference:decision`/`models:read` key written to the root's database and deletes it afterwards, so no key is needed or printed. `--switch-to <model>` also switches to that LLM and back, failing if either switch is refused or rolled back; it interrupts other clients of the LLM, so it is opt-in. `--json` returns each step.
 
+## Stopping
+
+launchd, systemd and `local-base upgrade` give a stopping gateway 15 seconds. A stop ends any model still loading first, so what was waiting for it gets a 503 at once. Requests already running get up to 9 seconds. The log says what happened:
+
+| Event | Severity | Meaning |
+|---|---|---|
+| `gateway.stopping` | info | The stop has started |
+| `gateway.stop-deadline` | error | 12 seconds passed with something still running, so every backend was killed. Whatever they were doing was cut off |
+| `gateway.stop-abandoned` | error | 13.5 seconds passed and the gateway itself had not finished, so it exited with status 1. Its last usage totals weren't written, and SQLite recovers its database on the next start |
+
+A detached run still going when a gateway stops comes back as `interrupted`, reason `gateway_restart`, with the output it had.
+
 ## Integrated qualification
 
 Pull requests already run the full Bun test suite and a compiled Linux x64 runtime smoke test. On a Linux x64 host or container, reuse the same smoke path for final integrated qualification:

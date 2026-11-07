@@ -259,7 +259,41 @@ func (u *UI) welcomeGet(w http.ResponseWriter, r *http.Request) {
 		u.renderChoose(w, r, op.Detail)
 		return
 	}
+	u.chose(r, id)
 	loadPage(w, r, "/app/welcome/getting?model="+url.QueryEscape(id))
+}
+
+// chose records that this person started installing id from first run, through the guarded POST.
+func (u *UI) chose(r *http.Request, id string) {
+	u.chosenMu.Lock()
+	defer u.chosenMu.Unlock()
+	if u.chosen == nil {
+		u.chosen = map[string]string{}
+	}
+	u.chosen[ownerOf(r, u)] = id
+}
+
+// finishChosen finishes id from a GET only if this person started it here (03-M2): a GET can come from
+// another site, and finishing changes the default model. Anything else goes to the Library, which
+// changes nothing. After a restart mid-download the record is gone, so that person lands there too.
+func (u *UI) finishChosen(r *http.Request, id string) string {
+	u.chosenMu.Lock()
+	mine := u.chosen[ownerOf(r, u)] == id
+	if mine {
+		delete(u.chosen, ownerOf(r, u))
+	}
+	u.chosenMu.Unlock()
+	if !mine {
+		return "/app/models"
+	}
+	return u.finishInstall(r, id)
+}
+
+func ownerOf(r *http.Request, u *UI) string {
+	if p := u.caller(r); p != nil {
+		return p.OwnerID()
+	}
+	return ""
 }
 
 // loadPage sends htmx to a real page load. Chat and the download need their own scripts, which
@@ -420,7 +454,7 @@ func (u *UI) welcomeGetting(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("model")
 	v, msg := u.readInstall(r, id)
 	if msg == "" && v.Installed {
-		http.Redirect(w, r, u.finishInstall(r, id), http.StatusSeeOther)
+		http.Redirect(w, r, u.finishChosen(r, id), http.StatusSeeOther)
 		return
 	}
 	u.render(w, r, "welcome", map[string]any{"Step": "getting", "Install": v, "Failure": msg, "Host": u.nameOfHost(r)})
@@ -431,7 +465,7 @@ func (u *UI) welcomeProgress(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("model")
 	v, msg := u.readInstall(r, id)
 	if msg == "" && v.Installed {
-		w.Header().Set("HX-Redirect", u.finishInstall(r, id))
+		w.Header().Set("HX-Redirect", u.finishChosen(r, id))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

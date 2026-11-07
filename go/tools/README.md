@@ -40,6 +40,14 @@ under the floor and caps each file the script and its children write (64 GiB by 
 `LOCALBASE_FILE_CAP_GB`). `LOCALBASE_DISK_FLOOR_GB` moves the floor, which is 5 GB in CI. A test
 server that sends without end must stop at a bound well above the limit it tests.
 
+## Ending a process
+
+End a process by a pid you started, or by your own process group. Don't use `pkill`, `killall`, `lsof -t`
+or `fuser -k`, however narrow the pattern looks: this machine has a live gateway, other threads' runs and
+many worktrees, and a pattern can reach any of them. Don't ask the service manager to stop anything but a
+scratch root's own service, and always give `local-base stop` or `restart` a `--root`. `tools/killguard`
+fails on a new one, in `go test`. It reads files, so it can't see a command typed into a shell.
+
 ## Where things go
 
 - **Built tools:** `~/.cache/localbase/`, or `LOCALBASE_TOOLS_CACHE` if set. They are
@@ -82,3 +90,18 @@ stops the script.** That applies to scripts here and to any one-off fetch:
   match a neighbour, such as the same archive's `.sbom.json`.
 - Use `set -e`, or an explicit exit, so that a failed compare stops everything after it.
   Printing a warning and carrying on is how a bad binary gets run.
+
+## Deletes
+
+`go test -count=1 ./tools/rmguard` fails on any script or command file with `rm` on a variable, a
+glob, `/dev`, `/`, `~`, or an absolute path outside an explicit scratch prefix. Run it before you
+commit. Prefer no delete at all: build to a fixed path that the next run replaces.
+
+These scripts already delete that way. They work, and none of this is urgent, so fix them when you
+are next in the file, and take the line out of `knownToDelete` in `tools/rmguard/rmguard_test.go`,
+or lower its count, when you do. A file may not gain one, and no other file may join.
+
+| Owner | File: deletes |
+|---|---|
+| Go thread | `contract.sh`: 1, `ios-check.sh`: 2, `otelcol-check.sh`: 1, `placement-rollback-check.sh`: 1, `rehearsal.sh`: 1, `shadow.sh`: 6, `sync-catalog.sh`: 1, `systemd-check.sh`: 1, `tailwind.sh`: 1 |
+| Features thread | `upgrade-rehearsal-systemd.sh`: 1 |

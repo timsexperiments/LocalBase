@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -35,6 +36,7 @@ func TestRuntimeErrorRetrySemantics(t *testing.T) {
 		{"assets missing", &runtime.LaunchError{Code: "model_assets_missing", Message: "Files are missing."}, 409, "model_assets_missing", ""},
 		{"unknown model", runtime.ErrModelNotFound, 404, "model_not_found", ""},
 		{"memory emergency", runtime.ErrMemoryEmergency, 503, "service_unavailable", "5"},
+		{"the device placed it differently", &placement.Error{Code: "placement_mismatch", Message: "It differs."}, 503, "placement_mismatch", "5"},
 	}
 	for _, c := range cases {
 		w := httptest.NewRecorder()

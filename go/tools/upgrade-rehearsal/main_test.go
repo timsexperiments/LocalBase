@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/service"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
@@ -382,16 +383,16 @@ func TestKitIsPackagedLikeARelease(t *testing.T) {
 	}
 }
 
-// The real script, when this tree has it: what the workflow publishes must be what upgrade reads,
-// and hold what the kit's archives hold. #414 adds the script, so until it merges this needs
-// LBUR_RELEASE_SCRIPT pointing at a checkout of it.
+// The real script: what the workflow publishes must be what upgrade reads, and hold what the
+// kit's archives hold. LBUR_RELEASE_SCRIPT points at another copy of it. A missing script fails
+// this test rather than leaving it to check nothing.
 func TestReleaseScriptMatches(t *testing.T) {
 	script := os.Getenv("LBUR_RELEASE_SCRIPT")
 	if script == "" {
-		script = filepath.Join("..", "..", "..", "scripts", "release", "build.sh")
+		script = filepath.Join(testutil.RepoRoot(t), "scripts", "release", "build.sh")
 	}
 	if _, err := os.Stat(script); err != nil {
-		t.Skipf("no %s in this tree yet (#414); set LBUR_RELEASE_SCRIPT to run this", script)
+		t.Fatalf("the release build script: %v", err)
 	}
 	if _, err := exec.LookPath("zip"); err != nil {
 		t.Skip("the release workflow's zip is not on this computer")

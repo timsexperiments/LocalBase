@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // occupy runs another server on port, answering every health probe with 200: what
@@ -107,4 +109,22 @@ func TestCheckPortFreeSeesWildcardListener(t *testing.T) {
 	if err := checkPortFree("127.0.0.1", ln.Addr().(*net.TCPAddr).Port); err == nil {
 		t.Error("a wildcard listener on the port went unseen")
 	}
+}
+
+// Asking for a plan while the configuration changes is not a race: port read m.cfg with no lock.
+func TestPortDuringSetConfig(t *testing.T) {
+	m := &LLM{cfg: &store.Config{Port: 1}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 1000 {
+			m.SetConfig(&store.Config{Port: 2})
+		}
+	}()
+	for range 1000 {
+		if p := m.port(); p != 1 && p != 2 {
+			t.Fatalf("port %d", p)
+		}
+	}
+	<-done
 }

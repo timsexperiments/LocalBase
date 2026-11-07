@@ -131,7 +131,17 @@ func (s *Store) HasConfig(ctx context.Context) (bool, error) {
 }
 
 // SaveConfig writes the config row (insert or replace every column).
-func (s *Store) SaveConfig(ctx context.Context, c *Config) error { return saveConfig(ctx, s.DB, c) }
+func (s *Store) SaveConfig(ctx context.Context, c *Config) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck // After a commit there is nothing to undo.
+	if err := saveConfig(ctx, tx, c); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
