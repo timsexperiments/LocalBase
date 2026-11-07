@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -24,75 +25,84 @@ func IsUIAccessPath(p string) bool {
 	return strings.HasPrefix(p, "/app/api/")
 }
 
-// allowedUIRoute lists what the browser may call through /app/api.
+// allowedUIRoute lists what the browser may call through /app/api: the route table's ui methods
+// for an exact path, or its uiSub rule for a path under a pattern (ui_oracle_test.go keeps the list
+// as it was written by hand, and checks this against it).
 func allowedUIRoute(method, p string) bool {
-	switch p {
-	case "/_localbase/access-management", "/_localbase/api-keys", "/_localbase/model-management", "/_localbase/hf-token", "/_localbase/local-sessions", "/_localbase/usage", "/_localbase/update":
-		return method == "GET" || method == "POST"
-	case "/_localbase/model-backend", "/_localbase/model-imports":
-		return method == "GET" || method == "POST"
-	case "/_localbase/backends", "/_localbase/auth-profiles", "/_localbase/host":
-		return method == "GET"
-	case "/_localbase/computer-name":
-		return method == "PUT"
-	case "/_localbase/model-discovery":
-		return method == "POST"
-	case "/_localbase/models":
-		return method == "GET"
-	case "/_localbase/runs":
-		return method == "GET"
-	case "/_localbase/voices":
-		return method == "GET" || method == "POST"
-	case "/v1/chat/completions", "/v1/embeddings", "/v1/systemone", "/v1/images/generations", "/v1/images/edits",
-		"/v1/audio/speech", "/v1/audio/transcriptions", "/v1/videos":
-		return method == "POST"
+	ix := tableIndex()
+	if methods, ok := ix.uiExact[p]; ok {
+		return slices.Contains(methods, method)
 	}
-	if rest, ok := strings.CutPrefix(p, "/_localbase/voices/"); ok && rest != "" {
-		if strings.HasSuffix(rest, "/audio") && strings.Count(rest, "/") == 1 {
-			return method == "GET"
+	for _, sub := range ix.uiPrefixed {
+		if rest, ok := strings.CutPrefix(p, sub.prefix); ok {
+			return sub.allow(rest, method)
 		}
-		if !strings.Contains(rest, "/") {
-			return method == "GET" || method == "PATCH" || method == "DELETE"
-		}
+	}
+	return false
+}
+
+// uiVoice is what the browser may call under /_localbase/voices/.
+func uiVoice(rest, method string) bool {
+	if rest == "" {
 		return false
 	}
-	if rest, ok := strings.CutPrefix(p, "/_localbase/models/"); ok {
-		if id, ok := strings.CutSuffix(rest, "/unload"); ok && id != "" && !strings.Contains(id, "/") {
-			return method == "POST"
-		}
-		if id, ok := strings.CutSuffix(rest, "/admission"); ok && id != "" && !strings.Contains(id, "/") {
-			return method == "GET"
-		}
+	if strings.HasSuffix(rest, "/audio") && strings.Count(rest, "/") == 1 {
+		return method == "GET"
 	}
-	if rest, ok := strings.CutPrefix(p, "/_localbase/runs/"); ok && rest != "" {
-		if target, ok := strings.CutPrefix(rest, "v1/"); ok {
-			_, known := runTargets["/v1/"+target]
-			return known && method == "POST"
-		}
-		id, action, _ := strings.Cut(rest, "/")
-		switch {
-		case id == "":
-			return false
-		case action == "":
-			return method == "GET" || method == "DELETE"
-		case action == "events":
-			return method == "GET"
-		case action == "cancel":
-			return method == "POST"
-		case action == "result":
-			return method == "GET"
-		}
+	if !strings.Contains(rest, "/") {
+		return method == "GET" || method == "PATCH" || method == "DELETE"
+	}
+	return false
+}
+
+// uiModel is what the browser may call under /_localbase/models/.
+func uiModel(rest, method string) bool {
+	if id, ok := strings.CutSuffix(rest, "/unload"); ok && id != "" && !strings.Contains(id, "/") {
+		return method == "POST"
+	}
+	if id, ok := strings.CutSuffix(rest, "/admission"); ok && id != "" && !strings.Contains(id, "/") {
+		return method == "GET"
+	}
+	return false
+}
+
+// uiRun is what the browser may call under /_localbase/runs/.
+func uiRun(rest, method string) bool {
+	if rest == "" {
 		return false
 	}
-	if rest, ok := strings.CutPrefix(p, "/v1/videos/"); ok && rest != "" {
-		switch {
-		case strings.HasSuffix(rest, "/content"):
-			return method == "GET"
-		case strings.HasSuffix(rest, "/cancel"):
-			return method == "POST"
-		case !strings.Contains(rest, "/"):
-			return method == "GET" || method == "DELETE"
-		}
+	if target, ok := strings.CutPrefix(rest, "v1/"); ok {
+		_, known := runTargets["/v1/"+target]
+		return known && method == "POST"
+	}
+	id, action, _ := strings.Cut(rest, "/")
+	switch {
+	case id == "":
+		return false
+	case action == "":
+		return method == "GET" || method == "DELETE"
+	case action == "events":
+		return method == "GET"
+	case action == "cancel":
+		return method == "POST"
+	case action == "result":
+		return method == "GET"
+	}
+	return false
+}
+
+// uiVideoJob is what the browser may call under /v1/videos/.
+func uiVideoJob(rest, method string) bool {
+	if rest == "" {
+		return false
+	}
+	switch {
+	case strings.HasSuffix(rest, "/content"):
+		return method == "GET"
+	case strings.HasSuffix(rest, "/cancel"):
+		return method == "POST"
+	case !strings.Contains(rest, "/"):
+		return method == "GET" || method == "DELETE"
 	}
 	return false
 }
