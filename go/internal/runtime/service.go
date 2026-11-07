@@ -46,6 +46,11 @@ type Service struct {
 	// stopping: the gateway is stopping, so no model starts, as on the LLM.
 	stopping bool
 	watches  sync.WaitGroup // backend watchers; each can end in a store write
+	// reloads are rolled-back models reloading in the background; Close cancels them through
+	// life and waits for them, so none runs after it.
+	reloads sync.WaitGroup
+	life    context.Context
+	endLife context.CancelFunc
 }
 
 // ServiceDeps are a Service's collaborators.
@@ -287,7 +292,7 @@ func (s *Service) pump() {
 		go func(model, key string, parent *otlp.Span) {
 			defer s.switchW.Done()
 			defer cancel(nil)
-			err := s.d.Recovery.retryAfterRecovery(s.d.Modality, func() (memory.Demand, error) {
+			err := s.d.Recovery.retryAfterRecovery(ctx, s.d.Modality, func() (memory.Demand, error) {
 				return s.doSwitch(ctx, model, key, parent)
 			})
 			s.mu.Lock()
@@ -361,8 +366,13 @@ func (s *Service) doSwitch(ctx context.Context, modelID, key string, parent *otl
 	if prev != nil {
 		s.stop(prev, StopSwitch)
 		if preflight && switching && previous != "" && ctx.Err() == nil {
-			if err := settleAfterStop(s.d.Memory, demand); err != nil && s.rollBack(previous, modelID, err) {
-				return demand, err
+			if err := settleAfterStop(ctx, s.d.Memory, demand); err != nil {
+				if ctx.Err() != nil {
+					return demand, context.Cause(ctx) // ended on purpose: nothing is rolled back
+				}
+				if s.rollBack(previous, modelID, err) {
+					return demand, err
+				}
 			}
 		}
 	}
@@ -411,13 +421,30 @@ func (s *Service) rollBack(previous, requested string, err error) bool {
 	}
 	s.d.Activate(s.d.Kind, previous)
 	logRolledBack(s.d.Log, s.d.Modality, previous, requested, true, err)
-	go s.reloadRestored(previous)
+	s.mu.Lock()
+	if !s.closed { // Close waits for the reload, and cancels it
+		ctx := s.lifeLocked()
+		s.reloads.Add(1)
+		go func() {
+			defer s.reloads.Done()
+			s.reloadRestored(ctx, previous)
+		}()
+	}
+	s.mu.Unlock()
 	return true
+}
+
+// lifeLocked is a context Close cancels. s.mu is held.
+func (s *Service) lifeLocked() context.Context {
+	if s.life == nil {
+		s.life, s.endLife = context.WithCancel(context.Background())
+	}
+	return s.life
 }
 
 // reloadRestored starts a rolled-back model once memory admits it, unless
 // something else started meanwhile (TS reloadRestoredModel).
-func (s *Service) reloadRestored(modelID string) {
+func (s *Service) reloadRestored(ctx context.Context, modelID string) {
 	failed := func(err error) {
 		s.d.Log.Warn("Restored model could not be reloaded; it will start on demand.", "event", "model.switch-restore-failed",
 			"category", "runtime", "component", modalityComponents[s.d.Modality], "runtime", s.d.Modality,
@@ -428,8 +455,10 @@ func (s *Service) reloadRestored(modelID string) {
 		failed(err)
 		return
 	}
-	if err := settleAfterStop(s.d.Memory, s.demand(t)); err != nil {
-		failed(err)
+	if err := settleAfterStop(ctx, s.d.Memory, s.demand(t)); err != nil {
+		if ctx.Err() == nil { // Close ended it: nothing to report
+			failed(err)
+		}
 		return
 	}
 	s.mu.Lock()
@@ -438,9 +467,11 @@ func (s *Service) reloadRestored(modelID string) {
 	if !idle {
 		return
 	}
-	l, err := s.Acquire(context.Background(), modelID)
+	l, err := s.Acquire(ctx, modelID)
 	if err != nil {
-		failed(err)
+		if ctx.Err() == nil {
+			failed(err)
+		}
 		return
 	}
 	l.Release()
@@ -527,8 +558,11 @@ func (s *Service) start(life context.Context, t *Target, demand memory.Demand, p
 	if err := checkPortFree(host, port); err != nil {
 		return nil, fail(err)
 	}
-	res, err := s.d.Memory.Reserve(context.Background(), s.d.Modality, demand)
+	res, err := s.d.Memory.Reserve(life, s.d.Modality, demand)
 	if err != nil {
+		if life.Err() != nil {
+			return nil, context.Cause(life) // ended on purpose, not refused for memory
+		}
 		logAdmissionRejected(s.d.Log, s.d.Modality, cmd.name, err)
 		return nil, err
 	}
@@ -734,7 +768,11 @@ func (s *Service) Close() {
 	if s.cancelSwitch != nil {
 		s.cancelSwitch(ErrUnavailable)
 	}
+	if s.endLife != nil {
+		s.endLife()
+	}
 	s.mu.Unlock()
+	s.reloads.Wait()
 	s.switchW.Wait()
 	s.mu.Lock()
 	b := s.cur

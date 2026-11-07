@@ -50,10 +50,13 @@ var (
 // stopped: the OS can return reclaimed pages more slowly than the switch
 // preflight assumed. It samples every 100 ms for up to 10 s; a permanent
 // shortfall answers at once. Only memory refusals are returned.
-func settleAfterStop(mem *memory.Controller, demand memory.Demand) error {
+func settleAfterStop(ctx context.Context, mem *memory.Controller, demand memory.Demand) error {
 	deadline := time.Now().Add(postStopSettle)
 	for {
-		err := mem.CheckAdmission(context.Background(), demand, nil)
+		if ctx.Err() != nil { // the switch was ended (Close, an emergency stop): stop waiting
+			return context.Cause(ctx)
+		}
+		err := mem.CheckAdmission(ctx, demand, nil)
 		var ae *memory.AdmissionError
 		if !errors.As(err, &ae) {
 			return nil
@@ -61,7 +64,10 @@ func settleAfterStop(mem *memory.Controller, demand memory.Demand) error {
 		if ae.Permanent || !time.Now().Before(deadline) {
 			return err
 		}
-		time.Sleep(min(postStopInterval, time.Until(deadline)+time.Millisecond))
+		select {
+		case <-ctx.Done():
+		case <-time.After(min(postStopInterval, time.Until(deadline)+time.Millisecond)):
+		}
 	}
 }
 
