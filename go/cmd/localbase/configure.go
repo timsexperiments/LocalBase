@@ -271,7 +271,10 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	}
 	// Every setting option is checked before anything is written, then the configuration and the
 	// settings go in together, in this order: a refused command writes nothing.
-	type setting struct{ key, value string }
+	type setting struct {
+		key, value string
+		toggle     bool // an import opt-in: a change to it is audited
+	}
 	var settings []setting
 	for _, o := range []struct {
 		flag, key string
@@ -285,17 +288,30 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			settings = append(settings, setting{o.key, strconv.Itoa(n)})
+			settings = append(settings, setting{key: o.key, value: strconv.Itoa(n)})
 		}
 	}
 	for _, o := range []struct{ flag, key string }{
 		{"allow-private-imports", store.PrivateImportsKey}, {"allow-local-path-imports", store.LocalPathImportsKey},
 	} {
 		if v, ok := c.OptBool(o.flag); ok {
-			settings = append(settings, setting{o.key, map[bool]string{true: "on", false: "off"}[v]})
+			settings = append(settings, setting{key: o.key, value: map[bool]string{true: "on", false: "off"}[v], toggle: true})
 		}
 	}
+	var changed []setting // the toggles whose value this command changes; unset counts as off
 	if err := root.WithOperation(e.Root.Dir, "configure", func() error {
+		for _, s := range settings {
+			if !s.toggle {
+				continue
+			}
+			was, _, err := e.Store.Setting(context.Background(), s.key)
+			if err != nil {
+				return err
+			}
+			if (was == "on") != (s.value == "on") {
+				changed = append(changed, s)
+			}
+		}
 		if err := e.saveAs(cfg, true); err != nil {
 			return err
 		}
@@ -313,6 +329,9 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	auditChange(e, "config", "configure", "configuration", "")
+	for _, s := range changed {
+		auditChange(e, "config", "set-setting", "setting", s.key, "setting", s.key, "value", s.value)
+	}
 	c.Info("Saved configuration to %s/local-base.db", cfg.Root)
 	for _, k := range kinds {
 		if len(cfg.Selected[k]) > 0 {

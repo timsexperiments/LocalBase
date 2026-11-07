@@ -121,7 +121,7 @@ func TestEveryCommandIsClassified(t *testing.T) {
 
 type auditLine struct {
 	Event, Action, ActorKind, TargetKind, TargetID string
-	Scopes, Purpose                                string
+	Scopes, Purpose, Setting, Value                string
 }
 
 // auditLines reads the root's audit log the way a person would.
@@ -148,13 +148,14 @@ func auditLines(t *testing.T, root string) []auditLine {
 		}
 		// Ids and permission names only: anything else needs a reason to be here. The sink also
 		// redacts what looks like a key, but that is a second line of defence, and this the first.
+		// setting and value: an import opt-in that configure changed, and to what (on or off).
 		for k := range ev.Attributes {
-			if !slices.Contains([]string{"action", "actor_kind", "actor_id", "target_kind", "target_id", "backend_id", "scopes", "count", "purpose"}, k) {
+			if !slices.Contains([]string{"action", "actor_kind", "actor_id", "target_kind", "target_id", "backend_id", "scopes", "count", "purpose", "setting", "value"}, k) {
 				t.Errorf("an audit line has %q: %s", k, sc.Text())
 			}
 		}
 		get := func(k string) string { s, _ := ev.Attributes[k].(string); return s }
-		out = append(out, auditLine{ev.EventName, get("action"), get("actor_kind"), get("target_kind"), get("target_id"), get("scopes"), get("purpose")})
+		out = append(out, auditLine{ev.EventName, get("action"), get("actor_kind"), get("target_kind"), get("target_id"), get("scopes"), get("purpose"), get("setting"), get("value")})
 	}
 	return out
 }
