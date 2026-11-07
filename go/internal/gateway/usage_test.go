@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
@@ -48,7 +49,7 @@ func oaKey(t *testing.T, s *Server, name string, scopes ...string) (id, secret s
 func waitUsage(t *testing.T, s *Server, principal string, want int64) *usage.Report {
 	t.Helper()
 	var rep *usage.Report
-	if !WaitFor(5*time.Second, func() bool { rep = usageOf(t, s, principal); return rep.Totals.Requests >= want }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { rep = usageOf(t, s, principal); return rep.Totals.Requests >= want }) {
 		t.Fatalf("waiting for %d requests under %q: %+v", want, principal, rep.Totals)
 	}
 	return rep
@@ -67,7 +68,7 @@ func TestUsageStoresNoContent(t *testing.T) {
 		unknown = "PLANTEDMODEL"
 		file    = "PLANTEDFILENAME"
 	)
-	if status, _, b, _ := c.doBody(`{"model":"`+ChatModel+`","user":"`+user+`","messages":[{"role":"user","content":"fake:reply `+reply+` `+prompt+`"}]}`, "POST", "/v1/chat/completions"); status != 200 || !strings.Contains(string(b), reply) {
+	if status, _, b, _ := c.doBody(`{"model":"`+gatewaytest.ChatModel+`","user":"`+user+`","messages":[{"role":"user","content":"fake:reply `+reply+` `+prompt+`"}]}`, "POST", "/v1/chat/completions"); status != 200 || !strings.Contains(string(b), reply) {
 		t.Fatalf("chat: %d %s", status, b)
 	}
 	if status, _, _, _ := c.doBody(`{"model":"`+unknown+`","messages":[{"role":"user","content":"hi"}]}`, "POST", "/v1/chat/completions"); status != 404 {
@@ -105,7 +106,7 @@ func TestUsageStoresNoContent(t *testing.T) {
 		rows.Scan(&m)
 		models = append(models, m)
 	}
-	if !strings.Contains(strings.Join(models, ","), ChatModel) {
+	if !strings.Contains(strings.Join(models, ","), gatewaytest.ChatModel) {
 		t.Errorf("models: %v", models)
 	}
 	empty := false
@@ -141,7 +142,7 @@ func TestUsageNoIdentity(t *testing.T) {
 	owner := "browser:0123456789abcdef"
 	person := &auth.Principal{Kind: "browser-session", ID: owner, Name: email, Permissions: auth.Permissions,
 		Identity: &auth.Identity{Issuer: "https://issuer.example", Subject: name, VerifiedEmail: email}}
-	res := s.Call(t.Context(), person, "POST", "/v1/chat/completions", "application/json", []byte(ChatBody("hi")))
+	res := s.Call(t.Context(), person, "POST", "/v1/chat/completions", "application/json", []byte(gatewaytest.ChatBody("hi")))
 	if res.Status != 200 {
 		t.Fatalf("chat: %d %s", res.Status, res.Body)
 	}
@@ -190,7 +191,7 @@ func TestUsageOutcomes(t *testing.T) {
 		t.Helper()
 		before := usageOf(t, s, id).Totals
 		send()
-		if !WaitFor(5*time.Second, func() bool {
+		if !gatewaytest.WaitFor(5*time.Second, func() bool {
 			now := usageOf(t, s, id).Totals
 			return now.Requests-before.Requests >= requests
 		}) {
@@ -204,7 +205,7 @@ func TestUsageOutcomes(t *testing.T) {
 			t.Errorf("%s: requests, refused, failed, cancelled = %v, want %v", what, got, want)
 		}
 	}
-	check("a 200", func() { c.doBody(ChatBody("hi"), "POST", "/v1/chat/completions") }, 1, 0, 0, 0)
+	check("a 200", func() { c.doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions") }, 1, 0, 0, 0)
 	check("a bad body", func() { c.doBody(`{"model":""}`, "POST", "/v1/chat/completions") }, 1, 1, 0, 0)
 	check("an unknown model", func() {
 		c.doBody(`{"model":"nope","messages":[{"role":"user","content":"hi"}]}`, "POST", "/v1/chat/completions")
@@ -213,13 +214,13 @@ func TestUsageOutcomes(t *testing.T) {
 		c.doBody(`{"model":"`+embeddingModel+`","messages":[{"role":"user","content":"hi"}]}`, "POST", "/v1/chat/completions")
 	}, 1, 1, 0, 0)
 	check("a stream that fails after it started", func() {
-		c.doBody(`{"model":"`+ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:truncated"}]}`, "POST", "/v1/chat/completions")
+		c.doBody(`{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:truncated"}]}`, "POST", "/v1/chat/completions")
 	}, 1, 0, 1, 0)
 	check("a client that goes away", func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctx, "POST", ts.URL+"/v1/chat/completions",
-			strings.NewReader(`{"model":"`+ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 200"}]}`))
+			strings.NewReader(`{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 200"}]}`))
 		req.Header.Set("Authorization", "Bearer "+key)
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
@@ -232,7 +233,7 @@ func TestUsageOutcomes(t *testing.T) {
 	}, 1, 0, 0, 1)
 	// A detached run counts once, as its inner request. The outer POST is not a /v1 route.
 	check("a detached run", func() {
-		status, _, body, _ := c.doBody(ChatBody("hi"), "POST", "/_localbase/runs/v1/chat/completions")
+		status, _, body, _ := c.doBody(gatewaytest.ChatBody("hi"), "POST", "/_localbase/runs/v1/chat/completions")
 		if status != 202 {
 			t.Fatalf("run: %d %s", status, body)
 		}
@@ -240,7 +241,7 @@ func TestUsageOutcomes(t *testing.T) {
 	check("a detached run refused before the queue", func() { c.doBody(`{"model":""}`, "POST", "/_localbase/runs/v1/chat/completions") }, 1, 1, 0, 0)
 	// A UI call counts as the person, once.
 	person := &auth.Principal{Kind: "browser-session", ID: "browser:abc", Permissions: auth.Permissions}
-	if res := s.Call(t.Context(), person, "POST", "/v1/chat/completions", "application/json", []byte(ChatBody("hi"))); res.Status != 200 {
+	if res := s.Call(t.Context(), person, "POST", "/v1/chat/completions", "application/json", []byte(gatewaytest.ChatBody("hi"))); res.Status != 200 {
 		t.Errorf("UI call: %d", res.Status)
 	}
 	if got := waitUsage(t, s, "browser:abc", 1).Totals.Requests; got != 1 {
@@ -249,8 +250,8 @@ func TestUsageOutcomes(t *testing.T) {
 
 	// Not counted: no valid key, and what is not an inference route.
 	before := usageOf(t, s, "").Totals.Requests
-	(oaClient{t, ts.URL, ""}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
-	(oaClient{t, ts.URL, "lb_wrong"}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
+	(oaClient{t, ts.URL, ""}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
+	(oaClient{t, ts.URL, "lb_wrong"}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
 	c.do("GET", "/v1/models")
 	c.do("GET", "/_localbase/usage")
 	(oaClient{t, ts.URL, ""}).do("GET", "/health")
@@ -260,8 +261,8 @@ func TestUsageOutcomes(t *testing.T) {
 	}
 	// A key without the scope is identified, and refused: that counts, under it.
 	_, reader := oaKey(t, s, "reader", "models:read")
-	(oaClient{t, ts.URL, reader}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
-	if !WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests == before+1 }) {
+	(oaClient{t, ts.URL, reader}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests == before+1 }) {
 		t.Errorf("a key refused for its scope should count: %d", usageOf(t, s, "").Totals.Requests-before)
 	}
 }
@@ -313,9 +314,9 @@ func TestUsageScopes(t *testing.T) {
 	_, manager := oaKey(t, s, "manager", "models:manage")
 	_, sysread := oaKey(t, s, "sysread", "system:read")
 	_, accessOnly := oaKey(t, s, "access", "access:manage")
-	(oaClient{t, ts.URL, a}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
-	(oaClient{t, ts.URL, b}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
-	(oaClient{t, ts.URL, b}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
+	(oaClient{t, ts.URL, a}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
+	(oaClient{t, ts.URL, b}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
+	(oaClient{t, ts.URL, b}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
 	waitUsage(t, s, "", 3)
 
 	read := func(key, query string) (int, usage.Report) {
@@ -482,7 +483,7 @@ func TestUsageChanges(t *testing.T) {
 	s := runServer(ts)
 	_, key := oaKey(t, s, "admin", "system:manage", "system:read")
 	c := oaClient{t, ts.URL, key}
-	c.doBody(ChatBody("hi"), "POST", "/v1/chat/completions") // refused for its scope, and counted
+	c.doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions") // refused for its scope, and counted
 	waitUsage(t, s, "", 1)
 	for _, bad := range []string{`{}`, `{"action":"nope"}`, `{"action":"clear","days":3}`, `{"action":"clear","before":"yesterday"}`, `{"action":"set-retention"}`,
 		`{"action":"set-retention","days":0}`, `{"action":"set-retention","days":366}`, `{"action":"set-retention","days":1.5}`, `{"action":"set-recording"}`,
@@ -503,7 +504,7 @@ func TestUsageChanges(t *testing.T) {
 		t.Errorf("recording: %d %s", status, body)
 	}
 	before := usageOf(t, s, "").Totals.Requests
-	c.doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
+	c.doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
 	time.Sleep(50 * time.Millisecond)
 	if got := usageOf(t, s, "").Totals.Requests; got != before {
 		t.Errorf("counted with recording off: %d", got-before)
@@ -512,8 +513,8 @@ func TestUsageChanges(t *testing.T) {
 		t.Errorf("back on: %d", status)
 	}
 	// Clearing takes what is in memory too.
-	c.doBody(ChatBody("hi"), "POST", "/v1/chat/completions")
-	WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests > before })
+	c.doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions")
+	gatewaytest.WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests > before })
 	status, _, body, _ = c.doBody(`{"action":"clear"}`, "POST", "/_localbase/usage")
 	if status != 200 || !bytes.Contains(body, []byte(`"cleared":true`)) {
 		t.Errorf("clear: %d %s", status, body)
@@ -526,11 +527,11 @@ func TestUsageChanges(t *testing.T) {
 
 // Audit events carry ids only.
 func TestUsageAudit(t *testing.T) {
-	logs := &SyncBuffer{}
-	Log = logs
-	defer func() { Log = nil }()
+	logs := &gatewaytest.SyncBuffer{}
+	gatewaytest.Log = logs
+	defer func() { gatewaytest.Log = nil }()
 	ts := openAPIGateway(t)
-	Log = nil
+	gatewaytest.Log = nil
 	s := runServer(ts)
 	id, key := oaKey(t, s, "secretlabel", "system:manage")
 	if status, _, body, _ := (oaClient{t, ts.URL, key}).doBody(`{"action":"clear"}`, "POST", "/_localbase/usage"); status != 200 {
@@ -597,7 +598,7 @@ func TestUsageOutOfOTLP(t *testing.T) {
 	testOtel = nil
 	s := runServer(ts)
 	_, key := oaKey(t, s, "k", auth.DefaultKeyScopes...)
-	if status, _, b, _ := (oaClient{t, ts.URL, key}).doBody(ChatBody("hi"), "POST", "/v1/chat/completions"); status != 200 {
+	if status, _, b, _ := (oaClient{t, ts.URL, key}).doBody(gatewaytest.ChatBody("hi"), "POST", "/v1/chat/completions"); status != 200 {
 		t.Fatalf("chat: %d %s", status, b)
 	}
 	waitUsage(t, s, "", 1)
@@ -637,11 +638,11 @@ func TestUsageCountsAUICallThroughAppAPI(t *testing.T) {
 	before := usageOf(t, s, "").Totals.Requests
 	headers := localUI(cookie, ts.URL)
 	headers["Content-Type"] = "application/json"
-	resp, body := c.send("POST", "/app/api/v1/chat/completions", ChatBody("hi"), headers)
+	resp, body := c.send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), headers)
 	if resp.StatusCode != 200 {
 		t.Fatalf("a chat through /app/api: %d %s", resp.StatusCode, body)
 	}
-	if !WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests == before+1 }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { return usageOf(t, s, "").Totals.Requests == before+1 }) {
 		t.Errorf("a chat through /app/api counted %d times, want 1", usageOf(t, s, "").Totals.Requests-before)
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -112,7 +113,7 @@ func TestModelTooLargeEveryModality(t *testing.T) {
 	t.Run("llm", func(t *testing.T) {
 		ts, llm, _ := newTestGateway(t, tinyHost{})
 		for path, body := range map[string]string{
-			"/v1/chat/completions": ChatBody("hi"),
+			"/v1/chat/completions": gatewaytest.ChatBody("hi"),
 			"/v1/embeddings":       `{"model":"` + embeddingModel + `","input":"hi"}`,
 			"/v1/systemone":        `{"model":"` + decisionModel + `","state":"x","questions":{"q":{"type":"noul"}}}`,
 		} {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // waitForChat waits for the backend to answer before a snippet runs. A snippet's request would
@@ -23,7 +24,7 @@ func waitForChat(t *testing.T, base, key string) {
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	for {
-		req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(ChatBody("hi")))
+		req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/chat/completions", strings.NewReader(gatewaytest.ChatBody("hi")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +69,7 @@ func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForChat(t, ts.URL, key)
-	target := connect.Target{BaseURL: ts.URL + "/v1", Model: ChatModel, Key: key}
+	target := connect.Target{BaseURL: ts.URL + "/v1", Model: gatewaytest.ChatModel, Key: key}
 	c := connect.Find("curl", target)
 	var parts []string
 	for _, snippet := range c.Snippets {
@@ -94,7 +95,7 @@ func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 	}
 
 	// An unfilled snippet tells the person, rather than authenticating by accident.
-	unfilled := connect.Find("curl", connect.Target{BaseURL: ts.URL + "/v1", Model: ChatModel})
+	unfilled := connect.Find("curl", connect.Target{BaseURL: ts.URL + "/v1", Model: gatewaytest.ChatModel})
 	var plain []string
 	for _, snippet := range unfilled.Snippets {
 		plain = append(plain, snippet.Text)

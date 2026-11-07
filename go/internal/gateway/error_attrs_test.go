@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
@@ -32,15 +33,15 @@ func (l *lockedBuffer) String() string {
 // never its message (operator observability audit).
 func TestHTTPRequestLogsErrorKind(t *testing.T) {
 	buf := &lockedBuffer{}
-	Log = buf
-	defer func() { Log = nil }()
+	gatewaytest.Log = buf
+	defer func() { gatewaytest.Log = nil }()
 	h := &steppedHost{}
 	h.avail.Store(50 * memory.GiB)
 	ts, _, _ := newTestGateway(t, h)
-	Log = nil
+	gatewaytest.Log = nil
 	post(t, ts, "/v1/systemone", `{"model":"`+decisionModel+`","state":"fake:batch","questions":{"ok":{"type":"noul"}}}`)
-	post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[]}`)
-	post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+	post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[]}`)
+	post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
 	want := map[string][2]string{
 		"POST /v1/systemone -> 400":        {"invalid_request_error", "context_length_exceeded"},
 		"POST /v1/chat/completions -> 400": {"invalid_request_error", "validation_failed"},

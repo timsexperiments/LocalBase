@@ -3,6 +3,8 @@ package gateway
 import (
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // A bad cursor is the caller's mistake, answered before the stream starts. It
@@ -10,7 +12,7 @@ import (
 // the panic, the lock stayed taken, and the run and the sweep behind it hung.
 func TestRunEventsBadCursor(t *testing.T) {
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 3")
 	for _, tc := range []struct{ name, query, header string }{
 		{"negative after", "?after=-1", ""},
@@ -34,8 +36,8 @@ func TestRunEventsBadCursor(t *testing.T) {
 	go func() { done <- c.WaitStatus(id, "completed") }()
 	select {
 	case m := <-done:
-		if Content(m) != Words(3) {
-			t.Errorf("output %q", Content(m))
+		if gatewaytest.Content(m) != gatewaytest.Words(3) {
+			t.Errorf("output %q", gatewaytest.Content(m))
 		}
 	case <-time.After(20 * time.Second):
 		t.Fatal("the run hung after a bad cursor")

@@ -28,6 +28,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -66,12 +67,12 @@ var tokenRoutes = []string{"/_localbase/instance", "/_localbase/default-model", 
 
 // matrixExtraPaths are more paths for routes that dispatch on the rest of the path.
 var matrixExtraPaths = map[string][]string{
-	"/_localbase/models/{model_id...}": {ChatModel + "/placement", ChatModel + "/unload", "no-such-model", "no-such-model/placement", "no-such-model/unload"},
+	"/_localbase/models/{model_id...}": {gatewaytest.ChatModel + "/placement", gatewaytest.ChatModel + "/unload", "no-such-model", "no-such-model/placement", "no-such-model/unload"},
 	"/_localbase/runs/{rest...}":       {"v1/chat/completions", "v1/audio/transcriptions", "v1/audio/translations", "run_x", "run_x/events", "run_x/cancel", "run_x/result"},
 	"/v1/models/{model...}":            {"no-such-model"},
 	"/_localbase/voices/":              {"voice-000000000000", "voice-000000000000/audio", "not-a-voice"},
 	"/app/api/": {"_localbase/api-keys", "_localbase/access-management", "_localbase/hf-token", "_localbase/model-imports",
-		"_localbase/runs", "_localbase/runs/run_x/events", "_localbase/models/" + ChatModel + "/unload", "v1/chat/completions", "v1/audio/transcriptions",
+		"_localbase/runs", "_localbase/runs/run_x/events", "_localbase/models/" + gatewaytest.ChatModel + "/unload", "v1/chat/completions", "v1/audio/transcriptions",
 		"v1/audio/translations", "v1/videos"},
 }
 
@@ -147,7 +148,7 @@ func patternPath(pattern string) string {
 	return patternParam.ReplaceAllStringFunc(pattern, func(p string) string {
 		switch name := patternParam.FindStringSubmatch(p)[1]; name {
 		case "model", "model_id":
-			return ChatModel
+			return gatewaytest.ChatModel
 		case "job_id":
 			return "00000000-0000-0000-0000-000000000000"
 		case "tool":
@@ -249,7 +250,7 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 	if err != nil {
 		t.Fatal(err)
 	}
-	installSparse(t, models, cat.ByID(ChatModel))
+	installSparse(t, models, cat.ByID(gatewaytest.ChatModel))
 	st, err := store.Open(r.DB())
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +261,7 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 		t.Fatal(err)
 	}
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
-		Active: map[string]string{"llm": ChatModel, "stt": sttModel}, Selected: map[string][]string{"llm": {ChatModel}, "stt": {sttModel}}}
+		Active: map[string]string{"llm": gatewaytest.ChatModel, "stt": sttModel}, Selected: map[string][]string{"llm": {gatewaytest.ChatModel}, "stt": {sttModel}}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
@@ -602,7 +603,7 @@ func TestAnonymousCannotTellWhichModelsExist(t *testing.T) {
 	g := newMatrixGateway(t, nil)
 	for _, form := range []string{"/_localbase/models/%s", "/_localbase/models/%s/placement", "/_localbase/models/%s/unload", "/v1/models/%s"} {
 		for _, method := range matrixMethods {
-			known := g.send(t, method, fmt.Sprintf(form, ChatModel), "", nil)
+			known := g.send(t, method, fmt.Sprintf(form, gatewaytest.ChatModel), "", nil)
 			unknown := g.send(t, method, fmt.Sprintf(form, "no-such-model"), "", nil)
 			if known.status != unknown.status || known.body != unknown.body {
 				t.Errorf("%s %s: a real model gets %d %q, an unknown one %d %q", method, form, known.status, known.body, unknown.status, unknown.body)
@@ -663,7 +664,7 @@ func TestCancellingNeedsModelsManage(t *testing.T) {
 		// What someone allowed gets, with nothing to stop.
 		allowed int
 	}{
-		{"an install", "/_localbase/model-management", `{"modelId":"` + ChatModel + `","action":"cancel"}`, http.StatusConflict},
+		{"an install", "/_localbase/model-management", `{"modelId":"` + gatewaytest.ChatModel + `","action":"cancel"}`, http.StatusConflict},
 		{"an import", "/_localbase/model-imports", `{"action":"cancel","job":"no-such-job"}`, http.StatusNotFound},
 	}
 	for _, mode := range []struct {
@@ -836,7 +837,7 @@ func TestInstanceTokenRouteMatrix(t *testing.T) {
 		for k, v := range headers {
 			h[k] = v
 		}
-		return g.raw(t, http.MethodPost, path, "", h, `{"modelId":"`+ChatModel+`","action":"`+action+`"}`)
+		return g.raw(t, http.MethodPost, path, "", h, `{"modelId":"`+gatewaytest.ChatModel+`","action":"`+action+`"}`)
 	}
 	// Nothing is running, so a cancel that got through is a 409.
 	if r := post("cancel", withToken); r.status != 409 {

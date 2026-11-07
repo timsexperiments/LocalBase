@@ -21,6 +21,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -63,7 +64,7 @@ func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Server)
 	if err != nil {
 		t.Fatal(err)
 	}
-	installSparse(t, modelsDir, cat.ByID(ChatModel))
+	installSparse(t, modelsDir, cat.ByID(gatewaytest.ChatModel))
 	st, err := store.Open(r.DB())
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +83,7 @@ func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Server)
 		t.Fatal(err)
 	}
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
-		Active: map[string]string{"llm": ChatModel}, Selected: map[string][]string{"llm": {ChatModel}}}
+		Active: map[string]string{"llm": gatewaytest.ChatModel}, Selected: map[string][]string{"llm": {gatewaytest.ChatModel}}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
@@ -276,7 +277,7 @@ func TestRefusalDoesNotAskForTheBody(t *testing.T) {
 
 // paddedChat is a valid request padded with whitespace to size bytes.
 func paddedChat(content string, size int) []byte {
-	b, _ := json.Marshal(map[string]any{"model": ChatModel, "messages": []map[string]string{{"role": "user", "content": content}}})
+	b, _ := json.Marshal(map[string]any{"model": gatewaytest.ChatModel, "messages": []map[string]string{{"role": "user", "content": content}}})
 	if len(b) < size {
 		b = append(b, bytes.Repeat([]byte(" "), size-len(b))...)
 	}
@@ -343,7 +344,7 @@ func TestStalledUploadIsCut(t *testing.T) {
 // The 408 is the same on every route that reads a body, whatever the handler made
 // of the failed read, and it says what happened.
 func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
-	logs := &SyncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	limits := httpx.Limits{PreAuthBody: 300 * time.Millisecond, UploadStall: 200 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}
 	g := newLimitsGateway(t, limits, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	for _, path := range []string{"/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"} {
@@ -367,20 +368,20 @@ func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
 			t.Errorf("%s: %d %+v %v, close %v", path, resp.StatusCode, out, err, resp.Close)
 		}
 	}
-	if !WaitFor(2*time.Second, func() bool { return strings.Contains(logs.String(), `"error_code":"request_timeout"`) }) {
+	if !gatewaytest.WaitFor(2*time.Second, func() bool { return strings.Contains(logs.String(), `"error_code":"request_timeout"`) }) {
 		t.Errorf("no request_timeout in the request log:\n%s", logs.String())
 	}
 }
 
 // Only a deadline is a timeout: a client that goes away mid-upload stays a 499.
 func TestClientThatLeavesIsNotATimeout(t *testing.T) {
-	logs := &SyncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	g := newLimitsGateway(t, httpx.Limits{}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", g.key)
 	time.Sleep(100 * time.Millisecond)
 	conn.Close()
-	if !WaitFor(5*time.Second, func() bool { return strings.Contains(logs.String(), `"status":499`) }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { return strings.Contains(logs.String(), `"status":499`) }) {
 		t.Errorf("want a 499 in the request log:\n%s", logs.String())
 	}
 	if strings.Contains(logs.String(), "request_timeout") {
@@ -410,7 +411,7 @@ func TestUploadTotalIsBounded(t *testing.T) {
 // A long response outlives every body deadline: the deadline ends with the body.
 func TestLongStreamSurvivesTheDeadlines(t *testing.T) {
 	g := newLimitsGateway(t, httpx.Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 150 * time.Millisecond}, nil)
-	body, _ := json.Marshal(map[string]any{"model": ChatModel, "stream": true,
+	body, _ := json.Marshal(map[string]any{"model": gatewaytest.ChatModel, "stream": true,
 		"messages": []map[string]string{{"role": "user", "content": "fake:slow 24"}}})
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+g.key)

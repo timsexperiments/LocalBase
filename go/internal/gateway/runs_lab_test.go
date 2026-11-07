@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -83,7 +84,7 @@ func newImageGateway(t *testing.T, imageModel string) *httptest.Server {
 // serves it from /result.
 func TestRunImage(t *testing.T) {
 	ts := newImageGateway(t, imageModel)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	code, m := c.Do("POST", "/_localbase/runs/v1/images/generations", `{"prompt":"a lighthouse fake:slow-image"}`)
 	if code != 202 || m["label"] != "Image" {
 		t.Fatalf("create: %d %v", code, m)
@@ -115,7 +116,7 @@ func TestRunImage(t *testing.T) {
 	s := runServer(ts)
 	b2 := httptest.NewServer(New(&Server{Store: s.Store, Catalog: s.Catalog, Auth: s.Auth, Log: s.Log, NoAuth: true, Root: s.Root, Memory: s.Memory, Image: s.Image}))
 	defer b2.Close()
-	if after := (RunClient{T: t, Base: b2.URL}).Get(id); after["status"] != "interrupted" || after["reason"] != "gateway_restart" || after["result"] != nil {
+	if after := (gatewaytest.RunClient{T: t, Base: b2.URL}).Get(id); after["status"] != "interrupted" || after["reason"] != "gateway_restart" || after["result"] != nil {
 		t.Errorf("after a restart: %v", after)
 	}
 }
@@ -125,7 +126,7 @@ func TestRunImageCancel(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
 	ts := newImageGateway(t, imageModel)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	_, m := c.Do("POST", "/_localbase/runs/v1/images/generations", `{"prompt":"fake:slow-image"}`)
 	id := m["id"].(string)
 	c.WaitStatus(id, "in_progress")
@@ -133,7 +134,7 @@ func TestRunImageCancel(t *testing.T) {
 	if code, m := c.Do("POST", "/_localbase/runs/"+id+"/cancel", ""); code != 200 || m["status"] != "cancelled" {
 		t.Fatalf("stop: %d %v", code, m)
 	}
-	if !WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Error("the image backend kept going after Stop")
 	}
 }
@@ -142,7 +143,7 @@ func TestRunImageCancel(t *testing.T) {
 // the queue are byte-for-byte /v1's.
 func TestRunImageEditMultipart(t *testing.T) {
 	ts := newImageGateway(t, editModel)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	form := func(withImage bool) (string, []byte) {
 		var buf bytes.Buffer
 		mw := multipart.NewWriter(&buf)
@@ -200,7 +201,7 @@ func TestRunRequestModel(t *testing.T) {
 // they are refused before the queue exactly as /v1 refuses them.
 func TestRunMediaTargetsNotConfigured(t *testing.T) {
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	for _, target := range []string{"/v1/audio/speech", "/v1/images/generations"} {
 		body := `{"model":"x","input":"hi","voice":"a","prompt":"p"}`
 		v1 := post(t, ts, target, body)

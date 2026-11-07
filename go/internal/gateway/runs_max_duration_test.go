@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // A run that outlasts its maximum duration is interrupted, and says so in the documented shape: its
@@ -43,7 +44,7 @@ func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 	}
 
 	// fake:slow 200 streams 200 words 50 ms apart: about ten seconds, against a limit of 200 ms.
-	status, out := do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("fake:slow 200"))
+	status, out := do("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:slow 200"))
 	var created struct {
 		ID string `json:"id"`
 	}
@@ -56,7 +57,7 @@ func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 		EndedAt      *string         `json:"endedAt"`
 		Continuation json.RawMessage `json:"continuation"`
 	}
-	if !WaitFor(openAPIWait, func() bool {
+	if !gatewaytest.WaitFor(openAPIWait, func() bool {
 		_, out = do("GET", "/_localbase/runs/"+created.ID, "")
 		return json.Unmarshal(out, &run) == nil && run.EndedAt != nil
 	}) {

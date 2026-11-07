@@ -18,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -89,9 +90,9 @@ type auditFixture struct {
 func newAuditFixture(t *testing.T) *auditFixture {
 	t.Helper()
 	logs := &lockedBuffer{}
-	Log = logs
+	gatewaytest.Log = logs
 	ts := openAPIGateway(t)
-	Log = nil
+	gatewaytest.Log = nil
 	srv := runServer(ts)
 	ctx := context.Background()
 	k, key, err := srv.Store.CreateAPIKey(ctx, "all", auth.Permissions)
@@ -148,7 +149,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	f.srv.changeAudit.sampler.Burst = 1000
 	f.srv.refusedAudit.Burst = 1000
 	// A loaded model to unload.
-	if status, out := f.send(f.key, "POST", "/v1/chat/completions", "application/json", []byte(ChatBody("hi"))); status != 200 {
+	if status, out := f.send(f.key, "POST", "/v1/chat/completions", "application/json", []byte(gatewaytest.ChatBody("hi"))); status != 200 {
 		t.Fatalf("load: %d %s", status, out)
 	}
 	source := filepath.Join(scratchDir(t), "audit-weights-q4_k_m.gguf")
@@ -176,12 +177,12 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		{"computer name", "PUT", "/_localbase/computer-name", jsonType, func() []byte { return js(`{"name":"PLANTED computer"}`) }, 200, "computer-name", "set", "computer-name", nil, nil},
 		{"token saved", "POST", "/_localbase/hf-token", jsonType, func() []byte { return js(`{"action":"save","token":"` + planted + `","validate":false}`) }, 200, "hf-token", "save", "hf-token", nil, nil},
 		{"token cleared", "POST", "/_localbase/hf-token", jsonType, func() []byte { return js(`{"action":"clear"}`) }, 200, "hf-token", "clear", "hf-token", nil, nil},
-		{"backend reset", "POST", "/_localbase/model-backend", jsonType, func() []byte { return js(`{"action":"reset","model":"` + ChatModel + `"}`) }, 200, "audit.model-backend-changed", "reset", "model", func() string { return ChatModel }, nil},
-		{"default models", "POST", "/_localbase/default-chat-models", jsonType, func() []byte { return js(`{"models":["` + ChatModel + `"]}`) }, 200, "default-models", "set", "model", func() string { return ChatModel }, nil},
-		{"model enabled", "POST", "/_localbase/model-management", jsonType, func() []byte { return js(`{"modelId":"` + ChatModel + `","action":"enable"}`) }, 200, "models", "enable", "model", func() string { return ChatModel }, nil},
-		{"placement set", "PUT", "/_localbase/models/" + ChatModel + "/placement", jsonType, func() []byte { return js(`{"mode":"auto"}`) }, 200, "placement", "set", "model", func() string { return ChatModel }, nil},
-		{"placement cleared", "DELETE", "/_localbase/models/" + ChatModel + "/placement", "", func() []byte { return nil }, 200, "placement", "clear", "model", func() string { return ChatModel }, nil},
-		{"unload", "POST", "/_localbase/models/" + ChatModel + "/unload", "", func() []byte { return nil }, 200, "unload", "unload", "model", func() string { return ChatModel }, nil},
+		{"backend reset", "POST", "/_localbase/model-backend", jsonType, func() []byte { return js(`{"action":"reset","model":"` + gatewaytest.ChatModel + `"}`) }, 200, "audit.model-backend-changed", "reset", "model", func() string { return gatewaytest.ChatModel }, nil},
+		{"default models", "POST", "/_localbase/default-chat-models", jsonType, func() []byte { return js(`{"models":["` + gatewaytest.ChatModel + `"]}`) }, 200, "default-models", "set", "model", func() string { return gatewaytest.ChatModel }, nil},
+		{"model enabled", "POST", "/_localbase/model-management", jsonType, func() []byte { return js(`{"modelId":"` + gatewaytest.ChatModel + `","action":"enable"}`) }, 200, "models", "enable", "model", func() string { return gatewaytest.ChatModel }, nil},
+		{"placement set", "PUT", "/_localbase/models/" + gatewaytest.ChatModel + "/placement", jsonType, func() []byte { return js(`{"mode":"auto"}`) }, 200, "placement", "set", "model", func() string { return gatewaytest.ChatModel }, nil},
+		{"placement cleared", "DELETE", "/_localbase/models/" + gatewaytest.ChatModel + "/placement", "", func() []byte { return nil }, 200, "placement", "clear", "model", func() string { return gatewaytest.ChatModel }, nil},
+		{"unload", "POST", "/_localbase/models/" + gatewaytest.ChatModel + "/unload", "", func() []byte { return nil }, 200, "unload", "unload", "model", func() string { return gatewaytest.ChatModel }, nil},
 		{"import started", "POST", "/_localbase/model-imports", jsonType, func() []byte {
 			b, _ := json.Marshal(map[string]any{"action": "start", "source": source, "task": "chat", "id": "audit-import", "name": "Audit"})
 			return b
@@ -213,7 +214,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 				}
 				_ = json.Unmarshal(out, &v)
 				job = v.Job
-				if !WaitFor(openAPIWait, func() bool {
+				if !gatewaytest.WaitFor(openAPIWait, func() bool {
 					_, b := f.send(f.key, "GET", "/_localbase/model-imports?id="+job, "", nil)
 					return !bytes.Contains(b, []byte(`"state":"running"`))
 				}) {
@@ -278,7 +279,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		if len(events) != 1 || events[0]["action"] != "cancel" || events[0]["target_id"] != started.Job || events[0]["target_kind"] != "import-job" {
 			t.Errorf("%v", events)
 		}
-		if !WaitFor(10*time.Second, func() bool {
+		if !gatewaytest.WaitFor(10*time.Second, func() bool {
 			_, b := f.send(f.key, "GET", "/_localbase/model-imports?id="+started.Job, "", nil)
 			return !bytes.Contains(b, []byte(`"state":"running"`))
 		}) {
@@ -293,10 +294,10 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		}
 		defer release()
 		f.srv.mgmt.mu.Lock()
-		f.srv.mgmt.operations[ChatModel] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
+		f.srv.mgmt.operations[gatewaytest.ChatModel] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
 		f.srv.mgmt.mu.Unlock()
 		from := len(f.logs.String())
-		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+ChatModel+`","action":"cancel"}`))
+		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+gatewaytest.ChatModel+`","action":"cancel"}`))
 		req.Header.Set("X-Localbase-Instance-Token", f.srv.Root.Instance().InstanceToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -317,7 +318,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		{"default-models", "POST", "/_localbase/default-chat-models", `{"models":["PLANTED-made-up"]}`, ""},
 		{"models", "POST", "/_localbase/model-management", `{"modelId":"PLANTED-made-up","action":"install"}`, ""},
 		{"models", "POST", "/_localbase/model-management", `{"modelId":"x\n{\"event\":\"audit.changes-summary\",\"count\":0}","action":"install"}`, ""},
-		{"models", "POST", "/_localbase/model-management", `{"modelId":"` + ChatModel + `","action":"install"}`, ChatModel},
+		{"models", "POST", "/_localbase/model-management", `{"modelId":"` + gatewaytest.ChatModel + `","action":"install"}`, gatewaytest.ChatModel},
 		{"placement", "PUT", "/_localbase/models/PLANTED-made-up/placement", `{"mode":"auto"}`, ""},
 		{"unload", "POST", "/_localbase/models/PLANTED-made-up/unload", "", ""},
 		{"imports", "POST", "/_localbase/model-imports", `{"action":"cancel","job":"PLANTED-made-up"}`, ""},
@@ -344,7 +345,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 			{"GET", "/_localbase/hf-token", ""},
 			{"POST", "/_localbase/model-imports", `{"action":"resolve","source":"` + source + `"}`},
 			{"POST", "/_localbase/model-discovery", `{"action":"search","query":"x"}`},
-			{"GET", "/_localbase/models/" + ChatModel + "/placement", ""},
+			{"GET", "/_localbase/models/" + gatewaytest.ChatModel + "/placement", ""},
 			{"DELETE", "/_localbase/hf-token", ""},
 		} {
 			f.send(f.key, c.method, c.path, jsonType, js(c.body))

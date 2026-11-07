@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 )
 
@@ -96,7 +97,7 @@ func TestTheImportLookupKeepsToItsContext(t *testing.T) {
 // gateway waits that out. It waits no longer than a speech request may take, and then the backend
 // is unavailable for now.
 func TestABusySpeechBackendIsWaitedOutForABoundedTime(t *testing.T) {
-	ts := newSpeechGateway(t, &SyncBuffer{})
+	ts := newSpeechGateway(t, &gatewaytest.SyncBuffer{})
 	s := runServer(ts)
 	s.speechBusyFor = 500 * time.Millisecond
 	client := &http.Client{Timeout: 30 * time.Second}

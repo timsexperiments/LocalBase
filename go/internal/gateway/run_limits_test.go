@@ -10,15 +10,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // A chat run over what it may hold ends failed, with what it had, and the backend is told to stop.
 func TestARunOverItsMemoryLimitFailsWithWhatItHad(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	mgr.maxHeld = 3000
 	m := c.WaitStatus(c.Start("fake:slow 200"), "failed")
-	if m["reason"] != "output_limit" || Content(m) == "" {
+	if m["reason"] != "output_limit" || gatewaytest.Content(m) == "" {
 		t.Errorf("%v", m)
 	}
 	if got := mgr.held.Load(); got > 3000 {
@@ -29,11 +31,11 @@ func TestARunOverItsMemoryLimitFailsWithWhatItHad(t *testing.T) {
 // All runs together have a limit too, with its own reason, and dropping a run gives its share back.
 func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	mgr.maxHeldTotal = 3000
 	id := c.Start("fake:slow 200")
 	m := c.WaitStatus(id, "failed")
-	if m["reason"] != "memory_limit" || Content(m) == "" {
+	if m["reason"] != "memory_limit" || gatewaytest.Content(m) == "" {
 		t.Errorf("%v", m)
 	}
 	if got := mgr.held.Load(); got == 0 || got > 3000 {
@@ -54,7 +56,7 @@ func TestRunsOverTheirTotalMemoryLimitFailAndGiveItBack(t *testing.T) {
 // The other ways a run goes give it back too.
 func TestAnExpiredRunGivesBackWhatItHeld(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("hello")
 	c.WaitStatus(id, "completed")
 	if mgr.held.Load() == 0 {
@@ -238,7 +240,7 @@ func TestRunMemoryLimitsAreTheOptions(t *testing.T) {
 // A run refused before it queues leaves nothing counted.
 func TestARefusedRunLeavesNothingCounted(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", `{"messages":[]}`)
 	if code != 400 || m["error"] == nil {
 		t.Fatalf("not refused: %d %v", code, m)
@@ -295,7 +297,7 @@ func TestARestoredRunCounts(t *testing.T) {
 // The refusal says what holds the memory, how much, when the oldest goes, and what to do.
 func TestAFullTotalSaysWhatHoldsItAndWhatToDo(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	first := c.Start("hello")
 	c.WaitStatus(first, "completed")
 	done := c.Get(first)

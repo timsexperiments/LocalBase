@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
@@ -61,7 +62,7 @@ func TestANamedRouteIsLoggedByName(t *testing.T) {
 	// A request's line is written after its response has gone, so it can still be on its way.
 	wants := []string{`"path":"/openapi.json"`, `"path":"/_localbase/runs/{rest}"`, `"path":"/_localbase/usage"`}
 	var b []byte
-	WaitFor(10*time.Second, func() bool {
+	gatewaytest.WaitFor(10*time.Second, func() bool {
 		b, _ = os.ReadFile(filepath.Join(dir, "events.jsonl"))
 		for _, want := range wants {
 			if !strings.Contains(string(b), want) {

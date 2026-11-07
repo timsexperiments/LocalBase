@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -114,7 +115,7 @@ func loggedEvent(t *testing.T, jsonl, name string) map[string]any {
 // Audio cut at the frame cap is unchanged, and says so: a warn event without
 // the text, and a header on every way /v1 can answer.
 func TestSpeechTruncationVisible(t *testing.T) {
-	logs := &SyncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	ts := newSpeechGateway(t, logs)
 	numbers := numberList()
 	if len(numbers) != 256 {
@@ -158,9 +159,9 @@ func TestSpeechTruncationVisible(t *testing.T) {
 // Run results keep no headers, so the same flag is result.notes, on the run
 // object and on its end event; the audio is the same bytes.
 func TestSpeechTruncationInRun(t *testing.T) {
-	logs := &SyncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	ts := newSpeechGateway(t, logs)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	start := func(input string) string {
 		code, m := c.Do("POST", "/_localbase/runs/v1/audio/speech", speechBody(input, ""))
 		if code != 202 {

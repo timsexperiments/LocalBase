@@ -9,13 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // What the huggingface profile names and can't is said in the gateway's own log, as an event, when an import is
 // resolved. The source is a path on this computer, refused here without contacting anything.
 func TestAnImportLogsWhatTheHuggingFaceProfileCantName(t *testing.T) {
 	t.Setenv("HF_ENDPOINT", "")
-	logs := &SyncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	ts, key, _, dir := importAPIGateway(t, slog.New(slog.NewJSONHandler(logs, nil)))
 	profiles := filepath.Join(dir, "root", "credentials", "auth-profiles.json")
 	if err := os.MkdirAll(filepath.Dir(profiles), 0o700); err != nil {

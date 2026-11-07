@@ -6,9 +6,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
-func unload(t *testing.T, c RunClient, id, query string) (int, map[string]any) {
+func unload(t *testing.T, c gatewaytest.RunClient, id, query string) (int, map[string]any) {
 	t.Helper()
 	return c.Do("POST", "/_localbase/models/"+id+"/unload"+query, "")
 }
@@ -17,19 +19,19 @@ func unload(t *testing.T, c RunClient, id, query string) (int, map[string]any) {
 // drops its reservation, runtime.stopped says "unload", and the next
 // request loads it again.
 func TestUnloadIdle(t *testing.T) {
-	logs := &SyncBuffer{}
-	Log = logs
+	logs := &gatewaytest.SyncBuffer{}
+	gatewaytest.Log = logs
 	ts, llm, mem := newTestGateway(t, host{})
-	Log = nil
-	c := RunClient{T: t, Base: ts.URL}
-	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
+	gatewaytest.Log = nil
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d %s", r.status, r.body)
 	}
 	reserved := mem.Reserved()["llm"]
 	if reserved <= 0 {
 		t.Fatalf("no llm reservation: %v", mem.Reserved())
 	}
-	code, m := unload(t, c, ChatModel, "")
+	code, m := unload(t, c, gatewaytest.ChatModel, "")
 	if code != 200 || m["unloaded"] != true || m["runtime"] != "llm" || m["memoryFreedBytes"] != float64(reserved) {
 		t.Fatalf("unload: %d %v (reserved %d)", code, m, reserved)
 	}
@@ -39,12 +41,12 @@ func TestUnloadIdle(t *testing.T) {
 	if _, held := mem.Reserved()["llm"]; held {
 		t.Errorf("the reservation outlived the unload: %v", mem.Reserved())
 	}
-	if !WaitFor(2*time.Second, func() bool {
+	if !gatewaytest.WaitFor(2*time.Second, func() bool {
 		return strings.Contains(logs.String(), `"event":"runtime.stopped"`) && strings.Contains(logs.String(), `"reason":"unload"`)
 	}) {
 		t.Errorf("no runtime.stopped/unload event:\n%s", logs.String())
 	}
-	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Errorf("reload on demand: %d %s", r.status, r.body)
 	}
 }
@@ -53,16 +55,16 @@ func TestUnloadIdle(t *testing.T) {
 // requests for the model are refused meanwhile, then the model stops.
 func TestUnloadBusyDrains(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 20") // about 1 s
 	c.WaitStatus(id, "in_progress")
 	// One request queued before the unload (the slot is busy) ...
 	queued := make(chan result, 1)
-	go func() { queued <- post(t, ts, "/v1/chat/completions", ChatBody("hi")) }()
-	WaitFor(2*time.Second, func() bool { return llm.Snapshot().Waiting == 1 })
+	go func() { queued <- post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")) }()
+	gatewaytest.WaitFor(2*time.Second, func() bool { return llm.Snapshot().Waiting == 1 })
 	done := make(chan map[string]any, 1)
 	go func() {
-		code, m := unload(t, c, ChatModel, "")
+		code, m := unload(t, c, gatewaytest.ChatModel, "")
 		m["status"] = code
 		done <- m
 	}()
@@ -74,14 +76,14 @@ func TestUnloadBusyDrains(t *testing.T) {
 	}
 	// ... and one sent mid-drain: both refused at once, not held.
 	began := time.Now()
-	if r := post(t, ts, "/v1/chat/completions", ChatBody("hi")); !refused(r) || time.Since(began) > 300*time.Millisecond {
+	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); !refused(r) || time.Since(began) > 300*time.Millisecond {
 		t.Errorf("a new request during the drain: %d %s after %v", r.status, r.body, time.Since(began))
 	}
 	m := <-done
 	if m["status"] != 200 || m["drainedMs"].(float64) < 200 {
 		t.Fatalf("unload: %v", m)
 	}
-	if run := c.Get(id); run["status"] != "completed" || Content(run) != Words(20) {
+	if run := c.Get(id); run["status"] != "completed" || gatewaytest.Content(run) != gatewaytest.Words(20) {
 		t.Errorf("the in-flight run did not finish: %v", run)
 	}
 	if running, _, _ := llm.Running(); running != "" {
@@ -93,7 +95,7 @@ func TestUnloadBusyDrains(t *testing.T) {
 // in-flight count, and the model keeps running its work.
 func TestUnloadBusyRefused(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 200")
 	c.WaitStatus(id, "in_progress")
 	busy := func(code int, m map[string]any) {
@@ -103,40 +105,40 @@ func TestUnloadBusyRefused(t *testing.T) {
 			t.Errorf("busy: %d %v", code, m)
 		}
 	}
-	busy(unload(t, c, ChatModel, "?wait=false"))
+	busy(unload(t, c, gatewaytest.ChatModel, "?wait=false"))
 	old := unloadWait
 	unloadWait = 300 * time.Millisecond
 	defer func() { unloadWait = old }()
 	began := time.Now()
-	busy(unload(t, c, ChatModel, ""))
+	busy(unload(t, c, gatewaytest.ChatModel, ""))
 	if d := time.Since(began); d < 250*time.Millisecond || d > 3*time.Second {
 		t.Errorf("the bounded wait took %v", d)
 	}
-	if running, _, _ := llm.Running(); running != ChatModel {
+	if running, _, _ := llm.Running(); running != gatewaytest.ChatModel {
 		t.Errorf("a refused unload stopped the model: %q", running)
 	}
 	if run := c.Get(id); run["status"] != "in_progress" {
 		t.Errorf("the run was disturbed: %v", run)
 	}
 	c.Do("POST", "/_localbase/runs/"+id+"/cancel", "")
-	if r := post(t, ts, "/v1/chat/completions", ChatBody("fake:reply after")); r.status != 200 {
+	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("fake:reply after")); r.status != 200 {
 		t.Errorf("requests after a refused unload: %d %s", r.status, r.body)
 	}
-	if code, m := unload(t, c, ChatModel, "?wait=maybe"); code != 400 {
+	if code, m := unload(t, c, gatewaytest.ChatModel, "?wait=maybe"); code != 400 {
 		t.Errorf("bad wait: %d %v", code, m)
 	}
 }
 
 func TestUnloadNotLoaded(t *testing.T) {
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
-	if code, m := unload(t, c, ChatModel, ""); code != 404 || m["error"].(map[string]any)["code"] != "model_not_loaded" {
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	if code, m := unload(t, c, gatewaytest.ChatModel, ""); code != 404 || m["error"].(map[string]any)["code"] != "model_not_loaded" {
 		t.Errorf("installed, not loaded: %d %v", code, m)
 	}
 	if code, m := unload(t, c, "no-such-model", ""); code != 404 || m["error"].(map[string]any)["code"] != "model_not_found" {
 		t.Errorf("unknown: %d %v", code, m)
 	}
-	if code, _ := c.Do("GET", "/_localbase/models/"+ChatModel+"/unload", ""); code != 405 {
+	if code, _ := c.Do("GET", "/_localbase/models/"+gatewaytest.ChatModel+"/unload", ""); code != 405 {
 		t.Errorf("GET: %d", code)
 	}
 }
@@ -153,23 +155,23 @@ func TestUnloadScope(t *testing.T) {
 	ctx := t.Context()
 	_, reader, _ := s.Store.CreateAPIKey(ctx, "reader", []string{"models:read", "inference:chat"})
 	_, admin, _ := s.Store.CreateAPIKey(ctx, "admin", []string{"models:read", "models:manage"})
-	r, a := RunClient{T: t, Base: ts.URL, Key: reader}, RunClient{T: t, Base: ts.URL, Key: admin}
-	if code, m := r.Do("POST", "/v1/chat/completions", ChatBody("hi")); code != 200 {
+	r, a := gatewaytest.RunClient{T: t, Base: ts.URL, Key: reader}, gatewaytest.RunClient{T: t, Base: ts.URL, Key: admin}
+	if code, m := r.Do("POST", "/v1/chat/completions", gatewaytest.ChatBody("hi")); code != 200 {
 		t.Fatalf("chat: %d %v", code, m)
 	}
-	if code, _ := unload(t, r, ChatModel, ""); code != 403 {
+	if code, _ := unload(t, r, gatewaytest.ChatModel, ""); code != 403 {
 		t.Errorf("models:read only: %d", code)
 	}
-	if code, _ := unload(t, RunClient{T: t, Base: ts.URL}, ChatModel, ""); code != 401 {
+	if code, _ := unload(t, gatewaytest.RunClient{T: t, Base: ts.URL}, gatewaytest.ChatModel, ""); code != 401 {
 		t.Errorf("no key: %d", code)
 	}
 	id := r.Start("fake:slow 200") // the reader's run on the shared model
 	r.WaitStatus(id, "in_progress")
-	if code, m := unload(t, a, ChatModel, "?wait=false"); code != 409 || m["error"].(map[string]any)["in_flight"] != 1.0 {
+	if code, m := unload(t, a, gatewaytest.ChatModel, "?wait=false"); code != 409 || m["error"].(map[string]any)["in_flight"] != 1.0 {
 		t.Errorf("another principal's run is in flight: %d %v", code, m)
 	}
 	r.Do("POST", "/_localbase/runs/"+id+"/cancel", "")
-	if code, m := unload(t, a, ChatModel, ""); code != 200 {
+	if code, m := unload(t, a, gatewaytest.ChatModel, ""); code != 200 {
 		t.Errorf("models:manage: %d %v", code, m)
 	}
 }
@@ -180,7 +182,7 @@ func TestUnloadBrowserRoute(t *testing.T) {
 		method, path string
 		ok           bool
 	}{
-		{"POST", "/_localbase/models/" + ChatModel + "/unload", true}, {"GET", "/_localbase/models/" + ChatModel + "/unload", false},
+		{"POST", "/_localbase/models/" + gatewaytest.ChatModel + "/unload", true}, {"GET", "/_localbase/models/" + gatewaytest.ChatModel + "/unload", false},
 		{"POST", "/_localbase/models//unload", false}, {"POST", "/_localbase/models/a/b/unload", false},
 	} {
 		if got := allowedUIRoute(c.method, c.path); got != c.ok {
@@ -195,8 +197,8 @@ func TestUnloadBrowserRoute(t *testing.T) {
 		t.Errorf("forwarded query elsewhere %q", q)
 	}
 	ts := newTestServer(t)
-	post(t, ts, "/v1/chat/completions", ChatBody("hi"))
-	if code, m := (RunClient{T: t, Base: ts.URL}).Do("POST", "/app/api/_localbase/models/"+ChatModel+"/unload?wait=false", ""); code != 200 {
+	post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
+	if code, m := (gatewaytest.RunClient{T: t, Base: ts.URL}).Do("POST", "/app/api/_localbase/models/"+gatewaytest.ChatModel+"/unload?wait=false", ""); code != 200 {
 		t.Errorf("through /app/api: %d %v", code, m)
 	}
 }
@@ -204,7 +206,7 @@ func TestUnloadBrowserRoute(t *testing.T) {
 // Media runtimes unload the same way.
 func TestUnloadImageRuntime(t *testing.T) {
 	ts := newImageGateway(t, imageModel)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	if code, m := c.Do("POST", "/v1/images/generations", `{"prompt":"a lighthouse"}`); code != 200 {
 		t.Fatalf("image: %d %v", code, m)
 	}

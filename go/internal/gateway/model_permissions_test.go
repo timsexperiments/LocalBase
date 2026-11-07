@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // Each thing done to a model needs its own permission and no other (DESIGN §20.2, §23).
@@ -33,7 +35,7 @@ func TestModelRoutePermissions(t *testing.T) {
 		defer resp.Body.Close()
 		return resp.StatusCode
 	}
-	model := "/_localbase/models/" + ChatModel
+	model := "/_localbase/models/" + gatewaytest.ChatModel
 	for _, c := range []struct {
 		method, path, body string
 		manage, read       bool

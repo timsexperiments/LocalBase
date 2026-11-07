@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
@@ -22,9 +23,9 @@ func TestBatchOverflowIs400(t *testing.T) {
 			"The input is about 27,634 tokens, but this decision model accepts up to 8,192."},
 		{"embeddings", "/v1/embeddings", `{"model":"` + embeddingModel + `","input":"fake:batch"}`, "input",
 			"The input is about 27,634 tokens, but this embedding model accepts up to 8,192."},
-		{"chat", "/v1/chat/completions", `{"model":"` + ChatModel + `","messages":[{"role":"user","content":"fake:batch"}]}`, "messages",
+		{"chat", "/v1/chat/completions", `{"model":"` + gatewaytest.ChatModel + `","messages":[{"role":"user","content":"fake:batch"}]}`, "messages",
 			"The input is about 27,634 tokens, but this model accepts up to 8,192."},
-		{"chat stream", "/v1/chat/completions", `{"model":"` + ChatModel + `","stream":true,"messages":[{"role":"user","content":"fake:batch"}]}`, "messages",
+		{"chat stream", "/v1/chat/completions", `{"model":"` + gatewaytest.ChatModel + `","stream":true,"messages":[{"role":"user","content":"fake:batch"}]}`, "messages",
 			"The input is about 27,634 tokens, but this model accepts up to 8,192."},
 		{"decision, no numbers", "/v1/systemone", `{"model":"` + decisionModel + `","state":"fake:batch-plain",` + q + `}`, "state",
 			"The input is larger than this decision model accepts at once. Shorten it and try again."},
@@ -52,7 +53,7 @@ func TestEmptyMessagesIs400(t *testing.T) {
 	h := &steppedHost{}
 	h.avail.Store(50 * memory.GiB)
 	ts, _, _ := newTestGateway(t, h)
-	r := post(t, ts, "/v1/chat/completions", `{"model":"`+ChatModel+`","messages":[]}`)
+	r := post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[]}`)
 	var e struct {
 		Error struct {
 			Type, Code string

@@ -2,64 +2,34 @@ package gateway
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
-
-// SyncBuffer is a log sink safe for the gateway's goroutines.
-type SyncBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (s *SyncBuffer) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *SyncBuffer) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.String()
-}
-
-// WaitFor polls cond for up to d.
-func WaitFor(d time.Duration, cond func() bool) bool {
-	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if cond() {
-			return true
-		}
-	}
-	return cond()
-}
 
 // Today's contract, kept (DESIGN §21): a client that goes away mid-stream
 // cancels its /v1/chat/completions generation, upstream included.
 func TestChatDisconnectCancelsUpstream(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
-	logs := &SyncBuffer{}
-	Log = logs
+	logs := &gatewaytest.SyncBuffer{}
+	gatewaytest.Log = logs
 	ts := newTestServer(t)
-	Log = nil
+	gatewaytest.Log = nil
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, "POST", ts.URL+"/v1/chat/completions",
-		strings.NewReader(`{"model":"`+ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 200"}]}`))
+		strings.NewReader(`{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 200"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -72,10 +42,10 @@ func TestChatDisconnectCancelsUpstream(t *testing.T) {
 	cancel() // the browser tab goes away
 	resp.Body.Close()
 
-	if !WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Fatal("the backend kept generating after the client went away")
 	}
-	if !WaitFor(5*time.Second, func() bool {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool {
 		return strings.Contains(logs.String(), `"terminal_source":"request_aborted"`)
 	}) {
 		t.Errorf("no cancelled inference.completed in the log:\n%s", logs.String())
@@ -84,155 +54,7 @@ func TestChatDisconnectCancelsUpstream(t *testing.T) {
 
 // --- detached runs (DESIGN §21) -------------------------------------------------------
 
-// RunEvent is one event of a run's event stream: its id, its name and its data.
-type RunEvent struct {
-	ID         int
-	Name, Data string
-}
-
-// RunClient talks to one gateway as one caller (key "" under --no-auth).
-type RunClient struct {
-	T    *testing.T
-	Base string
-	Key  string
-}
-
-// Do sends a request as the caller, with the headers given as name, value pairs, and returns the
-// status and the JSON answer.
-func (c RunClient) Do(method, path, body string, hdr ...string) (int, map[string]any) {
-	c.T.Helper()
-	req, _ := http.NewRequest(method, c.Base+path, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	if c.Key != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Key)
-	}
-	for i := 0; i+1 < len(hdr); i += 2 {
-		req.Header.Set(hdr[i], hdr[i+1])
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		c.T.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var m map[string]any
-	json.NewDecoder(resp.Body).Decode(&m)
-	return resp.StatusCode, m
-}
-
-// ChatBody is a chat request for ChatModel with one user message, content.
-func ChatBody(content string) string {
-	return `{"model":"` + ChatModel + `","messages":[{"role":"user","content":"` + content + `"}]}`
-}
-
-// Start creates a chat run and returns its id.
-func (c RunClient) Start(content string) string {
-	c.T.Helper()
-	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", ChatBody(content))
-	if code != 202 || m["object"] != "localbase.run" {
-		c.T.Fatalf("create: %d %v", code, m)
-	}
-	return m["id"].(string)
-}
-
-// Get returns the run, failing the test unless it's found.
-func (c RunClient) Get(id string) map[string]any {
-	c.T.Helper()
-	code, m := c.Do("GET", "/_localbase/runs/"+id, "")
-	if code != 200 {
-		c.T.Fatalf("get %s: %d %v", id, code, m)
-	}
-	return m
-}
-
-// WaitStatus polls until the run reaches one of the statuses.
-func (c RunClient) WaitStatus(id string, statuses ...string) map[string]any {
-	c.T.Helper()
-	var m map[string]any
-	if !WaitFor(10*time.Second, func() bool {
-		m = c.Get(id)
-		for _, s := range statuses {
-			if m["status"] == s {
-				return true
-			}
-		}
-		// A run that has ended won't become what is wanted, and what it says is why.
-		switch m["status"] {
-		case "completed", "failed", "cancelled", "interrupted":
-			return true
-		}
-		return false
-	}) {
-		c.T.Fatalf("run %s: status %v, want %v", id, m["status"], statuses)
-	}
-	if !slices.Contains(statuses, fmt.Sprint(m["status"])) {
-		c.T.Fatalf("run %s ended %v, want %v: reason %v, error %v", id, m["status"], statuses, m["reason"], m["error"])
-	}
-	return m
-}
-
-// Content is the text of a run's output.
-func Content(m map[string]any) string {
-	out, _ := m["output"].(map[string]any)
-	s, _ := out["content"].(string)
-	return s
-}
-
-// Events reads a run's event stream until stop returns true or the stream
-// ends; it returns the events, comments seen, and the response headers.
-func (c RunClient) Events(id string, hdr []string, query string, stop func([]RunEvent) bool) ([]RunEvent, int, http.Header) {
-	c.T.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", c.Base+"/_localbase/runs/"+id+"/events"+query, nil)
-	if c.Key != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Key)
-	}
-	for i := 0; i+1 < len(hdr); i += 2 {
-		req.Header.Set(hdr[i], hdr[i+1])
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		c.T.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		c.T.Fatalf("events %s: %d", id, resp.StatusCode)
-	}
-	rd := bufio.NewReader(resp.Body)
-	var evs []RunEvent
-	comments := 0
-	cur := RunEvent{}
-	for {
-		line, err := rd.ReadString('\n')
-		if err != nil {
-			return evs, comments, resp.Header
-		}
-		line = strings.TrimRight(line, "\n")
-		switch {
-		case line == "":
-			if cur.Name != "" {
-				evs = append(evs, cur)
-				if stop != nil && stop(evs) {
-					return evs, comments, resp.Header
-				}
-			}
-			cur = RunEvent{}
-		case strings.HasPrefix(line, ":"):
-			comments++
-			if stop != nil && stop(nil) {
-				return evs, comments, resp.Header
-			}
-		case strings.HasPrefix(line, "id: "):
-			cur.ID, _ = strconv.Atoi(strings.TrimPrefix(line, "id: "))
-		case strings.HasPrefix(line, "event: "):
-			cur.Name = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			cur.Data = strings.TrimPrefix(line, "data: ")
-		}
-	}
-}
-
-func chunkText(evs []RunEvent) string {
+func chunkText(evs []gatewaytest.RunEvent) string {
 	var b strings.Builder
 	for _, e := range evs {
 		if e.Name != "chunk" {
@@ -251,7 +73,7 @@ func chunkText(evs []RunEvent) string {
 	return b.String()
 }
 
-func countChunks(evs []RunEvent) int {
+func countChunks(evs []gatewaytest.RunEvent) int {
 	n := 0
 	for _, e := range evs {
 		if e.Name == "chunk" {
@@ -259,15 +81,6 @@ func countChunks(evs []RunEvent) int {
 		}
 	}
 	return n
-}
-
-// Words is what the fake backend streams for "fake:slow n" and "fake:burst n": "w1 w2 ... wn ".
-func Words(n int) string {
-	var b strings.Builder
-	for i := range n {
-		fmt.Fprintf(&b, "w%d ", i+1)
-	}
-	return b.String()
 }
 
 func runServer(ts *httptest.Server) *Server { return ts.Config.Handler.(*Server) }
@@ -278,15 +91,15 @@ func TestRunSurvivesDisconnect(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
 	ts, llm, _ := newTestGateway(t, host{})
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 30")
-	evs, _, _ := c.Events(id, nil, "", func(e []RunEvent) bool { return countChunks(e) >= 2 }) // then the tab goes away
+	evs, _, _ := c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return countChunks(e) >= 2 }) // then the tab goes away
 	if countChunks(evs) < 2 {
 		t.Fatalf("events: %v", evs)
 	}
 	m := c.WaitStatus(id, "completed")
-	if Content(m) != Words(30) {
-		t.Errorf("output %q", Content(m))
+	if gatewaytest.Content(m) != gatewaytest.Words(30) {
+		t.Errorf("output %q", gatewaytest.Content(m))
 	}
 	if b, _ := os.ReadFile(cancelLog); len(b) > 0 {
 		t.Errorf("the backend saw a cancel: %s", b)
@@ -294,7 +107,7 @@ func TestRunSurvivesDisconnect(t *testing.T) {
 	if snap := llm.Snapshot(); snap.Active != 0 || snap.Waiting != 0 {
 		t.Errorf("a finished run still holds the model: %+v", snap)
 	}
-	if id, _, _ := llm.Running(); id != ChatModel {
+	if id, _, _ := llm.Running(); id != gatewaytest.ChatModel {
 		t.Errorf("the model was unloaded: %q", id)
 	}
 	if m["requestId"] == "" || m["resumable"] != false {
@@ -305,9 +118,9 @@ func TestRunSurvivesDisconnect(t *testing.T) {
 // A returning page replays exactly what it missed, then follows live.
 func TestRunEventsResume(t *testing.T) {
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 20")
-	first, _, _ := c.Events(id, nil, "", func(e []RunEvent) bool { return countChunks(e) >= 5 })
+	first, _, _ := c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return countChunks(e) >= 5 })
 	last := first[len(first)-1].ID
 	rest, _, _ := c.Events(id, []string{"Last-Event-ID", strconv.Itoa(last)}, "", nil)
 	for i, e := range rest {
@@ -318,12 +131,12 @@ func TestRunEventsResume(t *testing.T) {
 	if rest[len(rest)-1].Name != "end" {
 		t.Errorf("no end event: %v", rest)
 	}
-	if got := chunkText(first) + chunkText(rest); got != Words(20) {
+	if got := chunkText(first) + chunkText(rest); got != gatewaytest.Words(20) {
 		t.Errorf("first+rest = %q", got)
 	}
 	// ?after= replays the same way; after=0 is everything.
 	all, _, _ := c.Events(id, nil, "?after=0", nil)
-	if len(all) != last+len(rest) || all[0].ID != 1 || chunkText(all) != Words(20) {
+	if len(all) != last+len(rest) || all[0].ID != 1 || chunkText(all) != gatewaytest.Words(20) {
 		t.Errorf("after=0: %d events, %q", len(all), chunkText(all))
 	}
 	tail, _, _ := c.Events(id, nil, "?after="+strconv.Itoa(last), nil)
@@ -338,16 +151,16 @@ func TestRunCancel(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
 	ts, llm, _ := newTestGateway(t, host{})
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 200")
-	c.Events(id, nil, "", func(e []RunEvent) bool { return countChunks(e) >= 3 })
+	c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return countChunks(e) >= 3 })
 
 	queued := c.Start("fake:slow 5")
 	if m := c.Get(queued); m["status"] != "queued" || m["startedAt"] != nil {
 		t.Errorf("second run: %v", m)
 	}
 	// A run reports queued just before it joins the queue, so wait for the count.
-	if !WaitFor(5*time.Second, func() bool { snap := llm.Snapshot(); return snap.Active == 1 && snap.Waiting == 1 }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { snap := llm.Snapshot(); return snap.Active == 1 && snap.Waiting == 1 }) {
 		t.Errorf("snapshot with one running and one queued: %+v", llm.Snapshot())
 	}
 	began := time.Now()
@@ -357,10 +170,10 @@ func TestRunCancel(t *testing.T) {
 	}
 
 	code, m = c.Do("POST", "/_localbase/runs/"+id+"/cancel", "")
-	if code != 200 || m["status"] != "cancelled" || m["reason"] != "stopped" || !strings.HasPrefix(Content(m), "w1 w2 w3 ") {
+	if code != 200 || m["status"] != "cancelled" || m["reason"] != "stopped" || !strings.HasPrefix(gatewaytest.Content(m), "w1 w2 w3 ") {
 		t.Fatalf("stop: %d %v", code, m)
 	}
-	if !WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Error("the backend kept generating after Stop")
 	}
 	if c.Get(id)["status"] != "cancelled" {
@@ -398,7 +211,7 @@ func authGateway(t *testing.T) (*httptest.Server, string, string, string) {
 // Runs are owner-bound: another principal sees no run at all.
 func TestRunOwnership(t *testing.T) {
 	ts, ka, kb, knone := authGateway(t)
-	a, b := RunClient{T: t, Base: ts.URL, Key: ka}, RunClient{T: t, Base: ts.URL, Key: kb}
+	a, b := gatewaytest.RunClient{T: t, Base: ts.URL, Key: ka}, gatewaytest.RunClient{T: t, Base: ts.URL, Key: kb}
 	id := a.Start("fake:slow 40")
 	for _, req := range [][2]string{{"GET", ""}, {"GET", "/events"}, {"POST", "/cancel"}, {"DELETE", ""}} {
 		if code, m := b.Do(req[0], "/_localbase/runs/"+id+req[1], ""); code != 404 || m["error"].(map[string]any)["code"] != "run_not_found" {
@@ -411,11 +224,11 @@ func TestRunOwnership(t *testing.T) {
 	if _, m := a.Do("GET", "/_localbase/runs", ""); len(m["data"].([]any)) != 1 {
 		t.Errorf("owner's list: %v", m)
 	}
-	if code, _ := (RunClient{T: t, Base: ts.URL}).Do("GET", "/_localbase/runs/"+id, ""); code != 401 {
+	if code, _ := (gatewaytest.RunClient{T: t, Base: ts.URL}).Do("GET", "/_localbase/runs/"+id, ""); code != 401 {
 		t.Errorf("no credentials: %d", code)
 	}
 	// Creating needs the target's scope, answered synchronously as /v1 does.
-	if code, m := (RunClient{T: t, Base: ts.URL, Key: knone}).Do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("hi")); code != 403 {
+	if code, m := (gatewaytest.RunClient{T: t, Base: ts.URL, Key: knone}).Do("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi")); code != 403 {
 		t.Errorf("no inference:chat: %d %v", code, m)
 	}
 	if a.WaitStatus(id, "completed")["status"] != "completed" {
@@ -427,7 +240,7 @@ func TestRunOwnership(t *testing.T) {
 // run exists.
 func TestRunValidationSynchronous(t *testing.T) {
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	for body, want := range map[string]int{`{"messages":[]}`: 400, `{"model":"nope","messages":[{"role":"user","content":"x"}]}`: 404, `not json`: 400} {
 		v1 := post(t, ts, "/v1/chat/completions", body)
 		code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", body)
@@ -448,9 +261,9 @@ func TestRunValidationSynchronous(t *testing.T) {
 func TestRunRestartInterrupted(t *testing.T) {
 	ts := newTestServer(t)
 	a := runServer(ts)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 200")
-	c.Events(id, nil, "", func(e []RunEvent) bool { return countChunks(e) >= 25 }) // > 1 s: a checkpoint holds output
+	c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return countChunks(e) >= 25 }) // > 1 s: a checkpoint holds output
 
 	// A crash: a new gateway starts on the root while the old record says
 	// in_progress.
@@ -458,10 +271,10 @@ func TestRunRestartInterrupted(t *testing.T) {
 		Root: a.Root, Memory: a.Memory})
 	tb := httptest.NewServer(b)
 	defer tb.Close()
-	cb := RunClient{T: t, Base: tb.URL}
+	cb := gatewaytest.RunClient{T: t, Base: tb.URL}
 	m := cb.Get(id)
 	cont, _ := m["continuation"].(map[string]any)
-	if m["status"] != "interrupted" || m["reason"] != "gateway_restart" || !strings.HasPrefix(Content(m), "w1 w2 w3 ") ||
+	if m["status"] != "interrupted" || m["reason"] != "gateway_restart" || !strings.HasPrefix(gatewaytest.Content(m), "w1 w2 w3 ") ||
 		m["resumable"] != false || cont["by"] != "client" {
 		t.Fatalf("after a crash: %v", m)
 	}
@@ -489,10 +302,10 @@ func TestRunRestartInterrupted(t *testing.T) {
 	// A graceful stop interrupts the live run.
 	a.StopRuns(5 * time.Second)
 	m = c.Get(id)
-	if m["status"] != "interrupted" || m["reason"] != "gateway_restart" || Content(m) == "" {
+	if m["status"] != "interrupted" || m["reason"] != "gateway_restart" || gatewaytest.Content(m) == "" {
 		t.Errorf("after a graceful stop: %v", m)
 	}
-	if code, _ := c.Do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("hi")); code != 503 {
+	if code, _ := c.Do("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi")); code != 503 {
 		t.Errorf("create while stopping: %d", code)
 	}
 	b.StopRuns(time.Second)
@@ -500,11 +313,11 @@ func TestRunRestartInterrupted(t *testing.T) {
 
 // A finished run is deleted with its checkpoint after its retention.
 func TestRunExpiry(t *testing.T) {
-	logs := &SyncBuffer{}
-	Log = logs
+	logs := &gatewaytest.SyncBuffer{}
+	gatewaytest.Log = logs
 	ts, mgr := newRunHarness(t)
-	Log = nil
-	c := RunClient{T: t, Base: ts.URL}
+	gatewaytest.Log = nil
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:reply done")
 	c.WaitStatus(id, "completed")
 	dir := mgr.dir
@@ -540,12 +353,12 @@ func TestRunLimits(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	var ids []string
 	for range ActivePerOwner {
 		ids = append(ids, c.Start("fake:slow 200"))
 	}
-	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", ChatBody("hi"))
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if code != 429 || m["error"].(map[string]any)["code"] != "too_many_runs" {
 		t.Errorf("over the active cap: %d %v", code, m)
 	}
@@ -556,10 +369,10 @@ func TestRunLimits(t *testing.T) {
 	mgr.maxOutput = 2000
 	id := c.Start("fake:slow 200")
 	m = c.WaitStatus(id, "failed")
-	if m["reason"] != "output_limit" || Content(m) == "" {
+	if m["reason"] != "output_limit" || gatewaytest.Content(m) == "" {
 		t.Errorf("over the output cap: %v", m)
 	}
-	if !WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
+	if !gatewaytest.WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Error("the backend kept generating past the output cap")
 	}
 }
@@ -567,13 +380,13 @@ func TestRunLimits(t *testing.T) {
 // A critical-memory stop mid-run is reported as such.
 func TestRunMemoryPressure(t *testing.T) {
 	ts, llm, critical := emergencyGateway(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 200")
 	waitRunning(t, llm)
-	c.Events(id, nil, "", func(e []RunEvent) bool { return countChunks(e) >= 3 })
+	c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return countChunks(e) >= 3 })
 	critical()
 	m := c.WaitStatus(id, "interrupted", "failed", "completed")
-	if m["status"] != "interrupted" || m["reason"] != "memory_pressure" || Content(m) == "" {
+	if m["status"] != "interrupted" || m["reason"] != "memory_pressure" || gatewaytest.Content(m) == "" {
 		t.Errorf("after a memory emergency: %v", m)
 	}
 }
@@ -584,9 +397,9 @@ func TestRunKeepAlive(t *testing.T) {
 	t.Setenv("FAKE_DELAY_MS", "1500") // nothing to say for 1.5 s
 	ts, mgr := newRunHarness(t)
 	mgr.ping = 100 * time.Millisecond
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:reply quiet")
-	_, comments, h := c.Events(id, nil, "", func(e []RunEvent) bool { return e == nil && false })
+	_, comments, h := c.Events(id, nil, "", func(e []gatewaytest.RunEvent) bool { return e == nil && false })
 	if comments < 5 {
 		t.Errorf("%d keep-alive comments over a quiet 1.5 s", comments)
 	}
@@ -597,15 +410,15 @@ func TestRunKeepAlive(t *testing.T) {
 
 // Lifecycle events carry ids, never content.
 func TestRunLogs(t *testing.T) {
-	logs := &SyncBuffer{}
-	Log = logs
+	logs := &gatewaytest.SyncBuffer{}
+	gatewaytest.Log = logs
 	ts := newTestServer(t)
-	Log = nil
-	c := RunClient{T: t, Base: ts.URL}
+	gatewaytest.Log = nil
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:reply secretOutputText42")
 	m := c.WaitStatus(id, "completed")
-	if Content(m) != "secretOutputText42 " {
-		t.Fatalf("output %q", Content(m))
+	if gatewaytest.Content(m) != "secretOutputText42 " {
+		t.Fatalf("output %q", gatewaytest.Content(m))
 	}
 	c.Do("DELETE", "/_localbase/runs/"+id, "")
 	out := logs.String()
@@ -644,8 +457,8 @@ func TestRunBrowserRoutes(t *testing.T) {
 		}
 	}
 	ts := newTestServer(t)
-	c := RunClient{T: t, Base: ts.URL}
-	code, m := c.Do("POST", "/app/api/_localbase/runs/v1/chat/completions", ChatBody("fake:slow 5"))
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	code, m := c.Do("POST", "/app/api/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:slow 5"))
 	if code != 202 {
 		t.Fatalf("create through /app/api: %d %v", code, m)
 	}

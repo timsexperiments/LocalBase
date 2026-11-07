@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 )
 
@@ -56,24 +56,8 @@ func FuzzValidateSpeech(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) { validateSpeech(data) })
 }
 
-// MultipartSeeds are the forms FuzzMultipart and FuzzRequestModel start from.
-func MultipartSeeds(f *testing.F) {
-	const b = "BOUNDARY"
-	part := func(name, filename, body string) string {
-		if filename != "" {
-			return fmt.Sprintf("--%s\r\nContent-Disposition: form-data; name=%q; filename=%q\r\n\r\n%s\r\n", b, name, filename, body)
-		}
-		return fmt.Sprintf("--%s\r\nContent-Disposition: form-data; name=%q\r\n\r\n%s\r\n", b, name, body)
-	}
-	f.Add(b, []byte{})
-	f.Add(b, []byte(part("model", "", "m")+part("file", "a.wav", "x")+"--"+b+"--\r\n"))
-	f.Add(b, []byte(part("image[]", "a.png", "x")+part("image[]", "", "y")))
-	f.Add("", []byte("--\r\n"))
-	f.Add(`a"b`, []byte("--a\"b\r\n\r\n"))
-}
-
 func FuzzMultipart(f *testing.F) {
-	MultipartSeeds(f)
+	gatewaytest.MultipartSeeds(f)
 	f.Fuzz(func(t *testing.T, boundary string, body []byte) {
 		ctype := "multipart/form-data; boundary=" + boundary
 		r := httptest.NewRequest("POST", "/", bytes.NewReader(body))
@@ -83,7 +67,7 @@ func FuzzMultipart(f *testing.F) {
 }
 
 func FuzzRequestModel(f *testing.F) {
-	MultipartSeeds(f)
+	gatewaytest.MultipartSeeds(f)
 	f.Fuzz(func(t *testing.T, boundary string, body []byte) {
 		_ = requestModel("multipart/form-data; boundary="+boundary, body)
 	})

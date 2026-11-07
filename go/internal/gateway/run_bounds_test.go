@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
@@ -17,7 +18,7 @@ import (
 // waited forever for an end that never came.
 func TestADeleteOfARunRefusedBeforeTheQueueReturns(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	type answer struct {
 		code int
 		err  error
@@ -42,7 +43,7 @@ func TestADeleteOfARunRefusedBeforeTheQueueReturns(t *testing.T) {
 			deleted <- answer{resp.StatusCode, nil}
 		}()
 		// The DELETE has found the run and stopped it, and now waits for it to end.
-		WaitFor(5*time.Second, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.stopStatus != "" })
+		gatewaytest.WaitFor(5*time.Second, func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.stopStatus != "" })
 	}
 	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", `{"model":"nope","messages":[{"role":"user","content":"x"}]}`)
 	if code != 404 || m["error"] == nil {
@@ -78,7 +79,7 @@ func (t *readTracker) Read(p []byte) (int, error) {
 // is read whole (up to MaxBody) before the route sees it; a refusal drains only a bounded part.
 func TestTheActiveRunLimitComesBeforeTheBody(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	var ids []string
 	for range ActivePerOwner {
 		ids = append(ids, c.Start("fake:slow 200"))
@@ -115,12 +116,12 @@ func (zeros) Read(p []byte) (int, error) {
 // that fits still runs, and the body is given back when its request ends.
 func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 	ts, mgr := newRunHarness(t)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	mgr.maxHeldTotal = 8000
 
-	big := ChatBody(Words(2000))
+	big := gatewaytest.ChatBody(gatewaytest.Words(2000))
 	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", big)
-	if code != 202 || m["status"] != "failed" || m["reason"] != "memory_limit" || Content(m) != "" {
+	if code != 202 || m["status"] != "failed" || m["reason"] != "memory_limit" || gatewaytest.Content(m) != "" {
 		t.Fatalf("a body over the limit: %d %v", code, m)
 	}
 	e, _ := m["error"].(map[string]any)
@@ -135,7 +136,7 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 		t.Errorf("holding %d after a body that was never kept", got)
 	}
 
-	small := ChatBody("fake:slow 3")
+	small := gatewaytest.ChatBody("fake:slow 3")
 	var atPublish int64
 	mgr.afterPublish = func() { atPublish = mgr.held.Load() }
 	code, m = c.Do("POST", "/_localbase/runs/v1/chat/completions", small)
@@ -146,8 +147,8 @@ func TestARunsBodyCountsTowardsTheRunsMemory(t *testing.T) {
 	if atPublish < int64(len(small)) {
 		t.Errorf("holding %d while the request holds a body of %d", atPublish, len(small))
 	}
-	if m = c.WaitStatus(id, "completed"); Content(m) != Words(3) {
-		t.Errorf("output %q", Content(m))
+	if m = c.WaitStatus(id, "completed"); gatewaytest.Content(m) != gatewaytest.Words(3) {
+		t.Errorf("output %q", gatewaytest.Content(m))
 	}
 	mgr.mu.Lock()
 	r := mgr.runs[id]
@@ -180,7 +181,7 @@ func TestADeleteOfARunThatWontStopIsBounded(t *testing.T) {
 	m := mgr
 	m.stopWait = 50 * time.Millisecond
 	r := stuckRun(m)
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	started := time.Now()
 	if code, body := c.Do("DELETE", "/_localbase/runs/"+r.ID, ""); code != 200 || body["deleted"] != true {
 		t.Fatalf("the DELETE: %d %v", code, body)

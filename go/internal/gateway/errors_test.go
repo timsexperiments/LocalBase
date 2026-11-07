@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -126,14 +127,14 @@ func (smallHost) Snapshot(context.Context) memory.Snapshot {
 // Through a real gateway and the real admission path, and through a detached run.
 func TestModelTooLargeEndToEnd(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, smallHost{})
-	r := post(t, ts, "/v1/chat/completions", ChatBody("hi"))
+	r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if r.status != 422 || r.code() != "model_too_large" || r.header.Get("Retry-After") != "" {
 		t.Errorf("/v1: %d %q %s", r.status, r.header.Get("Retry-After"), r.body)
 	}
 	if id, _, _ := llm.Running(); id != "" {
 		t.Errorf("%s started", id)
 	}
-	c := RunClient{T: t, Base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	m := c.WaitStatus(c.Start("hi"), "failed")
 	if e, _ := m["error"].(map[string]any); e["code"] != "model_too_large" {
 		t.Errorf("run: %v", m)
@@ -154,12 +155,12 @@ func (h reserveHost) Snapshot(context.Context) memory.Snapshot {
 // free; memory that is only low right now is a 503 with Retry-After.
 func TestReserveRefusalsAreDistinct(t *testing.T) {
 	ts, _, _ := newTestGateway(t, reserveHost{8 * memory.GiB, 7 * memory.GiB})
-	r := post(t, ts, "/v1/chat/completions", ChatBody("hi"))
+	r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if r.status != 422 || r.code() != "model_too_large" || r.header.Get("Retry-After") != "" || !strings.Contains(r.body, "after the safety reserve") {
 		t.Errorf("impossible: %d %q Retry-After=%q %s", r.status, r.code(), r.header.Get("Retry-After"), r.body)
 	}
 	ts, _, _ = newTestGateway(t, reserveHost{64 * memory.GiB, 10 * memory.GiB})
-	r = post(t, ts, "/v1/chat/completions", ChatBody("hi"))
+	r = post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if r.status != 503 || r.code() != "insufficient_memory" || r.header.Get("Retry-After") == "" {
 		t.Errorf("low right now: %d %q Retry-After=%q %s", r.status, r.code(), r.header.Get("Retry-After"), r.body)
 	}
