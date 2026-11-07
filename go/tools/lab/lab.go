@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -253,18 +254,27 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 		o.Parallel = "1"
 	}
 	g := &Gateway{W: w, Opts: o, waitDone: make(chan struct{})}
-	g.Dir = filepath.Join(w.Dir, o.Name)
-	if o.Dir != "" {
+	switch {
+	case o.Dir != "":
 		if err := refuseLive(o.Dir); err != nil {
 			return nil, err
 		}
 		g.Dir = o.Dir
+	case o.Reuse != nil:
+		g.Dir = filepath.Join(w.Dir, o.Name) // replaced by Reuse's own below
+	default:
+		dir, err := newDir(w.Dir, o.Name)
+		if err != nil {
+			return nil, err
+		}
+		g.Dir = dir
 	}
 	g.Root = filepath.Join(g.Dir, "root")
 	g.Fake = &FakeHost{Path: filepath.Join(g.Dir, "host.json"), Spec: o.Host}
 	g.LogPath = filepath.Join(g.Dir, "serve.log")
 	if o.Reuse != nil && o.SamePorts {
 		g.ports = o.Reuse.ports
+		w.ports.reclaim(g.portList())
 	} else {
 		ports, err := w.ports.take(7)
 		if err != nil {
@@ -272,6 +282,11 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 		}
 		g.ports = map[string]int{"gateway": ports[0], "debug": ports[1], "llm": ports[2], "stt": ports[3], "tts": ports[4], "image": ports[5], "video": ports[6]}
 	}
+	defer func() {
+		if g.Cmd == nil { // it never started, so nothing will give them back when it ends
+			w.ports.release(g.portList())
+		}
+	}()
 	var err error
 	if o.Reuse != nil {
 		g.Dir, g.Root, g.Keys, g.Fake, g.LogPath = o.Reuse.Dir, o.Reuse.Root, o.Reuse.Keys, o.Reuse.Fake, o.Reuse.LogPath
@@ -301,6 +316,26 @@ func (w *Workspace) Start(ctx context.Context, o Options) (*Gateway, error) {
 		return g, nil
 	}
 	return g, g.chooseBackends(ctx)
+}
+
+// newDir makes the directory of a new gateway named name: <name>, or <name>-2, <name>-3 and so on
+// when a gateway of that name already ran in this workspace. A test run twice in one process (go test
+// -count=2) uses its name twice, and the first run may have left a damaged database behind.
+func newDir(parent, name string) (string, error) {
+	for i := 1; i <= 1000; i++ {
+		dir := filepath.Join(parent, name)
+		if i > 1 {
+			dir += "-" + strconv.Itoa(i)
+		}
+		err := os.Mkdir(dir, 0o700)
+		if err == nil {
+			return dir, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("a gateway named %s has run 1000 times in this workspace", name)
 }
 
 // chooseBackends gives each model that automatic selection left without a backend
@@ -416,6 +451,7 @@ func (g *Gateway) launch(ctx context.Context) error {
 	watchOwner(cmd.Process.Pid, g.W.Bin)
 	go func() {
 		g.waitErr = cmd.Wait()
+		g.W.ports.release(g.portList()) // before Done, so a restart on the same ports finds them back
 		close(g.waitDone)
 	}()
 	if err := g.WaitHealthy(ctx, 60*time.Second); err != nil {
@@ -423,6 +459,15 @@ func (g *Gateway) launch(ctx context.Context) error {
 	}
 	g.Startup = time.Since(began)
 	return nil
+}
+
+// portList is the gateway's ports.
+func (g *Gateway) portList() []int {
+	out := make([]int, 0, len(g.ports))
+	for _, p := range g.ports {
+		out = append(out, p)
+	}
+	return out
 }
 
 // runtimeDir holds this gateway's coordination files, so nothing lands outside
