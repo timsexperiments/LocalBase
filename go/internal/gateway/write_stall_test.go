@@ -14,13 +14,14 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 )
 
 func rawChatRequest(t *testing.T, g *limitsGateway, stream bool, content string) string {
 	t.Helper()
-	body, err := json.Marshal(map[string]any{"model": chatModel, "stream": stream,
+	body, err := json.Marshal(map[string]any{"model": gatewaytest.ChatModel, "stream": stream,
 		"messages": []map[string]string{{"role": "user", "content": content}}})
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +41,7 @@ func TestAClientThatStopsReadingLetsGo(t *testing.T) {
 		"plain":     {false, "fake:reply " + strings.Repeat("x", 20<<20)},
 	} {
 		t.Run(name, func(t *testing.T) {
-			logs := &syncBuffer{}
+			logs := &gatewaytest.SyncBuffer{}
 			g := newLimitsGateway(t, httpx.Limits{WriteStall: 300 * time.Millisecond}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 			u, _ := url.Parse(g.ts.URL)
 			conn, err := net.Dial("tcp", u.Host)
@@ -75,7 +76,7 @@ func TestAClientThatStopsReadingLetsGo(t *testing.T) {
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
-			req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", strings.NewReader(`{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`))
+			req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", strings.NewReader(`{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"hi"}]}`))
 			req.Header.Set("Authorization", "Bearer "+g.key)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -106,7 +107,7 @@ func TestAnAnswerCutShortCountsAsCancelled(t *testing.T) {
 			s := runServer(ts)
 			s.Limits.WriteStall = 300 * time.Millisecond
 			id, key := oaKey(t, s, "k", auth.DefaultKeyScopes...)
-			body, err := json.Marshal(map[string]any{"model": chatModel, "stream": c.stream,
+			body, err := json.Marshal(map[string]any{"model": gatewaytest.ChatModel, "stream": c.stream,
 				"messages": []map[string]string{{"role": "user", "content": c.content}}})
 			if err != nil {
 				t.Fatal(err)
@@ -123,7 +124,7 @@ func TestAnAnswerCutShortCountsAsCancelled(t *testing.T) {
 			fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
 				u.Host, key, len(body), body)
 			var got usage.Stats
-			if !waitFor(60*time.Second, func() bool { got = usageOf(t, s, id).Totals; return got.Requests >= 1 }) {
+			if !gatewaytest.WaitFor(60*time.Second, func() bool { got = usageOf(t, s, id).Totals; return got.Requests >= 1 }) {
 				t.Fatalf("never counted: %+v", got)
 			}
 			if got.Requests != 1 || got.Cancelled != 1 || got.Failed != 0 || got.Refused != 0 || got.ErrorRate != 0 {
@@ -167,7 +168,7 @@ func TestAVideoStartThatFailsToSendCountsNothing(t *testing.T) {
 // can take longer than the limit between words and over the whole answer.
 func TestAQuietStreamIsNotAStalledOne(t *testing.T) {
 	g := newLimitsGateway(t, httpx.Limits{WriteStall: time.Second}, nil)
-	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", strings.NewReader(`{"model":"`+chatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 40"}]}`))
+	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", strings.NewReader(`{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:slow 40"}]}`))
 	req.Header.Set("Authorization", "Bearer "+g.key)
 	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)

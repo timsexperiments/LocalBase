@@ -136,6 +136,9 @@ linters:
       - path: ^internal/gateway/chat\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
+      - path: ^internal/gateway/gatewaytest/runs\.go$
+        linters: [errcheck]
+        text: "json\\.Decoder\\)\\.Decode"
       - path: ^internal/gateway/httpx/errors\.go$
         linters: [errcheck]
         text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"

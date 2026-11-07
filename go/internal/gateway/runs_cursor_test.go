@@ -3,6 +3,8 @@ package gateway
 import (
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // A bad cursor is the caller's mistake, answered before the stream starts. It
@@ -10,8 +12,8 @@ import (
 // the panic, the lock stayed taken, and the run and the sweep behind it hung.
 func TestRunEventsBadCursor(t *testing.T) {
 	ts := newTestServer(t)
-	c := runClient{t: t, base: ts.URL}
-	id := c.start("fake:slow 3")
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	id := c.Start("fake:slow 3")
 	for _, tc := range []struct{ name, query, header string }{
 		{"negative after", "?after=-1", ""},
 		{"negative header", "", "-1"},
@@ -24,18 +26,18 @@ func TestRunEventsBadCursor(t *testing.T) {
 			if tc.header != "" {
 				hdr = []string{"Last-Event-ID", tc.header}
 			}
-			if code, m := c.do("GET", "/_localbase/runs/"+id+"/events"+tc.query, "", hdr...); code != 400 {
+			if code, m := c.Do("GET", "/_localbase/runs/"+id+"/events"+tc.query, "", hdr...); code != 400 {
 				t.Errorf("status %d: %v", code, m)
 			}
 		})
 	}
 	// The run was not harmed: its lock is free and it finishes.
 	done := make(chan map[string]any, 1)
-	go func() { done <- c.waitStatus(id, "completed") }()
+	go func() { done <- c.WaitStatus(id, "completed") }()
 	select {
 	case m := <-done:
-		if content(m) != words(3) {
-			t.Errorf("output %q", content(m))
+		if gatewaytest.Content(m) != gatewaytest.Words(3) {
+			t.Errorf("output %q", gatewaytest.Content(m))
 		}
 	case <-time.After(20 * time.Second):
 		t.Fatal("the run hung after a bad cursor")

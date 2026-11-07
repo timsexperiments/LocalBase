@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -92,7 +93,7 @@ func TestAFailedPeakReadDoesNotTakeAwayTheClientsList(t *testing.T) {
 	if missingMemory == 0 {
 		t.Error("a figure without what was seen was given as if it were whole")
 	}
-	if code, header, body := c.get("/v1/models/" + chatModel); code != 200 || header.Get("X-Localbase-Warning") != store.ReadPeaks {
+	if code, header, body := c.get("/v1/models/" + gatewaytest.ChatModel); code != 200 || header.Get("X-Localbase-Warning") != store.ReadPeaks {
 		t.Errorf("one model: %d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
 	}
 }
@@ -134,7 +135,7 @@ func TestOurModelRoutesSayTheyAreDegraded(t *testing.T) {
 			t.Errorf("figures that didn't need it are gone: %v", memory)
 		}
 	}
-	code, _, body := c.get("/_localbase/models/" + chatModel)
+	code, _, body := c.get("/_localbase/models/" + gatewaytest.ChatModel)
 	if code != 200 {
 		t.Fatalf("one: %d %.200s", code, body)
 	}
@@ -155,7 +156,7 @@ func TestOurModelRoutesSayTheyAreDegraded(t *testing.T) {
 	}
 	found := false
 	for _, m := range list.Data {
-		if m["id"] == chatModel {
+		if m["id"] == gatewaytest.ChatModel {
 			check(body, m)
 			found = true
 		}
@@ -175,11 +176,11 @@ func TestAFailedCapabilityReadWarnsAndKeepsTheList(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, header, body := c.get("/v1/models")
-	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadCapabilities || !strings.Contains(body, chatModel) {
+	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadCapabilities || !strings.Contains(body, gatewaytest.ChatModel) {
 		t.Errorf("%d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
 	}
-	code, _, body = c.get("/_localbase/models/" + chatModel)
-	if code != 200 || !strings.Contains(body, `"degraded":true`) || !strings.Contains(body, "reading what the runtime reported for "+chatModel) {
+	code, _, body = c.get("/_localbase/models/" + gatewaytest.ChatModel)
+	if code != 200 || !strings.Contains(body, `"degraded":true`) || !strings.Contains(body, "reading what the runtime reported for "+gatewaytest.ChatModel) {
 		t.Errorf("%d %.300s", code, body)
 	}
 }
@@ -203,7 +204,7 @@ func TestAFailedLibraryReadIsNotNoImportedModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, header, body := c.get("/v1/models")
-	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadLibrary || !strings.Contains(body, chatModel) {
+	if code != 200 || header.Get("X-Localbase-Warning") != store.ReadLibrary || !strings.Contains(body, gatewaytest.ChatModel) {
 		t.Errorf("%d %q %.200s", code, header.Get("X-Localbase-Warning"), body)
 	}
 	if !strings.Contains(logs.String(), "reading the imported models") {
@@ -242,7 +243,7 @@ func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
 	}
 	_, _, before := c.get("/_localbase/models?fit=fits,tight,wont-fit")
 	was, _, degraded := ids(before)
-	if degraded || !slices.Contains(was, chatModel) {
+	if degraded || !slices.Contains(was, gatewaytest.ChatModel) {
 		t.Fatalf("before: %v %v", was, degraded)
 	}
 	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
@@ -253,7 +254,7 @@ func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
 	if code != 200 || !degraded || header.Get("X-Localbase-Warning") != store.ReadPeaks {
 		t.Errorf("%d %v %q", code, degraded, header.Get("X-Localbase-Warning"))
 	}
-	if slices.Contains(data, chatModel) || !slices.Contains(unknown, chatModel) {
+	if slices.Contains(data, gatewaytest.ChatModel) || !slices.Contains(unknown, gatewaytest.ChatModel) {
 		t.Errorf("the model is in neither place properly: data %v, unknown %v", data, unknown)
 	}
 	for _, id := range was {
@@ -263,7 +264,7 @@ func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
 	}
 	// The other filters still apply to it.
 	_, _, body = c.get("/_localbase/models?fit=fits&kind=stt")
-	if _, unknown, _ := ids(body); slices.Contains(unknown, chatModel) {
+	if _, unknown, _ := ids(body); slices.Contains(unknown, gatewaytest.ChatModel) {
 		t.Errorf("listed despite another filter: %v", unknown)
 	}
 }

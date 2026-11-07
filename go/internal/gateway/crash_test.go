@@ -17,6 +17,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -39,17 +40,17 @@ func TestLLMCrashAnswers503(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
 	gone := func() bool { running, _, _ := llm.Running(); return running == "" }
 	for _, c := range []struct{ name, path, body string }{
-		{"chat before answering", "/v1/chat/completions", chatBody("fake:die")},
-		{"chat partway through its answer", "/v1/chat/completions", chatBody("fake:die-body")},
+		{"chat before answering", "/v1/chat/completions", gatewaytest.ChatBody("fake:die")},
+		{"chat partway through its answer", "/v1/chat/completions", gatewaytest.ChatBody("fake:die-body")},
 		{"embeddings", "/v1/embeddings", `{"model":"` + embeddingModel + `","input":"fake:die"}`},
 		{"decision", "/v1/systemone", `{"model":"` + decisionModel + `","state":"fake:die","questions":{"q":{"type":"choice","criteria":{"a":"x","b":"y"}}}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			wantCrashAnswer(t, post(t, ts, c.path, c.body))
-			if !waitFor(5*time.Second, gone) {
+			if !gatewaytest.WaitFor(5*time.Second, gone) {
 				t.Fatal("the crashed backend was never cleared")
 			}
-			if r := post(t, ts, "/v1/chat/completions", chatBody("hi")); r.status != 200 {
+			if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 				t.Errorf("the next request: %d %s", r.status, r.body)
 			}
 		})
@@ -60,7 +61,7 @@ func TestImageCrashAnswers503(t *testing.T) {
 	ts := newImageGateway(t, imageModel)
 	for _, prompt := range []string{"fake:die", "fake:die-body"} {
 		wantCrashAnswer(t, post(t, ts, "/v1/images/generations", `{"prompt":"`+prompt+`"}`))
-		if !waitFor(5*time.Second, func() bool { return post(t, ts, "/v1/images/generations", `{"prompt":"a boat"}`).status == 200 }) {
+		if !gatewaytest.WaitFor(5*time.Second, func() bool { return post(t, ts, "/v1/images/generations", `{"prompt":"a boat"}`).status == 200 }) {
 			t.Errorf("the image runtime did not come back after %s", prompt)
 		}
 	}
@@ -72,7 +73,7 @@ func TestSpeechCrashAnswers503(t *testing.T) {
 		body := `{"model":"` + speechModel + `","input":"` + input + `","voice":"default"}`
 		wantCrashAnswer(t, post(t, ts, "/v1/audio/speech", body))
 		ok := `{"model":"` + speechModel + `","input":"good morning","voice":"default"}`
-		if !waitFor(5*time.Second, func() bool { return post(t, ts, "/v1/audio/speech", ok).status == 200 }) {
+		if !gatewaytest.WaitFor(5*time.Second, func() bool { return post(t, ts, "/v1/audio/speech", ok).status == 200 }) {
 			t.Errorf("the speech runtime did not come back after %s", input)
 		}
 	}
@@ -151,7 +152,7 @@ func TestTranscriptionCrashAnswers503(t *testing.T) {
 	}
 	for _, prompt := range []string{"fake:die", "fake:die-body"} {
 		wantCrashAnswer(t, send(prompt))
-		if !waitFor(5*time.Second, func() bool { return send("the harbor").status == 200 }) {
+		if !gatewaytest.WaitFor(5*time.Second, func() bool { return send("the harbor").status == 200 }) {
 			t.Errorf("the transcription runtime did not come back after %s", prompt)
 		}
 	}
@@ -179,13 +180,13 @@ func testWAV() []byte {
 // A detached run carries the same refusal as its error.
 func TestRunCrashCarries503Code(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
-	c := runClient{t: t, base: ts.URL}
-	code, m := c.do("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:die"))
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	code, m := c.Do("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:die"))
 	if code != 202 {
 		t.Fatalf("create: %d %v", code, m)
 	}
 	id := m["id"].(string)
-	m = c.waitStatus(id, "failed")
+	m = c.WaitStatus(id, "failed")
 	if e, _ := m["error"].(map[string]any); e == nil || e["code"] != "service_unavailable" {
 		t.Errorf("a run whose backend crashed: %v", m)
 	}

@@ -25,6 +25,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/hub"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
@@ -572,14 +573,14 @@ func TestOpenAPIMethods(t *testing.T) {
 	// probe gets its own: DELETE removes it.
 	finishedRun := func() string {
 		t.Helper()
-		status, _, body, _ := c.doBody(chatBody("hi"), "POST", "/_localbase/runs/v1/chat/completions")
+		status, _, body, _ := c.doBody(gatewaytest.ChatBody("hi"), "POST", "/_localbase/runs/v1/chat/completions")
 		var run struct {
 			ID string `json:"id"`
 		}
 		if status != 202 || json.Unmarshal(body, &run) != nil || run.ID == "" {
 			t.Fatalf("create run: %d %s", status, body)
 		}
-		if !waitFor(openAPIWait, func() bool {
+		if !gatewaytest.WaitFor(openAPIWait, func() bool {
 			_, _, b, _ := c.do("GET", "/_localbase/runs/"+run.ID)
 			return bytes.Contains(b, []byte(`"completed"`))
 		}) {
@@ -595,7 +596,7 @@ func TestOpenAPIMethods(t *testing.T) {
 			if strings.Contains(p, "{run_id}") {
 				run = finishedRun()
 			}
-			status, code, _, _ := c.do(method, concreteWith(p, chatModel, run))
+			status, code, _, _ := c.do(method, concreteWith(p, gatewaytest.ChatModel, run))
 			if run != "run_missing" {
 				c.do("DELETE", "/_localbase/runs/"+run) // at most 32 are retained per owner
 			}
@@ -630,7 +631,7 @@ func TestOpenAPIPermissions(t *testing.T) {
 	d := loadOpenAPI(t)
 	for _, o := range d.operations() {
 		method, where := strings.ToUpper(o.method), o.method+" "+o.path
-		path := concreteWith(o.path, chatModel, "run_missing")
+		path := concreteWith(o.path, gatewaytest.ChatModel, "run_missing")
 		perm, hasPerm := o.op["x-localbase-permission"].(string)
 		body, probed := openAPIProbeBody[where]
 		if !probed {
@@ -881,7 +882,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	finished := func(id string) {
 		t.Helper()
-		if !waitFor(openAPIWait, func() bool {
+		if !gatewaytest.WaitFor(openAPIWait, func() bool {
 			_, _, b := send(key, "GET", "/_localbase/runs/"+id, "", nil)
 			var r struct {
 				EndedAt *string `json:"endedAt"`
@@ -906,7 +907,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			t.Errorf("no key: %d", status)
 		}
 		d.checkResponse(t, "GET", "/v1/models", status, hdr, out)
-		status, hdr, out = send(reader, "POST", "/v1/chat/completions", "application/json", []byte(chatBody("hi")))
+		status, hdr, out = send(reader, "POST", "/v1/chat/completions", "application/json", []byte(gatewaytest.ChatBody("hi")))
 		if status != 403 {
 			t.Errorf("reader chat: %d", status)
 		}
@@ -915,18 +916,18 @@ func TestOpenAPIResponses(t *testing.T) {
 
 	// /v1 models.
 	check("GET", "/v1/models", "", 200)
-	check("GET", "/v1/models/"+chatModel, "", 200)
+	check("GET", "/v1/models/"+gatewaytest.ChatModel, "", 200)
 	check("GET", "/v1/models/no-such-model", "", 404)
 
 	// Chat, embeddings, decisions.
-	check("POST", "/v1/chat/completions", chatBody("hi"), 200)
-	check("POST", "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}],"stream":true}`, 200)
-	check("POST", "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[]}`, 400)
+	check("POST", "/v1/chat/completions", gatewaytest.ChatBody("hi"), 200)
+	check("POST", "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"hi"}],"stream":true}`, 200)
+	check("POST", "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[]}`, 400)
 	check("POST", "/v1/chat/completions", `{"model":"no-such-model","messages":[{"role":"user","content":"hi"}]}`, 404)
 	check("POST", "/v1/embeddings", `{"model":"`+embeddingModel+`","input":"hi"}`, 200)
 	check("POST", "/v1/embeddings", `{"model":""}`, 400)
 	check("POST", "/v1/systemone", `{"model":"`+decisionModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 200)
-	check("POST", "/v1/systemone", `{"model":"`+chatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
+	check("POST", "/v1/systemone", `{"model":"`+gatewaytest.ChatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
 
 	// Audio and images: the fake runtimes answer as the real ones were measured.
 	if openAPIHasMedia {
@@ -950,29 +951,29 @@ func TestOpenAPIResponses(t *testing.T) {
 	// Models and the host.
 	check("GET", "/_localbase/models", "", 200)
 	check("GET", "/_localbase/models?kind=llm", "", 200)
-	check("GET", "/_localbase/models/"+chatModel, "", 200)
+	check("GET", "/_localbase/models/"+gatewaytest.ChatModel, "", 200)
 	check("GET", "/_localbase/models/no-such-model", "", 404)
-	check("GET", "/_localbase/models/"+chatModel+"/admission", "", 200)
-	check("GET", "/_localbase/models/"+chatModel+"/admission?assumeInstalled=1", "", 200)
-	check("POST", "/_localbase/models/"+chatModel+"/unload", "", 200, 404)
+	check("GET", "/_localbase/models/"+gatewaytest.ChatModel+"/admission", "", 200)
+	check("GET", "/_localbase/models/"+gatewaytest.ChatModel+"/admission?assumeInstalled=1", "", 200)
+	check("POST", "/_localbase/models/"+gatewaytest.ChatModel+"/unload", "", 200, 404)
 	check("GET", "/_localbase/host", "", 200)
 	check("PUT", "/_localbase/computer-name", `{"name":"Test"}`, 200)
 	check("PUT", "/_localbase/computer-name", `{"name":""}`, 200)
 	check("PUT", "/_localbase/computer-name", `{}`, 400)
 	check("PUT", "/_localbase/computer-name", `{"name":"`+strings.Repeat("x", 65)+`"}`, 400)
 	check("GET", "/_localbase/default-chat-models", "", 200)
-	check("POST", "/_localbase/default-chat-models", `{"models":["`+chatModel+`"]}`, 200)
-	check("POST", "/_localbase/default-chat-models", `{"models":["`+chatModel+`","`+chatModel+`"]}`, 400)
+	check("POST", "/_localbase/default-chat-models", `{"models":["`+gatewaytest.ChatModel+`"]}`, 200)
+	check("POST", "/_localbase/default-chat-models", `{"models":["`+gatewaytest.ChatModel+`","`+gatewaytest.ChatModel+`"]}`, 400)
 	check("POST", "/_localbase/default-chat-models", `{"models":["no-such-model"]}`, 400)
 	check("POST", "/_localbase/default-chat-models", `{"models":[]}`, 400)
 	check("GET", "/_localbase/model-management", "", 200)
 	check("POST", "/_localbase/model-management", `{"modelId":"no-such-model","action":"install"}`, 400)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`"}`, 400)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`","action":"install"}`, 409)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`","action":"uninstall"}`, 409)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`","action":"disable"}`, 409)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`","action":"enable"}`, 200)
-	check("POST", "/_localbase/model-management", `{"modelId":"`+chatModel+`","action":"activate"}`, 200)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`"}`, 400)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`","action":"install"}`, 409)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`","action":"uninstall"}`, 409)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`","action":"disable"}`, 409)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`","action":"enable"}`, 200)
+	check("POST", "/_localbase/model-management", `{"modelId":"`+gatewaytest.ChatModel+`","action":"activate"}`, 200)
 	check("POST", "/_localbase/model-management", oversized, 413)
 	check("GET", "/_localbase/model-management", "", 200) // now with an operation on the model
 
@@ -1009,7 +1010,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/_localbase/models?kind=stt,tts&installed=false&sort=memory&reverse=true&fit=fits&license=open&capability=x&q=x", "", 200)
 
 	// Placement: the stored choice, the next load's split, what is refused.
-	placed := "/_localbase/models/" + chatModel + "/placement"
+	placed := "/_localbase/models/" + gatewaytest.ChatModel + "/placement"
 	check("GET", placed, "", 200)
 	check("GET", "/_localbase/models/no-such-model/placement", "", 404)
 	check("PUT", "/_localbase/models/no-such-model/placement", `{"mode":"cpu"}`, 404)
@@ -1022,7 +1023,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("DELETE", placed, "", 200)
 	check("DELETE", "/_localbase/models/no-such-model/placement", "", 404)
 	expert := 1
-	if err := s.Store.SetPlacement(ctx, chatModel, openAPIDevice, store.Placement{Mode: placement.Custom, CPUMoELayers: &expert}); err != nil {
+	if err := s.Store.SetPlacement(ctx, gatewaytest.ChatModel, openAPIDevice, store.Placement{Mode: placement.Custom, CPUMoELayers: &expert}); err != nil {
 		t.Fatal(err)
 	}
 	if out := check("GET", placed, "", 200); !bytes.Contains(out, []byte(`"nextError"`)) {
@@ -1038,7 +1039,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		{"GET", placed, "", 200},
 		{"PUT", placed, `{"mode":"gpu"}`, 409},
 		{"PUT", placed, `{"mode":"custom","cpuMoeLayers":9}`, 400},
-		{"GET", "/_localbase/models/" + chatModel, "", 200},
+		{"GET", "/_localbase/models/" + gatewaytest.ChatModel, "", 200},
 		{"GET", "/_localbase/models", "", 200},
 	} {
 		req, _ := http.NewRequest(c.method, base+c.path, strings.NewReader(c.body))
@@ -1055,15 +1056,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 
 	// A loaded model: its runtime and split, then every answer an unload has.
-	unloading := "/_localbase/models/" + chatModel + "/unload"
-	check("POST", "/v1/chat/completions", chatBody("hi"), 200)
-	check("GET", "/_localbase/models/"+chatModel, "", 200)
+	unloading := "/_localbase/models/" + gatewaytest.ChatModel + "/unload"
+	check("POST", "/v1/chat/completions", gatewaytest.ChatBody("hi"), 200)
+	check("GET", "/_localbase/models/"+gatewaytest.ChatModel, "", 200)
 	check("GET", placed, "", 200)
 	check("PUT", placed, `{"mode":"gpu"}`, 200) // pending for the next load
 	check("DELETE", placed, "", 200)
 	check("GET", "/_localbase/host", "", 200)
-	busy := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 200"), 202))
-	if !waitFor(openAPIWait, func() bool {
+	busy := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:slow 200"), 202))
+	if !gatewaytest.WaitFor(openAPIWait, func() bool {
 		_, _, b := send(key, "GET", "/_localbase/runs/"+busy, "", nil)
 		return bytes.Contains(b, []byte(`"in_progress"`))
 	}) {
@@ -1083,7 +1084,7 @@ func TestOpenAPIResponses(t *testing.T) {
 
 	// Backends: a body that is not JSON answers in the management shape.
 	check("GET", "/_localbase/backends", "", 200)
-	check("GET", "/_localbase/model-backend?model="+chatModel, "", 200)
+	check("GET", "/_localbase/model-backend?model="+gatewaytest.ChatModel, "", 200)
 	check("GET", "/_localbase/model-backend?model=no-such-model", "", 404)
 	check("GET", "/_localbase/auth-profiles", "", 200)
 	profiles := filepath.Join(s.Root.Dir, "credentials", "auth-profiles.json")
@@ -1098,10 +1099,10 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("POST", "/_localbase/model-backend", `{`, 400)
 	check("POST", "/_localbase/model-backend", `{}`, 400)
-	check("POST", "/_localbase/model-backend", `{"action":"set","model":"`+chatModel+`"}`, 400)
-	check("POST", "/_localbase/model-backend", `{"action":"set","model":"`+chatModel+`","backendId":"no-such-backend"}`, 400)
+	check("POST", "/_localbase/model-backend", `{"action":"set","model":"`+gatewaytest.ChatModel+`"}`, 400)
+	check("POST", "/_localbase/model-backend", `{"action":"set","model":"`+gatewaytest.ChatModel+`","backendId":"no-such-backend"}`, 400)
 	check("POST", "/_localbase/model-backend", `{"action":"reset","model":"no-such-model"}`, 404)
-	check("POST", "/_localbase/model-backend", `{"action":"reset","model":"`+chatModel+`"}`, 200)
+	check("POST", "/_localbase/model-backend", `{"action":"reset","model":"`+gatewaytest.ChatModel+`"}`, 200)
 	check("POST", "/_localbase/model-backend", oversized, 413)
 
 	// Imports: a local file needs no network.
@@ -1119,7 +1120,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/_localbase/model-imports", `{"action":"start",`+importing+`}`, 400)
 	job := idOf("job", check("POST", "/_localbase/model-imports", `{"action":"start",`+importing+`,"task":"chat","id":"doc-import","name":"Doc"}`, 202))
 	check("GET", "/_localbase/model-imports?id="+job, "", 200)
-	if !waitFor(openAPIWait, func() bool {
+	if !gatewaytest.WaitFor(openAPIWait, func() bool {
 		_, _, b := send(key, "GET", "/_localbase/model-imports?id="+job, "", nil)
 		return !bytes.Contains(b, []byte(`"state":"running"`))
 	}) {
@@ -1139,7 +1140,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/_localbase/model-discovery", `{"action":"preview","repo":"`+repo+`","extra":1}`, 400)
 	check("POST", "/_localbase/model-discovery", `{"x":"`+strings.Repeat("x", 2048)+`"}`, 413)
 	check("POST", "/_localbase/model-discovery", `{"action":"install-recipe","modelId":"no-such-model"}`, 404)
-	check("POST", "/_localbase/model-discovery", `{"action":"install-recipe","modelId":"`+chatModel+`"}`, 400)
+	check("POST", "/_localbase/model-discovery", `{"action":"install-recipe","modelId":"`+gatewaytest.ChatModel+`"}`, 400)
 	check("POST", "/_localbase/model-discovery", `{"action":"search","query":"qwen coder"}`, 200)
 	check("POST", "/_localbase/model-discovery", `{"action":"preview","repo":"`+repo+`"}`, 200)
 	check("POST", "/_localbase/model-discovery", `{"action":"preview","repo":"nobody/does-not-exist-404"}`, 400)
@@ -1330,7 +1331,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	s.Voices = stored
 
 	// Runs: the whole life of one.
-	createdRun := check("POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"), 202)
+	createdRun := check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"), 202)
 	var run struct {
 		ID string `json:"id"`
 	}
@@ -1338,7 +1339,7 @@ func TestOpenAPIResponses(t *testing.T) {
 		t.Fatalf("create run: %s", createdRun)
 	}
 	check("GET", "/_localbase/runs", "", 200)
-	if !waitFor(openAPIWait, func() bool {
+	if !gatewaytest.WaitFor(openAPIWait, func() bool {
 		_, _, b := send(key, "GET", "/_localbase/runs/"+run.ID, "", nil)
 		return bytes.Contains(b, []byte(`"completed"`))
 	}) {
@@ -1356,11 +1357,11 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("DELETE", "/_localbase/runs/run_missing", "", 404)
 
 	// What /v1 refuses, a run refuses the same way, and no run exists.
-	check("POST", "/_localbase/runs/v1/chat/completions", `{"model":"`+chatModel+`","messages":[]}`, 400)
+	check("POST", "/_localbase/runs/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[]}`, 400)
 	check("POST", "/_localbase/runs/v1/chat/completions", `{"model":"no-such-model","messages":[{"role":"user","content":"hi"}]}`, 404)
 	check("POST", "/_localbase/runs/v1/chat/completions", `{`, 400)
-	check("POST", "/_localbase/runs/v1/systemone", `{"model":"`+chatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
-	as(reader, "POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"), 403)
+	check("POST", "/_localbase/runs/v1/systemone", `{"model":"`+gatewaytest.ChatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
+	as(reader, "POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"), 403)
 	as("", "GET", "/_localbase/runs", "", 401)
 	for target := range Targets {
 		check("POST", "/_localbase/runs"+target, `{}`, 400, 501)
@@ -1369,7 +1370,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/_localbase/runs/v1/audio/speech", `{"x":"`+strings.Repeat("x", MaxBody)+`"}`, 413)
 
 	// A run that fails, one that is interrupted, and the limit on active runs.
-	failing := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:context"), 202))
+	failing := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:context"), 202))
 	finished(failing)
 	if out := check("GET", "/_localbase/runs/"+failing, "", 200); !bytes.Contains(out, []byte(`"failed"`)) {
 		t.Errorf("a failed run: %s", firstBytes(out))
@@ -1377,10 +1378,10 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/_localbase/runs/"+failing+"/result", "", 409)
 	active := []string{}
 	for range ActivePerOwner {
-		active = append(active, idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", chatBody("fake:slow 200"), 202)))
+		active = append(active, idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:slow 200"), 202)))
 	}
 	check("GET", "/_localbase/runs", "", 200) // running and queued
-	check("POST", "/_localbase/runs/v1/chat/completions", chatBody("hi"), 429)
+	check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"), 429)
 	// An interrupted run: TestARunPastItsMaxDurationIsInterrupted.
 	for _, id := range active {
 		check("DELETE", "/_localbase/runs/"+id, "", 200)

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -21,7 +22,7 @@ import (
 // refused caller sends stays out of the log.
 func TestChoosingABackendIsAudited(t *testing.T) {
 	ts, key, st, scratch := importAPIGateway(t)
-	logs := &syncBuffer{}
+	logs := &gatewaytest.SyncBuffer{}
 	ts.Config.Handler.(*Server).Log = slog.New(slog.NewJSONHandler(logs, nil))
 	_, readOnly, err := st.CreateAPIKey(context.Background(), "read", []string{"models:read"})
 	if err != nil {
@@ -51,20 +52,20 @@ func TestChoosingABackendIsAudited(t *testing.T) {
 		return out
 	}
 	const route = "/_localbase/model-backend"
-	if code, out := post(route, key, map[string]any{"action": "set", "model": chatModel, "backendId": "llama.cpp-cpu"}); code != 200 {
+	if code, out := post(route, key, map[string]any{"action": "set", "model": gatewaytest.ChatModel, "backendId": "llama.cpp-cpu"}); code != 200 {
 		t.Fatalf("set: %d %s", code, out)
 	}
-	if code, out := post(route, key, map[string]any{"action": "reset", "model": chatModel}); code != 200 {
+	if code, out := post(route, key, map[string]any{"action": "reset", "model": gatewaytest.ChatModel}); code != 200 {
 		t.Fatalf("reset: %d %s", code, out)
 	}
 	const planted = "planted-value-q7"
-	if code, _ := post(route, key, map[string]any{"action": "set", "model": chatModel, "backendId": planted}); code != 400 {
+	if code, _ := post(route, key, map[string]any{"action": "set", "model": gatewaytest.ChatModel, "backendId": planted}); code != 400 {
 		t.Errorf("an unknown backend: %d", code)
 	}
 	if code, _ := post(route, key, map[string]any{"action": "set", "model": planted, "backendId": "llama.cpp-cpu"}); code != 404 {
 		t.Errorf("an unknown model: %d", code)
 	}
-	if code, _ := post(route, readOnly, map[string]any{"action": "set", "model": chatModel, "backendId": "llama.cpp-cpu"}); code != 403 {
+	if code, _ := post(route, readOnly, map[string]any{"action": "set", "model": gatewaytest.ChatModel, "backendId": "llama.cpp-cpu"}); code != 403 {
 		t.Errorf("without models:manage: %d", code)
 	}
 	changed := events("audit.model-backend-changed")
@@ -74,7 +75,7 @@ func TestChoosingABackendIsAudited(t *testing.T) {
 	for i, want := range []map[string]any{{"action": "set", "backend_id": "llama.cpp-cpu"}, {"action": "reset", "backend_id": ""}} {
 		e := changed[i]
 		if e["action"] != want["action"] || e["backend_id"] != want["backend_id"] || e["actor_kind"] != "api-key" ||
-			!strings.HasPrefix(e["actor_id"].(string), "key_") || e["target_kind"] != "model" || e["target_id"] != chatModel {
+			!strings.HasPrefix(e["actor_id"].(string), "key_") || e["target_kind"] != "model" || e["target_id"] != gatewaytest.ChatModel {
 			t.Errorf("change %d: %v", i, e)
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // Changing a model's placement or unloading it takes models:manage and nothing else. Reading its
@@ -19,8 +21,8 @@ func TestModelRoutesAskForTheirOwnPermission(t *testing.T) {
 		return map[string]string{"Authorization": "Bearer " + secret, "Content-Type": "application/json"}
 	}
 	reader, manager := key("models:read"), key("models:manage")
-	placement := "/_localbase/models/" + chatModel + "/placement"
-	unload := "/_localbase/models/" + chatModel + "/unload"
+	placement := "/_localbase/models/" + gatewaytest.ChatModel + "/placement"
+	unload := "/_localbase/models/" + gatewaytest.ChatModel + "/unload"
 	for _, c := range []struct {
 		name         string
 		method, path string

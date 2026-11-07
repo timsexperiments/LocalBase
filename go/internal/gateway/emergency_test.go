@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
@@ -64,7 +65,7 @@ func TestEmergencyStopAnswers503(t *testing.T) {
 	ts, llm, critical := emergencyGateway(t)
 	done := make(chan result, 1)
 	go func() {
-		done <- post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"hi"}]}`)
+		done <- post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"hi"}]}`)
 	}()
 	waitRunning(t, llm)
 	time.Sleep(300 * time.Millisecond)
@@ -87,7 +88,7 @@ func TestEmergencyStopEndsStream(t *testing.T) {
 	ts, llm, critical := emergencyGateway(t)
 	words := strings.TrimSpace(strings.Repeat("word ", 500)) // 10 ms per word: 5 s
 	resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(
-		`{"model":"`+chatModel+`","stream":true,"messages":[{"role":"user","content":"fake:reply `+words+`"}]}`))
+		`{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:reply `+words+`"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

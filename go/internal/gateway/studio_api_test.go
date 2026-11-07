@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // pngWith is a PNG holding the given text chunks before its image data, in
@@ -134,7 +136,7 @@ func equalSeeds(a []float64, b ...float64) bool {
 // come back in one result.
 func TestImageSeedEcho(t *testing.T) {
 	ts := newImageGateway(t, imageModel)
-	c := runClient{t: t, base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	r := post(t, ts, "/v1/images/generations", `{"prompt":"an apple","n":2}`)
 	if got := imageSeeds(t, []byte(r.body)); r.status != 200 || !equalSeeds(got, 42, 43) {
 		t.Errorf("no seed: %d %v", r.status, got)
@@ -143,12 +145,12 @@ func TestImageSeedEcho(t *testing.T) {
 	if got := imageSeeds(t, []byte(r.body)); !equalSeeds(got, 100, 101, 102) {
 		t.Errorf("seed 100: %v", got)
 	}
-	code, m := c.do("POST", "/_localbase/runs/v1/images/generations", `{"prompt":"an apple","seed":7,"n":4}`)
+	code, m := c.Do("POST", "/_localbase/runs/v1/images/generations", `{"prompt":"an apple","seed":7,"n":4}`)
 	if code != 202 {
 		t.Fatalf("run: %d %v", code, m)
 	}
 	id := m["id"].(string)
-	c.waitStatus(id, "completed")
+	c.WaitStatus(id, "completed")
 	resp, err := http.Get(ts.URL + "/_localbase/runs/" + id + "/result")
 	if err != nil {
 		t.Fatal(err)
@@ -164,14 +166,14 @@ func TestImageSeedEcho(t *testing.T) {
 // result is the /v1 body, and scope and refusals are /v1's.
 func TestRunDecision(t *testing.T) {
 	ts := newTestServer(t)
-	c := runClient{t: t, base: ts.URL}
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	body := `{"model":"` + decisionModel + `","state":"x","questions":{"done":{"type":"noul"}}}`
-	code, m := c.do("POST", "/_localbase/runs/v1/systemone", body)
+	code, m := c.Do("POST", "/_localbase/runs/v1/systemone", body)
 	if code != 202 || m["label"] != "Decision" || m["model"] != decisionModel {
 		t.Fatalf("create: %d %v", code, m)
 	}
 	id := m["id"].(string)
-	m = c.waitStatus(id, "completed")
+	m = c.WaitStatus(id, "completed")
 	res, _ := m["result"].(map[string]any)
 	if res == nil || m["output"] != nil || !strings.HasPrefix(res["contentType"].(string), "application/json") {
 		t.Fatalf("run: %v", m)
@@ -186,7 +188,7 @@ func TestRunDecision(t *testing.T) {
 		t.Errorf("result: %s", b)
 	}
 	// Refused before the queue exactly as /v1 refuses.
-	bad := `{"model":"` + chatModel + `","state":null,"questions":{"q":{"type":"noul"}}}`
+	bad := `{"model":"` + gatewaytest.ChatModel + `","state":null,"questions":{"q":{"type":"noul"}}}`
 	v1 := post(t, ts, "/v1/systemone", bad)
 	got := post(t, ts, "/_localbase/runs/v1/systemone", bad)
 	if got.status != v1.status || got.status == 202 || got.body != v1.body {
@@ -196,7 +198,7 @@ func TestRunDecision(t *testing.T) {
 	s := runServer(ts)
 	s.NoAuth = false
 	_, chatOnly, _ := s.Store.CreateAPIKey(t.Context(), "chat", []string{"inference:chat"})
-	if code, _ := (runClient{t: t, base: ts.URL, key: chatOnly}).do("POST", "/_localbase/runs/v1/systemone", body); code != 403 {
+	if code, _ := (gatewaytest.RunClient{T: t, Base: ts.URL, Key: chatOnly}).Do("POST", "/_localbase/runs/v1/systemone", body); code != 403 {
 		t.Errorf("no inference:decision: %d", code)
 	}
 }

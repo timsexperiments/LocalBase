@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
@@ -77,18 +78,18 @@ func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 	}
 	llmDir := r.ModelsDir("llm")
 	os.MkdirAll(llmDir, 0o700)
-	for _, id := range []string{chatModel, embeddingModel, decisionModel} {
+	for _, id := range []string{gatewaytest.ChatModel, embeddingModel, decisionModel} {
 		installSparse(t, llmDir, cat.ByID(id))
 	}
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
-		Active:   map[string]string{"llm": chatModel},
-		Selected: map[string][]string{"llm": {chatModel, embeddingModel, decisionModel}}}
+		Active:   map[string]string{"llm": gatewaytest.ChatModel},
+		Selected: map[string][]string{"llm": {gatewaytest.ChatModel, embeddingModel, decisionModel}}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
 	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if testLog != nil {
-		log = slog.New(slog.NewJSONHandler(testLog, nil))
+	if gatewaytest.Log != nil {
+		log = slog.New(slog.NewJSONHandler(gatewaytest.Log, nil))
 	}
 	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, MemoryGB: 64,
 		Root: r, Memory: mem, Voices: voices.New(st, r.Dir)}
@@ -138,7 +139,7 @@ func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
 	t.Cleanup(s.LLM.Close)
 	// Placement, as serve wires it: the chat model's file has a tensor table to plan from.
-	primary := cat.ByID(chatModel).Primary()
+	primary := cat.ByID(gatewaytest.ChatModel).Primary()
 	placementtest.WriteMoEGGUF(t, filepath.Join(llmDir, primary.Filename), primary.ExpectedSizeBytes)
 	s.Placement = &runtime.HostPlacement{Store: st, DeviceID: openAPIDevice, Memory: mem, Log: log, Platform: placement.Unified}
 	s.LLM.SetPlacementSource(s.Placement)

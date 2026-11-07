@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 type localPages struct{}
@@ -319,8 +320,8 @@ func TestLoginHelpPage(t *testing.T) {
 // Ids only: the token, and a URL with it, never reach a log.
 func TestLoginLinkAudit(t *testing.T) {
 	var logs bytes.Buffer
-	testLog = &logs
-	defer func() { testLog = nil }()
+	gatewaytest.Log = &logs
+	defer func() { gatewaytest.Log = nil }()
 	c, s := newLocalGateway(t)
 	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
 	c.redeem(token, nil)

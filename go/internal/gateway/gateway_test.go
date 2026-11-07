@@ -18,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -55,18 +56,14 @@ func (host) Snapshot(context.Context) memory.Snapshot {
 }
 
 const (
-	chatModel      = "qwen3.5-9b-q4_k_m"
 	embeddingModel = "qwen3-embedding-0.6b-q8_0"
 	decisionModel  = "clef-flash-q4_k_m"
 )
 
-// newTestServer runs a gateway with --no-auth over the fake backend.
-// testLog, when set, receives the next test gateway's JSON log.
-var testLog io.Writer
-
 // testPlacement, when set, is the next test gateway's placement source.
 var testPlacement *runtime.HostPlacement
 
+// newTestServer runs a gateway with --no-auth over the fake backend.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	ts, _, _ := newTestGateway(t, host{})
@@ -94,7 +91,7 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range append([]string{chatModel, embeddingModel, decisionModel}, extra...) {
+	for _, id := range append([]string{gatewaytest.ChatModel, embeddingModel, decisionModel}, extra...) {
 		installSparse(t, models, cat.ByID(id))
 	}
 	st, err := store.Open(r.DB())
@@ -104,8 +101,8 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	t.Cleanup(func() { st.Close() })
 	t.Cleanup(func() { noWriterLeft(t, st) })
 	cfg := &store.Config{Host: "127.0.0.1", Port: freePort(t), CtxSize: 8192, CtxMode: "auto", Parallel: "1",
-		Active:   map[string]string{"llm": chatModel},
-		Selected: map[string][]string{"llm": append([]string{chatModel, embeddingModel, decisionModel}, extra...)}}
+		Active:   map[string]string{"llm": gatewaytest.ChatModel},
+		Selected: map[string][]string{"llm": append([]string{gatewaytest.ChatModel, embeddingModel, decisionModel}, extra...)}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
@@ -113,8 +110,8 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	mem.SetSampler(nil)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if testLog != nil {
-		log = slog.New(slog.NewJSONHandler(testLog, nil))
+	if gatewaytest.Log != nil {
+		log = slog.New(slog.NewJSONHandler(gatewaytest.Log, nil))
 	}
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
@@ -190,7 +187,7 @@ func TestChatModelKindRejections(t *testing.T) {
 	if got.status != 400 || !strings.Contains(got.body, "embeddings only") {
 		t.Errorf("embedding: %d %s", got.status, got.body)
 	}
-	got = post(t, ts, "/v1/systemone", `{"model":"`+chatModel+`","state":null,"questions":{"q":{"type":"noul"}}}`)
+	got = post(t, ts, "/v1/systemone", `{"model":"`+gatewaytest.ChatModel+`","state":null,"questions":{"q":{"type":"noul"}}}`)
 	if got.status != 400 || got.code() != "unsupported_model_capability" {
 		t.Errorf("systemone on chat model: %d %s", got.status, got.body)
 	}
@@ -203,7 +200,7 @@ func TestChatModelKindRejections(t *testing.T) {
 func TestStructuredOutputRejections(t *testing.T) {
 	ts := newTestServer(t)
 	wrap := func(schema string) string {
-		return `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
+		return `{"model":"` + gatewaytest.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 	}
 	cases := []struct{ schema, code string }{
 		{`{"type":"object","properties":{"a":{"type":"string"}},"required":["a"],"additionalProperties":false}`, ""},
@@ -233,7 +230,7 @@ func TestStructuredOutputValidatesCompletedResponse(t *testing.T) {
 	ts := newTestServer(t)
 	schema := `{"type":"object","properties":{"a":{"type":"integer","minimum":1}},"required":["a"],"additionalProperties":false}`
 	req := func(reply string) string {
-		return `{"model":"` + chatModel + `","messages":[{"role":"user","content":"fake:reply ` + reply + `"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
+		return `{"model":"` + gatewaytest.ChatModel + `","messages":[{"role":"user","content":"fake:reply ` + reply + `"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 	}
 	if got := post(t, ts, "/v1/chat/completions", req(`{\"a\":2}`)); got.status != 200 {
 		t.Errorf("valid reply: %d %s", got.status, got.body)
@@ -247,22 +244,22 @@ func TestStructuredOutputValidatesCompletedResponse(t *testing.T) {
 
 func TestChatResponseNormalization(t *testing.T) {
 	ts := newTestServer(t)
-	got := post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"fake:reasoning"}]}`)
+	got := post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"fake:reasoning"}]}`)
 	if got.status != 200 || !strings.Contains(got.body, `"reasoning":"hm"`) || strings.Contains(got.body, "reasoning_content") {
 		t.Errorf("reasoning: %s", got.body)
 	}
-	if !strings.Contains(got.body, `"model":"`+chatModel+`"`) {
+	if !strings.Contains(got.body, `"model":"`+gatewaytest.ChatModel+`"`) {
 		t.Errorf("public model id: %s", got.body)
 	}
 	if !strings.Contains(got.body, "max_tokens=4096") {
 		t.Errorf("default max_tokens: %s", got.body)
 	}
-	stream := post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","stream":true,"messages":[{"role":"user","content":"fake:reasoning"}]}`)
+	stream := post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:reasoning"}]}`)
 	if !strings.Contains(stream.body, `"reasoning":"hm"`) || strings.Contains(stream.body, "reasoning_content") ||
 		!strings.HasSuffix(stream.body, "data: [DONE]\n\n") {
 		t.Errorf("stream: %s", stream.body)
 	}
-	trunc := post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","stream":true,"messages":[{"role":"user","content":"fake:truncated"}]}`)
+	trunc := post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","stream":true,"messages":[{"role":"user","content":"fake:truncated"}]}`)
 	if !strings.Contains(trunc.body, "upstream_error") {
 		t.Errorf("truncated stream: %s", trunc.body)
 	}
@@ -270,7 +267,7 @@ func TestChatResponseNormalization(t *testing.T) {
 
 func TestContextOverflowIsOpenAIShaped(t *testing.T) {
 	ts := newTestServer(t)
-	got := post(t, ts, "/v1/chat/completions", `{"model":"`+chatModel+`","messages":[{"role":"user","content":"fake:context"}]}`)
+	got := post(t, ts, "/v1/chat/completions", `{"model":"`+gatewaytest.ChatModel+`","messages":[{"role":"user","content":"fake:context"}]}`)
 	if got.status != 400 || got.code() != "context_length_exceeded" || !strings.Contains(got.body, `"param":"messages"`) {
 		t.Errorf("%d %s", got.status, got.body)
 	}
@@ -278,7 +275,7 @@ func TestContextOverflowIsOpenAIShaped(t *testing.T) {
 
 func TestToolGate(t *testing.T) {
 	ts := newTestServer(t)
-	body := `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object","properties":{"s":{"type":"string","pattern":"a|b"}}}}}],"tool_choice":{"type":"function","function":{"name":"f"}}}`
+	body := `{"model":"` + gatewaytest.ChatModel + `","messages":[{"role":"user","content":"x"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object","properties":{"s":{"type":"string","pattern":"a|b"}}}}}],"tool_choice":{"type":"function","function":{"name":"f"}}}`
 	got := post(t, ts, "/v1/chat/completions", body)
 	if got.status != 200 {
 		t.Errorf("declared tool-calling model: %d %s", got.status, got.body)

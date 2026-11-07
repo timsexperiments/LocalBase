@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 const (
@@ -171,7 +172,7 @@ func TestOIDCUnauthorizedEmailThroughGateway(t *testing.T) {
 	if resp, b := c.send("GET", "/app/api/_localbase/models", "", oidcUI(ck)); resp.StatusCode != 403 {
 		t.Errorf("read: %d %s", resp.StatusCode, b)
 	}
-	if resp, b := c.send("POST", "/app/api/v1/chat/completions", chatBody("hi"), oidcUI(ck)); resp.StatusCode != 403 {
+	if resp, b := c.send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), oidcUI(ck)); resp.StatusCode != 403 {
 		t.Errorf("chat: %d %s", resp.StatusCode, b)
 	}
 }

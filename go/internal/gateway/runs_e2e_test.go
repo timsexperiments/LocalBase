@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // The runs tests run against a stub (runs_harness_test.go). These, with runs_test.go's tests that
@@ -25,7 +26,7 @@ func TestARunRefusedForMemoryEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := loadOpenAPI(t)
-	req, err := http.NewRequest("POST", ts.URL+"/_localbase/runs/v1/chat/completions", bytes.NewReader([]byte(chatBody("hi"))))
+	req, err := http.NewRequest("POST", ts.URL+"/_localbase/runs/v1/chat/completions", bytes.NewReader([]byte(gatewaytest.ChatBody("hi"))))
 	if err != nil {
 		t.Fatal(err)
 	}

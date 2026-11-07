@@ -10,32 +10,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
-const formType = "multipart/form-data; boundary=b"
-
-// formOf is a form of n empty parts called x, then whatever else is given as ready-made parts.
-func formOf(n int, more ...string) []byte {
-	var b bytes.Buffer
-	for range n {
-		b.WriteString("--b\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\n\r\n")
-	}
-	for _, part := range more {
-		b.WriteString(part)
-	}
-	b.WriteString("--b--\r\n")
-	return b.Bytes()
-}
-
 func formRequest() *http.Request {
 	r := httptest.NewRequest("POST", "/", nil)
-	r.Header.Set("Content-Type", formType)
+	r.Header.Set("Content-Type", gatewaytest.FormType)
 	return r
 }
 
 func TestAFormUpToTheLimitIsRead(t *testing.T) {
-	form, err := readMultipart(formRequest(), formOf(httpx.MaxFormParts))
+	form, err := readMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +31,7 @@ func TestAFormUpToTheLimitIsRead(t *testing.T) {
 }
 
 func TestAFormPastTheLimitIsRefused(t *testing.T) {
-	if form, err := readMultipart(formRequest(), formOf(httpx.MaxFormParts+1)); err == nil {
+	if form, err := readMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts+1)); err == nil {
 		t.Errorf("it was read, with %d parts", len(form["x"]))
 	}
 }
@@ -58,10 +44,10 @@ func TestTheLimitIsTheStatedOne(t *testing.T) {
 
 func TestAFormsModelIsFoundWithinTheLimit(t *testing.T) {
 	model := "--b\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nthe-model\r\n"
-	if got := requestModel(formType, formOf(httpx.MaxFormParts-1, model)); got != "the-model" {
+	if got := requestModel(gatewaytest.FormType, gatewaytest.FormOf(httpx.MaxFormParts-1, model)); got != "the-model" {
 		t.Errorf("the last part allowed: %q", got)
 	}
-	if got := requestModel(formType, formOf(httpx.MaxFormParts, model)); got != "" {
+	if got := requestModel(gatewaytest.FormType, gatewaytest.FormOf(httpx.MaxFormParts, model)); got != "" {
 		t.Errorf("past the limit: %q", got)
 	}
 }
@@ -104,7 +90,7 @@ func TestFindingAFormsModelAtTheBodyLimitCostsLittle(t *testing.T) {
 	smallest := "--b\r\n\r\n\r\n"
 	for _, size := range []int{1 << 20, httpx.MaxRequestBytes} {
 		body := []byte(strings.Repeat(smallest, size/len(smallest)))
-		cost := allocated(func() { requestModel(formType, body) })
+		cost := allocated(func() { requestModel(gatewaytest.FormType, body) })
 		if cost > bound {
 			t.Fatalf("finding the model in %d bytes of parts allocated %d bytes", size, cost)
 		}
@@ -119,18 +105,18 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	headers := map[string]string{"Authorization": "Bearer " + key, "Content-Type": formType}
+	headers := map[string]string{"Authorization": "Bearer " + key, "Content-Type": gatewaytest.FormType}
 	for _, c := range []struct{ name, path, refusal string }{
 		{"transcription", "/v1/audio/transcriptions", "Invalid form data payload."},
 		{"image edit", "/v1/images/edits", "Invalid multipart image edit request."},
 		{"voice", "/_localbase/voices", "Invalid form data payload."},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(httpx.MaxFormParts+1)))
+			r := g.raw(t, http.MethodPost, c.path, "", headers, string(gatewaytest.FormOf(httpx.MaxFormParts+1)))
 			if r.status != 400 || !strings.Contains(r.body, c.refusal) {
 				t.Errorf("past the limit: %d %.300s", r.status, r.body)
 			}
-			r = g.raw(t, http.MethodPost, c.path, "", headers, string(formOf(httpx.MaxFormParts)))
+			r = g.raw(t, http.MethodPost, c.path, "", headers, string(gatewaytest.FormOf(httpx.MaxFormParts)))
 			if strings.Contains(r.body, c.refusal) {
 				t.Errorf("at the limit: %d %.300s", r.status, r.body)
 			}
@@ -140,8 +126,8 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 	t.Run("video", func(t *testing.T) {
 		send := func(parts int) (int, string) {
 			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/v1/videos", bytes.NewReader(formOf(parts)))
-			r.Header.Set("Content-Type", formType)
+			r := httptest.NewRequest("POST", "/v1/videos", bytes.NewReader(gatewaytest.FormOf(parts)))
+			r.Header.Set("Content-Type", gatewaytest.FormType)
 			g.srv.readVideoCreate(w, r)
 			var answer struct {
 				Error struct {
