@@ -208,6 +208,15 @@ func (m *LLM) switchDemand(ctx context.Context, id string, running, assumeInstal
 	var demand memory.Demand
 	spec := m.d.Catalog.ByID(id)
 	t, err := m.target(ctx, id, false)
+	var notInstalled *NotInstalledError
+	if errors.As(err, &notInstalled) {
+		// The selected variant's files aren't here, and a question doesn't fetch them: the same
+		// answer as a catalog model that isn't on disk.
+		if !running && !assumeInstalled {
+			return demand, errNotInstalled
+		}
+		err = nil
+	}
 	if err != nil {
 		return demand, err
 	}

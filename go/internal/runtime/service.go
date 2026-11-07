@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	goruntime "runtime"
 	"slices"
@@ -613,12 +614,21 @@ func (s *Service) PreviewAdmission(ctx context.Context, id string, assumeInstall
 		return memory.AdmissionPreview{}, demand, fmt.Errorf("%w: no backend selection", ErrStartupFailed)
 	}
 	t, err := s.d.Gate(ctx, id, false)
+	var missing error
+	var notInstalled *NotInstalledError
+	if errors.As(err, &notInstalled) && t != nil {
+		// The selected variant's files aren't here, and a preview doesn't fetch them: answered as for a
+		// default variant that isn't on disk, sized from the variant's pinned file sizes.
+		if !assumeInstalled {
+			missing = err
+		}
+		err = nil
+	}
 	if err != nil {
 		return memory.AdmissionPreview{}, demand, err
 	}
 	demand = s.demand(t)
 	spec := s.d.Catalog.ByID(id)
-	var missing error
 	if spec != nil && !t.Imported && t.Variant.ID == "default" && !assumeInstalled {
 		if ok, _ := spec.Installation(s.d.ModelsDir); !ok {
 			missing = &NotInstalledError{ModelID: id}
@@ -764,11 +774,18 @@ func (t *Target) artifact(role string) string {
 	return ""
 }
 
+// weightsBytes is the size of the variant's weights: each file's own size, or its pinned size while
+// the file isn't here, so a model not yet downloaded is sized as it will be once it is.
 func (t *Target) weightsBytes() int64 {
 	var n int64
 	for _, a := range t.Variant.Artifacts {
-		if a.Role == models.RoleWeights {
-			n += fileSize(filepath.Join(t.Dir, a.Filename))
+		if a.Role != models.RoleWeights {
+			continue
+		}
+		if info, err := os.Stat(filepath.Join(t.Dir, a.Filename)); err == nil {
+			n += info.Size()
+		} else {
+			n += a.SizeBytes
 		}
 	}
 	return n
