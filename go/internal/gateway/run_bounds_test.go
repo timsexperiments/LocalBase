@@ -185,8 +185,13 @@ func TestADeleteOfARunThatWontStopIsBounded(t *testing.T) {
 	m.stopWait = 50 * time.Millisecond
 	r := stuckRun(m)
 	c := runClient{t: t, base: ts.URL}
+	started := time.Now()
 	if code, body := c.do("DELETE", "/_localbase/runs/"+r.ID, ""); code != 200 || body["deleted"] != true {
 		t.Fatalf("the DELETE: %d %v", code, body)
+	}
+	// The DELETE answers once stopWait has passed, not when the run gives up: 2 s is generous for 50 ms.
+	if took := time.Since(started); took > 2*time.Second {
+		t.Errorf("the DELETE took %v; it waits at most stopWait (%v) for a run that won't stop", took, m.stopWait)
 	}
 	if got := m.held.Load(); got != 0 {
 		t.Errorf("holding %d after the DELETE", got)
