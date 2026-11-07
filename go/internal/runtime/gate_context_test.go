@@ -8,11 +8,12 @@ import (
 )
 
 // holdingGate stands in for a gate whose launch is downloading what its model needs: it holds until its
-// context ends. A call that isn't a launch has no context to end, and gets no target at once.
-func holdingGate(entered chan<- struct{}) Gate {
+// context ends. A call that isn't a launch has no context to end, and gets no target at once, with
+// otherwise as its error.
+func holdingGate(entered chan<- struct{}, otherwise error) Gate {
 	return func(ctx context.Context, _ string) (*Target, error) {
 		if ctx.Done() == nil {
-			return nil, nil
+			return nil, otherwise
 		}
 		select {
 		case entered <- struct{}{}:
@@ -56,7 +57,8 @@ func stopEndsTheGate(t *testing.T, acquire func() error, stop func(), entered <-
 func TestAStoppedServiceLaunchEndsTheGatesWork(t *testing.T) {
 	s, _ := newTestService(t)
 	entered := make(chan struct{}, 1)
-	s.d.Gate = holdingGate(entered)
+	// A launch that handed the gate no context gets an unknown model, and ends: the test says so.
+	s.d.Gate = holdingGate(entered, ErrModelNotFound)
 	stopEndsTheGate(t, func() error {
 		l, err := s.Acquire(context.Background(), "a")
 		if l != nil {
@@ -70,7 +72,8 @@ func TestAStoppedServiceLaunchEndsTheGatesWork(t *testing.T) {
 func TestAStoppedLLMLaunchEndsTheGatesWork(t *testing.T) {
 	m := newTestLLM(t, &bigHost{avail: 50 << 30})
 	entered := make(chan struct{}, 1)
-	m.d.Gate = holdingGate(entered)
+	// The LLM's admission check asks the gate with no context, and takes no target as no gate.
+	m.d.Gate = holdingGate(entered, nil)
 	stopEndsTheGate(t, func() error {
 		l, err := m.Acquire(context.Background(), modelA)
 		if l != nil {
