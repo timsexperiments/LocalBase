@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // Browser access configuration: <root>/ui-access.json, the TS
@@ -184,7 +184,7 @@ func LoadAccess(rootDir string) (*BrowserAccess, error) {
 // writePrivate atomically writes a 0600 file.
 func writePrivate(path string, v any) error {
 	b, _ := json.MarshalIndent(v, "", "  ")
-	return obs.WritePrivateChecked(path, append(b, '\n'))
+	return safefile.WritePrivateChecked(path, append(b, '\n'))
 }
 
 // SaveAccess validates and writes ui-access.json.
