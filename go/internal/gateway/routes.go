@@ -22,6 +22,29 @@ type route struct {
 	// uiSub says the same for the paths under a pattern that ends in a wildcard or "/", given what
 	// follows the pattern's fixed part.
 	uiSub func(rest, method string) bool
+	// guarded routes check the caller first (guard), for permission; "" is any authenticated caller.
+	guarded    bool
+	permission string
+	// audit names the area a change through this route is audited under; describe says what
+	// changed, for routes that record more than the area (auditedRoute).
+	audit    string
+	describe changeDescriber
+}
+
+// compose wraps a route's handler in what the table says, in the order the routes had it: the
+// permission check innermost, around the handler, and the audit around that.
+func (s *Server) compose(rt route) http.HandlerFunc {
+	h := rt.handler
+	if rt.guarded {
+		h = s.guard(rt.permission, h)
+	}
+	switch {
+	case rt.audit != "" && rt.describe != nil:
+		h = s.auditedRoute(rt.audit, rt.describe, h)
+	case rt.audit != "":
+		h = s.audited(rt.audit, h)
+	}
+	return h
 }
 
 // routeTable is every path the gateway serves, in the order they are registered.
@@ -41,45 +64,45 @@ func (s *Server) routeTable() []route {
 		{pattern: "/app/api/", handler: s.uiAccess},
 		{pattern: "/health/ready", handler: s.ready},
 		{pattern: "/_localbase/instance", handler: s.instance},
-		{pattern: "/_localbase/host", handler: s.guard("models:read", s.hostAPI), ui: []string{"GET"}},
-		{pattern: "/_localbase/computer-name", handler: s.auditedRoute("computer-name", computerNameChange, s.computerNameAPI), ui: []string{"PUT"}},
+		{pattern: "/_localbase/host", guarded: true, permission: "models:read", handler: s.hostAPI, ui: []string{"GET"}},
+		{pattern: "/_localbase/computer-name", audit: "computer-name", describe: computerNameChange, handler: s.computerNameAPI, ui: []string{"PUT"}},
 		{pattern: "/_localbase/default-model", handler: s.defaultModel}, // for the local CLI: an empty 404 without its instance token, by design
 		{pattern: "/_localbase/placement-state", handler: s.placementRuntimeState},
-		{pattern: "/v1/models", handler: s.guard("models:read", s.listModels)},
-		{pattern: "/v1/models/{model...}", handler: s.guard("models:read", s.retrieveModel)},
-		{pattern: "/v1/chat/completions", handler: s.guard("inference:chat", s.chat), usage: "chat", ui: []string{"POST"}},
-		{pattern: "/v1/embeddings", handler: s.guard("inference:embeddings", s.embeddings), usage: "embeddings", ui: []string{"POST"}},
-		{pattern: "/v1/systemone", handler: s.guard("inference:decision", s.systemone), usage: "decision", ui: []string{"POST"}},
-		{pattern: "/v1/audio/transcriptions", handler: s.guard("inference:transcription", s.transcription), usage: "transcription", ui: []string{"POST"}},
-		{pattern: "/v1/audio/translations", handler: s.guard("inference:transcription", s.transcription), usage: "translation"},
-		{pattern: "/v1/audio/speech", handler: s.guard("inference:speech", s.speech), usage: "speech", ui: []string{"POST"}},
-		{pattern: "/v1/images/generations", handler: s.guard("inference:image", s.imageGeneration), usage: "image", ui: []string{"POST"}},
-		{pattern: "/v1/images/edits", handler: s.guard("inference:image", s.imageEdit), usage: "image-edit", ui: []string{"POST"}},
-		{pattern: "/v1/videos", handler: s.guard("inference:video", s.videoCreate), usage: "video", ui: []string{"POST"}},
+		{pattern: "/v1/models", guarded: true, permission: "models:read", handler: s.listModels},
+		{pattern: "/v1/models/{model...}", guarded: true, permission: "models:read", handler: s.retrieveModel},
+		{pattern: "/v1/chat/completions", guarded: true, permission: "inference:chat", handler: s.chat, usage: "chat", ui: []string{"POST"}},
+		{pattern: "/v1/embeddings", guarded: true, permission: "inference:embeddings", handler: s.embeddings, usage: "embeddings", ui: []string{"POST"}},
+		{pattern: "/v1/systemone", guarded: true, permission: "inference:decision", handler: s.systemone, usage: "decision", ui: []string{"POST"}},
+		{pattern: "/v1/audio/transcriptions", guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "transcription", ui: []string{"POST"}},
+		{pattern: "/v1/audio/translations", guarded: true, permission: "inference:transcription", handler: s.transcription, usage: "translation"},
+		{pattern: "/v1/audio/speech", guarded: true, permission: "inference:speech", handler: s.speech, usage: "speech", ui: []string{"POST"}},
+		{pattern: "/v1/images/generations", guarded: true, permission: "inference:image", handler: s.imageGeneration, usage: "image", ui: []string{"POST"}},
+		{pattern: "/v1/images/edits", guarded: true, permission: "inference:image", handler: s.imageEdit, usage: "image-edit", ui: []string{"POST"}},
+		{pattern: "/v1/videos", guarded: true, permission: "inference:video", handler: s.videoCreate, usage: "video", ui: []string{"POST"}},
 		{pattern: "/v1/videos/{job_id}", handler: s.videoJobRoute("status"), uiSub: uiVideoJob},
 		{pattern: "/v1/videos/{job_id}/content", handler: s.videoJobRoute("content")},
 		{pattern: "/v1/videos/{job_id}/cancel", handler: s.videoJobRoute("cancel")},
-		{pattern: "/_localbase/runs", handler: s.guard("", s.runsList), ui: []string{"GET"}},
-		{pattern: "/_localbase/runs/{rest...}", handler: s.guard("", s.runRoute), uiSub: uiRun},
-		{pattern: "/_localbase/models", handler: s.guard("models:read", s.modelMetadata), ui: []string{"GET"}},
+		{pattern: "/_localbase/runs", guarded: true, permission: "", handler: s.runsList, ui: []string{"GET"}},
+		{pattern: "/_localbase/runs/{rest...}", guarded: true, permission: "", handler: s.runRoute, uiSub: uiRun},
+		{pattern: "/_localbase/models", guarded: true, permission: "models:read", handler: s.modelMetadata, ui: []string{"GET"}},
 		{pattern: "/_localbase/models/{model_id...}", handler: s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
 			s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)
 		}), uiSub: uiModel},
-		{pattern: "/_localbase/access-management", handler: s.audited("access", s.accessManagement), ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/api-keys", handler: s.audited("api-key", s.apiKeys), ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/hf-token", handler: s.auditedRoute("hf-token", hfTokenChange, s.hfToken), ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/access-management", audit: "access", handler: s.accessManagement, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/api-keys", audit: "api-key", handler: s.apiKeys, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/hf-token", audit: "hf-token", describe: hfTokenChange, handler: s.hfToken, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/backends", handler: s.backendsAPI, ui: []string{"GET"}},
-		{pattern: "/_localbase/model-backend", handler: s.audited("model-backend", s.modelBackendAPI), ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/model-management", handler: s.auditedRoute("models", modelsChange, s.modelManagementAPI), ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/default-chat-models", handler: s.auditedRoute("default-models", defaultModelsChange, s.defaultChatModelsAPI)},
-		{pattern: "/_localbase/model-discovery", handler: s.auditedRoute("discovery", discoveryChange, s.modelDiscoveryAPI), ui: []string{"POST"}},
-		{pattern: "/_localbase/model-imports", handler: s.auditedRoute("imports", importsChange, s.modelImportsAPI), ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/model-backend", audit: "model-backend", handler: s.modelBackendAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/model-management", audit: "models", describe: modelsChange, handler: s.modelManagementAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/default-chat-models", audit: "default-models", describe: defaultModelsChange, handler: s.defaultChatModelsAPI},
+		{pattern: "/_localbase/model-discovery", audit: "discovery", describe: discoveryChange, handler: s.modelDiscoveryAPI, ui: []string{"POST"}},
+		{pattern: "/_localbase/model-imports", audit: "imports", describe: importsChange, handler: s.modelImportsAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/auth-profiles", handler: s.authProfilesAPI, ui: []string{"GET"}},
 		{pattern: "/_localbase/local-sessions", handler: s.localSessionsAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/usage", handler: s.usageAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/update", handler: s.updateAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/voices", handler: s.auditedRoute("voices", voicesChange, s.voicesAPI), ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/voices/", handler: s.auditedRoute("voices", voicesChange, s.voicesAPI), uiSub: uiVoice},
+		{pattern: "/_localbase/voices", audit: "voices", describe: voicesChange, handler: s.voicesAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/voices/", audit: "voices", describe: voicesChange, handler: s.voicesAPI, uiSub: uiVoice},
 	}
 	if s.UI != nil {
 		routes = append(routes,
@@ -88,7 +111,11 @@ func (s *Server) routeTable() []route {
 			route{pattern: "/{$}", handler: s.UI.ServeHTTP},
 		)
 	}
-	return append(routes, route{pattern: "/", handler: s.unmatched})
+	routes = append(routes, route{pattern: "/", handler: s.unmatched})
+	for i := range routes {
+		routes[i].handler = s.compose(routes[i])
+	}
+	return routes
 }
 
 // tableIndex is what is looked up in the route table by path, built once from it: usage labels and
