@@ -796,9 +796,12 @@ func accessCommand() *cli.Command {
 				auditChange(e, "access", "invite-user", "user", user.ID)
 				delivered := delivery != nil && auth.SendEmail(delivery, user.Email, "You were invited to LocalBase",
 					"You were invited to LocalBase. Sign in here:\n\n"+signIn) == nil
-				if delivered {
+				switch {
+				case delivered:
 					c.Info("Invited %s and sent an email.", user.Email)
-				} else {
+				case delivery != nil: // asked for, and not sent: say so, without the server's words
+					c.Error("Invited %s, but the email could not be sent. Sign in at %s", cli.PrintableASCII(user.Email), cli.PrintableASCII(signIn))
+				default:
 					c.Info("Invited %s. Sign in at %s", cli.PrintableASCII(user.Email), cli.PrintableASCII(signIn))
 				}
 				return map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered}, nil
