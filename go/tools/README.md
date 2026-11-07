@@ -11,7 +11,7 @@ themselves.
 | `make bench` (`tools/bench.sh`) | What the gateway adds per request and per token, against budgets |
 | `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `go run ./tools/mutcheck <mutations.json>` | Breaks code on purpose and says whether the tests noticed. A mutation that doesn't compile is reported as that, never as a result |
-| `tools/fetch-ci-tools.sh <dir>` | The lint and secret-scan tools at CI's versions |
+| `../scripts/bootstrap.sh golangci-lint gitleaks` | The lint and secret-scan tools at CI's versions, from `scripts/tools.pins`, into `../.cache/tools/bin`. Nothing fetched runs before its checksum matches. Then `../.cache/tools/bin/golangci-lint run --config .golangci.yml ./...` and `../.cache/tools/bin/gitleaks dir .. --config ../.gitleaks.toml` |
 
 Run the secret scan the way CI does, from the repository root. CI runs both of these, and
 one passing says nothing about the other:

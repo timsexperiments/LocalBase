@@ -38,10 +38,14 @@ jobs:
         with:
           go-version-file: go/go.mod
           cache-dependency-path: go/go.sum
+      - name: Read the pinned golangci-lint version
+        id: pins
+        # scripts/tools.pins is the one place it is pinned.
+        run: echo "golangci-lint=v$(scripts/bootstrap.sh --version golangci-lint)" >> "$GITHUB_OUTPUT"
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.15.0
+          version: ${{ steps.pins.outputs.golangci-lint }}
           working-directory: go
           args: --config=${{ env.GOLANGCI_CONFIG }}
       - name: Known vulnerabilities

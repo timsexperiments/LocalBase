@@ -1,4 +1,4 @@
-# golangci-lint v2.15.0, pinned in .github/workflows/go-lint.yml. Reasons for what is
+# golangci-lint v2.15.0, pinned in scripts/tools.pins. Reasons for what is
 # off or excluded are in docs/lint-baseline.md.
 version: "2"
 
