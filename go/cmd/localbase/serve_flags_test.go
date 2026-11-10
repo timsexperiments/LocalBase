@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // serve refuses a --log-level it doesn't know, before it starts anything, as logs --level does,
@@ -40,12 +40,7 @@ func TestServeRefusesAnUnknownLogLevel(t *testing.T) {
 // test process itself.
 func TestASignalDuringStartupStopsInOrder(t *testing.T) {
 	dir := noAuthRoot(t)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
+	port := strconv.Itoa(testutil.FreePort())
 	afterSignals = func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }
 	defer func() { afterSignals = func() {} }()
 	done := make(chan struct{})
