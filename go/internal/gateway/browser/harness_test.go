@@ -1,4 +1,4 @@
-package gateway
+package browser
 
 import (
 	"io"
@@ -15,7 +15,7 @@ import (
 )
 
 // The browser layer's tests that read its insides run against an Access whose API is a stub, not a
-// gateway: what is tested is what Access answers itself. Their HTTP-only twins in local_test.go keep
+// gateway: what is tested is what Access answers itself. Their HTTP-only twins in gateway/local_test.go keep
 // a whole gateway, so the two can't drift apart unnoticed.
 
 // newAccessHarness serves an Access over a real socket, which is what the loopback rule reads, with

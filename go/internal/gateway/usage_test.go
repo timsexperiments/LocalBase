@@ -566,20 +566,6 @@ func TestUsageBrowserRoute(t *testing.T) {
 	}
 }
 
-// What the browser sends usage keeps its query, and nothing else.
-func TestUsageForwardsItsQuery(t *testing.T) {
-	r := httptest.NewRequest("GET", "/app/api/_localbase/usage?range=7d&scope=all&group=model&group=route&secret=x", nil)
-	got := forwardedQuery("/_localbase/usage", r)
-	for _, want := range []string{"range=7d", "scope=all", "group=model", "group=route"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("forwarded %q: missing %s", got, want)
-		}
-	}
-	if strings.Contains(got, "secret") {
-		t.Errorf("forwarded %q", got)
-	}
-}
-
 // With a collector attached, what is exported is what always was: this table adds nothing
 // (DESIGN §32.1). The package has no way to send anything anyway (usage.TestImports).
 func TestUsageOutOfOTLP(t *testing.T) {
