@@ -26,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/hub"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -907,7 +908,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			t.Fatalf("run %s did not finish", id)
 		}
 	}
-	oversized := `{"x":"` + strings.Repeat("x", MaxManagementBody) + `"}`
+	oversized := `{"x":"` + strings.Repeat("x", httpx.MaxManagementBody) + `"}`
 
 	// Public.
 	check("GET", "/health", "", 200)

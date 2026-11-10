@@ -48,7 +48,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 		r.Body = struct {
 			io.Reader
 			io.Closer
-		}{io.TeeReader(r.Body, &limitedWriter{&seen, MaxManagementBody + 1}), r.Body}
+		}{io.TeeReader(r.Body, &limitedWriter{&seen, httpx.MaxManagementBody + 1}), r.Body}
 		rec := &auditRecorder{Recorder: httpx.Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A method the route doesn't have asked to change nothing; an abandoned request wasn't refused.
