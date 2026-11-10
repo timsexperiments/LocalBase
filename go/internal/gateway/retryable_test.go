@@ -98,9 +98,7 @@ func TestTheImportLookupKeepsToItsContext(t *testing.T) {
 // gateway waits that out. It waits no longer than a speech request may take, and then the backend
 // is unavailable for now.
 func TestABusySpeechBackendIsWaitedOutForABoundedTime(t *testing.T) {
-	ts := newSpeechGateway(t, &gatewaytest.SyncBuffer{})
-	s := runServer(ts)
-	s.speechBusyFor = 500 * time.Millisecond
+	ts := newSpeechGateway(t, &gatewaytest.SyncBuffer{}, func(c *Config) { c.speechBusyFor = 500 * time.Millisecond })
 	client := &http.Client{Timeout: 30 * time.Second}
 	start := time.Now()
 	resp, err := client.Post(ts.URL+"/v1/audio/speech", "application/json", strings.NewReader(speechBody("fake:busy", "")))

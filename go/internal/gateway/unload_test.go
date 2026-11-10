@@ -92,7 +92,7 @@ func TestUnloadBusyDrains(t *testing.T) {
 // Busy and not waiting, or busy past the bound: 409 model_busy with the
 // in-flight count, and the model keeps running its work.
 func TestUnloadBusyRefused(t *testing.T) {
-	ts, llm, _ := newTestGateway(t, host{})
+	ts, llm, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.unloadWait = 300 * time.Millisecond })
 	c := gatewaytest.RunClient{T: t, Base: ts.URL}
 	id := c.Start("fake:slow 200")
 	c.WaitStatus(id, "in_progress")
@@ -104,7 +104,6 @@ func TestUnloadBusyRefused(t *testing.T) {
 		}
 	}
 	busy(unload(t, c, gatewaytest.ChatModel, "?wait=false"))
-	runServer(ts).unloadWait = 300 * time.Millisecond
 	began := time.Now()
 	busy(unload(t, c, gatewaytest.ChatModel, ""))
 	if d := time.Since(began); d < 250*time.Millisecond || d > 3*time.Second {

@@ -272,7 +272,7 @@ func (h *Handler) generateSpeech(r *http.Request, lease *runtime.ServiceLease, r
 		return pcm, nil
 	case "tts-server/v1":
 		b, _ := json.Marshal(map[string]string{"input": req.Input, "voice": req.Voice})
-		busyFor := h.opts.SpeechBusyFor()
+		busyFor := h.opts.SpeechBusyFor
 		if busyFor <= 0 {
 			busyFor = speechTimeout
 		}

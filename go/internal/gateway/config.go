@@ -74,6 +74,17 @@ type Config struct {
 	Overrides func(*store.Config)
 	// LogOutages reports logs that can't rotate or be written, for doctor and status.
 	LogOutages func() []obs.LogOutage
+
+	// The test seams (WAVE2 step 6): unexported, so only this package's tests can set them, and
+	// only when the gateway is built. Each 0 is the default.
+	//
+	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
+	speechBusyFor time.Duration
+	// unloadWait is how long an unload waits for in-flight requests; 0 is 30 s (tests).
+	unloadWait time.Duration
+	// relayBodyLimit and streamIdleLimit are the relay's limits; 0 is the default (tests).
+	relayBodyLimit  int
+	streamIdleLimit time.Duration
 }
 
 // runtimes is the runtime set the gateway was given, for the handlers that take one.

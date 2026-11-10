@@ -68,9 +68,8 @@ type Options struct {
 	ReportReads  func(w http.ResponseWriter, problems []*store.ReadError)
 	// AdmissionAPI answers /_localbase/models/{id}/admission.
 	AdmissionAPI func(w http.ResponseWriter, r *http.Request, id string)
-	// UnloadWait is how long an unload waits for in-flight requests, read when called; 0 or nil is
-	// unloadWait (tests).
-	UnloadWait func() time.Duration
+	// UnloadWait is how long an unload waits for in-flight requests; 0 is unloadWait (tests).
+	UnloadWait time.Duration
 }
 
 // NewHandler returns model management for o, with the operations a previous gateway left under
