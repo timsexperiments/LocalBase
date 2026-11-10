@@ -13,5 +13,5 @@ func (s *Server) importedTask(ctx context.Context, id string) (string, error) {
 	if err != nil || e == nil {
 		return "", err
 	}
-	return importTask(&e.Model), nil
+	return ImportTask(&e.Model), nil
 }

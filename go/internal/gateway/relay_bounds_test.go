@@ -54,7 +54,7 @@ func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Errorf("an answer under it: %d %s", r.status, r.body)
 	}
-	if got := sizeText(64 << 20); got != "64 MiB" {
+	if got := SizeText(64 << 20); got != "64 MiB" {
 		t.Errorf("the limit reads %q", got)
 	}
 }

@@ -318,8 +318,8 @@ var (
 	streamIdleLimit = 5 * time.Minute
 )
 
-// sizeText says a limit in MiB when it is whole MiB, else in bytes.
-func sizeText(n int) string {
+// SizeText says a limit in MiB when it is whole MiB, else in bytes.
+func SizeText(n int) string {
 	if n%(1<<20) == 0 {
 		return fmt.Sprintf("%d MiB", n>>20)
 	}
@@ -394,7 +394,9 @@ func relayService(kind string) string {
 	return "LLM"
 }
 
-func upstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
+// UpstreamFailure answers 502 upstream_error with message, for a backend that failed or answered
+// what can't be relayed.
+func UpstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
 	httpx.Error(w, r, 502, "server_error", "upstream_error", message, nil)
 }
 
@@ -460,7 +462,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if len(raw) > relayBodyLimit { // said as it is, not as the malformed JSON a cut answer would be
-		upstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", sizeText(relayBodyLimit)))
+		UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", SizeText(relayBodyLimit)))
 		t.finish("error", 502, "response_size_limit")
 		return
 	}
@@ -472,12 +474,12 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	dec.UseNumber()
 	var obj map[string]any
 	if dec.Decode(&obj) != nil || obj == nil {
-		upstreamFailure(w, r, "The upstream service returned malformed JSON.")
+		UpstreamFailure(w, r, "The upstream service returned malformed JSON.")
 		t.finish("error", 502, "response_validation")
 		return
 	}
 	if !validResponse(o.kind, obj) {
-		upstreamFailure(w, r, "The upstream service returned an invalid response.")
+		UpstreamFailure(w, r, "The upstream service returned an invalid response.")
 		t.finish("error", 502, "response_validation")
 		return
 	}
@@ -706,7 +708,7 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 		} `json:"error"`
 	}
 	if status < 400 || json.Unmarshal(raw, &body) != nil || body.Error == nil || !nonEmptyString(body.Error.Message) || !nonEmptyString(body.Error.Type) {
-		upstreamFailure(w, r, "The upstream service returned an invalid error response.")
+		UpstreamFailure(w, r, "The upstream service returned an invalid error response.")
 		return 502
 	}
 	e := body.Error

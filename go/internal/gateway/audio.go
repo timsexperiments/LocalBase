@@ -185,14 +185,14 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		upstreamFailure(w, r, fmt.Sprintf("The upstream service failed with HTTP %d.", resp.StatusCode))
+		UpstreamFailure(w, r, fmt.Sprintf("The upstream service failed with HTTP %d.", resp.StatusCode))
 		tel.finish("error", 502, "")
 		return
 	}
 	switch format {
 	case "text", "srt", "vtt":
 		if looksLikeBackendError(resp, raw) {
-			upstreamFailure(w, r, "The upstream service returned an invalid response.")
+			UpstreamFailure(w, r, "The upstream service returned an invalid response.")
 			tel.finish("error", 502, "response_validation")
 			return
 		}
@@ -208,7 +208,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	}
 	var data map[string]any
 	if json.Unmarshal(raw, &data) != nil || !validTranscription(data) {
-		upstreamFailure(w, r, "The upstream service returned an invalid response.")
+		UpstreamFailure(w, r, "The upstream service returned an invalid response.")
 		tel.finish("error", 502, "response_validation")
 		return
 	}

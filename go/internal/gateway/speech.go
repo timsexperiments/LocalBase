@@ -194,7 +194,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "TTS")
 			tel.finish("error", 503, "")
 		default:
-			upstreamFailure(w, r, err.Error())
+			UpstreamFailure(w, r, err.Error())
 			tel.finish("error", 502, "")
 		}
 		return
