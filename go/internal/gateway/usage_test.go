@@ -26,7 +26,7 @@ import (
 func usageOf(t *testing.T, s *Server, principal string) *usage.Report {
 	t.Helper()
 	now := time.Now()
-	rep, err := s.Usage.Report(context.Background(), usage.Query{From: now.Add(-time.Hour), To: now.Add(2 * time.Hour), Principal: principal,
+	rep, err := s.cfg.Usage.Report(context.Background(), usage.Query{From: now.Add(-time.Hour), To: now.Add(2 * time.Hour), Principal: principal,
 		Group: []string{"principal", "model", "route"}})
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func usageOf(t *testing.T, s *Server, principal string) *usage.Report {
 
 func oaKey(t *testing.T, s *Server, name string, scopes ...string) (id, secret string) {
 	t.Helper()
-	k, raw, err := s.Store.CreateAPIKey(t.Context(), name, scopes)
+	k, raw, err := s.cfg.Store.CreateAPIKey(t.Context(), name, scopes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,13 +89,13 @@ func TestUsageStoresNoContent(t *testing.T) {
 		resp.Body.Close()
 	}
 	waitUsage(t, s, "", 3)
-	if err := s.Usage.Flush(t.Context()); err != nil {
+	if err := s.cfg.Usage.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
 	// The unknown model counted, with no model: a string a client typed never lands here.
 	var models []string
-	rows, err := s.Store.DB.Query(`SELECT model_id FROM usage_hourly`)
+	rows, err := s.cfg.Store.DB.Query(`SELECT model_id FROM usage_hourly`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestUsageStoresNoContent(t *testing.T) {
 
 	// Every byte of the database, its WAL and shared memory.
 	for _, suffix := range []string{"", "-wal", "-shm"} {
-		b, err := os.ReadFile(filepath.Join(s.Root.Dir, "local-base.db"+suffix))
+		b, err := os.ReadFile(filepath.Join(s.cfg.Root.Dir, "local-base.db"+suffix))
 		if err != nil {
 			if suffix == "" {
 				t.Fatal(err)
@@ -146,18 +146,18 @@ func TestUsageNoIdentity(t *testing.T) {
 		t.Fatalf("chat: %d %s", res.Status, res.Body)
 	}
 	waitUsage(t, s, owner, 1)
-	if err := s.Usage.Flush(t.Context()); err != nil {
+	if err := s.cfg.Usage.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	var kind, id string
-	if err := s.Store.DB.QueryRow(`SELECT principal_kind, principal_id FROM usage_hourly`).Scan(&kind, &id); err != nil {
+	if err := s.cfg.Store.DB.QueryRow(`SELECT principal_kind, principal_id FROM usage_hourly`).Scan(&kind, &id); err != nil {
 		t.Fatal(err)
 	}
 	if kind != "browser" || id != owner {
 		t.Errorf("stored %q %q", kind, id)
 	}
 	for _, suffix := range []string{"", "-wal"} {
-		b, _ := os.ReadFile(filepath.Join(s.Root.Dir, "local-base.db"+suffix))
+		b, _ := os.ReadFile(filepath.Join(s.cfg.Root.Dir, "local-base.db"+suffix))
 		for _, planted := range []string{email, name} {
 			if bytes.Contains(b, []byte(planted)) {
 				t.Errorf("local-base.db%s holds %q", suffix, planted)
@@ -420,12 +420,12 @@ func TestUsageOwnerCanClear(t *testing.T) {
 func TestUsageInstanceToken(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	release, err := s.Root.Lock("127.0.0.1", 1)
+	release, err := s.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	token := s.Root.Instance().InstanceToken
+	token := s.cfg.Root.Instance().InstanceToken
 	host := ts.Listener.Addr().String()
 	send := func(method, body, requestHost string, headers ...string) int {
 		t.Helper()
@@ -513,7 +513,7 @@ func TestUsageChanges(t *testing.T) {
 	if status != 200 || !bytes.Contains(body, []byte(`"cleared":true`)) {
 		t.Errorf("clear: %d %s", status, body)
 	}
-	s.Usage.Flush(t.Context())
+	s.cfg.Usage.Flush(t.Context())
 	if got := usageOf(t, s, "").Totals.Requests; got != 0 {
 		t.Errorf("after clearing: %d", got)
 	}
@@ -587,13 +587,13 @@ func TestUsageOutOfOTLP(t *testing.T) {
 	}
 	waitUsage(t, s, "", 1)
 	ctx := t.Context()
-	if err := s.Usage.Flush(ctx); err != nil {
+	if err := s.cfg.Usage.Flush(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Usage.SetRetention(ctx, 7); err != nil {
+	if err := s.cfg.Usage.SetRetention(ctx, 7); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Usage.Clear(ctx, nil); err != nil {
+	if err := s.cfg.Usage.Clear(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
 	rt.Shutdown()
@@ -614,11 +614,10 @@ func TestUsageOutOfOTLP(t *testing.T) {
 // A browser's call through /app/api counts once, as the person (DESIGN §32), under the route it
 // reached: the forwarded request, not /app/api/, is what the end of ServeHTTP must see.
 func TestUsageCountsAUICallThroughAppAPI(t *testing.T) {
-	ts := openAPIGateway(t)
+	ts := openAPIGateway(t, func(c *Config) { c.NoAuth, c.LoginPages = false, gatewaytest.Pages{} })
 	s := runServer(ts)
-	s.NoAuth, s.LoginPages = false, gatewaytest.Pages{}
 	c := gatewaytest.LocalClient{T: t, Base: ts.URL}
-	cookie := gatewaytest.SessionCookie(t, c, s.Store)
+	cookie := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	before := usageOf(t, s, "").Totals.Requests
 	headers := gatewaytest.LocalUI(cookie, ts.URL)
 	headers["Content-Type"] = "application/json"

@@ -13,14 +13,15 @@ import (
 // Only a run's event stream gets the no-marker rule, only for GET: the wiring around
 // SameOriginStream, which an EventSource relies on.
 func TestRunEventStreamRule(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
-	s.NoAuth = false
 	const origin, name = "https://lb.example.com", "lb.example.com"
 	cfg := &auth.BrowserAccess{Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "idp", Name: "IdP",
 		Issuer: "https://idp.example.com", ClientID: "cid", ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}, Origin: origin, Permissions: auth.Permissions}
-	s.Browser = auth.NewBrowser(s.Store, scratchDir(t), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	token, err := auth.CreateSession(context.Background(), s.Store, "owner", auth.Identity{Issuer: "https://idp.example.com", Subject: "u"})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) {
+		c.NoAuth = false
+		c.Browser = auth.NewBrowser(c.Store, scratchDir(t), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	})
+	s := runServer(ts)
+	token, err := auth.CreateSession(context.Background(), s.cfg.Store, "owner", auth.Identity{Issuer: "https://idp.example.com", Subject: "u"})
 	if err != nil {
 		t.Fatal(err)
 	}

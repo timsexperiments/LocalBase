@@ -27,7 +27,7 @@ func TestAccessLockout(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	var logs bytes.Buffer
-	s := newFromConfig(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&logs, nil))})
+	s := New(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&logs, nil))})
 
 	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
 	browser := func(email string) *auth.Principal {
@@ -125,7 +125,7 @@ func TestKeyLockout(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	s := newFromConfig(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))})
+	s := New(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(&bytes.Buffer{}, nil))})
 	k1, _, _ := st.CreateAPIKey(context.Background(), "one", []string{"keys:manage", "access:manage"})
 	k2, _, _ := st.CreateAPIKey(context.Background(), "two", []string{"keys:manage", "access:manage"})
 	plain, _, _ := st.CreateAPIKey(context.Background(), "plain", []string{"keys:manage"})

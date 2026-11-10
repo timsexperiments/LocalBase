@@ -10,10 +10,10 @@ import (
 // model's row only, with ctx. An error is the library's, and never means "not imported": a caller
 // answers it as the LLM service unavailable for now.
 func (s *Server) importedTask(ctx context.Context, id string) (string, error) {
-	if s.Library == nil {
+	if s.cfg.Library == nil {
 		return "", nil
 	}
-	e, err := s.Library.Imported(ctx, id)
+	e, err := s.cfg.Library.Imported(ctx, id)
 	if err != nil || e == nil {
 		return "", err
 	}

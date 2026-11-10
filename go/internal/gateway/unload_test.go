@@ -145,12 +145,11 @@ func TestUnloadNotLoaded(t *testing.T) {
 // Known flake (DESIGN §24): one macOS CI run failed only in TempDir cleanup
 // ("directory not empty"), with every check here passing. Not reproduced.
 func TestUnloadScope(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServerConfigured(t, func(c *Config) { c.NoAuth = false })
 	s := runServer(ts)
-	s.NoAuth = false
 	ctx := t.Context()
-	_, reader, _ := s.Store.CreateAPIKey(ctx, "reader", []string{"models:read", "inference:chat"})
-	_, admin, _ := s.Store.CreateAPIKey(ctx, "admin", []string{"models:read", "models:manage"})
+	_, reader, _ := s.cfg.Store.CreateAPIKey(ctx, "reader", []string{"models:read", "inference:chat"})
+	_, admin, _ := s.cfg.Store.CreateAPIKey(ctx, "admin", []string{"models:read", "models:manage"})
 	r, a := gatewaytest.RunClient{T: t, Base: ts.URL, Key: reader}, gatewaytest.RunClient{T: t, Base: ts.URL, Key: admin}
 	if code, m := r.Do("POST", "/v1/chat/completions", gatewaytest.ChatBody("hi")); code != 200 {
 		t.Fatalf("chat: %d %v", code, m)
@@ -199,14 +198,14 @@ func TestUnloadImageRuntime(t *testing.T) {
 	if code, m := c.Do("POST", "/v1/images/generations", `{"prompt":"a lighthouse"}`); code != 200 {
 		t.Fatalf("image: %d %v", code, m)
 	}
-	mem := runServer(ts).Memory
+	mem := runServer(ts).cfg.Memory
 	reserved := mem.Reserved()["image"]
 	code, m := unload(t, c, imageModel, "")
 	if code != 200 || m["runtime"] != "image" || m["memoryFreedBytes"] != float64(reserved) || reserved <= 0 {
 		t.Fatalf("unload: %d %v (reserved %d)", code, m, reserved)
 	}
-	if _, held := mem.Reserved()["image"]; held || runServer(ts).Image.Running() != "" {
-		t.Errorf("still loaded: %v %q", mem.Reserved(), runServer(ts).Image.Running())
+	if _, held := mem.Reserved()["image"]; held || runServer(ts).cfg.Image.Running() != "" {
+		t.Errorf("still loaded: %v %q", mem.Reserved(), runServer(ts).cfg.Image.Running())
 	}
 	if code, _ := c.Do("POST", "/v1/images/generations", `{"prompt":"again"}`); code != 200 {
 		t.Errorf("reload on demand: %d", code)

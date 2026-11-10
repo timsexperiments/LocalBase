@@ -57,15 +57,15 @@ func TestAClientThatStopsReadingLetsGo(t *testing.T) {
 			}
 			// The slot is taken, and then given back with the client still connected and not reading.
 			deadline := time.Now().Add(60 * time.Second)
-			for g.srv.LLM.Snapshot().Active == 0 && g.srv.LLM.Snapshot().Waiting == 0 {
+			for g.srv.cfg.LLM.Snapshot().Active == 0 && g.srv.cfg.LLM.Snapshot().Waiting == 0 {
 				if time.Now().After(deadline) {
 					t.Fatal("the request never started")
 				}
 				time.Sleep(5 * time.Millisecond)
 			}
-			for g.srv.LLM.Snapshot().Active != 0 {
+			for g.srv.cfg.LLM.Snapshot().Active != 0 {
 				if time.Now().After(deadline) {
-					t.Fatalf("a client that isn't reading still holds %d after a minute", g.srv.LLM.Snapshot().Active)
+					t.Fatalf("a client that isn't reading still holds %d after a minute", g.srv.cfg.LLM.Snapshot().Active)
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
@@ -105,7 +105,7 @@ func TestAnAnswerCutShortCountsAsCancelled(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ts := openAPIGateway(t)
 			s := runServer(ts)
-			s.Limits.WriteStall = 300 * time.Millisecond
+			s.cfg.Limits.WriteStall = 300 * time.Millisecond
 			id, key := oaKey(t, s, "k", auth.DefaultKeyScopes...)
 			body, err := json.Marshal(map[string]any{"model": gatewaytest.ChatModel, "stream": c.stream,
 				"messages": []map[string]string{{"role": "user", "content": c.content}}})
@@ -148,7 +148,7 @@ func TestAVideoStartThatFailsToSendCountsNothing(t *testing.T) {
 		t.Helper()
 		rec := &httpx.Recorder{Status: sent, SendFailed: true, Auth: who}
 		s.recordUsage(rec, label, rec.FinalStatus(), time.Millisecond)
-		if err := s.Usage.Flush(t.Context()); err != nil {
+		if err := s.cfg.Usage.Flush(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}

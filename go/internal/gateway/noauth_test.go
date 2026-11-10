@@ -93,10 +93,9 @@ func TestNoAuthAllowsInProcessCalls(t *testing.T) {
 
 // With authentication on, none of this applies: a credential decides.
 func TestAuthenticatedGatewayIgnoresTheNoAuthRules(t *testing.T) {
-	ts := newTestServer(t)
+	ts := newTestServerConfigured(t, func(c *Config) { c.NoAuth = false })
 	s := runServer(ts)
-	s.NoAuth = false
-	_, key, _ := s.Store.CreateAPIKey(t.Context(), "k", []string{"models:read"})
+	_, key, _ := s.cfg.Store.CreateAPIKey(t.Context(), "k", []string{"models:read"})
 	code, body := send(t, ts.URL, "GET", "/v1/models", "localbase.example.org", map[string]string{
 		"Authorization": "Bearer " + key, "X-Forwarded-For": "203.0.113.9"})
 	if code != 200 || strings.Contains(body, "no_auth_request_refused") {

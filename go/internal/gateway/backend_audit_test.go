@@ -21,9 +21,8 @@ import (
 // Choosing what runs a model is on record: who, which model, which backend. What a
 // refused caller sends stays out of the log.
 func TestChoosingABackendIsAudited(t *testing.T) {
-	ts, key, st, scratch := importAPIGateway(t)
 	logs := &gatewaytest.SyncBuffer{}
-	ts.Config.Handler.(*Server).Log = slog.New(slog.NewJSONHandler(logs, nil))
+	ts, key, st, scratch := importAPIGateway(t, slog.New(slog.NewJSONHandler(logs, nil)))
 	_, readOnly, err := st.CreateAPIKey(context.Background(), "read", []string{"models:read"})
 	if err != nil {
 		t.Fatal(err)

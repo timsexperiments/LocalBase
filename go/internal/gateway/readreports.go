@@ -16,7 +16,7 @@ func (s *Server) reportReads(w http.ResponseWriter, problems []*store.ReadError)
 		if !slices.Contains(kinds, p.Kind) {
 			kinds = append(kinds, p.Kind)
 		}
-		s.Log.Error("A listing is missing something it couldn't read.", "event", "models.read-failed", "step", p.Step, "error", p.Err.Error())
+		s.cfg.Log.Error("A listing is missing something it couldn't read.", "event", "models.read-failed", "step", p.Step, "error", p.Err.Error())
 	}
 	if len(kinds) > 0 {
 		w.Header().Set("X-Localbase-Warning", strings.Join(kinds, ", "))

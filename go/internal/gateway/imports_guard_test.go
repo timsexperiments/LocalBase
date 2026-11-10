@@ -133,7 +133,7 @@ func importAPIGateway(t *testing.T, log ...*slog.Logger) (*httptest.Server, stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(newFromConfig(Config{Store: st, Root: r, Catalog: cat, Library: lib, Log: logger,
+	ts := httptest.NewServer(New(Config{Store: st, Root: r, Catalog: cat, Library: lib, Log: logger,
 		Auth: &auth.Resolver{Store: st, Mode: "either"}}))
 	t.Cleanup(ts.Close)
 	return ts, key, st, dir

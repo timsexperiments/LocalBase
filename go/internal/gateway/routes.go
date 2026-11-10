@@ -114,11 +114,11 @@ func (s *Server) routeTable() []route {
 		{pattern: "/_localbase/voices", audit: "voices", describe: voicesChange, handler: s.records.VoicesAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/voices/", audit: "voices", describe: voicesChange, handler: s.records.VoicesAPI, uiSub: uiVoice},
 	}
-	if s.UI != nil {
+	if s.cfg.UI != nil {
 		routes = append(routes,
-			route{pattern: "/app", handler: s.UI.ServeHTTP},
-			route{pattern: "/app/", handler: s.UI.ServeHTTP},
-			route{pattern: "/{$}", handler: s.UI.ServeHTTP},
+			route{pattern: "/app", handler: s.cfg.UI.ServeHTTP},
+			route{pattern: "/app/", handler: s.cfg.UI.ServeHTTP},
+			route{pattern: "/{$}", handler: s.cfg.UI.ServeHTTP},
 		)
 	}
 	routes = append(routes, route{pattern: "/", handler: s.unmatched})

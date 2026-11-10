@@ -108,10 +108,9 @@ func TestRunDecision(t *testing.T) {
 		t.Errorf("refusal: run %d %s, /v1 %d %s", got.status, got.body, v1.status, v1.body)
 	}
 
-	s := runServer(ts)
-	s.NoAuth = false
-	_, chatOnly, _ := s.Store.CreateAPIKey(t.Context(), "chat", []string{"inference:chat"})
-	if code, _ := (gatewaytest.RunClient{T: t, Base: ts.URL, Key: chatOnly}).Do("POST", "/_localbase/runs/v1/systemone", body); code != 403 {
+	authed := newTestServerConfigured(t, func(c *Config) { c.NoAuth = false })
+	_, chatOnly, _ := runServer(authed).cfg.Store.CreateAPIKey(t.Context(), "chat", []string{"inference:chat"})
+	if code, _ := (gatewaytest.RunClient{T: t, Base: authed.URL, Key: chatOnly}).Do("POST", "/_localbase/runs/v1/systemone", body); code != 403 {
 		t.Errorf("no inference:decision: %d", code)
 	}
 }

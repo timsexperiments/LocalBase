@@ -12,10 +12,9 @@ import (
 
 // The API answers the plain sentence, which is what Admin shows.
 func TestPolicyLockoutThroughAPI(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.NoAuth = false })
 	s := runServer(ts)
-	s.NoAuth = false
-	_, key, err := s.Store.CreateAPIKey(context.Background(), "admin", []string{"access:read", "access:manage"})
+	_, key, err := s.cfg.Store.CreateAPIKey(context.Background(), "admin", []string{"access:read", "access:manage"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,7 +64,7 @@ func TestSnippetsWorkAgainstTheGateway(t *testing.T) {
 	// order a change made under a running server with what the server reads.
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "connect-curl", []string{"inference:chat", "models:read"})
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "connect-curl", []string{"inference:chat", "models:read"})
 	if err != nil {
 		t.Fatal(err)
 	}

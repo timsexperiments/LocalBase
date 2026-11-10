@@ -179,7 +179,7 @@ func TestRunCancel(t *testing.T) {
 	if c.Get(id)["status"] != "cancelled" {
 		t.Error("the stopped run is gone before dismiss")
 	}
-	file := filepath.Join(runServer(ts).Root.Dir, "runs", id+".json")
+	file := filepath.Join(runServer(ts).cfg.Root.Dir, "runs", id+".json")
 	if _, err := os.Stat(file); err != nil {
 		t.Errorf("checkpoint: %v", err)
 	}
@@ -198,13 +198,12 @@ func TestRunCancel(t *testing.T) {
 // plus a key without inference:chat.
 func authGateway(t *testing.T) (*httptest.Server, string, string, string) {
 	t.Helper()
-	ts := newTestServer(t)
+	ts := newTestServerConfigured(t, func(c *Config) { c.NoAuth = false })
 	s := runServer(ts)
-	s.NoAuth = false
 	ctx := context.Background()
-	_, a, _ := s.Store.CreateAPIKey(ctx, "a", []string{"inference:chat"})
-	_, b, _ := s.Store.CreateAPIKey(ctx, "b", []string{"inference:chat"})
-	_, none, _ := s.Store.CreateAPIKey(ctx, "none", []string{"models:read"})
+	_, a, _ := s.cfg.Store.CreateAPIKey(ctx, "a", []string{"inference:chat"})
+	_, b, _ := s.cfg.Store.CreateAPIKey(ctx, "b", []string{"inference:chat"})
+	_, none, _ := s.cfg.Store.CreateAPIKey(ctx, "none", []string{"models:read"})
 	return ts, a, b, none
 }
 
@@ -267,8 +266,8 @@ func TestRunRestartInterrupted(t *testing.T) {
 
 	// A crash: a new gateway starts on the root while the old record says
 	// in_progress.
-	b := newFromConfig(Config{Store: a.Store, Catalog: a.Catalog, Auth: a.Auth, LLM: a.LLM, Log: a.Log, NoAuth: true, MemoryGB: 64,
-		Root: a.Root, Memory: a.Memory})
+	b := New(Config{Store: a.cfg.Store, Catalog: a.cfg.Catalog, Auth: a.cfg.Auth, LLM: a.cfg.LLM, Log: a.cfg.Log, NoAuth: true, MemoryGB: 64,
+		Root: a.cfg.Root, Memory: a.cfg.Memory})
 	tb := httptest.NewServer(b)
 	defer tb.Close()
 	cb := gatewaytest.RunClient{T: t, Base: tb.URL}

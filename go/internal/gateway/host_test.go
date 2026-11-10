@@ -346,17 +346,16 @@ func TestComputerName(t *testing.T) {
 }
 
 func TestHostRoutesNeedPermission(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.NoAuth = false })
 	s := runServer(ts)
-	s.NoAuth = false
 	if code, _ := getJSON(t, ts.URL+"/_localbase/host"); code != 401 {
 		t.Errorf("host with no key: %d", code)
 	}
 	if code, _ := getJSON(t, ts.URL+"/_localbase/models/"+gatewaytest.ChatModel+"/admission"); code != 401 {
 		t.Errorf("admission with no key: %d", code)
 	}
-	_, reader, _ := s.Store.CreateAPIKey(context.Background(), "reader", []string{"models:read"})
-	_, chat, _ := s.Store.CreateAPIKey(context.Background(), "chat", []string{"inference:chat"})
+	_, reader, _ := s.cfg.Store.CreateAPIKey(context.Background(), "reader", []string{"models:read"})
+	_, chat, _ := s.cfg.Store.CreateAPIKey(context.Background(), "chat", []string{"inference:chat"})
 	send := func(method, path, key, body string) int {
 		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+key)

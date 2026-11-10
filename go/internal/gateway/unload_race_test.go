@@ -74,7 +74,7 @@ func TestAnUnloadGivingUpLeavesTheOtherDraining(t *testing.T) {
 // The same on a media service.
 func TestAServiceUnloadGivingUpLeavesTheOtherDraining(t *testing.T) {
 	const whisperModel = "whisper-base-q8_0" // what newTranscriptionGateway installs
-	svc := runServer(newTranscriptionGateway(t)).STT
+	svc := runServer(newTranscriptionGateway(t)).cfg.STT
 	ctx := t.Context()
 	held, err := svc.Acquire(ctx, whisperModel)
 	if err != nil {

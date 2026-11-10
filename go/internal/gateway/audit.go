@@ -84,7 +84,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			}
 			attrs = append(attrs, "backend_id", backend)
 		}
-		s.Log.Info("Administration change.", attrs...)
+		s.cfg.Log.Info("Administration change.", attrs...)
 	}
 }
 
@@ -97,7 +97,7 @@ func (s *Server) auditActor(r *http.Request) (kind, id string) {
 	} else if outer, ok := r.Context().Value(httpx.RecKey{}).(*httpx.Recorder); ok {
 		p = outer.Auth
 	}
-	if p == nil && s.NoAuth {
+	if p == nil && s.cfg.NoAuth {
 		p = &auth.Principal{Kind: "environment"}
 	}
 	if p != nil && p.Kind != "anonymous" {
@@ -125,7 +125,7 @@ func (s *Server) auditRefused(area, action, actorKind, actorID, targetKind, id s
 	if !auditActionRe.MatchString(action) {
 		action = ""
 	}
-	s.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
+	s.cfg.Log.Warn("Administration change refused.", "event", "audit."+area+"-refused", "action", action, "actor_kind", actorKind, "actor_id", actorID,
 		"target_kind", targetKind, "target_id", id, "status", status, "reason", auditReason(response),
 		"held_back", s.refusedAudit.Flush(now))
 }

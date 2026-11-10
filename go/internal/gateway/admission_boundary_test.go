@@ -35,7 +35,7 @@ func TestAdmissionPreviewAgreesWithALoadToTheByte(t *testing.T) {
 			if id, _, _ := llm.Running(); id != "" {
 				t.Errorf("the preview started %s", id)
 			}
-			if held := srv.Memory.Reserved(); len(held) != 0 {
+			if held := srv.cfg.Memory.Reserved(); len(held) != 0 {
 				t.Errorf("the preview holds memory: %v", held)
 			}
 			r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))

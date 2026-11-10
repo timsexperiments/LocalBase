@@ -36,7 +36,7 @@ func TestAKeyThatCantBeReadIsRetryable(t *testing.T) {
 	if missing.status != 404 || missing.code() != "key_not_found" {
 		t.Errorf("a missing key: %d %s", missing.status, missing.body)
 	}
-	s.Store.DB.Close()
+	s.cfg.Store.DB.Close()
 	for _, body := range []string{`{"action":"revoke","keyId":"key_missing"}`, `{"action":"rotate","keyId":"key_missing"}`,
 		`{"action":"set-scopes","keyId":"key_missing","scopes":["models:read"]}`} {
 		retryable(t, body, post(t, ts, "/_localbase/api-keys", body), "Key management")
@@ -46,14 +46,15 @@ func TestAKeyThatCantBeReadIsRetryable(t *testing.T) {
 // importGateway is the test gateway with a model library, and one model imported for embeddings.
 func importGateway(t *testing.T) (*httptest.Server, *Server, result) {
 	t.Helper()
-	ts := newTestServer(t)
+	ts := newTestServerConfigured(t, func(c *Config) {
+		lib, err := library.Open(c.Root, c.Store, c.Catalog, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Library = lib
+	})
 	s := runServer(ts)
-	lib, err := library.Open(s.Root, s.Store, s.Catalog, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.Library = lib
-	if err := s.Store.SaveImportedModel(context.Background(), "imported-embed", []byte(`{"id":"imported-embed","name":"Imported","tasks":["embeddings"]}`)); err != nil {
+	if err := s.cfg.Store.SaveImportedModel(context.Background(), "imported-embed", []byte(`{"id":"imported-embed","name":"Imported","tasks":["embeddings"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	return ts, s, post(t, ts, "/v1/chat/completions", `{"model":"imported-embed","messages":[{"role":"user","content":"hi"}]}`)
@@ -66,7 +67,7 @@ func TestAnImportLookupThatFailsIsRetryable(t *testing.T) {
 	if routed.status != 400 || !strings.Contains(routed.body, "is imported for embeddings, not chat") {
 		t.Errorf("an import is routed by its task: %d %s", routed.status, routed.body)
 	}
-	s.Store.DB.Close()
+	s.cfg.Store.DB.Close()
 	for path, body := range map[string]string{
 		"/v1/chat/completions": `{"model":"imported-x","messages":[{"role":"user","content":"hi"}]}`,
 		"/v1/embeddings":       `{"model":"imported-x","input":"hi"}`,
@@ -81,14 +82,14 @@ func TestTheImportLookupKeepsToItsContext(t *testing.T) {
 	_, s, _ := importGateway(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if e, err := s.Library.Imported(ctx, "imported-embed"); err == nil {
+	if e, err := s.cfg.Library.Imported(ctx, "imported-embed"); err == nil {
 		t.Errorf("a cancelled context still read %v", e)
 	}
-	e, err := s.Library.Imported(context.Background(), "imported-embed")
+	e, err := s.cfg.Library.Imported(context.Background(), "imported-embed")
 	if err != nil || e == nil || !e.Imported || !e.Model.HasTask("embeddings") {
 		t.Errorf("the import: %v %v", e, err)
 	}
-	if e, err := s.Library.Imported(context.Background(), "imported-x"); e != nil || err != nil {
+	if e, err := s.cfg.Library.Imported(context.Background(), "imported-x"); e != nil || err != nil {
 		t.Errorf("a model that isn't imported: %v %v", e, err)
 	}
 }

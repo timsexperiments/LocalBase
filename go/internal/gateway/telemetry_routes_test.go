@@ -43,15 +43,13 @@ func TestEveryRouteHasATelemetryName(t *testing.T) {
 
 // Over a real request: the label in the log is the route, not unmatched-route.
 func TestANamedRouteIsLoggedByName(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
 	dir := t.TempDir()
 	sink, err := obs.OpenSink(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sink.Close()
-	s.Log = slog.New(obs.NewHandler(sink, slog.LevelInfo))
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.Log = slog.New(obs.NewHandler(sink, slog.LevelInfo)) })
 	for _, path := range []string{"/openapi.json", "/_localbase/runs/run_x", "/_localbase/usage"} {
 		resp, err := http.Get(ts.URL + path)
 		if err != nil {

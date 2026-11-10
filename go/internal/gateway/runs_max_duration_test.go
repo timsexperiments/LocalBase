@@ -18,7 +18,7 @@ import (
 func TestARunPastItsMaxDurationIsInterrupted(t *testing.T) {
 	ts := openAPIGateway(t, func(c *Config) { c.RunMaxDuration = 200 * time.Millisecond })
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}

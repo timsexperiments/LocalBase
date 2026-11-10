@@ -34,16 +34,15 @@ func (c readFailureClient) get(path string) (int, http.Header, string) {
 // A client's model list isn't taken away by a failed internal read. The body is the same but for the
 // one figure that needed it, and the failure is in a header and the log.
 func TestAFailedPeakReadDoesNotTakeAwayTheClientsList(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
 	var logs bytes.Buffer
-	s.Log = slog.New(slog.NewTextHandler(&logs, nil))
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.Log = slog.New(slog.NewTextHandler(&logs, nil)) })
+	s := runServer(ts)
 	c := readFailureClient{t, ts.URL}
 	code, header, before := c.get("/v1/models")
 	if code != 200 || header.Get("X-Localbase-Warning") != "" {
 		t.Fatalf("before: %d %q", code, header.Get("X-Localbase-Warning"))
 	}
-	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
 	code, header, after := c.get("/v1/models")
@@ -100,14 +99,13 @@ func TestAFailedPeakReadDoesNotTakeAwayTheClientsList(t *testing.T) {
 
 // Our own routes say so in the body, and leave out only the figures that needed the read.
 func TestOurModelRoutesSayTheyAreDegraded(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.Log = slog.New(slog.NewTextHandler(io.Discard, nil)) })
 	s := runServer(ts)
-	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	c := readFailureClient{t, ts.URL}
 	if code, _, body := c.get("/_localbase/models"); code != 200 || strings.Contains(body, `"degraded"`) {
 		t.Fatalf("before: %d %.200s", code, body)
 	}
-	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
 	check := func(body string, model map[string]any) {
@@ -168,11 +166,10 @@ func TestOurModelRoutesSayTheyAreDegraded(t *testing.T) {
 
 // A failed read of a stored runtime report: the list stays, with what the files say.
 func TestAFailedCapabilityReadWarnsAndKeepsTheList(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.Log = slog.New(slog.NewTextHandler(io.Discard, nil)) })
 	s := runServer(ts)
-	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	c := readFailureClient{t, ts.URL}
-	if _, err := s.Store.DB.Exec(`DROP TABLE model_runtime_capabilities`); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`DROP TABLE model_runtime_capabilities`); err != nil {
 		t.Fatal(err)
 	}
 	code, header, body := c.get("/v1/models")
@@ -187,20 +184,21 @@ func TestAFailedCapabilityReadWarnsAndKeepsTheList(t *testing.T) {
 
 // A failed read of the imported models isn't "no imported models".
 func TestAFailedLibraryReadIsNotNoImportedModels(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
 	var logs bytes.Buffer
-	s.Log = slog.New(slog.NewTextHandler(&logs, nil))
-	lib, err := library.Open(s.Root, s.Store, s.Catalog, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.Library = lib
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) {
+		c.Log = slog.New(slog.NewTextHandler(&logs, nil))
+		lib, err := library.Open(c.Root, c.Store, c.Catalog, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Library = lib
+	})
+	s := runServer(ts)
 	c := readFailureClient{t, ts.URL}
 	if code, header, _ := c.get("/v1/models"); code != 200 || header.Get("X-Localbase-Warning") != "" {
 		t.Fatalf("before: %d %q", code, header.Get("X-Localbase-Warning"))
 	}
-	if _, err := s.Store.DB.Exec(`DROP TABLE imported_models`); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`DROP TABLE imported_models`); err != nil {
 		t.Fatal(err)
 	}
 	code, header, body := c.get("/v1/models")
@@ -220,9 +218,8 @@ func TestAFailedLibraryReadIsNotNoImportedModels(t *testing.T) {
 // A filter on fit can't place a model with no figure, so the list says which it left out, and the
 // header says something is missing, rather than quietly being shorter.
 func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
-	ts, _, _ := newTestGateway(t, host{})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.Log = slog.New(slog.NewTextHandler(io.Discard, nil)) })
 	s := runServer(ts)
-	s.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	c := readFailureClient{t, ts.URL}
 	ids := func(body string) (data, unknown []string, degraded bool) {
 		t.Helper()
@@ -246,7 +243,7 @@ func TestAFilteredListDoesNotShrinkSilently(t *testing.T) {
 	if degraded || !slices.Contains(was, gatewaytest.ChatModel) {
 		t.Fatalf("before: %v %v", was, degraded)
 	}
-	if _, err := s.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`DROP TABLE model_observed_memory`); err != nil {
 		t.Fatal(err)
 	}
 	code, header, body := c.get("/_localbase/models?fit=fits,tight,wont-fit")
