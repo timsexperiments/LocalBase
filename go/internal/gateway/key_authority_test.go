@@ -98,17 +98,18 @@ func secretOf(t *testing.T, body string) string {
 	return out.Secret
 }
 
-func keyAction(action, id string, scopes ...string) string {
+// KeyAction is an API keys request: action on key id, and the scopes to set, if any.
+func KeyAction(action, id string, scopes ...string) string {
 	if scopes == nil {
 		return `{"action":"` + action + `","keyId":"` + id + `"}`
 	}
 	return `{"action":"` + action + `","keyId":"` + id + `","scopes":["` + strings.Join(scopes, `","`) + `"]}`
 }
 
-const (
-	exceeds   = "exceeds_caller_permissions"
-	keysRoute = "/_localbase/api-keys"
-)
+const exceeds = "exceeds_caller_permissions"
+
+// KeysRoute is the API keys API.
+const KeysRoute = "/_localbase/api-keys"
 
 func TestKeyCreateGrantsOnlyWhatTheCallerHolds(t *testing.T) {
 	f := newKeyFixture(t)
@@ -138,23 +139,23 @@ func TestKeySetScopesStaysWithinTheCaller(t *testing.T) {
 	wide, _ := f.key("wide", 0, "keys:manage", "keys:read", "models:read", "models:manage")
 
 	// Widening itself is refused, and changes nothing.
-	f.expect(narrow, keyAction("set-scopes", me.ID, "keys:manage", "keys:read", "models:read", "access:read"), 403, exceeds)
+	f.expect(narrow, KeyAction("set-scopes", me.ID, "keys:manage", "keys:read", "models:read", "access:read"), 403, exceeds)
 	if got := f.stored(me.ID).Scopes; slices.Contains(got, "access:read") {
 		t.Errorf("widened itself: %v", got)
 	}
 	// So is widening another key past the caller.
-	f.expect(narrow, keyAction("set-scopes", small.ID, "models:read", "access:read"), 403, exceeds)
+	f.expect(narrow, KeyAction("set-scopes", small.ID, "models:read", "access:read"), 403, exceeds)
 	if got, _, _ := f.post(smallSecret, "/_localbase/access-management", `{"action":"test-policy"}`); got != 403 {
 		t.Errorf("the small key reached access management: %d", got)
 	}
 	// Changing a key wider than the caller is refused, even to narrow it.
-	f.expect(narrow, keyAction("set-scopes", wide.ID, "models:read"), 403, exceeds)
+	f.expect(narrow, KeyAction("set-scopes", wide.ID, "models:read"), 403, exceeds)
 	if got := f.stored(wide.ID).Scopes; !slices.Contains(got, "models:manage") {
 		t.Errorf("a wider key changed: %v", got)
 	}
 	// Within the caller, either way is fine.
-	f.expect(narrow, keyAction("set-scopes", small.ID, "models:read", "keys:read"), 200, "")
-	f.expect(narrow, keyAction("set-scopes", small.ID), 400, "validation_failed")
+	f.expect(narrow, KeyAction("set-scopes", small.ID, "models:read", "keys:read"), 200, "")
+	f.expect(narrow, KeyAction("set-scopes", small.ID), 400, "validation_failed")
 }
 
 func TestKeyRotateAndRevokeStayWithinTheCaller(t *testing.T) {
@@ -165,25 +166,25 @@ func TestKeyRotateAndRevokeStayWithinTheCaller(t *testing.T) {
 	second, secondSecret := f.key("second", 0, "keys:read")
 
 	// A wider key keeps its secret and stays alive.
-	out := f.expect(narrow, keyAction("rotate", owner.ID), 403, exceeds)
+	out := f.expect(narrow, KeyAction("rotate", owner.ID), 403, exceeds)
 	if strings.Contains(out, "access:manage") {
 		t.Errorf("the refusal names what the wider key holds: %s", out)
 	}
 	if strings.Contains(out, `"secret"`) {
 		t.Errorf("a refused rotate returned a secret: %s", out)
 	}
-	f.expect(narrow, keyAction("revoke", owner.ID), 403, exceeds)
+	f.expect(narrow, KeyAction("revoke", owner.ID), 403, exceeds)
 	f.expect(ownerSecret, `{"action":"create","name":"proof","scopes":[]}`, 201, "") // the old secret works
 
 	// A key within the caller can be rotated, and the old secret ends there.
-	fresh := secretOf(t, f.expect(narrow, keyAction("rotate", peer.ID), 200, ""))
+	fresh := secretOf(t, f.expect(narrow, KeyAction("rotate", peer.ID), 200, ""))
 	if got, _, _ := f.post(peerSecret, "/_localbase/api-keys", `{"action":"create","name":"x","scopes":[]}`); got != 401 {
 		t.Errorf("the old secret after a rotate: %d", got)
 	}
 	if fresh == peerSecret {
 		t.Error("the rotate returned the same secret")
 	}
-	f.expect(narrow, keyAction("revoke", second.ID), 200, "")
+	f.expect(narrow, KeyAction("revoke", second.ID), 200, "")
 	if got, _, _ := f.post(secondSecret, "/_localbase/api-keys", `{"action":"create","name":"x","scopes":[]}`); got != 401 {
 		t.Errorf("a revoked key: %d", got)
 	}
@@ -204,17 +205,17 @@ func TestKeyLifeIsLimitedByTheCallingKey(t *testing.T) {
 	f.expect(shortSecret, `{"action":"create","name":"later","scopes":["models:read"],"expiresDays":11}`, 403, life)
 	f.expect(shortSecret, `{"action":"create","name":"sooner","scopes":["models:read"],"expiresDays":9}`, 201, "")
 	// Rotating hands over a key that outlasts the caller; one that doesn't is fine.
-	f.expect(shortSecret, keyAction("rotate", longer.ID), 403, life)
-	f.expect(shortSecret, keyAction("rotate", sooner.ID), 200, "")
+	f.expect(shortSecret, KeyAction("rotate", longer.ID), 403, life)
+	f.expect(shortSecret, KeyAction("rotate", sooner.ID), 200, "")
 	// Adding to a longer-lived key extends those permissions; removing does not.
-	f.expect(shortSecret, keyAction("set-scopes", longer.ID, "models:read", "keys:read"), 403, life)
-	f.expect(shortSecret, keyAction("set-scopes", longer.ID), 400, "validation_failed")
+	f.expect(shortSecret, KeyAction("set-scopes", longer.ID, "models:read", "keys:read"), 403, life)
+	f.expect(shortSecret, KeyAction("set-scopes", longer.ID), 400, "validation_failed")
 	f.expect(shortSecret, `{"action":"set-scopes","keyId":"`+longer.ID+`","scopes":[]}`, 200, "")
-	f.expect(shortSecret, keyAction("set-scopes", sooner.ID, "models:read", "keys:read"), 200, "")
+	f.expect(shortSecret, KeyAction("set-scopes", sooner.ID, "models:read", "keys:read"), 200, "")
 	// A revoke gives nothing, so an expiry doesn't limit it.
-	f.expect(shortSecret, keyAction("revoke", longer.ID), 200, "")
+	f.expect(shortSecret, KeyAction("revoke", longer.ID), 200, "")
 	// A key's own secret can always be replaced: it doesn't outlast itself.
-	if got := secretOf(t, f.expect(shortSecret, keyAction("rotate", short.ID), 200, "")); got == shortSecret {
+	if got := secretOf(t, f.expect(shortSecret, KeyAction("rotate", short.ID), 200, "")); got == shortSecret {
 		t.Error("a rotate kept the old secret")
 	}
 	if got := f.stored(short.ID).ExpiresAt; got == nil {
@@ -222,7 +223,7 @@ func TestKeyLifeIsLimitedByTheCallingKey(t *testing.T) {
 	}
 	// A key with no expiry has no such limit, and neither does a person.
 	f.expect(foreverSecret, `{"action":"create","name":"never","scopes":["models:read"]}`, 201, "")
-	f.expect(foreverSecret, keyAction("rotate", forever.ID), 200, "")
+	f.expect(foreverSecret, KeyAction("rotate", forever.ID), 200, "")
 	person := &auth.Principal{Kind: "browser-session", ID: "browser:x", Permissions: []string{"keys:manage", "models:read"}}
 	res := f.s.Call(context.Background(), person, "POST", "/_localbase/api-keys", "application/json", []byte(`{"action":"create","name":"p","scopes":["models:read"]}`))
 	if res.Status != 201 {
@@ -242,10 +243,10 @@ func TestKeyRulesHoldForASession(t *testing.T) {
 	}
 	for _, body := range []string{
 		`{"action":"create","name":"more","scopes":["access:manage"]}`,
-		keyAction("rotate", wide.ID),
-		keyAction("revoke", wide.ID),
-		keyAction("set-scopes", wide.ID, "models:read"),
-		keyAction("set-scopes", small.ID, "models:read", "access:manage"),
+		KeyAction("rotate", wide.ID),
+		KeyAction("revoke", wide.ID),
+		KeyAction("set-scopes", wide.ID, "models:read"),
+		KeyAction("set-scopes", small.ID, "models:read", "access:manage"),
 	} {
 		if status, out := call(body); status != 403 || !strings.Contains(out, exceeds) {
 			t.Errorf("%s: %d %s", body, status, out)
@@ -253,9 +254,9 @@ func TestKeyRulesHoldForASession(t *testing.T) {
 	}
 	for _, body := range []string{
 		`{"action":"create","name":"mine","scopes":["keys:read"]}`,
-		keyAction("set-scopes", small.ID, "models:read", "keys:read"),
-		keyAction("rotate", small.ID),
-		keyAction("revoke", small.ID),
+		KeyAction("set-scopes", small.ID, "models:read", "keys:read"),
+		KeyAction("rotate", small.ID),
+		KeyAction("revoke", small.ID),
 	} {
 		if status, out := call(body); status >= 300 {
 			t.Errorf("%s: %d %s", body, status, out)
@@ -281,7 +282,7 @@ func TestKeyChangeUsesWhatTheCallerHoldsNow(t *testing.T) {
 	if _, err := f.st.SetAPIKeyScopes(context.Background(), k.ID, []string{"access:manage"}); err != nil {
 		t.Fatal(err)
 	}
-	if status, out := call(keyAction("rotate", other.ID)); status != 403 || !strings.Contains(out, "insufficient_permissions") {
+	if status, out := call(KeyAction("rotate", other.ID)); status != 403 || !strings.Contains(out, "insufficient_permissions") {
 		t.Errorf("a key that lost keys:manage: %d %s", status, out)
 	}
 	// It was revoked while the request waited.
@@ -331,18 +332,18 @@ func TestKeyRotateCannotLockEveryoneOut(t *testing.T) {
 		res := f.s.Call(context.Background(), host, "POST", "/_localbase/api-keys", "application/json", []byte(body))
 		return res.Status, string(res.Body)
 	}
-	if status, out := call(keyAction("rotate", only.ID)); status != 409 || !strings.Contains(out, "would_lock_out_admins") {
+	if status, out := call(KeyAction("rotate", only.ID)); status != 409 || !strings.Contains(out, "would_lock_out_admins") {
 		t.Fatalf("rotating the last manager: %d %s", status, out)
 	}
 	if got := f.stored(only.ID); got.KeyHash != store.HashKey(onlySecret) {
 		t.Fatal("the refused rotate changed the secret")
 	}
 	// Its own holder may, and gets the secret back.
-	fresh := secretOf(t, f.expect(onlySecret, keyAction("rotate", only.ID), 200, ""))
+	fresh := secretOf(t, f.expect(onlySecret, KeyAction("rotate", only.ID), 200, ""))
 	f.expect(fresh, `{"action":"create","name":"proof","scopes":[]}`, 201, "")
 	// With another manager there is no lockout.
 	f.key("second", 0, "access:manage")
-	if status, out := call(keyAction("rotate", only.ID)); status != 200 {
+	if status, out := call(KeyAction("rotate", only.ID)); status != 200 {
 		t.Errorf("rotating with another manager: %d %s", status, out)
 	}
 }
@@ -352,15 +353,15 @@ func TestKeyActingOnItself(t *testing.T) {
 	f := newKeyFixture(t)
 	// Only manager left: a revoke would leave nobody.
 	last, lastSecret := f.key("last", 0, "keys:manage", "access:manage")
-	f.expect(lastSecret, keyAction("revoke", last.ID), 409, "would_lock_out_admins")
+	f.expect(lastSecret, KeyAction("revoke", last.ID), 409, "would_lock_out_admins")
 	// Dropping access:manage from the key in use is refused, with its own words.
 	f.key("other", 0, "access:manage")
-	out := f.expect(lastSecret, keyAction("set-scopes", last.ID, "keys:manage"), 409, "would_lock_out_admins")
+	out := f.expect(lastSecret, KeyAction("set-scopes", last.ID, "keys:manage"), 409, "would_lock_out_admins")
 	if !strings.Contains(out, "remove access:manage from the API key you are using") {
 		t.Errorf("message: %s", out)
 	}
 	// With another manager it can revoke itself; the response is the last it gets.
-	out = f.expect(lastSecret, keyAction("revoke", last.ID), 200, "")
+	out = f.expect(lastSecret, KeyAction("revoke", last.ID), 200, "")
 	if !strings.Contains(out, `"revokedAt"`) {
 		t.Errorf("response: %s", out)
 	}
@@ -369,11 +370,11 @@ func TestKeyActingOnItself(t *testing.T) {
 	}
 	// A key that never held access:manage narrows itself freely, and isn't told it would lose it.
 	narrow, narrowSecret := f.key("narrow", 0, "keys:manage", "keys:read", "models:read")
-	f.expect(narrowSecret, keyAction("set-scopes", narrow.ID, "keys:manage", "keys:read"), 200, "")
-	f.expect(narrowSecret, keyAction("revoke", narrow.ID), 200, "")
+	f.expect(narrowSecret, KeyAction("set-scopes", narrow.ID, "keys:manage", "keys:read"), 200, "")
+	f.expect(narrowSecret, KeyAction("revoke", narrow.ID), 200, "")
 	// Rotating itself: the new secret works, the old one stops.
 	self, selfSecret := f.key("self", 0, "keys:manage")
-	fresh := secretOf(t, f.expect(selfSecret, keyAction("rotate", self.ID), 200, ""))
+	fresh := secretOf(t, f.expect(selfSecret, KeyAction("rotate", self.ID), 200, ""))
 	if got, _, _ := f.post(selfSecret, "/_localbase/api-keys", `{"action":"create","name":"x","scopes":[]}`); got != 401 {
 		t.Errorf("the old secret after rotating itself: %d", got)
 	}
@@ -405,7 +406,7 @@ func TestManagersRevokingEachOtherLeaveOneStanding(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			statuses[i], _, _ = f.post(call[0], "/_localbase/api-keys", keyAction("revoke", call[1]))
+			statuses[i], _, _ = f.post(call[0], "/_localbase/api-keys", KeyAction("revoke", call[1]))
 		}()
 	}
 	wg.Wait()
@@ -498,7 +499,7 @@ func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(bod
 	}
 	post = func(body string, path ...string) (int, string) {
 		t.Helper()
-		target := keysRoute
+		target := KeysRoute
 		if len(path) > 0 {
 			target = path[0]
 		}
@@ -530,7 +531,7 @@ func TestKeyRulesThroughARealSession(t *testing.T) {
 	if status, out := post(`{"action":"create","name":"more","scopes":["access:manage"]}`); status != 403 || !strings.Contains(out, exceeds) {
 		t.Fatalf("a wider key through the session: %d %s", status, out)
 	}
-	if status, out := post(keyAction("rotate", wide.ID)); status != 403 || !strings.Contains(out, exceeds) {
+	if status, out := post(KeyAction("rotate", wide.ID)); status != 403 || !strings.Contains(out, exceeds) {
 		t.Fatalf("rotating a wider key through the session: %d %s", status, out)
 	}
 	if status, out := post(`{"action":"create","name":"mine","scopes":["keys:read"]}`); status != 201 {
