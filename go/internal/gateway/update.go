@@ -27,7 +27,7 @@ func (h *Handler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if h.opts.Updates == nil {
-			NotConfigured(w, r, "Update check")
+			httpx.NotConfigured(w, r, "Update check")
 			return
 		}
 		httpx.JSON(w, http.StatusOK, h.opts.Updates.Read(r.Context()))
@@ -59,7 +59,7 @@ func (h *Handler) updateChange(w http.ResponseWriter, r *http.Request) {
 		actorKind, actorID, _ = h.opts.UsagePrincipal(p)
 	}
 	if h.opts.Updates == nil {
-		NotConfigured(w, r, "Update check")
+		httpx.NotConfigured(w, r, "Update check")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4097))

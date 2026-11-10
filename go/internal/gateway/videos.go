@@ -142,7 +142,7 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Video == nil || s.VideoJobs == nil || len(s.Video.Config().Selected["video"]) == 0 {
-		NotConfigured(w, r, "Video")
+		httpx.NotConfigured(w, r, "Video")
 		return
 	}
 	req, ok := s.readVideoCreate(w, r)
@@ -252,19 +252,19 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 		payloadTooLargeLimit(w, r, videoMultipartLimit)
 		return nil, false
 	}
-	var form map[string][]FormPart
+	var form map[string][]httpx.FormPart
 	if err == nil {
-		form, err = ReadMultipart(r, body)
+		form, err = httpx.ReadMultipart(r, body)
 	}
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid multipart video request.", nil)
 		return nil, false
 	}
-	get := func(name string) (FormPart, bool) {
+	get := func(name string) (httpx.FormPart, bool) {
 		if parts := form[name]; len(parts) > 0 {
 			return parts[0], true
 		}
-		return FormPart{}, false
+		return httpx.FormPart{}, false
 	}
 	text := func(name string) any {
 		p, ok := get(name)

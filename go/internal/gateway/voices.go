@@ -79,7 +79,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.opts.Voices() == nil {
-		NotConfigured(w, r, "Voices")
+		httpx.NotConfigured(w, r, "Voices")
 		return
 	}
 	canManage, canRead := p.Can("models:manage"), p.Can("models:read")
@@ -253,12 +253,12 @@ func (h *Handler) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name
 		tooLarge()
 		return
 	}
-	form, err := ReadMultipart(r, body)
+	form, err := httpx.ReadMultipart(r, body)
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
-	first := func(field string) *FormPart {
+	first := func(field string) *httpx.FormPart {
 		if v := form[field]; len(v) > 0 {
 			return &v[0]
 		}

@@ -345,7 +345,7 @@ func (h *Handler) AdmissionAPI(w http.ResponseWriter, r *http.Request, id string
 	default:
 		svc := h.service(name)
 		if svc == nil {
-			NotConfigured(w, r, strings.ToUpper(name))
+			httpx.NotConfigured(w, r, strings.ToUpper(name))
 			return
 		}
 		service = map[string]string{"stt": "STT", "tts": "TTS", "image": "Image", "video": "video"}[name]

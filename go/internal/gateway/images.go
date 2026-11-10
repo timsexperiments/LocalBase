@@ -272,13 +272,13 @@ func loraUnusable(w http.ResponseWriter, r *http.Request, spec *catalog.Spec, st
 // acquireImage resolves and admits an image model, writing the TS errors.
 func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model string) (*runtime.ServiceLease, bool) {
 	if s.Image == nil {
-		NotConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	}
 	id, err := s.Image.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
-		NotConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	case errors.Is(err, runtime.ErrModelNotFound):
 		httpx.ModelNotFound(w, r, model)
@@ -360,7 +360,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Expected multipart/form-data.", httpx.StrPtr("content-type"))
 		return
 	}
-	form, ferr := ReadMultipart(r, body)
+	form, ferr := httpx.ReadMultipart(r, body)
 	if err != nil || ferr != nil {
 		httpx.BadRequest(w, r, "Invalid multipart image edit request.", nil)
 		return
@@ -389,7 +389,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		modelID = s.activeImageModel()
 	}
 	if modelID == "" {
-		NotConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return
 	}
 	spec := s.Catalog.ByID(modelID)

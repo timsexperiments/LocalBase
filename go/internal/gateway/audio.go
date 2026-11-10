@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"regexp"
@@ -24,51 +23,6 @@ import (
 
 var transcriptionFormats = []string{"json", "text", "srt", "verbose_json", "vtt"}
 
-// FormPart is one part of a form ReadMultipart read: a value, or a file with its name and type.
-type FormPart struct {
-	Value    string
-	File     []byte
-	Filename string
-	CType    string // from the filename extension, as Bun's File.type; the part header is ignored
-	IsFile   bool
-}
-
-// ReadMultipart parses a bounded multipart body: values per field, in order.
-// include[] and timestamp_granularities[] are repeated fields.
-func ReadMultipart(r *http.Request, body []byte) (map[string][]FormPart, error) {
-	mt, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mt != "multipart/form-data" || params["boundary"] == "" {
-		return nil, errors.New("not multipart")
-	}
-	mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
-	out := map[string][]FormPart{}
-	for parts := 0; ; parts++ {
-		p, err := mr.NextPart()
-		if err == io.EOF {
-			return out, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if parts == httpx.MaxFormParts {
-			return nil, errors.New("too many parts")
-		}
-		data, err := io.ReadAll(p)
-		if err != nil {
-			return nil, err
-		}
-		name := p.FormName()
-		part := FormPart{Value: string(data)}
-		// A filename parameter makes a file part, even when empty (as in Bun).
-		if _, dp, err := mime.ParseMediaType(p.Header.Get("Content-Disposition")); err == nil {
-			if fn, ok := dp["filename"]; ok {
-				part = FormPart{File: data, Filename: fn, CType: fileTypeOf(fn), IsFile: true}
-			}
-		}
-		out[name] = append(out[name], part)
-	}
-}
-
 func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if r.ContentLength > httpx.MaxRequestBytes {
@@ -84,7 +38,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		httpx.PayloadTooLarge(w, r)
 		return
 	}
-	form, err := ReadMultipart(r, body)
+	form, err := httpx.ReadMultipart(r, body)
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
@@ -151,13 +105,13 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.STT == nil {
-		NotConfigured(w, r, "STT")
+		httpx.NotConfigured(w, r, "STT")
 		return
 	}
 	id, err := s.STT.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
-		NotConfigured(w, r, "STT")
+		httpx.NotConfigured(w, r, "STT")
 		return
 	case errors.Is(err, runtime.ErrModelNotFound):
 		httpx.ModelNotFound(w, r, model)
@@ -343,26 +297,4 @@ func normalizeTranscriptionJSON(d map[string]any, format string) map[string]any 
 		out["segments"] = norm
 	}
 	return out
-}
-
-// NotConfigured answers 501 for a feature this gateway runs without (route_disabled).
-func NotConfigured(w http.ResponseWriter, r *http.Request, feature string) {
-	httpx.Error(w, r, 501, "invalid_request_error", "route_disabled", feature+" route is disabled.", nil)
-}
-
-// fileTypeOf is Bun's File.type for an uploaded file: the MIME type of the
-// filename's extension ("" for none or an unknown one).
-func fileTypeOf(name string) string {
-	i := strings.LastIndex(name, ".")
-	if i <= 0 || i == len(name)-1 {
-		return ""
-	}
-	switch ext := strings.ToLower(name[i+1:]); ext {
-	case "png":
-		return "image/png"
-	case "jpg", "jpeg", "jpe":
-		return "image/jpeg"
-	default:
-		return mime.TypeByExtension("." + ext)
-	}
 }
