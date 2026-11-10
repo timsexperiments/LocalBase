@@ -43,5 +43,5 @@ func (s *Server) localCLI(r *http.Request) bool {
 	if s.Root == nil || auth.IsBrowser(r) || !auth.LocalRequest(r) {
 		return false
 	}
-	return instanceTokenMatches(s.Root.Instance(), r)
+	return httpx.InstanceTokenMatches(s.Root.Instance(), r)
 }

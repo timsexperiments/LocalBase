@@ -820,7 +820,7 @@ func (h *Handler) ModelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	in, ok := raw.(map[string]any)
 	modelID, _ := in["modelId"].(string)
 	action, _ := in["action"].(string)
-	valid := ok && len(in) == 2 && len([]rune(modelID)) >= 1 && utf16Length(modelID) <= 200 &&
+	valid := ok && len(in) == 2 && len([]rune(modelID)) >= 1 && httpx.UTF16Length(modelID) <= 200 &&
 		slices.Contains([]string{"install", "uninstall", "enable", "disable", "activate", "cancel"}, action)
 	if !valid {
 		httpx.BadRequest(w, r, "Invalid model management payload.", nil)

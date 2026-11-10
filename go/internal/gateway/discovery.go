@@ -44,7 +44,7 @@ func parseDiscovery(b []byte) (*discoveryRequest, bool) {
 			return "", !required
 		}
 		s, ok := v.(string)
-		n := utf16Length(s)
+		n := httpx.UTF16Length(s)
 		return s, ok && n >= min && n <= max
 	}
 	allowed := func(keys ...string) bool {
