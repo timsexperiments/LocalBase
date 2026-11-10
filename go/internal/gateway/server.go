@@ -99,7 +99,8 @@ type Server struct {
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
 	LoginPages LoginPages
-	localFails localLimit
+	// access serves the browser-owned paths and local sign-in.
+	access *Access
 
 	started  time.Time
 	stopping atomic.Bool
@@ -145,6 +146,7 @@ func New(s *Server) *Server {
 	s.changeAudit = newChangeLimiter()
 	go s.runs.Janitor()
 	mux := http.NewServeMux()
+	s.access = NewAccess(s.accessOptions(mux, rootDir))
 	for _, rt := range s.routeTable() {
 		mux.Handle(rt.pattern, rt.handler)
 		s.routes = append(s.routes, rt.pattern)
@@ -157,6 +159,19 @@ func New(s *Server) *Server {
 func (s *Server) runOptions(dir string) runs.Options {
 	return runs.Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel },
 		Dir: dir, MaxHeld: s.RunMemoryLimit, MaxHeldTotal: s.RunsMemoryLimit, MaxDuration: s.RunMaxDuration}
+}
+
+// accessOptions is what the browser access layer needs from this server, forwarding to mux.
+func (s *Server) accessOptions(mux http.Handler, rootDir string) Options {
+	return Options{Handler: mux, Store: s.Store, Log: func() *slog.Logger { return s.Log },
+		Browser: func() *auth.Browser { return s.Browser }, NoAuth: func() bool { return s.NoAuth },
+		Pages: func() LoginPages { return s.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
+		Caller: s.principal, LookupFailed: s.lookupFailed}
+}
+
+// BrowserPrincipal resolves the signed-in browser identity of a request.
+func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Identity) {
+	return s.access.Principal(r)
 }
 
 // StopRuns interrupts active runs (gateway_restart) and ends their event
