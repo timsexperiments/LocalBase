@@ -152,11 +152,11 @@ func (h *Handler) Speech(w http.ResponseWriter, r *http.Request) {
 			"The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.", httpx.StrPtr("voice"))
 		return
 	}
-	if h.opts.Runtimes().TTS == nil {
+	if h.opts.Runtimes.TTS == nil {
 		httpx.NotConfigured(w, r, "TTS")
 		return
 	}
-	id, err := h.opts.Runtimes().TTS.Resolve(req.Model)
+	id, err := h.opts.Runtimes.TTS.Resolve(req.Model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "TTS")
@@ -166,7 +166,7 @@ func (h *Handler) Speech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := h.opts.Runtimes().TTS.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes.TTS.Acquire(r.Context(), id)
 	if err != nil {
 		httpx.RuntimeError(w, r, err, id, "TTS")
 		return
@@ -203,7 +203,7 @@ func (h *Handler) Speech(w http.ResponseWriter, r *http.Request) {
 		// tts-server stops at the frame cap and answers normally; the audio is
 		// kept as it is, and the cut is made visible. Never the text.
 		w.Header().Set(httpx.AudioTruncatedHeader, "true")
-		h.opts.Log().WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
+		h.opts.Log.WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
 			"runtime", "tts", "request_id", tel.requestID, "model_id", lease.ModelID, "frames", runtime.SpeechMaxFrames,
 			"input_chars", utf8.RuneCountInString(req.Input))
 	}
@@ -385,10 +385,10 @@ func writeSpeech(w http.ResponseWriter, req *speechRequest, pcm []byte) {
 // customVoiceExists: a stored voice whose recording still matches its
 // checksum (TS voiceStore.resolve).
 func (h *Handler) customVoiceExists(r *http.Request, id string) bool {
-	if h.opts.Voices() == nil {
+	if h.opts.Voices == nil {
 		return false
 	}
-	p, err := h.opts.Voices().Resolve(r.Context(), id)
+	p, err := h.opts.Voices.Resolve(r.Context(), id)
 	return err == nil && p != ""
 }
 
