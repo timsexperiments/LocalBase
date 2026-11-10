@@ -17,6 +17,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/keys"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/browser"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
@@ -74,7 +75,7 @@ type Server struct {
 
 	mgmt *management
 	// keys serves the key and access APIs, and the Hugging Face token.
-	keys *Handler
+	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
 	speechBusyFor time.Duration
 
@@ -144,7 +145,7 @@ func New(s *Server) *Server {
 	go s.runs.Janitor()
 	mux := http.NewServeMux()
 	s.access = browser.NewAccess(s.accessOptions(mux, rootDir))
-	s.keys = NewHandler(s.keysOptions(rootDir))
+	s.keys = keys.NewHandler(s.keysOptions(rootDir))
 	for _, rt := range s.routeTable() {
 		mux.Handle(rt.pattern, rt.handler)
 		s.routes = append(s.routes, rt.pattern)
@@ -168,8 +169,8 @@ func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options
 }
 
 // keysOptions is what the key and access APIs need from this server.
-func (s *Server) keysOptions(rootDir string) Options {
-	return Options{Store: s.Store, RootDir: rootDir, LLM: s.LLM, Browser: func() *auth.Browser { return s.Browser },
+func (s *Server) keysOptions(rootDir string) keys.Options {
+	return keys.Options{Store: s.Store, RootDir: rootDir, LLM: s.LLM, Browser: func() *auth.Browser { return s.Browser },
 		Caller: s.principal}
 }
 
