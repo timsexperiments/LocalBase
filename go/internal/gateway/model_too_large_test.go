@@ -75,16 +75,16 @@ func mediaGateway(t *testing.T, modality, modelID, backendID, binary string) (*h
 		Port: freePort(t), Binaries: map[string]string{binary: fakeBinary},
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
-	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, NoAuth: true, MemoryGB: 64, Root: r, Memory: mem}
+	conf := Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, NoAuth: true, MemoryGB: 64, Root: r, Memory: mem}
 	switch modality {
 	case "image":
-		s.Image = svc
+		conf.Image = svc
 	case "tts":
-		s.TTS = svc
+		conf.TTS = svc
 	case "stt":
-		s.STT = svc
+		conf.STT = svc
 	}
-	ts := httptest.NewServer(New(s))
+	ts := httptest.NewServer(newFromConfig(conf))
 	t.Cleanup(ts.Close)
 	return ts, svc
 }

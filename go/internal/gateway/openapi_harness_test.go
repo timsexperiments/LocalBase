@@ -51,8 +51,8 @@ var openAPIHasMedia = goruntime.GOOS == "darwin"
 // authentication on from the start: every route answers as it would in production, and
 // nothing changes under a running server.
 // openAPIGateway is a whole gateway on a scratch root, as the OpenAPI tests use it; configure, if
-// given, sets what a test needs on the server before it starts.
-func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
+// given, sets what a test needs on its Config before the gateway is built.
+func openAPIGateway(t *testing.T, configure ...func(*Config)) *httptest.Server {
 	t.Helper()
 	r, err := root.Init(filepath.Join(scratchDir(t), "root"))
 	if err != nil {
@@ -91,7 +91,7 @@ func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 	if gatewaytest.Log != nil {
 		log = slog.New(slog.NewJSONHandler(gatewaytest.Log, nil))
 	}
-	s := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, MemoryGB: 64,
+	conf := Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log, MemoryGB: 64,
 		Root: r, Memory: mem, Voices: voices.New(st, r.Dir)}
 
 	service := func(modality, modelID, backendID, binary string) *runtime.Service {
@@ -117,11 +117,11 @@ func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 		t.Cleanup(svc.Close)
 		return svc
 	}
-	s.TTS = service("tts", speechModel, "tts-server", "tts-server")
-	s.STT = service("stt", openAPISTTModel, "whisper.cpp-metal", "whisper-server")
-	s.Image = service("image", openAPIImageModel, "stable-diffusion.cpp-metal", "sd-server")
-	s.Video = service("video", videoModel, "stable-diffusion.cpp-metal", "sd-server")
-	client, err := video.NewClient(s.Video.BaseURL() + "/")
+	conf.TTS = service("tts", speechModel, "tts-server", "tts-server")
+	conf.STT = service("stt", openAPISTTModel, "whisper.cpp-metal", "whisper-server")
+	conf.Image = service("image", openAPIImageModel, "stable-diffusion.cpp-metal", "sd-server")
+	conf.Video = service("video", videoModel, "stable-diffusion.cpp-metal", "sd-server")
+	client, err := video.NewClient(conf.Video.BaseURL() + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,34 +130,34 @@ func openAPIGateway(t *testing.T, configure ...func(*Server)) *httptest.Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { jobs.Shutdown() })
-	s.VideoJobs = jobs
+	conf.VideoJobs = jobs
 
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	s.LLM = runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: llmDir, Store: st, Catalog: cat, Memory: mem,
+	conf.LLM = runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: llmDir, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
-	t.Cleanup(s.LLM.Close)
+	t.Cleanup(conf.LLM.Close)
 	// Placement, as serve wires it: the chat model's file has a tensor table to plan from.
 	primary := cat.ByID(gatewaytest.ChatModel).Primary()
 	placementtest.WriteMoEGGUF(t, filepath.Join(llmDir, primary.Filename), primary.ExpectedSizeBytes)
-	s.Placement = &runtime.HostPlacement{Store: st, DeviceID: openAPIDevice, Memory: mem, Log: log, Platform: placement.Unified}
-	s.LLM.SetPlacementSource(s.Placement)
+	conf.Placement = &runtime.HostPlacement{Store: st, DeviceID: openAPIDevice, Memory: mem, Log: log, Platform: placement.Unified}
+	conf.LLM.SetPlacementSource(conf.Placement)
 	lib, err := library.Open(r, st, cat, backends.ProbeAccelerators(backends.ProbeOptions{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Library = lib
-	s.Otel = testOtel
-	s.Updates = upgrade.NewChecker(st, upgrade.Source{API: "http://127.0.0.1:1/never"}, "0.2.0", true, log)
-	s.Usage, err = usage.New(st, log)
+	conf.Library = lib
+	conf.Otel = testOtel
+	conf.Updates = upgrade.NewChecker(st, upgrade.Source{API: "http://127.0.0.1:1/never"}, "0.2.0", true, log)
+	conf.Usage, err = usage.New(st, log)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range configure {
-		c(s)
+		c(&conf)
 	}
-	ts := httptest.NewServer(New(s))
+	ts := httptest.NewServer(newFromConfig(conf))
 	t.Cleanup(ts.Close)
 	return ts
 }

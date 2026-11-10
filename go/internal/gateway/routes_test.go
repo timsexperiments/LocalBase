@@ -29,13 +29,13 @@ func TestUsageLabelsComeFromTheRouteTable(t *testing.T) {
 // the catch-all last.
 func TestTheRouteTableIsWhatIsRegistered(t *testing.T) {
 	for _, ui := range []bool{false, true} {
-		s := &Server{}
+		var conf Config
 		if ui {
-			s.UI = http.NotFoundHandler()
+			conf.UI = http.NotFoundHandler()
 		}
-		srv := New(s)
+		srv := newFromConfig(conf)
 		srv.StopRuns(0)
-		table := s.routeTable()
+		table := srv.routeTable()
 		if len(srv.routes) != len(table) {
 			t.Fatalf("ui %v: %d registered, %d in the table", ui, len(srv.routes), len(table))
 		}

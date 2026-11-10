@@ -109,7 +109,7 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
+	srv := newFromConfig(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, Video: svc, VideoJobs: jobs, Usage: counted})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)

@@ -37,7 +37,7 @@ func newKeyFixture(t *testing.T) *keyFixture {
 	}
 	t.Cleanup(func() { st.Close() })
 	logs := &bytes.Buffer{}
-	s := New(&Server{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(logs, nil))})
+	s := newFromConfig(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(logs, nil))})
 	return &keyFixture{t, s, st, logs}
 }
 

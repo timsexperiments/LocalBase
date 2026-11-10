@@ -128,7 +128,7 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 		llm.SetPlacementSource(placementSrc)
 	}
 	t.Cleanup(llm.Close)
-	srv := New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log, Placement: placementSrc,
+	srv := newFromConfig(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log, Placement: placementSrc,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)

@@ -274,14 +274,17 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 	t.Cleanup(llm.Close)
 	browser := auth.NewBrowser(st, r.Dir, access, log)
 	resolver := &auth.Resolver{Store: st, Mode: "either"}
-	srv := &Server{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, MemoryGB: 64, Root: r, Memory: mem,
+	conf := Config{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, MemoryGB: 64, Root: r, Memory: mem,
 		Browser: browser, STT: base.STT, Voices: voices.New(st, r.Dir),
 		Placement: &runtime.HostPlacement{Store: st, DeviceID: "test", Memory: mem, Log: log}}
-	srv.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, RootDir: r.Dir,
+	// The UI asks the gateway who the caller is, and the gateway is built with the UI, so the UI
+	// reaches it through srv, which is assigned before any request comes.
+	var srv *Server
+	conf.UI = web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(),
 		Voices: voices.New(st, r.Dir).List})
-	New(srv)
+	srv = newFromConfig(conf)
 	bodyRead := &atomic.Int64{}
 	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Body != nil {

@@ -121,8 +121,8 @@ func TestTheDocumentDescribesTheTokenException(t *testing.T) {
 
 // cancelledInstall writes, under the gateway's root before it starts, the record a gateway leaves of
 // an install of model that was cancelled, so the gateway starts with that operation finished.
-func cancelledInstall(t *testing.T, model string) func(*Server) {
-	return func(s *Server) {
+func cancelledInstall(t *testing.T, model string) func(*Config) {
+	return func(c *Config) {
 		t.Helper()
 		b, err := json.Marshal(map[string]any{"version": 1, "operations": map[string]any{
 			model: map[string]any{"action": "install", "state": "cancelled",
@@ -131,7 +131,7 @@ func cancelledInstall(t *testing.T, model string) func(*Server) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(s.Root.Dir, "runtime")
+		dir := filepath.Join(c.Root.Dir, "runtime")
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
