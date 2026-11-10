@@ -22,6 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/records"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/browser"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/infer"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -80,7 +81,7 @@ type Server struct {
 	// records serves the host, computer name, usage, update and voices routes.
 	records *records.Handler
 	// infer serves the /v1 inference routes.
-	infer *Handler
+	infer *infer.Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
@@ -145,7 +146,7 @@ func New(s *Server) *Server {
 	if s.Root != nil {
 		rootDir = s.Root.Dir
 	}
-	s.infer = NewHandler(s.inferOptions())
+	s.infer = infer.NewHandler(s.inferOptions())
 	s.records = records.NewHandler(s.recordsOptions())
 	s.models = models.NewHandler(s.modelsOptions())
 	runsDir := ""
@@ -223,8 +224,8 @@ func (s *Server) recordsOptions() records.Options {
 }
 
 // inferOptions is what the /v1 inference routes need from this server.
-func (s *Server) inferOptions() Options {
-	return Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, MemoryGB: s.MemoryGB,
+func (s *Server) inferOptions() infer.Options {
+	return infer.Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, MemoryGB: s.MemoryGB,
 		Runtimes: func() runtime.Set {
 			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
 		},

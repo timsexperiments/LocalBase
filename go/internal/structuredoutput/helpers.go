@@ -9,10 +9,10 @@ import (
 // Verbatim copies of three gateway helpers, so this package needs only the standard library. A later
 // step folds each pair into one.
 
-// Twin of gateway's contains (internal/gateway/util.go).
+// Twin of infer's contains (internal/gateway/infer/util.go).
 func contains(list []string, v string) bool { return slices.Contains(list, v) }
 
-// Twin of gateway's sortedKeys (internal/gateway/util.go).
+// Twin of infer's sortedKeys (internal/gateway/infer/util.go).
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -22,7 +22,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// Twin of gateway's number (internal/gateway/validate.go).
+// Twin of infer's number (internal/gateway/infer/validate.go).
 // number reads a JSON number from a UseNumber decode.
 func number(v any) (float64, bool) {
 	switch n := v.(type) {

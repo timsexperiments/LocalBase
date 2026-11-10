@@ -56,10 +56,10 @@ func (host) Snapshot(context.Context) memory.Snapshot {
 }
 
 // gatewayPackages is how many directories under internal/gateway hold code: now gateway,
-// admin/keys, admin/models, admin/records, browser, gatewaytest, httpx and runs. The checks that
-// read the gateway's source read every one of them, and fail below this; raise it when a package
-// moves out of gateway.
-const gatewayPackages = 8
+// admin/keys, admin/models, admin/records, browser, gatewaytest, httpx, infer and runs. The checks
+// that read the gateway's source read every one of them, and fail below this; raise it when a
+// package moves out of gateway.
+const gatewayPackages = 9
 
 const (
 	embeddingModel = "qwen3-embedding-0.6b-q8_0"
@@ -291,14 +291,6 @@ func TestToolGate(t *testing.T) {
 	got = post(t, ts, "/v1/chat/completions", body)
 	if got.status != 400 || got.code() != "unsupported_model_capability" || !strings.Contains(got.body, `"param":"tools"`) {
 		t.Errorf("after probe: %d %s", got.status, got.body)
-	}
-}
-
-func TestAnchorPattern(t *testing.T) {
-	for in, want := range map[string]string{"a": "^a$", "^a$": "^a$", "a|b": "^(?:a|b)$", `a\$`: `^a\$$`, "^a": "^a$"} {
-		if got := anchorPattern(in); got != want {
-			t.Errorf("%q: %q want %q", in, got, want)
-		}
 	}
 }
 
