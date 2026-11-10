@@ -49,8 +49,8 @@ func nestedArrays(depth int) []byte {
 
 func TestNestedArraysAreRefused(t *testing.T) {
 	for _, depth := range []int{1, 2, 1000} {
-		if _, _, err := parseAll(bytes.NewReader(nestedArrays(depth))); !errors.Is(err, ErrNestedGGUFArray) {
-			t.Errorf("depth %d: %v, want ErrNestedGGUFArray", depth, err)
+		if _, _, err := parseAll(bytes.NewReader(nestedArrays(depth))); !errors.Is(err, ErrNestedArray) {
+			t.Errorf("depth %d: %v, want ErrNestedArray", depth, err)
 		}
 	}
 }
@@ -65,8 +65,8 @@ func TestDeepNestingUsesNoStack(t *testing.T) {
 		_, _, err := parseAll(bytes.NewReader(nestedArrays(500_000)))
 		done <- err
 	}()
-	if err := <-done; !errors.Is(err, ErrNestedGGUFArray) {
-		t.Fatalf("%v, want ErrNestedGGUFArray", err)
+	if err := <-done; !errors.Is(err, ErrNestedArray) {
+		t.Fatalf("%v, want ErrNestedArray", err)
 	}
 }
 

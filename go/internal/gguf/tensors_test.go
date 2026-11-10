@@ -39,7 +39,7 @@ func TestReadTensorTable(t *testing.T) {
 	if err != nil || len(got) != 2 || got[0].Name != "blk.0.ffn_down_exps.weight" || got[0].Type != 39 || len(got[0].Dims) != 3 || got[1].Dims[0] != 2880 {
 		t.Fatalf("%+v %v", got, err)
 	}
-	if keys, err := ReadGGUFHeader(path, func(string) bool { return true }); err != nil || keys["general.architecture"] != "gpt-oss" {
+	if keys, err := ReadHeader(path, func(string) bool { return true }); err != nil || keys["general.architecture"] != "gpt-oss" {
 		t.Errorf("keys %v %v", keys, err)
 	}
 }

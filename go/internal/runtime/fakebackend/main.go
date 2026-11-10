@@ -348,7 +348,7 @@ func batchOverflow(w http.ResponseWriter, mode string) bool {
 var fakeExpertRe = regexp.MustCompile(`^blk\.(\d+)\.ffn_(up|down|gate|gate_up)_(ch|)exps`)
 
 func placementLines(model string, ngl, cpuMoE int) {
-	keys, err := gguf.ReadGGUFHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
+	keys, err := gguf.ReadHeader(model, func(k string) bool { return strings.HasSuffix(k, ".block_count") })
 	if err != nil {
 		return
 	}
