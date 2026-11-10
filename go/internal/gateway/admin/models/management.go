@@ -24,9 +24,9 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -150,7 +150,7 @@ func newManagement(rootDir string) *management {
 		Version    int                       `json:"version"`
 		Operations map[string]*mgmtOperation `json:"operations"`
 	}
-	if b, err := obs.ReadOwnedRegular(m.path); err == nil && json.Unmarshal(b, &saved) == nil && saved.Version == 1 {
+	if b, err := safefile.ReadOwnedRegular(m.path); err == nil && json.Unmarshal(b, &saved) == nil && saved.Version == 1 {
 		for id, op := range saved.Operations {
 			if op == nil {
 				continue
@@ -180,7 +180,7 @@ func (m *management) persist(force bool) {
 	if os.MkdirAll(filepath.Dir(m.path), 0o700) != nil {
 		return
 	}
-	obs.WarnRefusedWrite(nil, obs.WritePrivateAtomic(m.path, b))
+	safefile.WarnRefusedWrite(nil, safefile.WritePrivateAtomic(m.path, b))
 }
 
 func i64(v int64) *int64 { return &v }
