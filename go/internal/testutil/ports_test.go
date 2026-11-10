@@ -7,8 +7,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -196,5 +198,65 @@ func TestAFullPartFallsBackToTheRestOfTheBlock(t *testing.T) {
 	}
 	if got := FreePort(); got < blockLow || got > blockLow+31 || (got >= partLow && got < partLow+16) {
 		t.Errorf("with part %d-%d full, got %d", partLow, partLow+15, got)
+	}
+}
+
+// FreeRun's ports are this process's: test processes running at once each hold a part of the
+// block, and a run handed out from another's part loses a port to that process's backends. Here
+// every part of a block of its own but one is held, as other processes would hold them.
+func TestFreeRunKeepsToThisProcesssPart(t *testing.T) {
+	const low, high, block = 25300, 25459, "25300-25459"
+	t.Setenv(PortsEnv, block)
+	count := min(maxParts, (high-low+1)/minPartPorts)
+	width := (high - low + 1) / count
+	const mine = 6
+	dir := partsDir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for n := range count {
+		if n == mine {
+			continue
+		}
+		f, err := os.OpenFile(filepath.Join(dir, fmt.Sprintf("%s-%d.lock", block, n)), os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			t.Skipf("part %d of the test's own block is held: %v", n, err)
+		}
+	}
+	partLow, partHigh := low+mine*width, low+mine*width+width-1
+	base, ok := FreeRun(5)
+	if !ok || base < partLow || base+4 > partHigh {
+		t.Fatalf("FreeRun gave %d (%v); this process's part is %d-%d", base, ok, partLow, partHigh)
+	}
+	for p := base; p < base+5; p++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+		if err != nil {
+			t.Errorf("port %d of the run isn't free: %v", p, err)
+			continue
+		}
+		ln.Close()
+	}
+	// The rest of the part is for FreePort, which doesn't hand the run out again.
+	if p := FreePort(); p >= base && p < base+5 {
+		t.Errorf("FreePort gave %d, in the run %d-%d", p, base, base+4)
+	}
+	// A part with no run left falls back to the whole block, as FreePort does.
+	var held []net.Listener
+	for p := partLow; p <= partHigh; p += 4 {
+		if ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p)); err == nil {
+			held = append(held, ln)
+		}
+	}
+	defer func() {
+		for _, ln := range held {
+			ln.Close()
+		}
+	}()
+	if base, ok := FreeRun(5); !ok || (base >= partLow && base <= partHigh) {
+		t.Errorf("a part with no run of 5 gave %d (%v)", base, ok)
 	}
 }

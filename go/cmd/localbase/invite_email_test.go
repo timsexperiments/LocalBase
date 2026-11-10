@@ -1,11 +1,12 @@
 package main
 
 import (
-	"net"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // invite --send-email says so when the email wasn't sent; the invite itself still stands (exit 0).
@@ -20,13 +21,9 @@ func TestAnInviteWhoseEmailFailsSaysSo(t *testing.T) {
 	if code, out := run("configure", "--defaults", "--no-create-key"); code != 0 {
 		t.Fatalf("configure: %s", out)
 	}
-	// An SMTP server that isn't there: every send fails.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	ln.Close()
+	// An SMTP server that isn't there: every send fails. The port is from this process's part of the
+	// test block, which no other test process hands out.
+	port := strconv.Itoa(testutil.FreePort())
 	const issuer, origin, invited = "https://identity.example", "https://lb.example", "invited@example.com"
 	t.Setenv("INVITE_TEST_CLIENT_SECRET", "a-client-secret-for-the-test")
 	t.Setenv("INVITE_TEST_SMTP_PASSWORD", "an-smtp-password-for-the-test")
