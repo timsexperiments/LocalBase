@@ -6,20 +6,60 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/go/internal/usage"
+	"github.com/timsexperiments/LocalBase/go/internal/video"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 // GET /_localbase/host and GET /_localbase/models/{id}/admission (DESIGN §26): what
 // the machine is doing, truthfully and cheaply. An unknown figure is null, never 0.
 // Reads share one sample a second, so polling never spawns a process per call.
+
+// Handler serves the host, computer name, usage, update and voices routes for one gateway.
+type Handler struct {
+	opts Options
+}
+
+// Options are what Handler needs from the gateway. The funcs that read a value are read when
+// called: tests set those on the gateway after New.
+type Options struct {
+	Store     *store.Store
+	Catalog   *catalog.Catalog
+	Memory    *memory.Controller
+	Usage     *usage.Recorder
+	Updates   *upgrade.Checker
+	VideoJobs *video.Manager
+	Runtimes  func() runtime.Set
+	Voices    func() *voices.Store
+	Log       func() *slog.Logger
+	NoAuth    func() bool
+	// Caller is who a request is from, LocalCLI whether it is this machine's CLI, and
+	// UsagePrincipal who to count it under.
+	Caller         func(*http.Request) *auth.Principal
+	LocalCLI       func(*http.Request) bool
+	UsagePrincipal func(*auth.Principal) (kind, id string, ok bool)
+	// ActiveRuns is how many detached runs have not finished.
+	ActiveRuns func() int
+	// Unmatched answers a path no route has.
+	Unmatched http.HandlerFunc
+}
+
+// NewHandler returns the host and records routes for o.
+func NewHandler(o Options) *Handler { return &Handler{opts: o} }
 
 // computerNameKey holds the owner's name for this computer. It stays out of logs
 // and diagnostics.
@@ -54,26 +94,26 @@ func known(v int64) *int64 {
 }
 
 // computerName is the owner's name, else this machine's, without .local.
-func (s *Server) computerName(ctx context.Context) (string, string) {
-	if v, ok, err := s.Store.Setting(ctx, computerNameKey); err == nil && ok && v != "" {
+func (h *Handler) computerName(ctx context.Context) (string, string) {
+	if v, ok, err := h.opts.Store.Setting(ctx, computerNameKey); err == nil && ok && v != "" {
 		return v, "setting"
 	}
-	h, err := os.Hostname()
+	name, err := os.Hostname()
 	if err != nil {
 		return "", "unavailable"
 	}
-	return strings.TrimSuffix(h, ".local"), "system"
+	return strings.TrimSuffix(name, ".local"), "system"
 }
 
-func (s *Server) runtimeModel(name string) *string {
+func (h *Handler) runtimeModel(name string) *string {
 	id := ""
 	switch name {
 	case "llm":
-		if s.LLM != nil {
-			id, _, _ = s.LLM.Running()
+		if h.opts.Runtimes().LLM != nil {
+			id, _, _ = h.opts.Runtimes().LLM.Running()
 		}
 	default:
-		if svc := s.service(name); svc != nil {
+		if svc := h.service(name); svc != nil {
 			id = svc.Running()
 		}
 	}
@@ -83,23 +123,23 @@ func (s *Server) runtimeModel(name string) *string {
 	return &id
 }
 
-func (s *Server) service(name string) *runtime.Service {
+func (h *Handler) service(name string) *runtime.Service {
 	switch name {
 	case "stt":
-		return s.STT
+		return h.opts.Runtimes().STT
 	case "tts":
-		return s.TTS
+		return h.opts.Runtimes().TTS
 	case "image":
-		return s.Image
+		return h.opts.Runtimes().Image
 	case "video":
-		return s.Video
+		return h.opts.Runtimes().Video
 	}
 	return nil
 }
 
-func (s *Server) hostMemory(ctx context.Context) map[string]any {
-	topo := s.Memory.Topology()
-	snap := s.Memory.Snapshot(ctx)
+func (h *Handler) hostMemory(ctx context.Context) map[string]any {
+	topo := h.opts.Memory.Topology()
+	snap := h.opts.Memory.Snapshot(ctx)
 	total, available := int64(-1), snap.Available
 	if topo.SystemCapacity > 0 {
 		total = topo.SystemCapacity
@@ -113,8 +153,8 @@ func (s *Server) hostMemory(ctx context.Context) map[string]any {
 	runtimes := []runtimeFigure{}
 	var sum int64
 	measured, planned := 0, 0
-	for _, m := range s.Memory.Runtimes(ctx) {
-		f := runtimeFigure{Runtime: m.Runtime, ModelID: s.runtimeModel(m.Runtime), Bytes: m.PlannedBytes, Source: "planned",
+	for _, m := range h.opts.Memory.Runtimes(ctx) {
+		f := runtimeFigure{Runtime: m.Runtime, ModelID: h.runtimeModel(m.Runtime), Bytes: m.PlannedBytes, Source: "planned",
 			PlannedBytes: m.PlannedBytes, MeasuredBytes: known(m.MeasuredBytes)}
 		if m.MeasuredBytes >= 0 {
 			f.Bytes, f.Source = m.MeasuredBytes, "measured"
@@ -141,45 +181,45 @@ func (s *Server) hostMemory(ctx context.Context) map[string]any {
 	}
 	var pressure *string
 	if available >= 0 {
-		state := s.Memory.PressureState()
+		state := h.opts.Memory.PressureState()
 		pressure = &state
 	}
 	out := map[string]any{"total": figure(total), "available": figure(available), "pressure": pressure,
 		"localBase": map[string]any{"bytes": sum, "source": source, "runtimes": runtimes}, "other": other}
-	if available >= 0 && s.Memory.Settling() {
+	if available >= 0 && h.opts.Memory.Settling() {
 		out["settling"] = true // absent otherwise
 	}
 	return out
 }
 
-func (s *Server) hostActivity() map[string]any {
+func (h *Handler) hostActivity() map[string]any {
 	out := map[string]any{}
 	busy := false
 	add := func(name string, configured bool, inFlight, queued int) {
 		out[name] = activityFigure{configured, inFlight, queued}
 		busy = busy || inFlight > 0 || queued > 0
 	}
-	if s.LLM != nil {
-		i, q := s.LLM.Activity()
+	if h.opts.Runtimes().LLM != nil {
+		i, q := h.opts.Runtimes().LLM.Activity()
 		add("llm", true, i, q)
 	} else {
 		add("llm", false, 0, 0)
 	}
 	for _, name := range []string{"stt", "tts", "image", "video"} {
-		svc := s.service(name)
+		svc := h.service(name)
 		if svc == nil {
 			add(name, false, 0, 0)
 			continue
 		}
 		i, q := svc.Activity()
-		if name == "video" && s.VideoJobs != nil {
-			i = max(i, s.VideoJobs.ActiveJobs())
+		if name == "video" && h.opts.VideoJobs != nil {
+			i = max(i, h.opts.VideoJobs.ActiveJobs())
 		}
 		add(name, true, i, q)
 	}
 	runs := 0
-	if s.runs != nil {
-		runs = s.runs.ActiveCount()
+	if h.opts.ActiveRuns != nil {
+		runs = h.opts.ActiveRuns()
 	}
 	out["runs"] = map[string]int{"active": runs}
 	out["busy"] = busy || runs > 0
@@ -187,22 +227,22 @@ func (s *Server) hostActivity() map[string]any {
 }
 
 // hostAPI serves GET /_localbase/host (models:read).
-func (s *Server) hostAPI(w http.ResponseWriter, r *http.Request) {
-	name, source := s.computerName(r.Context())
+func (h *Handler) HostAPI(w http.ResponseWriter, r *http.Request) {
+	name, source := h.computerName(r.Context())
 	var named *string
 	if name != "" {
 		named = &name
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.JSON(w, 200, map[string]any{"host": map[string]any{
-		"name": named, "nameSource": source, "memory": s.hostMemory(r.Context()), "activity": s.hostActivity(),
+		"name": named, "nameSource": source, "memory": h.hostMemory(r.Context()), "activity": h.hostActivity(),
 	}, "capturedAt": time.Now().UnixMilli()})
 }
 
 // computerNameAPI serves PUT /_localbase/computer-name (models:manage). An empty
 // name goes back to the machine's own.
-func (s *Server) computerNameAPI(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) ComputerNameAPI(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
@@ -229,11 +269,11 @@ func (s *Server) computerNameAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "A computer name is at most 64 characters, with no control characters.", nil)
 		return
 	}
-	if err := s.Store.SetSetting(r.Context(), computerNameKey, name); err != nil {
+	if err := h.opts.Store.SetSetting(r.Context(), computerNameKey, name); err != nil {
 		httpx.ServiceUnavailable(w, r, "Settings")
 		return
 	}
-	got, source := s.computerName(r.Context())
+	got, source := h.computerName(r.Context())
 	httpx.JSON(w, 200, map[string]any{"name": got, "nameSource": source})
 }
 
@@ -249,7 +289,7 @@ func (w *refusalWriter) Header() http.Header         { return w.header }
 func (w *refusalWriter) WriteHeader(status int)      { w.status = status }
 func (w *refusalWriter) Write(b []byte) (int, error) { return w.body.Write(b) }
 
-func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[string]any {
+func (h *Handler) refusalFor(r *http.Request, err error, id, service string) map[string]any {
 	var ae *memory.AdmissionError
 	permanent := errors.As(err, &ae) && ae.Permanent
 	if service == "video" {
@@ -277,7 +317,7 @@ func (s *Server) refusalFor(r *http.Request, err error, id, service string) map[
 // admissionAPI serves GET /_localbase/models/{id}/admission: what a request for
 // this model would meet now. It runs the real admission's evaluate and maps the
 // outcome through the real refusal, and starts, stops and installs nothing.
-func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string) {
+func (h *Handler) AdmissionAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodGet {
 		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "GET")
@@ -293,17 +333,17 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 	// ?assumeInstalled=1 answers the memory question alone, for a model not yet
 	// on disk. The real request would first need the install.
 	assume := r.URL.Query().Get("assumeInstalled") == "1"
-	if spec := s.Catalog.ByID(id); spec != nil {
+	if spec := h.opts.Catalog.ByID(id); spec != nil {
 		name = spec.Kind
-	} else if _, _, err := s.LLM.Resolve(id); err != nil {
+	} else if _, _, err := h.opts.Runtimes().LLM.Resolve(id); err != nil {
 		httpx.ModelNotFound(w, r, id) // neither in the catalog nor imported
 		return
 	}
 	switch name {
 	case "llm":
-		preview, demand, err = s.LLM.PreviewAdmission(r.Context(), id, assume)
+		preview, demand, err = h.opts.Runtimes().LLM.PreviewAdmission(r.Context(), id, assume)
 	default:
-		svc := s.service(name)
+		svc := h.service(name)
 		if svc == nil {
 			notConfigured(w, r, strings.ToUpper(name))
 			return
@@ -330,7 +370,7 @@ func (s *Server) admissionAPI(w http.ResponseWriter, r *http.Request, id string)
 		body["requestedBytes"], body["reserveBytes"] = ae.RequestedBytes, ae.ReserveBytes
 	}
 	if err != nil {
-		body["refusal"] = s.refusalFor(r, err, id, service)
+		body["refusal"] = h.refusalFor(r, err, id, service)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.JSON(w, 200, body)

@@ -29,7 +29,9 @@ import (
 // Voices are model inputs stored under the root, so they follow the model
 // permissions. Ids are never decoded; anything else is an unmatched route.
 
-const voiceMultipartOverhead = 16 * 1024
+// VoiceMultipartOverhead is what a voice upload's form may add to the audio's own limit
+// (voices.MaxUploadBytes): the body is refused past the two together.
+const VoiceMultipartOverhead = 16 * 1024
 
 func voiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	var ve *voices.Error
@@ -53,7 +55,7 @@ func voiceError(w http.ResponseWriter, r *http.Request, err error) bool {
 	return true
 }
 
-func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 	kind, id := "collection", ""
 	if rest, ok := strings.CutPrefix(r.URL.Path, "/_localbase/voices/"); ok {
 		parts := strings.Split(rest, "/")
@@ -63,20 +65,20 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 		case len(parts) == 2 && parts[1] == "audio" && voices.IDPattern.MatchString(parts[0]):
 			kind, id = "audio", parts[0]
 		default:
-			s.unmatched(w, r)
+			h.opts.Unmatched(w, r)
 			return
 		}
 	} else if r.URL.Path != "/_localbase/voices" {
-		s.unmatched(w, r)
+		h.opts.Unmatched(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	p := s.principal(r)
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
 	}
-	if s.Voices == nil {
+	if h.opts.Voices() == nil {
 		notConfigured(w, r, "Voices")
 		return
 	}
@@ -84,7 +86,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	fail := func(err error) {
 		if !voiceError(w, r, err) {
-			s.Log.Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
+			h.opts.Log().Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Voices")
 		}
 	}
@@ -102,7 +104,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				httpx.Forbidden(w, r)
 				return
 			}
-			list, err := s.Voices.List(ctx)
+			list, err := h.opts.Voices().List(ctx)
 			if err != nil {
 				fail(err)
 				return
@@ -126,16 +128,16 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		name, consent, audio, ok := s.parseVoiceCreate(w, r)
+		name, consent, audio, ok := h.parseVoiceCreate(w, r)
 		if !ok {
 			return
 		}
-		v, err := s.Voices.Create(ctx, name, consent, audio, p.OwnerID())
+		v, err := h.opts.Voices().Create(ctx, name, consent, audio, p.OwnerID())
 		if err != nil {
 			fail(err)
 			return
 		}
-		s.logVoice("created", v)
+		h.logVoice("created", v)
 		httpx.JSON(w, 201, v)
 
 	case "audio":
@@ -149,7 +151,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		path, err := s.Voices.Resolve(ctx, id)
+		path, err := h.opts.Voices().Resolve(ctx, id)
 		if err != nil {
 			fail(err)
 			return
@@ -172,7 +174,7 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 				httpx.Forbidden(w, r)
 				return
 			}
-			v, err := s.Voices.Get(ctx, id)
+			v, err := h.opts.Voices().Get(ctx, id)
 			if err != nil {
 				fail(err)
 				return
@@ -191,24 +193,24 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			v, err := s.Voices.Rename(ctx, id, name)
+			v, err := h.opts.Voices().Rename(ctx, id, name)
 			if err != nil {
 				fail(err)
 				return
 			}
-			s.logVoice("renamed", v)
+			h.logVoice("renamed", v)
 			httpx.JSON(w, 200, v)
 		case http.MethodDelete:
 			if !canManage {
 				httpx.Forbidden(w, r)
 				return
 			}
-			v, err := s.Voices.Remove(ctx, id)
+			v, err := h.opts.Voices().Remove(ctx, id)
 			if err != nil {
 				fail(err)
 				return
 			}
-			s.logVoice("deleted", v)
+			h.logVoice("deleted", v)
 			httpx.JSON(w, 200, map[string]any{"id": v.ID, "object": "localbase.voice", "deleted": true})
 		default:
 			// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
@@ -219,20 +221,20 @@ func (s *Server) voicesAPI(w http.ResponseWriter, r *http.Request) {
 
 // logVoice records a change by id only: display names can be personal
 // names, and audio never leaves the store.
-func (s *Server) logVoice(action string, v *voices.Voice) {
+func (h *Handler) logVoice(action string, v *voices.Voice) {
 	attrs := []any{"event", "voices." + action, "category", "gateway", "component", "voices", "runtime", "tts", "voice_id", v.ID}
 	if action == "created" {
 		attrs = append(attrs, "duration_ms", v.DurationMs)
 	}
-	s.Log.Log(context.Background(), slog.LevelInfo, "Custom voice "+action+".", attrs...)
+	h.opts.Log().Log(context.Background(), slog.LevelInfo, "Custom voice "+action+".", attrs...)
 }
 
-func (s *Server) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name string, consent bool, audio []byte, ok bool) {
+func (h *Handler) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name string, consent bool, audio []byte, ok bool) {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data;") {
 		httpx.Error(w, r, 415, "invalid_request_error", "unsupported_media_type", "Send multipart/form-data with name, consent and audio fields.", nil)
 		return
 	}
-	limit := int64(voices.MaxUploadBytes + voiceMultipartOverhead)
+	limit := int64(voices.MaxUploadBytes + VoiceMultipartOverhead)
 	tooLarge := func() {
 		w.Header().Set("Connection", "close")
 		httpx.Error(w, r, 413, "invalid_request_error", "audio_too_large",

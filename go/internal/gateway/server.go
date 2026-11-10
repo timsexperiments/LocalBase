@@ -76,6 +76,8 @@ type Server struct {
 
 	// models serves model management, discovery, imports and the /_localbase/models routes.
 	models *models.Handler
+	// records serves the host, computer name, usage, update and voices routes.
+	records *Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
@@ -137,6 +139,7 @@ func New(s *Server) *Server {
 	if s.Root != nil {
 		rootDir = s.Root.Dir
 	}
+	s.records = NewHandler(s.recordsOptions())
 	s.models = models.NewHandler(s.modelsOptions())
 	runsDir := ""
 	if rootDir != "" {
@@ -187,7 +190,7 @@ func (s *Server) modelsOptions() models.Options {
 		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },
 		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
-		ReportReads: s.reportReads, AdmissionAPI: s.admissionAPI,
+		ReportReads: s.reportReads, AdmissionAPI: s.records.AdmissionAPI,
 		UnloadWait: func() time.Duration { return s.unloadWait }}
 }
 
@@ -195,6 +198,22 @@ func (s *Server) modelsOptions() models.Options {
 // interrupts it; the interruption is recorded, and the partial download
 // stays for the next install to resume.
 func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(grace) }
+
+// recordsOptions is what the host and records routes need from this server.
+func (s *Server) recordsOptions() Options {
+	return Options{Store: s.Store, Catalog: s.Catalog, Memory: s.Memory, Usage: s.Usage, Updates: s.Updates, VideoJobs: s.VideoJobs,
+		Runtimes: func() runtime.Set {
+			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+		},
+		Voices: func() *voices.Store { return s.Voices }, Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
+		Caller: s.principal, LocalCLI: s.localCLI, UsagePrincipal: s.usagePrincipal, Unmatched: s.unmatched,
+		ActiveRuns: func() int {
+			if s.runs == nil {
+				return 0
+			}
+			return s.runs.ActiveCount()
+		}}
+}
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.
 func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Identity) {
