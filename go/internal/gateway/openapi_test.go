@@ -25,6 +25,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/records"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
@@ -1312,7 +1313,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	voice("Doc voice", "true", []byte("not a recording"), 400)
 	form("/_localbase/voices", func(w *multipart.Writer) { w.WriteField("name", "Doc voice") }, 400)
 	check("POST", "/_localbase/voices", `{"name":"Doc voice"}`, 415)
-	voice("Doc voice", "true", make([]byte, voices.MaxUploadBytes+VoiceMultipartOverhead), 413)
+	voice("Doc voice", "true", make([]byte, voices.MaxUploadBytes+records.VoiceMultipartOverhead), 413)
 	madeVoice := idOf("id", voice("Doc voice", "true", clip, 201))
 	voice("Doc voice", "true", clip, 409)
 	voicePath := "/_localbase/voices/" + madeVoice

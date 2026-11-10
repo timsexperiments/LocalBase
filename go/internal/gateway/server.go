@@ -19,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/keys"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/models"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/records"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/browser"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
@@ -77,7 +78,7 @@ type Server struct {
 	// models serves model management, discovery, imports and the /_localbase/models routes.
 	models *models.Handler
 	// records serves the host, computer name, usage, update and voices routes.
-	records *Handler
+	records *records.Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
@@ -139,7 +140,7 @@ func New(s *Server) *Server {
 	if s.Root != nil {
 		rootDir = s.Root.Dir
 	}
-	s.records = NewHandler(s.recordsOptions())
+	s.records = records.NewHandler(s.recordsOptions())
 	s.models = models.NewHandler(s.modelsOptions())
 	runsDir := ""
 	if rootDir != "" {
@@ -200,8 +201,8 @@ func (s *Server) modelsOptions() models.Options {
 func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(grace) }
 
 // recordsOptions is what the host and records routes need from this server.
-func (s *Server) recordsOptions() Options {
-	return Options{Store: s.Store, Catalog: s.Catalog, Memory: s.Memory, Usage: s.Usage, Updates: s.Updates, VideoJobs: s.VideoJobs,
+func (s *Server) recordsOptions() records.Options {
+	return records.Options{Store: s.Store, Catalog: s.Catalog, Memory: s.Memory, Usage: s.Usage, Updates: s.Updates, VideoJobs: s.VideoJobs,
 		Runtimes: func() runtime.Set {
 			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
 		},

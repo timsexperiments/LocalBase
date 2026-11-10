@@ -122,7 +122,7 @@ func TestOnlyTheCommandLineChangesBackends(t *testing.T) {
 	for _, d := range []struct {
 		dir      string
 		packages int
-	}{{".", 1}, {"../gateway", 7}, {"../library", 1}} {
+	}{{".", 1}, {"../gateway", 8}, {"../library", 1}} {
 		for _, f := range testutil.GoSources(t, d.dir, d.packages) {
 			b, err := os.ReadFile(f)
 			if err != nil {
