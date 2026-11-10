@@ -127,13 +127,13 @@ linters:
       - path: ^internal/cli/cli\.go$
         linters: [errcheck]
         text: "a\\.Stdout\\.Write|c\\.Stdout\\.Write"
-      - path: ^internal/gateway/audio\.go$
+      - path: ^internal/gateway/infer/audio\.go$
         linters: [errcheck]
         text: "fw\\.Write|io\\.WriteString"
       - path: ^internal/gateway/audit\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
-      - path: ^internal/gateway/chat\.go$
+      - path: ^internal/gateway/infer/chat\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
       - path: ^internal/gateway/gatewaytest/runs\.go$
@@ -142,7 +142,7 @@ linters:
       - path: ^internal/gateway/httpx/errors\.go$
         linters: [errcheck]
         text: "\\(\\*encoding/json\\.Encoder\\)\\.Encode"
-      - path: ^internal/gateway/images\.go$
+      - path: ^internal/gateway/infer/images\.go$
         linters: [errcheck]
         text: "pw\\.Write"
       - path: ^internal/gateway/admin/models/metadata\.go$
@@ -154,7 +154,7 @@ linters:
       - path: ^internal/gateway/runs/http\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
-      - path: ^internal/gateway/videos\.go$
+      - path: ^internal/gateway/infer/videos\.go$
         linters: [errcheck]
         text: "io\\.Copy"
       - path: ^internal/hub/client\.go$

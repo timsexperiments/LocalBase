@@ -145,7 +145,7 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 // The differential tests no longer compare a memory refusal's words with TS, so they have to be pinned
 // here. This fails if the golden stops holding them, or the words stop being the golden's.
 func TestTheRefusalWordsArePinnedInTheGolden(t *testing.T) {
-	raw, err := os.ReadFile("testdata/video.json")
+	raw, err := os.ReadFile("infer/testdata/video.json")
 	if err != nil {
 		t.Fatal(err)
 	}

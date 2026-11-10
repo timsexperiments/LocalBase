@@ -4,7 +4,7 @@
 // the failure codes and memory messages).
 //
 //   LOCALBASE_ROOT=/nonexistent bun run go/tools/golden/video.ts \
-//     > go/internal/gateway/testdata/video.json
+//     > go/internal/gateway/infer/testdata/video.json
 import { CATALOG } from "../../../src/catalog";
 import {
   projectVideoJob,
