@@ -91,7 +91,14 @@ func findings(text string) []string {
 }
 
 func scan(fsys fs.FS) (map[string][]string, error) {
+	found, _, err := scanRead(fsys)
+	return found, err
+}
+
+// scanRead is scan, and how many files it read.
+func scanRead(fsys fs.FS) (map[string][]string, int, error) {
 	found := map[string][]string{}
+	read := 0
 	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -115,40 +122,71 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 		default:
 			return nil
 		}
+		read++
 		if f := findings(string(b)); len(f) > 0 {
 			found[name] = f
 		}
 		return nil
 	})
-	return found, err
+	return found, read, err
+}
+
+// trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
+// their scripts out of go/tools. A move from one to the other changes neither what is read nor how
+// much. Findings are named from the go directory, tools/... or test/....
+var trees = []struct{ label, dir string }{{"tools", ".."}, {"test", "../../test"}}
+
+// minRead is how many files the trees held when it was last raised. A tree that stops being read,
+// or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
+// arrive.
+const minRead = 100
+
+// scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
+// is), and checks the floor only for the trees.
+func scanTrees(t *testing.T, other string) map[string][]string {
+	t.Helper()
+	found := map[string][]string{}
+	read := 0
+	roots := trees
+	if other != "" {
+		roots = []struct{ label, dir string }{{"tools", other}}
+	}
+	for _, r := range roots {
+		f, n, err := scanRead(os.DirFS(r.dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, lines := range f {
+			found[r.label+"/"+name] = lines
+		}
+		read += n
+	}
+	if other == "" && read < minRead {
+		t.Errorf("read %d files in go/tools and go/test, fewer than the %d they held: a tree stopped being read, or files moved where neither reaches", read, minRead)
+	}
+	t.Logf("read %d files (floor %d)", read, minRead)
+	return found
 }
 
 // knownToDelete are other threads' scripts that already delete through a variable, with how
 // many such deletes each has. They are reported, not changed here. A file may not gain one,
 // and no other file may join. Lower a number, or remove a line, as they are fixed.
 var knownToDelete = map[string]int{
-	"contract.sh":                  1,
-	"ios-check.sh":                 2,
-	"otelcol-check.sh":             1,
-	"placement-rollback-check.sh":  1,
-	"rehearsal.sh":                 1,
-	"shadow.sh":                    6,
-	"sync-catalog.sh":              1,
-	"systemd-check.sh":             1,
-	"tailwind.sh":                  1,
-	"upgrade-rehearsal-systemd.sh": 1,
+	"tools/contract.sh":                  1,
+	"tools/ios-check.sh":                 2,
+	"tools/otelcol-check.sh":             1,
+	"tools/placement-rollback-check.sh":  1,
+	"tools/rehearsal.sh":                 1,
+	"tools/shadow.sh":                    6,
+	"tools/sync-catalog.sh":              1,
+	"tools/systemd-check.sh":             1,
+	"tools/tailwind.sh":                  1,
+	"tools/upgrade-rehearsal-systemd.sh": 1,
 }
 
 func TestNothingDeletesThroughAVariableOrOutsideScratch(t *testing.T) {
-	tree := ".."
 	other := os.Getenv("LOCALBASE_RM_GUARD_TREE")
-	if other != "" {
-		tree = other
-	}
-	found, err := scan(os.DirFS(tree))
-	if err != nil {
-		t.Fatal(err)
-	}
+	found := scanTrees(t, other)
 	var names []string
 	for name := range found {
 		names = append(names, name)
@@ -157,16 +195,16 @@ func TestNothingDeletesThroughAVariableOrOutsideScratch(t *testing.T) {
 	for _, name := range names {
 		if n, ok := knownToDelete[name]; ok && len(found[name]) <= n {
 			if other == "" && len(found[name]) < n {
-				t.Errorf("tools/%s now has %d, so lower its number in knownToDelete from %d", name, len(found[name]), n)
+				t.Errorf("%s now has %d, so lower its number in knownToDelete from %d", name, len(found[name]), n)
 			}
 			continue
 		}
-		t.Errorf("tools/%s:\n  %s", name, strings.Join(found[name], "\n  "))
+		t.Errorf("%s:\n  %s", name, strings.Join(found[name], "\n  "))
 	}
 	if other == "" {
 		for name := range knownToDelete {
 			if _, ok := found[name]; !ok {
-				t.Errorf("tools/%s no longer deletes that way: remove it from knownToDelete", name)
+				t.Errorf("%s no longer deletes that way: remove it from knownToDelete", name)
 			}
 		}
 	}
