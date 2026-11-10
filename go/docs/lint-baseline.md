@@ -59,16 +59,16 @@ Every excused or swallowed call in `internal/auth`, `internal/store`, `internal/
 
 | Where | Call | Decision and why |
 | --- | --- | --- |
-| `gateway/manage.go`, the action read | `json.Unmarshal` | **Fixed.** It decides `access:read` or `access:manage`. It was already safe, because a body that can't be read is refused with a 400 whichever key sends it; now that is explicit and tested |
+| `gateway/admin/keys/keys.go`, the action read | `json.Unmarshal` | **Fixed.** It decides `access:read` or `access:manage`. It was already safe, because a body that can't be read is refused with a 400 whichever key sends it; now that is explicit and tested |
 | `auth/policy.go` | `rows.Scan` | **Fixed in its own PR.** A role it can't read would get a new id |
 | `cmd/localbase/config.go` | `MarkRestartPendingUnlessChanged` | **Fixed.** A restart owed but not recorded is now said |
 | `install/install.go` | `os.Rename` of a truncated file, 2 | **Fixed.** Now reported, not downloaded past |
 | `auth/email.go` | `conn.SetDeadline` | **Fixed.** Without it a silent mail server holds a sign-in |
 | `auth/email.go` | `qp.Write`, `qp.Close` | Into a buffer: can't fail |
 | `auth/email.go` | `client.Close` | The message has been sent or has already failed |
-| `gateway/manage.go` | `json.Unmarshal` of `in.raw` | The strict decode has just accepted it |
-| `gateway/manage.go` | `json.Unmarshal` in `nullField` | A body that isn't an object has no such member |
-| `gateway/placement.go`, `cmd/localbase/placement.go` | `json.Unmarshal` | This process's own marshalled struct |
+| `gateway/admin/keys/keys.go` | `json.Unmarshal` of `in.raw` | The strict decode has just accepted it |
+| `gateway/admin/keys/keys.go` | `json.Unmarshal` in `nullField` | A body that isn't an object has no such member |
+| `gateway/admin/models/placement.go`, `cmd/localbase/placement.go` | `json.Unmarshal` | This process's own marshalled struct |
 | `install/install.go` | `os.Chmod` of `.checksums.json.lock.db` | A lock file with no data, in a private folder |
 | `install/install.go` | `conn.Close`, the deferred `ROLLBACK` | Cleanup of a lock held by the connection; the kernel releases it |
 | `acquire/resolve.go` | `io.Copy` to discard | Draining a response before reuse |
