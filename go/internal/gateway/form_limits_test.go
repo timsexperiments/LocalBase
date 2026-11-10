@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -38,20 +37,29 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 			}
 		})
 	}
-	// A gateway without a video runtime never gets as far as the form.
+	// A gateway without a video runtime never gets as far as the form, so this one has one.
 	t.Run("video", func(t *testing.T) {
+		ts := openAPIGateway(t)
+		_, key := oaKey(t, runServer(ts), "video", "inference:video")
 		send := func(parts int) (int, string) {
-			w := httptest.NewRecorder()
-			r := httptest.NewRequest("POST", "/v1/videos", bytes.NewReader(gatewaytest.FormOf(parts)))
+			r, err := http.NewRequest("POST", ts.URL+"/v1/videos", bytes.NewReader(gatewaytest.FormOf(parts)))
+			if err != nil {
+				t.Fatal(err)
+			}
 			r.Header.Set("Content-Type", gatewaytest.FormType)
-			g.srv.infer.readVideoCreate(w, r)
+			r.Header.Set("Authorization", "Bearer "+key)
+			resp, err := http.DefaultClient.Do(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
 			var answer struct {
 				Error struct {
 					Message string `json:"message"`
 				} `json:"error"`
 			}
-			json.Unmarshal(w.Body.Bytes(), &answer)
-			return w.Code, answer.Error.Message
+			json.NewDecoder(resp.Body).Decode(&answer)
+			return resp.StatusCode, answer.Error.Message
 		}
 		const refusal = "Invalid multipart video request."
 		if code, message := send(httpx.MaxFormParts + 1); code != 400 || message != refusal {
