@@ -339,7 +339,7 @@ func TestKeyAndAccessChangesCannotRaceToNobody(t *testing.T) {
 	arrived.Add(2)
 	release := make(chan struct{})
 	go func() { arrived.Wait(); close(release) }()
-	f.s.beforeAdminWrite = func() {
+	f.s.keys.beforeAdminWrite = func() {
 		arrived.Done()
 		select {
 		case <-release:

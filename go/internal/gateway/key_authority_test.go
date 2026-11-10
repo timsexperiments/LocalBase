@@ -391,7 +391,7 @@ func TestManagersRevokingEachOtherLeaveOneStanding(t *testing.T) {
 	arrived.Add(both)
 	release := make(chan struct{})
 	go func() { arrived.Wait(); close(release) }()
-	f.s.beforeAdminWrite = func() {
+	f.s.keys.beforeAdminWrite = func() {
 		arrived.Done()
 		select { // with the lock held the other can't arrive: go on after a moment
 		case <-release:

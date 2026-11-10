@@ -98,9 +98,9 @@ func (s *Server) routeTable() []route {
 		{pattern: "/_localbase/models/{model_id...}", handler: s.auditedModelRoute(func(w http.ResponseWriter, r *http.Request) {
 			s.guard(modelRoutePermission(r), s.modelMetadata)(w, r)
 		}), uiSub: uiModel},
-		{pattern: "/_localbase/access-management", audit: "access", handler: s.accessManagement, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/api-keys", audit: "api-key", handler: s.apiKeys, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/hf-token", audit: "hf-token", describe: hfTokenChange, handler: s.hfToken, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/access-management", audit: "access", handler: s.keys.AccessManagement, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/api-keys", audit: "api-key", handler: s.keys.APIKeys, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/hf-token", audit: "hf-token", describe: hfTokenChange, handler: s.keys.HFToken, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/backends", methods: []string{"GET"}, handler: s.backendsAPI, ui: []string{"GET"}},
 		{pattern: "/_localbase/model-backend", methods: []string{"GET", "POST"}, audit: "model-backend", handler: s.modelBackendAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/model-management", audit: "models", describe: modelsChange, handler: s.modelManagementAPI, ui: []string{"GET", "POST"}},
