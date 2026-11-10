@@ -272,13 +272,13 @@ func loraUnusable(w http.ResponseWriter, r *http.Request, spec *catalog.Spec, st
 // acquireImage resolves and admits an image model, writing the TS errors.
 func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model string) (*runtime.ServiceLease, bool) {
 	if s.Image == nil {
-		notConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	}
 	id, err := s.Image.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
-		notConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	case errors.Is(err, runtime.ErrModelNotFound):
 		httpx.ModelNotFound(w, r, model)
@@ -360,14 +360,14 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Expected multipart/form-data.", httpx.StrPtr("content-type"))
 		return
 	}
-	form, ferr := readMultipart(r, body)
+	form, ferr := httpx.ReadMultipart(r, body)
 	if err != nil || ferr != nil {
 		httpx.BadRequest(w, r, "Invalid multipart image edit request.", nil)
 		return
 	}
 	text := func(name string) (string, bool) {
-		if v := form[name]; len(v) > 0 && !v[0].isFile {
-			return v[0].value, true
+		if v := form[name]; len(v) > 0 && !v[0].IsFile {
+			return v[0].Value, true
 		}
 		return "", false
 	}
@@ -389,7 +389,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		modelID = s.activeImageModel()
 	}
 	if modelID == "" {
-		notConfigured(w, r, "Image")
+		httpx.NotConfigured(w, r, "Image")
 		return
 	}
 	spec := s.Catalog.ByID(modelID)
@@ -404,18 +404,18 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 	var images []editFile
 	for _, name := range []string{"image[]", "image"} {
 		for _, p := range form[name] {
-			if p.isFile {
-				images = append(images, editFile{p.file, p.filename, p.ctype})
+			if p.IsFile {
+				images = append(images, editFile{p.File, p.Filename, p.CType})
 			}
 		}
 	}
 	var mask *editFile
 	if m := form["mask"]; len(m) > 0 {
-		if !m[0].isFile || len(m[0].file) == 0 {
+		if !m[0].IsFile || len(m[0].File) == 0 {
 			bad("mask must be a nonempty image file.", "mask")
 			return
 		}
-		mask = &editFile{m[0].file, m[0].filename, m[0].ctype}
+		mask = &editFile{m[0].File, m[0].Filename, m[0].CType}
 	}
 	if len(images) < 1 || len(images) > 4 {
 		bad("Provide between 1 and 4 image files using image or image[].", "image")

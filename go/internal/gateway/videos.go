@@ -142,7 +142,7 @@ func (s *Server) videoCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Video == nil || s.VideoJobs == nil || len(s.Video.Config().Selected["video"]) == 0 {
-		notConfigured(w, r, "Video")
+		httpx.NotConfigured(w, r, "Video")
 		return
 	}
 	req, ok := s.readVideoCreate(w, r)
@@ -252,39 +252,39 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 		payloadTooLargeLimit(w, r, videoMultipartLimit)
 		return nil, false
 	}
-	var form map[string][]formPart
+	var form map[string][]httpx.FormPart
 	if err == nil {
-		form, err = readMultipart(r, body)
+		form, err = httpx.ReadMultipart(r, body)
 	}
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid multipart video request.", nil)
 		return nil, false
 	}
-	get := func(name string) (formPart, bool) {
+	get := func(name string) (httpx.FormPart, bool) {
 		if parts := form[name]; len(parts) > 0 {
 			return parts[0], true
 		}
-		return formPart{}, false
+		return httpx.FormPart{}, false
 	}
 	text := func(name string) any {
 		p, ok := get(name)
 		switch {
 		case !ok:
 			return nil
-		case p.isFile:
+		case p.IsFile:
 			return map[string]any{}
 		}
-		return p.value
+		return p.Value
 	}
 	numberOf := func(name string) any {
 		p, ok := get(name)
 		switch {
 		case !ok:
 			return float64(0) // Number(null)
-		case p.isFile:
+		case p.IsFile:
 			return math.NaN()
 		}
-		return jsNumber(p.value)
+		return jsNumber(p.Value)
 	}
 	payload := map[string]any{"model": text("model"), "prompt": text("prompt"), "width": numberOf("width"),
 		"height": numberOf("height"), "frames": numberOf("frames"), "fps": numberOf("fps"), "input": map[string]any{"kind": "text"}}
@@ -292,18 +292,18 @@ func (s *Server) readVideoCreate(w http.ResponseWriter, r *http.Request) (map[st
 		payload["negative_prompt"] = text("negative_prompt")
 	}
 	if p, ok := get("input_reference"); ok {
-		if p.isFile {
-			if len(p.file) > videoReferenceLimit || mediacheck.ImageMimeFromMagic(p.file) != "image/png" {
+		if p.IsFile {
+			if len(p.File) > videoReferenceLimit || mediacheck.ImageMimeFromMagic(p.File) != "image/png" {
 				httpx.BadRequest(w, r, "input_reference must be a PNG file no larger than 4 MiB.", httpx.StrPtr("input_reference"))
 				return nil, false
 			}
-			payload["input_reference"] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(p.file)
+			payload["input_reference"] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(p.File)
 		} else {
-			payload["input_reference"] = p.value
+			payload["input_reference"] = p.Value
 		}
 	}
-	if p, ok := get("input"); ok && !p.isFile {
-		dec := json.NewDecoder(bytes.NewReader([]byte(p.value)))
+	if p, ok := get("input"); ok && !p.IsFile {
+		dec := json.NewDecoder(bytes.NewReader([]byte(p.Value)))
 		dec.UseNumber()
 		var v any
 		if dec.Decode(&v) != nil || dec.More() {

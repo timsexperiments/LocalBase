@@ -13,11 +13,11 @@ for target in \
 	./internal/auth:FuzzJWKSVerify \
 	./internal/conf:FuzzParseDocument \
 	./internal/gateway:FuzzImageChecks \
-	./internal/gateway:FuzzMultipart \
 	./internal/gateway:FuzzRelayStream \
 	./internal/gateway:FuzzStructuredOutput \
 	./internal/gateway:FuzzValidateSpeech \
 	./internal/gateway:FuzzValidators \
+	./internal/gateway/httpx:FuzzMultipart \
 	./internal/gateway/runs:FuzzRequestModel \
 	./internal/jsjson:FuzzParse \
 	./internal/memory:FuzzGGUFHeader \

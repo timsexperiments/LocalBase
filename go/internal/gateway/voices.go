@@ -79,7 +79,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.opts.Voices() == nil {
-		notConfigured(w, r, "Voices")
+		httpx.NotConfigured(w, r, "Voices")
 		return
 	}
 	canManage, canRead := p.Can("models:manage"), p.Can("models:read")
@@ -253,28 +253,28 @@ func (h *Handler) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name
 		tooLarge()
 		return
 	}
-	form, err := readMultipart(r, body)
+	form, err := httpx.ReadMultipart(r, body)
 	if err != nil {
 		httpx.BadRequest(w, r, "Invalid form data payload.", nil)
 		return
 	}
-	first := func(field string) *formPart {
+	first := func(field string) *httpx.FormPart {
 		if v := form[field]; len(v) > 0 {
 			return &v[0]
 		}
 		return nil
 	}
 	n, c, a := first("name"), first("consent"), first("audio")
-	if n == nil || n.isFile {
+	if n == nil || n.IsFile {
 		httpx.Error(w, r, 400, "invalid_request_error", "invalid_voice_name", "Voice name is required.", httpx.StrPtr("name"))
 		return
 	}
-	if a == nil || !a.isFile {
+	if a == nil || !a.IsFile {
 		httpx.Error(w, r, 400, "invalid_request_error", "unsupported_audio_format", "Attach the reference recording as the audio field.", httpx.StrPtr("audio"))
 		return
 	}
 	// The upload's filename and declared type are ignored; only its bytes count.
-	return n.value, c != nil && !c.isFile && c.value == "true", a.file, true
+	return n.Value, c != nil && !c.IsFile && c.Value == "true", a.File, true
 }
 
 // jsonKindOf names a decoded JSON value's type as zod reports it.
