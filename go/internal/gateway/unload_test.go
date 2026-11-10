@@ -189,17 +189,21 @@ func TestUnloadBrowserRoute(t *testing.T) {
 			t.Errorf("%s %s: %v", c.method, c.path, got)
 		}
 	}
+	ts := newTestServer(t)
+	post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
+	if code, m := (gatewaytest.RunClient{T: t, Base: ts.URL}).Do("POST", "/app/api/_localbase/models/"+gatewaytest.ChatModel+"/unload?wait=false", ""); code != 200 {
+		t.Errorf("through /app/api: %d %v", code, m)
+	}
+}
+
+// What the browser sends unload keeps only `wait`, and nothing else on the way.
+func TestUnloadForwardsOnlyWait(t *testing.T) {
 	req := &http.Request{URL: &url.URL{RawQuery: "wait=false&x=1"}}
 	if q := forwardedQuery("/_localbase/models/m/unload", req); q != "wait=false" {
 		t.Errorf("forwarded query %q", q)
 	}
 	if q := forwardedQuery("/_localbase/models/m", req); q != "" {
 		t.Errorf("forwarded query elsewhere %q", q)
-	}
-	ts := newTestServer(t)
-	post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
-	if code, m := (gatewaytest.RunClient{T: t, Base: ts.URL}).Do("POST", "/app/api/_localbase/models/"+gatewaytest.ChatModel+"/unload?wait=false", ""); code != 200 {
-		t.Errorf("through /app/api: %d %v", code, m)
 	}
 }
 
