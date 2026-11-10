@@ -33,7 +33,7 @@ func TestMemoryRefusalWords(t *testing.T) {
 		{"pressure, nothing loaded", refusal("memory-pressure", 0), "This computer is under memory pressure, so this model wasn't started. It needs 8.0 GiB. LocalBase has nothing loaded, so other apps are using this memory. Close other apps, then try again."},
 		{"anything else keeps the general sentence", refusal("measurement-unavailable", held), "Insufficient available memory to start the requested runtime. Please try again shortly."},
 	} {
-		if got := httpx.MemoryRefusal(c.e, "this model"); got != c.want {
+		if got := memory.RefusalText(c.e, "this model"); got != c.want {
 			t.Errorf("%s:\n got %s\nwant %s", c.name, got, c.want)
 		}
 	}
@@ -49,7 +49,7 @@ func TestAMemoryRefusalKeepsItsCodeStatusAndRetryAfter(t *testing.T) {
 			t.Errorf("%s: %d, Retry-After %q", e.Reason, rec.Code, rec.Header().Get("Retry-After"))
 		}
 		body := rec.Body.String()
-		if want := jsonEscaped(httpx.MemoryRefusal(e, "this model")); !strings.Contains(body, want) {
+		if want := jsonEscaped(memory.RefusalText(e, "this model")); !strings.Contains(body, want) {
 			t.Errorf("%s: the API doesn't send the words: %s", e.Reason, body)
 		}
 		if !strings.Contains(body, `"code":"insufficient_memory"`) || !strings.Contains(body, `"type":"api_error"`) {
@@ -125,7 +125,7 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		t.Fatalf("read only %d source files", checked)
 	}
 	// What the tests above pin must be what people read.
-	for _, text := range []string{freeMemoryHint, httpx.MemoryRefusal(refusal("system-memory", memory.GiB), "this model")} {
+	for _, text := range []string{freeMemoryHint, memory.RefusalText(refusal("system-memory", memory.GiB), "this model")} {
 		if !strings.Contains(text, "Free memory from a loaded model") {
 			t.Errorf("%q", text)
 		}
@@ -160,7 +160,7 @@ func TestTheRefusalWordsArePinnedInTheGolden(t *testing.T) {
 	e := refusal("memory-pressure", 0)
 	e.Diagnostics = nil
 	e.RequestedBytes = 0
-	if got := httpx.MemoryRefusal(e, "video generation"); !strings.Contains(string(raw), jsonEscaped(got)) {
+	if got := memory.RefusalText(e, "video generation"); !strings.Contains(string(raw), jsonEscaped(got)) {
 		t.Errorf("the code's words aren't the golden's: %s", got)
 	}
 }
