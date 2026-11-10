@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/keys"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/models"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/records"
@@ -25,56 +24,18 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/infer"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
-	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
-	"github.com/timsexperiments/LocalBase/go/internal/usage"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
-	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 // Server holds what handlers need. Construct with New.
 type Server struct {
-	// Placement is the CPU/GPU placement source (DESIGN §20; nil: no API).
-	Placement *runtime.HostPlacement
-	Store     *store.Store
-	Catalog   *catalog.Catalog
-	Auth      *auth.Resolver
-	LLM       *runtime.LLM
-	Log       *slog.Logger
-	NoAuth    bool
-	MemoryGB  int
-	Root      *root.Root
-	Memory    *memory.Controller
-	Browser   *auth.Browser
-	// Library joins the catalog, imports and backend selections (nil in
-	// unit tests that need neither).
-	Library *library.Library
-	// STT, TTS and Image supervise the media modalities (nil: route disabled).
-	STT   *runtime.Service
-	TTS   *runtime.Service
-	Image *runtime.Service
-	// Video runs video jobs on VideoJobs (nil: no video runtime).
-	Video     *runtime.Service
-	VideoJobs *video.Manager
-	// Voices stores custom voice profiles (nil: the routes are disabled).
-	Voices *voices.Store
-	// OnReady runs whenever readiness reports ready (a managed gateway
-	// acknowledges its startup settings, TS acknowledgeStaticConfiguration).
-	OnReady func()
-	// Otel exports traces (nil: disabled).
-	Otel *otlp.Runtime
-	// Limits bounds what a request can cost (zero values take the defaults).
-	Limits httpx.Limits
-	// Usage keeps hourly totals (DESIGN §32; nil: not recorded, and the route is disabled).
-	Usage *usage.Recorder
-	// Updates is the optional daily check for a newer version (DESIGN §33; nil: the route is disabled).
-	Updates *upgrade.Checker
+	// cfg is what the gateway was built from (New).
+	cfg Config
 
 	// models serves model management, discovery, imports and the /_localbase/models routes.
 	models *models.Handler
@@ -106,10 +67,6 @@ type Server struct {
 	// changeAudit limits the changes on routes that keys:manage and access:manage don't guard, whose
 	// holders could otherwise push the record of who changed keys and access out of the file.
 	changeAudit *changeLimiter
-	// UI handles /app and / when set.
-	UI http.Handler
-	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
-	LoginPages browser.LoginPages
 	// access serves the browser-owned paths and local sign-in.
 	access *browser.Access
 
@@ -117,18 +74,6 @@ type Server struct {
 	stopping atomic.Bool
 	mux      *http.ServeMux
 	routes   []string // every registered pattern, for the OpenAPI drift test
-
-	// RunMemoryLimit and RunsMemoryLimit are what a detached chat run, and all retained runs
-	// together, may hold in memory; 0 is the default.
-	RunMemoryLimit, RunsMemoryLimit int64
-	// RunMaxDuration is how long a detached run may take before it is interrupted; 0 is the default
-	// (15 minutes). No flag or setting sets it: tests do.
-	RunMaxDuration time.Duration
-	// Overrides applies what only this process has (the environment, serve's flags) to a saved
-	// configuration, before it is published to the runtimes.
-	Overrides func(*store.Config)
-	// LogOutages reports logs that can't rotate or be written, for doctor and status.
-	LogOutages func() []obs.LogOutage
 }
 
 // What requests with no credential may write to the log.
@@ -139,12 +84,14 @@ const (
 	refusedAuditBurst = 20
 )
 
-func New(s *Server) *Server {
+// New builds a gateway from cfg. It starts the run janitor, which StopRuns stops.
+func New(cfg Config) *Server {
+	s := &Server{cfg: cfg}
 	s.started = time.Now()
-	s.Limits = s.Limits.WithDefaults()
+	s.cfg.Limits = s.cfg.Limits.WithDefaults()
 	rootDir := ""
-	if s.Root != nil {
-		rootDir = s.Root.Dir
+	if s.cfg.Root != nil {
+		rootDir = s.cfg.Root.Dir
 	}
 	s.infer = infer.NewHandler(s.inferOptions())
 	s.records = records.NewHandler(s.recordsOptions())
@@ -171,32 +118,32 @@ func New(s *Server) *Server {
 
 // runOptions is what the run manager needs from this server.
 func (s *Server) runOptions(dir string) runs.Options {
-	return runs.Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel },
-		Dir: dir, MaxHeld: s.RunMemoryLimit, MaxHeldTotal: s.RunsMemoryLimit, MaxDuration: s.RunMaxDuration}
+	return runs.Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.cfg.Log }, Otel: func() *otlp.Runtime { return s.cfg.Otel },
+		Dir: dir, MaxHeld: s.cfg.RunMemoryLimit, MaxHeldTotal: s.cfg.RunsMemoryLimit, MaxDuration: s.cfg.RunMaxDuration}
 }
 
 // accessOptions is what the browser access layer needs from this server, forwarding to mux.
 func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options {
-	return browser.Options{Handler: mux, Store: s.Store, Log: func() *slog.Logger { return s.Log },
-		Browser: func() *auth.Browser { return s.Browser }, NoAuth: func() bool { return s.NoAuth },
-		Pages: func() browser.LoginPages { return s.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
+	return browser.Options{Handler: mux, Store: s.cfg.Store, Log: func() *slog.Logger { return s.cfg.Log },
+		Browser: func() *auth.Browser { return s.cfg.Browser }, NoAuth: func() bool { return s.cfg.NoAuth },
+		Pages: func() browser.LoginPages { return s.cfg.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
 		Caller: s.principal, LookupFailed: s.lookupFailed}
 }
 
 // keysOptions is what the key and access APIs need from this server.
 func (s *Server) keysOptions(rootDir string) keys.Options {
-	return keys.Options{Store: s.Store, RootDir: rootDir, LLM: s.LLM, Browser: func() *auth.Browser { return s.Browser },
+	return keys.Options{Store: s.cfg.Store, RootDir: rootDir, LLM: s.cfg.LLM, Browser: func() *auth.Browser { return s.cfg.Browser },
 		Caller: s.principal}
 }
 
 // modelsOptions is what model management needs from this server.
 func (s *Server) modelsOptions() models.Options {
-	return models.Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, Placement: s.Placement, Memory: s.Memory, MemoryGB: s.MemoryGB,
+	return models.Options{Store: s.cfg.Store, Root: s.cfg.Root, Catalog: s.cfg.Catalog, Placement: s.cfg.Placement, Memory: s.cfg.Memory, MemoryGB: s.cfg.MemoryGB,
 		Runtimes: func() runtime.Set {
-			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+			return runtime.Set{LLM: s.cfg.LLM, STT: s.cfg.STT, TTS: s.cfg.TTS, Image: s.cfg.Image, Video: s.cfg.Video}
 		},
-		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
-		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },
+		Log: func() *slog.Logger { return s.cfg.Log }, NoAuth: func() bool { return s.cfg.NoAuth },
+		Library: func() *library.Library { return s.cfg.Library }, Overrides: func() func(*store.Config) { return s.cfg.Overrides },
 		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
 		ReportReads: s.reportReads, AdmissionAPI: s.records.AdmissionAPI,
 		UnloadWait: func() time.Duration { return s.unloadWait }}
@@ -209,11 +156,11 @@ func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(g
 
 // recordsOptions is what the host and records routes need from this server.
 func (s *Server) recordsOptions() records.Options {
-	return records.Options{Store: s.Store, Catalog: s.Catalog, Memory: s.Memory, Usage: s.Usage, Updates: s.Updates, VideoJobs: s.VideoJobs,
+	return records.Options{Store: s.cfg.Store, Catalog: s.cfg.Catalog, Memory: s.cfg.Memory, Usage: s.cfg.Usage, Updates: s.cfg.Updates, VideoJobs: s.cfg.VideoJobs,
 		Runtimes: func() runtime.Set {
-			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+			return runtime.Set{LLM: s.cfg.LLM, STT: s.cfg.STT, TTS: s.cfg.TTS, Image: s.cfg.Image, Video: s.cfg.Video}
 		},
-		Voices: func() *voices.Store { return s.Voices }, Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
+		Voices: func() *voices.Store { return s.cfg.Voices }, Log: func() *slog.Logger { return s.cfg.Log }, NoAuth: func() bool { return s.cfg.NoAuth },
 		Caller: s.principal, LocalCLI: s.localCLI, UsagePrincipal: s.usagePrincipal, Unmatched: s.unmatched,
 		ActiveRuns: func() int {
 			if s.runs == nil {
@@ -225,15 +172,15 @@ func (s *Server) recordsOptions() records.Options {
 
 // inferOptions is what the /v1 inference routes need from this server.
 func (s *Server) inferOptions() infer.Options {
-	return infer.Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, MemoryGB: s.MemoryGB,
+	return infer.Options{Store: s.cfg.Store, Root: s.cfg.Root, Catalog: s.cfg.Catalog, MemoryGB: s.cfg.MemoryGB,
 		Runtimes: func() runtime.Set {
-			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+			return runtime.Set{LLM: s.cfg.LLM, STT: s.cfg.STT, TTS: s.cfg.TTS, Image: s.cfg.Image, Video: s.cfg.Video}
 		},
-		Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel }, NoAuth: func() bool { return s.NoAuth },
-		Library: func() *library.Library { return s.Library }, ImportedTask: s.importedTask, ReportReads: s.reportReads,
-		Voices: func() *voices.Store { return s.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
+		Log: func() *slog.Logger { return s.cfg.Log }, Otel: func() *otlp.Runtime { return s.cfg.Otel }, NoAuth: func() bool { return s.cfg.NoAuth },
+		Library: func() *library.Library { return s.cfg.Library }, ImportedTask: s.importedTask, ReportReads: s.reportReads,
+		Voices: func() *voices.Store { return s.cfg.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
 		RelayBodyLimit: func() int { return s.relayBodyLimit }, StreamIdleLimit: func() time.Duration { return s.streamIdleLimit },
-		VideoJobs: s.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
+		VideoJobs: s.cfg.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
 }
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.
@@ -251,8 +198,8 @@ func (s *Server) Stopping() { s.stopping.Store(true) }
 // LogHeldBack writes what has been counted and not yet said. It's for once requests have stopped:
 // during a run, only a later request brings a summary out.
 func (s *Server) LogHeldBack() {
-	if s.Browser != nil {
-		s.Browser.LogHeldBack()
+	if s.cfg.Browser != nil {
+		s.cfg.Browser.LogHeldBack()
 	}
 	held := s.anonLog.Drain(time.Now())
 	if held > 0 || s.anonRefused.Load() > 0 || s.anonAdminRefused.Load() > 0 {
@@ -260,7 +207,7 @@ func (s *Server) LogHeldBack() {
 	}
 	s.changeSummary(s.changeAudit.drain(time.Now()))
 	if held := s.refusedAudit.Drain(time.Now()); held > 0 {
-		s.Log.Warn("Refused changes were counted rather than logged.", "event", "audit.refused-summary", "held_back", held)
+		s.cfg.Log.Warn("Refused changes were counted rather than logged.", "event", "audit.refused-summary", "held_back", held)
 	}
 }
 
@@ -271,7 +218,7 @@ func (s *Server) anonymousSummary(held int) {
 	if held == 0 {
 		level = slog.LevelInfo
 	}
-	s.Log.Log(context.Background(), level, "Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
+	s.cfg.Log.Log(context.Background(), level, "Requests with no credential were counted rather than logged.", "event", "http.anonymous-summary", "category", "http",
 		"count", held, "interval_seconds", int(s.anonLog.Every.Seconds()),
 		"refused_total", s.anonRefused.Load(), "admin_refused_total", s.anonAdminRefused.Load())
 }
@@ -281,7 +228,7 @@ func (s *Server) anonymousSummary(held int) {
 // browser sessions arrive with the auth milestone.
 func (s *Server) guard(permission string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.NoAuth {
+		if s.cfg.NoAuth {
 			next(w, r)
 			return
 		}
@@ -339,10 +286,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
 	rec := &httpx.Recorder{ResponseWriter: w}
-	rec.SendsWithin(s.Limits.WriteStall)
-	if rec.Body = httpx.GuardBody(s.Limits, rec, r); rec.Body != nil {
+	rec.SendsWithin(s.cfg.Limits.WriteStall)
+	if rec.Body = httpx.GuardBody(s.cfg.Limits, rec, r); rec.Body != nil {
 		r.Body = rec.Body
-		if s.NoAuth {
+		if s.cfg.NoAuth {
 			rec.Body.Authenticated()
 		}
 	}
@@ -353,7 +300,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	label, family, segments := routeLabel(probe)
 	ctx, span := r.Context(), (*otlp.Span)(nil)
 	if r.URL.Path != uiPollPath {
-		ctx, span = s.Otel.Start(otlp.Extract(r.Context(), r.Header), r.Method+" "+label, otlp.KindServer,
+		ctx, span = s.cfg.Otel.Start(otlp.Extract(r.Context(), r.Header), r.Method+" "+label, otlp.KindServer,
 			"http.request.method", r.Method, "http.route", label)
 	}
 	span.SetAttr("localbase.request_id", id)
@@ -375,7 +322,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		if v := recover(); v != nil {
-			s.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
+			s.cfg.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
 			err, _ := v.(error)
 			if rec.Status == 0 && !errors.Is(err, http.ErrAbortHandler) {
 				httpx.ServiceUnavailable(rec, r, "Gateway")
@@ -416,7 +363,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if quietRoute(label, r.URL.Path) && status < 400 {
 			return // successful probes and polls are not logged
 		}
-		anonymous := !s.NoAuth && status < 500 && (rec.Auth == nil || rec.Auth.Kind == "anonymous")
+		anonymous := !s.cfg.NoAuth && status < 500 && (rec.Auth == nil || rec.Auth.Kind == "anonymous")
 		if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
 			s.anonRefused.Add(1)
 		}
@@ -446,9 +393,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case status >= 400:
 			level = slog.LevelWarn
 		}
-		s.Log.Log(r.Context(), level, msg, attrs...)
+		s.cfg.Log.Log(r.Context(), level, msg, attrs...)
 	}()
-	if s.NoAuth {
+	if s.cfg.NoAuth {
 		if why := noAuthRefusal(r); why != "" {
 			httpx.Error(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
 			return
@@ -477,7 +424,7 @@ func (s *Server) authTelemetry(r *http.Request, rec *httpx.Recorder) []any {
 	switch {
 	case auth.LookupFailed(r.Context()):
 		return []any{"auth_outcome", "unavailable"}
-	case s.NoAuth || p == nil:
+	case s.cfg.NoAuth || p == nil:
 		return []any{"auth_outcome", "disabled"}
 	case p.Kind == "api-key":
 		return []any{"auth_outcome", "authenticated", "auth_principal_id", p.ID, "auth_principal_name", p.Name, "auth_source", "stored_key"}
@@ -486,7 +433,7 @@ func (s *Server) authTelemetry(r *http.Request, rec *httpx.Recorder) []any {
 	case p.Kind == "browser-session":
 		return []any{"auth_outcome", "authenticated", "auth_principal_id", p.OwnerID(), "auth_source", "browser_session"}
 	}
-	presented := (s.Auth != nil && s.Auth.Token(r) != "") || r.Header.Get("Cookie") != "" || r.Header.Get("Cf-Access-Jwt-Assertion") != ""
+	presented := (s.cfg.Auth != nil && s.cfg.Auth.Token(r) != "") || r.Header.Get("Cookie") != "" || r.Header.Get("Cf-Access-Jwt-Assertion") != ""
 	if presented {
 		return []any{"auth_outcome", "invalid"}
 	}
@@ -494,7 +441,7 @@ func (s *Server) authTelemetry(r *http.Request, rec *httpx.Recorder) []any {
 }
 
 func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
-	if !s.NoAuth {
+	if !s.cfg.NoAuth {
 		if p := s.resolveCredential(r); !p.Authenticated() {
 			httpx.Unauthorized(w, r)
 			return
@@ -509,15 +456,15 @@ func (s *Server) unmatched(w http.ResponseWriter, r *http.Request) {
 // a request could enter its queue now.
 func (s *Server) modality(kind string) (configured bool, state string, admits bool) {
 	if kind == "llm" {
-		snap := s.LLM.Snapshot()
+		snap := s.cfg.LLM.Snapshot()
 		configured = snap.State != "disabled"
 		return configured, snap.State, configured && snap.Accepting && snap.Waiting < snap.Capacity
 	}
-	cfg := s.LLM.Config()
+	cfg := s.cfg.LLM.Config()
 	if len(cfg.Selected[kind]) == 0 || cfg.Active[kind] == "" {
 		return false, "disabled", false
 	}
-	svc := map[string]*runtime.Service{"stt": s.STT, "tts": s.TTS, "image": s.Image, "video": s.Video}[kind]
+	svc := map[string]*runtime.Service{"stt": s.cfg.STT, "tts": s.cfg.TTS, "image": s.cfg.Image, "video": s.cfg.Video}[kind]
 	if svc == nil {
 		// A disabled service (--no-x) admits nothing.
 		return true, "idle", false
@@ -565,8 +512,8 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	case len(admitting) == 0:
 		body, status = map[string]any{"status": "unready", "reason": "no_request_admission", "modalities": []string{}}, 503
 	}
-	if status == 200 && s.OnReady != nil {
-		s.OnReady()
+	if status == 200 && s.cfg.OnReady != nil {
+		s.cfg.OnReady()
 	}
 	if r.Method == http.MethodHead {
 		w.WriteHeader(status)
@@ -595,24 +542,24 @@ func (s *Server) Ready() bool {
 // (`status`), behind the instance token like /_localbase/instance: model
 // ids stay off the unauthenticated /health (DESIGN §18).
 func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
-	if !httpx.InstanceTokenMatches(s.Root.Instance(), r) || s.LLM == nil {
+	if !httpx.InstanceTokenMatches(s.cfg.Root.Instance(), r) || s.cfg.LLM == nil {
 		w.WriteHeader(404)
 		return
 	}
-	c := s.LLM.DefaultModel(false)
+	c := s.cfg.LLM.DefaultModel(false)
 	httpx.JSON(w, 200, map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason,
-		"defaults": s.LLM.Config().DefaultLLMList()})
+		"defaults": s.cfg.LLM.Config().DefaultLLMList()})
 }
 
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
-	o := s.Root.Instance()
+	o := s.cfg.Root.Instance()
 	if !httpx.InstanceTokenMatches(o, r) {
 		w.WriteHeader(404)
 		return
 	}
 	out := map[string]any{"instanceId": o.InstanceID, "rootHash": o.RootHash}
-	if s.LogOutages != nil {
-		if outages := s.LogOutages(); len(outages) > 0 {
+	if s.cfg.LogOutages != nil {
+		if outages := s.cfg.LogOutages(); len(outages) > 0 {
 			out["logOutages"] = outages // Only then, so the usual answer doesn't change.
 		}
 	}

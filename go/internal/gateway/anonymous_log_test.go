@@ -17,15 +17,19 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 )
 
-func anonymousLogGateway(t *testing.T, every time.Duration, burst int) (*httptest.Server, *Server, *gatewaytest.SyncBuffer, string) {
+func anonymousLogGateway(t *testing.T, every time.Duration, burst int, configure ...func(*Config)) (*httptest.Server, *Server, *gatewaytest.SyncBuffer, string) {
 	t.Helper()
-	ts, _, _ := newTestGateway(t, host{})
-	srv := ts.Config.Handler.(*Server)
 	logs := &gatewaytest.SyncBuffer{}
-	srv.Log = slog.New(slog.NewJSONHandler(logs, nil))
-	srv.NoAuth = false
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) {
+		c.Log = slog.New(slog.NewJSONHandler(logs, nil))
+		c.NoAuth = false
+		for _, f := range configure {
+			f(c)
+		}
+	})
+	srv := ts.Config.Handler.(*Server)
 	srv.anonLog = &obs.Sampler{Every: every, Burst: burst}
-	_, key, err := srv.Store.CreateAPIKey(context.Background(), "read", []string{"models:read"})
+	_, key, err := srv.cfg.Store.CreateAPIKey(context.Background(), "read", []string{"models:read"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,8 +208,7 @@ func TestAQuietGatewaySaysNothingWhenItStops(t *testing.T) {
 
 // With --no-auth nothing is refused for want of a credential.
 func TestNoAuthHasNoSummary(t *testing.T) {
-	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 5)
-	srv.NoAuth = true
+	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 5, func(c *Config) { c.NoAuth = true })
 	for range 40 {
 		getWith(t, ts.URL+"/v1/models", "")
 		postKeys(t, ts.URL, "") // answered or refused, this is the one person on loopback
@@ -235,8 +238,8 @@ func (refusingProvider) RoundTrip(r *http.Request) (*http.Response, error) {
 func TestShutdownSaysWhatFailedSignInsHeldBack(t *testing.T) {
 	c, srv, _ := oidcGateway(t)
 	logs := &gatewaytest.SyncBuffer{}
-	srv.Browser.Log = slog.New(slog.NewJSONHandler(logs, nil))
-	srv.Browser.Client = &http.Client{Transport: refusingProvider{}}
+	srv.cfg.Browser.Log = slog.New(slog.NewJSONHandler(logs, nil))
+	srv.cfg.Browser.Client = &http.Client{Transport: refusingProvider{}}
 	// Both answers redirect to places that don't exist: they're read here, not followed.
 	direct := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	send := func(path, cookie string) *http.Response {
@@ -339,8 +342,7 @@ func heldBack(summaries []map[string]any) int {
 
 // With --no-auth nobody is anonymous: it's one person on loopback, and every request counts.
 func TestNoAuthIsNotSampled(t *testing.T) {
-	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 5)
-	srv.NoAuth = true
+	ts, _, logs, _ := anonymousLogGateway(t, time.Hour, 5, func(c *Config) { c.NoAuth = true })
 	for range 40 {
 		getWith(t, ts.URL+"/v1/models", "")
 	}
@@ -445,7 +447,7 @@ func TestEachRefusalIsOnALineOrInACount(t *testing.T) {
 func TestAChangeIsAlwaysOnRecord(t *testing.T) {
 	ts, srv, logs, _ := anonymousLogGateway(t, time.Hour, 5)
 	srv.refusedAudit = &obs.Sampler{Every: time.Hour, Burst: 0}
-	_, admin, err := srv.Store.CreateAPIKey(context.Background(), "admin", []string{"keys:manage", "keys:read"})
+	_, admin, err := srv.cfg.Store.CreateAPIKey(context.Background(), "admin", []string{"keys:manage", "keys:read"})
 	if err != nil {
 		t.Fatal(err)
 	}

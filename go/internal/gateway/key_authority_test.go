@@ -25,7 +25,7 @@ type keyFixture struct {
 	logs *bytes.Buffer
 }
 
-func newKeyFixture(t *testing.T) *keyFixture {
+func newKeyFixture(t *testing.T, configure ...func(*Config)) *keyFixture {
 	t.Helper()
 	r, err := root.Init(t.TempDir())
 	if err != nil {
@@ -37,8 +37,11 @@ func newKeyFixture(t *testing.T) *keyFixture {
 	}
 	t.Cleanup(func() { st.Close() })
 	logs := &bytes.Buffer{}
-	s := newFromConfig(Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(logs, nil))})
-	return &keyFixture{t, s, st, logs}
+	conf := Config{Store: st, Root: r, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: slog.New(slog.NewJSONHandler(logs, nil))}
+	for _, c := range configure {
+		c(&conf)
+	}
+	return &keyFixture{t, New(conf), st, logs}
 }
 
 // key makes a key directly in the store and returns its record and secret.
@@ -284,11 +287,10 @@ func TestKeyChangeUsesWhatTheCallerHoldsNow(t *testing.T) {
 
 // A person's role can change the same way.
 func TestKeyChangeUsesTheRoleTheCallerHasNow(t *testing.T) {
-	f := newKeyFixture(t)
-	ctx := context.Background()
 	const issuer = "https://lb.example.com/magic-link"
 	cfg := &auth.BrowserAccess{Provider: auth.Provider{Kind: "direct"}, Origin: "https://lb.example.com", Permissions: []string{}}
-	f.s.Browser = auth.NewBrowser(f.st, f.s.Root.Dir, cfg, f.s.Log)
+	f := newKeyFixture(t, func(c *Config) { c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, cfg, c.Log) })
+	ctx := context.Background()
 	p := &auth.Policy{Roles: []auth.Role{{Name: "boss", Permissions: []string{"access:manage", "keys:manage"}}, {Name: "small", Permissions: []string{"keys:read"}}},
 		Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com", Issuer: issuer}, {Kind: "email", Role: "small", Email: "person@example.com", Issuer: issuer}}}
 	if err := auth.ApplyPolicy(ctx, f.st, p); err != nil {
@@ -398,17 +400,16 @@ func TestKeysStillWorkForFirstRunAndHostCallers(t *testing.T) {
 			}
 		}
 	}
-	// --no-auth, through the real route with no credential at all.
-	f.s.NoAuth = true
+	// --no-auth, through the real route with no credential at all, on a gateway started that way.
+	open := newKeyFixture(t, func(c *Config) { c.NoAuth = true })
 	r := httptest.NewRequest(http.MethodPost, "/_localbase/api-keys", strings.NewReader(`{"action":"create","name":"open","scopes":["keys:manage"]}`))
 	r.Host = "127.0.0.1"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	f.s.ServeHTTP(w, r)
+	open.s.ServeHTTP(w, r)
 	if w.Code != 201 {
 		t.Errorf("--no-auth: %d %s", w.Code, w.Body)
 	}
-	f.s.NoAuth = false
 	// A person who holds keys:manage and chat can use the narrow Connect preset, and is
 	// told in plain words why the one with every inference permission is refused.
 	person := &auth.Principal{Kind: "browser-session", ID: "browser:x", Permissions: []string{"keys:manage", "inference:chat", "models:read"}}
@@ -421,19 +422,30 @@ func TestKeysStillWorkForFirstRunAndHostCallers(t *testing.T) {
 	}
 }
 
+// sessionIssuer is the identity provider the sessions of sessionPoster come from.
+const sessionIssuer = "https://idp.example.com"
+
+// withSessionAccess gives a key fixture the browser access that sessionPoster signs people in
+// through: saved under its root, as the gateway would find it, and set on its Config.
+func withSessionAccess(t *testing.T) func(*Config) {
+	return func(c *Config) {
+		cfg := &auth.BrowserAccess{Origin: "https://lb.example.com", Permissions: []string{},
+			Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "idp", Name: "IdP", Issuer: sessionIssuer, ClientID: "cid",
+				ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}}
+		if err := auth.SaveAccess(c.Root.Dir, cfg); err != nil {
+			t.Fatal(err)
+		}
+		c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, cfg, c.Log)
+	}
+}
+
 // sessionPoster signs a person in with a real session whose role holds perms, and
-// returns how to post as them through the /app/api forward and how to change the role.
+// returns how to post as them through the /app/api forward and how to change the role. The
+// fixture is built withSessionAccess.
 func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(body string, path ...string) (int, string), setRole func(...string)) {
 	t := f.t
 	ctx := context.Background()
-	const issuer = "https://idp.example.com"
-	cfg := &auth.BrowserAccess{Origin: "https://lb.example.com", Permissions: []string{},
-		Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "idp", Name: "IdP", Issuer: issuer, ClientID: "cid",
-			ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}}
-	if err := auth.SaveAccess(f.s.Root.Dir, cfg); err != nil {
-		t.Fatal(err)
-	}
-	f.s.Browser = auth.NewBrowser(f.st, f.s.Root.Dir, cfg, f.s.Log)
+	const issuer = sessionIssuer
 	policy := func(perms ...string) *auth.Policy {
 		return &auth.Policy{Roles: []auth.Role{{Name: "boss", Permissions: []string{"access:manage"}}, {Name: "holder", Permissions: perms}},
 			Bindings: []auth.Binding{{Kind: "email", Role: "boss", Email: "boss@example.com", Issuer: issuer}, {Kind: "email", Role: "holder", Email: "person@example.com", Issuer: issuer}}}
@@ -473,7 +485,7 @@ func (f *keyFixture) sessionPoster(owner string, perms ...string) (post func(bod
 // The same rules through a real session cookie and the /app/api forward: what a person
 // holds is what their role gives them on this request, and the audit names their id.
 func TestKeyRulesThroughARealSession(t *testing.T) {
-	f := newKeyFixture(t)
+	f := newKeyFixture(t, withSessionAccess(t))
 	post, setRole := f.sessionPoster("browser:person-hash", "keys:manage", "keys:read", "models:read")
 	wide, _ := f.key("wide", 0, "keys:manage", "access:manage")
 	if status, out := post(`{"action":"create","name":"more","scopes":["access:manage"]}`); status != 403 || !strings.Contains(out, exceeds) {

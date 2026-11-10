@@ -99,7 +99,7 @@ func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Config)
 	if configure != nil {
 		configure(&conf)
 	}
-	srv := newFromConfig(conf)
+	srv := New(conf)
 	bodyRead := &atomic.Int64{}
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Body != nil && req.Body != http.NoBody {

@@ -12,16 +12,14 @@ import (
 
 func newLocalGateway(t *testing.T) (gatewaytest.LocalClient, *Server) {
 	t.Helper()
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
-	s.NoAuth, s.LoginPages = false, gatewaytest.Pages{}
-	return gatewaytest.LocalClient{T: t, Base: ts.URL}, s
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) { c.NoAuth, c.LoginPages = false, gatewaytest.Pages{} })
+	return gatewaytest.LocalClient{T: t, Base: ts.URL}, runServer(ts)
 }
 
 // A link preview or prefetching browser cannot use a link up: GET never spends it.
 func TestLoginLinkSurvivesPreview(t *testing.T) {
 	c, s := newLocalGateway(t)
-	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
+	token, _ := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 	for _, method := range []string{"GET", "GET", "GET"} {
 		resp, body := c.Send(method, auth.LocalOncePath+"?token="+token, "", map[string]string{"Accept": "text/html"})
 		if resp.StatusCode != 200 || body != "redeem page" {
@@ -46,7 +44,7 @@ func TestLoginLinkSurvivesPreview(t *testing.T) {
 // A forged cross-site POST, or one not sent as a form, does not redeem.
 func TestLoginLinkRedeemForm(t *testing.T) {
 	c, s := newLocalGateway(t)
-	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
+	token, _ := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 	for name, h := range map[string]map[string]string{
 		"other origin": {"Origin": "https://attacker.example"},
 		"cross site":   {"Sec-Fetch-Site": "cross-site"},
@@ -65,7 +63,7 @@ func TestLoginLinkRedeemForm(t *testing.T) {
 // Proxied requests can neither redeem a link nor use a valid session.
 func TestLocalSessionLoopbackRule(t *testing.T) {
 	c, s := newLocalGateway(t)
-	ck := gatewaytest.SessionCookie(t, c, s.Store)
+	ck := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	if resp, body := c.Send("GET", "/app/session", "", gatewaytest.LocalUI(ck, c.Base)); resp.StatusCode != 200 || !strings.Contains(body, `"localSession":true`) || !strings.Contains(body, `"system:manage"`) {
 		t.Fatalf("session: %d %s", resp.StatusCode, body)
 	}
@@ -79,7 +77,7 @@ func TestLocalSessionLoopbackRule(t *testing.T) {
 		for k, v := range m {
 			label = k + "=" + v
 		}
-		token, _ := auth.IssueLocalLink(context.Background(), s.Store)
+		token, _ := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 		resp, body := c.Redeem(token, m)
 		if resp.StatusCode != 403 || len(resp.Cookies()) != 0 {
 			t.Errorf("redeem with %s: %d %s", label, resp.StatusCode, body)
@@ -103,7 +101,7 @@ func TestLocalSessionLoopbackRule(t *testing.T) {
 
 func TestLocalSessionCSRF(t *testing.T) {
 	c, s := newLocalGateway(t)
-	ck := gatewaytest.SessionCookie(t, c, s.Store)
+	ck := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	const path = "/app/api/_localbase/local-sessions"
 	body := `{"action":"revoke","id":"none"}`
 	for name, h := range map[string]map[string]string{
@@ -126,7 +124,7 @@ func TestLocalSessionCSRF(t *testing.T) {
 
 func TestLocalSessionLogoutAndRevoke(t *testing.T) {
 	c, s := newLocalGateway(t)
-	ck := gatewaytest.SessionCookie(t, c, s.Store)
+	ck := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	resp, _ := c.Send("POST", "/app/logout", "", gatewaytest.LocalUI(ck, c.Base))
 	if resp.StatusCode != 204 {
 		t.Fatalf("logout: %d", resp.StatusCode)
@@ -137,8 +135,8 @@ func TestLocalSessionLogoutAndRevoke(t *testing.T) {
 	if resp, _ := c.Send("GET", "/app/session", "", gatewaytest.LocalUI(ck, c.Base)); resp.StatusCode == 200 {
 		t.Error("the session outlived logout")
 	}
-	ck = gatewaytest.SessionCookie(t, c, s.Store)
-	other := gatewaytest.SessionCookie(t, c, s.Store)
+	ck = gatewaytest.SessionCookie(t, c, s.cfg.Store)
+	other := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	resp, body := c.Send("GET", "/app/api/_localbase/local-sessions", "", gatewaytest.LocalUI(ck, c.Base))
 	if resp.StatusCode != 200 || strings.Contains(body, "hash") || strings.Contains(body, strings.TrimPrefix(ck, auth.LocalCookie+"=")) {
 		t.Fatalf("list: %d %s", resp.StatusCode, body)
@@ -165,7 +163,7 @@ func TestLoginLinkRateLimited(t *testing.T) {
 			t.Fatalf("a wrong token: %d", resp.StatusCode)
 		}
 	}
-	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
+	token, _ := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 	resp, body := c.Redeem(token, nil)
 	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" || body != "too many page" {
 		t.Fatalf("limited: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
@@ -194,7 +192,7 @@ func TestLoginLinkAudit(t *testing.T) {
 	gatewaytest.Log = &logs
 	defer func() { gatewaytest.Log = nil }()
 	c, s := newLocalGateway(t)
-	token, _ := auth.IssueLocalLink(context.Background(), s.Store)
+	token, _ := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 	c.Redeem(token, nil)
 	c.Redeem(token, nil)
 	c.Redeem(token, map[string]string{"X-Forwarded-For": "203.0.113.9"})
@@ -212,14 +210,14 @@ func TestLoginLinkAudit(t *testing.T) {
 // The web path takes an id in JSON, so a leading '-' means nothing to it.
 func TestRevokeASessionWhoseIDStartsWithADashOverTheWeb(t *testing.T) {
 	c, s := newLocalGateway(t)
-	ck := gatewaytest.SessionCookie(t, c, s.Store)
-	other := gatewaytest.SessionCookie(t, c, s.Store)
+	ck := gatewaytest.SessionCookie(t, c, s.cfg.Store)
+	other := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 	var id string
-	if err := s.Store.DB.QueryRow(`SELECT id FROM local_sessions ORDER BY created_at DESC, rowid DESC LIMIT 1`).Scan(&id); err != nil {
+	if err := s.cfg.Store.DB.QueryRow(`SELECT id FROM local_sessions ORDER BY created_at DESC, rowid DESC LIMIT 1`).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	const dashed = "-AnZqiOlvvn8"
-	if _, err := s.Store.DB.Exec(`UPDATE local_sessions SET id = ? WHERE id = ?`, dashed, id); err != nil {
+	if _, err := s.cfg.Store.DB.Exec(`UPDATE local_sessions SET id = ? WHERE id = ?`, dashed, id); err != nil {
 		t.Fatal(err)
 	}
 	resp, body := c.Send("POST", "/app/api/_localbase/local-sessions", `{"action":"revoke","id":"`+dashed+`"}`, gatewaytest.LocalUI(ck, c.Base))

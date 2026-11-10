@@ -580,7 +580,7 @@ func (c oaClient) doBody(reqBody, method, path string, headers ...string) (int, 
 func TestOpenAPIMethods(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +638,7 @@ func TestOpenAPIPermissions(t *testing.T) {
 		if k, ok := keys[name]; ok {
 			return k
 		}
-		_, k, err := s.Store.CreateAPIKey(ctx, "k"+strconv.Itoa(len(keys)), scopes)
+		_, k, err := s.cfg.Store.CreateAPIKey(ctx, "k"+strconv.Itoa(len(keys)), scopes)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -705,7 +705,7 @@ func firstBytes(b []byte) string {
 func TestOpenAPIKeysRefusedFromPages(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "k", auth.DefaultKeyScopes)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "k", auth.DefaultKeyScopes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -827,15 +827,15 @@ func TestOpenAPIResponses(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
 	ctx := t.Context()
-	self, key, err := s.Store.CreateAPIKey(ctx, "all", auth.Permissions)
+	self, key, err := s.cfg.Store.CreateAPIKey(ctx, "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, reader, _ := s.Store.CreateAPIKey(ctx, "reader", []string{"models:read"})
+	_, reader, _ := s.cfg.Store.CreateAPIKey(ctx, "reader", []string{"models:read"})
 	d := loadOpenAPI(t)
-	send := func(key, method, path, ctype string, body []byte) (int, http.Header, []byte) {
+	sendTo := func(base, key, method, path, ctype string, body []byte) (int, http.Header, []byte) {
 		t.Helper()
-		req, _ := http.NewRequest(method, ts.URL+path, bytes.NewReader(body))
+		req, _ := http.NewRequest(method, base+path, bytes.NewReader(body))
 		if ctype != "" {
 			req.Header.Set("Content-Type", ctype)
 		}
@@ -854,6 +854,10 @@ func TestOpenAPIResponses(t *testing.T) {
 		defer resp.Body.Close()
 		out, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, resp.Header, out
+	}
+	send := func(key, method, path, ctype string, body []byte) (int, http.Header, []byte) {
+		t.Helper()
+		return sendTo(ts.URL, key, method, path, ctype, body)
 	}
 	check := func(method, path, body string, want ...int) []byte {
 		t.Helper()
@@ -875,6 +879,21 @@ func TestOpenAPIResponses(t *testing.T) {
 			t.Errorf("POST %s: %d, want %v: %s", path, status, want, firstBytes(out))
 		}
 		d.checkResponse(t, "POST", path, status, hdr, out)
+		return out
+	}
+	// bare is a gateway started with no image runtime and no voice store, and checkBare asks it.
+	bare := openAPIGateway(t, func(c *Config) { c.Image, c.Voices = nil, nil })
+	_, bareKey, err := runServer(bare).cfg.Store.CreateAPIKey(ctx, "all", auth.Permissions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkBare := func(method, path, body string, want ...int) []byte {
+		t.Helper()
+		status, hdr, out := sendTo(bare.URL, bareKey, method, path, "application/json", []byte(body))
+		if !slices.Contains(want, status) {
+			t.Errorf("%s %s with no image runtime or voice store: %d, want %v: %s", method, path, status, want, firstBytes(out))
+		}
+		d.checkResponse(t, method, path, status, hdr, out)
 		return out
 	}
 	// as asks with another key, or none, and compares the answer all the same.
@@ -1019,10 +1038,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("GET", "/_localbase/models/no-such-model/admission", "", 404)
 	if openAPIHasMedia {
-		image := s.Image
-		s.Image = nil
-		check("GET", "/_localbase/models/"+openAPIImageModel+"/admission", "", 501)
-		s.Image = image
+		checkBare("GET", "/_localbase/models/"+openAPIImageModel+"/admission", "", 501)
 	}
 	check("GET", "/_localbase/models?kind=stt,tts&installed=false&sort=memory&reverse=true&fit=fits&license=open&capability=x&q=x", "", 200)
 
@@ -1040,7 +1056,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("DELETE", placed, "", 200)
 	check("DELETE", "/_localbase/models/no-such-model/placement", "", 404)
 	expert := 1
-	if err := s.Store.SetPlacement(ctx, gatewaytest.ChatModel, openAPIDevice, store.Placement{Mode: placement.Custom, CPUMoELayers: &expert}); err != nil {
+	if err := s.cfg.Store.SetPlacement(ctx, gatewaytest.ChatModel, openAPIDevice, store.Placement{Mode: placement.Custom, CPUMoELayers: &expert}); err != nil {
 		t.Fatal(err)
 	}
 	if out := check("GET", placed, "", 200); !bytes.Contains(out, []byte(`"nextError"`)) {
@@ -1104,7 +1120,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/_localbase/model-backend?model="+gatewaytest.ChatModel, "", 200)
 	check("GET", "/_localbase/model-backend?model=no-such-model", "", 404)
 	check("GET", "/_localbase/auth-profiles", "", 200)
-	profiles := filepath.Join(s.Root.Dir, "credentials", "auth-profiles.json")
+	profiles := filepath.Join(s.cfg.Root.Dir, "credentials", "auth-profiles.json")
 	if err := os.MkdirAll(filepath.Dir(profiles), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -1271,7 +1287,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("GET", "/_localbase/access-management", "", 200)
 	check("POST", "/_localbase/access-management", `{"action":"disable"}`, 200)
 	check("POST", "/_localbase/access-management", `{"action":"disable"}`, 200) // already off
-	if _, _, err := auth.CreateLocalSession(ctx, s.Store); err != nil {
+	if _, _, err := auth.CreateLocalSession(ctx, s.cfg.Store); err != nil {
 		t.Fatal(err)
 	}
 	check("GET", "/_localbase/local-sessions", "", 200)
@@ -1337,15 +1353,12 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("DELETE", voicePath, "", 200)
 	check("GET", voicePath, "", 404)
 	check("GET", voicePath+"/audio", "", 404)
-	stored := s.Voices
-	s.Voices = nil
-	check("GET", "/_localbase/voices", "", 501)
-	check("POST", "/_localbase/voices", `{}`, 501)
-	check("GET", voicePath, "", 501)
-	check("PATCH", voicePath, `{"name":"x"}`, 501)
-	check("DELETE", voicePath, "", 501)
-	check("GET", voicePath+"/audio", "", 501)
-	s.Voices = stored
+	checkBare("GET", "/_localbase/voices", "", 501)
+	checkBare("POST", "/_localbase/voices", `{}`, 501)
+	checkBare("GET", voicePath, "", 501)
+	checkBare("PATCH", voicePath, `{"name":"x"}`, 501)
+	checkBare("DELETE", voicePath, "", 501)
+	checkBare("GET", voicePath+"/audio", "", 501)
 
 	// Runs: the whole life of one.
 	createdRun := check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"), 202)
@@ -1434,7 +1447,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 
 	// Last, because adding reloads the catalog this gateway's fixtures come from.
-	for _, spec := range s.Catalog.All() {
+	for _, spec := range s.cfg.Catalog.All() {
 		if spec.Origin == "built-in" {
 			check("POST", "/_localbase/model-discovery", `{"action":"add","repo":"`+repo+`","modelId":"`+spec.ModelID+`"}`, 409)
 			break
@@ -1458,7 +1471,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Catalog.Replace(layered)
+	s.cfg.Catalog.Replace(layered)
 	check("GET", "/_localbase/models", "", 200)
 	check("POST", "/_localbase/model-discovery", `{"action":"search","query":"qwen coder"}`, 200)
 	for _, repo := range []string{repo, "ggml-org/Clef-Flash-GGUF", "Qwen/Qwen3-Coder-Next-GGUF"} {
@@ -1469,7 +1482,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 
 	// All of that, and another process still sees this one attached.
-	newLockAsker(t, s.Root.DB()).mustBeRefused(t, "every route above")
+	newLockAsker(t, s.cfg.Root.DB()).mustBeRefused(t, "every route above")
 }
 
 // openAPIHub is the Hub, offline: the responses internal/hub records, and a token check.

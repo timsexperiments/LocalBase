@@ -14,7 +14,7 @@ func TestModelRoutePermissions(t *testing.T) {
 	s := runServer(ts)
 	key := func(scopes ...string) string {
 		t.Helper()
-		_, k, err := s.Store.CreateAPIKey(t.Context(), strings.Join(scopes, "+"), scopes)
+		_, k, err := s.cfg.Store.CreateAPIKey(t.Context(), strings.Join(scopes, "+"), scopes)
 		if err != nil {
 			t.Fatal(err)
 		}

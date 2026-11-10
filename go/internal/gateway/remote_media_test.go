@@ -34,19 +34,20 @@ type mediaRoute struct {
 
 func newMediaGateway(t *testing.T) (*mediaGatewayState, []mediaRoute) {
 	t.Helper()
-	ts, llm, _ := newTestGateway(t, host{})
+	const issuer = "https://accounts.example.test"
+	ts, llm, _ := newConfiguredGateway(t, host{}, func(c *Config) {
+		c.NoAuth = false
+		c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, &auth.BrowserAccess{Origin: remoteMediaOrigin, Permissions: []string{"inference:chat"},
+			Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "google", Name: "Google", Issuer: issuer,
+				ClientID: "cid", ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}}, c.Log)
+	})
 	srv := ts.Config.Handler.(*Server)
 	ctx := context.Background()
-	_, key, err := srv.Store.CreateAPIKey(ctx, "chat", []string{"inference:chat"})
+	_, key, err := srv.cfg.Store.CreateAPIKey(ctx, "chat", []string{"inference:chat"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	const issuer = "https://accounts.example.test"
-	srv.NoAuth = false
-	srv.Browser = auth.NewBrowser(srv.Store, srv.Root.Dir, &auth.BrowserAccess{Origin: remoteMediaOrigin, Permissions: []string{"inference:chat"},
-		Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "google", Name: "Google", Issuer: issuer,
-			ClientID: "cid", ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}}}, srv.Log)
-	token, err := auth.CreateSession(ctx, srv.Store, "browser:person", auth.Identity{Issuer: issuer, Subject: "person", VerifiedEmail: "person@example.test"})
+	token, err := auth.CreateSession(ctx, srv.cfg.Store, "browser:person", auth.Identity{Issuer: issuer, Subject: "person", VerifiedEmail: "person@example.test"})
 	if err != nil {
 		t.Fatal(err)
 	}

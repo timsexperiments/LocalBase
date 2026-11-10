@@ -77,12 +77,12 @@ func TestUpdateRoute(t *testing.T) {
 func TestUpdateInstanceToken(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	release, err := s.Root.Lock("127.0.0.1", 1)
+	release, err := s.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	token := s.Root.Instance().InstanceToken
+	token := s.cfg.Root.Instance().InstanceToken
 	c := oaClient{t, ts.URL, ""}
 	host := "X-Localbase-Instance-Token"
 	if status, _, _, _ := c.doBody(`{"action":"set-check","enabled":true}`, "POST", "/_localbase/update", host, token); status != 200 {

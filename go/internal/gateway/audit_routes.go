@@ -69,7 +69,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 		}
 		actorKind, actorID := s.auditActor(r)
 		if refused {
-			if change.targetKind != "model" || s.Catalog == nil || s.Catalog.ByID(change.targetID) == nil {
+			if change.targetKind != "model" || s.cfg.Catalog == nil || s.cfg.Catalog.ByID(change.targetID) == nil {
 				change.targetID = ""
 			}
 			s.auditRefused(area, change.action, actorKind, actorID, change.targetKind, change.targetID, rec.Status, rec.body.Bytes())
@@ -80,7 +80,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 			return
 		}
 		s.changeSummary(s.changeAudit.flush(now))
-		s.Log.Info("Administration change.", "event", "audit."+area+"-changed", "action", change.action, "actor_kind", actorKind, "actor_id", actorID,
+		s.cfg.Log.Info("Administration change.", "event", "audit."+area+"-changed", "action", change.action, "actor_kind", actorKind, "actor_id", actorID,
 			"target_kind", change.targetKind, "target_id", change.targetID)
 	}
 }
@@ -88,7 +88,7 @@ func (s *Server) auditedRoute(area string, describe changeDescriber, next http.H
 // changeSummary says what was counted rather than logged, and whose. Nothing is dropped unmentioned.
 func (s *Server) changeSummary(held heldChanges) {
 	if held.count > 0 {
-		s.Log.Warn("Changes were counted rather than logged.", "event", "audit.changes-summary", "count", held.count, "areas", held.areas,
+		s.cfg.Log.Warn("Changes were counted rather than logged.", "event", "audit.changes-summary", "count", held.count, "areas", held.areas,
 			"actors", held.actors, "other_actors_count", held.others, "interval_seconds", int(changeAuditEvery.Seconds()))
 	}
 }

@@ -52,14 +52,15 @@ func (c oidcClient) send(method, path, body string, set map[string]string) (*htt
 // wires around a session.
 func oidcGateway(t *testing.T) (oidcClient, *Server, string) {
 	t.Helper()
-	ts, _, _ := newTestGateway(t, host{})
-	s := runServer(ts)
-	s.NoAuth = false
 	cfg := &auth.BrowserAccess{Provider: auth.Provider{Kind: "direct", Registrations: []auth.Registration{{Kind: "oidc", ID: "idp", Name: "IdP",
 		Issuer: oidcIssuer, ClientID: "cid", ClientAuthentication: &auth.ClientAuth{Kind: "none"}}}},
 		Origin: oidcOrigin, Permissions: auth.Permissions}
-	s.Browser = auth.NewBrowser(s.Store, scratchDir(t), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	token, err := auth.CreateSession(context.Background(), s.Store, "owner-1", auth.Identity{Issuer: oidcIssuer, Subject: "user-1", VerifiedEmail: "owner@example.com"})
+	ts, _, _ := newConfiguredGateway(t, host{}, func(c *Config) {
+		c.NoAuth = false
+		c.Browser = auth.NewBrowser(c.Store, scratchDir(t), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	})
+	s := runServer(ts)
+	token, err := auth.CreateSession(context.Background(), s.cfg.Store, "owner-1", auth.Identity{Issuer: oidcIssuer, Subject: "user-1", VerifiedEmail: "owner@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +149,7 @@ func TestOIDCLogoutThroughGateway(t *testing.T) {
 
 func TestOIDCExpiredSessionThroughGateway(t *testing.T) {
 	c, s, ck := oidcGateway(t)
-	s.Store.DB.Exec(`UPDATE auth_browser_sessions SET idle_expires_at = ?`, time.Now().Add(-time.Second).UnixMilli())
+	s.cfg.Store.DB.Exec(`UPDATE auth_browser_sessions SET idle_expires_at = ?`, time.Now().Add(-time.Second).UnixMilli())
 	if resp, _ := c.send("GET", "/app/session", "", oidcUI(ck)); resp.StatusCode != 401 {
 		t.Errorf("session: %d", resp.StatusCode)
 	}
@@ -161,7 +162,7 @@ func TestOIDCExpiredSessionThroughGateway(t *testing.T) {
 // every route.
 func TestOIDCUnauthorizedEmailThroughGateway(t *testing.T) {
 	c, s, ck := oidcGateway(t)
-	if err := auth.ApplyPolicy(context.Background(), s.Store, &auth.Policy{Roles: []auth.Role{{Name: "admin", Description: "Admin", Permissions: []string{"access:manage"}}},
+	if err := auth.ApplyPolicy(context.Background(), s.cfg.Store, &auth.Policy{Roles: []auth.Role{{Name: "admin", Description: "Admin", Permissions: []string{"access:manage"}}},
 		Bindings: []auth.Binding{{Kind: "email", Role: "admin", Email: "someone-else@example.com"}}}); err != nil {
 		t.Fatal(err)
 	}

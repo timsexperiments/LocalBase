@@ -234,7 +234,7 @@ func fromRejectionDrain() bool {
 	}
 }
 
-func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
+func newMatrixGateway(t *testing.T, access *auth.BrowserAccess, configure ...func(*Config)) *matrixGateway {
 	t.Helper()
 	ts, stt, _ := newAuthSTTGateway(t)
 	ts.Close()
@@ -275,7 +275,7 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 	browser := auth.NewBrowser(st, r.Dir, access, log)
 	resolver := &auth.Resolver{Store: st, Mode: "either"}
 	conf := Config{Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, MemoryGB: 64, Root: r, Memory: mem,
-		Browser: browser, STT: base.STT, Voices: voices.New(st, r.Dir),
+		Browser: browser, STT: base.cfg.STT, Voices: voices.New(st, r.Dir),
 		Placement: &runtime.HostPlacement{Store: st, DeviceID: "test", Memory: mem, Log: log}}
 	// The UI asks the gateway who the caller is, and the gateway is built with the UI, so the UI
 	// reaches it through srv, which is assigned before any request comes.
@@ -284,7 +284,10 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(),
 		Voices: voices.New(st, r.Dir).List})
-	srv = newFromConfig(conf)
+	for _, c := range configure {
+		c(&conf)
+	}
+	srv = New(conf)
 	bodyRead := &atomic.Int64{}
 	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Body != nil {
@@ -301,10 +304,10 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess) *matrixGateway {
 // and a run refused before the queue is forgotten, so together they see every run, finished or not.
 func (g *matrixGateway) runsLeft(t *testing.T) (active, saved int) {
 	t.Helper()
-	if g.srv.Root == nil {
+	if g.srv.cfg.Root == nil {
 		t.Fatal("the gateway has no root, so its runs are never saved")
 	}
-	entries, err := os.ReadDir(filepath.Join(g.srv.Root.Dir, "runs"))
+	entries, err := os.ReadDir(filepath.Join(g.srv.cfg.Root.Dir, "runs"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
@@ -676,12 +679,13 @@ func TestCancellingNeedsModelsManage(t *testing.T) {
 		host   string
 	}{{"no browser access", nil, ""}, {"direct browser access", directAccess(), "lb.example"}} {
 		t.Run(mode.name, func(t *testing.T) {
-			g := newMatrixGateway(t, mode.access)
-			lib, err := library.Open(g.srv.Root, g.store, g.srv.Catalog, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			g.srv.Library = lib
+			g := newMatrixGateway(t, mode.access, func(c *Config) {
+				lib, err := library.Open(c.Root, c.Store, c.Catalog, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.Library = lib
+			})
 			key := func(scopes ...string) string {
 				t.Helper()
 				_, secret, err := g.store.CreateAPIKey(context.Background(), strings.Join(scopes, "+"), scopes)
@@ -803,12 +807,12 @@ var tokenExceptions = map[string]string{
 // and method, apart from the routes that exist for it and tokenExceptions.
 func TestInstanceTokenRouteMatrix(t *testing.T) {
 	g := newMatrixGateway(t, nil)
-	release, err := g.srv.Root.Lock("127.0.0.1", 1)
+	release, err := g.srv.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	withToken := map[string]string{"X-Localbase-Instance-Token": g.srv.Root.Instance().InstanceToken}
+	withToken := map[string]string{"X-Localbase-Instance-Token": g.srv.cfg.Root.Instance().InstanceToken}
 	seen := map[string]bool{}
 	for path := range matrixPaths(gatewayPatterns(t)) {
 		if slices.Contains(tokenRoutes, path) {

@@ -123,11 +123,11 @@ func TestNoRouteCostsTheGatewayItsLock(t *testing.T) {
 		t.Setenv("HF_TOKEN", "")
 		ts := openAPIGateway(t)
 		s := runServer(ts)
-		_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+		_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 		if err != nil {
 			t.Fatal(err)
 		}
-		asker := newLockAsker(t, s.Root.DB())
+		asker := newLockAsker(t, s.cfg.Root.DB())
 		asker.mustBeRefused(t, "opening")
 		answered := 0
 		for path := range matrixPaths(gatewayPatterns(t)) {
@@ -163,9 +163,9 @@ func TestNoRouteCostsTheGatewayItsLock(t *testing.T) {
 	t.Run("the pages", func(t *testing.T) {
 		g := newMatrixGateway(t, nil)
 		// Signed in, as the owner at this computer, so the pages answer rather than ask who it is.
-		cookie := gatewaytest.SessionCookie(t, gatewaytest.LocalClient{T: t, Base: g.ts.URL}, g.srv.Store)
+		cookie := gatewaytest.SessionCookie(t, gatewaytest.LocalClient{T: t, Base: g.ts.URL}, g.srv.cfg.Store)
 		signedIn := gatewaytest.LocalUI(cookie, g.ts.URL)
-		asker := newLockAsker(t, g.srv.Root.DB())
+		asker := newLockAsker(t, g.srv.cfg.Root.DB())
 		asker.mustBeRefused(t, "opening")
 		answered := 0
 		for path := range matrixPaths(uiPatterns(t)) {
@@ -188,14 +188,14 @@ func TestImportingTheDatabaseLeavesItsLock(t *testing.T) {
 	t.Setenv("HF_TOKEN", "")
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Store.SetSetting(t.Context(), "database-lock-test", "so there's a -wal"); err != nil {
+	if err := s.cfg.Store.SetSetting(t.Context(), "database-lock-test", "so there's a -wal"); err != nil {
 		t.Fatal(err)
 	}
-	db := s.Root.DB()
+	db := s.cfg.Root.DB()
 	link := filepath.Join(scratchDir(t), "m.gguf")
 	if err := os.Symlink(db, link); err != nil {
 		t.Fatal(err)
@@ -239,13 +239,13 @@ func TestARefusalNamesOnlyTheFileAndEscapesIt(t *testing.T) {
 	t.Setenv("HF_TOKEN", "")
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	folder := scratchDir(t)
 	link := filepath.Join(folder, "m\x1b[2Jx\n.gguf")
-	if err := os.Symlink(s.Root.DB(), link); err != nil {
+	if err := os.Symlink(s.cfg.Root.DB(), link); err != nil {
 		t.Fatal(err)
 	}
 	body, err := json.Marshal(map[string]any{"action": "resolve", "source": link, "task": "chat", "id": "x"})

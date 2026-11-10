@@ -86,6 +86,21 @@ func newTestGateway(t *testing.T, h memory.HostProvider) (*httptest.Server, *run
 // newTestGatewayWith also installs and selects extra LLMs.
 func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*httptest.Server, *runtime.LLM, *memory.Controller) {
 	t.Helper()
+	return newConfiguredGateway(t, h, nil, extra...)
+}
+
+// newTestServerConfigured is newTestServer, with configure setting what a test needs on its
+// Config before the gateway is built.
+func newTestServerConfigured(t *testing.T, configure func(*Config)) *httptest.Server {
+	t.Helper()
+	ts, _, _ := newConfiguredGateway(t, host{}, configure)
+	return ts
+}
+
+// newConfiguredGateway is newTestGatewayWith, with configure, if given, applied to the Config
+// before the gateway is built.
+func newConfiguredGateway(t *testing.T, h memory.HostProvider, configure func(*Config), extra ...string) (*httptest.Server, *runtime.LLM, *memory.Controller) {
+	t.Helper()
 	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
 	if err != nil {
@@ -128,9 +143,12 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 		llm.SetPlacementSource(placementSrc)
 	}
 	t.Cleanup(llm.Close)
-	srv := newFromConfig(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log, Placement: placementSrc,
-		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem})
-	ts := httptest.NewServer(srv)
+	conf := Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log, Placement: placementSrc,
+		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem}
+	if configure != nil {
+		configure(&conf)
+	}
+	ts := httptest.NewServer(New(conf))
 	t.Cleanup(ts.Close)
 	return ts, llm, mem
 }

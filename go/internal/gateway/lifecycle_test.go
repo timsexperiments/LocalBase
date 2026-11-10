@@ -13,7 +13,7 @@ import (
 // "Close leaves nothing running". It is also the proof that testutil's leak check sees a real one.
 func TestADroppedGatewayLeaksTheJanitorUntilClose(t *testing.T) {
 	before := testutil.Snapshot()
-	s := newFromConfig(Config{})
+	s := New(Config{})
 	left := before.Leaked(100 * time.Millisecond)
 	if len(left) != 1 || !strings.Contains(left[0], "runs.(*Manager).Janitor") {
 		t.Fatalf("want the run janitor still running, and nothing else; got %d:\n\n%s", len(left), strings.Join(left, "\n\n"))

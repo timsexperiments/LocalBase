@@ -15,12 +15,12 @@ import (
 func TestInstanceTokenCanOnlyCancelAnInstall(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	release, err := s.Root.Lock("127.0.0.1", 1)
+	release, err := s.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	token := s.Root.Instance().InstanceToken
+	token := s.cfg.Root.Instance().InstanceToken
 	send := func(method, body, tok string) int {
 		t.Helper()
 		req, _ := http.NewRequest(method, ts.URL+"/_localbase/model-management", strings.NewReader(body))
@@ -60,18 +60,17 @@ func TestACancelFromTheCommandLineIsAudited(t *testing.T) {
 	const model = "qwen3.5-4b-q4_k_m"
 	// A finished operation answers a cancel with how it ended. It is the one a gateway that
 	// stopped left behind, read back at start.
-	ts := openAPIGateway(t, cancelledInstall(t, model))
+	var logs bytes.Buffer
+	ts := openAPIGateway(t, cancelledInstall(t, model), func(c *Config) { c.Log = slog.New(slog.NewJSONHandler(&logs, nil)) })
 	s := runServer(ts)
-	release, err := s.Root.Lock("127.0.0.1", 1)
+	release, err := s.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	var logs bytes.Buffer
-	s.Log = slog.New(slog.NewJSONHandler(&logs, nil))
 	req, _ := http.NewRequest("POST", ts.URL+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+model+`","action":"cancel"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Localbase-Instance-Token", s.Root.Instance().InstanceToken)
+	req.Header.Set("X-Localbase-Instance-Token", s.cfg.Root.Instance().InstanceToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

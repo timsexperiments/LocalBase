@@ -440,10 +440,14 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	resolver := &auth.Resolver{Store: st, EnvKey: os.Getenv("LOCALBASE_API_KEY"), Mode: authMode}
-	srv := &gateway.Server{Overrides: runningOverrides(c.String("llm-host"), log), RunMemoryLimit: int64(runMemory) << 20, RunsMemoryLimit: int64(runsMemory) << 20, Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
+	gw := gateway.Config{Overrides: runningOverrides(c.String("llm-host"), log), RunMemoryLimit: int64(runMemory) << 20, RunsMemoryLimit: int64(runsMemory) << 20, Store: st, Catalog: cat, Auth: resolver, LLM: llm, Log: log, NoAuth: noAuth, Placement: placementSource,
 		MemoryGB: memoryGB, Root: r, Memory: mem, Browser: browser, Library: lib, STT: stt, TTS: tts, Image: image, Video: videoService, VideoJobs: videoJobs, Voices: voices.New(st, r.Dir), Otel: tel}
-	srv.LogOutages = sink.Outages
+	gw.LogOutages = sink.Outages
 	listenAddr := net.JoinHostPort(listenHost, strconv.Itoa(listenPort))
+	// The UI asks the gateway who the caller is and calls its API, and the gateway is built with the
+	// UI, so the UI reaches it through srv. gateway.New assigns it below, before the listener opens,
+	// so no request can find it nil.
+	var srv *gateway.Server
 	ui := web.New(web.Deps{Store: st, Catalog: cat, LLM: llm, Auth: resolver, Memory: mem, NoAuth: noAuth, RootDir: r.Dir,
 		Principal:     func(req *http.Request) *auth.Principal { p, _ := srv.BrowserPrincipal(req); return p },
 		SignInEnabled: browser.Enabled(), LogoutURL: browser.CloudflareLogout(), Library: lib, Log: log,
@@ -452,13 +456,13 @@ func serve(c *cli.Ctx) (any, error) {
 			return web.APIResult{Status: res.Status, Header: res.Header, Body: res.Body}
 		},
 		Voices: voices.New(st, r.Dir).List, ListenAddr: func() string { return listenAddr }})
-	srv.UI, srv.LoginPages = ui, ui
+	gw.UI, gw.LoginPages = ui, ui
 	// Usage never stops the gateway: without it, nothing is counted.
 	stopUsage := func() {}
 	if rec, err := usage.New(st, log); err != nil {
 		log.Warn("Usage totals are off: could not read their settings.", "event", "usage.start-failed", "error", err.Error())
 	} else {
-		srv.Usage = rec
+		gw.Usage = rec
 		stopUsage = rec.Start()
 	}
 	// A start that fails from here on (a busy port, most often) stops what started; a gateway that
@@ -473,21 +477,21 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}()
 	// The daily check is off by default, and this makes no request unless it is on.
-	srv.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
-	stopUpdates := srv.Updates.Start()
+	gw.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
+	stopUpdates := gw.Updates.Start()
 	defer stopUpdates()
-	gateway.New(srv)
 	// A managed gateway that is ready acknowledges the static settings it
 	// started with, clearing a matching pending restart (TS serve).
 	if os.Getenv("LOCALBASE_SERVICE_ID") != "" && os.Getenv("LOCALBASE_SERVICE_TOKEN") != "" {
 		started := &store.Config{GatewayHost: listenHost, GatewayPort: listenPort,
 			SystemReserve: cfg.SystemReserve, AcceleratorReserve: cfg.AcceleratorReserve}
-		srv.OnReady = func() {
+		gw.OnReady = func() {
 			if err := st.AcknowledgeStatic(context.Background(), started); err != nil {
 				log.Warn("Could not acknowledge the startup configuration.", "event", "config.acknowledge-failed", "error", err.Error())
 			}
 		}
 	}
+	srv = gateway.New(gw)
 
 	ln, err := net.Listen("tcp", net.JoinHostPort(listenHost, strconv.Itoa(listenPort)))
 	if err != nil {
@@ -507,7 +511,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	ln = netlimit.LimitConnections(ln, connLimits, log)
 	httpServer := &http.Server{Handler: srv} //nolint:gosec // Limits.Apply sets ReadHeaderTimeout on the next line (TestDefaultLimits)
-	srv.Limits.Apply(httpServer)
+	gw.Limits.Apply(httpServer)
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
@@ -518,8 +522,8 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	go monitor.Run(stopPoll, runtime.PressurePollInterval)
 
-	if srv.OnReady != nil && srv.Ready() {
-		srv.OnReady()
+	if gw.OnReady != nil && srv.Ready() {
+		gw.OnReady()
 	}
 	baseURL := "http://" + ln.Addr().String()
 	var loginLink string

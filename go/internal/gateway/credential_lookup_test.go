@@ -247,8 +247,8 @@ func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
 	})
 	t.Run("a local session", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := gatewaytest.SessionCookie(t, c, s.Store)
-		if err := s.Store.Close(); err != nil {
+		cookie := gatewaytest.SessionCookie(t, c, s.cfg.Store)
+		if err := s.cfg.Store.Close(); err != nil {
 			t.Fatal(err)
 		}
 		resp, _ := c.Send("POST", "/app/logout", "", gatewaytest.LocalUI(cookie, c.Base))
@@ -258,7 +258,7 @@ func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
 	})
 	t.Run("with the database working, it's gone", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := gatewaytest.SessionCookie(t, c, s.Store)
+		cookie := gatewaytest.SessionCookie(t, c, s.cfg.Store)
 		resp, _ := c.Send("POST", "/app/logout", "", gatewaytest.LocalUI(cookie, c.Base))
 		if resp.StatusCode != 204 || len(resp.Cookies()) != 1 || resp.Cookies()[0].MaxAge >= 0 {
 			t.Errorf("%d, cookies %v", resp.StatusCode, resp.Cookies())
@@ -269,11 +269,11 @@ func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
 // A local sign-in link that can't be read isn't called expired, and isn't a bad try.
 func TestALocalLinkThatCannotBeReadIsNotExpired(t *testing.T) {
 	c, s := newLocalGateway(t)
-	token, err := auth.IssueLocalLink(context.Background(), s.Store)
+	token, err := auth.IssueLocalLink(context.Background(), s.cfg.Store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Store.Close(); err != nil {
+	if err := s.cfg.Store.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ { // more than the limit on bad tries

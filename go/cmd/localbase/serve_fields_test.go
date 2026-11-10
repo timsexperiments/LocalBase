@@ -8,15 +8,15 @@ import (
 	"testing"
 )
 
-// serveFields is every gateway.Server field serve sets: in its literal and by assignment before
-// gateway.New, and by assignment after it. When the gateway takes a Config (wave 2, 4d), serve
-// sets these through it; this list moves with that change, so a field left out is a failure here
-// and not a gateway that quietly runs without it.
+// serveFields is every gateway.Config field serve sets: in its literal and by assignment before
+// gateway.New, and by assignment after it. It was the Server's fields until the gateway took a
+// Config (wave 2, 4d-2b), and moved with that change, so a field left out is a failure here and
+// not a gateway that quietly runs without it. Nothing is set after New: OnReady is now set before.
 var serveFields = struct{ before, after []string }{
 	before: []string{"Auth", "Browser", "Catalog", "Image", "LLM", "Library", "Log", "LogOutages", "LoginPages", "Memory",
-		"MemoryGB", "NoAuth", "Otel", "Overrides", "Placement", "Root", "RunMemoryLimit", "RunsMemoryLimit", "STT", "Store",
+		"MemoryGB", "NoAuth", "OnReady", "Otel", "Overrides", "Placement", "Root", "RunMemoryLimit", "RunsMemoryLimit", "STT", "Store",
 		"TTS", "UI", "Updates", "Usage", "Video", "VideoJobs", "Voices"},
-	after: []string{"OnReady"},
+	after: nil,
 }
 
 func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
@@ -25,26 +25,24 @@ func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := ""           // the variable bound to &gateway.Server{...}
-	var newAt token.Pos // where gateway.New(srv) is called
+	gw := ""            // the variable bound to gateway.Config{...}
+	var newAt token.Pos // where gateway.New(gw) is called
 	var before, after []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.AssignStmt:
-			if len(n.Rhs) == 1 && srv == "" {
-				if u, ok := n.Rhs[0].(*ast.UnaryExpr); ok {
-					if lit, ok := u.X.(*ast.CompositeLit); ok && isGatewayServer(lit.Type) {
-						srv = n.Lhs[0].(*ast.Ident).Name
-						for _, e := range lit.Elts {
-							before = append(before, e.(*ast.KeyValueExpr).Key.(*ast.Ident).Name)
-						}
-						return true
+			if len(n.Rhs) == 1 && gw == "" {
+				if lit, ok := n.Rhs[0].(*ast.CompositeLit); ok && isGatewayConfig(lit.Type) {
+					gw = n.Lhs[0].(*ast.Ident).Name
+					for _, e := range lit.Elts {
+						before = append(before, e.(*ast.KeyValueExpr).Key.(*ast.Ident).Name)
 					}
+					return true
 				}
 			}
 			for _, l := range n.Lhs {
-				if sel, ok := l.(*ast.SelectorExpr); ok && srv != "" {
-					if id, ok := sel.X.(*ast.Ident); ok && id.Name == srv {
+				if sel, ok := l.(*ast.SelectorExpr); ok && gw != "" {
+					if id, ok := sel.X.(*ast.Ident); ok && id.Name == gw {
 						if newAt.IsValid() && n.Pos() > newAt {
 							after = append(after, sel.Sel.Name)
 						} else {
@@ -60,8 +58,8 @@ func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
 		}
 		return true
 	})
-	if srv == "" || !newAt.IsValid() {
-		t.Fatal("serve.go no longer builds a &gateway.Server and calls gateway.New: update this test with it")
+	if gw == "" || !newAt.IsValid() {
+		t.Fatal("serve.go no longer builds a gateway.Config and calls gateway.New: update this test with it")
 	}
 	slices.Sort(before)
 	slices.Sort(after)
@@ -73,9 +71,9 @@ func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
 	}
 }
 
-func isGatewayServer(e ast.Expr) bool {
+func isGatewayConfig(e ast.Expr) bool {
 	sel, ok := e.(*ast.SelectorExpr)
-	return ok && sel.Sel.Name == "Server" && isPkg(sel.X, "gateway")
+	return ok && sel.Sel.Name == "Config" && isPkg(sel.X, "gateway")
 }
 
 func isPkg(e ast.Expr, name string) bool {

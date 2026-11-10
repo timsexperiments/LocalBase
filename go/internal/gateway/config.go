@@ -22,8 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
-// Config is everything a gateway is built from (wave 2, 4d). It holds what Server's exported
-// fields hold today, field for field; 4d-2b makes New take it and leaves Server with none.
+// Config is everything a gateway is built from: New takes it, and the Server keeps it.
 type Config struct {
 	// Placement is the CPU/GPU placement source (DESIGN §20; nil: no API).
 	Placement *runtime.HostPlacement
@@ -75,20 +74,4 @@ type Config struct {
 	Overrides func(*store.Config)
 	// LogOutages reports logs that can't rotate or be written, for doctor and status.
 	LogOutages func() []obs.LogOutage
-}
-
-// newFromConfig builds a gateway from cfg. Until 4d-2b it hands New the Server that cfg.server
-// fills in.
-func newFromConfig(cfg Config) *Server { return New(cfg.server()) }
-
-// server is a Server with each of its exported fields set from cfg, field for field;
-// TestConfigIsEveryServerField keeps the two lists the same.
-func (cfg Config) server() *Server {
-	return &Server{Placement: cfg.Placement, Store: cfg.Store, Catalog: cfg.Catalog, Auth: cfg.Auth, LLM: cfg.LLM,
-		Log: cfg.Log, NoAuth: cfg.NoAuth, MemoryGB: cfg.MemoryGB, Root: cfg.Root, Memory: cfg.Memory,
-		Browser: cfg.Browser, Library: cfg.Library, STT: cfg.STT, TTS: cfg.TTS, Image: cfg.Image,
-		Video: cfg.Video, VideoJobs: cfg.VideoJobs, Voices: cfg.Voices, OnReady: cfg.OnReady, Otel: cfg.Otel,
-		Limits: cfg.Limits, Usage: cfg.Usage, Updates: cfg.Updates, UI: cfg.UI, LoginPages: cfg.LoginPages,
-		RunMemoryLimit: cfg.RunMemoryLimit, RunsMemoryLimit: cfg.RunsMemoryLimit, RunMaxDuration: cfg.RunMaxDuration,
-		Overrides: cfg.Overrides, LogOutages: cfg.LogOutages}
 }

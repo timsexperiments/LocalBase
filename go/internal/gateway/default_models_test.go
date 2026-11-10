@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
@@ -73,9 +74,17 @@ func TestDefaultModelNeedsInstanceToken(t *testing.T) {
 
 // The instance answer names a log that can't rotate only to someone with the token, and only then.
 func TestInstanceReportsALogOutageBehindTheToken(t *testing.T) {
-	ts := openAPIGateway(t)
+	var outage atomic.Bool // what the log sink would report
+	ts := openAPIGateway(t, func(c *Config) {
+		c.LogOutages = func() []obs.LogOutage {
+			if !outage.Load() {
+				return nil
+			}
+			return []obs.LogOutage{{Log: "events", Path: "/the/path"}}
+		}
+	})
 	s := runServer(ts)
-	release, err := s.Root.Lock("127.0.0.1", 1)
+	release, err := s.cfg.Root.Lock("127.0.0.1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +104,11 @@ func TestInstanceReportsALogOutageBehindTheToken(t *testing.T) {
 		_ = json.NewDecoder(resp.Body).Decode(&got)
 		return resp.StatusCode, got
 	}
-	token := s.Root.Instance().InstanceToken
+	token := s.cfg.Root.Instance().InstanceToken
 	if code, got := get(token); code != 200 || got["logOutages"] != nil || got["instanceId"] == nil {
 		t.Errorf("healthy: %d %v", code, got)
 	}
-	s.LogOutages = func() []obs.LogOutage { return []obs.LogOutage{{Log: "events", Path: "/the/path"}} }
+	outage.Store(true)
 	if code, got := get(token); code != 200 || got["logOutages"] == nil {
 		t.Errorf("in an outage: %d %v", code, got)
 	}

@@ -21,7 +21,7 @@ import (
 func TestARunRefusedForMemoryEndToEnd(t *testing.T) {
 	ts := openAPIGateway(t, func(c *Config) { c.RunsMemoryLimit = 1 }) // no body fits
 	s := runServer(ts)
-	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
+	_, key, err := s.cfg.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}

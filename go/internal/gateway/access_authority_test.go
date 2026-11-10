@@ -121,7 +121,7 @@ func TestAccessChangesStayWithinTheCaller(t *testing.T) {
 			}
 		})
 	}
-	if _, err := os.Stat(f.s.Root.Dir + "/email-delivery.json"); err == nil {
+	if _, err := os.Stat(f.s.cfg.Root.Dir + "/email-delivery.json"); err == nil {
 		t.Error("a refused change wrote email delivery")
 	}
 }
@@ -246,7 +246,7 @@ func TestPolicyAndProviderWidePermissions(t *testing.T) {
 
 // A session is held to what its role gives it on this request.
 func TestAccessRulesThroughARealSession(t *testing.T) {
-	f := newKeyFixture(t)
+	f := newKeyFixture(t, withSessionAccess(t))
 	post, setRole := f.sessionPoster("browser:person-hash", "access:manage", "access:read")
 	postAccess := func(body string) (int, string) {
 		t.Helper()
@@ -325,7 +325,7 @@ func TestAccessReportsWhatIsNotBound(t *testing.T) {
 		t.Errorf("one binding named by nothing: %v", got)
 	}
 	// With no provider there is nothing to choose, so nothing to report.
-	if _, err := auth.DisableAccess(f.s.Root.Dir); err != nil {
+	if _, err := auth.DisableAccess(f.s.cfg.Root.Dir); err != nil {
 		t.Fatal(err)
 	}
 	if got := count(); got != nil {
@@ -449,7 +449,7 @@ func TestSignInChangesCannotLockEveryoneOut(t *testing.T) {
 	expect(host, reg("a", "https://moved.example.test"), 409, lockedOut)
 	expect(host, gatewaytest.ConfigureCloudflare, 409, lockedOut)
 	expect(host, `{"action":"disable"}`, 409, lockedOut)
-	if cfg, err := auth.LoadAccess(f.s.Root.Dir); err != nil || len(cfg.Issuers()) != 2 {
+	if cfg, err := auth.LoadAccess(f.s.cfg.Root.Dir); err != nil || len(cfg.Issuers()) != 2 {
 		t.Fatalf("a refused change was written: %v %v", cfg.Issuers(), err)
 	}
 	// b isn't what the manager depends on.

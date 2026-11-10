@@ -106,7 +106,7 @@ func TestKeyChangesAndRefusalsAreAudited(t *testing.T) {
 
 // The same through a real session: the audit names the session's id, never its email.
 func TestSessionKeyChangesAreAudited(t *testing.T) {
-	f := newKeyFixture(t)
+	f := newKeyFixture(t, withSessionAccess(t))
 	const owner = "browser:person-hash"
 	post, _ := f.sessionPoster(owner, "keys:manage", "keys:read", "models:read")
 	wide, _ := f.key("wide", 0, "keys:manage", "access:manage")

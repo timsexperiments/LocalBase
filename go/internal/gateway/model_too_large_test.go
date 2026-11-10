@@ -84,7 +84,7 @@ func mediaGateway(t *testing.T, modality, modelID, backendID, binary string) (*h
 	case "stt":
 		conf.STT = svc
 	}
-	ts := httptest.NewServer(newFromConfig(conf))
+	ts := httptest.NewServer(New(conf))
 	t.Cleanup(ts.Close)
 	return ts, svc
 }

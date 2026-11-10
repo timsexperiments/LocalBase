@@ -95,11 +95,11 @@ func newAuditFixture(t *testing.T, configure ...func(*Config)) *auditFixture {
 	gatewaytest.Log = nil
 	srv := runServer(ts)
 	ctx := context.Background()
-	k, key, err := srv.Store.CreateAPIKey(ctx, "all", auth.Permissions)
+	k, key, err := srv.cfg.Store.CreateAPIKey(ctx, "all", auth.Permissions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	none, noScopes, err := srv.Store.CreateAPIKey(ctx, "none", []string{})
+	none, noScopes, err := srv.cfg.Store.CreateAPIKey(ctx, "none", []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	}
 
 	t.Run("import cancelled", func(t *testing.T) {
-		if err := f.srv.Store.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
+		if err := f.srv.cfg.Store.SetSetting(context.Background(), store.PrivateImportsKey, "on"); err != nil {
 			t.Fatal(err)
 		}
 		// It holds the download open, so the cancel lands on a job that is running.
@@ -289,14 +289,14 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 	})
 
 	t.Run("cancel with the instance token is the command line", func(t *testing.T) {
-		release, err := f.srv.Root.Lock("127.0.0.1", 1)
+		release, err := f.srv.cfg.Root.Lock("127.0.0.1", 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer release()
 		from := len(f.logs.String())
 		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+cancelled+`","action":"cancel"}`))
-		req.Header.Set("X-Localbase-Instance-Token", f.srv.Root.Instance().InstanceToken)
+		req.Header.Set("X-Localbase-Instance-Token", f.srv.cfg.Root.Instance().InstanceToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -369,7 +369,7 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.srv.Catalog.Replace(layered)
+		f.srv.cfg.Catalog.Replace(layered)
 		from := len(f.logs.String())
 		status, out := f.send(f.key, "POST", "/_localbase/model-discovery", jsonType, js(`{"action":"install-recipe","modelId":"`+decisionModel+`"}`))
 		if status != 200 {

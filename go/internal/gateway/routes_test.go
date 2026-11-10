@@ -33,7 +33,7 @@ func TestTheRouteTableIsWhatIsRegistered(t *testing.T) {
 		if ui {
 			conf.UI = http.NotFoundHandler()
 		}
-		srv := newFromConfig(conf)
+		srv := New(conf)
 		srv.StopRuns(0)
 		table := srv.routeTable()
 		if len(srv.routes) != len(table) {
