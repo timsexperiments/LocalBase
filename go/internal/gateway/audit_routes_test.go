@@ -87,11 +87,11 @@ type auditFixture struct {
 	noScopeID string
 }
 
-func newAuditFixture(t *testing.T) *auditFixture {
+func newAuditFixture(t *testing.T, configure ...func(*Server)) *auditFixture {
 	t.Helper()
 	logs := &lockedBuffer{}
 	gatewaytest.Log = logs
-	ts := openAPIGateway(t)
+	ts := openAPIGateway(t, configure...)
 	gatewaytest.Log = nil
 	srv := runServer(ts)
 	ctx := context.Background()
@@ -145,7 +145,8 @@ func (f *auditFixture) auditEvents(from int) []map[string]any {
 // Each real change on each limited route writes one line, naming the event, the actor and the
 // target; each refused change writes one too; what only looks writes none.
 func TestEachRouteWritesItsAuditLine(t *testing.T) {
-	f := newAuditFixture(t)
+	const cancelled = "qwen3.5-4b-q4_k_m" // an install that ended cancelled, for the command line's cancel
+	f := newAuditFixture(t, cancelledInstall(t, cancelled))
 	f.srv.changeAudit.sampler.Burst = 1000
 	f.srv.refusedAudit.Burst = 1000
 	// A loaded model to unload.
@@ -293,11 +294,8 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer release()
-		f.srv.models.mgmt.mu.Lock()
-		f.srv.models.mgmt.operations[gatewaytest.ChatModel] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
-		f.srv.models.mgmt.mu.Unlock()
 		from := len(f.logs.String())
-		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+gatewaytest.ChatModel+`","action":"cancel"}`))
+		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+cancelled+`","action":"cancel"}`))
 		req.Header.Set("X-Localbase-Instance-Token", f.srv.Root.Instance().InstanceToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

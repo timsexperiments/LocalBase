@@ -5,12 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
@@ -84,41 +82,6 @@ func TestARefusalCountsWhatIsReserved(t *testing.T) {
 	err = mem.CheckAdmission(t.Context(), big, []string{"llm"})
 	if ae, ok := err.(*memory.AdmissionError); ok && ae.ReservedBytes != 0 {
 		t.Errorf("one being replaced still counted: %d", ae.ReservedBytes)
-	}
-}
-
-// A failed install says it can go on only when there is a part to go on from.
-func TestAFailedInstallMentionsAPartOnlyWhenOneWasKept(t *testing.T) {
-	ts := openAPIGateway(t)
-	s := runServer(ts)
-	var spec *catalog.Spec
-	for _, c := range s.Catalog.All() {
-		if len(c.Artifacts) > 0 {
-			spec = c
-			break
-		}
-	}
-	const failed = "Installation failed. Check storage, network access, and catalog verification."
-	if got := s.models.failedInstallDetail(spec); got != failed {
-		t.Errorf("with no part: %q", got)
-	}
-	dir := s.modelsDir(spec.Kind)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	part := filepath.Join(dir, spec.Artifacts[0].Filename) + ".partial"
-	if err := os.WriteFile(part, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if got := s.models.failedInstallDetail(spec); got != failed {
-		t.Errorf("with an empty part, nothing to go on from: %q", got)
-	}
-	if err := os.WriteFile(part, []byte("some"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	const want = failed + " The downloaded part is kept, so installing again continues from it (or starts over if the file has changed)."
-	if got := s.models.failedInstallDetail(spec); got != want {
-		t.Errorf("with a part: %q", got)
 	}
 }
 

@@ -79,6 +79,8 @@ type Server struct {
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
 	speechBusyFor time.Duration
+	// unloadWait is how long an unload waits for in-flight requests; 0 is 30 s (tests).
+	unloadWait time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runs.Manager
@@ -184,7 +186,8 @@ func (s *Server) modelsOptions() Options {
 		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },
 		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
-		ReportReads: s.reportReads, AdmissionAPI: s.admissionAPI}
+		ReportReads: s.reportReads, AdmissionAPI: s.admissionAPI,
+		UnloadWait: func() time.Duration { return s.unloadWait }}
 }
 
 // StopManagement lets an accepted install finish within grace, then

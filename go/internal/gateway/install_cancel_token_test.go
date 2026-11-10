@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -56,7 +57,10 @@ func TestInstanceTokenCanOnlyCancelAnInstall(t *testing.T) {
 
 // The audit trail names who cancelled, for the command line as for a key.
 func TestACancelFromTheCommandLineIsAudited(t *testing.T) {
-	ts := openAPIGateway(t)
+	const model = "qwen3.5-4b-q4_k_m"
+	// A finished operation answers a cancel with how it ended. It is the one a gateway that
+	// stopped left behind, read back at start.
+	ts := openAPIGateway(t, cancelledInstall(t, model))
 	s := runServer(ts)
 	release, err := s.Root.Lock("127.0.0.1", 1)
 	if err != nil {
@@ -65,11 +69,6 @@ func TestACancelFromTheCommandLineIsAudited(t *testing.T) {
 	defer release()
 	var logs bytes.Buffer
 	s.Log = slog.New(slog.NewJSONHandler(&logs, nil))
-	const model = "qwen3.5-4b-q4_k_m"
-	// A finished operation answers a cancel with how it ended.
-	s.models.mgmt.mu.Lock()
-	s.models.mgmt.operations[model] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
-	s.models.mgmt.mu.Unlock()
 	req, _ := http.NewRequest("POST", ts.URL+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+model+`","action":"cancel"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Localbase-Instance-Token", s.Root.Instance().InstanceToken)
@@ -117,5 +116,27 @@ func TestTheDocumentDescribesTheTokenException(t *testing.T) {
 	op := doc.Paths["/_localbase/model-management"].Post
 	if op.Permission != "models:manage" || !strings.Contains(op.Description, "or the instance token, cancel only") {
 		t.Errorf("%+v", op)
+	}
+}
+
+// cancelledInstall writes, under the gateway's root before it starts, the record a gateway leaves of
+// an install of model that was cancelled, so the gateway starts with that operation finished.
+func cancelledInstall(t *testing.T, model string) func(*Server) {
+	return func(s *Server) {
+		t.Helper()
+		b, err := json.Marshal(map[string]any{"version": 1, "operations": map[string]any{
+			model: map[string]any{"action": "install", "state": "cancelled",
+				"detail": "Installation cancelled. The downloaded part is kept, so installing again resumes it."},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(s.Root.Dir, "runtime")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "model-operations.json"), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
