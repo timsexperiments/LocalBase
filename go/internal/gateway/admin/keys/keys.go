@@ -41,8 +41,9 @@ type Options struct {
 	RootDir string
 	// LLM is told a new Hugging Face token, for its downloads; nil when there is none.
 	LLM *runtime.LLM
-	// Browser is browser sign-in, read when called: tests set it after New.
-	Browser func() *auth.Browser
+	// Browser is browser sign-in (nil: off). Saving access settings needs a restart, so it doesn't
+	// change while the gateway runs.
+	Browser *auth.Browser
 	// Caller is who a request is from.
 	Caller func(*http.Request) *auth.Principal
 }
@@ -68,8 +69,8 @@ func (h *Handler) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyC
 			return auth.KeyCaller{}, err
 		}
 		return auth.KeyCaller{Holds: auth.Canonical(k.Scopes), Key: k}, nil
-	case p.Kind == "browser-session" && p.Identity != nil && h.opts.Browser().Enabled():
-		return auth.KeyCaller{Holds: h.opts.Browser().Authorize(ctx, p.Identity).Permissions}, nil
+	case p.Kind == "browser-session" && p.Identity != nil && h.opts.Browser.Enabled():
+		return auth.KeyCaller{Holds: h.opts.Browser.Authorize(ctx, p.Identity).Permissions}, nil
 	}
 	return auth.KeyCaller{Holds: p.Permissions}, nil
 }

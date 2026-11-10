@@ -132,7 +132,7 @@ func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options
 
 // keysOptions is what the key and access APIs need from this server.
 func (s *Server) keysOptions(rootDir string) keys.Options {
-	return keys.Options{Store: s.cfg.Store, RootDir: rootDir, LLM: s.cfg.LLM, Browser: func() *auth.Browser { return s.cfg.Browser },
+	return keys.Options{Store: s.cfg.Store, RootDir: rootDir, LLM: s.cfg.LLM, Browser: s.cfg.Browser,
 		Caller: s.principal}
 }
 
