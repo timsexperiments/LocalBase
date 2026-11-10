@@ -13,7 +13,8 @@ import (
 
 // Code that holds a connection, in a transaction or with rows open, and asks for another can wait for
 // ever once the pool is full. A pool of one shows it at once, as a test that runs out of time. This
-// runs those packages again built that way. It only sees paths their tests reach.
+// runs those packages again built that way, the gateway with every package under it. It only sees
+// paths their tests reach.
 func TestNothingNeedsTwoConnections(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs other packages' tests again")
@@ -25,7 +26,7 @@ func TestNothingNeedsTwoConnections(t *testing.T) {
 	// These hold a connection on purpose, to stand in for a writer or to fill the pool.
 	const skip = "TestPolicyLookupDoesNotTakeTheWriteLock"
 	for _, run := range [][]string{
-		{"test", "-count=1", "-timeout=240s", "-skip", skip, "./internal/auth", "./internal/store", "./internal/gateway"},
+		{"test", "-count=1", "-timeout=240s", "-skip", skip, "./internal/auth", "./internal/store", "./internal/gateway/..."},
 		// A real gateway process, built with the same tag through GOFLAGS.
 		{"test", "-count=1", "-timeout=240s", "-run", "TestLimitedChangesCannotPushOutWhoChangedKeys|TestRefusedChangesCannotPushOutWhoChangedWhat|TestInstallCancel", "./contract"},
 	} {

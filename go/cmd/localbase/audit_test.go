@@ -22,6 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // forgetBindingIssuers makes the policy's bindings look like ones from before they named a provider.
@@ -504,10 +505,22 @@ func actorKindSpellings(t *testing.T, dir string) map[string]string {
 	return found
 }
 
-// One name for each kind of actor, so that a search of the log finds them all.
+// One name for each kind of actor, so that a search of the log finds them all. The gateway is read
+// with every package under it, at least its 5 (gatewayPackages in internal/gateway).
 func TestActorKindsAreOneVocabulary(t *testing.T) {
 	seen := map[string]bool{}
-	for _, dir := range []string{".", "../../internal/gateway", "../../internal/gateway/browser", "../../internal/auth"} {
+	var dirs []string
+	for _, root := range []struct {
+		dir      string
+		packages int
+	}{{".", 1}, {"../../internal/gateway", 5}, {"../../internal/auth", 1}} {
+		for _, f := range testutil.GoSources(t, root.dir, root.packages) {
+			if dir := filepath.Dir(f); !slices.Contains(dirs, dir) {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	for _, dir := range dirs {
 		for kind, where := range actorKindSpellings(t, dir) {
 			seen[kind] = true
 			if !slices.Contains(allowedActorKinds, kind) {
