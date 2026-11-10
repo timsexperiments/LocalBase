@@ -51,7 +51,7 @@ func (h *Handler) usageRead(w http.ResponseWriter, r *http.Request) {
 	_, own, _ := h.opts.UsagePrincipal(p)
 	principal := query.Get("principal")
 	if scope == "all" || (principal != "" && principal != own) {
-		if !h.opts.NoAuth && !usage.CanSeeAll(p.Can) {
+		if !usage.CanSeeAll(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -103,7 +103,7 @@ func (h *Handler) usageChange(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth && !usage.CanChange(p.Can) {
+		if !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}

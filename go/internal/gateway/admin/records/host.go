@@ -46,7 +46,6 @@ type Options struct {
 	Runtimes  runtime.Set
 	Voices    *voices.Store // nil: the voice routes are disabled
 	Log       *slog.Logger
-	NoAuth    bool
 	// Caller is who a request is from, LocalCLI whether it is this machine's CLI, and
 	// UsagePrincipal who to count it under.
 	Caller         func(*http.Request) *auth.Principal

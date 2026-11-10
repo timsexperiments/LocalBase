@@ -53,7 +53,6 @@ type Options struct {
 	MemoryGB  int
 	Runtimes  runtime.Set
 	Log       *slog.Logger
-	NoAuth    bool
 	Library   *library.Library // nil: no imports or backend selections
 	// Overrides applies what only this process has (the environment, serve's flags) to a saved
 	// configuration; nil applies nothing.

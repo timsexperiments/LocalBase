@@ -47,7 +47,7 @@ func (h *Handler) placementAPI(w http.ResponseWriter, r *http.Request, id string
 		httpx.MethodNotAllowed(w, r, "GET, PUT, DELETE")
 		return
 	}
-	if p := h.opts.Caller(r); !h.opts.NoAuth && !p.Can("models:manage") {
+	if p := h.opts.Caller(r); !p.Can("models:manage") {
 		httpx.Forbidden(w, r)
 		return
 	}
