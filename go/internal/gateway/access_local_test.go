@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -78,5 +80,39 @@ func TestAccessLoginLinkRateLimited(t *testing.T) {
 	}
 	if resp, _ := c.Redeem(token, nil); resp.StatusCode != 303 {
 		t.Errorf("after the window: %d", resp.StatusCode)
+	}
+}
+
+// What the browser's request carries to be let in stays behind: the API sees the browser's
+// identity, not its cookie, its UI marker or any credential sent along with them. (A Cloudflare
+// Access header marks a proxied request, which a local session refuses, so it isn't sent here.)
+func TestAccessForwardsNoCredentials(t *testing.T) {
+	ts, _, st := newAccessHarness(t)
+	c := gatewaytest.LocalClient{T: t, Base: ts.URL}
+	ck := gatewaytest.SessionCookie(t, c, st)
+	h := gatewaytest.LocalUI(ck, c.Base)
+	h["Authorization"] = "Bearer lb-not-a-key"
+	h["X-Api-Key"] = "lb-not-a-key"
+	h["Accept-Language"] = "en"
+	resp, body := c.Send("GET", "/app/api/_localbase/models", "", h)
+	if resp.StatusCode != 200 {
+		t.Fatalf("through Access: %d %s", resp.StatusCode, body)
+	}
+	var got struct {
+		Path    string   `json:"path"`
+		Headers []string `json:"headers"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil || got.Path != "/_localbase/models" {
+		t.Fatalf("the API got %q: %v", body, err)
+	}
+	for _, name := range got.Headers {
+		switch low := strings.ToLower(name); {
+		case low == "cookie", low == "authorization", low == "x-api-key", low == "x-localbase-ui", strings.HasPrefix(low, "cf-access-"):
+			t.Errorf("the API got %s", name)
+		}
+	}
+	// Not everything is dropped: a header that isn't a credential goes on.
+	if !slices.Contains(got.Headers, "Accept-Language") {
+		t.Errorf("the API got %v, without Accept-Language", got.Headers)
 	}
 }

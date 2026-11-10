@@ -20,7 +20,7 @@ import (
 
 // newAccessHarness serves an Access over a real socket, which is what the loopback rule reads, with
 // local sign-in's pages, no browser sign-in and a scratch store. The API behind it answers 200 to
-// what it is allowed: GET /_localbase/models.
+// what it is allowed: GET /_localbase/models, with its path and the names of the headers it got.
 func newAccessHarness(t *testing.T) (*httptest.Server, *Access, *store.Store) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "localbase.db"))
@@ -30,7 +30,11 @@ func newAccessHarness(t *testing.T) (*httptest.Server, *Access, *store.Store) {
 	t.Cleanup(func() { st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httpx.JSON(w, 200, map[string]any{"path": r.URL.Path})
+		names := []string{}
+		for name := range r.Header {
+			names = append(names, name)
+		}
+		httpx.JSON(w, 200, map[string]any{"path": r.URL.Path, "headers": names})
 	})
 	a := NewAccess(Options{
 		Handler: api,
