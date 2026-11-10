@@ -42,12 +42,6 @@ type Handler struct {
 	mgmt *management
 }
 
-// Runtimes are the gateway's model runtimes.
-type Runtimes struct {
-	LLM                    *runtime.LLM
-	STT, TTS, Image, Video *runtime.Service
-}
-
 // Options are what Handler needs from the gateway. The funcs that read a value are read when
 // called: tests set those on the gateway after New.
 type Options struct {
@@ -57,7 +51,7 @@ type Options struct {
 	Placement *runtime.HostPlacement
 	Memory    *memory.Controller
 	MemoryGB  int
-	Runtimes  func() Runtimes
+	Runtimes  func() runtime.Set
 	Log       func() *slog.Logger
 	NoAuth    func() bool
 	Library   func() *library.Library
