@@ -287,7 +287,7 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess, configure ...fun
 	for _, c := range configure {
 		c(&conf)
 	}
-	srv = New(conf)
+	srv = newGateway(t, conf)
 	bodyRead := &atomic.Int64{}
 	probe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Body != nil {

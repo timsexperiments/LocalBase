@@ -41,7 +41,7 @@ func newKeyFixture(t *testing.T, configure ...func(*Config)) *keyFixture {
 	for _, c := range configure {
 		c(&conf)
 	}
-	return &keyFixture{t, New(conf), st, logs}
+	return &keyFixture{t, newGateway(t, conf), st, logs}
 }
 
 // key makes a key directly in the store and returns its record and secret.

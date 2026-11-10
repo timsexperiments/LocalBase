@@ -75,7 +75,7 @@ func newAuthSTTGateway(t *testing.T) (*httptest.Server, *runtime.Service, string
 		Port: freePort(t), Binaries: map[string]string{"whisper-server": fakeBinary},
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
-	ts := httptest.NewServer(New(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
+	ts := httptest.NewServer(newGateway(t, Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
 		MemoryGB: 64, Root: r, Memory: mem, STT: svc}))
 	t.Cleanup(ts.Close)
 	return ts, svc, key

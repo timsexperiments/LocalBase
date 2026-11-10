@@ -73,7 +73,7 @@ func newImageGateway(t *testing.T, imageModel string) *httptest.Server {
 		Port: freePort(t), Binaries: map[string]string{"sd-server": fakeBinary},
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
-	srv := New(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
+	srv := newGateway(t, Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, Image: svc})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
@@ -114,7 +114,7 @@ func TestRunImage(t *testing.T) {
 	}
 	// After a restart the result is gone, and the run says so.
 	s := runServer(ts)
-	b2 := httptest.NewServer(New(Config{Store: s.cfg.Store, Catalog: s.cfg.Catalog, Auth: s.cfg.Auth, Log: s.cfg.Log, NoAuth: true, Root: s.cfg.Root, Memory: s.cfg.Memory, Image: s.cfg.Image}))
+	b2 := httptest.NewServer(newGateway(t, Config{Store: s.cfg.Store, Catalog: s.cfg.Catalog, Auth: s.cfg.Auth, Log: s.cfg.Log, NoAuth: true, Root: s.cfg.Root, Memory: s.cfg.Memory, Image: s.cfg.Image}))
 	defer b2.Close()
 	if after := (gatewaytest.RunClient{T: t, Base: b2.URL}).Get(id); after["status"] != "interrupted" || after["reason"] != "gateway_restart" || after["result"] != nil {
 		t.Errorf("after a restart: %v", after)

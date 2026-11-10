@@ -157,7 +157,7 @@ func openAPIGateway(t *testing.T, configure ...func(*Config)) *httptest.Server {
 	for _, c := range configure {
 		c(&conf)
 	}
-	ts := httptest.NewServer(New(conf))
+	ts := httptest.NewServer(newGateway(t, conf))
 	t.Cleanup(ts.Close)
 	return ts
 }
