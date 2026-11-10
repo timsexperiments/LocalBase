@@ -117,12 +117,12 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 	unknown := 0
 	for k := range raw {
 		if !slices.Contains([]string{"model", "input", "voice", "response_format", "stream_format", "speed", "instructions"}, k) {
-			if unknown++; unknown <= maxListedKeys {
+			if unknown++; unknown <= MaxListedKeys {
 				issues = append(issues, `: Unrecognized key: "`+shortKey(k)+`"`)
 			}
 		}
 	}
-	if unknown > maxListedKeys {
+	if unknown > MaxListedKeys {
 		issues = append(issues, "and more")
 	}
 	return req, issues, param

@@ -189,12 +189,12 @@ func fill(head, item, tail string) string {
 // all of them escaped.
 func TestTheLargestAnswer(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
-	long := strings.Repeat(`\u0001`, maxPathKey)
+	long := strings.Repeat(`\u0001`, MaxPathKey)
 	var keys, questions strings.Builder
-	for i := range maxListedKeys + 1 {
+	for i := range MaxListedKeys + 1 {
 		fmt.Fprintf(&keys, `,"%s%02d":1`, long, i)
 	}
-	for i := range maxValidationIssues + 1 {
+	for i := range MaxValidationIssues + 1 {
 		if i > 0 {
 			questions.WriteByte(',')
 		}
@@ -276,12 +276,12 @@ func TestAnAnswerListsUpToTheLimitAndSaysThereIsMore(t *testing.T) {
 		_, answer, _ := refusalCost(t, ts.URL+"/v1/chat/completions", chatRefusal(repeated("1", n)))
 		return refusalMessage(t, answer)
 	}
-	all := listed(maxValidationIssues)
-	if strings.Contains(all, "and more") || strings.Count(all, "messages.") != maxValidationIssues {
+	all := listed(MaxValidationIssues)
+	if strings.Contains(all, "and more") || strings.Count(all, "messages.") != MaxValidationIssues {
 		t.Errorf("exactly at the limit: %d listed: ...%.100s", strings.Count(all, "messages."), all[len(all)-100:])
 	}
-	over := listed(maxValidationIssues + 1)
-	if !strings.HasSuffix(over, ", and more") || strings.Count(over, "messages.") != maxValidationIssues {
+	over := listed(MaxValidationIssues + 1)
+	if !strings.HasSuffix(over, ", and more") || strings.Count(over, "messages.") != MaxValidationIssues {
 		t.Errorf("past the limit: %d listed: ...%.100s", strings.Count(over, "messages."), over[len(over)-100:])
 	}
 	if !strings.HasPrefix(over, "Validation failed: messages.0: ") {
@@ -296,7 +296,7 @@ func TestAKeyIsShortenedInAnAnswer(t *testing.T) {
 		_, answer, _ := refusalCost(t, ts.URL+"/v1/systemone", scoreRefusal(id, 1))
 		return refusalMessage(t, answer)
 	}
-	exact := strings.Repeat("a", maxPathKey)
+	exact := strings.Repeat("a", MaxPathKey)
 	if got := message(exact); !strings.Contains(got, "questions."+exact+".criteria") {
 		t.Errorf("a key at the limit was changed: %.200s", got)
 	}
@@ -305,9 +305,9 @@ func TestAKeyIsShortenedInAnAnswer(t *testing.T) {
 		t.Errorf("a key past the limit: %.200s", got)
 	}
 	// Cut between characters, not inside one.
-	wide := "a" + strings.Repeat("é", maxPathKey) // the limit falls inside a two-byte character
+	wide := "a" + strings.Repeat("é", MaxPathKey) // the limit falls inside a two-byte character
 	got = message(wide)
-	if !utf8.ValidString(got) || strings.ContainsRune(got, utf8.RuneError) || !strings.Contains(got, "a"+strings.Repeat("é", (maxPathKey-2)/2)+"....criteria") {
+	if !utf8.ValidString(got) || strings.ContainsRune(got, utf8.RuneError) || !strings.Contains(got, "a"+strings.Repeat("é", (MaxPathKey-2)/2)+"....criteria") {
 		t.Errorf("a wide key past the limit: %.200s", got)
 	}
 }
@@ -319,17 +319,17 @@ func TestUnknownKeysAreListedUpToTheLimit(t *testing.T) {
 		_, answer, _ := refusalCost(t, ts.URL+"/v1/systemone", unknownKeys(n))
 		return refusalMessage(t, answer)
 	}
-	all := message(maxListedKeys)
-	if strings.Contains(all, "and more") || strings.Count(all, `"unknown`) != maxListedKeys {
+	all := message(MaxListedKeys)
+	if strings.Contains(all, "and more") || strings.Count(all, `"unknown`) != MaxListedKeys {
 		t.Errorf("exactly at the limit: %s", all)
 	}
-	over := message(maxListedKeys + 1)
-	if !strings.HasSuffix(over, ", and more") || strings.Count(over, `"unknown`) != maxListedKeys || !strings.Contains(over, `"unknown0000"`) {
+	over := message(MaxListedKeys + 1)
+	if !strings.HasSuffix(over, ", and more") || strings.Count(over, `"unknown`) != MaxListedKeys || !strings.Contains(over, `"unknown0000"`) {
 		t.Errorf("past the limit: %s", over)
 	}
 	_, answer, _ := refusalCost(t, ts.URL+"/v1/systemone",
-		`{"model":"`+decisionModel+`","questions":{"q":{"type":"noul"}},"`+strings.Repeat("k", maxPathKey+1)+`":1}`)
-	if got := refusalMessage(t, answer); strings.Contains(got, strings.Repeat("k", maxPathKey+1)) || !strings.Contains(got, strings.Repeat("k", maxPathKey)+`..."`) {
+		`{"model":"`+decisionModel+`","questions":{"q":{"type":"noul"}},"`+strings.Repeat("k", MaxPathKey+1)+`":1}`)
+	if got := refusalMessage(t, answer); strings.Contains(got, strings.Repeat("k", MaxPathKey+1)) || !strings.Contains(got, strings.Repeat("k", MaxPathKey)+`..."`) {
 		t.Errorf("a long unknown key: %.200s", got)
 	}
 }
@@ -344,17 +344,17 @@ func TestUnknownSpeechKeysAreListedUpToTheLimit(t *testing.T) {
 		}
 		return refusalMessage(t, answer)
 	}
-	all := message(speechKeys(maxListedKeys))
-	if strings.Contains(all, "and more") || strings.Count(all, "Unrecognized key") != maxListedKeys {
+	all := message(speechKeys(MaxListedKeys))
+	if strings.Contains(all, "and more") || strings.Count(all, "Unrecognized key") != MaxListedKeys {
 		t.Errorf("exactly at the limit: %s", all)
 	}
-	over := message(speechKeys(maxListedKeys + 1))
-	if !strings.HasSuffix(over, ", and more") || strings.Count(over, "Unrecognized key") != maxListedKeys {
+	over := message(speechKeys(MaxListedKeys + 1))
+	if !strings.HasSuffix(over, ", and more") || strings.Count(over, "Unrecognized key") != MaxListedKeys {
 		t.Errorf("past the limit: %s", over)
 	}
-	long := strings.Repeat("k", maxPathKey+1)
+	long := strings.Repeat("k", MaxPathKey+1)
 	got := message(`{"model":"x","input":"x","voice":"x","` + long + `":1}`)
-	if strings.Contains(got, long) || !strings.Contains(got, strings.Repeat("k", maxPathKey)+`..."`) {
+	if strings.Contains(got, long) || !strings.Contains(got, strings.Repeat("k", MaxPathKey)+`..."`) {
 		t.Errorf("a long key: %.200s", got)
 	}
 }
@@ -363,7 +363,7 @@ func TestUnknownSpeechKeysAreListedUpToTheLimit(t *testing.T) {
 func TestAddressContentStillWinsPastTheLimit(t *testing.T) {
 	ts, _, _ := newTestGateway(t, host{})
 	address := `{"role":"user","content":[{"type":"image_url","image_url":{"url":"http://127.0.0.1:1/x.png"}}]}`
-	status, answer, _ := refusalCost(t, ts.URL+"/v1/chat/completions", chatRefusal(repeated("1", maxValidationIssues*2)+","+address))
+	status, answer, _ := refusalCost(t, ts.URL+"/v1/chat/completions", chatRefusal(repeated("1", MaxValidationIssues*2)+","+address))
 	if status != 400 || !strings.Contains(answer, `"remote_media_not_allowed"`) {
 		t.Errorf("%d %.200s", status, answer)
 	}
@@ -372,17 +372,17 @@ func TestAddressContentStillWinsPastTheLimit(t *testing.T) {
 // A request with too many problems is as refused as one with a few.
 func TestTooManyProblemsIsStillARefusal(t *testing.T) {
 	c := &checker{}
-	for i := range maxValidationIssues * 2 {
+	for i := range MaxValidationIssues * 2 {
 		c.fail("p", fmt.Sprint(i))
 	}
-	if c.ok() || len(c.issues) != maxValidationIssues {
+	if c.ok() || len(c.issues) != MaxValidationIssues {
 		t.Errorf("ok %v, %d kept", c.ok(), len(c.issues))
 	}
 }
 
 // Clients can see these, and the documents state them.
 func TestTheLimitsAreTheStatedOnes(t *testing.T) {
-	if maxValidationIssues != 100 || maxPathKey != 64 || maxListedKeys != 20 {
-		t.Errorf("%d issues, %d bytes of a key, %d unrecognized keys", maxValidationIssues, maxPathKey, maxListedKeys)
+	if MaxValidationIssues != 100 || MaxPathKey != 64 || MaxListedKeys != 20 {
+		t.Errorf("%d issues, %d bytes of a key, %d unrecognized keys", MaxValidationIssues, MaxPathKey, MaxListedKeys)
 	}
 }
