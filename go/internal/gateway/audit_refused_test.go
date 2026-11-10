@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
 // Every grant, rotation and revocation names who did it, and a refused one is recorded
@@ -16,10 +18,10 @@ func TestKeyChangesAndRefusalsAreAudited(t *testing.T) {
 	_, nothing := f.key("nothing", 0, "models:read")
 
 	created := f.expect(narrow, `{"action":"create","name":"made","scopes":["keys:read"]}`, 201, "")
-	rotated := f.expect(narrow, KeyAction("rotate", small.ID), 200, "")
-	f.expect(narrow, KeyAction("set-scopes", small.ID, "keys:read", "keys:manage"), 200, "")
-	f.expect(narrow, KeyAction("revoke", small.ID), 200, "")
-	f.expect(narrow, KeyAction("rotate", wide.ID), 403, exceeds)
+	rotated := f.expect(narrow, gatewaytest.KeyAction("rotate", small.ID), 200, "")
+	f.expect(narrow, gatewaytest.KeyAction("set-scopes", small.ID, "keys:read", "keys:manage"), 200, "")
+	f.expect(narrow, gatewaytest.KeyAction("revoke", small.ID), 200, "")
+	f.expect(narrow, gatewaytest.KeyAction("rotate", wide.ID), 403, exceeds)
 	f.expect(narrow, `{"action":"create","name":"more","scopes":["access:manage"]}`, 403, exceeds)
 	f.post(nothing, "/_localbase/api-keys", `{"action":"create","name":"x","scopes":[]}`)
 	f.post("lb_notarealkeyatall", "/_localbase/api-keys", `{"action":"create","name":"x","scopes":[]}`)
@@ -108,7 +110,7 @@ func TestSessionKeyChangesAreAudited(t *testing.T) {
 	const owner = "browser:person-hash"
 	post, _ := f.sessionPoster(owner, "keys:manage", "keys:read", "models:read")
 	wide, _ := f.key("wide", 0, "keys:manage", "access:manage")
-	if status, out := post(KeyAction("rotate", wide.ID)); status != 403 {
+	if status, out := post(gatewaytest.KeyAction("rotate", wide.ID)); status != 403 {
 		t.Fatalf("%d %s", status, out)
 	}
 	if status, out := post(`{"action":"create","name":"mine","scopes":["keys:read"]}`); status != 201 {
