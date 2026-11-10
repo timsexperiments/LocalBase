@@ -17,13 +17,13 @@ var unloadWait = 30 * time.Second
 // §23): drain the loaded model like an eviction, then stop it and release
 // its reservation. ?wait=false refuses at once while requests (detached
 // runs included) are in flight.
-func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
+func (h *Handler) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 	if r.Method != http.MethodPost {
 		// Checked here, not by the route table's gate: the method allowed depends on the path below the route.
 		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
-	if p := s.principal(r); !s.NoAuth && !p.Can("models:manage") {
+	if p := h.opts.Caller(r); !h.opts.NoAuth() && !p.Can("models:manage") {
 		httpx.Forbidden(w, r)
 		return
 	}
@@ -36,10 +36,10 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		httpx.BadRequest(w, r, "wait must be true or false.", httpx.StrPtr("wait"))
 		return
 	}
-	name, unload := s.loadedRuntime(id)
+	name, unload := h.loadedRuntime(id)
 	if unload == nil {
-		if s.Catalog.ByID(id) == nil {
-			t, err := s.importedTask(r.Context(), id)
+		if h.opts.Catalog.ByID(id) == nil {
+			t, err := h.opts.ImportedTask(r.Context(), id)
 			if err != nil {
 				httpx.ServiceUnavailable(w, r, "LLM")
 				return
@@ -76,18 +76,18 @@ func (s *Server) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 // loadedRuntime is the runtime that has id loaded now, and its unload.
-func (s *Server) loadedRuntime(id string) (string, func(*http.Request, string, time.Duration) (int64, error)) {
-	if s.LLM != nil {
-		if running, _, _ := s.LLM.Running(); running == id {
+func (h *Handler) loadedRuntime(id string) (string, func(*http.Request, string, time.Duration) (int64, error)) {
+	if h.opts.Runtimes().LLM != nil {
+		if running, _, _ := h.opts.Runtimes().LLM.Running(); running == id {
 			return "llm", func(r *http.Request, id string, wait time.Duration) (int64, error) {
-				return s.LLM.Unload(r.Context(), id, wait)
+				return h.opts.Runtimes().LLM.Unload(r.Context(), id, wait)
 			}
 		}
 	}
 	for _, svc := range []struct {
 		name string
 		s    *runtime.Service
-	}{{"stt", s.STT}, {"tts", s.TTS}, {"image", s.Image}, {"video", s.Video}} {
+	}{{"stt", h.opts.Runtimes().STT}, {"tts", h.opts.Runtimes().TTS}, {"image", h.opts.Runtimes().Image}, {"video", h.opts.Runtimes().Video}} {
 		if svc.s != nil && svc.s.Running() == id {
 			return svc.name, func(r *http.Request, id string, wait time.Duration) (int64, error) {
 				return svc.s.Unload(r.Context(), id, wait)

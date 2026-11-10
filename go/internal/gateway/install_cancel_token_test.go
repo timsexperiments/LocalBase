@@ -67,9 +67,9 @@ func TestACancelFromTheCommandLineIsAudited(t *testing.T) {
 	s.Log = slog.New(slog.NewJSONHandler(&logs, nil))
 	const model = "qwen3.5-4b-q4_k_m"
 	// A finished operation answers a cancel with how it ended.
-	s.mgmt.mu.Lock()
-	s.mgmt.operations[model] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
-	s.mgmt.mu.Unlock()
+	s.models.mgmt.mu.Lock()
+	s.models.mgmt.operations[model] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
+	s.models.mgmt.mu.Unlock()
 	req, _ := http.NewRequest("POST", ts.URL+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+model+`","action":"cancel"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Localbase-Instance-Token", s.Root.Instance().InstanceToken)

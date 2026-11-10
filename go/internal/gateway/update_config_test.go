@@ -25,7 +25,7 @@ func TestAManagementChangeKeepsTheRunningOverrides(t *testing.T) {
 		return saved.Host
 	}
 	before := savedHost()
-	if err := s.updateConfig(func(c *store.Config) error {
+	if err := s.models.updateConfig(func(c *store.Config) error {
 		c.Parallel = "2"
 		return nil
 	}); err != nil {
@@ -56,7 +56,7 @@ func TestAManagementChangePublishesWhatWasSavedElsewhere(t *testing.T) {
 	if err := s.Store.SaveConfig(context.Background(), saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.updateConfig(func(c *store.Config) error { return nil }); err != nil {
+	if err := s.models.updateConfig(func(c *store.Config) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if got := llm.Config(); got.HFToken != "saved-elsewhere" || got.Host != "override.example" {
@@ -68,7 +68,7 @@ func TestAManagementChangePublishesWhatWasSavedElsewhere(t *testing.T) {
 func TestAManagementChangeWithNoOverridesPublishesTheSavedConfiguration(t *testing.T) {
 	ts, llm, _ := newTestGateway(t, host{})
 	s := runServer(ts)
-	if err := s.updateConfig(func(c *store.Config) error {
+	if err := s.models.updateConfig(func(c *store.Config) error {
 		c.Parallel = "3"
 		return nil
 	}); err != nil {

@@ -15,22 +15,22 @@ import (
 // observed device state (model-metadata.ts). It never starts runtimes,
 // downloads or hashes files.
 
-func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ModelMetadata(w http.ResponseWriter, r *http.Request) {
 	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/placement"); ok && raw != "" {
 		if id, err := url.PathUnescape(raw); err == nil {
-			s.placementAPI(w, r, id)
+			h.placementAPI(w, r, id)
 			return
 		}
 	}
 	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/admission"); ok && raw != "" {
 		if id, err := url.PathUnescape(raw); err == nil {
-			s.admissionAPI(w, r, id)
+			h.opts.AdmissionAPI(w, r, id)
 			return
 		}
 	}
 	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/unload"); ok && raw != "" {
 		if id, err := url.PathUnescape(raw); err == nil {
-			s.unloadAPI(w, r, id)
+			h.unloadAPI(w, r, id)
 			return
 		}
 	}
@@ -39,9 +39,9 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
-	snap := s.LLM.Snapshot()
-	voices, _ := s.Store.Voices(r.Context())
-	in := meta.Input{Store: s.Store, RootDir: s.Root.Dir, Config: s.LLM.Config(), MemoryGB: s.MemoryGB, Voices: voices, Snapshot: &snap, Catalog: s.Catalog}
+	snap := h.opts.Runtimes().LLM.Snapshot()
+	voices, _ := h.opts.Store.Voices(r.Context())
+	in := meta.Input{Store: h.opts.Store, RootDir: h.opts.Root.Dir, Config: h.opts.Runtimes().LLM.Config(), MemoryGB: h.opts.MemoryGB, Voices: voices, Snapshot: &snap, Catalog: h.opts.Catalog}
 	if r.URL.Path != "/_localbase/models" {
 		raw := strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/")
 		id, err := url.PathUnescape(raw)
@@ -49,14 +49,14 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 			httpx.RouteDisabled(w, r)
 			return
 		}
-		spec := s.Catalog.ByID(id)
+		spec := h.opts.Catalog.ByID(id)
 		if spec == nil {
 			httpx.ModelNotFound(w, r, id)
 			return
 		}
 		m, problems := meta.Project(r.Context(), in, spec)
-		s.reportReads(w, problems)
-		if len(problems) == 0 && (spec.Kind != "llm" || s.Placement == nil) {
+		h.opts.ReportReads(w, problems)
+		if len(problems) == 0 && (spec.Kind != "llm" || h.opts.Placement == nil) {
 			httpx.JSON(w, 200, m)
 			return
 		}
@@ -68,10 +68,10 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		if len(problems) > 0 {
 			out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
 		}
-		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && s.Placement != nil {
-			if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
+		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && h.opts.Placement != nil {
+			if plan, ok := h.opts.Runtimes().LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 				dev["placement"] = placementJSON(plan)
-			} else if next, err := s.LLM.PreviewPlacement(id, s.Placement.Request(id)); err == nil && next.Placement != nil {
+			} else if next, err := h.opts.Runtimes().LLM.PreviewPlacement(id, h.opts.Placement.Request(id)); err == nil && next.Placement != nil {
 				pj := placementJSON(next)
 				delete(pj, "plannedAt")
 				pj["preview"] = true
@@ -83,7 +83,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	var data []meta.Model
 	var problems []*store.ReadError
-	for _, spec := range s.Catalog.All() {
+	for _, spec := range h.opts.Catalog.All() {
 		m, failed := meta.Project(r.Context(), in, spec)
 		problems = append(problems, failed...)
 		data = append(data, m)
@@ -101,9 +101,9 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data = meta.Query(data, r.URL.Query())
-	topo := s.Memory.Topology()
+	topo := h.opts.Memory.Topology()
 	var avail any
-	if hs := s.Memory.Snapshot(r.Context()); hs.Available > 0 {
+	if hs := h.opts.Memory.Snapshot(r.Context()); hs.Available > 0 {
 		avail = hs.Available
 	}
 	kind := "unified"
@@ -117,7 +117,7 @@ func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 		"kind": kind, "system": map[string]any{"capacityBytes": topo.SystemCapacity, "availableBytes": avail},
 		"accelerators": []any{}}}, "data": data}
 	if len(problems) > 0 {
-		s.reportReads(w, problems)
+		h.opts.ReportReads(w, problems)
 		out["degraded"], out["readProblems"], out["unknown"] = true, readProblemsJSON(problems), unknown
 	}
 	httpx.JSON(w, 200, out)

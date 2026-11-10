@@ -26,8 +26,8 @@ import (
 //
 // Responses never contain header values, tokens or signed URL queries.
 
-func (s *Server) adminPrincipal(w http.ResponseWriter, r *http.Request, permission string) *auth.Principal {
-	p := s.principal(r)
+func (h *Handler) adminPrincipal(w http.ResponseWriter, r *http.Request, permission string) *auth.Principal {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return nil
@@ -39,18 +39,18 @@ func (s *Server) adminPrincipal(w http.ResponseWriter, r *http.Request, permissi
 	return p
 }
 
-func (s *Server) libraryOr503(w http.ResponseWriter, r *http.Request) *library.Library {
-	if s.Library == nil {
+func (h *Handler) libraryOr503(w http.ResponseWriter, r *http.Request) *library.Library {
+	if h.opts.Library() == nil {
 		httpx.ServiceUnavailable(w, r, "Model management")
 	}
-	return s.Library
+	return h.opts.Library()
 }
 
-func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
-	if s.adminPrincipal(w, r, "models:read") == nil {
+func (h *Handler) BackendsAPI(w http.ResponseWriter, r *http.Request) {
+	if h.adminPrincipal(w, r, "models:read") == nil {
 		return
 	}
-	l := s.libraryOr503(w, r)
+	l := h.libraryOr503(w, r)
 	if l == nil {
 		return
 	}
@@ -63,15 +63,15 @@ func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
 	httpx.NoStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()})
 }
 
-func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ModelBackendAPI(w http.ResponseWriter, r *http.Request) {
 	perm := "models:read"
 	if r.Method == http.MethodPost {
 		perm = "models:manage"
 	}
-	if s.adminPrincipal(w, r, perm) == nil {
+	if h.adminPrincipal(w, r, perm) == nil {
 		return
 	}
-	l := s.libraryOr503(w, r)
+	l := h.libraryOr503(w, r)
 	if l == nil {
 		return
 	}
@@ -112,7 +112,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var sel backends.Selection
-	err := lease.WithOperation(s.Root.Dir, "update runtime configuration", func() (err error) {
+	err := lease.WithOperation(h.opts.Root.Dir, "update runtime configuration", func() (err error) {
 		if in.Action == "set" {
 			sel, err = l.SetBackend(ctx, in.Model, in.BackendID, in.VariantID)
 		} else {
@@ -123,11 +123,11 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 	reply(in.Model, sel, err)
 }
 
-func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
-	if s.adminPrincipal(w, r, "models:manage") == nil {
+func (h *Handler) ModelImportsAPI(w http.ResponseWriter, r *http.Request) {
+	if h.adminPrincipal(w, r, "models:manage") == nil {
 		return
 	}
-	l := s.libraryOr503(w, r)
+	l := h.libraryOr503(w, r)
 	if l == nil {
 		return
 	}
@@ -190,14 +190,14 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "That backend is not registered.", nil)
 		return
 	}
-	cfg, _ := s.Store.LoadConfig(r.Context())
+	cfg, _ := h.opts.Store.LoadConfig(r.Context())
 	token := ""
 	if cfg != nil {
 		token = cfg.HFToken
 	}
-	plan, err := acquire.Resolve(r.Context(), s.Root.Dir, acquire.Request{Source: in.Source, Files: in.Files, Revision: in.Revision,
+	plan, err := acquire.Resolve(r.Context(), h.opts.Root.Dir, acquire.Request{Source: in.Source, Files: in.Files, Revision: in.Revision,
 		SHA256: in.SHA256, AuthProfile: in.AuthProfile, AllowHTTP: in.AllowHTTP, ID: in.ID, Name: in.Name, Task: in.Task, HFToken: token,
-		AllowPrivate: s.Store.PrivateImportsAllowed(r.Context()), AllowLocal: s.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: s.Log})
+		AllowPrivate: h.opts.Store.PrivateImportsAllowed(r.Context()), AllowLocal: h.opts.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: h.opts.Log()})
 	var refused *acquire.RefusedError
 	if errors.As(err, &refused) {
 		httpx.Error(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, httpx.StrPtr("source"))
@@ -222,11 +222,11 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, 400, "invalid_request_error", "import_task_required", "Choose what the model does.", nil)
 		return
 	}
-	if err := acquire.CheckSpace(s.Root.Dir, plan); errors.As(err, &refused) {
+	if err := acquire.CheckSpace(h.opts.Root.Dir, plan); errors.As(err, &refused) {
 		httpx.Error(w, r, http.StatusInsufficientStorage, "invalid_request_error", refused.Code, refused.Message, nil)
 		return
 	}
-	id, err := l.StartImport(plan, in.Backend, s.Log)
+	id, err := l.StartImport(plan, in.Backend, h.opts.Log())
 	switch {
 	case errors.Is(err, library.ErrImportsBusy):
 		w.Header().Set("Retry-After", "5")
@@ -240,8 +240,8 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Backend != "" && in.Backend != "auto" {
-		kind, actor := s.auditActor(r)
-		s.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
+		kind, actor := h.opts.AuditActor(r)
+		h.opts.Log().Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
 			"target_kind", "model", "target_id", plan.ID, "backend_id", in.Backend)
 	}
 	httpx.NoStore(w, 202, map[string]any{"job": id, "plan": plan})
@@ -249,11 +249,11 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 
 // authProfilesAPI lists auth profiles: ids, origins and header names. Header
 // values never leave the credential file.
-func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
-	if s.adminPrincipal(w, r, "models:manage") == nil {
+func (h *Handler) AuthProfilesAPI(w http.ResponseWriter, r *http.Request) {
+	if h.adminPrincipal(w, r, "models:manage") == nil {
 		return
 	}
-	ps, err := acquire.LoadProfiles(s.Root.Dir)
+	ps, err := acquire.LoadProfiles(h.opts.Root.Dir)
 	if err != nil {
 		httpx.ServiceUnavailable(w, r, "Model management")
 		return

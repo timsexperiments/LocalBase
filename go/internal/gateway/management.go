@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,12 +16,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -29,6 +34,55 @@ import (
 // install state, and install, uninstall, enable, disable and activate. One
 // install runs at a time in the background; GET reports its progress.
 // "active" means the persisted default, not a resident runtime.
+
+// Handler serves model management, discovery, imports and the /_localbase/models routes for one
+// gateway.
+type Handler struct {
+	opts Options
+	mgmt *management
+}
+
+// Runtimes are the gateway's model runtimes.
+type Runtimes struct {
+	LLM                    *runtime.LLM
+	STT, TTS, Image, Video *runtime.Service
+}
+
+// Options are what Handler needs from the gateway. The funcs that read a value are read when
+// called: tests set those on the gateway after New.
+type Options struct {
+	Store     *store.Store
+	Root      *root.Root
+	Catalog   *catalog.Catalog
+	Placement *runtime.HostPlacement
+	Memory    *memory.Controller
+	MemoryGB  int
+	Runtimes  func() Runtimes
+	Log       func() *slog.Logger
+	NoAuth    func() bool
+	Library   func() *library.Library
+	Overrides func() func(*store.Config)
+	// Caller is who a request is from, and LocalCLI whether it is this machine's CLI.
+	Caller   func(*http.Request) *auth.Principal
+	LocalCLI func(*http.Request) bool
+	// AuditActor names a request's actor for the audit record.
+	AuditActor func(*http.Request) (kind, id string)
+	// ImportedTask is an imported model's task, and ReportReads answers what couldn't be read.
+	ImportedTask func(ctx context.Context, id string) (string, error)
+	ReportReads  func(w http.ResponseWriter, problems []*store.ReadError)
+	// AdmissionAPI answers /_localbase/models/{id}/admission.
+	AdmissionAPI func(w http.ResponseWriter, r *http.Request, id string)
+}
+
+// NewHandler returns model management for o, with the operations a previous gateway left under
+// its root.
+func NewHandler(o Options) *Handler {
+	rootDir := ""
+	if o.Root != nil {
+		rootDir = o.Root.Dir
+	}
+	return &Handler{opts: o, mgmt: newManagement(rootDir)}
+}
 
 type mgmtOperation struct {
 	Action          string `json:"action"`
@@ -182,10 +236,10 @@ func storageAt(path string) mgmtStorage {
 	}
 }
 
-func (s *Server) artifactPaths(spec *catalog.Spec) []string {
+func (h *Handler) artifactPaths(spec *catalog.Spec) []string {
 	out := make([]string, 0, len(spec.Artifacts))
 	for _, a := range spec.Artifacts {
-		out = append(out, filepath.Join(s.modelsDir(spec.Kind), a.Filename))
+		out = append(out, filepath.Join(h.opts.Root.ModelsDir(spec.Kind), a.Filename))
 	}
 	return out
 }
@@ -198,17 +252,17 @@ type mgmtFacts struct {
 	downloadBytes  *int64
 }
 
-func (s *Server) inspectModel(spec *catalog.Spec) (mgmtFacts, error) {
+func (h *Handler) inspectModel(spec *catalog.Spec) (mgmtFacts, error) {
 	f := mgmtFacts{installed: true}
 	authoritative := len(spec.Artifacts) > 0
 	var total int64
 	for _, a := range spec.Artifacts {
-		path := filepath.Join(s.modelsDir(spec.Kind), a.Filename)
-		info, err := safeFile(s.Root.Dir, path)
+		path := filepath.Join(h.opts.Root.ModelsDir(spec.Kind), a.Filename)
+		info, err := safeFile(h.opts.Root.Dir, path)
 		if err != nil {
 			return f, err
 		}
-		partial, err := safeFile(s.Root.Dir, path+".partial")
+		partial, err := safeFile(h.opts.Root.Dir, path+".partial")
 		if err != nil {
 			return f, err
 		}
@@ -232,14 +286,14 @@ func (s *Server) inspectModel(spec *catalog.Spec) (mgmtFacts, error) {
 }
 
 // referencedModels are the models a runtime holds or is switching to.
-func (s *Server) referencedModels() map[string]bool {
+func (h *Handler) referencedModels() map[string]bool {
 	out := map[string]bool{}
-	if s.LLM != nil {
-		if id := s.LLM.Snapshot().ModelID; id != "" {
+	if h.opts.Runtimes().LLM != nil {
+		if id := h.opts.Runtimes().LLM.Snapshot().ModelID; id != "" {
 			out[id] = true
 		}
 	}
-	for _, svc := range []*runtime.Service{s.STT, s.TTS, s.Image} {
+	for _, svc := range []*runtime.Service{h.opts.Runtimes().STT, h.opts.Runtimes().TTS, h.opts.Runtimes().Image} {
 		if svc != nil {
 			if id := svc.Running(); id != "" {
 				out[id] = true
@@ -252,14 +306,14 @@ func (s *Server) referencedModels() map[string]bool {
 // heldModels are the models a runtime has loaded or is loading right now. A
 // configured default that is not loaded is not among them, unlike
 // referencedModels.
-func (s *Server) heldModels() map[string]bool {
+func (h *Handler) heldModels() map[string]bool {
 	out := map[string]bool{}
-	if s.LLM != nil {
-		for _, id := range s.LLM.LoadedOrLoading() {
+	if h.opts.Runtimes().LLM != nil {
+		for _, id := range h.opts.Runtimes().LLM.LoadedOrLoading() {
 			out[id] = true
 		}
 	}
-	for _, svc := range []*runtime.Service{s.STT, s.TTS, s.Image} {
+	for _, svc := range []*runtime.Service{h.opts.Runtimes().STT, h.opts.Runtimes().TTS, h.opts.Runtimes().Image} {
 		if svc != nil {
 			if id := svc.Running(); id != "" {
 				out[id] = true
@@ -274,15 +328,15 @@ func (s *Server) heldModels() map[string]bool {
 // loaded at any moment shares them. A selected model with files missing cannot
 // be loaded, so it blocks nothing; TS refuses it too, which on a fresh root
 // leaves the default model impossible to install (DESIGN 13.6, item 10).
-func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, held map[string]bool) string {
+func (h *Handler) installConflict(cfg *store.Config, spec *catalog.Spec, held map[string]bool) string {
 	targets := map[string]bool{}
-	for _, p := range s.artifactPaths(spec) {
+	for _, p := range h.artifactPaths(spec) {
 		targets[p] = true
 	}
-	for _, other := range s.Catalog.All() {
+	for _, other := range h.opts.Catalog.All() {
 		overlaps := other.ModelID == spec.ModelID
 		if !overlaps {
-			for _, p := range s.artifactPaths(other) {
+			for _, p := range h.artifactPaths(other) {
 				if targets[p] {
 					overlaps = true
 					break
@@ -293,7 +347,7 @@ func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, held map
 			continue
 		}
 		configured := slices.Contains(cfg.Selected[other.Kind], other.ModelID) || cfg.Active[other.Kind] == other.ModelID
-		if held[other.ModelID] || (configured && s.mayBeInstalled(other)) {
+		if held[other.ModelID] || (configured && h.mayBeInstalled(other)) {
 			if other.ModelID == spec.ModelID {
 				return "Disable this model and wait for the runtime to release it before installing."
 			}
@@ -305,41 +359,41 @@ func (s *Server) installConflict(cfg *store.Config, spec *catalog.Spec, held map
 
 // mayBeInstalled is true unless the model is known to have files missing; a
 // model that cannot be inspected counts as installed, which refuses the install.
-func (s *Server) mayBeInstalled(spec *catalog.Spec) bool {
-	f, err := s.inspectModel(spec)
+func (h *Handler) mayBeInstalled(spec *catalog.Spec) bool {
+	f, err := h.inspectModel(spec)
 	return err != nil || f.installed
 }
 
 // disableDefaultMessage is the refusal for disabling the active LLM. It names a
 // way out that works from this state.
-func (s *Server) disableDefaultMessage(spec *catalog.Spec) string {
-	for _, other := range s.Catalog.All() {
-		if other.Kind == "llm" && other.ModelID != spec.ModelID && conf.CanBeDefaultLLM(other) && !s.missingFiles(other) {
+func (h *Handler) disableDefaultMessage(spec *catalog.Spec) string {
+	for _, other := range h.opts.Catalog.All() {
+		if other.Kind == "llm" && other.ModelID != spec.ModelID && conf.CanBeDefaultLLM(other) && !h.missingFiles(other) {
 			return "Activate another LLM before disabling the default."
 		}
 	}
-	if s.missingFiles(spec) {
+	if h.missingFiles(spec) {
 		return "Install another LLM first. It becomes the default, and this one can then be disabled."
 	}
 	return "This is the only LLM installed, and one must stay the default. Install another LLM and activate it, then disable this one."
 }
 
 // missingFiles is true only when the model is known not to be installed.
-func (s *Server) missingFiles(spec *catalog.Spec) bool { return !s.mayBeInstalled(spec) }
+func (h *Handler) missingFiles(spec *catalog.Spec) bool { return !h.mayBeInstalled(spec) }
 
 // activateFirstInstall makes a freshly installed chat model the default when the
 // current default cannot run, so a finished install leaves chat usable.
-func (s *Server) activateFirstInstall(spec *catalog.Spec) error {
-	return s.updateConfig(func(c *store.Config) error {
-		conf.ActivateFirstInstall(c, spec, s.Catalog, func(other *catalog.Spec) bool { return !s.missingFiles(other) })
+func (h *Handler) activateFirstInstall(spec *catalog.Spec) error {
+	return h.updateConfig(func(c *store.Config) error {
+		conf.ActivateFirstInstall(c, spec, h.opts.Catalog, func(other *catalog.Spec) bool { return !h.missingFiles(other) })
 		return nil
 	})
 }
 
-func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
-	cfg := s.LLM.Config()
-	held := s.heldModels()
-	m := s.mgmt
+func (h *Handler) readManagement() (mgmtStorage, []mgmtEntry) {
+	cfg := h.opts.Runtimes().LLM.Config()
+	held := h.heldModels()
+	m := h.mgmt
 	m.mu.Lock()
 	installing := m.installing
 	ops := map[string]mgmtOperation{}
@@ -348,16 +402,16 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 	}
 	m.mu.Unlock()
 	entries := []mgmtEntry{}
-	for _, spec := range s.Catalog.All() {
+	for _, spec := range h.opts.Catalog.All() {
 		if spec.QualificationState == "experimental" && !cfg.AllowExperimental {
 			continue
 		}
 		var reason string
-		facts, err := s.inspectModel(spec)
+		facts, err := h.inspectModel(spec)
 		if err != nil {
 			facts = mgmtFacts{} // as TS: not installed, nothing counted
 		} else {
-			_, err = safeFile(s.Root.Dir, filepath.Join(s.modelsDir(spec.Kind), ".checksums.json"))
+			_, err = safeFile(h.opts.Root.Dir, filepath.Join(h.opts.Root.ModelsDir(spec.Kind), ".checksums.json"))
 		}
 		if err != nil {
 			reason = "Could not inspect model storage."
@@ -366,9 +420,9 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 				reason = me.message
 			}
 		}
-		available := storageAt(s.modelsDir(spec.Kind)).AvailableBytes
+		available := storageAt(h.opts.Root.ModelsDir(spec.Kind)).AvailableBytes
 		eligibility := conf.Ineligible(spec, cfg.AllowExperimental)
-		conflict := s.installConflict(cfg, spec, held)
+		conflict := h.installConflict(cfg, spec, held)
 		switch {
 		case eligibility != "":
 			reason = eligibility
@@ -394,14 +448,14 @@ func (s *Server) readManagement() (mgmtStorage, []mgmtEntry) {
 		}
 		entries = append(entries, e)
 	}
-	return storageAt(s.Root.Dir), entries
+	return storageAt(h.opts.Root.Dir), entries
 }
 
 // updateConfig applies a change to the stored configuration under the root
 // operation lease and hands it to the runtimes.
-func (s *Server) updateConfig(fn func(*store.Config) error) error {
-	return lease.WithOperation(s.Root.Dir, "update runtime configuration", func() error {
-		cur, err := s.Store.LoadConfig(context.Background())
+func (h *Handler) updateConfig(fn func(*store.Config) error) error {
+	return lease.WithOperation(h.opts.Root.Dir, "update runtime configuration", func() error {
+		cur, err := h.opts.Store.LoadConfig(context.Background())
 		if err != nil {
 			return err
 		}
@@ -409,30 +463,30 @@ func (s *Server) updateConfig(fn func(*store.Config) error) error {
 		if err := fn(next); err != nil {
 			return err
 		}
-		if err := s.Store.SaveConfig(context.Background(), next); err != nil {
+		if err := h.opts.Store.SaveConfig(context.Background(), next); err != nil {
 			return err
 		}
-		if s.Overrides != nil { // After saving, so that they aren't saved.
-			s.Overrides(next)
+		if h.opts.Overrides() != nil { // After saving, so that they aren't saved.
+			h.opts.Overrides()(next)
 		}
-		s.LLM.SetConfig(next)
+		h.opts.Runtimes().LLM.SetConfig(next)
 		return nil
 	})
 }
 
-func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
-	spec := s.Catalog.ByID(modelID)
+func (h *Handler) runManagement(modelID, action string) (*mgmtOperation, error) {
+	spec := h.opts.Catalog.ByID(modelID)
 	if spec == nil {
 		return nil, &mgmtError{"invalid_request", "Unknown catalog model."}
 	}
-	m := s.mgmt
+	m := h.mgmt
 	m.mu.Lock()
 	busy := m.installing != ""
 	m.mu.Unlock()
 	if busy {
 		return nil, &mgmtError{"conflict", "Wait for the current installation to finish."}
 	}
-	cfg := s.LLM.Config()
+	cfg := h.opts.Runtimes().LLM.Config()
 	kind := spec.Kind
 	if action == "install" || action == "enable" || action == "activate" {
 		if reason := conf.Ineligible(spec, cfg.AllowExperimental); reason != "" {
@@ -442,32 +496,32 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 	done := &mgmtOperation{Action: action, State: "complete", Detail: "Complete"}
 	switch action {
 	case "install":
-		return s.startInstall(spec)
+		return h.startInstall(spec)
 	case "uninstall":
-		err := lease.WithOperation(s.Root.Dir, "uninstall model", func() error {
-			fresh, err := s.Store.LoadConfig(context.Background())
+		err := lease.WithOperation(h.opts.Root.Dir, "uninstall model", func() error {
+			fresh, err := h.opts.Store.LoadConfig(context.Background())
 			if err != nil {
 				return err
 			}
-			if slices.Contains(fresh.Selected[kind], modelID) || fresh.Active[kind] == modelID || s.referencedModels()[modelID] {
+			if slices.Contains(fresh.Selected[kind], modelID) || fresh.Active[kind] == modelID || h.referencedModels()[modelID] {
 				return &mgmtError{"conflict", "Disable the model and wait for runtime reconciliation before uninstalling."}
 			}
 			shared := map[string]bool{}
-			for _, other := range s.Catalog.All() {
+			for _, other := range h.opts.Catalog.All() {
 				if other.ModelID == modelID {
 					continue
 				}
-				for _, p := range s.artifactPaths(other) {
+				for _, p := range h.artifactPaths(other) {
 					shared[p], shared[p+".partial"] = true, true
 				}
 			}
 			var present []string
-			for _, p := range s.artifactPaths(spec) {
+			for _, p := range h.artifactPaths(spec) {
 				for _, t := range []string{p, p + ".partial"} {
 					if shared[t] || slices.Contains(present, t) {
 						continue
 					}
-					info, err := safeFile(s.Root.Dir, t)
+					info, err := safeFile(h.opts.Root.Dir, t)
 					if err != nil {
 						return err
 					}
@@ -487,10 +541,10 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 			return nil, err
 		}
 	default:
-		err := s.updateConfig(func(c *store.Config) error {
+		err := h.updateConfig(func(c *store.Config) error {
 			selected := c.Selected[kind]
 			if action == "enable" || action == "activate" {
-				f, err := s.inspectModel(spec)
+				f, err := h.inspectModel(spec)
 				if err != nil {
 					return err
 				}
@@ -512,7 +566,7 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 			case "disable":
 				if c.Active[kind] == modelID {
 					if kind == "llm" {
-						return &mgmtError{"conflict", s.disableDefaultMessage(spec)}
+						return &mgmtError{"conflict", h.disableDefaultMessage(spec)}
 					}
 					c.Active[kind] = ""
 				}
@@ -538,18 +592,18 @@ func (s *Server) runManagement(modelID, action string) (*mgmtOperation, error) {
 const partialKeptDetail = "The downloaded part is kept, so installing again continues from it (or starts over if the file has changed)."
 
 // failedInstallDetail is a failed install's sentence.
-func (s *Server) failedInstallDetail(spec *catalog.Spec) string {
+func (h *Handler) failedInstallDetail(spec *catalog.Spec) string {
 	const failed = "Installation failed. Check storage, network access, and catalog verification."
-	if s.partialKept(spec) {
+	if h.partialKept(spec) {
 		return failed + " " + partialKeptDetail
 	}
 	return failed
 }
 
 // partialKept says whether a failed install left a part of any of a model's files.
-func (s *Server) partialKept(spec *catalog.Spec) bool {
+func (h *Handler) partialKept(spec *catalog.Spec) bool {
 	for _, a := range spec.Artifacts {
-		if info, err := safeFile(s.Root.Dir, filepath.Join(s.modelsDir(spec.Kind), a.Filename)+".partial"); err == nil && info != nil && info.Size() > 0 {
+		if info, err := safeFile(h.opts.Root.Dir, filepath.Join(h.opts.Root.ModelsDir(spec.Kind), a.Filename)+".partial"); err == nil && info != nil && info.Size() > 0 {
 			return true
 		}
 	}
@@ -564,8 +618,8 @@ const cancelWait = 5 * time.Second
 
 // stopInstall cancels the running install of this model. The partial stays on disk,
 // where it counts as used space until the install is resumed.
-func (s *Server) stopInstall(modelID string) (*mgmtOperation, error) {
-	m := s.mgmt
+func (h *Handler) stopInstall(modelID string) (*mgmtOperation, error) {
+	m := h.mgmt
 	m.mu.Lock()
 	if m.installing != modelID || m.cancelInstall == nil {
 		defer m.mu.Unlock()
@@ -595,8 +649,8 @@ func (s *Server) stopInstall(modelID string) (*mgmtOperation, error) {
 
 // startInstall runs the pre-checks under the root operation lease, then
 // downloads in the background; it returns once the install is accepted.
-func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
-	m := s.mgmt
+func (h *Handler) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
+	m := h.mgmt
 	ctx, cancel := context.WithCancel(m.ctx)
 	finished := make(chan struct{})
 	m.mu.Lock()
@@ -616,19 +670,19 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		defer close(finished)
 		defer cancel()
 		accepted := false
-		err := lease.WithOperation(s.Root.Dir, "install model", func() error {
-			fresh, err := s.Store.LoadConfig(context.Background())
+		err := lease.WithOperation(h.opts.Root.Dir, "install model", func() error {
+			fresh, err := h.opts.Store.LoadConfig(context.Background())
 			if err != nil {
 				return err
 			}
-			dir := s.modelsDir(spec.Kind)
-			if _, err := safeFile(s.Root.Dir, filepath.Join(dir, ".checksums.json")); err != nil {
+			dir := h.opts.Root.ModelsDir(spec.Kind)
+			if _, err := safeFile(h.opts.Root.Dir, filepath.Join(dir, ".checksums.json")); err != nil {
 				return err
 			}
-			if c := s.installConflict(fresh, spec, s.heldModels()); c != "" {
+			if c := h.installConflict(fresh, spec, h.heldModels()); c != "" {
 				return &mgmtError{"conflict", c}
 			}
-			facts, err := s.inspectModel(spec)
+			facts, err := h.inspectModel(spec)
 			if err != nil {
 				return err
 			}
@@ -652,7 +706,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			accepted = true
 			admitted <- nil
 			progress := map[string]int64{}
-			_, err = install.Model(ctx, spec, dir, install.Options{HFToken: fresh.HFToken, AllowPrivate: s.Store.PrivateImportsAllowed(ctx), Report: func(ev install.Event) {
+			_, err = install.Model(ctx, spec, dir, install.Options{HFToken: fresh.HFToken, AllowPrivate: h.opts.Store.PrivateImportsAllowed(ctx), Report: func(ev install.Event) {
 				switch ev.Kind {
 				case "download-progress":
 					progress[ev.Filename] = ev.Downloaded
@@ -679,8 +733,8 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		// Before the operation reads complete: complete means ready to use. The
 		// files are good either way, so a failure here does not fail the install.
 		if err == nil {
-			if aerr := s.activateFirstInstall(spec); aerr != nil {
-				s.Log.Error("Could not make the installed model the default.", "event", "models.activate-failed", "model_id", spec.ModelID, "error", aerr.Error())
+			if aerr := h.activateFirstInstall(spec); aerr != nil {
+				h.opts.Log().Error("Could not make the installed model the default.", "event", "models.activate-failed", "model_id", spec.ModelID, "error", aerr.Error())
 			}
 		}
 		m.mu.Lock()
@@ -695,7 +749,7 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 			m.operations[spec.ModelID] = &op
 		case accepted:
 			op := *m.operations[spec.ModelID]
-			op.State, op.Detail = "failed", s.failedInstallDetail(spec)
+			op.State, op.Detail = "failed", h.failedInstallDetail(spec)
 			op.Error = &mgmtOpError{install.Reason(err)}
 			if m.ctx.Err() != nil {
 				op.Detail = interruptedDetail
@@ -721,10 +775,10 @@ func (s *Server) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 	return &op, nil
 }
 
-func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) ModelManagementAPI(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	// The command line on this machine, with the instance token, may cancel an install, and nothing else.
-	localCLI := r.Method == http.MethodPost && s.localCLI(r)
+	localCLI := r.Method == http.MethodPost && h.opts.LocalCLI(r)
 	if !p.Authenticated() && !localCLI {
 		httpx.Unauthorized(w, r)
 		return
@@ -735,7 +789,7 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		storage, models := s.readManagement()
+		storage, models := h.readManagement()
 		httpx.JSON(w, 200, struct {
 			Storage   mgmtStorage `json:"storage"`
 			Models    []mgmtEntry `json:"models"`
@@ -778,14 +832,14 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	var op *mgmtOperation
 	if action == "cancel" {
-		op, err = s.stopInstall(modelID)
+		op, err = h.stopInstall(modelID)
 	} else {
-		op, err = s.runManagement(modelID, action)
+		op, err = h.runManagement(modelID, action)
 	}
 	if err != nil {
 		var me *mgmtError
 		if !errors.As(err, &me) {
-			s.Log.Error("Model management failed.", "event", "models.management-failed", "error", err.Error())
+			h.opts.Log().Error("Model management failed.", "event", "models.management-failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Model management")
 			return
 		}
@@ -805,25 +859,25 @@ func (s *Server) modelManagementAPI(w http.ResponseWriter, r *http.Request) {
 
 // WaitManagementIdle waits for an accepted install to settle. Call it after
 // the server stopped admitting requests.
-func (s *Server) WaitManagementIdle() {
-	if s.mgmt != nil {
-		s.mgmt.inFlight.Wait()
+func (h *Handler) WaitManagementIdle() {
+	if h.mgmt != nil {
+		h.mgmt.inFlight.Wait()
 	}
 }
 
 // StopManagement lets an accepted install finish within grace, then
 // interrupts it; the interruption is recorded, and the partial download
 // stays for the next install to resume.
-func (s *Server) StopManagement(grace time.Duration) {
-	if s.mgmt == nil {
+func (h *Handler) StopManagement(grace time.Duration) {
+	if h.mgmt == nil {
 		return
 	}
 	done := make(chan struct{})
-	go func() { s.mgmt.inFlight.Wait(); close(done) }()
+	go func() { h.mgmt.inFlight.Wait(); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(grace):
-		s.mgmt.cancel()
+		h.mgmt.cancel()
 		<-done
 	}
 }

@@ -27,19 +27,19 @@ type placementBody struct {
 // the next load would do; PUT and DELETE (models:manage) change the stored
 // choice, which applies on the next load. The runtime is never restarted
 // here, and a change is refused while the model is loading.
-func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string) {
+func (h *Handler) placementAPI(w http.ResponseWriter, r *http.Request, id string) {
 	w.Header().Set("Cache-Control", "no-store")
-	if s.Placement == nil || s.LLM == nil {
+	if h.opts.Placement == nil || h.opts.Runtimes().LLM == nil {
 		httpx.RouteDisabled(w, r)
 		return
 	}
-	if _, _, err := s.LLM.Resolve(id); err != nil {
+	if _, _, err := h.opts.Runtimes().LLM.Resolve(id); err != nil {
 		httpx.ModelNotFound(w, r, id)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		s.placementState(w, r, id, nil)
+		h.placementState(w, r, id, nil)
 		return
 	case http.MethodPut, http.MethodDelete:
 	default:
@@ -47,21 +47,21 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 		httpx.MethodNotAllowed(w, r, "GET, PUT, DELETE")
 		return
 	}
-	if p := s.principal(r); !s.NoAuth && !p.Can("models:manage") {
+	if p := h.opts.Caller(r); !h.opts.NoAuth() && !p.Can("models:manage") {
 		httpx.Forbidden(w, r)
 		return
 	}
-	if s.LLM.Loading(id) {
+	if h.opts.Runtimes().LLM.Loading(id) {
 		httpx.Error(w, r, 409, "invalid_request_error", "model_loading", "The model is loading. Change its placement once it has loaded; the change then applies on the next load.", nil)
 		return
 	}
 	ctx := r.Context()
 	if r.Method == http.MethodDelete {
-		if _, err := s.Store.ResetPlacement(ctx, id, s.Placement.DeviceID); err != nil {
+		if _, err := h.opts.Store.ResetPlacement(ctx, id, h.opts.Placement.DeviceID); err != nil {
 			httpx.ServiceUnavailable(w, r, "Model management")
 			return
 		}
-		s.placementState(w, r, id, nil)
+		h.placementState(w, r, id, nil)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 4097))
@@ -84,7 +84,7 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 	req := placement.Request{Mode: in.Mode, CPUMoELayers: in.CPUMoELayers, GPULayers: in.GPULayers}
 	// Validate against this device before storing: unsupported is 400,
 	// cannot fit is 409, with the numbers.
-	if _, err := s.LLM.PreviewPlacement(id, req); err != nil {
+	if _, err := h.opts.Runtimes().LLM.PreviewPlacement(id, req); err != nil {
 		var pe *placement.Error
 		if errors.As(err, &pe) {
 			status := 400
@@ -96,7 +96,7 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 		}
 	}
 	if in.ContextSize != nil {
-		if err := s.updateConfig(func(c *store.Config) error {
+		if err := h.updateConfig(func(c *store.Config) error {
 			c.CtxSize, c.CtxMode = *in.ContextSize, "explicit"
 			return nil
 		}); err != nil {
@@ -104,28 +104,28 @@ func (s *Server) placementAPI(w http.ResponseWriter, r *http.Request, id string)
 			return
 		}
 	}
-	if err := s.Store.SetPlacement(ctx, id, s.Placement.DeviceID, store.Placement{Mode: in.Mode, GPULayers: in.GPULayers, CPUMoELayers: in.CPUMoELayers}); err != nil {
+	if err := h.opts.Store.SetPlacement(ctx, id, h.opts.Placement.DeviceID, store.Placement{Mode: in.Mode, GPULayers: in.GPULayers, CPUMoELayers: in.CPUMoELayers}); err != nil {
 		httpx.ServiceUnavailable(w, r, "Model management")
 		return
 	}
-	s.Log.Info("Placement changed for "+id+"; it applies on the next load.", "event", "models.placement-changed", "model_id", id, "mode", in.Mode)
-	s.placementState(w, r, id, nil)
+	h.opts.Log().Info("Placement changed for "+id+"; it applies on the next load.", "event", "models.placement-changed", "model_id", id, "mode", in.Mode)
+	h.placementState(w, r, id, nil)
 }
 
 // placementState answers the stored choice, the loaded split and the next
 // load's split.
-func (s *Server) placementState(w http.ResponseWriter, r *http.Request, id string, _ error) {
-	req := s.Placement.Request(id)
-	cfg := s.LLM.Config()
+func (h *Handler) placementState(w http.ResponseWriter, r *http.Request, id string, _ error) {
+	req := h.opts.Placement.Request(id)
+	cfg := h.opts.Runtimes().LLM.Config()
 	requested := map[string]any{"mode": req.Mode, "cpuMoeLayers": req.CPUMoELayers, "gpuLayers": req.GPULayers,
 		"contextSize": cfg.CtxSize, "contextMode": cfg.CtxMode, "contextScope": "all models"}
 	out := map[string]any{"model": id, "requested": requested, "loaded": false, "resolved": nil, "pendingNextLoad": false}
-	if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
+	if plan, ok := h.opts.Runtimes().LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 		out["loaded"] = true
 		out["resolved"] = placementJSON(plan)
 		out["pendingNextLoad"] = !sameRequest(plan.PlacementRequest, req) || plan.Budget.ConfiguredCeiling != cfg.CtxSize
 	}
-	if next, err := s.LLM.PreviewPlacement(id, req); err == nil && next.Placement != nil {
+	if next, err := h.opts.Runtimes().LLM.PreviewPlacement(id, req); err == nil && next.Placement != nil {
 		pj := placementJSON(next)
 		delete(pj, "plannedAt") // a preview, not a load
 		out["next"] = pj
@@ -162,14 +162,14 @@ func sameRequest(a, b placement.Request) bool {
 
 // placementRuntimeState tells the local CLI, behind the instance token,
 // whether a model is loading and the split it was loaded with.
-func (s *Server) placementRuntimeState(w http.ResponseWriter, r *http.Request) {
-	if !instanceTokenMatches(s.Root.Instance(), r) || s.LLM == nil {
+func (h *Handler) PlacementRuntimeState(w http.ResponseWriter, r *http.Request) {
+	if !instanceTokenMatches(h.opts.Root.Instance(), r) || h.opts.Runtimes().LLM == nil {
 		w.WriteHeader(404)
 		return
 	}
 	id := r.URL.Query().Get("model")
-	out := map[string]any{"loading": s.LLM.Loading(id), "loaded": false}
-	if plan, ok := s.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
+	out := map[string]any{"loading": h.opts.Runtimes().LLM.Loading(id), "loaded": false}
+	if plan, ok := h.opts.Runtimes().LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 		out["loaded"], out["resolved"] = true, placementJSON(plan)
 		req := plan.PlacementRequest
 		if req.Mode == "" {
