@@ -181,7 +181,8 @@ only the last is new since `75626a4`.
 runs.
 
 **Drill, run on this tree (2026-11-02), on a scratch root** with
-`tools/placement-rollback-check.sh`: `local-base.go-75626a4`, `local-base.ts-0.1.0` and
+`tools/placement-rollback-check.sh`: the binaries `local-base.go-75626a4` (Go at
+`75626a4`) and `local-base.ts-0.1.0`, named as in DESIGN §17.3's cutover runbook, and
 this build each served `/health` and `/v1/models` against a database with a
 `model_placements` row; `go_schema` stayed 1 and the row was kept. It requests no
 inference, and `runs/` was empty.
@@ -190,7 +191,7 @@ inference, and `runs/` was empty.
 `runs/`. The binary carries no commit stamp, so the operator should confirm which
 commit it is.
 
-| | Rollback to `local-base.go-75626a4` | Rollback to `local-base.ts-0.1.0` |
+| | Rollback to the `local-base.go-75626a4` binary | Rollback to the `local-base.ts-0.1.0` binary |
 |---|---|---|
 | Starts on the database | yes (drill) | yes (drill), **if the active models' files are installed**: TS refuses to start otherwise (found in the §20 drill) |
 | Lost: features | detached runs, placement, explicit unload, observability fixes (#377), the redesign and all studios, seed echo, speech-cut flag | all of that, plus everything Go-only (§17): the fit-aware default model, imports and backend selection, #375–#376 |

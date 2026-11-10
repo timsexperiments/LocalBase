@@ -252,22 +252,24 @@ In this order, each before refactoring its area. All use fakes; none need real m
 
 ## 5. Cleanup targets
 
-Measured. Nothing here is done yet. `internal/web` is excluded (the FE thread owns it).
+Measured on #403's tree, so the line numbers and sizes are as they were then. Where wave 2 has since
+moved a file, its new home follows in parentheses. Nothing here is done yet. `internal/web` is
+excluded (the FE thread owns it).
 
 | Target | Evidence | Plan |
 |---|---|---|
 | Dead code | `deadcode`: 12 functions. `IsUIAccessPath`, `jsonUnmarshal` ×2, `sortedKeys`, `schemaRejection.Error`, `OverrideGPUMemory`, `obs.Redact`, `buf.int64`, `buf.boolean`, `placement.LastLines`, `toml.Quote`, `toml.Value`, `cli.SortedKeys`. Plus `archiveRe` (U1000) | Delete, one PR |
-| Staticcheck findings | SA4010 `auth/policy.go:227` (result unused: **check, may be a bug**), SA4006 `video_contract.go:316`, SA4015 `plan.go:397`, SA4004 `runtime/service.go:285`, SA1019 `auth/jwt.go:78-79` (deprecated `ecdsa` fields, 5 sites) | Review each. ST1005 (165, capitalized errors) excluded: they are product messages |
-| Oversized functions | `access` command 517 lines, `manage.go:294` 322, `serve` 297, `configure` 239, `imageEdit` 204, `hub/entry.go:500` 197, `gguf.go:444` 188, `schema.go:207` 186, `transcription` 184, `resolve.go:242` 176 | Split along real steps, each after its tests |
-| Oversized files | `gateway/runs.go` 1082, `service/service.go` 1007, `gateway/manage.go` 943, `hub/entry.go` 886, `runtime/llm.go` 843 | Split by responsibility |
+| Staticcheck findings | SA4010 `auth/policy.go:227` (result unused: **check, may be a bug**), SA4006 `video_contract.go:316` (now `gateway/infer`), SA4015 `plan.go:397`, SA4004 `runtime/service.go:285`, SA1019 `auth/jwt.go:78-79` (deprecated `ecdsa` fields, 5 sites) | Review each. ST1005 (165, capitalized errors) excluded: they are product messages |
+| Oversized functions | `access` command 517 lines, `manage.go:294` (now `gateway/admin/keys/keys.go`) 322, `serve` 297, `configure` 239, `imageEdit` 204, `hub/entry.go:500` 197, `gguf.go:444` 188, `schema.go:207` 186, `transcription` 184, `resolve.go:242` 176 | Split along real steps, each after its tests |
+| Oversized files | `gateway/runs.go` 1082 (now the `gateway/runs` package), `service/service.go` 1007, `gateway/manage.go` 943 (now `gateway/admin/keys/keys.go`), `hub/entry.go` 886, `runtime/llm.go` 843 | Split by responsibility |
 | Duplicate helpers | `contains` ×5, `writePrivate` ×3, `jsNumber` ×3, `fileExists` ×2, `jsonUnmarshal` ×2, `localeCompare` ×2, `number` ×2, `utf16Len` ×2, `nowISO` ×2, `uuid` ×2 | `slices.Contains`; a small `internal/fsutil` |
-| Error envelopes | `writeError` plus hand-written: `gateway/manage.go:47,120`, `unload.go:59`, `relay.go:621,630`, `auth.Deny`. Some are TS's exact shape | One helper with an extras field; keep the TS shapes |
+| Error envelopes | `writeError` plus hand-written: `gateway/manage.go:47,120` (now `gateway/admin/keys/keys.go`), `unload.go:59` (now `gateway/admin/models`), `relay.go:621,630` (now `gateway/infer`), `auth.Deny`. Some are TS's exact shape | One helper with an extras field; keep the TS shapes |
 | Log attributes | `model_id` ×23, `model` ×12, `modelId` ×4; `durationMs`, `duration_ms`. 6 log calls have no `event` | Settle on `model_id`, `duration_ms`. **Log names can be a contract: check `TestTSReadsGoLogs` first** |
 | Config and env access | About 20 `LOCALBASE_*` variables read directly across packages | One place, with a tested reference |
 | Context | 109 `context.Background()` outside tests | Thread the caller's where one exists; many are legitimate |
 | Goroutines | 21 `go func` sites; `LLM.watch` isn't waited on by `Close`; **no leak check anywhere** | Own each; add a goleak-style check per package. **Stdlib only: the project keeps to one module dependency, so this will be a small helper, not a new module** |
 | Test helpers | `installSparse` ×3, `loadGolden` ×3, `testStore` ×2, plus `freePort`, `waitFor` | `internal/testutil` |
-| Fixtures | `gateway/testdata/video.json` 6.3 MB | Generate or trim |
+| Fixtures | `gateway/infer/testdata/video.json` 6.3 MB | Generate or trim |
 | Stale comments | `llm.go:551`: "feed: milestone 5", though feed is implemented; TODOs only in vendored `norm` | One PR |
 | Package layering | No cycles. `runtime` imports `install`, `conf` and `hub` import `runtime`; `gateway` depends on 19 packages | Report only unless a split needs it |
 
