@@ -386,12 +386,6 @@ func relayService(kind string) string {
 	return "LLM"
 }
 
-// UpstreamFailure answers 502 upstream_error with message, for a backend that failed or answered
-// what can't be relayed.
-func UpstreamFailure(w http.ResponseWriter, r *http.Request, message string) {
-	httpx.Error(w, r, 502, "server_error", "upstream_error", message, nil)
-}
-
 // relay posts body to the backend and writes its response: event streams
 // event by event, JSON after checking its shape. The request context cancels
 // the backend call when the client goes away; the backend stays up (#276).
@@ -454,7 +448,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if len(raw) > relayBodyLimit { // said as it is, not as the malformed JSON a cut answer would be
-		UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", memory.SizeText(relayBodyLimit)))
+		httpx.UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", memory.SizeText(relayBodyLimit)))
 		t.finish("error", 502, "response_size_limit")
 		return
 	}
@@ -466,12 +460,12 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 	dec.UseNumber()
 	var obj map[string]any
 	if dec.Decode(&obj) != nil || obj == nil {
-		UpstreamFailure(w, r, "The upstream service returned malformed JSON.")
+		httpx.UpstreamFailure(w, r, "The upstream service returned malformed JSON.")
 		t.finish("error", 502, "response_validation")
 		return
 	}
 	if !validResponse(o.kind, obj) {
-		UpstreamFailure(w, r, "The upstream service returned an invalid response.")
+		httpx.UpstreamFailure(w, r, "The upstream service returned an invalid response.")
 		t.finish("error", 502, "response_validation")
 		return
 	}
@@ -700,7 +694,7 @@ func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, stat
 		} `json:"error"`
 	}
 	if status < 400 || json.Unmarshal(raw, &body) != nil || body.Error == nil || !nonEmptyString(body.Error.Message) || !nonEmptyString(body.Error.Type) {
-		UpstreamFailure(w, r, "The upstream service returned an invalid error response.")
+		httpx.UpstreamFailure(w, r, "The upstream service returned an invalid error response.")
 		return 502
 	}
 	e := body.Error
