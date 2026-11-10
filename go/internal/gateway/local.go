@@ -54,14 +54,14 @@ func (l *localLimit) fail() {
 // localPrincipal is the request's local session, if it has one and the request
 // passes the loopback rule. Every permission is intentional (auth/local.go). The
 // nil Identity keeps it out of the lockout rules' count of managers.
-func (s *Server) localPrincipal(r *http.Request) *auth.Principal {
+func (a *Access) localPrincipal(r *http.Request) *auth.Principal {
 	token := auth.LocalCookieToken(r)
 	if token == "" || !auth.LocalRequest(r) {
 		return nil
 	}
-	sess, err := auth.FindLocalSession(r.Context(), s.Store, token)
+	sess, err := auth.FindLocalSession(r.Context(), a.opts.Store, token)
 	if err != nil {
-		s.lookupFailed(r, err)
+		a.opts.LookupFailed(r, err)
 		return nil
 	}
 	if sess == nil {
@@ -75,49 +75,49 @@ func localNavigation(r *http.Request) bool {
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
 }
 
-func (s *Server) localRefused(r *http.Request, reason string) {
-	s.Log.Warn("Local sign-in was refused.", "event", "auth.local-login-refused", "reason", reason)
+func (a *Access) localRefused(r *http.Request, reason string) {
+	a.opts.Log().Warn("Local sign-in was refused.", "event", "auth.local-login-refused", "reason", reason)
 }
 
 // localOnce serves GET and POST /app/login/once. GET only shows the page, so a
 // link preview or prefetch cannot use a link up.
-func (s *Server) localOnce(w http.ResponseWriter, r *http.Request) {
+func (a *Access) localOnce(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		auth.Deny(w, 405)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if !auth.LocalRequest(r) {
-		s.localRefused(r, "not-loopback")
-		s.loginHelp(w, r, 403)
+		a.localRefused(r, "not-loopback")
+		a.loginHelp(w, r, 403)
 		return
 	}
 	if r.Method == http.MethodGet {
-		if s.LoginPages == nil {
+		if a.opts.Pages() == nil {
 			auth.Deny(w, 404)
 			return
 		}
-		s.LoginPages.LoginOnce(w, r)
+		a.opts.Pages().LoginOnce(w, r)
 		return
 	}
-	if s.localFails.blocked(time.Now()) {
-		s.localRefused(r, "rate-limited")
+	if a.localFails.blocked(time.Now()) {
+		a.localRefused(r, "rate-limited")
 		w.Header().Set("Retry-After", "60")
-		if s.LoginPages == nil {
+		if a.opts.Pages() == nil {
 			auth.Deny(w, 429)
 			return
 		}
-		s.LoginPages.LoginTooMany(w, r)
+		a.opts.Pages().LoginTooMany(w, r)
 		return
 	}
 	expired := func() {
-		s.localFails.fail()
-		s.localRefused(r, "expired")
-		if s.LoginPages == nil {
+		a.localFails.fail()
+		a.localRefused(r, "expired")
+		if a.opts.Pages() == nil {
 			auth.Deny(w, 410)
 			return
 		}
-		s.LoginPages.LoginExpired(w, r, 410)
+		a.opts.Pages().LoginExpired(w, r, 410)
 	}
 	if !auth.LocalFormOK(r) {
 		expired()
@@ -128,64 +128,64 @@ func (s *Server) localOnce(w http.ResponseWriter, r *http.Request) {
 		expired()
 		return
 	}
-	spent, err := auth.ConsumeLocalLink(r.Context(), s.Store, token)
+	spent, err := auth.ConsumeLocalLink(r.Context(), a.opts.Store, token)
 	if err != nil {
 		// Not known to be spent or expired, so it isn't called that, or counted as a bad try.
-		s.Log.Error("Could not read a local sign-in link.", "event", "auth.local-link-failed", "error", err.Error())
+		a.opts.Log().Error("Could not read a local sign-in link.", "event", "auth.local-link-failed", "error", err.Error())
 		w.Header().Set("Retry-After", "5")
-		if s.LoginPages == nil {
+		if a.opts.Pages() == nil {
 			auth.Deny(w, http.StatusServiceUnavailable)
 			return
 		}
-		s.LoginPages.LoginBusy(w, r)
+		a.opts.Pages().LoginBusy(w, r)
 		return
 	}
 	if !spent {
 		expired()
 		return
 	}
-	cookieToken, id, err := auth.CreateLocalSession(r.Context(), s.Store)
+	cookieToken, id, err := auth.CreateLocalSession(r.Context(), a.opts.Store)
 	if err != nil {
-		s.Log.Error("Could not create a local session.", "event", "auth.local-session-failed", "error", err.Error())
+		a.opts.Log().Error("Could not create a local session.", "event", "auth.local-session-failed", "error", err.Error())
 		auth.Deny(w, 503)
 		return
 	}
-	s.Log.Info("Local sign-in link used.", "event", "audit.local-login-redeemed", "link_id", auth.LocalLinkID(token),
+	a.opts.Log().Info("Local sign-in link used.", "event", "audit.local-login-redeemed", "link_id", auth.LocalLinkID(token),
 		"session_id", id, "actor_kind", "local")
 	auth.Redirect(w, "/app", auth.LocalSessionCookie(cookieToken))
 }
 
 // denyPerson refuses a sign-in route. A person opening a page gets words; anything else gets
 // the usual answer.
-func (s *Server) denyPerson(w http.ResponseWriter, r *http.Request, status int) {
-	switch b := s.Browser; {
-	case s.LoginPages == nil || !localNavigation(r):
+func (a *Access) denyPerson(w http.ResponseWriter, r *http.Request, status int) {
+	switch b := a.opts.Browser(); {
+	case a.opts.Pages() == nil || !localNavigation(r):
 		auth.Deny(w, status)
 	case !b.ExactHost(r):
-		s.LoginPages.LoginWrongAddress(w, r, b.Config.Origin)
+		a.opts.Pages().LoginWrongAddress(w, r, b.Config.Origin)
 	default:
-		s.LoginPages.LoginUnavailable(w, r, status)
+		a.opts.Pages().LoginUnavailable(w, r, status)
 	}
 }
 
-func (s *Server) loginHelp(w http.ResponseWriter, r *http.Request, status int) {
-	if s.LoginPages == nil || !localNavigation(r) {
+func (a *Access) loginHelp(w http.ResponseWriter, r *http.Request, status int) {
+	if a.opts.Pages() == nil || !localNavigation(r) {
 		auth.Deny(w, status)
 		return
 	}
-	s.LoginPages.LoginHelp(w, r, status)
+	a.opts.Pages().LoginHelp(w, r, status)
 }
 
 // localUIAccess handles what a local session or local sign-in owns among the
 // browser paths, and reports whether it answered.
-func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
+func (a *Access) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 	p := r.URL.Path
 	switch {
 	case p == auth.LocalOncePath:
-		s.localOnce(w, r)
+		a.localOnce(w, r)
 		return true
-	case p == "/app/login" && !s.Browser.Enabled() && r.Method == http.MethodGet && localNavigation(r):
-		s.loginHelp(w, r, 403)
+	case p == "/app/login" && !a.opts.Browser().Enabled() && r.Method == http.MethodGet && localNavigation(r):
+		a.loginHelp(w, r, 403)
 		return true
 	case p == "/app/logout":
 		token := auth.LocalCookieToken(r)
@@ -196,8 +196,8 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 			auth.Deny(w, 403)
 			return true
 		}
-		if err := auth.DeleteLocalSession(r.Context(), s.Store, token); err != nil {
-			s.Log.Error("Could not end a local session; it stays valid until it expires.", "event", "local-session.delete-failed", "error", err.Error())
+		if err := auth.DeleteLocalSession(r.Context(), a.opts.Store, token); err != nil {
+			a.opts.Log().Error("Could not end a local session; it stays valid until it expires.", "event", "local-session.delete-failed", "error", err.Error())
 			// The session is still good, so the person isn't told otherwise and keeps the cookie.
 			w.Header().Set("Retry-After", "5")
 			auth.Deny(w, http.StatusServiceUnavailable)
@@ -209,7 +209,7 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 	case p != "/app/session" && !strings.HasPrefix(p, "/app/api/"):
 		return false
 	}
-	principal := s.localPrincipal(r)
+	principal := a.localPrincipal(r)
 	if principal == nil {
 		return false
 	}
@@ -223,7 +223,7 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 		auth.Deny(w, 403)
 		return true
 	}
-	if !session && !allowedUIRoute(r.Method, target) {
+	if !session && !a.opts.Allowed(r.Method, target) {
 		auth.Deny(w, 404)
 		return true
 	}
@@ -233,14 +233,14 @@ func (s *Server) localUIAccess(w http.ResponseWriter, r *http.Request) bool {
 		httpx.JSON(w, 200, map[string]any{"authenticated": true, "permissions": principal.Permissions, "localSession": true})
 		return true
 	}
-	s.forwardAsBrowser(w, r, principal, target)
+	a.forwardAsBrowser(w, r, principal, target)
 	return true
 }
 
-// localSessionsAPI lists and revokes local sessions: GET needs sessions:read and
+// LocalSessionsAPI lists and revokes local sessions: GET needs sessions:read and
 // POST sessions:revoke. Bodies never carry a token.
-func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (a *Access) LocalSessionsAPI(w http.ResponseWriter, r *http.Request) {
+	p := a.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
@@ -252,7 +252,7 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		list, err := auth.ListLocalSessions(r.Context(), s.Store)
+		list, err := auth.ListLocalSessions(r.Context(), a.opts.Store)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Local sessions")
 			return
@@ -275,10 +275,10 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 		revoked := 0
 		switch {
 		case in.Action == "revoke-all" && in.ID == "":
-			revoked, err = auth.RevokeAllLocal(r.Context(), s.Store)
+			revoked, err = auth.RevokeAllLocal(r.Context(), a.opts.Store)
 		case in.Action == "revoke" && in.ID != "":
 			var found bool
-			found, err = auth.RevokeLocalSession(r.Context(), s.Store, in.ID)
+			found, err = auth.RevokeLocalSession(r.Context(), a.opts.Store, in.ID)
 			if found {
 				revoked = 1
 			}
@@ -290,7 +290,7 @@ func (s *Server) localSessionsAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
-		s.Log.Info("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", p.Kind, "actor_id", p.ID,
+		a.opts.Log().Info("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", p.Kind, "actor_id", p.ID,
 			"session_id", in.ID, "count", revoked)
 		httpx.JSON(w, 200, map[string]any{"revoked": revoked})
 	default:

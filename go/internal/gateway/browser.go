@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -10,11 +11,43 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // Browser access routes (ui/access.ts): sign-in, sign-out, the session probe,
 // and /app/api/* forwarding, which lets the UI's own fetches (chat streaming,
 // media, admin) reach the API as the signed-in browser identity.
+
+// Access serves the browser-owned paths, and local sign-in, for one gateway.
+type Access struct {
+	opts       Options
+	localFails localLimit
+}
+
+// Options are what Access needs from the gateway.
+type Options struct {
+	// Handler is the gateway's mux: a browser's request goes on to it as the browser's identity.
+	Handler http.Handler
+	Store   *store.Store
+	Log     func() *slog.Logger
+	// Browser is browser sign-in, disabled when it isn't configured.
+	Browser func() *auth.Browser
+	// NoAuth is --no-auth (loopback development), where the UI acts with every permission.
+	NoAuth func() bool
+	// Pages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
+	Pages func() LoginPages
+	// RootDir holds the email settings a magic link is sent with.
+	RootDir string
+	// Allowed reports what the browser may call through /app/api.
+	Allowed func(method, path string) bool
+	// Caller is who a request to the local sessions API is from.
+	Caller func(*http.Request) *auth.Principal
+	// LookupFailed logs a failed look at a key or session, and marks the request.
+	LookupFailed func(*http.Request, error)
+}
+
+// NewAccess returns the browser access layer for o.
+func NewAccess(o Options) *Access { return &Access{opts: o} }
 
 // IsUIAccessPath reports the paths the browser layer owns.
 func IsUIAccessPath(p string) bool {
@@ -108,23 +141,23 @@ func uiVideoJob(rest, method string) bool {
 	return false
 }
 
-// BrowserPrincipal resolves the signed-in browser identity of a request.
-func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Identity) {
-	if p := s.localPrincipal(r); p != nil {
+// Principal resolves the signed-in browser identity of a request.
+func (a *Access) Principal(r *http.Request) (*auth.Principal, *auth.Identity) {
+	if p := a.localPrincipal(r); p != nil {
 		return p, nil
 	}
-	if !s.Browser.Enabled() {
+	if !a.opts.Browser().Enabled() {
 		return nil, nil
 	}
-	id, owner, err := s.Browser.AuthenticateChecked(r)
+	id, owner, err := a.opts.Browser().AuthenticateChecked(r)
 	if err != nil {
-		s.lookupFailed(r, err)
+		a.opts.LookupFailed(r, err)
 		return nil, nil
 	}
 	if id == nil {
 		return nil, nil
 	}
-	d, err := s.Browser.AuthorizeChecked(r.Context(), id)
+	d, err := a.opts.Browser().AuthorizeChecked(r.Context(), id)
 	if err != nil {
 		auth.MarkLookupFailed(r.Context()) // Authorize has logged it
 		return nil, nil
@@ -133,11 +166,11 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 	return &auth.Principal{Kind: "browser-session", ID: owner, Name: id.VerifiedEmail, Permissions: d.Permissions, Identity: id}, id
 }
 
-// uiAccess serves the browser-owned paths.
-func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
+// UIAccess serves the browser-owned paths.
+func (a *Access) UIAccess(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
-	b := s.Browser
-	if s.NoAuth && (p == "/app/session" || strings.HasPrefix(p, "/app/api/")) {
+	b := a.opts.Browser()
+	if a.opts.NoAuth() && (p == "/app/session" || strings.HasPrefix(p, "/app/api/")) {
 		// --no-auth (loopback development): the UI acts with every permission.
 		full := &auth.Principal{Kind: "browser-session", ID: "no-auth", Permissions: auth.Permissions}
 		if p == "/app/session" {
@@ -145,24 +178,24 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		target := strings.TrimPrefix(p, "/app/api")
-		if !allowedUIRoute(r.Method, target) {
+		if !a.opts.Allowed(r.Method, target) {
 			auth.Deny(w, 404)
 			return
 		}
 		fwd := r.Clone(context.WithValue(r.Context(), httpx.BrowserPrincipalKey{}, full))
 		fwd.URL.Path, fwd.URL.RawPath, fwd.RequestURI = target, "", target
 		fwd.URL.RawQuery = forwardedQuery(target, r)
-		s.mux.ServeHTTP(w, fwd)
+		a.opts.Handler.ServeHTTP(w, fwd)
 		r.Pattern = fwd.Pattern // the route it reached: usage, the log and the span read it from r
 		return
 	}
-	if s.localUIAccess(w, r) || httpx.CredentialLookupFailed(w, r) {
+	if a.localUIAccess(w, r) || httpx.CredentialLookupFailed(w, r) {
 		return
 	}
 	if !b.Enabled() {
 		// Only the pages people open: the session and API paths stay as they are.
 		if p != "/app/session" && !strings.HasPrefix(p, "/app/api") {
-			s.loginHelp(w, r, 401)
+			a.loginHelp(w, r, 401)
 			return
 		}
 		auth.Deny(w, 401)
@@ -175,28 +208,28 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		case r.Method != http.MethodGet:
 			auth.Deny(w, 405)
 		case !exact:
-			s.denyPerson(w, r, 403)
+			a.denyPerson(w, r, 403)
 		default:
 			b.StartLogin(w, r)
 		}
 		return
 	case auth.OIDCCallbackPath:
 		if r.Method != http.MethodGet || !exact || !b.Direct() {
-			s.denyPerson(w, r, 403)
+			a.denyPerson(w, r, 403)
 			return
 		}
 		b.CompleteLogin(w, r)
 		return
 	case "/github/callback":
-		s.denyPerson(w, r, 403) // GitHub OAuth is not offered (DESIGN §11)
+		a.denyPerson(w, r, 403) // GitHub OAuth is not offered (DESIGN §11)
 		return
 	case auth.MagicRequestPath:
 		if r.Method != http.MethodPost || !exact || !b.Direct() {
-			s.denyPerson(w, r, 403)
+			a.denyPerson(w, r, 403)
 			return
 		}
 		b.RequestMagicLink(w, r, func(to, link string) error {
-			cfg, err := auth.LoadEmail(s.Root.Dir)
+			cfg, err := auth.LoadEmail(a.opts.RootDir)
 			if err != nil || cfg == nil {
 				return err
 			}
@@ -207,7 +240,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 	case auth.MagicCallbackPath:
 		switch {
 		case !exact || !b.Direct():
-			s.denyPerson(w, r, 403)
+			a.denyPerson(w, r, 403)
 		case r.Method == http.MethodGet:
 			b.MagicLinkPage(w)
 		case r.Method == http.MethodPost:
@@ -218,7 +251,7 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	case "/app/logout":
 		if r.Method != http.MethodPost || !b.SameOrigin(r) {
-			s.denyPerson(w, r, 403)
+			a.denyPerson(w, r, 403)
 			return
 		}
 		b.Logout(w, r)
@@ -234,11 +267,11 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		auth.Deny(w, 403)
 		return
 	}
-	if !session && !allowedUIRoute(r.Method, target) {
+	if !session && !a.opts.Allowed(r.Method, target) {
 		auth.Deny(w, 404)
 		return
 	}
-	principal, id := s.BrowserPrincipal(r)
+	principal, id := a.Principal(r)
 	if principal == nil {
 		if !httpx.CredentialLookupFailed(w, r) {
 			auth.Deny(w, 401)
@@ -258,11 +291,11 @@ func (s *Server) uiAccess(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, 200, body)
 		return
 	}
-	s.forwardAsBrowser(w, r, principal, target)
+	a.forwardAsBrowser(w, r, principal, target)
 }
 
 // forwardAsBrowser runs an API route as the browser identity, without credentials.
-func (s *Server) forwardAsBrowser(w http.ResponseWriter, r *http.Request, principal *auth.Principal, target string) {
+func (a *Access) forwardAsBrowser(w http.ResponseWriter, r *http.Request, principal *auth.Principal, target string) {
 	fwd := r.Clone(context.WithValue(r.Context(), httpx.BrowserPrincipalKey{}, principal))
 	for name := range fwd.Header {
 		low := strings.ToLower(name)
@@ -272,7 +305,7 @@ func (s *Server) forwardAsBrowser(w http.ResponseWriter, r *http.Request, princi
 	}
 	fwd.URL.Path, fwd.URL.RawPath, fwd.URL.RawQuery, fwd.RequestURI = target, "", "", target
 	fwd.URL.RawQuery = forwardedQuery(target, r)
-	s.mux.ServeHTTP(w, fwd)
+	a.opts.Handler.ServeHTTP(w, fwd)
 	r.Pattern = fwd.Pattern // the route it reached: usage, the log and the span read it from r
 }
 

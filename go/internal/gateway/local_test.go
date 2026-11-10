@@ -194,7 +194,7 @@ func TestLocalSessionLoopbackRule(t *testing.T) {
 		if resp, _ := c.send("GET", "/app/api/_localbase/models", "", h); resp.StatusCode == 200 {
 			t.Errorf("API with %s: %d", label, resp.StatusCode)
 		}
-		if p := s.localPrincipal(mustLocalRequest(t, c, ck, m)); p != nil {
+		if p := s.access.localPrincipal(mustLocalRequest(t, c, ck, m)); p != nil {
 			t.Errorf("principal with %s", label)
 		}
 	}
@@ -290,9 +290,9 @@ func TestLoginLinkRateLimited(t *testing.T) {
 		t.Fatalf("limited: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
 	}
 	// A proxied visitor cannot use up the local person's tries, and the window ends.
-	s.localFails.mu.Lock()
-	s.localFails.start = time.Now().Add(-time.Minute)
-	s.localFails.mu.Unlock()
+	s.access.localFails.mu.Lock()
+	s.access.localFails.start = time.Now().Add(-time.Minute)
+	s.access.localFails.mu.Unlock()
 	for range localRedeemFailures + 2 {
 		c.redeem(auth.RandomToken(32), map[string]string{"X-Forwarded-For": "203.0.113.9"})
 	}
