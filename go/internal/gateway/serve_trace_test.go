@@ -28,18 +28,20 @@ func TestTheServerSpanFollowsAnIncomingTraceparent(t *testing.T) {
 	}
 }
 
-// The page's frequent poll (uiPollPath) has no server span, so it doesn't fill a collector, while
-// the request beside it does.
+// The page's frequent poll (uiPollPath) has no server span, so it doesn't fill a collector. A
+// gateway that answered only the poll exports no span at all; the same request to another path
+// does export one, so the collector can tell.
 func TestThePagePollHasNoSpan(t *testing.T) {
-	c := newSpanCollector(t)
-	ts := newTestServerConfigured(t, func(conf *Config) { conf.Otel = c.rt })
+	poll := newSpanCollector(t)
+	ts := newTestServerConfigured(t, func(conf *Config) { conf.Otel = poll.rt })
 	get(t, ts.URL+uiPollPath)
-	get(t, ts.URL+"/v1/models")
-	out := c.exported()
-	if !bytes.Contains(out, []byte("GET /v1/models")) {
-		t.Fatal("no span for the request beside the poll, so this can't tell")
-	}
-	if bytes.Contains(out, []byte(uiPollPath)) {
+	if out := poll.exported(); bytes.Contains(out, []byte("http.route")) {
 		t.Errorf("the page poll %s has a span", uiPollPath)
+	}
+	other := newSpanCollector(t)
+	ts = newTestServerConfigured(t, func(conf *Config) { conf.Otel = other.rt })
+	get(t, ts.URL+"/app/strip-not-the-poll")
+	if out := other.exported(); !bytes.Contains(out, []byte("http.route")) {
+		t.Error("a request beside the poll has no span, so this can't tell")
 	}
 }
