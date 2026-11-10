@@ -104,11 +104,11 @@ func (h *Handler) Transcription(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
 		return
 	}
-	if h.opts.Runtimes().STT == nil {
+	if h.opts.Runtimes.STT == nil {
 		httpx.NotConfigured(w, r, "STT")
 		return
 	}
-	id, err := h.opts.Runtimes().STT.Resolve(model)
+	id, err := h.opts.Runtimes.STT.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "STT")
@@ -118,7 +118,7 @@ func (h *Handler) Transcription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := h.opts.Runtimes().STT.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes.STT.Acquire(r.Context(), id)
 	if err != nil {
 		httpx.RuntimeError(w, r, err, id, "STT")
 		return

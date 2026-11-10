@@ -214,7 +214,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 			if l.spec != nil && l.spec.ContextWindowTokens != nil {
 				limit = min(limit, *l.spec.ContextWindowTokens)
 			}
-			req["max_tokens"] = min(DefaultMaxTokens(), limit, h.opts.Runtimes().LLM.Config().CtxSize)
+			req["max_tokens"] = min(DefaultMaxTokens(), limit, h.opts.Runtimes.LLM.Config().CtxSize)
 		}
 	})
 }
@@ -338,13 +338,13 @@ type inferOpts struct {
 func (h *Handler) inferLLM(w http.ResponseWriter, r *http.Request, model string, req map[string]any, o inferOpts, finish func(leaseInfo)) {
 	started := time.Now()
 	requestID := w.Header().Get("X-Localbase-Request-Id")
-	if _, _, err := h.opts.Runtimes().LLM.Resolve(model); err != nil {
+	if _, _, err := h.opts.Runtimes.LLM.Resolve(model); err != nil {
 		httpx.ModelNotFound(w, r, model)
 		return
 	}
 	hooks := httpx.RunHooksFrom(r.Context())
 	hooks.Queue()
-	lease, err := h.opts.Runtimes().LLM.Acquire(r.Context(), model)
+	lease, err := h.opts.Runtimes.LLM.Acquire(r.Context(), model)
 	if err != nil {
 		h.logAdmissionRejection(requestID, "llm", model, err)
 		httpx.RuntimeError(w, r, err, model, "LLM")

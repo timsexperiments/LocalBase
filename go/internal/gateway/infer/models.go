@@ -62,8 +62,8 @@ func permissionFor(kind string, spec *catalog.Spec) string {
 // ServedModels lists what the gateway routes to: per kind the active model
 // plus selected ones, filtered to what the principal may invoke (nil = all).
 func (h *Handler) ServedModels(p *auth.Principal, only string) ([]Model, []*store.ReadError) {
-	cfg := h.opts.Runtimes().LLM.Config()
-	runningID, runningPlan, _ := h.opts.Runtimes().LLM.Running()
+	cfg := h.opts.Runtimes.LLM.Config()
+	runningID, runningPlan, _ := h.opts.Runtimes.LLM.Running()
 	var out []Model
 	var problems []*store.ReadError
 	seen := map[string]bool{}
@@ -117,10 +117,10 @@ func (h *Handler) ServedModels(p *auth.Principal, only string) ([]Model, []*stor
 }
 
 func (h *Handler) importedLLMsChecked() ([]library.Entry, error) {
-	if h.opts.Library() == nil {
+	if h.opts.Library == nil {
 		return nil, nil
 	}
-	entries, err := h.opts.Library().Entries(context.Background())
+	entries, err := h.opts.Library.Entries(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (h *Handler) project(kind, id string, spec *catalog.Spec, runningID string,
 	if kind == "llm" {
 		plan := runningPlan
 		if id != runningID {
-			plan, _ = h.opts.Runtimes().LLM.Plan(id)
+			plan, _ = h.opts.Runtimes.LLM.Plan(id)
 		}
 		if plan != nil {
 			ctx := plan.Budget.EffectiveContext
@@ -183,7 +183,7 @@ func (h *Handler) project(kind, id string, spec *catalog.Spec, runningID string,
 }
 
 func (h *Handler) principalForListing(r *http.Request) *auth.Principal {
-	if h.opts.NoAuth() {
+	if h.opts.NoAuth {
 		return nil
 	}
 	return httpx.PrincipalFrom(r.Context())

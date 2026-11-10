@@ -37,19 +37,19 @@ type Handler struct {
 	opts Options
 }
 
-// Options are what Handler needs from the gateway. The funcs that read a value are read when
-// called: tests set those on the gateway after New.
+// Options are what Handler needs from the gateway. The three funcs that read a value
+// (SpeechBusyFor, RelayBodyLimit, StreamIdleLimit) are test seams, read when called (WAVE2 step 6).
 type Options struct {
 	Store    *store.Store
 	Root     *root.Root
 	Catalog  *catalog.Catalog
 	MemoryGB int
-	Runtimes func() runtime.Set
-	Log      func() *slog.Logger
-	Otel     func() *otlp.Runtime
-	NoAuth   func() bool
-	Library  func() *library.Library
-	Voices   func() *voices.Store
+	Runtimes runtime.Set
+	Log      *slog.Logger
+	Otel     *otlp.Runtime // nil: no traces
+	NoAuth   bool
+	Library  *library.Library // nil: no imported models
+	Voices   *voices.Store    // nil: only the built-in voices
 	// SpeechBusyFor is how long a busy tts-server is waited out, read when called; 0 is
 	// speechTimeout (tests).
 	SpeechBusyFor func() time.Duration
@@ -158,7 +158,7 @@ func (t *inference) begin(ctx context.Context, method string) {
 	if t.ctx != nil {
 		return
 	}
-	t.ctx, t.span = t.h.opts.Otel().Start(ctx, "localbase.inference", otlp.KindInternal, "http.request.method", method)
+	t.ctx, t.span = t.h.opts.Otel.Start(ctx, "localbase.inference", otlp.KindInternal, "http.request.method", method)
 	sp := t.span
 	sp.SetAttr("localbase.inference.model_id", t.modelID)
 	sp.SetAttr("localbase.inference.runtime.name", runtimeNames[t.modality])
@@ -260,7 +260,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 		ctx = context.Background()
 	}
 	defer t.span.End()
-	t.h.opts.Log().Log(ctx, level, "Inference response settled.", "event", "inference.completed",
+	t.h.opts.Log.Log(ctx, level, "Inference response settled.", "event", "inference.completed",
 		"category", "runtime", "component", "inference", "runtime", t.modality, "request_id", t.requestID,
 		slog.Group("attributes", attrs...))
 }
@@ -340,7 +340,7 @@ func (h *Handler) logAdmissionRejection(requestID, modality, model string, err e
 	case errors.Is(err, runtime.ErrUnavailable):
 		code, source, status = "service_unavailable", "unavailable", 503
 	case errors.As(err, &ae):
-		h.opts.Log().Warn("Memory admission rejected the runtime.", "event", "inference.admission-rejected", "category", "runtime",
+		h.opts.Log.Warn("Memory admission rejected the runtime.", "event", "inference.admission-rejected", "category", "runtime",
 			"component", "inference", "runtime", modality, "request_id", requestID,
 			slog.Group("attributes", "modality", modality, "model_id", model, "reason", ae.Reason,
 				"requested_bytes", ae.RequestedBytes, "demand_confidence", ae.Confidence))
@@ -348,7 +348,7 @@ func (h *Handler) logAdmissionRejection(requestID, modality, model string, err e
 	default:
 		return
 	}
-	h.opts.Log().Warn("Inference admission was rejected.", "event", "inference.admission-rejected", "category", "runtime",
+	h.opts.Log.Warn("Inference admission was rejected.", "event", "inference.admission-rejected", "category", "runtime",
 		"component", "inference", "runtime", modality, "request_id", requestID,
 		slog.Group("attributes", "modality", modality, "error_code", code, "source", source, "http_status", status))
 }
@@ -585,7 +585,7 @@ func (h *Handler) relay(w http.ResponseWriter, r *http.Request, url string, body
 // client span, carrying its trace context to the backend. Without an
 // exporter the caller's own trace context is passed through.
 func (h *Handler) backendCall(ctx context.Context, r *http.Request, up *http.Request, client *http.Client) (*http.Response, error) {
-	if !h.opts.Otel().Enabled() {
+	if !h.opts.Otel.Enabled() {
 		for _, name := range []string{"Traceparent", "Tracestate"} {
 			if v := r.Header.Get(name); v != "" {
 				up.Header.Set(name, v)
@@ -593,7 +593,7 @@ func (h *Handler) backendCall(ctx context.Context, r *http.Request, up *http.Req
 		}
 		return client.Do(up)
 	}
-	ctx, span := h.opts.Otel().Start(ctx, "localbase.backend.inference", otlp.KindClient,
+	ctx, span := h.opts.Otel.Start(ctx, "localbase.backend.inference", otlp.KindClient,
 		"server.address", up.URL.Hostname(), "http.request.method", r.Method)
 	defer span.End()
 	otlp.Inject(ctx, up.Header)

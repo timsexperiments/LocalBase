@@ -39,7 +39,7 @@ var videoJobID = regexp.MustCompile(videoJobIDPattern)
 // videoOwner names who owns the request's jobs (TS principalOwnerId).
 func (h *Handler) videoOwner(r *http.Request) string {
 	p := httpx.PrincipalFrom(r.Context())
-	if h.opts.NoAuth() || p == nil || p.Kind == "anonymous" {
+	if h.opts.NoAuth || p == nil || p.Kind == "anonymous" {
 		return localVideoOwner
 	}
 	return p.OwnerID()
@@ -141,7 +141,7 @@ func (h *Handler) VideoCreate(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(499)
 		return
 	}
-	if h.opts.Runtimes().Video == nil || h.opts.VideoJobs == nil || len(h.opts.Runtimes().Video.Config().Selected["video"]) == 0 {
+	if h.opts.Runtimes.Video == nil || h.opts.VideoJobs == nil || len(h.opts.Runtimes.Video.Config().Selected["video"]) == 0 {
 		httpx.NotConfigured(w, r, "Video")
 		return
 	}
@@ -164,14 +164,14 @@ func (h *Handler) VideoCreate(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, videoProfileMismatchMessage(req, spec), nil)
 		return
 	}
-	if err := h.opts.Runtimes().Video.InstallConsent(model); err != nil {
+	if err := h.opts.Runtimes.Video.InstallConsent(model); err != nil {
 		httpx.Error(w, r, 409, "invalid_request_error", "model_install_consent_required", err.Error(), httpx.StrPtr("model"))
 		return
 	}
 	requestID := w.Header().Get("X-Localbase-Request-Id")
 	var lease *runtime.ServiceLease
 	acquire := func(ctx context.Context) (video.Admission, error) {
-		l, err := h.opts.Runtimes().Video.Acquire(ctx, model)
+		l, err := h.opts.Runtimes.Video.Acquire(ctx, model)
 		if err != nil {
 			return nil, err
 		}
@@ -211,9 +211,9 @@ func (h *Handler) VideoCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		attrs = append(attrs, slog.Group("attributes", "job_id", j.ID, "model_id", model, "state", string(j.State), "duration_ms", duration))
 		if level == "error" {
-			h.opts.Log().Error("A local video job reached a terminal state.", attrs...)
+			h.opts.Log.Error("A local video job reached a terminal state.", attrs...)
 		} else {
-			h.opts.Log().Info("A local video job reached a terminal state.", attrs...)
+			h.opts.Log.Info("A local video job reached a terminal state.", attrs...)
 		}
 	}()
 	httpx.JSON(w, http.StatusAccepted, projectVideoJob(job))

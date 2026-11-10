@@ -271,11 +271,11 @@ func loraUnusable(w http.ResponseWriter, r *http.Request, spec *catalog.Spec, st
 
 // acquireImage resolves and admits an image model, writing the TS errors.
 func (h *Handler) acquireImage(w http.ResponseWriter, r *http.Request, model string) (*runtime.ServiceLease, bool) {
-	if h.opts.Runtimes().Image == nil {
+	if h.opts.Runtimes.Image == nil {
 		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	}
-	id, err := h.opts.Runtimes().Image.Resolve(model)
+	id, err := h.opts.Runtimes.Image.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "Image")
@@ -285,7 +285,7 @@ func (h *Handler) acquireImage(w http.ResponseWriter, r *http.Request, model str
 		return nil, false
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := h.opts.Runtimes().Image.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes.Image.Acquire(r.Context(), id)
 	if err != nil {
 		h.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
 		httpx.RuntimeError(w, r, err, id, "Image")
@@ -334,10 +334,10 @@ func (h *Handler) ImageGeneration(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) activeImageModel() string {
-	if h.opts.Runtimes().LLM == nil {
+	if h.opts.Runtimes.LLM == nil {
 		return ""
 	}
-	return h.opts.Runtimes().LLM.Config().Active["image"]
+	return h.opts.Runtimes.LLM.Config().Active["image"]
 }
 
 type editFile struct {

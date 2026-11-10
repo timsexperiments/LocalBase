@@ -23,13 +23,11 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/infer"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
-	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
-	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 // Server holds what handlers need. Construct with New.
@@ -166,12 +164,8 @@ func (s *Server) recordsOptions() records.Options {
 // inferOptions is what the /v1 inference routes need from this server.
 func (s *Server) inferOptions() infer.Options {
 	return infer.Options{Store: s.cfg.Store, Root: s.cfg.Root, Catalog: s.cfg.Catalog, MemoryGB: s.cfg.MemoryGB,
-		Runtimes: func() runtime.Set {
-			return runtime.Set{LLM: s.cfg.LLM, STT: s.cfg.STT, TTS: s.cfg.TTS, Image: s.cfg.Image, Video: s.cfg.Video}
-		},
-		Log: func() *slog.Logger { return s.cfg.Log }, Otel: func() *otlp.Runtime { return s.cfg.Otel }, NoAuth: func() bool { return s.cfg.NoAuth },
-		Library: func() *library.Library { return s.cfg.Library }, ImportedTask: s.importedTask, ReportReads: s.reportReads,
-		Voices: func() *voices.Store { return s.cfg.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
+		Runtimes: s.cfg.runtimes(), Log: s.cfg.Log, Otel: s.cfg.Otel, NoAuth: s.cfg.NoAuth, Library: s.cfg.Library,
+		ImportedTask: s.importedTask, ReportReads: s.reportReads, Voices: s.cfg.Voices, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
 		RelayBodyLimit: func() int { return s.relayBodyLimit }, StreamIdleLimit: func() time.Duration { return s.streamIdleLimit },
 		VideoJobs: s.cfg.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
 }
