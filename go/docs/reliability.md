@@ -92,7 +92,7 @@ make chaos-all      # includes them
 make known-bugs     # fails if a skip names a merged pull request, or none
 ```
 
-`tools/chaos` breaks a real gateway on purpose, one test and one gateway at a time:
+`test/chaos` breaks a real gateway on purpose, one test and one gateway at a time:
 backends killed mid-stream and mid-request, crash loops, the gateway itself killed, a
 locked and a damaged database, runs across a kill among damaged checkpoints, stored
 times from another clock, dropped and corrupt downloads, a stalled peer, a full disk,

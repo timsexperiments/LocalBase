@@ -7,7 +7,7 @@ themselves.
 | Run from `go/` | What it does |
 |---|---|
 | `make soak` (`tools/soak.sh`) | A real gateway over fake backends, through memory phases, drain and restart |
-| `make chaos` (`tools/chaos`) | What breaks, and what a person sees when it does |
+| `make chaos` (`test/chaos`) | What breaks, and what a person sees when it does |
 | `make bench` (`tools/bench.sh`) | What the gateway adds per request and per token, against budgets |
 | `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `go run ./tools/mutcheck <mutations.json>` | Breaks code on purpose and says whether the tests noticed. A mutation that doesn't compile is reported as that, never as a result |

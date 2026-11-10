@@ -4,7 +4,7 @@
 # GH_TOKEN in CI. Run from anywhere in the repository.
 set -eu
 cd "$(dirname "$0")/.."
-dirs="tools/chaos internal/runtime"
+dirs="test/chaos internal/runtime"
 calls=$(grep -rhoE 'knownBug\(t, [A-Za-z0-9]+,' $dirs | sed -E 's/knownBug\(t, ([A-Za-z0-9]+),/\1/' | sort -u)
 status=0
 for pr in $calls; do
