@@ -87,6 +87,9 @@ type Server struct {
 	speechBusyFor time.Duration
 	// unloadWait is how long an unload waits for in-flight requests; 0 is 30 s (tests).
 	unloadWait time.Duration
+	// relayBodyLimit and streamIdleLimit are the relay's limits; 0 is the default (tests).
+	relayBodyLimit  int
+	streamIdleLimit time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runs.Manager
@@ -228,6 +231,7 @@ func (s *Server) inferOptions() Options {
 		Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, ImportedTask: s.importedTask, ReportReads: s.reportReads,
 		Voices: func() *voices.Store { return s.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
+		RelayBodyLimit: func() int { return s.relayBodyLimit }, StreamIdleLimit: func() time.Duration { return s.streamIdleLimit },
 		VideoJobs: s.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
 }
 

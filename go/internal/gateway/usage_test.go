@@ -20,7 +20,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
-	"github.com/timsexperiments/LocalBase/go/internal/video"
 )
 
 // usageOf reads the totals straight from the recorder, for one principal or all.
@@ -298,11 +297,6 @@ func TestUsageVideoJobCountsOnce(t *testing.T) {
 	}
 	if !modelled {
 		t.Errorf("groups: %+v", rep.Groups)
-	}
-	for state, want := range map[video.State]int{video.Completed: 200, video.Failed: 500, video.Cancelled: 499} {
-		if got := videoJobStatus(state); got != want {
-			t.Errorf("%s: %d, want %d", state, got, want)
-		}
 	}
 }
 

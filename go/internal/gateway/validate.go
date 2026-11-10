@@ -21,13 +21,15 @@ type issue struct{ path, msg string }
 
 // What a refused request can cost is bounded, since a caller decides how much is wrong with it.
 const (
-	// maxValidationIssues is how many problems one answer lists.
-	maxValidationIssues = 100
-	// maxPathKey is how many bytes of a caller's own key go into an answer. A path is repeated in
-	// every issue under it.
-	maxPathKey = 64
-	// maxListedKeys is how many unrecognized keys one issue names.
-	maxListedKeys = 20
+	// MaxValidationIssues is how many problems one answer lists. It is part of the API's stated
+	// behaviour: an answer past it ends with ", and more".
+	MaxValidationIssues = 100
+	// MaxPathKey is how many bytes of a caller's own key go into an answer. A path is repeated in
+	// every issue under it. It is part of the API's stated behaviour.
+	MaxPathKey = 64
+	// MaxListedKeys is how many unrecognized keys one issue names. It is part of the API's stated
+	// behaviour: an issue past it ends with ", and more".
+	MaxListedKeys = 20
 )
 
 type checker struct {
@@ -39,7 +41,7 @@ type checker struct {
 }
 
 func (c *checker) fail(path, msg string) {
-	if len(c.issues) >= maxValidationIssues {
+	if len(c.issues) >= MaxValidationIssues {
 		c.more = true
 		return
 	}
@@ -106,10 +108,10 @@ func (c *checker) reply(w http.ResponseWriter, r *http.Request) {
 
 // shortKey keeps a caller's own key short enough to repeat, cut between characters.
 func shortKey(k string) string {
-	if len(k) <= maxPathKey {
+	if len(k) <= MaxPathKey {
 		return k
 	}
-	cut := maxPathKey
+	cut := MaxPathKey
 	for cut > 0 && !utf8.RuneStart(k[cut]) {
 		cut--
 	}
@@ -206,8 +208,8 @@ func (c *checker) strict(obj map[string]any, path string, allowed ...string) {
 			key = "keys"
 		}
 		more := ""
-		if len(extra) > maxListedKeys {
-			extra, more = extra[:maxListedKeys], ", and more"
+		if len(extra) > MaxListedKeys {
+			extra, more = extra[:MaxListedKeys], ", and more"
 		}
 		c.fail(path, "Unrecognized "+key+": "+strings.Join(extra, ", ")+more)
 	}
