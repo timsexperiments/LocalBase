@@ -27,13 +27,13 @@ type Options struct {
 	// Handler is the gateway's mux: a browser's request goes on to it as the browser's identity.
 	Handler http.Handler
 	Store   *store.Store
-	Log     func() *slog.Logger
+	Log     *slog.Logger
 	// Browser is browser sign-in, disabled when it isn't configured.
-	Browser func() *auth.Browser
+	Browser *auth.Browser
 	// NoAuth is --no-auth (loopback development), where the UI acts with every permission.
-	NoAuth func() bool
+	NoAuth bool
 	// Pages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
-	Pages func() LoginPages
+	Pages LoginPages
 	// RootDir holds the email settings a magic link is sent with.
 	RootDir string
 	// Allowed reports what the browser may call through /app/api.
@@ -62,10 +62,10 @@ func (a *Access) Principal(r *http.Request) (*auth.Principal, *auth.Identity) {
 	if p := a.localPrincipal(r); p != nil {
 		return p, nil
 	}
-	if !a.opts.Browser().Enabled() {
+	if !a.opts.Browser.Enabled() {
 		return nil, nil
 	}
-	id, owner, err := a.opts.Browser().AuthenticateChecked(r)
+	id, owner, err := a.opts.Browser.AuthenticateChecked(r)
 	if err != nil {
 		a.opts.LookupFailed(r, err)
 		return nil, nil
@@ -73,7 +73,7 @@ func (a *Access) Principal(r *http.Request) (*auth.Principal, *auth.Identity) {
 	if id == nil {
 		return nil, nil
 	}
-	d, err := a.opts.Browser().AuthorizeChecked(r.Context(), id)
+	d, err := a.opts.Browser.AuthorizeChecked(r.Context(), id)
 	if err != nil {
 		auth.MarkLookupFailed(r.Context()) // Authorize has logged it
 		return nil, nil
@@ -85,8 +85,8 @@ func (a *Access) Principal(r *http.Request) (*auth.Principal, *auth.Identity) {
 // UIAccess serves the browser-owned paths.
 func (a *Access) UIAccess(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
-	b := a.opts.Browser()
-	if a.opts.NoAuth() && (p == "/app/session" || strings.HasPrefix(p, "/app/api/")) {
+	b := a.opts.Browser
+	if a.opts.NoAuth && (p == "/app/session" || strings.HasPrefix(p, "/app/api/")) {
 		// --no-auth (loopback development): the UI acts with every permission.
 		full := &auth.Principal{Kind: "browser-session", ID: "no-auth", Permissions: auth.Permissions}
 		if p == "/app/session" {
