@@ -85,9 +85,9 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 
 ### Add an API route
 
-1. Register it in `Server` routing in `go/internal/gateway/server.go`, wrapped in `s.guard("<permission>", handler)`. Permissions are listed in `go/internal/auth/auth.go`.
+1. Add it to `routeTable` in `go/internal/gateway/routes.go`, with `guarded: true` and its `permission`: the table wraps the handler in `s.guard` and builds the mux from it. Permissions are listed in `go/internal/auth/auth.go`.
 2. Errors use the OpenAI envelope. Transient failures are 503 or 429 with `Retry-After`; permanent ones are 4xx.
-3. If the browser needs it, allow it in `allowedUIRoute` in `go/internal/gateway/browser.go`.
+3. If the browser needs it, give the route its `ui` methods in the same table (or `uiSub` for the paths under it). `allowedUIRoute` in `go/internal/gateway/ui_routes.go` reads them.
 4. Add a contract test in `go/contract/`, and list the route in [docs/api.md](docs/api.md).
 
 ### Add a UI page
