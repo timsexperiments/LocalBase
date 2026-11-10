@@ -125,7 +125,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
-	tel := &inference{s: s, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+	tel := &inference{h: s.infer, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 	tel.begin(r.Context(), r.Method)
 
@@ -154,7 +154,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	mw.Close()
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, lease.BaseURL+"/inference", &out)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := s.backendCall(tel.ctx, r, req, &http.Client{Timeout: 10 * time.Minute})
+	resp, err := s.infer.backendCall(tel.ctx, r, req, &http.Client{Timeout: 10 * time.Minute})
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
