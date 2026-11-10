@@ -564,6 +564,10 @@ func TestUsageBrowserRoute(t *testing.T) {
 			t.Errorf("%s: %v", c.method, got)
 		}
 	}
+}
+
+// What the browser sends usage keeps its query, and nothing else.
+func TestUsageForwardsItsQuery(t *testing.T) {
 	r := httptest.NewRequest("GET", "/app/api/_localbase/usage?range=7d&scope=all&group=model&group=route&secret=x", nil)
 	got := forwardedQuery("/_localbase/usage", r)
 	for _, want := range []string{"range=7d", "scope=all", "group=model", "group=route"} {
@@ -632,13 +636,13 @@ func TestUsageOutOfOTLP(t *testing.T) {
 func TestUsageCountsAUICallThroughAppAPI(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth, s.LoginPages = false, localPages{}
-	c := localClient{t, ts.URL}
-	cookie := sessionCookie(t, c, s)
+	s.NoAuth, s.LoginPages = false, gatewaytest.Pages{}
+	c := gatewaytest.LocalClient{T: t, Base: ts.URL}
+	cookie := gatewaytest.SessionCookie(t, c, s.Store)
 	before := usageOf(t, s, "").Totals.Requests
-	headers := localUI(cookie, ts.URL)
+	headers := gatewaytest.LocalUI(cookie, ts.URL)
 	headers["Content-Type"] = "application/json"
-	resp, body := c.send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), headers)
+	resp, body := c.Send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), headers)
 	if resp.StatusCode != 200 {
 		t.Fatalf("a chat through /app/api: %d %s", resp.StatusCode, body)
 	}
