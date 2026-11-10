@@ -118,7 +118,7 @@ func New(cfg Config) *Server {
 
 // runOptions is what the run manager needs from this server.
 func (s *Server) runOptions(dir string) runs.Options {
-	return runs.Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.cfg.Log }, Otel: func() *otlp.Runtime { return s.cfg.Otel },
+	return runs.Options{Handler: s, Owner: s.runOwner, Log: s.cfg.Log, Otel: s.cfg.Otel,
 		Dir: dir, MaxHeld: s.cfg.RunMemoryLimit, MaxHeldTotal: s.cfg.RunsMemoryLimit, MaxDuration: s.cfg.RunMaxDuration}
 }
 

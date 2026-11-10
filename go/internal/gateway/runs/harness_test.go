@@ -16,7 +16,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
-	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
 // The runs tests run against a Manager whose inner requests go to stubInner, not to a gateway: what
@@ -50,8 +49,7 @@ func stubOptions(dir string) Options {
 	return Options{
 		Handler: stubInner(),
 		Owner:   func(*http.Request) string { return "local" },
-		Log:     func() *slog.Logger { return log },
-		Otel:    func() *otlp.Runtime { return nil },
+		Log:     log,
 		Dir:     dir,
 	}
 }
