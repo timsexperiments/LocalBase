@@ -104,9 +104,7 @@ func TestUnloadBusyRefused(t *testing.T) {
 		}
 	}
 	busy(unload(t, c, gatewaytest.ChatModel, "?wait=false"))
-	old := unloadWait
-	unloadWait = 300 * time.Millisecond
-	defer func() { unloadWait = old }()
+	runServer(ts).unloadWait = 300 * time.Millisecond
 	began := time.Now()
 	busy(unload(t, c, gatewaytest.ChatModel, ""))
 	if d := time.Since(began); d < 250*time.Millisecond || d > 3*time.Second {

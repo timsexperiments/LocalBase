@@ -10,8 +10,9 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
-// unloadWait bounds how long an unload waits for in-flight requests.
-var unloadWait = 30 * time.Second
+// unloadWait bounds how long an unload waits for in-flight requests, unless Options.UnloadWait
+// gives another bound.
+const unloadWait = 30 * time.Second
 
 // unloadAPI is POST /_localbase/models/{id}/unload (models:manage, DESIGN
 // §23): drain the loaded model like an eviction, then stop it and release
@@ -28,6 +29,11 @@ func (h *Handler) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	wait := unloadWait
+	if h.opts.UnloadWait != nil {
+		if d := h.opts.UnloadWait(); d > 0 {
+			wait = d
+		}
+	}
 	switch r.URL.Query().Get("wait") {
 	case "", "true":
 	case "false":
