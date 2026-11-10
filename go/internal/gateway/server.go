@@ -227,7 +227,8 @@ func (s *Server) inferOptions() Options {
 		},
 		Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, ImportedTask: s.importedTask, ReportReads: s.reportReads,
-		Voices: func() *voices.Store { return s.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor }}
+		Voices: func() *voices.Store { return s.Voices }, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
+		VideoJobs: s.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
 }
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.
