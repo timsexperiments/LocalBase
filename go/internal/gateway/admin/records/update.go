@@ -22,7 +22,7 @@ func (h *Handler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth() && !p.Can("models:read") {
+		if !h.opts.NoAuth && !p.Can("models:read") {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -52,7 +52,7 @@ func (h *Handler) updateChange(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth() && !usage.CanChange(p.Can) {
+		if !h.opts.NoAuth && !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -82,10 +82,10 @@ func (h *Handler) updateChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.opts.Updates.SetEnabled(r.Context(), *in.Enabled); err != nil {
-		h.opts.Log().Error("Could not change the update check.", "event", "update.change-failed", "error", err.Error())
+		h.opts.Log.Error("Could not change the update check.", "event", "update.change-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Update check")
 		return
 	}
-	h.opts.Log().Info("Administration change.", "event", "audit.update-changed", "action", in.Action, "enabled", *in.Enabled, "actor_kind", actorKind, "actor_id", actorID)
+	h.opts.Log.Info("Administration change.", "event", "audit.update-changed", "action", in.Action, "enabled", *in.Enabled, "actor_kind", actorKind, "actor_id", actorID)
 	httpx.JSON(w, http.StatusOK, h.opts.Updates.Read(r.Context()))
 }
