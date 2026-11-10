@@ -105,3 +105,35 @@ func TestNoLeaksChecksAfterTheOtherCleanups(t *testing.T) {
 		t.Fatalf("a goroutine a later Cleanup stopped was reported: %q", f.errors)
 	}
 }
+
+// parkedElsewhere is a goroutine running code outside what LeakedIn looks within.
+func parkedElsewhere(stop chan struct{}) { <-stop }
+
+func TestLeakedInCountsOnlyWhatRunsWithin(t *testing.T) {
+	before := Snapshot()
+	stop := make(chan struct{})
+	defer close(stop)
+	go parkedForTheTest(stop)
+	go parkedElsewhere(stop)
+	time.Sleep(10 * time.Millisecond) // started, so their stacks show what they run
+	left := before.LeakedIn(50*time.Millisecond, "testutil.parkedForTheTest")
+	if len(left) != 1 || !strings.Contains(left[0], "parkedForTheTest") {
+		t.Fatalf("want only the goroutine within, got %d: %q", len(left), left)
+	}
+	if left := before.LeakedIn(50*time.Millisecond, "testutil.noSuchFunction"); len(left) != 0 {
+		t.Fatalf("goroutines outside were counted: %q", left)
+	}
+}
+
+func TestNoLeaksInReportsWhatRunsWithin(t *testing.T) {
+	f := &cleanupT{}
+	NoLeaksIn(f, "testutil.parkedForTheTest")
+	stop := make(chan struct{})
+	defer close(stop)
+	go parkedForTheTest(stop)
+	go parkedElsewhere(stop)
+	f.end()
+	if len(f.errors) != 1 || !strings.Contains(f.errors[0], "1 goroutines started by the test are still running testutil.parkedForTheTest code") {
+		t.Fatalf("want one report of the goroutine within, got %q", f.errors)
+	}
+}
