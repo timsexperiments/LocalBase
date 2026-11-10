@@ -43,13 +43,6 @@ type Server struct {
 	infer *infer.Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
-	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
-	speechBusyFor time.Duration
-	// unloadWait is how long an unload waits for in-flight requests; 0 is 30 s (tests).
-	unloadWait time.Duration
-	// relayBodyLimit and streamIdleLimit are the relay's limits; 0 is the default (tests).
-	relayBodyLimit  int
-	streamIdleLimit time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
 	runs *runs.Manager
@@ -140,7 +133,7 @@ func (s *Server) modelsOptions() models.Options {
 		Runtimes: s.cfg.runtimes(), Log: s.cfg.Log, NoAuth: s.cfg.NoAuth, Library: s.cfg.Library, Overrides: s.cfg.Overrides,
 		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
 		ReportReads: s.reportReads, AdmissionAPI: s.records.AdmissionAPI,
-		UnloadWait: func() time.Duration { return s.unloadWait }}
+		UnloadWait: s.cfg.unloadWait}
 }
 
 // StopManagement lets an accepted install finish within grace, then
@@ -165,8 +158,8 @@ func (s *Server) recordsOptions() records.Options {
 func (s *Server) inferOptions() infer.Options {
 	return infer.Options{Store: s.cfg.Store, Root: s.cfg.Root, Catalog: s.cfg.Catalog, MemoryGB: s.cfg.MemoryGB,
 		Runtimes: s.cfg.runtimes(), Log: s.cfg.Log, Otel: s.cfg.Otel, NoAuth: s.cfg.NoAuth, Library: s.cfg.Library,
-		ImportedTask: s.importedTask, ReportReads: s.reportReads, Voices: s.cfg.Voices, SpeechBusyFor: func() time.Duration { return s.speechBusyFor },
-		RelayBodyLimit: func() int { return s.relayBodyLimit }, StreamIdleLimit: func() time.Duration { return s.streamIdleLimit },
+		ImportedTask: s.importedTask, ReportReads: s.reportReads, Voices: s.cfg.Voices, SpeechBusyFor: s.cfg.speechBusyFor,
+		RelayBodyLimit: s.cfg.relayBodyLimit, StreamIdleLimit: s.cfg.streamIdleLimit,
 		VideoJobs: s.cfg.VideoJobs, Guard: s.guard, Unmatched: s.unmatched, RecordVideoJob: s.recordVideoJob}
 }
 

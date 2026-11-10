@@ -37,8 +37,8 @@ type Handler struct {
 	opts Options
 }
 
-// Options are what Handler needs from the gateway. The three funcs that read a value
-// (SpeechBusyFor, RelayBodyLimit, StreamIdleLimit) are test seams, read when called (WAVE2 step 6).
+// Options are what Handler needs from the gateway. SpeechBusyFor, RelayBodyLimit and
+// StreamIdleLimit are test seams (WAVE2 step 6): 0 is the default.
 type Options struct {
 	Store    *store.Store
 	Root     *root.Root
@@ -50,13 +50,12 @@ type Options struct {
 	NoAuth   bool
 	Library  *library.Library // nil: no imported models
 	Voices   *voices.Store    // nil: only the built-in voices
-	// SpeechBusyFor is how long a busy tts-server is waited out, read when called; 0 is
-	// speechTimeout (tests).
-	SpeechBusyFor func() time.Duration
-	// RelayBodyLimit and StreamIdleLimit are the relay's limits, read when called; 0 or nil is
-	// relayBodyLimit or streamIdleLimit (tests).
-	RelayBodyLimit  func() int
-	StreamIdleLimit func() time.Duration
+	// SpeechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
+	SpeechBusyFor time.Duration
+	// RelayBodyLimit and StreamIdleLimit are the relay's limits; 0 is relayBodyLimit or
+	// streamIdleLimit (tests).
+	RelayBodyLimit  int
+	StreamIdleLimit time.Duration
 	// VideoJobs holds the video jobs; Guard is the route table's permission check, Unmatched answers
 	// a path no route has, and RecordVideoJob counts a job when it ends.
 	VideoJobs      *video.Manager
@@ -367,20 +366,16 @@ const (
 
 // bodyLimit is relayBodyLimit, unless Options.RelayBodyLimit says otherwise.
 func (h *Handler) bodyLimit() int {
-	if h.opts.RelayBodyLimit != nil {
-		if n := h.opts.RelayBodyLimit(); n > 0 {
-			return n
-		}
+	if n := h.opts.RelayBodyLimit; n > 0 {
+		return n
 	}
 	return relayBodyLimit
 }
 
 // idleLimit is streamIdleLimit, unless Options.StreamIdleLimit says otherwise.
 func (h *Handler) idleLimit() time.Duration {
-	if h.opts.StreamIdleLimit != nil {
-		if d := h.opts.StreamIdleLimit(); d > 0 {
-			return d
-		}
+	if d := h.opts.StreamIdleLimit; d > 0 {
+		return d
 	}
 	return streamIdleLimit
 }

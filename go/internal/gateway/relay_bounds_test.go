@@ -44,15 +44,13 @@ func streamChat(t *testing.T, base, content string) (int, string) {
 
 // Review 02, M6: an answer over what is read whole says so, rather than reading as malformed JSON.
 func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
-	ts := newTestServer(t)
-	s := runServer(ts)
-	s.relayBodyLimit = 64
-	r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
+	small := newTestServerConfigured(t, func(c *Config) { c.relayBodyLimit = 64 })
+	r := post(t, small, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if r.status != 502 || r.code() != "upstream_error" ||
 		!strings.Contains(r.body, "The upstream service returned a response larger than 64 bytes.") {
 		t.Errorf("an answer over the limit: %d %s", r.status, r.body)
 	}
-	s.relayBodyLimit = 0
+	ts := newTestServer(t) // the default limit
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Errorf("an answer under it: %d %s", r.status, r.body)
 	}
@@ -66,8 +64,7 @@ func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
 func TestAStreamThatGoesQuietEnds(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
-	ts := newTestServer(t)
-	runServer(ts).streamIdleLimit = 300 * time.Millisecond
+	ts := newTestServerConfigured(t, func(c *Config) { c.streamIdleLimit = 300 * time.Millisecond })
 	status, body := streamChat(t, ts.URL, "fake:stall")
 	if status != 200 || !strings.Contains(body, `"content":"hello`) {
 		t.Errorf("what came before it went quiet: %d %q", status, body)
@@ -83,8 +80,7 @@ func TestAStreamThatGoesQuietEnds(t *testing.T) {
 // No limit before a stream's first byte: a long prompt can take many minutes to process.
 func TestAStreamMayTakeItsTimeToStart(t *testing.T) {
 	t.Setenv("FAKE_DELAY_MS", "900")
-	ts := newTestServer(t)
-	runServer(ts).streamIdleLimit = 300 * time.Millisecond
+	ts := newTestServerConfigured(t, func(c *Config) { c.streamIdleLimit = 300 * time.Millisecond })
 	status, body := streamChat(t, ts.URL, "fake:burst 5")
 	if status != 200 || !strings.Contains(body, "[DONE]") || strings.Contains(body, "stopped sending output") {
 		t.Errorf("a stream that started late: %d %q", status, body)

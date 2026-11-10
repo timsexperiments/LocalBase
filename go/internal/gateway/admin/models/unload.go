@@ -29,10 +29,8 @@ func (h *Handler) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	wait := unloadWait
-	if h.opts.UnloadWait != nil {
-		if d := h.opts.UnloadWait(); d > 0 {
-			wait = d
-		}
+	if h.opts.UnloadWait > 0 {
+		wait = h.opts.UnloadWait
 	}
 	switch r.URL.Query().Get("wait") {
 	case "", "true":
