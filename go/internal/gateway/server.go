@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -74,11 +73,8 @@ type Server struct {
 	Updates *upgrade.Checker
 
 	mgmt *management
-	// adminMu is held from the checks on a change to keys or access through its write:
-	// each check reads state the other changes can alter.
-	adminMu sync.Mutex
-	// beforeAdminWrite runs after those checks, before the write (tests only).
-	beforeAdminWrite func()
+	// keys serves the key and access APIs, and the Hugging Face token.
+	keys *Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
 	speechBusyFor time.Duration
 
@@ -148,6 +144,7 @@ func New(s *Server) *Server {
 	go s.runs.Janitor()
 	mux := http.NewServeMux()
 	s.access = browser.NewAccess(s.accessOptions(mux, rootDir))
+	s.keys = NewHandler(s.keysOptions(rootDir))
 	for _, rt := range s.routeTable() {
 		mux.Handle(rt.pattern, rt.handler)
 		s.routes = append(s.routes, rt.pattern)
@@ -168,6 +165,12 @@ func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options
 		Browser: func() *auth.Browser { return s.Browser }, NoAuth: func() bool { return s.NoAuth },
 		Pages: func() browser.LoginPages { return s.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
 		Caller: s.principal, LookupFailed: s.lookupFailed}
+}
+
+// keysOptions is what the key and access APIs need from this server.
+func (s *Server) keysOptions(rootDir string) Options {
+	return Options{Store: s.Store, RootDir: rootDir, LLM: s.LLM, Browser: func() *auth.Browser { return s.Browser },
+		Caller: s.principal}
 }
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.

@@ -11,16 +11,44 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 // Admin APIs (management-http.ts): /_localbase/access-management,
 // /_localbase/api-keys, and /_localbase/hf-token.
+
+// Handler serves the key and access APIs, and the Hugging Face token, for one gateway.
+type Handler struct {
+	opts Options
+	// adminMu is held from the checks on a change to keys or access through its write:
+	// each check reads state the other changes can alter.
+	adminMu sync.Mutex
+	// beforeAdminWrite runs after those checks, before the write (tests only).
+	beforeAdminWrite func()
+}
+
+// Options are what Handler needs from the gateway.
+type Options struct {
+	Store *store.Store
+	// RootDir holds the access policy and the Hugging Face token's lease.
+	RootDir string
+	// LLM is told a new Hugging Face token, for its downloads; nil when there is none.
+	LLM *runtime.LLM
+	// Browser is browser sign-in, read when called: tests set it after New.
+	Browser func() *auth.Browser
+	// Caller is who a request is from.
+	Caller func(*http.Request) *auth.Principal
+}
+
+// NewHandler returns the key and access APIs for o.
+func NewHandler(o Options) *Handler { return &Handler{opts: o} }
 
 // errCallerGone is a key that stopped working after its request was authenticated.
 var errCallerGone = errors.New("the calling key is no longer active")
@@ -28,10 +56,10 @@ var errCallerGone = errors.New("the calling key is no longer active")
 // adminCaller reads what the caller holds now, with adminMu held. A key or a role can
 // change between authenticating a request and acting on it, and the change that wins
 // that race may be the one taking this caller's permissions away.
-func (s *Server) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyCaller, error) {
+func (h *Handler) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyCaller, error) {
 	switch {
 	case p.Kind == "api-key":
-		k, err := s.Store.APIKeyByID(ctx, p.ID)
+		k, err := h.opts.Store.APIKeyByID(ctx, p.ID)
 		var missing *store.ErrKeyNotFound
 		if errors.As(err, &missing) || (err == nil && !auth.ActiveKey(*k)) {
 			return auth.KeyCaller{}, errCallerGone
@@ -40,13 +68,13 @@ func (s *Server) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyCa
 			return auth.KeyCaller{}, err
 		}
 		return auth.KeyCaller{Holds: auth.Canonical(k.Scopes), Key: k}, nil
-	case p.Kind == "browser-session" && p.Identity != nil && s.Browser.Enabled():
-		return auth.KeyCaller{Holds: s.Browser.Authorize(ctx, p.Identity).Permissions}, nil
+	case p.Kind == "browser-session" && p.Identity != nil && h.opts.Browser().Enabled():
+		return auth.KeyCaller{Holds: h.opts.Browser().Authorize(ctx, p.Identity).Permissions}, nil
 	}
 	return auth.KeyCaller{Holds: p.Permissions}, nil
 }
 
-func (s *Server) domainError(w http.ResponseWriter, err error) bool {
+func (h *Handler) domainError(w http.ResponseWriter, err error) bool {
 	var ae *auth.AccessError
 	if !errors.As(err, &ae) {
 		return false
@@ -95,15 +123,15 @@ func publicKey(k *store.APIKey) map[string]any {
 
 func validScopes(scopes []string) ([]string, bool) {
 	for _, sc := range scopes {
-		if !contains(auth.Permissions, sc) {
+		if !slices.Contains(auth.Permissions, sc) {
 			return nil, false
 		}
 	}
 	return auth.Canonical(scopes), true
 }
 
-func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) APIKeys(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		if httpx.CredentialLookupFailed(w, r) {
 			return
@@ -117,7 +145,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 			httpx.ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
-		keys, err := s.Store.ListAPIKeys(ctx)
+		keys, err := h.opts.Store.ListAPIKeys(ctx)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
@@ -180,9 +208,9 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// From the checks to the write, nothing else changes keys or access.
-	s.adminMu.Lock()
-	defer s.adminMu.Unlock()
-	caller, err := s.adminCaller(ctx, p)
+	h.adminMu.Lock()
+	defer h.adminMu.Unlock()
+	caller, err := h.adminCaller(ctx, p)
 	switch {
 	case errors.Is(err, errCallerGone):
 		httpx.ManagementError(w, 401, "invalid_api_key")
@@ -196,7 +224,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	var target *store.APIKey
 	if in.Action != "create" {
-		if target, err = s.Store.APIKeyByID(ctx, keyID); err != nil {
+		if target, err = h.opts.Store.APIKeyByID(ctx, keyID); err != nil {
 			if missing := (*store.ErrKeyNotFound)(nil); errors.As(err, &missing) {
 				httpx.ManagementError(w, 404, "key_not_found")
 			} else {
@@ -220,53 +248,53 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		err = caller.CheckSetScopes(target, scopes)
 	}
 	if err != nil {
-		s.domainError(w, err)
+		h.domainError(w, err)
 		return
 	}
 	// Lockout rules (DESIGN §13.6): never the last principal with access:manage.
 	if in.Action != "create" {
-		cfg, err := auth.LoadAccess(s.Root.Dir)
+		cfg, err := auth.LoadAccess(h.opts.RootDir)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		g, err := auth.LoadGuard(ctx, s.Store, cfg)
+		g, err := auth.LoadGuard(ctx, h.opts.Store, cfg)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		if err := g.CheckKeyChange(caller.KeyID(), target, in.Action, scopes); err != nil {
-			s.domainError(w, err)
+			h.domainError(w, err)
 			return
 		}
 	}
-	if s.beforeAdminWrite != nil {
-		s.beforeAdminWrite()
+	if h.beforeAdminWrite != nil {
+		h.beforeAdminWrite()
 	}
 	switch in.Action {
 	case "create":
-		k, raw, err := s.Store.CreateAPIKeyExpiring(ctx, *in.Name, scopes, days)
+		k, raw, err := h.opts.Store.CreateAPIKeyExpiring(ctx, *in.Name, scopes, days)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		httpx.NoStore(w, 201, map[string]any{"key": publicKey(k), "secret": raw})
 	case "rotate":
-		k, raw, err := s.Store.RotateAPIKey(ctx, keyID)
+		k, raw, err := h.opts.Store.RotateAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		httpx.NoStore(w, 200, map[string]any{"key": publicKey(k), "secret": raw})
 	case "revoke":
-		k, err := s.Store.RevokeAPIKey(ctx, keyID)
+		k, err := h.opts.Store.RevokeAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
 		httpx.NoStore(w, 200, map[string]any{"key": publicKey(k)})
 	case "set-scopes":
-		k, err := s.Store.SetAPIKeyScopes(ctx, keyID, scopes)
+		k, err := h.opts.Store.SetAPIKeyScopes(ctx, keyID, scopes)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
@@ -277,8 +305,8 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 
 // --- access management ------------------------------------------------------------------
 
-func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		if httpx.CredentialLookupFailed(w, r) {
 			return
@@ -287,15 +315,15 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	root := s.Root.Dir
+	root := h.opts.RootDir
 	if r.Method == http.MethodGet {
 		if !p.Can("access:read") {
 			httpx.ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
 		cfg, err := auth.LoadAccess(root)
-		policy, perr := auth.LoadPolicy(ctx, s.Store.DB)
-		users, uerr := auth.ListUsers(ctx, s.Store)
+		policy, perr := auth.LoadPolicy(ctx, h.opts.Store.DB)
+		users, uerr := auth.ListUsers(ctx, h.opts.Store)
 		email, eerr := auth.LoadEmail(root)
 		if err != nil || perr != nil || uerr != nil || eerr != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
@@ -318,7 +346,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if open := auth.OpenSignIn(cfg, policy); open != "" {
 			out["openSignIn"] = open
 		}
-		signedIn, err := auth.SignedIn(ctx, s.Store)
+		signedIn, err := auth.SignedIn(ctx, h.opts.Store)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
@@ -327,7 +355,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			out["signedIn"] = signedIn
 		}
 		if len(cfg.Issuers()) > 0 {
-			left, err := auth.CountUnbound(ctx, s.Store.DB)
+			left, err := auth.CountUnbound(ctx, h.opts.Store.DB)
 			if err != nil {
 				httpx.ServiceUnavailable(w, r, "Access management")
 				return
@@ -384,8 +412,8 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		defer lease.Release()
 		// From the checks to the write, nothing else changes keys or access.
-		s.adminMu.Lock()
-		defer s.adminMu.Unlock()
+		h.adminMu.Lock()
+		defer h.adminMu.Unlock()
 	}
 	current, err := auth.LoadAccess(root)
 	if err != nil {
@@ -393,7 +421,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Action != "test-policy" && in.Action != "test-email-delivery" {
-		caller, err := s.adminCaller(ctx, p)
+		caller, err := h.adminCaller(ctx, p)
 		switch {
 		case errors.Is(err, errCallerGone):
 			httpx.ManagementError(w, 401, "invalid_api_key")
@@ -405,13 +433,13 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
-		g, err := auth.LoadGuard(ctx, s.Store, current)
+		g, err := auth.LoadGuard(ctx, h.opts.Store, current)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
 		if err := prepareAccessChange(g, caller.Holds, p.Identity, in); err != nil {
-			s.domainError(w, err)
+			h.domainError(w, err)
 			return
 		}
 	}
@@ -419,7 +447,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	// access management (a Go addition; see auth.Guard). It reports whether
 	// it wrote a response.
 	lockout := func(email string, self bool, change func(*auth.Guard)) bool {
-		g, err := auth.LoadGuard(ctx, s.Store, current)
+		g, err := auth.LoadGuard(ctx, h.opts.Store, current)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return true
@@ -429,15 +457,15 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			caller = p.Identity
 		}
 		if self && g.IsCaller(caller, email) {
-			s.domainError(w, auth.ErrSelfRecord)
+			h.domainError(w, auth.ErrSelfRecord)
 			return true
 		}
 		if err := g.CheckChange(caller, change); err != nil {
-			s.domainError(w, err)
+			h.domainError(w, err)
 			return true
 		}
-		if s.beforeAdminWrite != nil {
-			s.beforeAdminWrite()
+		if h.beforeAdminWrite != nil {
+			h.beforeAdminWrite()
 		}
 		return false
 	}
@@ -467,12 +495,12 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ManagementError(w, 409, "provider_not_configured")
 			return
 		}
-		policy, err := auth.LoadPolicy(ctx, s.Store.DB)
+		policy, err := auth.LoadPolicy(ctx, h.opts.Store.DB)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
-		d, err := auth.ResolvePolicy(ctx, s.Store, *in.Identity, false)
+		d, err := auth.ResolvePolicy(ctx, h.opts.Store, *in.Identity, false)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
@@ -504,9 +532,9 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		user, err := auth.InviteUser(ctx, s.Store, in.Email, in.Roles, in.Issuer)
+		user, err := auth.InviteUser(ctx, h.opts.Store, in.Email, in.Roles, in.Issuer)
 		if err != nil {
-			if !s.domainError(w, err) {
+			if !h.domainError(w, err) {
 				httpx.ManagementError(w, 400, "validation_failed")
 			}
 			return
@@ -614,16 +642,16 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		switch in.Action {
 		case "replace-user-roles":
-			user, err = auth.ReplaceUserRoles(ctx, s.Store, in.Email, in.Roles)
+			user, err = auth.ReplaceUserRoles(ctx, h.opts.Store, in.Email, in.Roles)
 		case "enable-user":
-			user, err = auth.SetUserStatus(ctx, s.Store, in.Email, "active")
+			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "active")
 		case "disable-user":
-			user, err = auth.SetUserStatus(ctx, s.Store, in.Email, "disabled")
+			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "disabled")
 		default:
-			user, err = auth.RemoveUser(ctx, s.Store, in.Email)
+			user, err = auth.RemoveUser(ctx, h.opts.Store, in.Email)
 		}
 		if err != nil {
-			if !s.domainError(w, err) {
+			if !h.domainError(w, err) {
 				httpx.ManagementError(w, 400, "validation_failed")
 			}
 			return
@@ -634,7 +662,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ManagementError(w, 409, "provider_not_configured")
 			return
 		}
-		existing, err := auth.LoadPolicy(ctx, s.Store.DB)
+		existing, err := auth.LoadPolicy(ctx, h.opts.Store.DB)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
@@ -668,9 +696,9 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if in.Action == "clear-policy" {
-			cleared, err := auth.ClearPolicy(ctx, s.Store)
+			cleared, err := auth.ClearPolicy(ctx, h.opts.Store)
 			if err != nil {
-				if !s.domainError(w, err) {
+				if !h.domainError(w, err) {
 					httpx.ServiceUnavailable(w, r, "Access management")
 				}
 				return
@@ -678,8 +706,8 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.NoStore(w, 200, map[string]any{"cleared": cleared, "policyRevision": nil, "restartRequired": false})
 			return
 		}
-		if err := auth.ApplyPolicy(ctx, s.Store, in.Policy); err != nil {
-			if !s.domainError(w, err) {
+		if err := auth.ApplyPolicy(ctx, h.opts.Store, in.Policy); err != nil {
+			if !h.domainError(w, err) {
 				httpx.ManagementError(w, 400, "validation_failed")
 			}
 			return
@@ -782,7 +810,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		return nil, false
 	}
 	for k, v := range in.raw {
-		if k != "action" && !contains(fields, k) {
+		if k != "action" && !slices.Contains(fields, k) {
 			return nil, false
 		}
 		if string(v) == "null" && !(in.Action == "apply-policy" && k == "expectedPolicyRevision") {
@@ -910,8 +938,8 @@ func CheckHFToken(ctx context.Context, token string) map[string]any {
 	return map[string]any{"state": "valid", "name": name, "role": role}
 }
 
-func (s *Server) hfTokenStatus(ctx context.Context) map[string]any {
-	cfg, _ := s.Store.LoadConfig(ctx)
+func (h *Handler) hfTokenStatus(ctx context.Context) map[string]any {
+	cfg, _ := h.opts.Store.LoadConfig(ctx)
 	saved := cfg != nil && cfg.HFToken != ""
 	env := os.Getenv("HF_TOKEN") != ""
 	var source any
@@ -924,29 +952,29 @@ func (s *Server) hfTokenStatus(ctx context.Context) map[string]any {
 	return map[string]any{"configured": saved || env, "source": source, "envAvailable": env}
 }
 
-func (s *Server) saveHFToken(ctx context.Context, token string) error {
-	return lease.WithOperation(s.Root.Dir, "update runtime configuration", func() error { return s.saveHFTokenLocked(ctx, token) })
+func (h *Handler) saveHFToken(ctx context.Context, token string) error {
+	return lease.WithOperation(h.opts.RootDir, "update runtime configuration", func() error { return h.saveHFTokenLocked(ctx, token) })
 }
 
-func (s *Server) saveHFTokenLocked(ctx context.Context, token string) error {
-	cfg, err := s.Store.LoadConfig(ctx)
+func (h *Handler) saveHFTokenLocked(ctx context.Context, token string) error {
+	cfg, err := h.opts.Store.LoadConfig(ctx)
 	if err != nil {
 		return err
 	}
 	cfg.HFToken = token
-	if err := s.Store.SaveConfig(ctx, cfg); err != nil {
+	if err := h.opts.Store.SaveConfig(ctx, cfg); err != nil {
 		return err
 	}
-	if s.LLM != nil { // Downloads read it from here. Only this changes: the rest may hold overrides.
-		next := s.LLM.Config().Clone()
+	if h.opts.LLM != nil { // Downloads read it from here. Only this changes: the rest may hold overrides.
+		next := h.opts.LLM.Config().Clone()
 		next.HFToken = token
-		s.LLM.SetConfig(next)
+		h.opts.LLM.SetConfig(next)
 	}
 	return nil
 }
 
-func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) HFToken(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
@@ -963,7 +991,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	ctx := r.Context()
 	if r.Method == http.MethodGet {
-		httpx.JSON(w, 200, s.hfTokenStatus(ctx))
+		httpx.JSON(w, 200, h.hfTokenStatus(ctx))
 		return
 	}
 	if r.ContentLength > 1024 {
@@ -1005,13 +1033,13 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 	}
 	switch in.Action {
 	case "clear":
-		if err := s.saveHFToken(ctx, ""); err != nil {
+		if err := h.saveHFToken(ctx, ""); err != nil {
 			httpx.ServiceUnavailable(w, r, "Configuration")
 			return
 		}
-		httpx.JSON(w, 200, s.hfTokenStatus(ctx))
+		httpx.JSON(w, 200, h.hfTokenStatus(ctx))
 	case "validate":
-		cfg, _ := s.Store.LoadConfig(ctx)
+		cfg, _ := h.opts.Store.LoadConfig(ctx)
 		t := os.Getenv("HF_TOKEN")
 		if cfg != nil && cfg.HFToken != "" {
 			t = cfg.HFToken
@@ -1020,7 +1048,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, r, 409, "invalid_request_error", "hf_token_missing", "No Hugging Face token is saved or set in HF_TOKEN.", nil)
 			return
 		}
-		out := s.hfTokenStatus(ctx)
+		out := h.hfTokenStatus(ctx)
 		out["check"] = CheckHFToken(ctx, t)
 		httpx.JSON(w, 200, out)
 	case "save":
@@ -1033,11 +1061,11 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := s.saveHFToken(ctx, token); err != nil {
+		if err := h.saveHFToken(ctx, token); err != nil {
 			httpx.ServiceUnavailable(w, r, "Configuration")
 			return
 		}
-		out := s.hfTokenStatus(ctx)
+		out := h.hfTokenStatus(ctx)
 		if check != nil {
 			out["check"] = check
 		}
