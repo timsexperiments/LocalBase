@@ -318,14 +318,6 @@ var (
 	streamIdleLimit = 5 * time.Minute
 )
 
-// SizeText says a limit in MiB when it is whole MiB, else in bytes.
-func SizeText(n int) string {
-	if n%(1<<20) == 0 {
-		return fmt.Sprintf("%d MiB", n>>20)
-	}
-	return fmt.Sprintf("%d bytes", n)
-}
-
 // errStreamIdle ends the read of a stream that went quiet past streamIdleLimit.
 var errStreamIdle = errors.New("the stream went quiet")
 
@@ -462,7 +454,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if len(raw) > relayBodyLimit { // said as it is, not as the malformed JSON a cut answer would be
-		UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", SizeText(relayBodyLimit)))
+		UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", memory.SizeText(relayBodyLimit)))
 		t.finish("error", 502, "response_size_limit")
 		return
 	}

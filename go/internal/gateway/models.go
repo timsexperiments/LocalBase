@@ -94,7 +94,7 @@ func (s *Server) ServedModels(p *auth.Principal, only string) ([]Model, []*store
 		if seen[id] || (only != "" && id != only) {
 			continue
 		}
-		task := ImportTask(&e.Model)
+		task := models.ImportTask(&e.Model)
 		if p != nil && !p.Can(map[string]string{"chat": "inference:chat", "embeddings": "inference:embeddings", "decision": "inference:decision"}[task]) {
 			continue
 		}
@@ -126,21 +126,11 @@ func (s *Server) importedLLMsChecked() ([]library.Entry, error) {
 	}
 	var out []library.Entry
 	for _, e := range entries {
-		if e.Imported && ImportTask(&e.Model) != "" {
+		if e.Imported && models.ImportTask(&e.Model) != "" {
 			out = append(out, e)
 		}
 	}
 	return out, nil
-}
-
-// ImportTask is the LLM task an imported model serves, chat, embeddings or decision, or "" for none.
-func ImportTask(m *models.Model) string {
-	for _, t := range []string{"chat", "embeddings", "decision"} {
-		if m.HasTask(t) {
-			return t
-		}
-	}
-	return ""
 }
 
 func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) (Model, []*store.ReadError) {
