@@ -125,12 +125,12 @@ func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 		t.Fatalf("read only %d source files", checked)
 	}
 	// What the tests above pin must be what people read.
-	for _, text := range []string{freeMemoryHint, memory.RefusalText(refusal("system-memory", memory.GiB), "this model")} {
+	for _, text := range []string{FreeMemoryHint, memory.RefusalText(refusal("system-memory", memory.GiB), "this model")} {
 		if !strings.Contains(text, "Free memory from a loaded model") {
 			t.Errorf("%q", text)
 		}
 	}
-	working := videoMemoryMessage(&memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"})
+	working := MemoryMessage(&memory.AdmissionError{Reason: "accelerator-memory", PoolID: "gpu-working-set"})
 	if !strings.Contains(working, "Free memory from a loaded model, then try again.") {
 		t.Errorf("%q", working)
 	}

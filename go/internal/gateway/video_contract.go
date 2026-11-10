@@ -268,23 +268,24 @@ func projectVideoJob(j video.Job) map[string]any {
 		a := j.Artifact
 		out["content_type"], out["bytes"], out["fps"], out["frames"] = a.MimeType, a.Bytes, a.FPS, a.Frames
 	case video.Failed:
-		out["error"] = videoFailureError(j.Failure)
+		out["error"] = FailureError(j.Failure)
 	case video.Cancelled:
 		out["cancellation_reason"] = j.Reason
 	}
 	return out
 }
 
-const freeMemoryHint = "Free memory from a loaded model or close other apps, then try again."
+// FreeMemoryHint is what to do when a video can't start for lack of memory.
+const FreeMemoryHint = "Free memory from a loaded model or close other apps, then try again."
 
-// videoFailureError names a failed job's error code (TS videoFailureError).
-func videoFailureError(err error) map[string]any {
+// FailureError names a failed job's error code (TS videoFailureError).
+func FailureError(err error) map[string]any {
 	var ae *memory.AdmissionError
 	var consent *runtime.NotInstalledError
 	var launch *runtime.LaunchError
 	switch {
 	case errors.As(err, &ae):
-		return map[string]any{"code": "insufficient_memory", "message": videoMemoryMessage(ae)}
+		return map[string]any{"code": "insufficient_memory", "message": MemoryMessage(ae)}
 	case errors.As(err, &consent):
 		return map[string]any{"code": "model_install_consent_required", "message": consent.Error()}
 	case errors.As(err, &launch) && launch.Code == "model_hardware_ineligible":
@@ -295,7 +296,8 @@ func videoFailureError(err error) map[string]any {
 	return map[string]any{"code": "video_generation_failed"}
 }
 
-func videoMemoryMessage(e *memory.AdmissionError) string {
+// MemoryMessage says why the video runtime wasn't started for lack of memory, with the figures.
+func MemoryMessage(e *memory.AdmissionError) string {
 	accelerator := e.Reason == "accelerator-memory"
 	switch {
 	case e.Reason == "memory-pressure" || e.Reason == "system-memory":
@@ -323,5 +325,5 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 		}
 	}
 	return fmt.Sprintf("Not enough free %s to start the video runtime: it needs %s but only %s is usable after the safety reserve. %s",
-		pool, memory.GiBText(requested), memory.GiBText(usable), freeMemoryHint)
+		pool, memory.GiBText(requested), memory.GiBText(usable), FreeMemoryHint)
 }
