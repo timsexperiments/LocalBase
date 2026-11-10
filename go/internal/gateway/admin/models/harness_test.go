@@ -7,7 +7,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -24,12 +23,12 @@ type modelsHarness struct {
 	store *store.Store
 	cat   *catalog.Catalog
 	llm   *runtime.LLM
-	// overrides is what the running gateway applies on top of the saved configuration, read when
-	// the Handler asks, as the gateway's Overrides is.
+	// overrides is what the running gateway applies on top of the saved configuration, as the
+	// gateway's Overrides is; given to the harness when it is built.
 	overrides func(*store.Config)
 }
 
-func newModelsHarness(t *testing.T) *modelsHarness {
+func newModelsHarness(t *testing.T, overrides ...func(*store.Config)) *modelsHarness {
 	t.Helper()
 	r, err := root.Init(t.TempDir())
 	if err != nil {
@@ -54,15 +53,16 @@ func newModelsHarness(t *testing.T) *modelsHarness {
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: r.ModelsDir("llm"), Store: st, Catalog: cat}, cfg)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := &modelsHarness{root: r, store: st, cat: cat, llm: llm}
+	if len(overrides) > 0 {
+		m.overrides = overrides[0]
+	}
 	m.h = NewHandler(Options{
 		Store:     st,
 		Root:      r,
 		Catalog:   cat,
-		Runtimes:  func() runtime.Set { return runtime.Set{LLM: llm} },
-		Log:       func() *slog.Logger { return log },
-		NoAuth:    func() bool { return false },
-		Library:   func() *library.Library { return nil },
-		Overrides: func() func(*store.Config) { return m.overrides },
+		Runtimes:  runtime.Set{LLM: llm},
+		Log:       log,
+		Overrides: m.overrides,
 	})
 	return m
 }

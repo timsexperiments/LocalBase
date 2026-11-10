@@ -24,7 +24,7 @@ func (h *Handler) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 		httpx.MethodNotAllowed(w, r, "POST")
 		return
 	}
-	if p := h.opts.Caller(r); !h.opts.NoAuth() && !p.Can("models:manage") {
+	if p := h.opts.Caller(r); !h.opts.NoAuth && !p.Can("models:manage") {
 		httpx.Forbidden(w, r)
 		return
 	}
@@ -83,17 +83,17 @@ func (h *Handler) unloadAPI(w http.ResponseWriter, r *http.Request, id string) {
 
 // loadedRuntime is the runtime that has id loaded now, and its unload.
 func (h *Handler) loadedRuntime(id string) (string, func(*http.Request, string, time.Duration) (int64, error)) {
-	if h.opts.Runtimes().LLM != nil {
-		if running, _, _ := h.opts.Runtimes().LLM.Running(); running == id {
+	if h.opts.Runtimes.LLM != nil {
+		if running, _, _ := h.opts.Runtimes.LLM.Running(); running == id {
 			return "llm", func(r *http.Request, id string, wait time.Duration) (int64, error) {
-				return h.opts.Runtimes().LLM.Unload(r.Context(), id, wait)
+				return h.opts.Runtimes.LLM.Unload(r.Context(), id, wait)
 			}
 		}
 	}
 	for _, svc := range []struct {
 		name string
 		s    *runtime.Service
-	}{{"stt", h.opts.Runtimes().STT}, {"tts", h.opts.Runtimes().TTS}, {"image", h.opts.Runtimes().Image}, {"video", h.opts.Runtimes().Video}} {
+	}{{"stt", h.opts.Runtimes.STT}, {"tts", h.opts.Runtimes.TTS}, {"image", h.opts.Runtimes.Image}, {"video", h.opts.Runtimes.Video}} {
 		if svc.s != nil && svc.s.Running() == id {
 			return svc.name, func(r *http.Request, id string, wait time.Duration) (int64, error) {
 				return svc.s.Unload(r.Context(), id, wait)

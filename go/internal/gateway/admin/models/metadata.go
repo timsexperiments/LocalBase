@@ -39,9 +39,9 @@ func (h *Handler) ModelMetadata(w http.ResponseWriter, r *http.Request) {
 		httpx.MethodNotAllowed(w, r, "GET")
 		return
 	}
-	snap := h.opts.Runtimes().LLM.Snapshot()
+	snap := h.opts.Runtimes.LLM.Snapshot()
 	voices, _ := h.opts.Store.Voices(r.Context())
-	in := meta.Input{Store: h.opts.Store, RootDir: h.opts.Root.Dir, Config: h.opts.Runtimes().LLM.Config(), MemoryGB: h.opts.MemoryGB, Voices: voices, Snapshot: &snap, Catalog: h.opts.Catalog}
+	in := meta.Input{Store: h.opts.Store, RootDir: h.opts.Root.Dir, Config: h.opts.Runtimes.LLM.Config(), MemoryGB: h.opts.MemoryGB, Voices: voices, Snapshot: &snap, Catalog: h.opts.Catalog}
 	if r.URL.Path != "/_localbase/models" {
 		raw := strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/")
 		id, err := url.PathUnescape(raw)
@@ -69,9 +69,9 @@ func (h *Handler) ModelMetadata(w http.ResponseWriter, r *http.Request) {
 			out["degraded"], out["readProblems"] = true, httpx.ReadProblemsJSON(problems)
 		}
 		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && h.opts.Placement != nil {
-			if plan, ok := h.opts.Runtimes().LLM.LoadedPlacement(id); ok && plan.Placement != nil {
+			if plan, ok := h.opts.Runtimes.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 				dev["placement"] = placementJSON(plan)
-			} else if next, err := h.opts.Runtimes().LLM.PreviewPlacement(id, h.opts.Placement.Request(id)); err == nil && next.Placement != nil {
+			} else if next, err := h.opts.Runtimes.LLM.PreviewPlacement(id, h.opts.Placement.Request(id)); err == nil && next.Placement != nil {
 				pj := placementJSON(next)
 				delete(pj, "plannedAt")
 				pj["preview"] = true

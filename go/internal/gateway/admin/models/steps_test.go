@@ -13,9 +13,8 @@ import (
 // The finding: a management change published the saved configuration, so an override from the
 // environment or a serve flag disappeared from the running gateway after an unrelated change.
 func TestAManagementChangeKeepsTheRunningOverrides(t *testing.T) {
-	m := newModelsHarness(t)
+	m := newModelsHarness(t, func(c *store.Config) { c.Host = "override.example" })
 	llm := m.llm
-	m.overrides = func(c *store.Config) { c.Host = "override.example" }
 	over := llm.Config().Clone()
 	m.overrides(over)
 	llm.SetConfig(over)
@@ -48,9 +47,8 @@ func TestAManagementChangeKeepsTheRunningOverrides(t *testing.T) {
 
 // What another process saved still arrives with a management change, as it did.
 func TestAManagementChangePublishesWhatWasSavedElsewhere(t *testing.T) {
-	m := newModelsHarness(t)
+	m := newModelsHarness(t, func(c *store.Config) { c.Host = "override.example" })
 	llm := m.llm
-	m.overrides = func(c *store.Config) { c.Host = "override.example" }
 	saved, err := m.store.LoadConfig(context.Background())
 	if err != nil {
 		t.Fatal(err)

@@ -40,10 +40,10 @@ func (h *Handler) adminPrincipal(w http.ResponseWriter, r *http.Request, permiss
 }
 
 func (h *Handler) libraryOr503(w http.ResponseWriter, r *http.Request) *library.Library {
-	if h.opts.Library() == nil {
+	if h.opts.Library == nil {
 		httpx.ServiceUnavailable(w, r, "Model management")
 	}
-	return h.opts.Library()
+	return h.opts.Library
 }
 
 func (h *Handler) BackendsAPI(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +197,7 @@ func (h *Handler) ModelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	plan, err := acquire.Resolve(r.Context(), h.opts.Root.Dir, acquire.Request{Source: in.Source, Files: in.Files, Revision: in.Revision,
 		SHA256: in.SHA256, AuthProfile: in.AuthProfile, AllowHTTP: in.AllowHTTP, ID: in.ID, Name: in.Name, Task: in.Task, HFToken: token,
-		AllowPrivate: h.opts.Store.PrivateImportsAllowed(r.Context()), AllowLocal: h.opts.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: h.opts.Log()})
+		AllowPrivate: h.opts.Store.PrivateImportsAllowed(r.Context()), AllowLocal: h.opts.Store.LocalPathImportsAllowed(r.Context()), Confirmed: in.Confirm, Log: h.opts.Log})
 	var refused *acquire.RefusedError
 	if errors.As(err, &refused) {
 		httpx.Error(w, r, http.StatusForbidden, "invalid_request_error", refused.Code, refused.Message, httpx.StrPtr("source"))
@@ -226,7 +226,7 @@ func (h *Handler) ModelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, r, http.StatusInsufficientStorage, "invalid_request_error", refused.Code, refused.Message, nil)
 		return
 	}
-	id, err := l.StartImport(plan, in.Backend, h.opts.Log())
+	id, err := l.StartImport(plan, in.Backend, h.opts.Log)
 	switch {
 	case errors.Is(err, library.ErrImportsBusy):
 		w.Header().Set("Retry-After", "5")
@@ -241,7 +241,7 @@ func (h *Handler) ModelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Backend != "" && in.Backend != "auto" {
 		kind, actor := h.opts.AuditActor(r)
-		h.opts.Log().Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
+		h.opts.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
 			"target_kind", "model", "target_id", plan.ID, "backend_id", in.Backend)
 	}
 	httpx.NoStore(w, 202, map[string]any{"job": id, "plan": plan})

@@ -147,9 +147,9 @@ func (h *Handler) ModelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Invalid model discovery payload.", nil)
 		return
 	}
-	cfg := h.opts.Runtimes().LLM.Config()
+	cfg := h.opts.Runtimes.LLM.Config()
 	token := cfg.HFToken
-	client := &hub.Client{Root: h.opts.Root.Dir, Token: hubTokenOr(token), Log: h.opts.Log()}
+	client := &hub.Client{Root: h.opts.Root.Dir, Token: hubTokenOr(token), Log: h.opts.Log}
 	ctx := r.Context()
 	fail := func(err error) {
 		var ce *hub.ConflictError
@@ -170,7 +170,7 @@ func (h *Handler) ModelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			discoveryFailure(w, r, status, code, he.Message)
 		default:
-			h.opts.Log().Error("Model discovery failed.", "event", "models.discovery-failed", "error", err.Error())
+			h.opts.Log.Error("Model discovery failed.", "event", "models.discovery-failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Model discovery")
 		}
 	}
