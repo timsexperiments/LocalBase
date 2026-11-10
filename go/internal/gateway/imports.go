@@ -60,7 +60,7 @@ func (s *Server) backendsAPI(w http.ResponseWriter, r *http.Request) {
 			"adapter": d.Adapter, "tasks": d.Tasks, "install": l.Host().Install[d.ID], "installLabel": l.Host().InstallLabel(d.ID),
 			"automatic": d.Automatic == nil || *d.Automatic, "automaticTasks": d.AutomaticTasks, "notes": d.Notes})
 	}
-	noStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()})
+	NoStore(w, 200, map[string]any{"backends": out, "skipped": l.Registry.Skipped(), "host": l.Host()})
 }
 
 func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +83,7 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		case err != nil:
 			httpx.BadRequest(w, r, err.Error(), nil)
 		default:
-			noStore(w, 200, map[string]any{"model": id, "selection": sel})
+			NoStore(w, 200, map[string]any{"model": id, "selection": sel})
 		}
 	}
 	if r.Method == http.MethodGet {
@@ -103,11 +103,11 @@ func (s *Server) modelBackendAPI(w http.ResponseWriter, r *http.Request) {
 		BackendID string `json:"backendId"`
 		VariantID string `json:"variantId"`
 	}
-	body, ok := readManagement(w, r)
+	body, ok := ReadManagement(w, r)
 	if !ok {
 		return
 	}
-	if !strictDecode(body, &in) || (in.Action != "set" && in.Action != "reset") || in.Model == "" || (in.Action == "set" && in.BackendID == "") {
+	if !StrictDecode(body, &in) || (in.Action != "set" && in.Action != "reset") || in.Model == "" || (in.Action == "set" && in.BackendID == "") {
 		httpx.BadRequest(w, r, "Expected {action: set|reset, model, backendId (for set), variantId?}.", nil)
 		return
 	}
@@ -143,7 +143,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		w.Write(b)
 		return
 	}
-	body, ok := readManagement(w, r)
+	body, ok := ReadManagement(w, r)
 	if !ok {
 		return
 	}
@@ -162,12 +162,12 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		AllowHTTP   bool     `json:"allowHttp"`
 		Confirm     bool     `json:"confirmCustomSource"`
 	}
-	if !strictDecode(body, &in) {
+	if !StrictDecode(body, &in) {
 		httpx.BadRequest(w, r, "Expected {action: resolve|start, source, ...} or {action: cancel, job}.", nil)
 		return
 	}
 	if in.Action == "cancel" {
-		if in.Job == "" || !onlyFields(body, "job") {
+		if in.Job == "" || !OnlyFields(body, "job") {
 			httpx.BadRequest(w, r, "Expected {action: cancel, job}.", httpx.StrPtr("job"))
 			return
 		}
@@ -175,7 +175,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, r, 404, "invalid_request_error", "import_not_found", "No import with that id.", httpx.StrPtr("job"))
 			return
 		}
-		noStore(w, 200, l.Job(in.Job))
+		NoStore(w, 200, l.Job(in.Job))
 		return
 	}
 	if (in.Action != "resolve" && in.Action != "start") || in.Source == "" {
@@ -208,7 +208,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Action == "resolve" {
-		noStore(w, 200, map[string]any{"plan": plan, "recommendation": l.Preview(plan)})
+		NoStore(w, 200, map[string]any{"plan": plan, "recommendation": l.Preview(plan)})
 		return
 	}
 	switch {
@@ -244,7 +244,7 @@ func (s *Server) modelImportsAPI(w http.ResponseWriter, r *http.Request) {
 		s.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
 			"target_kind", "model", "target_id", plan.ID, "backend_id", in.Backend)
 	}
-	noStore(w, 202, map[string]any{"job": id, "plan": plan})
+	NoStore(w, 202, map[string]any{"job": id, "plan": plan})
 }
 
 // authProfilesAPI lists auth profiles: ids, origins and header names. Header
@@ -262,5 +262,5 @@ func (s *Server) authProfilesAPI(w http.ResponseWriter, r *http.Request) {
 	for _, p := range ps.Profiles {
 		out = append(out, p.Public())
 	}
-	noStore(w, 200, map[string]any{"profiles": out})
+	NoStore(w, 200, map[string]any{"profiles": out})
 }

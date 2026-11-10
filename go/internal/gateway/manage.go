@@ -43,12 +43,15 @@ var managementMessages = map[string]string{
 	"policy_revision_conflict":      "The browser access policy changed. Refresh it and try again.",
 }
 
-func managementError(w http.ResponseWriter, status int, code string) {
+// ManagementError answers a management route's error in its own shape: code, and the message
+// managementMessages gives it, never stored.
+func ManagementError(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.JSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": managementMessages[code]}})
 }
 
-func noStore(w http.ResponseWriter, status int, v any) {
+// NoStore answers v as JSON with status, never stored.
+func NoStore(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.JSON(w, status, v)
 }
@@ -77,35 +80,38 @@ func (s *Server) adminCaller(ctx context.Context, p *auth.Principal) (auth.KeyCa
 	return auth.KeyCaller{Holds: p.Permissions}, nil
 }
 
-const maxManagementBody = 64 * 1024
+// MaxManagementBody is the most a management request's body may hold.
+const MaxManagementBody = 64 * 1024
 
-func readManagement(w http.ResponseWriter, r *http.Request) (json.RawMessage, bool) {
-	if r.ContentLength > maxManagementBody {
-		managementError(w, 413, "payload_too_large")
+// ReadManagement reads a management request's body, which must be valid JSON within
+// MaxManagementBody. When it isn't, it has answered, and reports false.
+func ReadManagement(w http.ResponseWriter, r *http.Request) (json.RawMessage, bool) {
+	if r.ContentLength > MaxManagementBody {
+		ManagementError(w, 413, "payload_too_large")
 		return nil, false
 	}
-	b, err := io.ReadAll(io.LimitReader(r.Body, maxManagementBody+1))
+	b, err := io.ReadAll(io.LimitReader(r.Body, MaxManagementBody+1))
 	if err != nil {
 		if r.Context().Err() != nil {
-			managementError(w, 499, "request_aborted")
+			ManagementError(w, 499, "request_aborted")
 		} else {
-			managementError(w, 400, "validation_failed")
+			ManagementError(w, 400, "validation_failed")
 		}
 		return nil, false
 	}
-	if len(b) > maxManagementBody {
-		managementError(w, 413, "payload_too_large")
+	if len(b) > MaxManagementBody {
+		ManagementError(w, 413, "payload_too_large")
 		return nil, false
 	}
 	if !json.Valid(b) {
-		managementError(w, 400, "validation_failed")
+		ManagementError(w, 400, "validation_failed")
 		return nil, false
 	}
 	return b, true
 }
 
-// strictDecode decodes JSON rejecting unknown fields.
-func strictDecode(b []byte, v any) bool {
+// StrictDecode decodes JSON rejecting unknown fields.
+func StrictDecode(b []byte, v any) bool {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v) == nil
@@ -136,7 +142,7 @@ func (s *Server) domainError(w http.ResponseWriter, err error) bool {
 		httpx.JSON(w, mapped[1].(int), map[string]any{"error": map[string]string{"code": mapped[0].(string), "message": ae.Message}})
 		return true
 	}
-	managementError(w, mapped[1].(int), mapped[0].(string))
+	ManagementError(w, mapped[1].(int), mapped[0].(string))
 	return true
 }
 
@@ -173,13 +179,13 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		if httpx.CredentialLookupFailed(w, r) {
 			return
 		}
-		managementError(w, 401, "invalid_api_key")
+		ManagementError(w, 401, "invalid_api_key")
 		return
 	}
 	ctx := r.Context()
 	if r.Method == http.MethodGet {
 		if !p.Can("keys:read") {
-			managementError(w, 403, "insufficient_permissions")
+			ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
 		keys, err := s.Store.ListAPIKeys(ctx)
@@ -191,7 +197,7 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		for i := range keys {
 			out = append(out, publicKey(&keys[i]))
 		}
-		noStore(w, 200, map[string]any{"keys": out})
+		NoStore(w, 200, map[string]any{"keys": out})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -200,10 +206,10 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !p.Can("keys:manage") {
-		managementError(w, 403, "insufficient_permissions")
+		ManagementError(w, 403, "insufficient_permissions")
 		return
 	}
-	body, ok := readManagement(w, r)
+	body, ok := ReadManagement(w, r)
 	if !ok {
 		return
 	}
@@ -214,8 +220,8 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 		Scopes      *[]string `json:"scopes"`
 		KeyID       *string   `json:"keyId"`
 	}
-	if !strictDecode(body, &in) {
-		managementError(w, 400, "validation_failed")
+	if !StrictDecode(body, &in) {
+		ManagementError(w, 400, "validation_failed")
 		return
 	}
 	keyID := ""
@@ -234,14 +240,14 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	default:
 		valid = false
 	}
-	valid = valid && onlyFields(body, map[string][]string{"create": {"name", "expiresDays", "scopes"}, "rotate": {"keyId"},
+	valid = valid && OnlyFields(body, map[string][]string{"create": {"name", "expiresDays", "scopes"}, "rotate": {"keyId"},
 		"revoke": {"keyId"}, "set-scopes": {"keyId", "scopes"}}[in.Action]...)
 	var scopes []string
 	if valid && in.Scopes != nil {
 		scopes, valid = validScopes(*in.Scopes)
 	}
 	if !valid {
-		managementError(w, 400, "validation_failed")
+		ManagementError(w, 400, "validation_failed")
 		return
 	}
 	// From the checks to the write, nothing else changes keys or access.
@@ -250,20 +256,20 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 	caller, err := s.adminCaller(ctx, p)
 	switch {
 	case errors.Is(err, errCallerGone):
-		managementError(w, 401, "invalid_api_key")
+		ManagementError(w, 401, "invalid_api_key")
 		return
 	case err != nil:
 		httpx.ServiceUnavailable(w, r, "Key management")
 		return
 	case !slices.Contains(caller.Holds, "keys:manage"):
-		managementError(w, 403, "insufficient_permissions")
+		ManagementError(w, 403, "insufficient_permissions")
 		return
 	}
 	var target *store.APIKey
 	if in.Action != "create" {
 		if target, err = s.Store.APIKeyByID(ctx, keyID); err != nil {
 			if missing := (*store.ErrKeyNotFound)(nil); errors.As(err, &missing) {
-				managementError(w, 404, "key_not_found")
+				ManagementError(w, 404, "key_not_found")
 			} else {
 				httpx.ServiceUnavailable(w, r, "Key management") // a key that can't be read may still be there
 			}
@@ -315,28 +321,28 @@ func (s *Server) apiKeys(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		noStore(w, 201, map[string]any{"key": publicKey(k), "secret": raw})
+		NoStore(w, 201, map[string]any{"key": publicKey(k), "secret": raw})
 	case "rotate":
 		k, raw, err := s.Store.RotateAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		noStore(w, 200, map[string]any{"key": publicKey(k), "secret": raw})
+		NoStore(w, 200, map[string]any{"key": publicKey(k), "secret": raw})
 	case "revoke":
 		k, err := s.Store.RevokeAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		noStore(w, 200, map[string]any{"key": publicKey(k)})
+		NoStore(w, 200, map[string]any{"key": publicKey(k)})
 	case "set-scopes":
 		k, err := s.Store.SetAPIKeyScopes(ctx, keyID, scopes)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		noStore(w, 200, map[string]any{"key": publicKey(k)})
+		NoStore(w, 200, map[string]any{"key": publicKey(k)})
 	}
 }
 
@@ -348,14 +354,14 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if httpx.CredentialLookupFailed(w, r) {
 			return
 		}
-		managementError(w, 401, "invalid_api_key")
+		ManagementError(w, 401, "invalid_api_key")
 		return
 	}
 	ctx := r.Context()
 	root := s.Root.Dir
 	if r.Method == http.MethodGet {
 		if !p.Can("access:read") {
-			managementError(w, 403, "insufficient_permissions")
+			ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
 		cfg, err := auth.LoadAccess(root)
@@ -401,7 +407,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				out["unboundBindings"] = left.Total()
 			}
 		}
-		noStore(w, 200, out)
+		NoStore(w, 200, out)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -410,10 +416,10 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !p.Can("access:read") && !p.Can("access:manage") {
-		managementError(w, 403, "insufficient_permissions")
+		ManagementError(w, 403, "insufficient_permissions")
 		return
 	}
-	body, ok := readManagement(w, r)
+	body, ok := ReadManagement(w, r)
 	if !ok {
 		return
 	}
@@ -427,14 +433,14 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		// The one refusal Admin must explain (DESIGN §13.6 item 12).
 		if in != nil && in.lockedOut {
-			noStore(w, 400, map[string]any{"error": map[string]string{"code": "validation_failed", "message": auth.PolicyLockoutMessage}})
+			NoStore(w, 400, map[string]any{"error": map[string]string{"code": "validation_failed", "message": auth.PolicyLockoutMessage}})
 			return
 		}
-		managementError(w, 400, "validation_failed")
+		ManagementError(w, 400, "validation_failed")
 		return
 	}
 	if !p.Can(required) {
-		managementError(w, 403, "insufficient_permissions")
+		ManagementError(w, 403, "insufficient_permissions")
 		return
 	}
 	if in.Action != "test-policy" && in.Action != "test-email-delivery" {
@@ -461,13 +467,13 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		caller, err := s.adminCaller(ctx, p)
 		switch {
 		case errors.Is(err, errCallerGone):
-			managementError(w, 401, "invalid_api_key")
+			ManagementError(w, 401, "invalid_api_key")
 			return
 		case err != nil:
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		case !slices.Contains(caller.Holds, "access:manage"):
-			managementError(w, 403, "insufficient_permissions")
+			ManagementError(w, 403, "insufficient_permissions")
 			return
 		}
 		g, err := auth.LoadGuard(ctx, s.Store, current)
@@ -517,11 +523,11 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	configured := func(cfg *auth.BrowserAccess) {
-		noStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
+		NoStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
 	}
 	save := func(cfg *auth.BrowserAccess) bool {
 		if err := auth.SaveAccess(root, cfg); err != nil {
-			managementError(w, 400, "validation_failed")
+			ManagementError(w, 400, "validation_failed")
 			return false
 		}
 		return true
@@ -529,7 +535,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	switch in.Action {
 	case "test-policy":
 		if current == nil {
-			managementError(w, 409, "provider_not_configured")
+			ManagementError(w, 409, "provider_not_configured")
 			return
 		}
 		policy, err := auth.LoadPolicy(ctx, s.Store.DB)
@@ -545,34 +551,34 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		if d == nil {
 			d = &auth.Decision{MatchedRoles: []string{}, Permissions: current.Permissions}
 		}
-		noStore(w, 200, map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
+		NoStore(w, 200, map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
 	case "test-email-delivery":
 		email, _ := auth.LoadEmail(root)
 		if email == nil {
-			managementError(w, 409, "email_delivery_not_configured")
+			ManagementError(w, 409, "email_delivery_not_configured")
 			return
 		}
 		if err := auth.SendEmail(email, in.To, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
-			managementError(w, 502, "email_delivery_failed")
+			ManagementError(w, 502, "email_delivery_failed")
 			return
 		}
-		noStore(w, 200, map[string]any{"emailDelivered": true, "to": in.To})
+		NoStore(w, 200, map[string]any{"emailDelivered": true, "to": in.To})
 	case "invite-user":
 		if current == nil {
-			managementError(w, 409, "provider_not_configured")
+			ManagementError(w, 409, "provider_not_configured")
 			return
 		}
 		var email *auth.EmailConfig
 		if in.SendEmail {
 			if email, _ = auth.LoadEmail(root); email == nil {
-				managementError(w, 409, "email_delivery_not_configured")
+				ManagementError(w, 409, "email_delivery_not_configured")
 				return
 			}
 		}
 		user, err := auth.InviteUser(ctx, s.Store, in.Email, in.Roles, in.Issuer)
 		if err != nil {
 			if !s.domainError(w, err) {
-				managementError(w, 400, "validation_failed")
+				ManagementError(w, 400, "validation_failed")
 			}
 			return
 		}
@@ -582,7 +588,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			delivered = auth.SendEmail(email, user.Email, "You were invited to LocalBase",
 				"You were invited to LocalBase. Sign in here:\n\n"+signIn) == nil
 		}
-		noStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
+		NoStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
 		cfg := &auth.BrowserAccess{Provider: *in.Provider, Origin: in.Origin, Permissions: in.Permissions}
 		if !signInLockout(cfg) && save(cfg) {
@@ -591,13 +597,13 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
 		if in.Action == "upsert-magic-link" {
 			if email, _ := auth.LoadEmail(root); email == nil {
-				managementError(w, 409, "email_delivery_not_configured")
+				ManagementError(w, 409, "email_delivery_not_configured")
 				return
 			}
 			if current != nil && current.Provider.Kind == "direct" {
 				for _, reg := range current.Provider.Registrations {
 					if reg.Kind == "magic-link" && reg.ID != in.Registration.ID {
-						managementError(w, 400, "validation_failed")
+						ManagementError(w, 400, "validation_failed")
 						return
 					}
 				}
@@ -611,7 +617,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		kind, cfg := auth.RemoveRegistration(current, in.RegistrationID)
 		switch kind {
 		case "not-found":
-			managementError(w, 404, "registration_not_found")
+			ManagementError(w, 404, "registration_not_found")
 			return
 		case "disabled":
 			if signInLockout(nil) {
@@ -621,10 +627,10 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				httpx.ServiceUnavailable(w, r, "Access management")
 				return
 			}
-			noStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": nil, "restartRequired": true})
+			NoStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": nil, "restartRequired": true})
 		default:
 			if !signInLockout(cfg) && save(cfg) {
-				noStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": cfg.Summary(), "restartRequired": true})
+				NoStore(w, 200, map[string]any{"removedRegistrationId": in.RegistrationID, "config": cfg.Summary(), "restartRequired": true})
 			}
 		}
 	case "disable":
@@ -636,18 +642,18 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
-		noStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
+		NoStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
 	case "configure-email-delivery":
 		if err := auth.SaveEmail(root, in.Config); err != nil {
-			managementError(w, 400, "validation_failed")
+			ManagementError(w, 400, "validation_failed")
 			return
 		}
-		noStore(w, 200, map[string]any{"emailDelivery": in.Config.Summary(), "restartRequired": false})
+		NoStore(w, 200, map[string]any{"emailDelivery": in.Config.Summary(), "restartRequired": false})
 	case "disable-email-delivery":
 		if current != nil && current.Provider.Kind == "direct" {
 			for _, reg := range current.Provider.Registrations {
 				if reg.Kind == "magic-link" {
-					managementError(w, 409, "email_delivery_in_use")
+					ManagementError(w, 409, "email_delivery_in_use")
 					return
 				}
 			}
@@ -657,7 +663,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
-		noStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
+		NoStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
 	case "replace-user-roles", "enable-user", "disable-user", "remove-user":
 		var user *auth.User
 		var err error
@@ -689,14 +695,14 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			if !s.domainError(w, err) {
-				managementError(w, 400, "validation_failed")
+				ManagementError(w, 400, "validation_failed")
 			}
 			return
 		}
-		noStore(w, 200, map[string]any{"user": user})
+		NoStore(w, 200, map[string]any{"user": user})
 	case "apply-policy", "clear-policy":
 		if in.Action == "apply-policy" && current == nil {
-			managementError(w, 409, "provider_not_configured")
+			ManagementError(w, 409, "provider_not_configured")
 			return
 		}
 		existing, err := auth.LoadPolicy(ctx, s.Store.DB)
@@ -706,7 +712,7 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		rev := auth.Revision(existing)
 		if (rev == nil) != (in.ExpectedRevision == nil) || (rev != nil && *rev != *in.ExpectedRevision) {
-			managementError(w, 409, "policy_revision_conflict")
+			ManagementError(w, 409, "policy_revision_conflict")
 			return
 		}
 		if lockout("", false, func(next *auth.Guard) {
@@ -740,16 +746,16 @@ func (s *Server) accessManagement(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			noStore(w, 200, map[string]any{"cleared": cleared, "policyRevision": nil, "restartRequired": false})
+			NoStore(w, 200, map[string]any{"cleared": cleared, "policyRevision": nil, "restartRequired": false})
 			return
 		}
 		if err := auth.ApplyPolicy(ctx, s.Store, in.Policy); err != nil {
 			if !s.domainError(w, err) {
-				managementError(w, 400, "validation_failed")
+				ManagementError(w, 400, "validation_failed")
 			}
 			return
 		}
-		noStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": auth.Revision(in.Policy), "restartRequired": false})
+		NoStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": auth.Revision(in.Policy), "restartRequired": false})
 	}
 }
 
@@ -819,7 +825,7 @@ var revisionRe = regexp.MustCompile(`^[a-f0-9]{64}$`)
 // fields, each valid.
 func parseAccessRequest(b []byte) (*accessRequest, bool) {
 	var in accessRequest
-	if !strictDecode(b, &in) {
+	if !StrictDecode(b, &in) {
 		return nil, false
 	}
 	_ = json.Unmarshal(b, &in.raw) // strictDecode has just accepted b as this object.
@@ -1052,7 +1058,7 @@ func (s *Server) hfToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := ""
-	ok := strictDecode(b, &in)
+	ok := StrictDecode(b, &in)
 	if in.Token != nil {
 		token = strings.TrimSpace(*in.Token)
 	}
@@ -1119,15 +1125,15 @@ func nullField(b []byte, name string) bool {
 	return ok && string(v) == "null"
 }
 
-// onlyFields reports a JSON object whose members other than "action" are all
+// OnlyFields reports a JSON object whose members other than "action" are all
 // in fields and none is null (zod's strict, non-nullable objects).
-func onlyFields(b []byte, fields ...string) bool {
+func OnlyFields(b []byte, fields ...string) bool {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(b, &m) != nil {
 		return false
 	}
 	for k, v := range m {
-		if k != "action" && (!contains(fields, k) || string(v) == "null") {
+		if k != "action" && (!slices.Contains(fields, k) || string(v) == "null") {
 			return false
 		}
 	}

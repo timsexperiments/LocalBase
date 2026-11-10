@@ -35,7 +35,7 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 		r.Body = struct {
 			io.Reader
 			io.Closer
-		}{io.TeeReader(r.Body, &limitedWriter{&seen, maxManagementBody + 1}), r.Body}
+		}{io.TeeReader(r.Body, &limitedWriter{&seen, MaxManagementBody + 1}), r.Body}
 		rec := &auditRecorder{Recorder: httpx.Recorder{ResponseWriter: w}}
 		next(rec, r)
 		// A request the client abandoned or never finished was not refused.

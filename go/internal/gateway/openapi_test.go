@@ -907,7 +907,7 @@ func TestOpenAPIResponses(t *testing.T) {
 			t.Fatalf("run %s did not finish", id)
 		}
 	}
-	oversized := `{"x":"` + strings.Repeat("x", maxManagementBody) + `"}`
+	oversized := `{"x":"` + strings.Repeat("x", MaxManagementBody) + `"}`
 
 	// Public.
 	check("GET", "/health", "", 200)
