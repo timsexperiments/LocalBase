@@ -23,7 +23,7 @@ import (
 
 var transcriptionFormats = []string{"json", "text", "srt", "verbose_json", "vtt"}
 
-func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Transcription(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if r.ContentLength > httpx.MaxRequestBytes {
 		httpx.PayloadTooLarge(w, r)
@@ -104,11 +104,11 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
 		return
 	}
-	if s.STT == nil {
+	if h.opts.Runtimes().STT == nil {
 		httpx.NotConfigured(w, r, "STT")
 		return
 	}
-	id, err := s.STT.Resolve(model)
+	id, err := h.opts.Runtimes().STT.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "STT")
@@ -118,14 +118,14 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := s.STT.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes().STT.Acquire(r.Context(), id)
 	if err != nil {
 		httpx.RuntimeError(w, r, err, id, "STT")
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
-	tel := &inference{h: s.infer, modality: "stt", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+	tel := &inference{h: h, modality: "stt", modelID: lease.ModelID, spec: h.opts.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 	tel.begin(r.Context(), r.Method)
 
@@ -154,7 +154,7 @@ func (s *Server) transcription(w http.ResponseWriter, r *http.Request) {
 	mw.Close()
 	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, lease.BaseURL+"/inference", &out)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := s.infer.backendCall(tel.ctx, r, req, &http.Client{Timeout: 10 * time.Minute})
+	resp, err := h.backendCall(tel.ctx, r, req, &http.Client{Timeout: 10 * time.Minute})
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)

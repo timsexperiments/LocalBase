@@ -26,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
+	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
 // Handler serves the /v1 inference routes for one gateway: chat, embeddings, systemone and the
@@ -46,6 +47,10 @@ type Options struct {
 	Otel     func() *otlp.Runtime
 	NoAuth   func() bool
 	Library  func() *library.Library
+	Voices   func() *voices.Store
+	// SpeechBusyFor is how long a busy tts-server is waited out, read when called; 0 is
+	// speechTimeout (tests).
+	SpeechBusyFor func() time.Duration
 	// ImportedTask is an imported model's LLM task, and ReportReads answers what couldn't be read.
 	ImportedTask func(ctx context.Context, id string) (string, error)
 	ReportReads  func(w http.ResponseWriter, problems []*store.ReadError)
