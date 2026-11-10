@@ -273,7 +273,33 @@ func routeLabel(r *http.Request) (label, family string, segments int) {
 	return "unmatched-route", "other", segments
 }
 
+// requestState is what one request carries through ServeHTTP's stages.
+type requestState struct {
+	start time.Time
+	id    string
+	// probe is the request as the mux would route it, before any handler runs.
+	probe *http.Request
+	// startLabel is the route label the server span was named with.
+	startLabel string
+	span       *otlp.Span
+}
+
+// ServeHTTP runs every request through the same stages, in this order: begin, trace, then
+// (deferred) finish, refuseEarly and dispatch.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	st, rec, r := s.begin(w, r)
+	r = s.trace(st, r, rec)
+	// recover works only when the deferred function calls it, so the closure does and hands
+	// finish what it returned.
+	defer func() { s.finish(st, rec, r, recover()) }()
+	if s.refuseEarly(st, rec, r) {
+		return
+	}
+	s.dispatch(rec, r)
+}
+
+// begin gives the request its id and its Recorder, and guards its body.
+func (s *Server) begin(w http.ResponseWriter, r *http.Request) (*requestState, *httpx.Recorder, *http.Request) {
 	start := time.Now()
 	id := newRequestID()
 	w.Header().Set("X-Localbase-Request-Id", id)
@@ -285,6 +311,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			rec.Body.Authenticated()
 		}
 	}
+	return &requestState{start: start, id: id}, rec, r
+}
+
+// trace starts the request's server span and returns the request that carries it.
+func (s *Server) trace(st *requestState, r *http.Request, rec *httpx.Recorder) *http.Request {
+	id := st.id
 	// The server span (TS serve): named by the canonical route, parented by
 	// an incoming traceparent, active for everything the request does.
 	probe := r.Clone(r.Context())
@@ -301,96 +333,106 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		span.SetAttr("localbase.route.segments", segments)
 	}
 	r = r.WithContext(context.WithValue(auth.WithLookupState(ctx), httpx.RecKey{}, rec))
-	startLabel := label
+	st.probe, st.startLabel, st.span = probe, label, span
+	return r
+}
+
+// finish is what every request does when it has been answered, panicked or not: the usage count,
+// the span and the request log. recovered is what the deferred call's recover returned.
+func (s *Server) finish(st *requestState, rec *httpx.Recorder, r *http.Request, recovered any) {
+	start, id, startLabel, span := st.start, st.id, st.startLabel, st.span
+	rec.ArmWrite() // what's still buffered leaves when this returns
+	abort := false
+	// Last of all, once usage, the log and the span are done: a panic after the answer started
+	// resets the connection, so a client never takes half a stream for the whole of it, and
+	// http.ErrAbortHandler aborts as net/http defines it.
 	defer func() {
-		rec.ArmWrite() // what's still buffered leaves when this returns
-		abort := false
-		// Last of all, once usage, the log and the span are done: a panic after the answer started
-		// resets the connection, so a client never takes half a stream for the whole of it, and
-		// http.ErrAbortHandler aborts as net/http defines it.
-		defer func() {
-			if abort {
-				panic(http.ErrAbortHandler)
-			}
-		}()
-		if v := recover(); v != nil {
-			s.cfg.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
-			err, _ := v.(error)
-			if rec.Status == 0 && !errors.Is(err, http.ErrAbortHandler) {
-				httpx.ServiceUnavailable(rec, r, "Gateway")
-			} else {
-				abort = true
-			}
+		if abort {
+			panic(http.ErrAbortHandler)
 		}
-		defer span.End()
-		label, family, segments := routeLabel(r)
-		if r.Pattern != "" && label != startLabel { // forwarded inside the gateway (/app/api): name the route it reached
-			span.SetName(r.Method + " " + label)
-			span.SetAttr("http.route", label)
-		}
-		status := rec.FinalStatus()
-		duration := time.Since(start)
-		s.recordUsage(rec, label, status, duration)
-		auth := s.authTelemetry(r, rec)
-		span.SetAttr("http.response.status_code", status)
-		span.SetAttr("localbase.http.response.duration_ms", float64(duration.Nanoseconds())/1e6)
-		if status >= 500 || r.Context().Err() != nil {
-			span.SetError("")
-		}
-		errType, errCode := rec.ErrorKind()
-		if errType != "" {
-			span.SetAttr("localbase.error.type", errType)
-		}
-		if errCode != "" {
-			span.SetAttr("localbase.error.code", errCode)
-			span.SetAttr("error.type", errCode)
-		}
-		for i := 0; i < len(auth); i += 2 {
-			span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
-		}
-		now := time.Now()
-		if n := s.anonLog.Flush(now); n > 0 {
-			s.anonymousSummary(n)
-		}
-		if quietRoute(label, r.URL.Path) && status < 400 {
-			return // successful probes and polls are not logged
-		}
-		anonymous := !s.cfg.NoAuth && status < 500 && (rec.Auth == nil || rec.Auth.Kind == "anonymous")
-		if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
-			s.anonRefused.Add(1)
-		}
-		if anonymous && !s.anonLog.Allow(now) {
-			return // anyone can send these, so a flood can't be what fills the log
-		}
-		msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
-		attrs := []any{"event", "http.request", "category", "http", "request_id", id,
-			slog.Group("http", "method", r.Method, "path", label, "status", status,
-				"durationMs", float64(duration.Microseconds())/1000)}
-		if family != "" {
-			msg += " (near " + family + ", " + strconv.Itoa(segments) + " segments)"
-			attrs = append(attrs, "route_family", family, "route_segments", segments)
-		}
-		if errType != "" {
-			attrs = append(attrs, "error_type", errType)
-		}
-		if errCode != "" {
-			attrs = append(attrs, "error_code", errCode)
-		}
-		attrs = append(attrs, auth...)
-		level := slog.LevelInfo
-		switch {
-		case status >= 500:
-			level = slog.LevelError
-		case status == 401 && label == "/app/session":
-		case status >= 400:
-			level = slog.LevelWarn
-		}
-		s.cfg.Log.Log(r.Context(), level, msg, attrs...)
 	}()
+	if v := recovered; v != nil {
+		s.cfg.Log.ErrorContext(r.Context(), "Handler panicked.", "event", "http.panic", "request_id", id, "error", slog.AnyValue(v).String())
+		err, _ := v.(error)
+		if rec.Status == 0 && !errors.Is(err, http.ErrAbortHandler) {
+			httpx.ServiceUnavailable(rec, r, "Gateway")
+		} else {
+			abort = true
+		}
+	}
+	defer span.End()
+	label, family, segments := routeLabel(r)
+	if r.Pattern != "" && label != startLabel { // forwarded inside the gateway (/app/api): name the route it reached
+		span.SetName(r.Method + " " + label)
+		span.SetAttr("http.route", label)
+	}
+	status := rec.FinalStatus()
+	duration := time.Since(start)
+	s.recordUsage(rec, label, status, duration)
+	auth := s.authTelemetry(r, rec)
+	span.SetAttr("http.response.status_code", status)
+	span.SetAttr("localbase.http.response.duration_ms", float64(duration.Nanoseconds())/1e6)
+	if status >= 500 || r.Context().Err() != nil {
+		span.SetError("")
+	}
+	errType, errCode := rec.ErrorKind()
+	if errType != "" {
+		span.SetAttr("localbase.error.type", errType)
+	}
+	if errCode != "" {
+		span.SetAttr("localbase.error.code", errCode)
+		span.SetAttr("error.type", errCode)
+	}
+	for i := 0; i < len(auth); i += 2 {
+		span.SetAttr("localbase.auth."+strings.TrimPrefix(auth[i].(string), "auth_"), auth[i+1])
+	}
+	now := time.Now()
+	if n := s.anonLog.Flush(now); n > 0 {
+		s.anonymousSummary(n)
+	}
+	if quietRoute(label, r.URL.Path) && status < 400 {
+		return // successful probes and polls are not logged
+	}
+	anonymous := !s.cfg.NoAuth && status < 500 && (rec.Auth == nil || rec.Auth.Kind == "anonymous")
+	if anonymous && (status == http.StatusUnauthorized || status == http.StatusForbidden) {
+		s.anonRefused.Add(1)
+	}
+	if anonymous && !s.anonLog.Allow(now) {
+		return // anyone can send these, so a flood can't be what fills the log
+	}
+	msg := r.Method + " " + label + " -> " + strconv.Itoa(status)
+	attrs := []any{"event", "http.request", "category", "http", "request_id", id,
+		slog.Group("http", "method", r.Method, "path", label, "status", status,
+			"durationMs", float64(duration.Microseconds())/1000)}
+	if family != "" {
+		msg += " (near " + family + ", " + strconv.Itoa(segments) + " segments)"
+		attrs = append(attrs, "route_family", family, "route_segments", segments)
+	}
+	if errType != "" {
+		attrs = append(attrs, "error_type", errType)
+	}
+	if errCode != "" {
+		attrs = append(attrs, "error_code", errCode)
+	}
+	attrs = append(attrs, auth...)
+	level := slog.LevelInfo
+	switch {
+	case status >= 500:
+		level = slog.LevelError
+	case status == 401 && label == "/app/session":
+	case status >= 400:
+		level = slog.LevelWarn
+	}
+	s.cfg.Log.Log(r.Context(), level, msg, attrs...)
+}
+
+// refuseEarly answers what is refused before any route runs, and says whether it did.
+func (s *Server) refuseEarly(st *requestState, rec *httpx.Recorder, r *http.Request) bool {
+	probe := st.probe
 	if s.cfg.NoAuth {
 		if why := noAuthRefusal(r); why != "" {
 			httpx.Error(rec, r, 403, "invalid_request_error", "no_auth_request_refused", why, nil)
-			return
+			return true
 		}
 	}
 	// No method is exempt from authentication. This gateway sends no CORS
@@ -399,8 +441,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions && !browser.IsUIAccessPath(r.URL.Path) {
 		r.Pattern = probe.Pattern
 		httpx.Forbidden(rec, r)
-		return
+		return true
 	}
+	return false
+}
+
+// dispatch hands the request to its route, and answers one the route left to time out.
+func (s *Server) dispatch(rec *httpx.Recorder, r *http.Request) {
 	s.mux.ServeHTTP(rec, r)
 	if rec.Discarding() {
 		rec.TimeoutAnswer = true
