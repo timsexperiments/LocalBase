@@ -51,7 +51,7 @@ func (h *Handler) usageRead(w http.ResponseWriter, r *http.Request) {
 	_, own, _ := h.opts.UsagePrincipal(p)
 	principal := query.Get("principal")
 	if scope == "all" || (principal != "" && principal != own) {
-		if !h.opts.NoAuth() && !usage.CanSeeAll(p.Can) {
+		if !h.opts.NoAuth && !usage.CanSeeAll(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -82,7 +82,7 @@ func (h *Handler) usageRead(w http.ResponseWriter, r *http.Request) {
 	}
 	report, err := h.opts.Usage.Report(r.Context(), q)
 	if err != nil {
-		h.opts.Log().Error("Could not read usage.", "event", "usage.read-failed", "error", err.Error())
+		h.opts.Log.Error("Could not read usage.", "event", "usage.read-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Usage")
 		return
 	}
@@ -103,7 +103,7 @@ func (h *Handler) usageChange(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth() && !usage.CanChange(p.Can) {
+		if !h.opts.NoAuth && !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -175,11 +175,11 @@ func (h *Handler) usageChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.opts.Log().Error("Could not change usage.", "event", "usage.change-failed", "error", err.Error())
+		h.opts.Log.Error("Could not change usage.", "event", "usage.change-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Usage")
 		return
 	}
-	h.opts.Log().Info("Administration change.", "event", "audit.usage-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID)
+	h.opts.Log.Info("Administration change.", "event", "audit.usage-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID)
 	recording, days := h.opts.Usage.Settings()
 	httpx.JSON(w, http.StatusOK, map[string]any{"object": "localbase.usage.settings", "recording": recording, "retentionDays": days, "cleared": cleared})
 }

@@ -78,7 +78,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.Unauthorized(w, r)
 		return
 	}
-	if h.opts.Voices() == nil {
+	if h.opts.Voices == nil {
 		httpx.NotConfigured(w, r, "Voices")
 		return
 	}
@@ -86,7 +86,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	fail := func(err error) {
 		if !voiceError(w, r, err) {
-			h.opts.Log().Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
+			h.opts.Log.Error("Voice operation failed.", "event", "voices.failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Voices")
 		}
 	}
@@ -104,7 +104,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 				httpx.Forbidden(w, r)
 				return
 			}
-			list, err := h.opts.Voices().List(ctx)
+			list, err := h.opts.Voices.List(ctx)
 			if err != nil {
 				fail(err)
 				return
@@ -132,7 +132,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		v, err := h.opts.Voices().Create(ctx, name, consent, audio, p.OwnerID())
+		v, err := h.opts.Voices.Create(ctx, name, consent, audio, p.OwnerID())
 		if err != nil {
 			fail(err)
 			return
@@ -151,7 +151,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		path, err := h.opts.Voices().Resolve(ctx, id)
+		path, err := h.opts.Voices.Resolve(ctx, id)
 		if err != nil {
 			fail(err)
 			return
@@ -174,7 +174,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 				httpx.Forbidden(w, r)
 				return
 			}
-			v, err := h.opts.Voices().Get(ctx, id)
+			v, err := h.opts.Voices.Get(ctx, id)
 			if err != nil {
 				fail(err)
 				return
@@ -193,7 +193,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			v, err := h.opts.Voices().Rename(ctx, id, name)
+			v, err := h.opts.Voices.Rename(ctx, id, name)
 			if err != nil {
 				fail(err)
 				return
@@ -205,7 +205,7 @@ func (h *Handler) VoicesAPI(w http.ResponseWriter, r *http.Request) {
 				httpx.Forbidden(w, r)
 				return
 			}
-			v, err := h.opts.Voices().Remove(ctx, id)
+			v, err := h.opts.Voices.Remove(ctx, id)
 			if err != nil {
 				fail(err)
 				return
@@ -226,7 +226,7 @@ func (h *Handler) logVoice(action string, v *voices.Voice) {
 	if action == "created" {
 		attrs = append(attrs, "duration_ms", v.DurationMs)
 	}
-	h.opts.Log().Log(context.Background(), slog.LevelInfo, "Custom voice "+action+".", attrs...)
+	h.opts.Log.Log(context.Background(), slog.LevelInfo, "Custom voice "+action+".", attrs...)
 }
 
 func (h *Handler) parseVoiceCreate(w http.ResponseWriter, r *http.Request) (name string, consent bool, audio []byte, ok bool) {

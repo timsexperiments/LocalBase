@@ -43,10 +43,10 @@ type Options struct {
 	Usage     *usage.Recorder
 	Updates   *upgrade.Checker
 	VideoJobs *video.Manager
-	Runtimes  func() runtime.Set
-	Voices    func() *voices.Store
-	Log       func() *slog.Logger
-	NoAuth    func() bool
+	Runtimes  runtime.Set
+	Voices    *voices.Store // nil: the voice routes are disabled
+	Log       *slog.Logger
+	NoAuth    bool
 	// Caller is who a request is from, LocalCLI whether it is this machine's CLI, and
 	// UsagePrincipal who to count it under.
 	Caller         func(*http.Request) *auth.Principal
@@ -109,8 +109,8 @@ func (h *Handler) runtimeModel(name string) *string {
 	id := ""
 	switch name {
 	case "llm":
-		if h.opts.Runtimes().LLM != nil {
-			id, _, _ = h.opts.Runtimes().LLM.Running()
+		if h.opts.Runtimes.LLM != nil {
+			id, _, _ = h.opts.Runtimes.LLM.Running()
 		}
 	default:
 		if svc := h.service(name); svc != nil {
@@ -126,13 +126,13 @@ func (h *Handler) runtimeModel(name string) *string {
 func (h *Handler) service(name string) *runtime.Service {
 	switch name {
 	case "stt":
-		return h.opts.Runtimes().STT
+		return h.opts.Runtimes.STT
 	case "tts":
-		return h.opts.Runtimes().TTS
+		return h.opts.Runtimes.TTS
 	case "image":
-		return h.opts.Runtimes().Image
+		return h.opts.Runtimes.Image
 	case "video":
-		return h.opts.Runtimes().Video
+		return h.opts.Runtimes.Video
 	}
 	return nil
 }
@@ -199,8 +199,8 @@ func (h *Handler) hostActivity() map[string]any {
 		out[name] = activityFigure{configured, inFlight, queued}
 		busy = busy || inFlight > 0 || queued > 0
 	}
-	if h.opts.Runtimes().LLM != nil {
-		i, q := h.opts.Runtimes().LLM.Activity()
+	if h.opts.Runtimes.LLM != nil {
+		i, q := h.opts.Runtimes.LLM.Activity()
 		add("llm", true, i, q)
 	} else {
 		add("llm", false, 0, 0)
@@ -335,13 +335,13 @@ func (h *Handler) AdmissionAPI(w http.ResponseWriter, r *http.Request, id string
 	assume := r.URL.Query().Get("assumeInstalled") == "1"
 	if spec := h.opts.Catalog.ByID(id); spec != nil {
 		name = spec.Kind
-	} else if _, _, err := h.opts.Runtimes().LLM.Resolve(id); err != nil {
+	} else if _, _, err := h.opts.Runtimes.LLM.Resolve(id); err != nil {
 		httpx.ModelNotFound(w, r, id) // neither in the catalog nor imported
 		return
 	}
 	switch name {
 	case "llm":
-		preview, demand, err = h.opts.Runtimes().LLM.PreviewAdmission(r.Context(), id, assume)
+		preview, demand, err = h.opts.Runtimes.LLM.PreviewAdmission(r.Context(), id, assume)
 	default:
 		svc := h.service(name)
 		if svc == nil {

@@ -157,10 +157,7 @@ func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(g
 // recordsOptions is what the host and records routes need from this server.
 func (s *Server) recordsOptions() records.Options {
 	return records.Options{Store: s.cfg.Store, Catalog: s.cfg.Catalog, Memory: s.cfg.Memory, Usage: s.cfg.Usage, Updates: s.cfg.Updates, VideoJobs: s.cfg.VideoJobs,
-		Runtimes: func() runtime.Set {
-			return runtime.Set{LLM: s.cfg.LLM, STT: s.cfg.STT, TTS: s.cfg.TTS, Image: s.cfg.Image, Video: s.cfg.Video}
-		},
-		Voices: func() *voices.Store { return s.cfg.Voices }, Log: func() *slog.Logger { return s.cfg.Log }, NoAuth: func() bool { return s.cfg.NoAuth },
+		Runtimes: s.cfg.runtimes(), Voices: s.cfg.Voices, Log: s.cfg.Log, NoAuth: s.cfg.NoAuth,
 		Caller: s.principal, LocalCLI: s.localCLI, UsagePrincipal: s.usagePrincipal, Unmatched: s.unmatched,
 		ActiveRuns: func() int {
 			if s.runs == nil {

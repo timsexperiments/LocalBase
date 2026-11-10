@@ -75,3 +75,8 @@ type Config struct {
 	// LogOutages reports logs that can't rotate or be written, for doctor and status.
 	LogOutages func() []obs.LogOutage
 }
+
+// runtimes is the runtime set the gateway was given, for the handlers that take one.
+func (cfg Config) runtimes() runtime.Set {
+	return runtime.Set{LLM: cfg.LLM, STT: cfg.STT, TTS: cfg.TTS, Image: cfg.Image, Video: cfg.Video}
+}
