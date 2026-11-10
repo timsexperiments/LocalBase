@@ -19,7 +19,7 @@ import (
 // A run whose body can't fit in what runs may hold together is refused in the documented shape: a
 // run that has already failed, its reason, and the error a page shows.
 func TestARunRefusedForMemoryEndToEnd(t *testing.T) {
-	ts := openAPIGateway(t, func(s *Server) { s.RunsMemoryLimit = 1 }) // no body fits
+	ts := openAPIGateway(t, func(c *Config) { c.RunsMemoryLimit = 1 }) // no body fits
 	s := runServer(ts)
 	_, key, err := s.Store.CreateAPIKey(t.Context(), "all", auth.Permissions)
 	if err != nil {

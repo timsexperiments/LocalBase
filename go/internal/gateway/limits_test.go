@@ -51,7 +51,7 @@ func (b byteCountBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Server)) *limitsGateway {
+func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Config)) *limitsGateway {
 	t.Helper()
 	dir := scratchDir(t)
 	r, err := root.Init(filepath.Join(dir, "root"))
@@ -94,12 +94,12 @@ func newLimitsGateway(t *testing.T, limits httpx.Limits, configure func(*Server)
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: modelsDir, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)
 	t.Cleanup(llm.Close)
-	srv := &Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log,
+	conf := Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, LLM: llm, Log: log,
 		MemoryGB: 64, Root: r, Memory: mem, Limits: limits}
 	if configure != nil {
-		configure(srv)
+		configure(&conf)
 	}
-	New(srv)
+	srv := newFromConfig(conf)
 	bodyRead := &atomic.Int64{}
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.Body != nil && req.Body != http.NoBody {
@@ -346,7 +346,7 @@ func TestStalledUploadIsCut(t *testing.T) {
 func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
 	logs := &gatewaytest.SyncBuffer{}
 	limits := httpx.Limits{PreAuthBody: 300 * time.Millisecond, UploadStall: 200 * time.Millisecond, RefusedDrain: 50 * time.Millisecond}
-	g := newLimitsGateway(t, limits, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+	g := newLimitsGateway(t, limits, func(c *Config) { c.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	for _, path := range []string{"/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"} {
 		key := g.key
 		if path != "/v1/chat/completions" {
@@ -376,7 +376,7 @@ func TestStalledBodyIsATimeoutEverywhere(t *testing.T) {
 // Only a deadline is a timeout: a client that goes away mid-upload stays a 499.
 func TestClientThatLeavesIsNotATimeout(t *testing.T) {
 	logs := &gatewaytest.SyncBuffer{}
-	g := newLimitsGateway(t, httpx.Limits{}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+	g := newLimitsGateway(t, httpx.Limits{}, func(c *Config) { c.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 	conn := g.dial(t)
 	fmt.Fprintf(conn, "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Length: 100000\r\n\r\n{", g.key)
 	time.Sleep(100 * time.Millisecond)
@@ -436,11 +436,12 @@ func TestLongStreamSurvivesTheDeadlines(t *testing.T) {
 // cancel whatever the request does next.
 func TestAuthenticatingAfterTheBodySetsNoDeadline(t *testing.T) {
 	limits := httpx.Limits{PreAuthBody: 100 * time.Millisecond, UploadStall: 100 * time.Millisecond}
-	g := newLimitsGateway(t, limits, func(s *Server) {
-		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
-		s.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var g *limitsGateway // the page asks it who the caller is; assigned before any request
+	g = newLimitsGateway(t, limits, func(c *Config) {
+		c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, limitsAccess("models:read"), c.Log)
+		c.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			io.Copy(io.Discard, r.Body)
-			s.BrowserPrincipal(r)
+			g.srv.BrowserPrincipal(r)
 			select {
 			case <-r.Context().Done():
 				w.WriteHeader(500)
@@ -505,8 +506,8 @@ func limitsAccess(perms ...string) *auth.BrowserAccess {
 // A browser session gets the same budget through /app/api, as a key does.
 func TestSlowUploadFromABrowserSession(t *testing.T) {
 	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
-	g := newLimitsGateway(t, limits, func(s *Server) {
-		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("inference:chat"), s.Log)
+	g := newLimitsGateway(t, limits, func(c *Config) {
+		c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, limitsAccess("inference:chat"), c.Log)
 	})
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/app/api/v1/chat/completions", throttled(paddedChat("fake:reply received", 1<<20), 12, 60*time.Millisecond))
 	req.Host = "lb.example"
@@ -530,10 +531,11 @@ func TestSlowUploadFromABrowserSession(t *testing.T) {
 func TestSlowUploadToAPage(t *testing.T) {
 	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
 	var read atomic.Int64
-	g := newLimitsGateway(t, limits, func(s *Server) {
-		s.Browser = auth.NewBrowser(s.Store, s.Root.Dir, limitsAccess("models:read"), s.Log)
-		s.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if p, _ := s.BrowserPrincipal(r); p == nil {
+	var g *limitsGateway // the page asks it who the caller is; assigned before any request
+	g = newLimitsGateway(t, limits, func(c *Config) {
+		c.Browser = auth.NewBrowser(c.Store, c.Root.Dir, limitsAccess("models:read"), c.Log)
+		c.UI = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if p, _ := g.srv.BrowserPrincipal(r); p == nil {
 				w.WriteHeader(401)
 				return
 			}
@@ -561,7 +563,7 @@ func TestSlowUploadToAPage(t *testing.T) {
 // --no-auth has no credential to wait for: the budget applies from the start.
 func TestSlowUploadWithoutAuthentication(t *testing.T) {
 	limits := httpx.Limits{PreAuthBody: 150 * time.Millisecond, UploadStall: 500 * time.Millisecond}
-	g := newLimitsGateway(t, limits, func(s *Server) { s.NoAuth = true })
+	g := newLimitsGateway(t, limits, func(c *Config) { c.NoAuth = true })
 	req, _ := http.NewRequest(http.MethodPost, g.ts.URL+"/v1/chat/completions", throttled(paddedChat("fake:reply received", 1<<20), 12, 60*time.Millisecond))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)

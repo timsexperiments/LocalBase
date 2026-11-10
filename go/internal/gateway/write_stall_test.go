@@ -42,7 +42,7 @@ func TestAClientThatStopsReadingLetsGo(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			logs := &gatewaytest.SyncBuffer{}
-			g := newLimitsGateway(t, httpx.Limits{WriteStall: 300 * time.Millisecond}, func(s *Server) { s.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
+			g := newLimitsGateway(t, httpx.Limits{WriteStall: 300 * time.Millisecond}, func(c *Config) { c.Log = slog.New(slog.NewJSONHandler(logs, nil)) })
 			u, _ := url.Parse(g.ts.URL)
 			conn, err := net.Dial("tcp", u.Host)
 			if err != nil {

@@ -87,7 +87,7 @@ type auditFixture struct {
 	noScopeID string
 }
 
-func newAuditFixture(t *testing.T, configure ...func(*Server)) *auditFixture {
+func newAuditFixture(t *testing.T, configure ...func(*Config)) *auditFixture {
 	t.Helper()
 	logs := &lockedBuffer{}
 	gatewaytest.Log = logs

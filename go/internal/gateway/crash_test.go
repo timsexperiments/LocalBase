@@ -125,7 +125,7 @@ func newTranscriptionGatewayQueue(t *testing.T, queueTimeout time.Duration) *htt
 		Port: freePort(t), Binaries: map[string]string{"whisper-server": fakeBinary}, QueueTimeout: queueTimeout,
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
-	ts := httptest.NewServer(New(&Server{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
+	ts := httptest.NewServer(newFromConfig(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, STT: svc}))
 	t.Cleanup(ts.Close)
 	return ts
