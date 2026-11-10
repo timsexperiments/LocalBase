@@ -128,7 +128,7 @@ func RuntimeError(w http.ResponseWriter, r *http.Request, err error, model, serv
 			return
 		}
 		w.Header().Set("Retry-After", "5")
-		msg := MemoryRefusal(ae, "this model")
+		msg := RefusalText(ae, "this model")
 		if ae.PoolID == "gpu:0" {
 			msg = fmt.Sprintf("Not enough free GPU memory to load this model with its placement right now: it needs %.1f GiB on the GPU, %.1f GiB is free and %.1f GiB is kept free. Retry shortly, or choose a placement that keeps more in system memory.",
 				float64(ae.RequestedBytes)/float64(memory.GiB), float64(ae.AvailableBytes)/float64(memory.GiB), float64(ae.ReserveBytes)/float64(memory.GiB))
@@ -159,10 +159,10 @@ func modelTooLarge(w http.ResponseWriter, r *http.Request, ae *memory.AdmissionE
 	Error(w, r, 422, "invalid_request_error", "model_too_large", msg, StrPtr("model"))
 }
 
-// MemoryRefusal says why a runtime wasn't started, what has the memory and what to do. The figures
+// RefusalText says why a runtime wasn't started, what has the memory and what to do. The figures
 // are the host's reserve, what is free and what LocalBase has reserved, never which models. Anything
 // else keeps the general sentence.
-func MemoryRefusal(e *memory.AdmissionError, subject string) string {
+func RefusalText(e *memory.AdmissionError, subject string) string {
 	var free string
 	requested := e.RequestedBytes
 	if g := e.Diagnostics; g != nil {

@@ -299,7 +299,7 @@ func videoMemoryMessage(e *memory.AdmissionError) string {
 	accelerator := e.Reason == "accelerator-memory"
 	switch {
 	case e.Reason == "memory-pressure" || e.Reason == "system-memory":
-		return httpx.MemoryRefusal(e, "video generation")
+		return httpx.RefusalText(e, "video generation")
 	case e.Reason == "measurement-unavailable":
 		return "Available memory could not be measured reliably, so the video runtime was not started. Retry shortly."
 	case e.PoolID == "gpu-working-set" && !e.Permanent:
