@@ -73,7 +73,8 @@ type Server struct {
 	// Updates is the optional daily check for a newer version (DESIGN §33; nil: the route is disabled).
 	Updates *upgrade.Checker
 
-	mgmt *management
+	// models serves model management, discovery, imports and the /_localbase/models routes.
+	models *Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
@@ -133,7 +134,7 @@ func New(s *Server) *Server {
 	if s.Root != nil {
 		rootDir = s.Root.Dir
 	}
-	s.mgmt = newManagement(rootDir)
+	s.models = NewHandler(s.modelsOptions())
 	runsDir := ""
 	if rootDir != "" {
 		runsDir = filepath.Join(rootDir, "runs")
@@ -173,6 +174,23 @@ func (s *Server) keysOptions(rootDir string) keys.Options {
 	return keys.Options{Store: s.Store, RootDir: rootDir, LLM: s.LLM, Browser: func() *auth.Browser { return s.Browser },
 		Caller: s.principal}
 }
+
+// modelsOptions is what model management needs from this server.
+func (s *Server) modelsOptions() Options {
+	return Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, Placement: s.Placement, Memory: s.Memory, MemoryGB: s.MemoryGB,
+		Runtimes: func() Runtimes {
+			return Runtimes{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+		},
+		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
+		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },
+		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
+		ReportReads: s.reportReads, AdmissionAPI: s.admissionAPI}
+}
+
+// StopManagement lets an accepted install finish within grace, then
+// interrupts it; the interruption is recorded, and the partial download
+// stays for the next install to resume.
+func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(grace) }
 
 // BrowserPrincipal resolves the signed-in browser identity of a request.
 func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Identity) {

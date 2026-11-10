@@ -293,9 +293,9 @@ func TestEachRouteWritesItsAuditLine(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer release()
-		f.srv.mgmt.mu.Lock()
-		f.srv.mgmt.operations[gatewaytest.ChatModel] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
-		f.srv.mgmt.mu.Unlock()
+		f.srv.models.mgmt.mu.Lock()
+		f.srv.models.mgmt.operations[gatewaytest.ChatModel] = &mgmtOperation{Action: "install", State: "cancelled", Detail: cancelDetail}
+		f.srv.models.mgmt.mu.Unlock()
 		from := len(f.logs.String())
 		req, _ := http.NewRequest("POST", f.base+"/_localbase/model-management", strings.NewReader(`{"modelId":"`+gatewaytest.ChatModel+`","action":"cancel"}`))
 		req.Header.Set("X-Localbase-Instance-Token", f.srv.Root.Instance().InstanceToken)

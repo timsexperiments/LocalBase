@@ -116,8 +116,8 @@ func discoveryFailure(w http.ResponseWriter, r *http.Request, status int, code, 
 	httpx.Error(w, r, status, "invalid_request_error", code, message, nil)
 }
 
-func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) ModelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
@@ -147,9 +147,9 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Invalid model discovery payload.", nil)
 		return
 	}
-	cfg := s.LLM.Config()
+	cfg := h.opts.Runtimes().LLM.Config()
 	token := cfg.HFToken
-	client := &hub.Client{Root: s.Root.Dir, Token: hubTokenOr(token), Log: s.Log}
+	client := &hub.Client{Root: h.opts.Root.Dir, Token: hubTokenOr(token), Log: h.opts.Log()}
 	ctx := r.Context()
 	fail := func(err error) {
 		var ce *hub.ConflictError
@@ -170,50 +170,50 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			discoveryFailure(w, r, status, code, he.Message)
 		default:
-			s.Log.Error("Model discovery failed.", "event", "models.discovery-failed", "error", err.Error())
+			h.opts.Log().Error("Model discovery failed.", "event", "models.discovery-failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Model discovery")
 		}
 	}
 	switch req.Action {
 	case "search":
-		hits, cached, err := hub.Discover(ctx, client, s.Catalog, req.Kind, req.Query, s.MemoryGB, 20, 12)
+		hits, cached, err := hub.Discover(ctx, client, h.opts.Catalog, req.Kind, req.Query, h.opts.MemoryGB, 20, 12)
 		if err != nil {
 			fail(err)
 			return
 		}
 		httpx.JSON(w, 200, map[string]any{"query": req.Query, "kind": req.Kind, "cached": cached, "hits": hits})
 	case "preview":
-		preview, err := hub.PreviewRepository(ctx, client, s.Catalog, req.Repo, s.MemoryGB)
+		preview, err := hub.PreviewRepository(ctx, client, h.opts.Catalog, req.Repo, h.opts.MemoryGB)
 		if err != nil {
 			fail(err)
 			return
 		}
 		httpx.JSON(w, 200, map[string]any{"repo": req.Repo, "url": hub.RepoURL(req.Repo), "preview": preview})
 	case "install-recipe":
-		model := s.Catalog.ByID(req.ModelID)
+		model := h.opts.Catalog.ByID(req.ModelID)
 		if model == nil {
 			discoveryFailure(w, r, 404, "model_not_found", `"`+req.ModelID+`" is not in this catalog. Update LocalBase or the catalog feed.`)
 			return
 		}
-		if s.Catalog.RecipeAnnotation(req.ModelID) == nil {
+		if h.opts.Catalog.RecipeAnnotation(req.ModelID) == nil {
 			discoveryFailure(w, r, 400, "no_recipe", `The catalog feed has no install recipe for "`+req.ModelID+`".`)
 			return
 		}
 		httpx.JSON(w, 200, map[string]any{"modelId": model.ModelID, "displayName": model.Name(), "kind": model.Kind, "replaced": false,
-			"operation": s.discoveryInstall(model.ModelID)})
+			"operation": h.discoveryInstall(model.ModelID)})
 	default: // add
-		added, err := hub.AddFromHub(ctx, client, s.Catalog, req.Repo, req.Selector, req.ModelID)
+		added, err := hub.AddFromHub(ctx, client, h.opts.Catalog, req.Repo, req.Selector, req.ModelID)
 		if err != nil {
 			fail(err)
 			return
 		}
 		// The runtimes see the new entry: the catalog is reloaded in place.
-		if next, err := catalog.LoadRoot(s.Root.Dir, nil); err == nil {
-			s.Catalog.Replace(next)
+		if next, err := catalog.LoadRoot(h.opts.Root.Dir, nil); err == nil {
+			h.opts.Catalog.Replace(next)
 		}
 		var operation any
 		if req.Install {
-			operation = s.discoveryInstall(added.Model.ModelID)
+			operation = h.discoveryInstall(added.Model.ModelID)
 		}
 		files := []map[string]any{}
 		for _, f := range added.Entry.Weights {
@@ -226,8 +226,8 @@ func (s *Server) modelDiscoveryAPI(w http.ResponseWriter, r *http.Request) {
 
 // discoveryInstall starts an install and reports its operation, or a failed
 // one with the reason (TS deps.install).
-func (s *Server) discoveryInstall(modelID string) any {
-	op, err := s.runManagement(modelID, "install")
+func (h *Handler) discoveryInstall(modelID string) any {
+	op, err := h.runManagement(modelID, "install")
 	if err != nil {
 		var me *mgmtError
 		if errors.As(err, &me) {

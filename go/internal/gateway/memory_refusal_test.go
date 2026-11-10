@@ -99,7 +99,7 @@ func TestAFailedInstallMentionsAPartOnlyWhenOneWasKept(t *testing.T) {
 		}
 	}
 	const failed = "Installation failed. Check storage, network access, and catalog verification."
-	if got := s.failedInstallDetail(spec); got != failed {
+	if got := s.models.failedInstallDetail(spec); got != failed {
 		t.Errorf("with no part: %q", got)
 	}
 	dir := s.modelsDir(spec.Kind)
@@ -110,14 +110,14 @@ func TestAFailedInstallMentionsAPartOnlyWhenOneWasKept(t *testing.T) {
 	if err := os.WriteFile(part, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.failedInstallDetail(spec); got != failed {
+	if got := s.models.failedInstallDetail(spec); got != failed {
 		t.Errorf("with an empty part, nothing to go on from: %q", got)
 	}
 	if err := os.WriteFile(part, []byte("some"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	const want = failed + " The downloaded part is kept, so installing again continues from it (or starts over if the file has changed)."
-	if got := s.failedInstallDetail(spec); got != want {
+	if got := s.models.failedInstallDetail(spec); got != want {
 		t.Errorf("with a part: %q", got)
 	}
 }

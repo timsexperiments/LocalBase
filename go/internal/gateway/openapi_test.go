@@ -446,7 +446,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 
 	// /_localbase/models/{id}/<suffix>: what modelMetadata cuts off.
 	var modelSuffixes []string
-	ast.Inspect(goFunc(t, fns, "modelMetadata"), func(n ast.Node) bool {
+	ast.Inspect(goFunc(t, fns, "ModelMetadata"), func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "CutSuffix" && len(call.Args) == 2 {
 				if s, ok := stringLit(call.Args[1]); ok {
