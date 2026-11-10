@@ -32,7 +32,7 @@ func TestTheInstanceTokenMustMatch(t *testing.T) {
 		if c.sent != "" {
 			r.Header.Set("X-Localbase-Instance-Token", c.sent)
 		}
-		if got := instanceTokenMatches(c.owner, r); got != c.want {
+		if got := InstanceTokenMatches(c.owner, r); got != c.want {
 			t.Errorf("%s: %v", c.name, got)
 		}
 	}

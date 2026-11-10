@@ -35,7 +35,8 @@ const (
 	extraArgsMarker      = "sd_cpp_extra_args"
 )
 
-func utf16Length(s string) int { return len(utf16.Encode([]rune(s))) }
+// UTF16Length is how long s is in UTF-16 code units, as JavaScript counts a string's length.
+func UTF16Length(s string) int { return len(utf16.Encode([]rune(s))) }
 
 func quoteOptions(options []string) string {
 	q := make([]string, len(options))
@@ -96,7 +97,7 @@ func (c *checker) imageTuning(obj map[string]any, withStrength bool) {
 		if s, ok := v.(string); !ok {
 			c.fail("negative_prompt", expected("string", v, true))
 		} else {
-			if utf16Length(s) > 16_384 {
+			if UTF16Length(s) > 16_384 {
 				c.fail("negative_prompt", "Too big: expected string to have <=16384 characters")
 			}
 			c.noExtraArgs("negative_prompt", s)
@@ -379,7 +380,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 
 	promptValue, _ := text("prompt")
 	prompt := strings.TrimFunc(promptValue, isJSWhitespace)
-	if prompt == "" || utf16Length(prompt) > 16_384 {
+	if prompt == "" || UTF16Length(prompt) > 16_384 {
 		bad("prompt is required and must not exceed 16384 characters.", "prompt")
 		return
 	}

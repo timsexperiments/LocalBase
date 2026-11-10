@@ -152,7 +152,7 @@ func jsString(v any, lo, hi int) bool {
 	if !ok {
 		return false
 	}
-	n := utf16Length(s)
+	n := UTF16Length(s)
 	return n >= lo && n <= hi
 }
 

@@ -66,7 +66,7 @@ func (h *Handler) ModelMetadata(w http.ResponseWriter, r *http.Request) {
 		var out map[string]any
 		json.Unmarshal(b, &out)
 		if len(problems) > 0 {
-			out["degraded"], out["readProblems"] = true, readProblemsJSON(problems)
+			out["degraded"], out["readProblems"] = true, ReadProblemsJSON(problems)
 		}
 		if dev, ok := out["device"].(map[string]any); ok && spec.Kind == "llm" && h.opts.Placement != nil {
 			if plan, ok := h.opts.Runtimes().LLM.LoadedPlacement(id); ok && plan.Placement != nil {
@@ -118,7 +118,7 @@ func (h *Handler) ModelMetadata(w http.ResponseWriter, r *http.Request) {
 		"accelerators": []any{}}}, "data": data}
 	if len(problems) > 0 {
 		h.opts.ReportReads(w, problems)
-		out["degraded"], out["readProblems"], out["unknown"] = true, readProblemsJSON(problems), unknown
+		out["degraded"], out["readProblems"], out["unknown"] = true, ReadProblemsJSON(problems), unknown
 	}
 	httpx.JSON(w, 200, out)
 }
