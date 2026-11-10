@@ -10,6 +10,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 )
 
 // CallResult is an in-process API response.
@@ -20,7 +21,7 @@ type CallResult struct {
 }
 
 // callBodyLimit is the most of a response an in-process call holds, as a run's media result.
-var callBodyLimit = MaxResult
+var callBodyLimit = runs.MaxResult
 
 // errCallTooLarge tells a handler its in-process caller stopped reading.
 var errCallTooLarge = errors.New("the response is over what an in-app call holds")

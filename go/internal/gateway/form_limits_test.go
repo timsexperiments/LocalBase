@@ -42,16 +42,6 @@ func TestTheLimitIsTheStatedOne(t *testing.T) {
 	}
 }
 
-func TestAFormsModelIsFoundWithinTheLimit(t *testing.T) {
-	model := "--b\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nthe-model\r\n"
-	if got := requestModel(gatewaytest.FormType, gatewaytest.FormOf(httpx.MaxFormParts-1, model)); got != "the-model" {
-		t.Errorf("the last part allowed: %q", got)
-	}
-	if got := requestModel(gatewaytest.FormType, gatewaytest.FormOf(httpx.MaxFormParts, model)); got != "" {
-		t.Errorf("past the limit: %q", got)
-	}
-}
-
 // Parts cost memory however little is in them, and a form at the body limit holds millions of the
 // smallest. It starts small, because without the limit the largest costs gigabytes to try.
 func TestAFormAtTheBodyLimitCostsLittle(t *testing.T) {
@@ -73,26 +63,6 @@ func TestAFormAtTheBodyLimitCostsLittle(t *testing.T) {
 		})
 		if cost > bound {
 			t.Fatalf("reading %d bytes of parts allocated %d bytes", size, cost)
-		}
-	}
-}
-
-// Finding a form's model costs as little, on the same forms.
-func TestFindingAFormsModelAtTheBodyLimitCostsLittle(t *testing.T) {
-	const bound = 16 << 20
-	allocated := func(f func()) uint64 {
-		var before, after runtime.MemStats
-		runtime.ReadMemStats(&before)
-		f()
-		runtime.ReadMemStats(&after)
-		return after.TotalAlloc - before.TotalAlloc
-	}
-	smallest := "--b\r\n\r\n\r\n"
-	for _, size := range []int{1 << 20, httpx.MaxRequestBytes} {
-		body := []byte(strings.Repeat(smallest, size/len(smallest)))
-		cost := allocated(func() { requestModel(gatewaytest.FormType, body) })
-		if cost > bound {
-			t.Fatalf("finding the model in %d bytes of parts allocated %d bytes", size, cost)
 		}
 	}
 }

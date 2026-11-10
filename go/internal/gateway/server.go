@@ -19,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
@@ -81,7 +82,7 @@ type Server struct {
 	speechBusyFor time.Duration
 
 	// runs are the UI's detached runs (DESIGN §21).
-	runs *Manager
+	runs *runs.Manager
 	// anonLog keeps what requests with no credential write to the log small.
 	anonLog *obs.Sampler
 	// anonRefused counts the 401s and 403s for those requests since start, logged or not.
@@ -138,7 +139,7 @@ func New(s *Server) *Server {
 	if rootDir != "" {
 		runsDir = filepath.Join(rootDir, "runs")
 	}
-	s.runs = NewManager(s.runOptions(runsDir))
+	s.runs = runs.NewManager(s.runOptions(runsDir))
 	s.anonLog = &obs.Sampler{Every: anonymousLogEvery, Burst: anonymousLogBurst}
 	s.refusedAudit = &obs.Sampler{Every: refusedAuditEvery, Burst: refusedAuditBurst}
 	s.changeAudit = newChangeLimiter()
@@ -153,8 +154,8 @@ func New(s *Server) *Server {
 }
 
 // runOptions is what the run manager needs from this server.
-func (s *Server) runOptions(dir string) Options {
-	return Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel },
+func (s *Server) runOptions(dir string) runs.Options {
+	return runs.Options{Handler: s, Owner: s.runOwner, Log: func() *slog.Logger { return s.Log }, Otel: func() *otlp.Runtime { return s.Otel },
 		Dir: dir, MaxHeld: s.RunMemoryLimit, MaxHeldTotal: s.RunsMemoryLimit, MaxDuration: s.RunMaxDuration}
 }
 

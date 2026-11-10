@@ -9,6 +9,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 )
 
 // Browser access routes (ui/access.ts): sign-in, sign-out, the session probe,
@@ -72,7 +73,7 @@ func uiRun(rest, method string) bool {
 		return false
 	}
 	if target, ok := strings.CutPrefix(rest, "v1/"); ok {
-		_, known := Targets["/v1/"+target]
+		_, known := runs.Targets["/v1/"+target]
 		return known && method == "POST"
 	}
 	id, action, _ := strings.Cut(rest, "/")

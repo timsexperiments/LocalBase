@@ -26,6 +26,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/hub"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
@@ -376,13 +377,18 @@ func TestOpenAPICoversEveryRoute(t *testing.T) {
 	}
 }
 
-// goFuncs parses the package's sources and returns every function by name.
+// goFuncs parses the package's sources, and runs', and returns every function by name.
 func goFuncs(t *testing.T) map[string]*ast.FuncDecl {
 	t.Helper()
 	entries, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
+	runs, err := filepath.Glob(filepath.Join("runs", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries = append(entries, runs...)
 	out := map[string]*ast.FuncDecl{}
 	fset := token.NewFileSet()
 	for _, name := range entries {
@@ -473,7 +479,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 	}
 
 	// /_localbase/runs/v1/…: exactly Targets.
-	targets := slices.Sorted(maps.Keys(Targets))
+	targets := slices.Sorted(maps.Keys(runs.Targets))
 	var documented []string
 	for _, rest := range under("/_localbase/runs/v1/") {
 		documented = append(documented, "/v1/"+rest)
@@ -1363,11 +1369,11 @@ func TestOpenAPIResponses(t *testing.T) {
 	check("POST", "/_localbase/runs/v1/systemone", `{"model":"`+gatewaytest.ChatModel+`","state":"s","questions":{"q":{"type":"noul"}}}`, 400)
 	as(reader, "POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("hi"), 403)
 	as("", "GET", "/_localbase/runs", "", 401)
-	for target := range Targets {
+	for target := range runs.Targets {
 		check("POST", "/_localbase/runs"+target, `{}`, 400, 501)
 	}
 	check("POST", "/_localbase/runs/v1/chat/completions", `{"x":"`+strings.Repeat("x", 26<<20)+`"}`, 413)
-	check("POST", "/_localbase/runs/v1/audio/speech", `{"x":"`+strings.Repeat("x", MaxBody)+`"}`, 413)
+	check("POST", "/_localbase/runs/v1/audio/speech", `{"x":"`+strings.Repeat("x", runs.MaxBody)+`"}`, 413)
 
 	// A run that fails, one that is interrupted, and the limit on active runs.
 	failing := idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:context"), 202))
@@ -1377,7 +1383,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	}
 	check("GET", "/_localbase/runs/"+failing+"/result", "", 409)
 	active := []string{}
-	for range ActivePerOwner {
+	for range runs.ActivePerOwner {
 		active = append(active, idOf("id", check("POST", "/_localbase/runs/v1/chat/completions", gatewaytest.ChatBody("fake:slow 200"), 202)))
 	}
 	check("GET", "/_localbase/runs", "", 200) // running and queued

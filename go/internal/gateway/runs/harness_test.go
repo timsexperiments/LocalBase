@@ -1,4 +1,4 @@
-package gateway
+package runs
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ import (
 
 // The runs tests run against a Manager whose inner requests go to stubInner, not to a gateway: what
 // is tested is what runs do with an answer, and the stub gives the answers they need. A few tests
-// in runs_e2e_test.go keep a whole gateway, with the fake backend, so the stub can't drift from what
+// in gateway/runs_e2e_test.go keep a whole gateway, with the fake backend, so the stub can't drift from what
 // the real routes send unnoticed.
 
 // newRunHarness serves a Manager's routes, as the gateway does for one caller, "local".
