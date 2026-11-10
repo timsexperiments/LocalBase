@@ -181,8 +181,8 @@ func (s *Server) keysOptions(rootDir string) keys.Options {
 // modelsOptions is what model management needs from this server.
 func (s *Server) modelsOptions() models.Options {
 	return models.Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, Placement: s.Placement, Memory: s.Memory, MemoryGB: s.MemoryGB,
-		Runtimes: func() models.Runtimes {
-			return models.Runtimes{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+		Runtimes: func() runtime.Set {
+			return runtime.Set{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
 		},
 		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },

@@ -58,7 +58,7 @@ func newModelsHarness(t *testing.T) *modelsHarness {
 		Store:     st,
 		Root:      r,
 		Catalog:   cat,
-		Runtimes:  func() Runtimes { return Runtimes{LLM: llm} },
+		Runtimes:  func() runtime.Set { return runtime.Set{LLM: llm} },
 		Log:       func() *slog.Logger { return log },
 		NoAuth:    func() bool { return false },
 		Library:   func() *library.Library { return nil },
