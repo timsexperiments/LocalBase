@@ -270,12 +270,12 @@ func loraUnusable(w http.ResponseWriter, r *http.Request, spec *catalog.Spec, st
 }
 
 // acquireImage resolves and admits an image model, writing the TS errors.
-func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model string) (*runtime.ServiceLease, bool) {
-	if s.Image == nil {
+func (h *Handler) acquireImage(w http.ResponseWriter, r *http.Request, model string) (*runtime.ServiceLease, bool) {
+	if h.opts.Runtimes().Image == nil {
 		httpx.NotConfigured(w, r, "Image")
 		return nil, false
 	}
-	id, err := s.Image.Resolve(model)
+	id, err := h.opts.Runtimes().Image.Resolve(model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "Image")
@@ -285,9 +285,9 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 		return nil, false
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := s.Image.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes().Image.Acquire(r.Context(), id)
 	if err != nil {
-		s.infer.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
+		h.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
 		httpx.RuntimeError(w, r, err, id, "Image")
 		return nil, false
 	}
@@ -295,12 +295,12 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 	return lease, true
 }
 
-func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLease, started time.Time) *inference {
-	return &inference{h: s.infer, modality: "image", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+func (h *Handler) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLease, started time.Time) *inference {
+	return &inference{h: h, modality: "image", modelID: lease.ModelID, spec: h.opts.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 }
 
-func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ImageGeneration(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
@@ -314,12 +314,12 @@ func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 	model, _ := req["model"].(string)
 	target := model
 	if target == "" {
-		target = s.activeImageModel()
+		target = h.activeImageModel()
 	}
-	if loraUnusable(w, r, s.Catalog.ByID(target), tuning.loraStr) {
+	if loraUnusable(w, r, h.opts.Catalog.ByID(target), tuning.loraStr) {
 		return
 	}
-	lease, ok := s.acquireImage(w, r, model)
+	lease, ok := h.acquireImage(w, r, model)
 	if !ok {
 		return
 	}
@@ -328,16 +328,16 @@ func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 		delete(req, k)
 	}
 	req["prompt"] = promptWithTuning(req["prompt"].(string), tuning,
-		imageLoraFor(s.Catalog.ByID(lease.ModelID), lease.Target.Dir, tuning.loraStr))
+		imageLoraFor(h.opts.Catalog.ByID(lease.ModelID), lease.Target.Dir, tuning.loraStr))
 	body, _ := marshalNoEscape(req)
-	s.infer.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)}, s.imageTelemetry(w, lease, started))
+	h.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)}, h.imageTelemetry(w, lease, started))
 }
 
-func (s *Server) activeImageModel() string {
-	if s.LLM == nil {
+func (h *Handler) activeImageModel() string {
+	if h.opts.Runtimes().LLM == nil {
 		return ""
 	}
-	return s.LLM.Config().Active["image"]
+	return h.opts.Runtimes().LLM.Config().Active["image"]
 }
 
 type editFile struct {
@@ -345,7 +345,7 @@ type editFile struct {
 	name, ctype string
 }
 
-func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ImageEdit(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	if r.ContentLength > imageEditMaxBytes {
 		payloadTooLargeLimit(w, r, imageEditMaxBytes)
@@ -386,18 +386,18 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	modelID, _ := text("model")
 	if modelID == "" {
-		modelID = s.activeImageModel()
+		modelID = h.activeImageModel()
 	}
 	if modelID == "" {
 		httpx.NotConfigured(w, r, "Image")
 		return
 	}
-	spec := s.Catalog.ByID(modelID)
+	spec := h.opts.Catalog.ByID(modelID)
 	if spec == nil || spec.Kind != "image" {
 		httpx.ModelNotFound(w, r, modelID)
 		return
 	}
-	if !s.infer.capabilities(r.Context(), spec).Has("image-to-image") {
+	if !h.capabilities(r.Context(), spec).Has("image-to-image") {
 		bad(fmt.Sprintf("Model '%s' does not support image-to-image edits.", modelID), "model")
 		return
 	}
@@ -508,7 +508,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	lease, ok := s.acquireImage(w, r, modelID)
+	lease, ok := h.acquireImage(w, r, modelID)
 	if !ok {
 		return
 	}
@@ -526,14 +526,14 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		if name == "" {
 			name = fallback
 		}
-		h := textproto.MIMEHeader{}
-		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, field, name))
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, field, name))
 		ct := f.ctype
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
-		h.Set("Content-Type", ct)
-		pw, _ := mw.CreatePart(h)
+		header.Set("Content-Type", ct)
+		pw, _ := mw.CreatePart(header)
 		pw.Write(f.data)
 	}
 	for _, img := range images {
@@ -543,8 +543,8 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		part("mask", *mask, "mask.png")
 	}
 	mw.Close()
-	s.infer.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)},
-		s.imageTelemetry(w, lease, started))
+	h.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)},
+		h.imageTelemetry(w, lease, started))
 }
 
 // isJSWhitespace is the String.prototype.trim set.

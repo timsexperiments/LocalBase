@@ -128,7 +128,7 @@ func validateSpeech(body []byte) (*speechRequest, []string, *string) {
 	return req, issues, param
 }
 
-func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Speech(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	body, ok := readBody(w, r)
 	if !ok {
@@ -143,20 +143,20 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "Validation failed: "+strings.Join(issues, ", "), param)
 		return
 	}
-	if spec := s.Catalog.ByID(req.Model); spec != nil && spec.Kind == "tts" && !ttsVoiceAllowed(spec.TTSRuntime, req.Voice) {
+	if spec := h.opts.Catalog.ByID(req.Model); spec != nil && spec.Kind == "tts" && !ttsVoiceAllowed(spec.TTSRuntime, req.Voice) {
 		httpx.BadRequest(w, r, fmt.Sprintf(`Voice "%s" is not supported by model "%s".`, req.Voice, req.Model), nil)
 		return
 	}
-	if customVoiceRe.MatchString(req.Voice) && !s.customVoiceExists(r, req.Voice) {
+	if customVoiceRe.MatchString(req.Voice) && !h.customVoiceExists(r, req.Voice) {
 		httpx.Error(w, r, 400, "invalid_request_error", "voice_not_found",
 			"The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.", httpx.StrPtr("voice"))
 		return
 	}
-	if s.TTS == nil {
+	if h.opts.Runtimes().TTS == nil {
 		httpx.NotConfigured(w, r, "TTS")
 		return
 	}
-	id, err := s.TTS.Resolve(req.Model)
+	id, err := h.opts.Runtimes().TTS.Resolve(req.Model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
 		httpx.NotConfigured(w, r, "TTS")
@@ -166,17 +166,17 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Queue()
-	lease, err := s.TTS.Acquire(r.Context(), id)
+	lease, err := h.opts.Runtimes().TTS.Acquire(r.Context(), id)
 	if err != nil {
 		httpx.RuntimeError(w, r, err, id, "TTS")
 		return
 	}
 	httpx.RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
-	tel := &inference{h: s.infer, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+	tel := &inference{h: h, modality: "tts", modelID: lease.ModelID, spec: h.opts.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 	tel.begin(r.Context(), r.Method)
-	pcm, err := s.generateSpeech(r, lease, req, tel)
+	pcm, err := h.generateSpeech(r, lease, req, tel)
 	if err != nil {
 		var voice *voiceUnavailable
 		switch {
@@ -203,7 +203,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		// tts-server stops at the frame cap and answers normally; the audio is
 		// kept as it is, and the cut is made visible. Never the text.
 		w.Header().Set(httpx.AudioTruncatedHeader, "true")
-		s.Log.WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
+		h.opts.Log().WarnContext(r.Context(), "Speech output hit the frame limit and was cut.", "event", "speech.output_truncated", "category", "runtime",
 			"runtime", "tts", "request_id", tel.requestID, "model_id", lease.ModelID, "frames", runtime.SpeechMaxFrames,
 			"input_chars", utf8.RuneCountInString(req.Input))
 	}
@@ -226,11 +226,11 @@ func (e *voiceUnavailable) Error() string {
 }
 
 // generateSpeech returns PCM16 mono 24 kHz samples.
-func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, req *speechRequest, tel *inference) ([]byte, error) {
+func (h *Handler) generateSpeech(r *http.Request, lease *runtime.ServiceLease, req *speechRequest, tel *inference) ([]byte, error) {
 	ctx := r.Context()
 	client := &http.Client{Timeout: speechTimeout}
 	do := func(hr *http.Request) (*http.Response, error) {
-		resp, err := s.infer.backendCall(tel.ctx, r, hr, client)
+		resp, err := h.backendCall(tel.ctx, r, hr, client)
 		if err == nil {
 			tel.upstreamStatus = resp.StatusCode
 		}
@@ -272,7 +272,7 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 		return pcm, nil
 	case "tts-server/v1":
 		b, _ := json.Marshal(map[string]string{"input": req.Input, "voice": req.Voice})
-		busyFor := s.speechBusyFor
+		busyFor := h.opts.SpeechBusyFor()
 		if busyFor <= 0 {
 			busyFor = speechTimeout
 		}
@@ -384,11 +384,11 @@ func writeSpeech(w http.ResponseWriter, req *speechRequest, pcm []byte) {
 
 // customVoiceExists: a stored voice whose recording still matches its
 // checksum (TS voiceStore.resolve).
-func (s *Server) customVoiceExists(r *http.Request, id string) bool {
-	if s.Voices == nil {
+func (h *Handler) customVoiceExists(r *http.Request, id string) bool {
+	if h.opts.Voices() == nil {
 		return false
 	}
-	p, err := s.Voices.Resolve(r.Context(), id)
+	p, err := h.opts.Voices().Resolve(r.Context(), id)
 	return err == nil && p != ""
 }
 
