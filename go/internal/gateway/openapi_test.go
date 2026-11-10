@@ -500,7 +500,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 
 	// /_localbase/voices/{id}/<segment>: what voicesAPI compares parts[1] with.
 	var voiceSegments []string
-	ast.Inspect(goFunc(t, fns, "voicesAPI"), func(n ast.Node) bool {
+	ast.Inspect(goFunc(t, fns, "VoicesAPI"), func(n ast.Node) bool {
 		if b, ok := n.(*ast.BinaryExpr); ok && b.Op == token.EQL {
 			if ix, ok := b.X.(*ast.IndexExpr); ok {
 				if id, ok := ix.X.(*ast.Ident); ok && id.Name == "parts" {
@@ -1312,7 +1312,7 @@ func TestOpenAPIResponses(t *testing.T) {
 	voice("Doc voice", "true", []byte("not a recording"), 400)
 	form("/_localbase/voices", func(w *multipart.Writer) { w.WriteField("name", "Doc voice") }, 400)
 	check("POST", "/_localbase/voices", `{"name":"Doc voice"}`, 415)
-	voice("Doc voice", "true", make([]byte, voices.MaxUploadBytes+voiceMultipartOverhead), 413)
+	voice("Doc voice", "true", make([]byte, voices.MaxUploadBytes+VoiceMultipartOverhead), 413)
 	madeVoice := idOf("id", voice("Doc voice", "true", clip, 201))
 	voice("Doc voice", "true", clip, 409)
 	voicePath := "/_localbase/voices/" + madeVoice

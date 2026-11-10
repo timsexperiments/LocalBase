@@ -74,8 +74,8 @@ func (s *Server) routeTable() []route {
 		{pattern: "/app/api/", handler: s.access.UIAccess},
 		{pattern: "/health/ready", methods: []string{"GET", "HEAD"}, handler: s.ready},
 		{pattern: "/_localbase/instance", handler: s.instance},
-		{pattern: "/_localbase/host", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.hostAPI, ui: []string{"GET"}},
-		{pattern: "/_localbase/computer-name", audit: "computer-name", describe: computerNameChange, handler: s.computerNameAPI, ui: []string{"PUT"}},
+		{pattern: "/_localbase/host", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.records.HostAPI, ui: []string{"GET"}},
+		{pattern: "/_localbase/computer-name", audit: "computer-name", describe: computerNameChange, handler: s.records.ComputerNameAPI, ui: []string{"PUT"}},
 		{pattern: "/_localbase/default-model", handler: s.defaultModel}, // for the local CLI: an empty 404 without its instance token, by design
 		{pattern: "/_localbase/placement-state", handler: s.models.PlacementRuntimeState},
 		{pattern: "/v1/models", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.listModels},
@@ -109,10 +109,10 @@ func (s *Server) routeTable() []route {
 		{pattern: "/_localbase/model-imports", methods: []string{"GET", "POST"}, audit: "imports", describe: importsChange, handler: s.models.ModelImportsAPI, ui: []string{"GET", "POST"}},
 		{pattern: "/_localbase/auth-profiles", methods: []string{"GET"}, handler: s.models.AuthProfilesAPI, ui: []string{"GET"}},
 		{pattern: "/_localbase/local-sessions", handler: s.access.LocalSessionsAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/usage", handler: s.usageAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/update", handler: s.updateAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/voices", audit: "voices", describe: voicesChange, handler: s.voicesAPI, ui: []string{"GET", "POST"}},
-		{pattern: "/_localbase/voices/", audit: "voices", describe: voicesChange, handler: s.voicesAPI, uiSub: uiVoice},
+		{pattern: "/_localbase/usage", handler: s.records.UsageAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/update", handler: s.records.UpdateAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/voices", audit: "voices", describe: voicesChange, handler: s.records.VoicesAPI, ui: []string{"GET", "POST"}},
+		{pattern: "/_localbase/voices/", audit: "voices", describe: voicesChange, handler: s.records.VoicesAPI, uiSub: uiVoice},
 	}
 	if s.UI != nil {
 		routes = append(routes,

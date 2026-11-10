@@ -13,52 +13,52 @@ import (
 // The optional daily check for a newer version (DESIGN §33.1). Reading says what is stored and
 // asks nobody. This route never installs anything: an upgrade restarts the gateway serving it,
 // and it belongs on the computer.
-func (s *Server) updateAPI(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
-		p := s.principal(r)
+		p := h.opts.Caller(r)
 		if !p.Authenticated() {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !s.NoAuth && !p.Can("models:read") {
+		if !h.opts.NoAuth() && !p.Can("models:read") {
 			httpx.Forbidden(w, r)
 			return
 		}
-		if s.Updates == nil {
+		if h.opts.Updates == nil {
 			notConfigured(w, r, "Update check")
 			return
 		}
-		httpx.JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
+		httpx.JSON(w, http.StatusOK, h.opts.Updates.Read(r.Context()))
 	case http.MethodPost:
-		s.updateChange(w, r)
+		h.updateChange(w, r)
 	default:
 		// Checked here, not by the route table's gate: the 405 carries this handler's Cache-Control.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }
 
-func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) updateChange(w http.ResponseWriter, r *http.Request) {
 	actorKind, actorID := "cli", ""
 	if r.Header.Get("X-Localbase-Instance-Token") != "" {
-		if !s.localCLI(r) {
+		if !h.opts.LocalCLI(r) {
 			httpx.Unauthorized(w, r)
 			return
 		}
 	} else {
-		p := s.principal(r)
+		p := h.opts.Caller(r)
 		if !p.Authenticated() {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !s.NoAuth && !usage.CanChange(p.Can) {
+		if !h.opts.NoAuth() && !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		actorKind, actorID, _ = s.usagePrincipal(p)
+		actorKind, actorID, _ = h.opts.UsagePrincipal(p)
 	}
-	if s.Updates == nil {
+	if h.opts.Updates == nil {
 		notConfigured(w, r, "Update check")
 		return
 	}
@@ -81,11 +81,11 @@ func (s *Server) updateChange(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, `Expected {"action":"set-check","enabled":true or false}.`, nil)
 		return
 	}
-	if err := s.Updates.SetEnabled(r.Context(), *in.Enabled); err != nil {
-		s.Log.Error("Could not change the update check.", "event", "update.change-failed", "error", err.Error())
+	if err := h.opts.Updates.SetEnabled(r.Context(), *in.Enabled); err != nil {
+		h.opts.Log().Error("Could not change the update check.", "event", "update.change-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Update check")
 		return
 	}
-	s.Log.Info("Administration change.", "event", "audit.update-changed", "action", in.Action, "enabled", *in.Enabled, "actor_kind", actorKind, "actor_id", actorID)
-	httpx.JSON(w, http.StatusOK, s.Updates.Read(r.Context()))
+	h.opts.Log().Info("Administration change.", "event", "audit.update-changed", "action", in.Action, "enabled", *in.Enabled, "actor_kind", actorKind, "actor_id", actorID)
+	httpx.JSON(w, http.StatusOK, h.opts.Updates.Read(r.Context()))
 }

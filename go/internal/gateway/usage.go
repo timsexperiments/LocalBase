@@ -15,26 +15,26 @@ import (
 
 // --- the API --------------------------------------------------------------------------
 
-func (s *Server) usageAPI(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UsageAPI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	switch r.Method {
 	case http.MethodGet:
-		s.usageRead(w, r)
+		h.usageRead(w, r)
 	case http.MethodPost:
-		s.usageChange(w, r)
+		h.usageChange(w, r)
 	default:
 		// Checked here, not by the route table's gate: the 405 carries this handler's Cache-Control.
 		httpx.MethodNotAllowed(w, r, "GET, POST")
 	}
 }
 
-func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
-	p := s.principal(r)
+func (h *Handler) usageRead(w http.ResponseWriter, r *http.Request) {
+	p := h.opts.Caller(r)
 	if !p.Authenticated() {
 		httpx.Unauthorized(w, r)
 		return
 	}
-	if s.Usage == nil {
+	if h.opts.Usage == nil {
 		notConfigured(w, r, "Usage")
 		return
 	}
@@ -48,10 +48,10 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, "scope must be self or all.", httpx.StrPtr("scope"))
 		return
 	}
-	_, own, _ := s.usagePrincipal(p)
+	_, own, _ := h.opts.UsagePrincipal(p)
 	principal := query.Get("principal")
 	if scope == "all" || (principal != "" && principal != own) {
-		if !s.NoAuth && !usage.CanSeeAll(p.Can) {
+		if !h.opts.NoAuth() && !usage.CanSeeAll(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -80,9 +80,9 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 		httpx.BadRequest(w, r, err.Error()+".", httpx.StrPtr("range"))
 		return
 	}
-	report, err := s.Usage.Report(r.Context(), q)
+	report, err := h.opts.Usage.Report(r.Context(), q)
 	if err != nil {
-		s.Log.Error("Could not read usage.", "event", "usage.read-failed", "error", err.Error())
+		h.opts.Log().Error("Could not read usage.", "event", "usage.read-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Usage")
 		return
 	}
@@ -90,26 +90,26 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, report)
 }
 
-func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) usageChange(w http.ResponseWriter, r *http.Request) {
 	actorKind, actorID := "cli", ""
 	if r.Header.Get("X-Localbase-Instance-Token") != "" {
-		if !s.localCLI(r) {
+		if !h.opts.LocalCLI(r) {
 			httpx.Unauthorized(w, r)
 			return
 		}
 	} else {
-		p := s.principal(r)
+		p := h.opts.Caller(r)
 		if !p.Authenticated() {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !s.NoAuth && !usage.CanChange(p.Can) {
+		if !h.opts.NoAuth() && !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}
-		actorKind, actorID, _ = s.usagePrincipal(p)
+		actorKind, actorID, _ = h.opts.UsagePrincipal(p)
 	}
-	if s.Usage == nil {
+	if h.opts.Usage == nil {
 		notConfigured(w, r, "Usage")
 		return
 	}
@@ -151,14 +151,14 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 			}
 			before = &t
 		}
-		err = s.Usage.Clear(ctx, before)
+		err = h.opts.Usage.Clear(ctx, before)
 		cleared = true
 	case "set-retention":
 		if in.Days == nil || in.Before != nil || in.Enabled != nil || *in.Days != float64(int(*in.Days)) {
 			httpx.BadRequest(w, r, "set-retention takes days, a whole number.", httpx.StrPtr("days"))
 			return
 		}
-		err = s.Usage.SetRetention(ctx, int(*in.Days))
+		err = h.opts.Usage.SetRetention(ctx, int(*in.Days))
 		var invalid *usage.InvalidRetention
 		if errors.As(err, &invalid) {
 			httpx.BadRequest(w, r, invalid.Error()+".", httpx.StrPtr("days"))
@@ -169,17 +169,17 @@ func (s *Server) usageChange(w http.ResponseWriter, r *http.Request) {
 			httpx.BadRequest(w, r, "set-recording takes enabled.", httpx.StrPtr("enabled"))
 			return
 		}
-		err = s.Usage.SetRecording(ctx, *in.Enabled)
+		err = h.opts.Usage.SetRecording(ctx, *in.Enabled)
 	default:
 		httpx.BadRequest(w, r, "action must be clear, set-retention or set-recording.", httpx.StrPtr("action"))
 		return
 	}
 	if err != nil {
-		s.Log.Error("Could not change usage.", "event", "usage.change-failed", "error", err.Error())
+		h.opts.Log().Error("Could not change usage.", "event", "usage.change-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Usage")
 		return
 	}
-	s.Log.Info("Administration change.", "event", "audit.usage-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID)
-	recording, days := s.Usage.Settings()
+	h.opts.Log().Info("Administration change.", "event", "audit.usage-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID)
+	recording, days := h.opts.Usage.Settings()
 	httpx.JSON(w, http.StatusOK, map[string]any{"object": "localbase.usage.settings", "recording": recording, "retentionDays": days, "cleared": cleared})
 }
