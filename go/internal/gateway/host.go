@@ -294,7 +294,7 @@ func (h *Handler) refusalFor(r *http.Request, err error, id, service string) map
 	permanent := errors.As(err, &ae) && ae.Permanent
 	if service == "video" {
 		// A video request is accepted and its job then fails with this code.
-		f := FailureError(err)
+		f := video.FailureError(err)
 		return map[string]any{"status": nil, "jobFailure": true, "code": f["code"], "message": f["message"], "permanent": permanent, "retryAfter": nil}
 	}
 	rec := &refusalWriter{header: http.Header{}}
