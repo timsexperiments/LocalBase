@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 	"github.com/timsexperiments/LocalBase/go/tools/lab"
 )
 
@@ -24,22 +25,16 @@ func TestRuntimePort(t *testing.T) {
 	}
 }
 
-// freeRun finds n free ports in a row.
+// freeRun finds n free ports in a row, in this test process's part of the test block. They are
+// bound only when each runtime starts: a run from another process's part lost its LLM port to that
+// process's backends now and then, and the chat got a 503.
 func freeRun(t *testing.T, n int) int {
 	t.Helper()
-scan:
-	for base := 25300; base < 25490; base += n {
-		for i := range n {
-			ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", base+i))
-			if err != nil {
-				continue scan
-			}
-			ln.Close()
-		}
-		return base
+	base, ok := testutil.FreeRun(n)
+	if !ok {
+		t.Skip("no free run of ports")
 	}
-	t.Skip("no free run of ports")
-	return 0
+	return base
 }
 
 // The flag reaches every runtime it can start here, on a real gateway: a scratch

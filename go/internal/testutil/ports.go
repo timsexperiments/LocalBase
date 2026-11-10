@@ -85,7 +85,7 @@ func takePart(key string, low, high int) part {
 	if count < 2 {
 		return whole
 	}
-	dir := filepath.Join(os.TempDir(), fmt.Sprintf("localbase-test-ports-%d", os.Getuid()))
+	dir := partsDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return whole
 	}
@@ -102,6 +102,55 @@ func takePart(key string, low, high int) part {
 		_ = f.Close() // Someone else's part, so nothing to keep.
 	}
 	return whole
+}
+
+// partsDir holds the locks on the parts of a block, one file a part.
+func partsDir() string {
+	return filepath.Join(os.TempDir(), fmt.Sprintf("localbase-test-ports-%d", os.Getuid()))
+}
+
+// FreeRun returns the first of n free ports in a row, in this process's part of the block, or if the
+// part has no such run, in the rest of the block, as FreePort does. A run is for one gateway's
+// runtimes (--runtime-port-base), which bind it well after it is handed out. A run from another
+// process's part loses a port to that process's backends, and the runtime that loses can't start.
+// FreePort walks on from past the run, so it doesn't hand those ports out again.
+func FreeRun(n int) (int, bool) {
+	blockLow, blockHigh, err := PortRange(os.Getenv(PortsEnv))
+	if err != nil {
+		panic(err)
+	}
+	ports.Lock()
+	defer ports.Unlock()
+	low, high := myPart(blockLow, blockHigh)
+	base, ok := runIn(low, high, n)
+	if !ok {
+		base, ok = runIn(blockLow, blockHigh, n)
+	}
+	if ok {
+		ports.cursor = base + n
+	}
+	return base, ok
+}
+
+// runIn is the first run of n free ports in low-high.
+func runIn(low, high, n int) (int, bool) {
+scan:
+	for base := low; base+n-1 <= high; base++ {
+		for p := base; p < base+n; p++ {
+			if PortExcluded(p) {
+				base = p
+				continue scan
+			}
+			ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+			if err != nil {
+				base = p
+				continue scan
+			}
+			_ = ln.Close() // A probe: the caller binds it.
+		}
+		return base, true
+	}
+	return 0, false
 }
 
 // FreePort returns a free port in this process's part of the block, or if every port there is in
