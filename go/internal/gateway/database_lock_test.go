@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -162,8 +163,8 @@ func TestNoRouteCostsTheGatewayItsLock(t *testing.T) {
 	t.Run("the pages", func(t *testing.T) {
 		g := newMatrixGateway(t, nil)
 		// Signed in, as the owner at this computer, so the pages answer rather than ask who it is.
-		cookie := SessionCookie(t, LocalClient{T: t, Base: g.ts.URL}, g.srv.Store)
-		signedIn := LocalUI(cookie, g.ts.URL)
+		cookie := gatewaytest.SessionCookie(t, gatewaytest.LocalClient{T: t, Base: g.ts.URL}, g.srv.Store)
+		signedIn := gatewaytest.LocalUI(cookie, g.ts.URL)
 		asker := newLockAsker(t, g.srv.Root.DB())
 		asker.mustBeRefused(t, "opening")
 		answered := 0

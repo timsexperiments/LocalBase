@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
 
@@ -246,19 +247,19 @@ func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
 	})
 	t.Run("a local session", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := SessionCookie(t, c, s.Store)
+		cookie := gatewaytest.SessionCookie(t, c, s.Store)
 		if err := s.Store.Close(); err != nil {
 			t.Fatal(err)
 		}
-		resp, _ := c.Send("POST", "/app/logout", "", LocalUI(cookie, c.Base))
+		resp, _ := c.Send("POST", "/app/logout", "", gatewaytest.LocalUI(cookie, c.Base))
 		if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || len(resp.Cookies()) != 0 {
 			t.Errorf("%d, Retry-After %q, cookies %v", resp.StatusCode, resp.Header.Get("Retry-After"), resp.Cookies())
 		}
 	})
 	t.Run("with the database working, it's gone", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := SessionCookie(t, c, s.Store)
-		resp, _ := c.Send("POST", "/app/logout", "", LocalUI(cookie, c.Base))
+		cookie := gatewaytest.SessionCookie(t, c, s.Store)
+		resp, _ := c.Send("POST", "/app/logout", "", gatewaytest.LocalUI(cookie, c.Base))
 		if resp.StatusCode != 204 || len(resp.Cookies()) != 1 || resp.Cookies()[0].MaxAge >= 0 {
 			t.Errorf("%d, cookies %v", resp.StatusCode, resp.Cookies())
 		}
