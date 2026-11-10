@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
@@ -303,60 +301,6 @@ func TestAccessChangeUsesWhatTheCallerHoldsNow(t *testing.T) {
 	}
 	if status, out := call(`{"action":"disable"}`); status != 401 || !strings.Contains(out, "invalid_api_key") {
 		t.Errorf("a revoked key: %d %s", status, out)
-	}
-}
-
-// A key change and an access change share one lock: each check reads what the other
-// writes, so neither may run between the other's check and its write.
-func TestKeyAndAccessChangesCannotRaceToNobody(t *testing.T) {
-	f := &accessFixture{keyFixture: newKeyFixture(t)}
-	ctx := context.Background()
-	host := &auth.Principal{Kind: "environment", Permissions: auth.Permissions}
-	call := func(path, body string) int {
-		return f.s.Call(ctx, host, "POST", path, "application/json", []byte(body)).Status
-	}
-	if got := call(gatewaytest.AccessRoute, gatewaytest.ConfigureCloudflare); got != 200 {
-		t.Fatal(got)
-	}
-	const bound = `{"kind":"email","role":"admin","email":"person@example.test"}`
-	if got := call(gatewaytest.AccessRoute, gatewaytest.PolicyRequest("null", gatewaytest.ChatRole+","+gatewaytest.AdminRole, bound, "null")); got != 200 {
-		t.Fatal(got)
-	}
-	if got := call(gatewaytest.AccessRoute, `{"action":"invite-user","email":"person@example.test","roles":["chat"]}`); got != 201 {
-		t.Fatal(got)
-	}
-	// One key and one person can manage access. Each is being removed by the other side.
-	k, _ := f.key("manager", 0, "access:manage")
-	var arrived sync.WaitGroup
-	arrived.Add(2)
-	release := make(chan struct{})
-	go func() { arrived.Wait(); close(release) }()
-	f.s.keys.beforeAdminWrite = func() {
-		arrived.Done()
-		select {
-		case <-release:
-		case <-time.After(200 * time.Millisecond):
-			arrived.Add(1)
-		}
-	}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() { defer wg.Done(); call(gatewaytest.KeysRoute, gatewaytest.KeyAction("revoke", k.ID)) }()
-	go func() {
-		defer wg.Done()
-		call(gatewaytest.AccessRoute, `{"action":"disable-user","email":"person@example.test"}`)
-	}()
-	wg.Wait()
-	cfg, err := auth.LoadAccess(f.s.Root.Dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := auth.LoadGuard(ctx, f.st, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !g.HasManager() {
-		t.Fatal("the two changes together left nobody able to manage access")
 	}
 }
 

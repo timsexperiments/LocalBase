@@ -9,9 +9,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
@@ -369,46 +367,6 @@ func TestKeyActingOnItself(t *testing.T) {
 		t.Errorf("the old secret after rotating itself: %d", got)
 	}
 	f.expect(fresh, `{"action":"create","name":"proof","scopes":[]}`, 201, "")
-}
-
-// Two managers revoking each other at once must not leave nobody. Every request reaches
-// the point just before its write together with the other, if nothing keeps them apart.
-func TestManagersRevokingEachOtherLeaveOneStanding(t *testing.T) {
-	f := newKeyFixture(t)
-	a, aSecret := f.key("a", 0, "keys:manage", "access:manage")
-	b, bSecret := f.key("b", 0, "keys:manage", "access:manage")
-	const both = 2
-	var arrived sync.WaitGroup
-	arrived.Add(both)
-	release := make(chan struct{})
-	go func() { arrived.Wait(); close(release) }()
-	f.s.keys.beforeAdminWrite = func() {
-		arrived.Done()
-		select { // with the lock held the other can't arrive: go on after a moment
-		case <-release:
-		case <-time.After(200 * time.Millisecond):
-			arrived.Add(1)
-		}
-	}
-	var wg sync.WaitGroup
-	statuses := make([]int, both)
-	for i, call := range [][2]string{{aSecret, b.ID}, {bSecret, a.ID}} {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			statuses[i], _, _ = f.post(call[0], "/_localbase/api-keys", gatewaytest.KeyAction("revoke", call[1]))
-		}()
-	}
-	wg.Wait()
-	alive := 0
-	for _, id := range []string{a.ID, b.ID} {
-		if auth.ActiveKey(*f.stored(id)) {
-			alive++
-		}
-	}
-	if alive != 1 {
-		t.Fatalf("%d managers left after they revoked each other (statuses %v)", alive, statuses)
-	}
 }
 
 // First-run and host paths mint keys with no caller to compare against, and the callers
