@@ -1,4 +1,4 @@
-package gateway
+package browser
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 )
 
-// TestLocalSessionLoopbackRule and TestLoginLinkRateLimited (local_test.go) through Access alone,
+// TestLocalSessionLoopbackRule and TestLoginLinkRateLimited (gateway/local_test.go) through Access alone,
 // with what they read inside it: the principal a request gets, and the window of failed redeems.
 
 // Proxied requests can neither redeem a link nor use a valid session.

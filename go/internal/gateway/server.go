@@ -18,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/browser"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
@@ -98,9 +99,9 @@ type Server struct {
 	// UI handles /app and / when set.
 	UI http.Handler
 	// LoginPages renders local sign-in's pages (DESIGN §28); nil in tests without a UI.
-	LoginPages LoginPages
+	LoginPages browser.LoginPages
 	// access serves the browser-owned paths and local sign-in.
-	access *Access
+	access *browser.Access
 
 	started  time.Time
 	stopping atomic.Bool
@@ -146,7 +147,7 @@ func New(s *Server) *Server {
 	s.changeAudit = newChangeLimiter()
 	go s.runs.Janitor()
 	mux := http.NewServeMux()
-	s.access = NewAccess(s.accessOptions(mux, rootDir))
+	s.access = browser.NewAccess(s.accessOptions(mux, rootDir))
 	for _, rt := range s.routeTable() {
 		mux.Handle(rt.pattern, rt.handler)
 		s.routes = append(s.routes, rt.pattern)
@@ -162,10 +163,10 @@ func (s *Server) runOptions(dir string) runs.Options {
 }
 
 // accessOptions is what the browser access layer needs from this server, forwarding to mux.
-func (s *Server) accessOptions(mux http.Handler, rootDir string) Options {
-	return Options{Handler: mux, Store: s.Store, Log: func() *slog.Logger { return s.Log },
+func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options {
+	return browser.Options{Handler: mux, Store: s.Store, Log: func() *slog.Logger { return s.Log },
 		Browser: func() *auth.Browser { return s.Browser }, NoAuth: func() bool { return s.NoAuth },
-		Pages: func() LoginPages { return s.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
+		Pages: func() browser.LoginPages { return s.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
 		Caller: s.principal, LookupFailed: s.lookupFailed}
 }
 
@@ -390,7 +391,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// No method is exempt from authentication. This gateway sends no CORS
 	// headers, so OPTIONS has no use outside the browser layer's own paths: it
 	// is refused before any handler, as TS does.
-	if r.Method == http.MethodOptions && !IsUIAccessPath(r.URL.Path) {
+	if r.Method == http.MethodOptions && !browser.IsUIAccessPath(r.URL.Path) {
 		r.Pattern = probe.Pattern
 		httpx.Forbidden(rec, r)
 		return

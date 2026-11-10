@@ -507,7 +507,7 @@ func actorKindSpellings(t *testing.T, dir string) map[string]string {
 // One name for each kind of actor, so that a search of the log finds them all.
 func TestActorKindsAreOneVocabulary(t *testing.T) {
 	seen := map[string]bool{}
-	for _, dir := range []string{".", "../../internal/gateway", "../../internal/auth"} {
+	for _, dir := range []string{".", "../../internal/gateway", "../../internal/gateway/browser", "../../internal/auth"} {
 		for kind, where := range actorKindSpellings(t, dir) {
 			seen[kind] = true
 			if !slices.Contains(allowedActorKinds, kind) {
