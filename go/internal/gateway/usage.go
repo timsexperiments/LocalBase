@@ -35,7 +35,7 @@ func (h *Handler) usageRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.opts.Usage == nil {
-		notConfigured(w, r, "Usage")
+		NotConfigured(w, r, "Usage")
 		return
 	}
 	query := r.URL.Query()
@@ -110,7 +110,7 @@ func (h *Handler) usageChange(w http.ResponseWriter, r *http.Request) {
 		actorKind, actorID, _ = h.opts.UsagePrincipal(p)
 	}
 	if h.opts.Usage == nil {
-		notConfigured(w, r, "Usage")
+		NotConfigured(w, r, "Usage")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4097))

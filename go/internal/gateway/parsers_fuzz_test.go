@@ -62,7 +62,7 @@ func FuzzMultipart(f *testing.F) {
 		ctype := "multipart/form-data; boundary=" + boundary
 		r := httptest.NewRequest("POST", "/", bytes.NewReader(body))
 		r.Header.Set("Content-Type", ctype)
-		_, _ = readMultipart(r, body)
+		_, _ = ReadMultipart(r, body)
 	})
 }
 

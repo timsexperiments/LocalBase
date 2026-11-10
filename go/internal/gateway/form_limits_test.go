@@ -21,7 +21,7 @@ func formRequest() *http.Request {
 }
 
 func TestAFormUpToTheLimitIsRead(t *testing.T) {
-	form, err := readMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts))
+	form, err := ReadMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestAFormUpToTheLimitIsRead(t *testing.T) {
 }
 
 func TestAFormPastTheLimitIsRefused(t *testing.T) {
-	if form, err := readMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts+1)); err == nil {
+	if form, err := ReadMultipart(formRequest(), gatewaytest.FormOf(httpx.MaxFormParts+1)); err == nil {
 		t.Errorf("it was read, with %d parts", len(form["x"]))
 	}
 }
@@ -57,7 +57,7 @@ func TestAFormAtTheBodyLimitCostsLittle(t *testing.T) {
 	for _, size := range []int{1 << 20, httpx.MaxRequestBytes} {
 		body := []byte(strings.Repeat(smallest, size/len(smallest)))
 		cost := allocated(func() {
-			if _, err := readMultipart(formRequest(), body); err == nil {
+			if _, err := ReadMultipart(formRequest(), body); err == nil {
 				t.Errorf("%d bytes of parts were read", size)
 			}
 		})

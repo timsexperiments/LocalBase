@@ -153,13 +153,13 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.TTS == nil {
-		notConfigured(w, r, "TTS")
+		NotConfigured(w, r, "TTS")
 		return
 	}
 	id, err := s.TTS.Resolve(req.Model)
 	switch {
 	case errors.Is(err, runtime.ErrNotConfigured):
-		notConfigured(w, r, "TTS")
+		NotConfigured(w, r, "TTS")
 		return
 	case errors.Is(err, runtime.ErrModelNotFound):
 		httpx.ModelNotFound(w, r, req.Model)
