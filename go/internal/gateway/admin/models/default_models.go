@@ -23,8 +23,8 @@ func (h *Handler) DefaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	reply := func() {
-		c := h.opts.Runtimes().LLM.DefaultModel(false)
-		httpx.JSON(w, 200, map[string]any{"models": h.opts.Runtimes().LLM.Config().DefaultLLMList(),
+		c := h.opts.Runtimes.LLM.DefaultModel(false)
+		httpx.JSON(w, 200, map[string]any{"models": h.opts.Runtimes.LLM.Config().DefaultLLMList(),
 			"effective": map[string]any{"modelId": c.ModelID, "preferredModelId": c.Preferred, "reason": c.Reason}})
 	}
 	switch r.Method {
@@ -83,10 +83,10 @@ func (h *Handler) DefaultChatModelsAPI(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &me):
 		httpx.Error(w, r, 400, "invalid_request_error", me.code, me.message, nil)
 	case err != nil:
-		h.opts.Log().Error("Default chat models update failed.", "event", "models.default-update-failed", "error", err.Error())
+		h.opts.Log.Error("Default chat models update failed.", "event", "models.default-update-failed", "error", err.Error())
 		httpx.ServiceUnavailable(w, r, "Model management")
 	default:
-		h.opts.Log().Info("Default chat models changed.", "event", "models.defaults-changed", "models", in.Models)
+		h.opts.Log.Info("Default chat models changed.", "event", "models.defaults-changed", "models", in.Models)
 		reply()
 	}
 }

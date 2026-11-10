@@ -51,11 +51,13 @@ type Options struct {
 	Placement *runtime.HostPlacement
 	Memory    *memory.Controller
 	MemoryGB  int
-	Runtimes  func() runtime.Set
-	Log       func() *slog.Logger
-	NoAuth    func() bool
-	Library   func() *library.Library
-	Overrides func() func(*store.Config)
+	Runtimes  runtime.Set
+	Log       *slog.Logger
+	NoAuth    bool
+	Library   *library.Library // nil: no imports or backend selections
+	// Overrides applies what only this process has (the environment, serve's flags) to a saved
+	// configuration; nil applies nothing.
+	Overrides func(*store.Config)
 	// Caller is who a request is from, and LocalCLI whether it is this machine's CLI.
 	Caller   func(*http.Request) *auth.Principal
 	LocalCLI func(*http.Request) bool
@@ -285,12 +287,12 @@ func (h *Handler) inspectModel(spec *catalog.Spec) (mgmtFacts, error) {
 // referencedModels are the models a runtime holds or is switching to.
 func (h *Handler) referencedModels() map[string]bool {
 	out := map[string]bool{}
-	if h.opts.Runtimes().LLM != nil {
-		if id := h.opts.Runtimes().LLM.Snapshot().ModelID; id != "" {
+	if h.opts.Runtimes.LLM != nil {
+		if id := h.opts.Runtimes.LLM.Snapshot().ModelID; id != "" {
 			out[id] = true
 		}
 	}
-	for _, svc := range []*runtime.Service{h.opts.Runtimes().STT, h.opts.Runtimes().TTS, h.opts.Runtimes().Image} {
+	for _, svc := range []*runtime.Service{h.opts.Runtimes.STT, h.opts.Runtimes.TTS, h.opts.Runtimes.Image} {
 		if svc != nil {
 			if id := svc.Running(); id != "" {
 				out[id] = true
@@ -305,12 +307,12 @@ func (h *Handler) referencedModels() map[string]bool {
 // referencedModels.
 func (h *Handler) heldModels() map[string]bool {
 	out := map[string]bool{}
-	if h.opts.Runtimes().LLM != nil {
-		for _, id := range h.opts.Runtimes().LLM.LoadedOrLoading() {
+	if h.opts.Runtimes.LLM != nil {
+		for _, id := range h.opts.Runtimes.LLM.LoadedOrLoading() {
 			out[id] = true
 		}
 	}
-	for _, svc := range []*runtime.Service{h.opts.Runtimes().STT, h.opts.Runtimes().TTS, h.opts.Runtimes().Image} {
+	for _, svc := range []*runtime.Service{h.opts.Runtimes.STT, h.opts.Runtimes.TTS, h.opts.Runtimes.Image} {
 		if svc != nil {
 			if id := svc.Running(); id != "" {
 				out[id] = true
@@ -388,7 +390,7 @@ func (h *Handler) activateFirstInstall(spec *catalog.Spec) error {
 }
 
 func (h *Handler) readManagement() (mgmtStorage, []mgmtEntry) {
-	cfg := h.opts.Runtimes().LLM.Config()
+	cfg := h.opts.Runtimes.LLM.Config()
 	held := h.heldModels()
 	m := h.mgmt
 	m.mu.Lock()
@@ -463,10 +465,10 @@ func (h *Handler) updateConfig(fn func(*store.Config) error) error {
 		if err := h.opts.Store.SaveConfig(context.Background(), next); err != nil {
 			return err
 		}
-		if h.opts.Overrides() != nil { // After saving, so that they aren't saved.
-			h.opts.Overrides()(next)
+		if h.opts.Overrides != nil { // After saving, so that they aren't saved.
+			h.opts.Overrides(next)
 		}
-		h.opts.Runtimes().LLM.SetConfig(next)
+		h.opts.Runtimes.LLM.SetConfig(next)
 		return nil
 	})
 }
@@ -483,7 +485,7 @@ func (h *Handler) runManagement(modelID, action string) (*mgmtOperation, error) 
 	if busy {
 		return nil, &mgmtError{"conflict", "Wait for the current installation to finish."}
 	}
-	cfg := h.opts.Runtimes().LLM.Config()
+	cfg := h.opts.Runtimes.LLM.Config()
 	kind := spec.Kind
 	if action == "install" || action == "enable" || action == "activate" {
 		if reason := conf.Ineligible(spec, cfg.AllowExperimental); reason != "" {
@@ -731,7 +733,7 @@ func (h *Handler) startInstall(spec *catalog.Spec) (*mgmtOperation, error) {
 		// files are good either way, so a failure here does not fail the install.
 		if err == nil {
 			if aerr := h.activateFirstInstall(spec); aerr != nil {
-				h.opts.Log().Error("Could not make the installed model the default.", "event", "models.activate-failed", "model_id", spec.ModelID, "error", aerr.Error())
+				h.opts.Log.Error("Could not make the installed model the default.", "event", "models.activate-failed", "model_id", spec.ModelID, "error", aerr.Error())
 			}
 		}
 		m.mu.Lock()
@@ -836,7 +838,7 @@ func (h *Handler) ModelManagementAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var me *mgmtError
 		if !errors.As(err, &me) {
-			h.opts.Log().Error("Model management failed.", "event", "models.management-failed", "error", err.Error())
+			h.opts.Log.Error("Model management failed.", "event", "models.management-failed", "error", err.Error())
 			httpx.ServiceUnavailable(w, r, "Model management")
 			return
 		}
