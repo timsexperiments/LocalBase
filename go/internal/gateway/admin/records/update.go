@@ -22,7 +22,7 @@ func (h *Handler) UpdateAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth && !p.Can("models:read") {
+		if !p.Can("models:read") {
 			httpx.Forbidden(w, r)
 			return
 		}
@@ -52,7 +52,7 @@ func (h *Handler) updateChange(w http.ResponseWriter, r *http.Request) {
 			httpx.Unauthorized(w, r)
 			return
 		}
-		if !h.opts.NoAuth && !usage.CanChange(p.Can) {
+		if !usage.CanChange(p.Can) {
 			httpx.Forbidden(w, r)
 			return
 		}

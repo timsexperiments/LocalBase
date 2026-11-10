@@ -130,7 +130,7 @@ func (s *Server) keysOptions(rootDir string) keys.Options {
 // modelsOptions is what model management needs from this server.
 func (s *Server) modelsOptions() models.Options {
 	return models.Options{Store: s.cfg.Store, Root: s.cfg.Root, Catalog: s.cfg.Catalog, Placement: s.cfg.Placement, Memory: s.cfg.Memory, MemoryGB: s.cfg.MemoryGB,
-		Runtimes: s.cfg.runtimes(), Log: s.cfg.Log, NoAuth: s.cfg.NoAuth, Library: s.cfg.Library, Overrides: s.cfg.Overrides,
+		Runtimes: s.cfg.runtimes(), Log: s.cfg.Log, Library: s.cfg.Library, Overrides: s.cfg.Overrides,
 		Caller: s.principal, LocalCLI: s.localCLI, AuditActor: s.auditActor, ImportedTask: s.importedTask,
 		ReportReads: s.reportReads, AdmissionAPI: s.records.AdmissionAPI,
 		UnloadWait: s.cfg.unloadWait}
@@ -144,7 +144,7 @@ func (s *Server) StopManagement(grace time.Duration) { s.models.StopManagement(g
 // recordsOptions is what the host and records routes need from this server.
 func (s *Server) recordsOptions() records.Options {
 	return records.Options{Store: s.cfg.Store, Catalog: s.cfg.Catalog, Memory: s.cfg.Memory, Usage: s.cfg.Usage, Updates: s.cfg.Updates, VideoJobs: s.cfg.VideoJobs,
-		Runtimes: s.cfg.runtimes(), Voices: s.cfg.Voices, Log: s.cfg.Log, NoAuth: s.cfg.NoAuth,
+		Runtimes: s.cfg.runtimes(), Voices: s.cfg.Voices, Log: s.cfg.Log,
 		Caller: s.principal, LocalCLI: s.localCLI, UsagePrincipal: s.usagePrincipal, Unmatched: s.unmatched,
 		ActiveRuns: func() int {
 			if s.runs == nil {
