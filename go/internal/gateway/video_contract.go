@@ -64,7 +64,7 @@ func (c *checker) videoStringAt(obj map[string]any, key, path string, lo, hi int
 		c.fail(path, expected("string", v, true))
 		return
 	}
-	n := UTF16Length(s)
+	n := httpx.UTF16Length(s)
 	if n < lo {
 		c.fail(path, fmt.Sprintf("Too small: expected string to have >=%d characters", lo))
 	}

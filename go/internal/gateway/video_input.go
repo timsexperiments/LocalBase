@@ -10,6 +10,7 @@ import (
 	"math"
 	"regexp"
 
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/mediacheck"
 )
 
@@ -152,7 +153,7 @@ func jsString(v any, lo, hi int) bool {
 	if !ok {
 		return false
 	}
-	n := UTF16Length(s)
+	n := httpx.UTF16Length(s)
 	return n >= lo && n <= hi
 }
 

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf16"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
@@ -34,9 +33,6 @@ const (
 	imageFileMaxBytes    = 8 * 1024 * 1024
 	extraArgsMarker      = "sd_cpp_extra_args"
 )
-
-// UTF16Length is how long s is in UTF-16 code units, as JavaScript counts a string's length.
-func UTF16Length(s string) int { return len(utf16.Encode([]rune(s))) }
 
 func quoteOptions(options []string) string {
 	q := make([]string, len(options))
@@ -97,7 +93,7 @@ func (c *checker) imageTuning(obj map[string]any, withStrength bool) {
 		if s, ok := v.(string); !ok {
 			c.fail("negative_prompt", expected("string", v, true))
 		} else {
-			if UTF16Length(s) > 16_384 {
+			if httpx.UTF16Length(s) > 16_384 {
 				c.fail("negative_prompt", "Too big: expected string to have <=16384 characters")
 			}
 			c.noExtraArgs("negative_prompt", s)
@@ -380,7 +376,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 
 	promptValue, _ := text("prompt")
 	prompt := strings.TrimFunc(promptValue, isJSWhitespace)
-	if prompt == "" || UTF16Length(prompt) > 16_384 {
+	if prompt == "" || httpx.UTF16Length(prompt) > 16_384 {
 		bad("prompt is required and must not exceed 16384 characters.", "prompt")
 		return
 	}
