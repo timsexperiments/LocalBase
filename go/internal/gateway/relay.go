@@ -53,6 +53,10 @@ type Options struct {
 	// SpeechBusyFor is how long a busy tts-server is waited out, read when called; 0 is
 	// speechTimeout (tests).
 	SpeechBusyFor func() time.Duration
+	// RelayBodyLimit and StreamIdleLimit are the relay's limits, read when called; 0 or nil is
+	// relayBodyLimit or streamIdleLimit (tests).
+	RelayBodyLimit  func() int
+	StreamIdleLimit func() time.Duration
 	// VideoJobs holds the video jobs; Guard is the route table's permission check, Unmatched answers
 	// a path no route has, and RecordVideoJob counts a job when it ends.
 	VideoJobs      *video.Manager
@@ -354,11 +358,32 @@ func (h *Handler) logAdmissionRejection(requestID, modality, model string, err e
 // relayBodyLimit is the most of an upstream answer that is read whole (JSON, an image, an error):
 // a 2048x2048 image, the largest real one, is well under it. streamIdleLimit is how long a chat
 // stream may go quiet once it has started: none before its first byte, since a long prompt can take
-// many minutes to process, and the client can always cancel.
-var (
+// many minutes to process, and the client can always cancel. Options.RelayBodyLimit and
+// Options.StreamIdleLimit stand in for them in tests.
+const (
 	relayBodyLimit  = 64 << 20
 	streamIdleLimit = 5 * time.Minute
 )
+
+// bodyLimit is relayBodyLimit, unless Options.RelayBodyLimit says otherwise.
+func (h *Handler) bodyLimit() int {
+	if h.opts.RelayBodyLimit != nil {
+		if n := h.opts.RelayBodyLimit(); n > 0 {
+			return n
+		}
+	}
+	return relayBodyLimit
+}
+
+// idleLimit is streamIdleLimit, unless Options.StreamIdleLimit says otherwise.
+func (h *Handler) idleLimit() time.Duration {
+	if h.opts.StreamIdleLimit != nil {
+		if d := h.opts.StreamIdleLimit(); d > 0 {
+			return d
+		}
+	}
+	return streamIdleLimit
+}
 
 // errStreamIdle ends the read of a stream that went quiet past streamIdleLimit.
 var errStreamIdle = errors.New("the stream went quiet")
@@ -465,13 +490,14 @@ func (h *Handler) relay(w http.ResponseWriter, r *http.Request, url string, body
 			w.Header().Set("Cache-Control", v)
 		}
 		w.WriteHeader(resp.StatusCode)
-		stream := &idleReader{r: resp.Body, limit: streamIdleLimit, cancel: cancelUp}
+		stream := &idleReader{r: resp.Body, limit: h.idleLimit(), cancel: cancelUp}
 		outcome, source := relaySSE(r.Context(), w, stream, modelID, t, o.interrupted)
 		stream.stop()
 		t.finish(outcome, resp.StatusCode, source)
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(relayBodyLimit)+1))
+	bodyLimit := h.bodyLimit()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(bodyLimit)+1))
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -489,8 +515,8 @@ func (h *Handler) relay(w http.ResponseWriter, r *http.Request, url string, body
 		memoryInterrupted(w, r, t)
 		return
 	}
-	if len(raw) > relayBodyLimit { // said as it is, not as the malformed JSON a cut answer would be
-		httpx.UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", memory.SizeText(relayBodyLimit)))
+	if len(raw) > bodyLimit { // said as it is, not as the malformed JSON a cut answer would be
+		httpx.UpstreamFailure(w, r, fmt.Sprintf("The upstream service returned a response larger than %s.", memory.SizeText(bodyLimit)))
 		t.finish("error", 502, "response_size_limit")
 		return
 	}
@@ -893,7 +919,11 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 				return "error", "memory_emergency"
 			}
 			if errors.Is(err, errStreamIdle) {
-				write(upstreamErrorEvent(fmt.Sprintf("The model stopped sending output for %s.", idleText(streamIdleLimit))))
+				limit := streamIdleLimit // the stream's own, when it has one
+				if s, ok := body.(*idleReader); ok {
+					limit = s.limit
+				}
+				write(upstreamErrorEvent(fmt.Sprintf("The model stopped sending output for %s.", idleText(limit))))
 				return "error", "response_idle"
 			}
 			if err != io.EOF {

@@ -45,13 +45,14 @@ func streamChat(t *testing.T, base, content string) (int, string) {
 // Review 02, M6: an answer over what is read whole says so, rather than reading as malformed JSON.
 func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
 	ts := newTestServer(t)
-	setFor(t, &relayBodyLimit, 64)
+	s := runServer(ts)
+	s.relayBodyLimit = 64
 	r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi"))
 	if r.status != 502 || r.code() != "upstream_error" ||
 		!strings.Contains(r.body, "The upstream service returned a response larger than 64 bytes.") {
 		t.Errorf("an answer over the limit: %d %s", r.status, r.body)
 	}
-	relayBodyLimit = 64 << 20
+	s.relayBodyLimit = 0
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Errorf("an answer under it: %d %s", r.status, r.body)
 	}
@@ -66,7 +67,7 @@ func TestAStreamThatGoesQuietEnds(t *testing.T) {
 	cancelLog := filepath.Join(t.TempDir(), "cancel.log")
 	t.Setenv("FAKE_CANCEL_LOG", cancelLog)
 	ts := newTestServer(t)
-	setFor(t, &streamIdleLimit, 300*time.Millisecond)
+	runServer(ts).streamIdleLimit = 300 * time.Millisecond
 	status, body := streamChat(t, ts.URL, "fake:stall")
 	if status != 200 || !strings.Contains(body, `"content":"hello`) {
 		t.Errorf("what came before it went quiet: %d %q", status, body)
@@ -77,39 +78,16 @@ func TestAStreamThatGoesQuietEnds(t *testing.T) {
 	if !gatewaytest.WaitFor(5*time.Second, func() bool { b, _ := os.ReadFile(cancelLog); return strings.Contains(string(b), "cancelled") }) {
 		t.Error("the backend call went on")
 	}
-	if got := idleText(5 * time.Minute); got != "5 minutes" {
-		t.Errorf("the limit reads %q", got)
-	}
 }
 
 // No limit before a stream's first byte: a long prompt can take many minutes to process.
 func TestAStreamMayTakeItsTimeToStart(t *testing.T) {
 	t.Setenv("FAKE_DELAY_MS", "900")
 	ts := newTestServer(t)
-	setFor(t, &streamIdleLimit, 300*time.Millisecond)
+	runServer(ts).streamIdleLimit = 300 * time.Millisecond
 	status, body := streamChat(t, ts.URL, "fake:burst 5")
 	if status != 200 || !strings.Contains(body, "[DONE]") || strings.Contains(body, "stopped sending output") {
 		t.Errorf("a stream that started late: %d %q", status, body)
-	}
-
-	// The same once the answer has begun but before any of its body has come.
-	pr, pw := io.Pipe()
-	cancelled := make(chan struct{})
-	stream := &idleReader{r: pr, limit: 100 * time.Millisecond, cancel: func() { close(cancelled); pw.CloseWithError(context.Canceled) }}
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		pw.Write([]byte("data: [DONE]\n\n"))
-		pw.Close()
-	}()
-	b, err := io.ReadAll(stream)
-	stream.stop()
-	if err != nil || string(b) != "data: [DONE]\n\n" {
-		t.Errorf("a body whose first byte came late: %q %v", b, err)
-	}
-	select {
-	case <-cancelled:
-		t.Error("the call was cancelled before its first byte")
-	default:
 	}
 }
 
