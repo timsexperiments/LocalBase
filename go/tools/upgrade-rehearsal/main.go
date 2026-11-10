@@ -216,14 +216,61 @@ func sameLive(a, b map[string]liveState) string {
 
 // --- the kit: binaries and signed releases ------------------------------------------------------
 
-func goBuild(goos, goarch, ldflags, out, pkg string) error {
-	// The flags scripts/release/build.sh uses.
-	cmd := exec.Command("go", "build", "-trimpath", "-buildvcs=false", "-ldflags", "-s -w "+ldflags, "-o", out, pkg)
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
+// releaseBuild is how tools/build.sh, the one build recipe, builds a release of a version: its
+// go build flags, -ldflags and environment, read from the script rather than copied, so the kit
+// can't drift from what CI ships. Run from go/, like the rest of this command.
+type releaseBuild struct {
+	goflags []string
+	ldflags string
+	env     []string
+}
+
+func readReleaseBuild(version string) (releaseBuild, error) {
+	ask := func(flag string) (string, error) {
+		cmd := exec.Command("tools/build.sh", flag)
+		cmd.Env = append(os.Environ(), "VERSION="+version)
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("tools/build.sh %s: %w", flag, err)
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	var rb releaseBuild
+	goflags, err := ask("--goflags")
+	if err != nil {
+		return rb, err
+	}
+	if rb.ldflags, err = ask("--ldflags"); err != nil {
+		return rb, err
+	}
+	env, err := ask("--env")
+	if err != nil {
+		return rb, err
+	}
+	rb.goflags, rb.env = strings.Fields(goflags), strings.Fields(env)
+	return rb, nil
+}
+
+// goArgs is the go build command line for pkg: the release's flags, with extra added to its
+// -ldflags.
+func (rb releaseBuild) goArgs(extra, out, pkg string) []string {
+	args := append([]string{"build"}, rb.goflags...)
+	return append(args, "-ldflags", strings.TrimSpace(rb.ldflags+" "+extra), "-o", out, pkg)
+}
+
+func goBuild(goos, goarch string, rb releaseBuild, extra, out, pkg string) error {
+	cmd := exec.Command("go", rb.goArgs(extra, out, pkg)...)
+	cmd.Env = append(append(os.Environ(), rb.env...), "GOOS="+goos, "GOARCH="+goarch)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("go build %s: %w\n%s", pkg, err, b)
 	}
 	return nil
+}
+
+// testKeyFlag compiles the rehearsal's throwaway signing key in: the one thing the kit's build
+// adds to a release's.
+func testKeyFlag(pub ed25519.PublicKey) string {
+	return "-X " + modulePath + "/upgrade.testKey=" + keyID + ":" + base64.StdEncoding.EncodeToString(pub)
 }
 
 // packRelease archives a binary the way scripts/release/build.sh does: the binary named for its
@@ -313,16 +360,20 @@ func buildKit(kit, goos, goarch string) error {
 	if err != nil {
 		return err
 	}
-	flags := func(version string) string {
-		return "-X " + modulePath + "/version.Version=" + version + " -X " + modulePath + "/version.Commit=rehearsal" +
-			" -X " + modulePath + "/upgrade.testKey=" + keyID + ":" + base64.StdEncoding.EncodeToString(pub)
-	}
 	for version, name := range map[string]string{oldVersion: "local-base-old", newVersion: "local-base-new"} {
-		if err := goBuild(goos, goarch, flags(version), filepath.Join(kit, name), "./cmd/localbase"); err != nil {
+		rb, err := readReleaseBuild(version)
+		if err != nil {
+			return err
+		}
+		if err := goBuild(goos, goarch, rb, testKeyFlag(pub), filepath.Join(kit, name), "./cmd/localbase"); err != nil {
 			return err
 		}
 	}
-	if err := goBuild(goos, goarch, "", filepath.Join(kit, "fake-backend"), "./internal/runtime/fakebackend"); err != nil {
+	rb, err := readReleaseBuild(oldVersion)
+	if err != nil {
+		return err
+	}
+	if err := goBuild(goos, goarch, rb, "", filepath.Join(kit, "fake-backend"), "./internal/runtime/fakebackend"); err != nil {
 		return err
 	}
 	broken := filepath.Join(kit, "local-base-broken")
