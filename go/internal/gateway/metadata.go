@@ -15,19 +15,6 @@ import (
 // observed device state (model-metadata.ts). It never starts runtimes,
 // downloads or hashes files.
 
-// modelRoutePermission is what a request under /_localbase/models/ needs. Changing a model's
-// placement or unloading it needs models:manage and not models:read as well (DESIGN §20.2,
-// §23); everything else here reads.
-func modelRoutePermission(r *http.Request) string {
-	path := r.URL.EscapedPath()
-	switch {
-	case strings.HasSuffix(path, "/unload") && r.Method == http.MethodPost,
-		strings.HasSuffix(path, "/placement") && (r.Method == http.MethodPut || r.Method == http.MethodDelete):
-		return "models:manage"
-	}
-	return "models:read"
-}
-
 func (s *Server) modelMetadata(w http.ResponseWriter, r *http.Request) {
 	if raw, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.EscapedPath(), "/_localbase/models/"), "/placement"); ok && raw != "" {
 		if id, err := url.PathUnescape(raw); err == nil {

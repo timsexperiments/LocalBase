@@ -182,8 +182,6 @@ func storageAt(path string) mgmtStorage {
 	}
 }
 
-func (s *Server) modelsDir(kind string) string { return s.Root.ModelsDir(kind) }
-
 func (s *Server) artifactPaths(spec *catalog.Spec) []string {
 	out := make([]string, 0, len(spec.Artifacts))
 	for _, a := range spec.Artifacts {

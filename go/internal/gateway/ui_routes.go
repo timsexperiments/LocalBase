@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"net/http"
 	"slices"
 	"strings"
 
@@ -87,4 +88,17 @@ func uiVideoJob(rest, method string) bool {
 		return method == "GET" || method == "DELETE"
 	}
 	return false
+}
+
+// modelRoutePermission is what a request under /_localbase/models/ needs. Changing a model's
+// placement or unloading it needs models:manage and not models:read as well (DESIGN §20.2,
+// §23); everything else here reads.
+func modelRoutePermission(r *http.Request) string {
+	path := r.URL.EscapedPath()
+	switch {
+	case strings.HasSuffix(path, "/unload") && r.Method == http.MethodPost,
+		strings.HasSuffix(path, "/placement") && (r.Method == http.MethodPut || r.Method == http.MethodDelete):
+		return "models:manage"
+	}
+	return "models:read"
 }
