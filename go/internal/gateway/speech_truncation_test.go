@@ -71,7 +71,7 @@ func newSpeechGateway(t *testing.T, logs io.Writer) *httptest.Server {
 		Port: freePort(t), Binaries: map[string]string{"tts-server": fakeBinary},
 		Verify: func(string, catalog.Artifact, string) error { return nil }})
 	t.Cleanup(svc.Close)
-	ts := httptest.NewServer(New(Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
+	ts := httptest.NewServer(newGateway(t, Config{Store: st, Catalog: cat, Auth: &auth.Resolver{Store: st, Mode: "either"}, Log: log,
 		NoAuth: true, MemoryGB: 64, Root: r, Memory: mem, TTS: svc}))
 	t.Cleanup(ts.Close)
 	return ts

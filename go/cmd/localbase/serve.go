@@ -605,6 +605,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}
 	srv.LogHeldBack() // nothing is coming now to bring it out
+	_ = srv.Close()   // last: what New started (runs and management are stopped above); nil today
 	log.Info("LocalBase stopped.", "event", "gateway.stopped")
 	if serveErr != nil {
 		return nil, serveErr

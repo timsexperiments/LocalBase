@@ -89,6 +89,20 @@ func newTestGatewayWith(t *testing.T, h memory.HostProvider, extra ...string) (*
 	return newConfiguredGateway(t, h, nil, extra...)
 }
 
+// newGateway is New for a test: the gateway is closed when the test ends, and nothing running the
+// gateway's own code may still be running after that (testutil.NoLeaksIn).
+func newGateway(t *testing.T, cfg Config) *Server {
+	t.Helper()
+	testutil.NoLeaksIn(t, "LocalBase/go/internal/gateway")
+	s := New(cfg)
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+	return s
+}
+
 // newTestServerConfigured is newTestServer, with configure setting what a test needs on its
 // Config before the gateway is built.
 func newTestServerConfigured(t *testing.T, configure func(*Config)) *httptest.Server {
@@ -148,7 +162,7 @@ func newConfiguredGateway(t *testing.T, h memory.HostProvider, configure func(*C
 	if configure != nil {
 		configure(&conf)
 	}
-	ts := httptest.NewServer(New(conf))
+	ts := httptest.NewServer(newGateway(t, conf))
 	t.Cleanup(ts.Close)
 	return ts, llm, mem
 }

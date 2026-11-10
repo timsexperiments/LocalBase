@@ -192,6 +192,18 @@ func (s *Server) BrowserPrincipal(r *http.Request) (*auth.Principal, *auth.Ident
 // streams; serve calls it before the HTTP server drains.
 func (s *Server) StopRuns(wait time.Duration) { s.runs.Shutdown(wait) }
 
+// closeRunsWait is how long Close gives a run that is still going to end.
+const closeRunsWait = time.Second
+
+// Close stops what New started: the run janitor, and any run still going, which gets
+// closeRunsWait to end. It is safe to call more than once, and after StopRuns, so serve calls it
+// last. It returns nil today; the error is for what a gateway may come to hold, and makes a
+// Server an io.Closer.
+func (s *Server) Close() error {
+	s.runs.Shutdown(closeRunsWait)
+	return nil
+}
+
 // Stopping makes health and readiness report the gateway is shutting down.
 func (s *Server) Stopping() { s.stopping.Store(true) }
 

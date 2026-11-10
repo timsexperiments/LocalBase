@@ -266,7 +266,7 @@ func TestRunRestartInterrupted(t *testing.T) {
 
 	// A crash: a new gateway starts on the root while the old record says
 	// in_progress.
-	b := New(Config{Store: a.cfg.Store, Catalog: a.cfg.Catalog, Auth: a.cfg.Auth, LLM: a.cfg.LLM, Log: a.cfg.Log, NoAuth: true, MemoryGB: 64,
+	b := newGateway(t, Config{Store: a.cfg.Store, Catalog: a.cfg.Catalog, Auth: a.cfg.Auth, LLM: a.cfg.LLM, Log: a.cfg.Log, NoAuth: true, MemoryGB: 64,
 		Root: a.cfg.Root, Memory: a.cfg.Memory})
 	tb := httptest.NewServer(b)
 	defer tb.Close()

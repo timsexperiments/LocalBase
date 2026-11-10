@@ -62,6 +62,37 @@ func (g Goroutines) Leaked(wait time.Duration, ignore ...string) []string {
 	}
 }
 
+// LeakedIn is Leaked, counting only goroutines whose stack has within in it: those running a
+// package's own code, for a check that leaves the rest to their owners.
+func (g Goroutines) LeakedIn(wait time.Duration, within string, ignore ...string) []string {
+	deadline := time.Now().Add(wait)
+	for {
+		var left []string
+		for _, s := range g.Leaked(0, ignore...) {
+			if strings.Contains(s, within) {
+				left = append(left, s)
+			}
+		}
+		if len(left) == 0 || time.Now().After(deadline) {
+			return left
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// NoLeaksIn is NoLeaks for the goroutines whose stack has within in it. A harness that builds a
+// gateway uses it for the gateway's own goroutines: the runtimes it was given are closed by
+// Cleanups registered before it, which run after this check.
+func NoLeaksIn(t Cleaner, within string, ignore ...string) {
+	t.Helper()
+	before := Snapshot()
+	t.Cleanup(func() {
+		if left := before.LeakedIn(5*time.Second, within, ignore...); len(left) > 0 {
+			t.Errorf("%d goroutines started by the test are still running %s code:\n\n%s", len(left), within, strings.Join(left, "\n\n"))
+		}
+	})
+}
+
 // NoLeaks fails t if a goroutine started during the test is still running once its other
 // Cleanups have run, after up to 5 s. Call it first in a test: Cleanups run last-registered first,
 // so this one runs after the ones that stop what the test started. Tests that run in parallel

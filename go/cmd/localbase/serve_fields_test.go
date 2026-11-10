@@ -80,3 +80,32 @@ func isPkg(e ast.Expr, name string) bool {
 	id, ok := e.(*ast.Ident)
 	return ok && id.Name == name
 }
+
+// serve closes the gateway after its ordered stop, as Close's doc asks: the runs and management are
+// stopped first, each in its own way, and Close comes after both.
+func TestServeClosesTheGatewayLast(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "serve.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := map[string]token.Pos{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if c, ok := n.(*ast.CallExpr); ok {
+			if sel, ok := c.Fun.(*ast.SelectorExpr); ok && isPkg(sel.X, "srv") {
+				if _, seen := at[sel.Sel.Name]; !seen || sel.Sel.Name == "Close" {
+					at[sel.Sel.Name] = c.Pos() // the first of each, the last Close
+				}
+			}
+		}
+		return true
+	})
+	closeAt, ok := at["Close"]
+	if !ok {
+		t.Fatal("serve never closes the gateway")
+	}
+	for _, before := range []string{"StopRuns", "StopManagement"} {
+		if p, ok := at[before]; !ok || p > closeAt {
+			t.Errorf("serve closes the gateway before srv.%s", before)
+		}
+	}
+}
