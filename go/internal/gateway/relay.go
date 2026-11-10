@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
@@ -26,6 +27,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
+	"github.com/timsexperiments/LocalBase/go/internal/video"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
 
@@ -51,6 +53,12 @@ type Options struct {
 	// SpeechBusyFor is how long a busy tts-server is waited out, read when called; 0 is
 	// speechTimeout (tests).
 	SpeechBusyFor func() time.Duration
+	// VideoJobs holds the video jobs; Guard is the route table's permission check, Unmatched answers
+	// a path no route has, and RecordVideoJob counts a job when it ends.
+	VideoJobs      *video.Manager
+	Guard          func(permission string, next http.HandlerFunc) http.HandlerFunc
+	Unmatched      http.HandlerFunc
+	RecordVideoJob func(p *auth.Principal, model string, status int, d time.Duration)
 	// ImportedTask is an imported model's LLM task, and ReportReads answers what couldn't be read.
 	ImportedTask func(ctx context.Context, id string) (string, error)
 	ReportReads  func(w http.ResponseWriter, problems []*store.ReadError)

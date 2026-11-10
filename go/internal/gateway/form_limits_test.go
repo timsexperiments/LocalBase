@@ -44,7 +44,7 @@ func TestEveryRouteRefusesAFormPastTheLimit(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("POST", "/v1/videos", bytes.NewReader(gatewaytest.FormOf(parts)))
 			r.Header.Set("Content-Type", gatewaytest.FormType)
-			g.srv.readVideoCreate(w, r)
+			g.srv.infer.readVideoCreate(w, r)
 			var answer struct {
 				Error struct {
 					Message string `json:"message"`
