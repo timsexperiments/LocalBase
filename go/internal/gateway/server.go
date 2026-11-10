@@ -124,9 +124,9 @@ func (s *Server) runOptions(dir string) runs.Options {
 
 // accessOptions is what the browser access layer needs from this server, forwarding to mux.
 func (s *Server) accessOptions(mux http.Handler, rootDir string) browser.Options {
-	return browser.Options{Handler: mux, Store: s.cfg.Store, Log: func() *slog.Logger { return s.cfg.Log },
-		Browser: func() *auth.Browser { return s.cfg.Browser }, NoAuth: func() bool { return s.cfg.NoAuth },
-		Pages: func() browser.LoginPages { return s.cfg.LoginPages }, RootDir: rootDir, Allowed: allowedUIRoute,
+	return browser.Options{Handler: mux, Store: s.cfg.Store, Log: s.cfg.Log,
+		Browser: s.cfg.Browser, NoAuth: s.cfg.NoAuth,
+		Pages: s.cfg.LoginPages, RootDir: rootDir, Allowed: allowedUIRoute,
 		Caller: s.principal, LookupFailed: s.lookupFailed}
 }
 

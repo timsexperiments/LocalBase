@@ -39,10 +39,8 @@ func newAccessHarness(t *testing.T) (*httptest.Server, *Access, *store.Store) {
 	a := NewAccess(Options{
 		Handler: api,
 		Store:   st,
-		Log:     func() *slog.Logger { return log },
-		Browser: func() *auth.Browser { return nil },
-		NoAuth:  func() bool { return false },
-		Pages:   func() LoginPages { return gatewaytest.Pages{} },
+		Log:     log,
+		Pages:   gatewaytest.Pages{},
 		Allowed: func(method, path string) bool { return method == "GET" && path == "/_localbase/models" },
 		Caller:  func(*http.Request) *auth.Principal { return nil },
 		LookupFailed: func(r *http.Request, err error) {
