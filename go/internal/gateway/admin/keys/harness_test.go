@@ -1,4 +1,4 @@
-package gateway
+package keys
 
 import (
 	"context"
@@ -17,8 +17,8 @@ import (
 )
 
 // The tests that hold a change just before its write, through beforeAdminWrite, run against a
-// Handler alone: the lock they test is the Handler's. key_authority_test.go and
-// access_authority_test.go keep a whole gateway for what goes over HTTP.
+// Handler alone: the lock they test is the Handler's. gateway/key_authority_test.go and
+// gateway/access_authority_test.go keep a whole gateway for what goes over HTTP.
 
 // keysHarness serves a Handler's three routes, with a real root and store.
 type keysHarness struct {
