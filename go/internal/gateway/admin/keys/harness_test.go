@@ -47,7 +47,6 @@ func newKeysHarness(t *testing.T) *keysHarness {
 	h := NewHandler(Options{
 		Store:   st,
 		RootDir: r.Dir,
-		Browser: func() *auth.Browser { return nil },
 		Caller: func(req *http.Request) *auth.Principal {
 			if req.Header.Get("Authorization") == "" {
 				return host
