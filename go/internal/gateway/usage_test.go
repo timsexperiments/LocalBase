@@ -636,13 +636,13 @@ func TestUsageOutOfOTLP(t *testing.T) {
 func TestUsageCountsAUICallThroughAppAPI(t *testing.T) {
 	ts := openAPIGateway(t)
 	s := runServer(ts)
-	s.NoAuth, s.LoginPages = false, localPages{}
-	c := localClient{t, ts.URL}
-	cookie := sessionCookie(t, c, s)
+	s.NoAuth, s.LoginPages = false, Pages{}
+	c := LocalClient{T: t, Base: ts.URL}
+	cookie := SessionCookie(t, c, s.Store)
 	before := usageOf(t, s, "").Totals.Requests
-	headers := localUI(cookie, ts.URL)
+	headers := LocalUI(cookie, ts.URL)
 	headers["Content-Type"] = "application/json"
-	resp, body := c.send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), headers)
+	resp, body := c.Send("POST", "/app/api/v1/chat/completions", gatewaytest.ChatBody("hi"), headers)
 	if resp.StatusCode != 200 {
 		t.Fatalf("a chat through /app/api: %d %s", resp.StatusCode, body)
 	}

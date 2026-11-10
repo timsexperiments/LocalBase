@@ -246,19 +246,19 @@ func TestASignOutThatFailedDoesNotSaySignedOut(t *testing.T) {
 	})
 	t.Run("a local session", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := sessionCookie(t, c, s)
+		cookie := SessionCookie(t, c, s.Store)
 		if err := s.Store.Close(); err != nil {
 			t.Fatal(err)
 		}
-		resp, _ := c.send("POST", "/app/logout", "", localUI(cookie, c.base))
+		resp, _ := c.Send("POST", "/app/logout", "", LocalUI(cookie, c.Base))
 		if resp.StatusCode != 503 || resp.Header.Get("Retry-After") == "" || len(resp.Cookies()) != 0 {
 			t.Errorf("%d, Retry-After %q, cookies %v", resp.StatusCode, resp.Header.Get("Retry-After"), resp.Cookies())
 		}
 	})
 	t.Run("with the database working, it's gone", func(t *testing.T) {
 		c, s := newLocalGateway(t)
-		cookie := sessionCookie(t, c, s)
-		resp, _ := c.send("POST", "/app/logout", "", localUI(cookie, c.base))
+		cookie := SessionCookie(t, c, s.Store)
+		resp, _ := c.Send("POST", "/app/logout", "", LocalUI(cookie, c.Base))
 		if resp.StatusCode != 204 || len(resp.Cookies()) != 1 || resp.Cookies()[0].MaxAge >= 0 {
 			t.Errorf("%d, cookies %v", resp.StatusCode, resp.Cookies())
 		}
@@ -276,7 +276,7 @@ func TestALocalLinkThatCannotBeReadIsNotExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ { // more than the limit on bad tries
-		resp, body := c.redeem(token, nil)
+		resp, body := c.Redeem(token, nil)
 		if resp.StatusCode != 503 || body != "busy page" || resp.Header.Get("Retry-After") != "5" || len(resp.Cookies()) != 0 {
 			t.Fatalf("try %d: %d %q, Retry-After %q, cookies %v", i, resp.StatusCode, body, resp.Header.Get("Retry-After"), resp.Cookies())
 		}
