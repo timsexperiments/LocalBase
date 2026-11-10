@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 func TestTheInstanceTokenMustMatch(t *testing.T) {
@@ -40,13 +40,10 @@ func TestTheInstanceTokenMustMatch(t *testing.T) {
 
 // The token is a secret compared with one a caller sends. No test can tell how long a comparison
 // took from whether it answered true, so this reads the routes: they go through the helper above.
+// It reads the gateway and every package under it, which is where its routes' code is.
 func TestNoRouteComparesTheInstanceTokenItself(t *testing.T) {
 	direct := regexp.MustCompile(`[!=]= *[a-zA-Z.]*InstanceToken\b|\bInstanceToken *[!=]= *[^" ]`)
-	files, err := filepath.Glob("*.go")
-	if err != nil || len(files) == 0 {
-		t.Fatal(files, err)
-	}
-	for _, name := range files {
+	for _, name := range testutil.GoSources(t, ".", gatewayPackages) {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}

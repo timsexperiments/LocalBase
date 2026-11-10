@@ -55,6 +55,11 @@ func (host) Snapshot(context.Context) memory.Snapshot {
 	return memory.Snapshot{Available: 50 * memory.GiB, Pressure: "normal"}
 }
 
+// gatewayPackages is how many directories under internal/gateway hold code: now gateway, browser,
+// gatewaytest, httpx and runs. The checks that read the gateway's source read every one of them, and
+// fail below this; raise it when a package moves out of gateway.
+const gatewayPackages = 5
+
 const (
 	embeddingModel = "qwen3-embedding-0.6b-q8_0"
 	decisionModel  = "clef-flash-q4_k_m"

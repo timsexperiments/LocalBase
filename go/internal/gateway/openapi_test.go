@@ -31,6 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 )
@@ -377,35 +378,43 @@ func TestOpenAPICoversEveryRoute(t *testing.T) {
 	}
 }
 
-// goFuncs parses the package's sources, and runs', and returns every function by name.
+// goFuncs parses the sources of the gateway and every package under it, and returns each function
+// by name. A name declared more than once maps to nil, so goFunc refuses it instead of reading
+// whichever came last.
 func goFuncs(t *testing.T) map[string]*ast.FuncDecl {
 	t.Helper()
-	entries, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	runs, err := filepath.Glob(filepath.Join("runs", "*.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries = append(entries, runs...)
 	out := map[string]*ast.FuncDecl{}
 	fset := token.NewFileSet()
-	for _, name := range entries {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
+	for _, name := range testutil.GoSources(t, ".", gatewayPackages) {
 		f, err := parser.ParseFile(fset, name, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, decl := range f.Decls {
 			if fn, ok := decl.(*ast.FuncDecl); ok {
+				if _, dup := out[fn.Name.Name]; dup {
+					out[fn.Name.Name] = nil
+					continue
+				}
 				out[fn.Name.Name] = fn
 			}
 		}
 	}
 	return out
+}
+
+// goFunc is the one function in fns called name. It fails the test if there is none, or more than
+// one, since then what is read may not be the handler meant.
+func goFunc(t *testing.T, fns map[string]*ast.FuncDecl, name string) *ast.FuncDecl {
+	t.Helper()
+	fn, ok := fns[name]
+	switch {
+	case !ok:
+		t.Fatalf("no function called %s in the gateway's source", name)
+	case fn == nil:
+		t.Fatalf("more than one function is called %s in the gateway's source", name)
+	}
+	return fn
 }
 
 func stringLit(e ast.Expr) (string, bool) {
@@ -436,7 +445,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 
 	// /_localbase/models/{id}/<suffix>: what modelMetadata cuts off.
 	var modelSuffixes []string
-	ast.Inspect(fns["modelMetadata"], func(n ast.Node) bool {
+	ast.Inspect(goFunc(t, fns, "modelMetadata"), func(n ast.Node) bool {
 		if call, ok := n.(*ast.CallExpr); ok {
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "CutSuffix" && len(call.Args) == 2 {
 				if s, ok := stringLit(call.Args[1]); ok {
@@ -453,7 +462,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 
 	// /_localbase/runs/{id}/<action>: the cases Route switches on.
 	var actions []string
-	ast.Inspect(fns["Route"], func(n ast.Node) bool {
+	ast.Inspect(goFunc(t, fns, "Route"), func(n ast.Node) bool {
 		sw, ok := n.(*ast.SwitchStmt)
 		if !ok {
 			return true
@@ -490,7 +499,7 @@ func TestOpenAPISubroutes(t *testing.T) {
 
 	// /_localbase/voices/{id}/<segment>: what voicesAPI compares parts[1] with.
 	var voiceSegments []string
-	ast.Inspect(fns["voicesAPI"], func(n ast.Node) bool {
+	ast.Inspect(goFunc(t, fns, "voicesAPI"), func(n ast.Node) bool {
 		if b, ok := n.(*ast.BinaryExpr); ok && b.Op == token.EQL {
 			if ix, ok := b.X.(*ast.IndexExpr); ok {
 				if id, ok := ix.X.(*ast.Ident); ok && id.Name == "parts" {

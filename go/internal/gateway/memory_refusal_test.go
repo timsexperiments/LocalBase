@@ -13,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 func refusal(reason string, reserved int64) *memory.AdmissionError {
@@ -128,17 +129,14 @@ func jsonEscaped(text string) string {
 
 // The Running page's button is "Free memory", so telling someone to unload names a control they won't
 // find. "Unload" stays where it describes the API route or a state, which are listed. This reads the
-// source, so a new message is covered without being named here.
+// source, the gateway's and every package's under it, so a new message is covered without being named here.
 func TestRefusalsSayFreeMemoryNotUnload(t *testing.T) {
 	allowed := []string{
 		"This model is being unloaded.", // model_unloading: a state
 		"or unload with waiting.",       // about the API call that was just made
 		"Model unload",                  // the name of that service
 	}
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
-	}
+	files := testutil.GoSources(t, ".", gatewayPackages)
 	checked := 0
 	sentence := regexp.MustCompile(`"[^"\n]*\b[Uu]nload[^"\n]*[ .][^"\n]*"`)
 	for _, f := range files {

@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 const lockProbeEnv = "LOCALBASE_TEST_LOCK_PROBE"
@@ -412,45 +414,33 @@ func TestOnlyThisFileOpensADatabase(t *testing.T) {
 			t.Errorf("opensAllowed names %s, which no longer opens a file", where)
 		}
 	}
-	// Every package, since the gateway links most of them; internal/backup's reading of the files it
-	// hashes is kept out of the gateway by TestServeNeverReachesInternalBackup in cmd/localbase.
-	dirs, err := filepath.Glob("../*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	dirs = append(dirs, "../../cmd/localbase")
-	for _, dir := range dirs {
-		if info, err := os.Stat(dir); err != nil || !info.IsDir() || dir == "../store" {
+	// Every package, since the gateway links most of them: each under internal/, the ones under other
+	// packages too (at least the 48 there are), and cmd/localbase. internal/backup's reading of the
+	// files it hashes is kept out of the gateway by TestServeNeverReachesInternalBackup in cmd/localbase.
+	others := append(testutil.GoSources(t, "..", 48), testutil.GoSources(t, "../../cmd/localbase", 1)...)
+	for _, file := range others {
+		if filepath.Dir(file) == filepath.Clean("../store") {
 			continue
 		}
-		found, err := filepath.Glob(filepath.Join(dir, "*.go"))
+		fset := token.NewFileSet()
+		parsed, err := parser.ParseFile(fset, file, nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, file := range found {
-			if strings.HasSuffix(file, "_test.go") {
-				continue
-			}
-			fset := token.NewFileSet()
-			parsed, err := parser.ParseFile(fset, file, nil, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, call := range opens(parsed) {
-				for _, arg := range call.Args {
-					src := ""
-					ast.Inspect(arg, func(n ast.Node) bool {
-						switch x := n.(type) {
-						case *ast.Ident:
-							src += x.Name + " "
-						case *ast.BasicLit:
-							src += x.Value + " "
-						}
-						return true
-					})
-					if strings.Contains(src, "dbPath") || strings.Contains(src, "DB ") || strings.Contains(src, "local-base.db") {
-						t.Errorf("%s: opens what looks like the database (%s). Closing that ends this process's locks on it", fset.Position(call.Pos()), src)
+		for _, call := range opens(parsed) {
+			for _, arg := range call.Args {
+				src := ""
+				ast.Inspect(arg, func(n ast.Node) bool {
+					switch x := n.(type) {
+					case *ast.Ident:
+						src += x.Name + " "
+					case *ast.BasicLit:
+						src += x.Value + " "
 					}
+					return true
+				})
+				if strings.Contains(src, "dbPath") || strings.Contains(src, "DB ") || strings.Contains(src, "local-base.db") {
+					t.Errorf("%s: opens what looks like the database (%s). Closing that ends this process's locks on it", fset.Position(call.Pos()), src)
 				}
 			}
 		}

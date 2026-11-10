@@ -21,6 +21,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 type backendPages struct {
@@ -114,17 +115,15 @@ func TestBackendsAreRegisteredFromThisComputerOnly(t *testing.T) {
 	}
 }
 
-// Nothing a request reaches can register or remove one. Only the command line does.
+// Nothing a request reaches can register or remove one. Only the command line does. Each
+// directory is read with the packages under it, at least as many as listed: the gateway's are its
+// own and every package moved out of it (gatewayPackages in internal/gateway).
 func TestOnlyTheCommandLineChangesBackends(t *testing.T) {
-	for _, dir := range []string{".", "../gateway", "../library"} {
-		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
-		if err != nil || len(files) == 0 {
-			t.Fatalf("%s: %v", dir, err)
-		}
-		for _, f := range files {
-			if strings.HasSuffix(f, "_test.go") {
-				continue
-			}
+	for _, d := range []struct {
+		dir      string
+		packages int
+	}{{".", 1}, {"../gateway", 5}, {"../library", 1}} {
+		for _, f := range testutil.GoSources(t, d.dir, d.packages) {
 			b, err := os.ReadFile(f)
 			if err != nil {
 				t.Fatal(err)
