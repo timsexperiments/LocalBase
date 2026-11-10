@@ -94,7 +94,7 @@ func (s *Server) ServedModels(p *auth.Principal, only string) ([]Model, []*store
 		if seen[id] || (only != "" && id != only) {
 			continue
 		}
-		task := importTask(&e.Model)
+		task := models.ImportTask(&e.Model)
 		if p != nil && !p.Can(map[string]string{"chat": "inference:chat", "embeddings": "inference:embeddings", "decision": "inference:decision"}[task]) {
 			continue
 		}
@@ -126,34 +126,11 @@ func (s *Server) importedLLMsChecked() ([]library.Entry, error) {
 	}
 	var out []library.Entry
 	for _, e := range entries {
-		if e.Imported && importTask(&e.Model) != "" {
+		if e.Imported && models.ImportTask(&e.Model) != "" {
 			out = append(out, e)
 		}
 	}
 	return out, nil
-}
-
-func importTask(m *models.Model) string {
-	for _, t := range []string{"chat", "embeddings", "decision"} {
-		if m.HasTask(t) {
-			return t
-		}
-	}
-	return ""
-}
-
-// importedTask is an imported model's LLM task, or "" when id isn't an imported LLM. It reads that
-// model's row only, with ctx. An error is the library's, and never means "not imported": a caller
-// answers it as the LLM service unavailable for now.
-func (s *Server) importedTask(ctx context.Context, id string) (string, error) {
-	if s.Library == nil {
-		return "", nil
-	}
-	e, err := s.Library.Imported(ctx, id)
-	if err != nil || e == nil {
-		return "", err
-	}
-	return importTask(&e.Model), nil
 }
 
 func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, runningPlan *runtime.LLMPlan) (Model, []*store.ReadError) {
@@ -203,21 +180,6 @@ func (s *Server) project(kind, id string, spec *catalog.Spec, runningID string, 
 		}
 	}
 	return m, problems
-}
-
-// reportReads says a listing is missing something without changing what a client parses: a header,
-// and an error event naming each step.
-func (s *Server) reportReads(w http.ResponseWriter, problems []*store.ReadError) {
-	var kinds []string
-	for _, p := range problems {
-		if !slices.Contains(kinds, p.Kind) {
-			kinds = append(kinds, p.Kind)
-		}
-		s.Log.Error("A listing is missing something it couldn't read.", "event", "models.read-failed", "step", p.Step, "error", p.Err.Error())
-	}
-	if len(kinds) > 0 {
-		w.Header().Set("X-Localbase-Warning", strings.Join(kinds, ", "))
-	}
 }
 
 func (s *Server) principalForListing(r *http.Request) *auth.Principal {

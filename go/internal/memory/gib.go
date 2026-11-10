@@ -12,3 +12,11 @@ func GiBText(v int64) string {
 	}
 	return fmt.Sprintf("%.1f GiB", float64(v)/float64(GiB))
 }
+
+// SizeText says a limit in MiB when it is whole MiB, else in bytes.
+func SizeText(n int) string {
+	if n%(1<<20) == 0 {
+		return fmt.Sprintf("%d MiB", n>>20)
+	}
+	return fmt.Sprintf("%d bytes", n)
+}

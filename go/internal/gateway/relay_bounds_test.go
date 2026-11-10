@@ -13,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
 // setFor sets a package limit for one test.
@@ -54,7 +55,7 @@ func TestABufferedAnswerOverTheLimitSaysSo(t *testing.T) {
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Errorf("an answer under it: %d %s", r.status, r.body)
 	}
-	if got := sizeText(64 << 20); got != "64 MiB" {
+	if got := memory.SizeText(64 << 20); got != "64 MiB" {
 		t.Errorf("the limit reads %q", got)
 	}
 }

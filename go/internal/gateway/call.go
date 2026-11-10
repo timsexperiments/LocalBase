@@ -11,6 +11,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
 
 // CallResult is an in-process API response.
@@ -69,7 +70,7 @@ func (s *Server) Call(ctx context.Context, p *auth.Principal, method, path, cont
 	s.ServeHTTP(w, r)
 	if w.over {
 		over := &bufferWriter{header: http.Header{}}
-		upstreamFailure(over, r, fmt.Sprintf("The response is larger than %s, more than an in-app call can hold.", sizeText(callBodyLimit)))
+		httpx.UpstreamFailure(over, r, fmt.Sprintf("The response is larger than %s, more than an in-app call can hold.", memory.SizeText(callBodyLimit)))
 		return CallResult{Status: over.status, Header: over.header, Body: over.body.Bytes()}
 	}
 	if w.status == 0 {
