@@ -191,15 +191,6 @@ func (s *Server) usageRead(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, report)
 }
 
-// localCLI: this machine's CLI, holding the token from the root's lock file, on a request that
-// passes the loopback rule (DESIGN §32.4). It is good for changes only.
-func (s *Server) localCLI(r *http.Request) bool {
-	if s.Root == nil || auth.IsBrowser(r) || !auth.LocalRequest(r) {
-		return false
-	}
-	return instanceTokenMatches(s.Root.Instance(), r)
-}
-
 // instanceTokenMatches says whether a request carries this instance's token. Every route behind the
 // token asks here, so the comparison takes as long whatever was sent, and no token can match "none".
 func instanceTokenMatches(o *root.Owner, r *http.Request) bool {
