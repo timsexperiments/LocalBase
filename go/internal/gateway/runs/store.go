@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 )
 
 // --- checkpoints ------------------------------------------------------------------
@@ -33,7 +33,7 @@ func (m *Manager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	obs.WarnRefusedWrite(m.opts.Log(), obs.WritePrivateAtomic(m.path(r.ID), b))
+	safefile.WarnRefusedWrite(m.opts.Log(), safefile.WritePrivateAtomic(m.path(r.ID), b))
 	r.saved = m.now()
 }
 
@@ -57,7 +57,7 @@ func (m *Manager) sweepStart() {
 	for _, e := range entries {
 		p := filepath.Join(m.dir, e.Name())
 		id, ok := strings.CutSuffix(e.Name(), ".json")
-		b, err := obs.ReadOwnedRegular(p)
+		b, err := safefile.ReadOwnedRegular(p)
 		var rec runRecord
 		if !ok || !strings.HasPrefix(id, "run_") || err != nil || json.Unmarshal(b, &rec) != nil || rec.ID != id || rec.Owner == "" {
 			os.Remove(p)
