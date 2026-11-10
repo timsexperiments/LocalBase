@@ -287,7 +287,7 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 	httpx.RunHooksFrom(r.Context()).Queue()
 	lease, err := s.Image.Acquire(r.Context(), id)
 	if err != nil {
-		s.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
+		s.infer.logAdmissionRejection(w.Header().Get("X-Localbase-Request-Id"), "image", id, err)
 		httpx.RuntimeError(w, r, err, id, "Image")
 		return nil, false
 	}
@@ -296,7 +296,7 @@ func (s *Server) acquireImage(w http.ResponseWriter, r *http.Request, model stri
 }
 
 func (s *Server) imageTelemetry(w http.ResponseWriter, lease *runtime.ServiceLease, started time.Time) *inference {
-	return &inference{s: s, modality: "image", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+	return &inference{h: s.infer, modality: "image", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 }
 
@@ -330,7 +330,7 @@ func (s *Server) imageGeneration(w http.ResponseWriter, r *http.Request) {
 	req["prompt"] = promptWithTuning(req["prompt"].(string), tuning,
 		imageLoraFor(s.Catalog.ByID(lease.ModelID), lease.Target.Dir, tuning.loraStr))
 	body, _ := marshalNoEscape(req)
-	s.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)}, s.imageTelemetry(w, lease, started))
+	s.infer.relay(w, r, lease.BaseURL+"/v1/images/generations", body, lease.ModelID, inferOpts{kind: "image", interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)}, s.imageTelemetry(w, lease, started))
 }
 
 func (s *Server) activeImageModel() string {
@@ -397,7 +397,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		httpx.ModelNotFound(w, r, modelID)
 		return
 	}
-	if !s.capabilities(r.Context(), spec).Has("image-to-image") {
+	if !s.infer.capabilities(r.Context(), spec).Has("image-to-image") {
 		bad(fmt.Sprintf("Model '%s' does not support image-to-image edits.", modelID), "model")
 		return
 	}
@@ -543,7 +543,7 @@ func (s *Server) imageEdit(w http.ResponseWriter, r *http.Request) {
 		part("mask", *mask, "mask.png")
 	}
 	mw.Close()
-	s.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)},
+	s.infer.relay(w, r, lease.BaseURL+"/v1/images/edits", out.Bytes(), lease.ModelID, inferOpts{kind: "image", contentType: mw.FormDataContentType(), interrupted: lease.Interrupted, imageSeed: sdSeed(lease.Target.Backend.Adapter, tuning)},
 		s.imageTelemetry(w, lease, started))
 }
 

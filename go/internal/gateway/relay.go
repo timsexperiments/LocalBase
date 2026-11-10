@@ -19,18 +19,47 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/structuredoutput"
 )
+
+// Handler serves the /v1 inference routes for one gateway: chat, embeddings, systemone and the
+// model list, with the relay and the request checks they share.
+type Handler struct {
+	opts Options
+}
+
+// Options are what Handler needs from the gateway. The funcs that read a value are read when
+// called: tests set those on the gateway after New.
+type Options struct {
+	Store    *store.Store
+	Root     *root.Root
+	Catalog  *catalog.Catalog
+	MemoryGB int
+	Runtimes func() runtime.Set
+	Log      func() *slog.Logger
+	Otel     func() *otlp.Runtime
+	NoAuth   func() bool
+	Library  func() *library.Library
+	// ImportedTask is an imported model's LLM task, and ReportReads answers what couldn't be read.
+	ImportedTask func(ctx context.Context, id string) (string, error)
+	ReportReads  func(w http.ResponseWriter, problems []*store.ReadError)
+}
+
+// NewHandler returns the /v1 inference routes for o.
+func NewHandler(o Options) *Handler { return &Handler{opts: o} }
 
 // --- inference telemetry -------------------------------------------------------
 
 // inference records one admitted request's content-free outcome as the
 // `inference.completed` event (TS InferenceTelemetry).
 type inference struct {
-	s                      *Server
+	h                      *Handler
 	modality, modelID      string
 	spec                   *catalog.Spec
 	requestID              string
@@ -112,7 +141,7 @@ func (t *inference) begin(ctx context.Context, method string) {
 	if t.ctx != nil {
 		return
 	}
-	t.ctx, t.span = t.s.Otel.Start(ctx, "localbase.inference", otlp.KindInternal, "http.request.method", method)
+	t.ctx, t.span = t.h.opts.Otel().Start(ctx, "localbase.inference", otlp.KindInternal, "http.request.method", method)
 	sp := t.span
 	sp.SetAttr("localbase.inference.model_id", t.modelID)
 	sp.SetAttr("localbase.inference.runtime.name", runtimeNames[t.modality])
@@ -214,7 +243,7 @@ func (t *inference) finish(outcome string, status int, source string) {
 		ctx = context.Background()
 	}
 	defer t.span.End()
-	t.s.Log.Log(ctx, level, "Inference response settled.", "event", "inference.completed",
+	t.h.opts.Log().Log(ctx, level, "Inference response settled.", "event", "inference.completed",
 		"category", "runtime", "component", "inference", "runtime", t.modality, "request_id", t.requestID,
 		slog.Group("attributes", attrs...))
 }
@@ -282,7 +311,7 @@ var runtimeNames = map[string]string{"llm": "llama-server", "stt": "whisper-serv
 	"image": "sd-server", "video": "sd-server"}
 
 // logAdmissionRejection records why a request was not admitted.
-func (s *Server) logAdmissionRejection(requestID, modality, model string, err error) {
+func (h *Handler) logAdmissionRejection(requestID, modality, model string, err error) {
 	var code, source string
 	status := 0
 	var ae *memory.AdmissionError
@@ -294,7 +323,7 @@ func (s *Server) logAdmissionRejection(requestID, modality, model string, err er
 	case errors.Is(err, runtime.ErrUnavailable):
 		code, source, status = "service_unavailable", "unavailable", 503
 	case errors.As(err, &ae):
-		s.Log.Warn("Memory admission rejected the runtime.", "event", "inference.admission-rejected", "category", "runtime",
+		h.opts.Log().Warn("Memory admission rejected the runtime.", "event", "inference.admission-rejected", "category", "runtime",
 			"component", "inference", "runtime", modality, "request_id", requestID,
 			slog.Group("attributes", "modality", modality, "model_id", model, "reason", ae.Reason,
 				"requested_bytes", ae.RequestedBytes, "demand_confidence", ae.Confidence))
@@ -302,7 +331,7 @@ func (s *Server) logAdmissionRejection(requestID, modality, model string, err er
 	default:
 		return
 	}
-	s.Log.Warn("Inference admission was rejected.", "event", "inference.admission-rejected", "category", "runtime",
+	h.opts.Log().Warn("Inference admission was rejected.", "event", "inference.admission-rejected", "category", "runtime",
 		"component", "inference", "runtime", modality, "request_id", requestID,
 		slog.Group("attributes", "modality", modality, "error_code", code, "source", source, "http_status", status))
 }
@@ -389,7 +418,7 @@ func relayService(kind string) string {
 // relay posts body to the backend and writes its response: event streams
 // event by event, JSON after checking its shape. The request context cancels
 // the backend call when the client goes away; the backend stays up (#276).
-func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string, o inferOpts, t *inference) {
+func (h *Handler) relay(w http.ResponseWriter, r *http.Request, url string, body []byte, modelID string, o inferOpts, t *inference) {
 	t.begin(r.Context(), r.Method)
 	upCtx, cancelUp := context.WithCancel(r.Context()) // a stream that goes quiet ends the backend call
 	defer cancelUp()
@@ -399,7 +428,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		ct = o.contentType
 	}
 	up.Header.Set("Content-Type", ct)
-	resp, err := s.backendCall(t.ctx, r, up, proxyClient)
+	resp, err := h.backendCall(t.ctx, r, up, proxyClient)
 	if err != nil {
 		if r.Context().Err() != nil {
 			w.WriteHeader(499)
@@ -453,7 +482,7 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 		return
 	}
 	if !ok {
-		t.finish("error", s.relayUpstreamError(w, r, resp.StatusCode, raw, o.kind), "")
+		t.finish("error", h.relayUpstreamError(w, r, resp.StatusCode, raw, o.kind), "")
 		return
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -516,16 +545,16 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, url string, body 
 // backendCall sends the backend request inside a localbase.backend.inference
 // client span, carrying its trace context to the backend. Without an
 // exporter the caller's own trace context is passed through.
-func (s *Server) backendCall(ctx context.Context, r *http.Request, up *http.Request, client *http.Client) (*http.Response, error) {
-	if !s.Otel.Enabled() {
-		for _, h := range []string{"Traceparent", "Tracestate"} {
-			if v := r.Header.Get(h); v != "" {
-				up.Header.Set(h, v)
+func (h *Handler) backendCall(ctx context.Context, r *http.Request, up *http.Request, client *http.Client) (*http.Response, error) {
+	if !h.opts.Otel().Enabled() {
+		for _, name := range []string{"Traceparent", "Tracestate"} {
+			if v := r.Header.Get(name); v != "" {
+				up.Header.Set(name, v)
 			}
 		}
 		return client.Do(up)
 	}
-	ctx, span := s.Otel.Start(ctx, "localbase.backend.inference", otlp.KindClient,
+	ctx, span := h.opts.Otel().Start(ctx, "localbase.backend.inference", otlp.KindClient,
 		"server.address", up.URL.Hostname(), "http.request.method", r.Method)
 	defer span.End()
 	otlp.Inject(ctx, up.Header)
@@ -684,7 +713,7 @@ func allNumbers(v []any) bool {
 // context overflow becomes OpenAI's context_length_exceeded, and so does an
 // input over its physical batch size, which it reports as a 500
 // server_error (Go only, DESIGN §13.6 item 7).
-func (s *Server) relayUpstreamError(w http.ResponseWriter, r *http.Request, status int, raw []byte, kind string) int {
+func (h *Handler) relayUpstreamError(w http.ResponseWriter, r *http.Request, status int, raw []byte, kind string) int {
 	var body struct {
 		Error *struct {
 			Message any `json:"message"`

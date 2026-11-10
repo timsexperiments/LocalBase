@@ -156,7 +156,7 @@ func anchorPattern(p string) string {
 	return body
 }
 
-func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
@@ -166,14 +166,14 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := req["model"].(string)
-	spec := s.Catalog.ByID(model)
-	if p := toolParam(req); p != "" && spec != nil && !s.capabilities(r.Context(), spec).Has("tool-calling") {
+	spec := h.opts.Catalog.ByID(model)
+	if p := toolParam(req); p != "" && spec != nil && !h.capabilities(r.Context(), spec).Has("tool-calling") {
 		httpx.Error(w, r, 400, "invalid_request_error", "unsupported_model_capability",
 			fmt.Sprintf("Model '%s' does not support tool calling. Choose a tool-capable model from GET /v1/models.", spec.ModelID), httpx.StrPtr(p))
 		return
 	}
 	if spec == nil {
-		t, err := s.importedTask(r.Context(), model)
+		t, err := h.opts.ImportedTask(r.Context(), model)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "LLM")
 			return
@@ -206,7 +206,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	_, a := req["max_tokens"]
 	_, b := req["max_completion_tokens"]
-	s.inferLLM(w, r, model, req, o, func(l leaseInfo) {
+	h.inferLLM(w, r, model, req, o, func(l leaseInfo) {
 		if !a && !b {
 			// No template-aware tokenizer here: keep the default within the
 			// resolved per-slot context.
@@ -214,12 +214,12 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 			if l.spec != nil && l.spec.ContextWindowTokens != nil {
 				limit = min(limit, *l.spec.ContextWindowTokens)
 			}
-			req["max_tokens"] = min(DefaultMaxTokens(), limit, s.LLM.Config().CtxSize)
+			req["max_tokens"] = min(DefaultMaxTokens(), limit, h.opts.Runtimes().LLM.Config().CtxSize)
 		}
 	})
 }
 
-func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Embeddings(w http.ResponseWriter, r *http.Request) {
 	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
@@ -229,13 +229,13 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := req["model"].(string)
-	spec := s.Catalog.ByID(model)
+	spec := h.opts.Catalog.ByID(model)
 	if spec != nil && spec.IsDecision() {
 		httpx.BadRequest(w, r, fmt.Sprintf("Model '%s' is a decision model. Send typed questions to POST /v1/systemone instead.", spec.ModelID), nil)
 		return
 	}
 	if spec == nil {
-		t, err := s.importedTask(r.Context(), model)
+		t, err := h.opts.ImportedTask(r.Context(), model)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "LLM")
 			return
@@ -267,10 +267,10 @@ func (s *Server) embeddings(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.inferLLM(w, r, model, req, inferOpts{path: "/v1/embeddings", kind: "embeddings"}, nil)
+	h.inferLLM(w, r, model, req, inferOpts{path: "/v1/embeddings", kind: "embeddings"}, nil)
 }
 
-func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Systemone(w http.ResponseWriter, r *http.Request) {
 	req, ok := httpx.ReadJSON(w, r)
 	if !ok {
 		return
@@ -280,9 +280,9 @@ func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model := req["model"].(string)
-	spec := s.Catalog.ByID(model)
+	spec := h.opts.Catalog.ByID(model)
 	if spec == nil {
-		t, err := s.importedTask(r.Context(), model)
+		t, err := h.opts.ImportedTask(r.Context(), model)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "LLM")
 			return
@@ -305,7 +305,7 @@ func (s *Server) systemone(w http.ResponseWriter, r *http.Request) {
 			qm["instructions"] = id
 		}
 	}
-	s.inferLLM(w, r, model, req, inferOpts{path: "/v1/systemone", kind: "decision"}, nil)
+	h.inferLLM(w, r, model, req, inferOpts{path: "/v1/systemone", kind: "decision"}, nil)
 }
 
 func isString(v any) bool { _, ok := v.(string); return ok }
@@ -335,18 +335,18 @@ type inferOpts struct {
 
 // inferLLM admits the request on the LLM runtime, finishes the body, and
 // relays the backend response. The lease is held until the body is relayed.
-func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, req map[string]any, o inferOpts, finish func(leaseInfo)) {
+func (h *Handler) inferLLM(w http.ResponseWriter, r *http.Request, model string, req map[string]any, o inferOpts, finish func(leaseInfo)) {
 	started := time.Now()
 	requestID := w.Header().Get("X-Localbase-Request-Id")
-	if _, _, err := s.LLM.Resolve(model); err != nil {
+	if _, _, err := h.opts.Runtimes().LLM.Resolve(model); err != nil {
 		httpx.ModelNotFound(w, r, model)
 		return
 	}
 	hooks := httpx.RunHooksFrom(r.Context())
 	hooks.Queue()
-	lease, err := s.LLM.Acquire(r.Context(), model)
+	lease, err := h.opts.Runtimes().LLM.Acquire(r.Context(), model)
 	if err != nil {
-		s.logAdmissionRejection(requestID, "llm", model, err)
+		h.logAdmissionRejection(requestID, "llm", model, err)
 		httpx.RuntimeError(w, r, err, model, "LLM")
 		return
 	}
@@ -357,7 +357,7 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 	}
 	req["model"] = lease.ModelID
 	body, _ := json.Marshal(req)
-	tel := &inference{s: s, modality: "llm", modelID: lease.ModelID, spec: lease.Spec, requestID: requestID,
+	tel := &inference{h: h, modality: "llm", modelID: lease.ModelID, spec: lease.Spec, requestID: requestID,
 		started: started, queueWait: lease.Waited, active: lease.Active, slots: lease.Slots, waiting: lease.Waiting,
 		streaming: o.streaming, prepareMs: o.prepareMs, hooks: hooks}
 	if o.schema != nil {
@@ -367,5 +367,5 @@ func (s *Server) inferLLM(w http.ResponseWriter, r *http.Request, model string, 
 		}
 	}
 	o.interrupted = lease.Interrupted
-	s.relay(w, r, lease.BaseURL+o.path, body, lease.ModelID, o, tel)
+	h.relay(w, r, lease.BaseURL+o.path, body, lease.ModelID, o, tel)
 }

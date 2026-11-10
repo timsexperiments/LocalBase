@@ -173,7 +173,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.RunHooksFrom(r.Context()).Admit()
 	defer lease.Release()
-	tel := &inference{s: s, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
+	tel := &inference{h: s.infer, modality: "tts", modelID: lease.ModelID, spec: s.Catalog.ByID(lease.ModelID),
 		requestID: w.Header().Get("X-Localbase-Request-Id"), started: started, queueWait: lease.Waited, active: 1, slots: 1}
 	tel.begin(r.Context(), r.Method)
 	pcm, err := s.generateSpeech(r, lease, req, tel)
@@ -230,7 +230,7 @@ func (s *Server) generateSpeech(r *http.Request, lease *runtime.ServiceLease, re
 	ctx := r.Context()
 	client := &http.Client{Timeout: speechTimeout}
 	do := func(hr *http.Request) (*http.Response, error) {
-		resp, err := s.backendCall(tel.ctx, r, hr, client)
+		resp, err := s.infer.backendCall(tel.ctx, r, hr, client)
 		if err == nil {
 			tel.upstreamStatus = resp.StatusCode
 		}
