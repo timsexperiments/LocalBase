@@ -39,7 +39,7 @@ func (m *Manager) log(r *run, event string) {
 	msg := map[string]string{"run.started": "Run started.", "run.completed": "Run completed.", "run.failed": "Run failed.",
 		"run.cancelled": "Run stopped.", "run.interrupted": "Run interrupted.", "run.expired": "Run expired.",
 		"run.dismissed": "Run dismissed."}[event]
-	m.opts.Log().Log(context.Background(), level, msg, attrs...)
+	m.opts.Log.Log(context.Background(), level, msg, attrs...)
 }
 
 // --- events ------------------------------------------------------------------------

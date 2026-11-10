@@ -138,12 +138,10 @@ func (r *run) terminal() bool {
 
 // Options is what the run manager needs from the gateway around it.
 type Options struct {
-	Handler http.Handler               // the gateway, which serves a run's inner request
-	Owner   func(*http.Request) string // whose runs a request may see (runOwner)
-	// Log and otel are read when they are used, as the server's fields were: a test may set them
-	// after New.
-	Log                   func() *slog.Logger
-	Otel                  func() *otlp.Runtime
+	Handler               http.Handler               // the gateway, which serves a run's inner request
+	Owner                 func(*http.Request) string // whose runs a request may see (runOwner)
+	Log                   *slog.Logger
+	Otel                  *otlp.Runtime // nil: no traces
 	Dir                   string        // "" keeps runs in memory only
 	MaxHeld, MaxHeldTotal int64         // 0: runMaxHeld and runsMaxHeld
 	MaxDuration           time.Duration // 0: runMaxDuration

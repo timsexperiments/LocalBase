@@ -114,7 +114,7 @@ func (m *Manager) create(w http.ResponseWriter, req *http.Request, target string
 		m.afterPublish()
 	}
 
-	ctx, r.span = m.opts.Otel().Start(ctx, "localbase.run", otlp.KindInternal)
+	ctx, r.span = m.opts.Otel.Start(ctx, "localbase.run", otlp.KindInternal)
 	r.span.SetAttr("localbase.run.id", r.ID)
 	r.span.SetAttr("localbase.run.target", target)
 	ready := make(chan struct{})

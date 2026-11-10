@@ -33,7 +33,7 @@ func (m *Manager) checkpoint(r *run) {
 	if os.MkdirAll(m.dir, 0o700) != nil {
 		return
 	}
-	safefile.WarnRefusedWrite(m.opts.Log(), safefile.WritePrivateAtomic(m.path(r.ID), b))
+	safefile.WarnRefusedWrite(m.opts.Log, safefile.WritePrivateAtomic(m.path(r.ID), b))
 	r.saved = m.now()
 }
 
