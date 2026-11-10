@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/keys"
+	"github.com/timsexperiments/LocalBase/go/internal/gateway/admin/models"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/browser"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
@@ -74,7 +75,7 @@ type Server struct {
 	Updates *upgrade.Checker
 
 	// models serves model management, discovery, imports and the /_localbase/models routes.
-	models *Handler
+	models *models.Handler
 	// keys serves the key and access APIs, and the Hugging Face token.
 	keys *keys.Handler
 	// speechBusyFor is how long a busy tts-server is waited out; 0 is speechTimeout (tests).
@@ -136,7 +137,7 @@ func New(s *Server) *Server {
 	if s.Root != nil {
 		rootDir = s.Root.Dir
 	}
-	s.models = NewHandler(s.modelsOptions())
+	s.models = models.NewHandler(s.modelsOptions())
 	runsDir := ""
 	if rootDir != "" {
 		runsDir = filepath.Join(rootDir, "runs")
@@ -178,10 +179,10 @@ func (s *Server) keysOptions(rootDir string) keys.Options {
 }
 
 // modelsOptions is what model management needs from this server.
-func (s *Server) modelsOptions() Options {
-	return Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, Placement: s.Placement, Memory: s.Memory, MemoryGB: s.MemoryGB,
-		Runtimes: func() Runtimes {
-			return Runtimes{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
+func (s *Server) modelsOptions() models.Options {
+	return models.Options{Store: s.Store, Root: s.Root, Catalog: s.Catalog, Placement: s.Placement, Memory: s.Memory, MemoryGB: s.MemoryGB,
+		Runtimes: func() models.Runtimes {
+			return models.Runtimes{LLM: s.LLM, STT: s.STT, TTS: s.TTS, Image: s.Image, Video: s.Video}
 		},
 		Log: func() *slog.Logger { return s.Log }, NoAuth: func() bool { return s.NoAuth },
 		Library: func() *library.Library { return s.Library }, Overrides: func() func(*store.Config) { return s.Overrides },

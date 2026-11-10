@@ -56,9 +56,10 @@ func (host) Snapshot(context.Context) memory.Snapshot {
 }
 
 // gatewayPackages is how many directories under internal/gateway hold code: now gateway,
-// admin/keys, browser, gatewaytest, httpx and runs. The checks that read the gateway's source read
-// every one of them, and fail below this; raise it when a package moves out of gateway.
-const gatewayPackages = 6
+// admin/keys, admin/models, browser, gatewaytest, httpx and runs. The checks that read the
+// gateway's source read every one of them, and fail below this; raise it when a package moves out
+// of gateway.
+const gatewayPackages = 7
 
 const (
 	embeddingModel = "qwen3-embedding-0.6b-q8_0"

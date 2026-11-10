@@ -506,14 +506,14 @@ func actorKindSpellings(t *testing.T, dir string) map[string]string {
 }
 
 // One name for each kind of actor, so that a search of the log finds them all. The gateway is read
-// with every package under it, at least its 6 (gatewayPackages in internal/gateway).
+// with every package under it, at least its 7 (gatewayPackages in internal/gateway).
 func TestActorKindsAreOneVocabulary(t *testing.T) {
 	seen := map[string]bool{}
 	var dirs []string
 	for _, root := range []struct {
 		dir      string
 		packages int
-	}{{".", 1}, {"../../internal/gateway", 6}, {"../../internal/auth", 1}} {
+	}{{".", 1}, {"../../internal/gateway", 7}, {"../../internal/auth", 1}} {
 		for _, f := range testutil.GoSources(t, root.dir, root.packages) {
 			if dir := filepath.Dir(f); !slices.Contains(dirs, dir) {
 				dirs = append(dirs, dir)

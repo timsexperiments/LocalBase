@@ -145,10 +145,10 @@ linters:
       - path: ^internal/gateway/images\.go$
         linters: [errcheck]
         text: "pw\\.Write"
-      - path: ^internal/gateway/metadata\.go$
+      - path: ^internal/gateway/admin/models/metadata\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
-      - path: ^internal/gateway/placement\.go$
+      - path: ^internal/gateway/admin/models/placement\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
       - path: ^internal/gateway/runs/http\.go$
