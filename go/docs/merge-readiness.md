@@ -272,7 +272,7 @@ repo and the TS binary stays on disk.
   was idle, and the model reloads on its next request. The re-run caused no eviction.
 - **Reviewed, no change:** the gzip asset change in `web.go` compresses text assets once
   under a lock, sends `Vary` on both variants, and has a round-trip test.
-- **Worth a look, not blocking:** `go/internal/gateway/testdata/video.json` is 6.3 MB of
+- **Worth a look, not blocking:** `go/internal/gateway/infer/testdata/video.json` is 6.3 MB of
   text, and it stays in the squash. `.design/` was tracked on main despite a local
   `.git/info/exclude`; it is now untracked and in `.gitignore`.
 - **Not checked:** PR-by-PR code review of the 586 files (this pass is about merging, not
