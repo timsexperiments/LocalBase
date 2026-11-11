@@ -133,7 +133,7 @@ func InspectFile(path string) FileFacts {
 }
 
 func inspectGGUF(path string) FileFacts {
-	values, err := gguf.ReadGGUFHeader(path, func(k string) bool {
+	values, err := gguf.ReadHeader(path, func(k string) bool {
 		return k == "general.architecture" || k == "general.file_type" || k == "split.count" || k == "split.no" ||
 			k == "clip.projector_type" || k == "clip.has_vision_encoder" || k == "clip.has_audio_encoder" ||
 			strings.HasSuffix(k, ".context_length") || strings.HasSuffix(k, ".embedding_length")
@@ -149,7 +149,7 @@ func inspectGGUF(path string) FileFacts {
 	}
 	ff.SplitIndex, ff.SplitCount = nameIndex, nameCount
 	if err != nil {
-		if errors.Is(err, gguf.ErrNestedGGUFArray) {
+		if errors.Is(err, gguf.ErrNestedArray) {
 			return refuse(ff, "the GGUF header is not valid: "+err.Error())
 		}
 		ff.Problem = "GGUF header could not be read: " + err.Error()

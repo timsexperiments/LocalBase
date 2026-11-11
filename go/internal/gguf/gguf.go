@@ -122,9 +122,9 @@ const (
 	maxSkippedBytes = 2 << 30
 )
 
-// ErrNestedGGUFArray: GGUF has no arrays of arrays, so a file that has them is
+// ErrNestedArray: GGUF has no arrays of arrays, so a file that has them is
 // not a model. The reader refuses them instead of following them.
-var ErrNestedGGUFArray = errors.New("GGUF arrays of arrays are not allowed")
+var ErrNestedArray = errors.New("GGUF arrays of arrays are not allowed")
 
 const (
 	ggufTypeString = 8
@@ -274,7 +274,7 @@ func (g *ggufReader) array(keep bool) (any, error) {
 		return nil, err
 	}
 	if et == ggufTypeArray {
-		return nil, ErrNestedGGUFArray
+		return nil, ErrNestedArray
 	}
 	n, err := g.u64()
 	if err != nil {
@@ -306,8 +306,8 @@ func (g *ggufReader) array(keep bool) (any, error) {
 	return nil, nil
 }
 
-// ReadGGUFKeys reads the geometry-relevant header keys of a GGUF file.
-func ReadGGUFKeys(path string) (map[string]any, error) {
+// ReadKeys reads the geometry-relevant header keys of a GGUF file.
+func ReadKeys(path string) (map[string]any, error) {
 	return readKeys(path, keepKey, func(string) int { return maxKeptStringBytes })
 }
 
@@ -316,9 +316,9 @@ func readKeys(path string, keep func(string) bool, maxStr func(string) int) (map
 	return readKeysAt(MetadataPath(path), keep, maxStr)
 }
 
-// ReadGGUFHeader reads the keys keep selects from this exact file (no shard
+// ReadHeader reads the keys keep selects from this exact file (no shard
 // remapping); strings are bounded to 256 bytes. It never reads tensor data.
-func ReadGGUFHeader(path string, keep func(string) bool) (map[string]any, error) {
+func ReadHeader(path string, keep func(string) bool) (map[string]any, error) {
 	return readKeysAt(path, keep, func(string) int { return maxKeptStringBytes })
 }
 
@@ -442,7 +442,7 @@ func parseKeyBlock(src io.Reader, keep func(string) bool, maxStr func(string) in
 
 // ReadGeometry returns nil on any failure, like the TS reader.
 func ReadGeometry(path string) *Geometry {
-	values, err := ReadGGUFKeys(path)
+	values, err := ReadKeys(path)
 	if err != nil {
 		return nil
 	}
