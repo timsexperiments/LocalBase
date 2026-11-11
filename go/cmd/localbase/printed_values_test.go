@@ -26,7 +26,7 @@ var printsDirectly = map[string]string{
 	"internal/cli/cli.go:printHelp":            "this program's help",
 	"cmd/localbase/usage.go:printUsage":        "a table's writer; each outside value goes through Printable",
 	"cmd/localbase/models.go:progressReporter": "a percentage",
-	"cmd/localbase/audit.go:Record":            "its writer is the command's, with no Ctx; the class is a word of ours and the path goes through Printable",
+	"internal/audit/audit.go:Record":           "its writer is the command's, with no Ctx; the class is a word of ours and the path goes through Printable",
 	"cmd/localbase/logs.go:logsCommand":        "--json lines, unchanged, which a script reads",
 }
 
@@ -100,7 +100,7 @@ var standardStream = regexp.MustCompile(`\.Std(out|err)$`)
 // Formats have to be literal for the same reason: Info doesn't escape its format.
 func TestEveryPrintedValueIsEscaped(t *testing.T) {
 	var files []string
-	for _, dir := range []string{".", "../../internal/cli"} {
+	for _, dir := range []string{".", "../../internal/cli", "../../internal/audit"} {
 		found, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -113,8 +113,8 @@ func TestEveryPrintedValueIsEscaped(t *testing.T) {
 			continue
 		}
 		name := "cmd/localbase/" + filepath.Base(file)
-		if strings.Contains(file, "internal/cli") {
-			name = "internal/cli/" + filepath.Base(file)
+		if rel, ok := strings.CutPrefix(filepath.ToSlash(file), "../../"); ok {
+			name = rel // internal/cli/cli.go, internal/audit/audit.go
 		}
 		fset := token.NewFileSet()
 		parsed, err := parser.ParseFile(fset, file, nil, 0)

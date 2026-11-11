@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -165,9 +166,9 @@ func feedCommand() *cli.Command {
 				if err := catalog.WriteFeedSettings(dir, value); err != nil {
 					return nil, err
 				}
-				var audited *Log // none when the root can't be opened
+				var audited *audit.Log // none when the root can't be opened
 				if r, err := root.Open(dir); err == nil {
-					audited = NewAuditLog(r, c.Stderr)
+					audited = audit.New(r, c.Stderr)
 					// The URL isn't named: it can carry a credential.
 					audited.Change("feed", "use", "feed", "")
 				}

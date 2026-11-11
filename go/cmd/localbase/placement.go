@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -141,7 +142,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 		e.audit.Change("placement", "set", "model", id)
 	}
 	st := placementStatus(e, llm, src, id, live)
-	st.AuditOutcome = e.audit.Outcome()
+	st.Outcome = e.audit.Outcome()
 	for _, l := range placementTextLines(st) {
 		c.Info("%s", l)
 	}
@@ -150,7 +151,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 
 // placementState is the JSON `models placement` returns.
 type placementState struct {
-	AuditOutcome
+	audit.Outcome
 	Model           string            `json:"model"`
 	Requested       map[string]any    `json:"requested"`
 	Loaded          bool              `json:"loaded"`

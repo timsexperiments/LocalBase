@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"net/http"
 	"net/http/httptest"
@@ -274,7 +275,7 @@ func TestAnOddTargetIsNotLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := NewAuditLog(r, &bytes.Buffer{})
+	a := audit.New(r, &bytes.Buffer{})
 	a.Change("imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
 	a.Change("imports", "add-definition", "model", "ok.id-1")
 	lines := auditLines(t, dir)
@@ -368,7 +369,7 @@ func TestReadEnvHasTheRootsAuditLog(t *testing.T) {
 
 // models feed use can save the setting in a root it can't open (its marker unreadable), and then has
 // no audit log: the one place a command has none. It succeeds, and its result says nothing about
-// a record, as before; it doesn't hand WithResult a nil Log.
+// a record, as before; it doesn't hand WithResult a nil audit.Log.
 func TestFeedUseWithARootThatCannotBeOpenedHasNoAuditFields(t *testing.T) {
 	t.Setenv("LOCALBASE_ROOT", "")
 	dir := filepath.Join(t.TempDir(), "root")
