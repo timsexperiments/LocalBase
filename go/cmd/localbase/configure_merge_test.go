@@ -122,8 +122,8 @@ func (m *mergeRoot) saved() *store.Config {
 	return c
 }
 
-// eligibleIDs is the models of a kind configure accepts, in id order. The catalog is small (one
-// model per purpose), so a kind can have only one.
+// eligibleIDs is the models of a kind configure accepts for selection on this platform, in id
+// order. The catalog is small (one model per purpose), so a kind can have one, or none.
 func eligibleIDs(t *testing.T, kind string) []string {
 	t.Helper()
 	cat, err := catalog.Load("")
@@ -132,15 +132,26 @@ func eligibleIDs(t *testing.T, kind string) []string {
 	}
 	var ids []string
 	for _, s := range cat.All() {
-		if s.Kind == kind && conf.Ineligible(s, false) == "" && (kind != "llm" || conf.CanBeDefaultLLM(s)) {
+		if s.Kind != kind || (kind == "llm" && !conf.CanBeDefaultLLM(s)) {
+			continue
+		}
+		if conf.Ineligible(s, false) == "" {
 			ids = append(ids, s.ModelID)
 		}
 	}
 	sort.Strings(ids)
-	if len(ids) == 0 || (kind == "llm" && len(ids) < 2) {
-		t.Fatalf("the catalog has %d eligible %s models: %v", len(ids), kind, ids)
-	}
 	return ids
+}
+
+// twoLLMs is two chat models configure accepts. LLM eligibility doesn't depend on the platform
+// (only video's does), so a catalog without two is a change to the catalog, and a failure here.
+func twoLLMs(t *testing.T) (string, string) {
+	t.Helper()
+	ids := eligibleIDs(t, "llm")
+	if len(ids) < 2 {
+		t.Fatalf("the catalog has %d chat models configure accepts, and these tests need two: %v", len(ids), ids)
+	}
+	return ids[0], ids[1]
 }
 
 // mergeSetting is one setting the merge decides: how to read it from a saved configuration, its
@@ -152,7 +163,8 @@ type mergeSetting struct {
 	a, b       string
 }
 
-func mergeSettings(t *testing.T) []mergeSetting {
+// scalarSettings are the settings that name no model: the same rows everywhere, and no catalog.
+func scalarSettings() []mergeSetting {
 	str := func(name, key, field string, read func(*store.Config) string, a, b string) mergeSetting {
 		return mergeSetting{field, read,
 			func(v string) []string { return []string{"--" + name, v} },
@@ -183,11 +195,30 @@ func mergeSettings(t *testing.T) []mergeSetting {
 				return []string{"[memory.acceleratorReserve]", "percent = " + v, "minimumGb = 1"}
 			}, "12", "14"},
 	}
+	return out
+}
+
+// modelSettings are the selected and active models of each kind, from the catalog.
+func modelSettings(t *testing.T) []mergeSetting {
+	var out []mergeSetting
 	for _, k := range kinds {
 		ids := eligibleIDs(t, k)
 		title := fieldTitle(k)
+		// A video model is eligible only on a platform its runtime supports (conf.Ineligible,
+		// VideoTarget: darwin/arm64 today), and the --config file checks that. So video's row is
+		// the empty selection on every platform, to keep the rows the same on macOS and Linux. The
+		// precedence it would show is the one loop every kind shares, pinned by the other four.
+		if k == "video" {
+			ids = nil
+		}
+		if len(ids) == 0 {
+			t.Logf("%s: no %s model in this row, so its Selected row is the empty selection only (Active needs two)", k, k)
+		}
 		// Two selections to tell apart: two models, or (for a kind with one) that model and none.
-		a, b := ids[0], ""
+		a, b := "", ""
+		if len(ids) > 0 {
+			a = ids[0]
+		}
 		if len(ids) > 1 {
 			b = ids[1]
 		}
@@ -211,6 +242,8 @@ func mergeSettings(t *testing.T) []mergeSetting {
 	}
 	return out
 }
+
+func mergeSettings(t *testing.T) []mergeSetting { return append(scalarSettings(), modelSettings(t)...) }
 
 // What configure does with each setting, given on the command line, in the --config file, in both,
 // or in neither, pinned before the merge is moved out of runConfigure (5-4). The flag wins over the
@@ -255,11 +288,15 @@ func TestConfigureMergesFlagsAndTheConfigFile(t *testing.T) {
 // Every configuration field the merge sets has a row in TestConfigureMergesFlagsAndTheConfigFile,
 // or is covered by one of the tests named here. The list comes from the code (mergeFieldsSet).
 func TestConfigureMergeTableCoversEverySetting(t *testing.T) {
+	// No catalog here: this reads code. Selected and Active are the model rows (modelSettings), and
+	// Active is also TestConfigureActiveFallsBackToTheFirstSelected.
 	covered := map[string]string{
 		"DefaultLLMs": "TestConfigureDefaultLLMModels",
 		"HFToken":     "TestConfigureHFToken",
+		"Selected":    "TestConfigureMergesFlagsAndTheConfigFile (modelSettings)",
+		"Active":      "TestConfigureMergesFlagsAndTheConfigFile (modelSettings), TestConfigureActiveFallsBackToTheFirstSelected",
 	}
-	for _, s := range mergeSettings(t) {
+	for _, s := range scalarSettings() {
 		covered[s.field] = "TestConfigureMergesFlagsAndTheConfigFile"
 	}
 	for _, f := range mergeFieldsSet(t) {
@@ -273,8 +310,7 @@ func TestConfigureMergeTableCoversEverySetting(t *testing.T) {
 // An active model that isn't among the selected ones falls back to the first selected, when
 // neither the flag nor the file names one.
 func TestConfigureActiveFallsBackToTheFirstSelected(t *testing.T) {
-	llm := eligibleIDs(t, "llm")
-	a, b := llm[0], llm[1]
+	a, b := twoLLMs(t)
 	m := newMergeRoot(t)
 	if code, out := m.configure("", "--llm-models", a+","+b, "--active-llm", b); code != 0 {
 		t.Fatal(out)
@@ -290,8 +326,7 @@ func TestConfigureActiveFallsBackToTheFirstSelected(t *testing.T) {
 // --default-llm-models: one id becomes the active model; two or more are the defaults, and the
 // active model stays.
 func TestConfigureDefaultLLMModels(t *testing.T) {
-	llm := eligibleIDs(t, "llm")
-	a, b := llm[0], llm[1]
+	a, b := twoLLMs(t)
 	m := newMergeRoot(t)
 	if code, out := m.configure("", "--llm-models", a+","+b, "--active-llm", a, "--default-llm-models", b); code == 0 {
 		t.Errorf("a single default unlike --active-llm was accepted: %s", out)
@@ -349,8 +384,7 @@ func TestConfigureHFToken(t *testing.T) {
 
 // What configure refuses, and that a refusal saves nothing.
 func TestConfigureRefusesBadInput(t *testing.T) {
-	llm := eligibleIDs(t, "llm")
-	a, b := llm[0], llm[1]
+	a, b := twoLLMs(t)
 	for name, tc := range map[string]struct {
 		toml  string
 		flags []string
