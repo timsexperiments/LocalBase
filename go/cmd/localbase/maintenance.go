@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
@@ -36,7 +37,7 @@ func maintenanceCommands() []*cli.Command {
 				if service.HasEvidence(r) {
 					sayIfInstalled(c, r.Dir, "This stops the installed LocalBase service.")
 					_, err := service.StopWithin(r)
-					NewAuditLog(r, c.Stderr).Service("audit.service-stopped", err, "purpose", "reset", "disabled", err == nil)
+					audit.New(r, c.Stderr).Service("audit.service-stopped", err, "purpose", "reset", "disabled", err == nil)
 					if err != nil {
 						return nil, err
 					}
@@ -63,7 +64,7 @@ func maintenanceCommands() []*cli.Command {
 				if err := st.SaveConfig(context.Background(), cfg); err != nil {
 					return nil, err
 				}
-				audited := NewAuditLog(r, c.Stderr)
+				audited := audit.New(r, c.Stderr)
 				audited.Change("config", "reset", "configuration", "")
 				c.Info("Database reset complete at %s", r.Dir)
 				c.Info("Initialized default configuration.")
@@ -85,7 +86,7 @@ func maintenanceCommands() []*cli.Command {
 				defer lease.Release()
 				removed := false
 				// The last record, and it goes with the logs, so it's on the screen as well.
-				audited := NewAuditLog(r, c.Stderr)
+				audited := audit.New(r, c.Stderr)
 				sayIfInstalled(c, r.Dir, "This stops and removes the installed LocalBase service.")
 				audited.Change("root", "uninstall", "root", "", "root", r.Dir, "service_evidence", service.HasEvidence(r))
 				c.Error("Uninstalling LocalBase at %s. Its audit log goes with it.", r.Dir)

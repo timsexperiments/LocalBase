@@ -4,22 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
-	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
@@ -366,7 +362,7 @@ func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
 			tc.breakIt(t, root)
 			// A keys command and an access command: the result is added in one place, for all of them.
 			// models placement and config apply return a struct, not a map, so each result carries the
-			// outcome itself (Log.Outcome, embedded as AuditOutcome).
+			// outcome itself (audit.Log.Outcome, embedded as audit.Outcome).
 			for _, args := range [][]string{{"keys", "create", "--name", "k"}, {"access", "cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "a", "--origin", "https://lb.example"},
 				{"models", "placement", "qwen3.5-4b-q4_k_m", "--reset"}, {"config", "apply", "--file", changed, "--restart", "never"}} {
 				var stdout, stderr bytes.Buffer
@@ -390,45 +386,6 @@ func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// Whatever an error's text holds, it isn't repeated.
-func TestAnAuditWarningNeverRepeatsTheError(t *testing.T) {
-	t.Setenv("LOCALBASE_ROOT", "")
-	root := filepath.Join(t.TempDir(), "root")
-	if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
-		t.Fatalf("configure: %s", out)
-	}
-	const planted = "PLANTED_secret_in_an_error_7d1e0c"
-	defer func(open func(string) (*obs.Sink, error)) { openAuditSink = open }(openAuditSink)
-	openAuditSink = func(string) (*obs.Sink, error) {
-		return nil, &fs.PathError{Op: "open", Path: "/" + planted, Err: fs.ErrPermission}
-	}
-	code, out := runApp(t, "--root", root, "--json", "keys", "create", "--name", "k")
-	if code != 0 {
-		t.Errorf("exit status %d", code)
-	}
-	if !strings.Contains(out, "could not be written: permission-denied") || !strings.Contains(out, `"auditError":"permission-denied"`) {
-		t.Errorf("no class in %q", out)
-	}
-	if strings.Contains(out, planted) {
-		t.Error("the warning repeats the error's text")
-	}
-}
-
-// A class is only ever from the short list.
-func TestAuditFailureClass(t *testing.T) {
-	for want, err := range map[string]error{
-		"permission-denied": &fs.PathError{Op: "open", Path: "x", Err: syscall.EACCES},
-		"disk-full":         &fs.PathError{Op: "write", Path: "x", Err: syscall.ENOSPC},
-		"missing":           fs.ErrNotExist,
-		"not-a-file":        &fs.PathError{Op: "mkdir", Path: "x", Err: syscall.ENOTDIR},
-		"write-failed":      errors.New("PLANTED_anything_else"),
-	} {
-		if got := auditFailureClass(err); got != want {
-			t.Errorf("%v: %q, want %q", err, got, want)
-		}
 	}
 }
 
@@ -510,14 +467,15 @@ func actorKindSpellings(t *testing.T, dir string) map[string]string {
 }
 
 // One name for each kind of actor, so that a search of the log finds them all. The gateway is read
-// with every package under it, at least its 9 (gatewayPackages in internal/gateway).
+// with every package under it, at least its 9 (gatewayPackages in internal/gateway). internal/audit
+// writes the CLI's records, with actor_kind cli.
 func TestActorKindsAreOneVocabulary(t *testing.T) {
 	seen := map[string]bool{}
 	var dirs []string
 	for _, root := range []struct {
 		dir      string
 		packages int
-	}{{".", 1}, {"../../internal/gateway", 9}, {"../../internal/auth", 1}} {
+	}{{".", 1}, {"../../internal/gateway", 9}, {"../../internal/auth", 1}, {"../../internal/audit", 1}} {
 		for _, f := range testutil.GoSources(t, root.dir, root.packages) {
 			if dir := filepath.Dir(f); !slices.Contains(dirs, dir) {
 				dirs = append(dirs, dir)

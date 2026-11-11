@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
@@ -54,7 +55,7 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 	} else if canon, cerr := root.Canonical(dir); cerr == nil {
 		e.Root = &root.Root{Dir: canon}
 	}
-	e.audit = NewAuditLog(e.Root, nil) // a record it can't write is reported on stderr
+	e.audit = audit.New(e.Root, nil) // a record it can't write is reported on stderr
 	// Read-only, this cannot undo a write a process left unfinished, and what it reads below
 	// would quietly be defaults, reported as the real settings.
 	if msg := backup.UnfinishedWrite(context.Background(), e.Root.Dir); msg != "" {

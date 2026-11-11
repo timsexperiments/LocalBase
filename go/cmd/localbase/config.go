@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
@@ -181,7 +182,7 @@ func runConfigPlan(c *cli.Ctx) (any, error) {
 
 type applyResult struct {
 	*conf.Plan
-	AuditOutcome
+	audit.Outcome
 	Activation string `json:"activation"`
 	Readiness  string `json:"readiness"`
 }
@@ -222,7 +223,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		}
 		st.Close()
 	}
-	var audited *Log
+	var audited *audit.Log
 	current, pending, err := readConfigIfPresent(dir, cat)
 	if err != nil {
 		return nil, err
@@ -282,7 +283,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 		if r, err := root.Open(dir); err == nil {
-			audited = NewAuditLog(r, c.Stderr)
+			audited = audit.New(r, c.Stderr)
 			audited.Change("config", "apply", "configuration", "")
 		}
 	}
@@ -330,7 +331,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		res.Readiness = "ready"
 	}
 	if audited != nil {
-		res.AuditOutcome = audited.Outcome()
+		res.Outcome = audited.Outcome()
 	}
 	printPlan(c, plan)
 	c.Info("Activation: %s. Readiness: %s.", res.Activation, res.Readiness)

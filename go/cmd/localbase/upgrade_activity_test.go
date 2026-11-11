@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -91,5 +92,5 @@ func TestWaitingForAnIdleGatewayUsesOneKey(t *testing.T) {
 // activityEnv is the env the wait runs with: a store, a scratch root, and that root's audit log.
 func activityEnv(t *testing.T, st *store.Store) *env {
 	r := &root.Root{Dir: t.TempDir()}
-	return &env{Store: st, Root: r, audit: NewAuditLog(r, nil)}
+	return &env{Store: st, Root: r, audit: audit.New(r, nil)}
 }
