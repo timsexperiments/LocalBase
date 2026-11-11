@@ -1,7 +1,7 @@
 // Package rmguard holds a check: no script or command file may delete through a variable, a
 // glob, or a path outside an explicit scratch prefix. Run it before every commit:
 //
-//	go test -count=1 ./tools/rmguard
+//	go test -count=1 ./test/guards/rmguard
 //
 // LOCALBASE_RM_GUARD_DIRS adds directories of command files, separated by colons, and
 // LOCALBASE_RM_GUARD_TREE scans another checkout's go/tools instead of this one, reporting
@@ -13,13 +13,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"
 )
 
 // scratchPrefixes are where an absolute literal path may be deleted.
@@ -90,82 +91,37 @@ func findings(text string) []string {
 	return out
 }
 
-func scan(fsys fs.FS) (map[string][]string, error) {
-	found, _, err := scanRead(fsys)
-	return found, err
+// filter is what the guard reads: scripts and code, not tests, not testdata.
+var filter = treewalk.Filter{
+	SkipDirs:  []string{"node_modules", "testdata", ".git"},
+	SkipTests: true,
+	Exts:      []string{".sh", ".go", ".ts", ".js", ".mjs", ".py", ".pl"},
+	Makefile:  true,
 }
 
-// scanRead is scan, and how many files it read.
-func scanRead(fsys fs.FS) (map[string][]string, int, error) {
-	found := map[string][]string{}
-	read := 0
-	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if base := path.Base(name); base == "node_modules" || base == "testdata" || base == ".git" {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(name, "_test.go") {
-			return nil
-		}
-		b, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			return err
-		}
-		switch ext := path.Ext(name); {
-		case ext == ".sh", ext == ".go", ext == ".ts", ext == ".js", ext == ".mjs", ext == ".py", ext == ".pl", path.Base(name) == "Makefile":
-		case ext == "" && strings.HasPrefix(string(b), "#!"):
-		default:
-			return nil
-		}
-		read++
-		if f := findings(string(b)); len(f) > 0 {
-			found[name] = f
-		}
-		return nil
-	})
-	return found, read, err
+func scan(fsys fs.FS) (map[string][]string, error) {
+	found, _, err := treewalk.Walk(fsys, filter, findings)
+	return found, err
 }
 
 // trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
 // their scripts out of go/tools. A move from one to the other changes neither what is read nor how
 // much. Findings are named from the go directory, tools/... or test/....
-var trees = []struct{ label, dir string }{{"tools", ".."}, {"test", "../../test"}}
+var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}}
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 100
+const minRead = 101
 
 // scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
 // is), and checks the floor only for the trees.
 func scanTrees(t *testing.T, other string) map[string][]string {
 	t.Helper()
-	found := map[string][]string{}
-	read := 0
-	roots := trees
 	if other != "" {
-		roots = []struct{ label, dir string }{{"tools", other}}
+		return treewalk.WalkTrees(t, []treewalk.Tree{{Label: "tools", Dir: other}}, 0, filter, findings)
 	}
-	for _, r := range roots {
-		f, n, err := scanRead(os.DirFS(r.dir))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for name, lines := range f {
-			found[r.label+"/"+name] = lines
-		}
-		read += n
-	}
-	if other == "" && read < minRead {
-		t.Errorf("read %d files in go/tools and go/test, fewer than the %d they held: a tree stopped being read, or files moved where neither reaches", read, minRead)
-	}
-	t.Logf("read %d files (floor %d)", read, minRead)
-	return found
+	return treewalk.WalkTrees(t, trees, minRead, filter, findings)
 }
 
 // knownToDelete are other threads' scripts that already delete through a variable, with how

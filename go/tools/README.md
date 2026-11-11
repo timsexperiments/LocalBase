@@ -45,7 +45,7 @@ server that sends without end must stop at a bound well above the limit it tests
 End a process by a pid you started, or by your own process group. Don't use `pkill`, `killall`, `lsof -t`
 or `fuser -k`, however narrow the pattern looks: this machine has a live gateway, other threads' runs and
 many worktrees, and a pattern can reach any of them. Don't ask the service manager to stop anything but a
-scratch root's own service, and always give `local-base stop` or `restart` a `--root`. `tools/killguard`
+scratch root's own service, and always give `local-base stop` or `restart` a `--root`. `test/guards/killguard`
 fails on a new one, in `go test`. It reads files, so it can't see a command typed into a shell.
 
 ## Where things go
@@ -97,12 +97,12 @@ stops the script.** That applies to scripts here and to any one-off fetch:
 
 ## Deletes
 
-`go test -count=1 ./tools/rmguard` fails on any script or command file with `rm` on a variable, a
+`go test -count=1 ./test/guards/rmguard` fails on any script or command file with `rm` on a variable, a
 glob, `/dev`, `/`, `~`, or an absolute path outside an explicit scratch prefix. Run it before you
 commit. Prefer no delete at all: build to a fixed path that the next run replaces.
 
 These scripts already delete that way. They work, and none of this is urgent, so fix them when you
-are next in the file, and take the line out of `knownToDelete` in `tools/rmguard/rmguard_test.go`,
+are next in the file, and take the line out of `knownToDelete` in `test/guards/rmguard/rmguard_test.go`,
 or lower its count, when you do. A file may not gain one, and no other file may join.
 
 | Owner | File: deletes |
