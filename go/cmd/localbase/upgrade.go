@@ -18,6 +18,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
@@ -202,7 +203,7 @@ func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 		return false, "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+raw)
-	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	resp, err := localhttp.New(5 * time.Second).Do(req) // the key goes to the gateway alone: no proxy, no redirect
 	if err != nil {
 		return false, "", err
 	}
