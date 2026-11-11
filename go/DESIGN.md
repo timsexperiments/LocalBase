@@ -2418,8 +2418,8 @@ llama-server and sparse weights, so no model was loaded.
   wide) and iOS 27. Xcode 27 has no Simulator.app, so a test
   host app opens the URL in Safari. The accessibility audit is
   `performAccessibilityAudit`, the engine behind Accessibility Inspector.
-- **Desktop Chrome:** `tools/axe-check.sh <url>` runs axe-core 4.14.0 in
-  headless Chrome. The copy is pinned in `tools/axe.pins`, its sha256
+- **Desktop Chrome:** `test/browser/axe-check.sh <url>` runs axe-core 4.14.0 in
+  headless Chrome. The copy is pinned in `test/browser/axe.pins`, its sha256
   matches the npm integrity hash, it is cached in `go/.cache` and it is
   injected over the DevTools protocol only. It runs WCAG 2.0 to 2.2 A/AA
   plus best practice on 16 UI states, at 1280 and 390 px, in light and dark.
@@ -2431,7 +2431,7 @@ llama-server and sparse weights, so no model was loaded.
 | Return and Send | On touch, Return adds a line: the textarea holds `first line\nsecond line` and nothing is sent. Tapping Send submits, and the fake reply appears. ⌘/Ctrl-Enter sends only under `(pointer: fine)`, as in TS |
 | Apple accessibility audit: chat, picker, history drawer, Admin, Lab | No contrast, label or element-order issues. All hit-area issues on our elements are fixed (see below). Three findings remain, none from our markup: Safari's own toolbar reload button; one nil element with a zero frame, which also appears on a bare HTML probe page with no LocalBase code; and Dynamic Type (see below) |
 | axe-core, Chrome, 64 runs | Two violations found and fixed. The Voices recording input had no label (critical); it is now `aria-labelledby`. The chat composer sat outside any landmark (best practice); it is now a form landmark, "Message composer". The final run passed with no violations, including best practice |
-| Microphone dictation, end to end | Passed (2026-10-21), through `tools/mic-check.sh` in desktop Chrome. A fake capture device plays a speech clip (macOS `say`, re-encoded with the pinned ffmpeg to plain 16-bit PCM). Chat's microphone records it through `getUserMedia`, the page encodes the browser WAV, and the gateway's transcription route runs the real whisper-server with whisper-tiny-en. The transcript was "Please remind me to water the plants tomorrow morning. Please remind me to water the" (the clip loops), 4.3 s after the first tap with about 4 s of recording. The iOS Simulator cannot be fed a clip, so iOS Safari's own capture was not exercised; Chrome needs its audio service in-process to read the file |
+| Microphone dictation, end to end | Passed (2026-10-21), through `test/browser/mic-check.sh` in desktop Chrome. A fake capture device plays a speech clip (macOS `say`, re-encoded with the pinned ffmpeg to plain 16-bit PCM). Chat's microphone records it through `getUserMedia`, the page encodes the browser WAV, and the gateway's transcription route runs the real whisper-server with whisper-tiny-en. The transcript was "Please remind me to water the plants tomorrow morning. Please remind me to water the" (the clip loops), 4.3 s after the first tap with about 4 s of recording. The iOS Simulator cannot be fed a clip, so iOS Safari's own capture was not exercised; Chrome needs its audio service in-process to read the file |
 
 **Hit areas on iOS.** iOS reports a link's or a label's frame as the frame
 of its text, not its box. Apple's audit therefore flags any text under
@@ -3508,13 +3508,13 @@ no content is stored), `cancel` (Stop), `dismiss` and `result`.
   `TestModelsSwitch`, `TestShellSignedOut`.
 - **`tools/jstest/runs.test.ts`:** the event-stream parser under every
   chunking.
-- **`tools/phone-check.sh <url>`** (headless Chrome against a `--no-auth`
+- **`test/browser/phone-check.sh <url>`** (headless Chrome against a `--no-auth`
   scratch gateway): at 360, 390, 430 and 1280 px every page has no
   horizontal overflow, controls of at least 44 px (inline text links
   exempt), the tab bar on phones and the sidebar on desktop, and nothing
   hidden under the tab bar; the More sheet takes focus, closes on Escape
   and returns focus; a focused field hides the tab bar and stays in view
-  when the viewport shrinks for a keyboard. `tools/axe-check.sh` and
+  when the viewport shrinks for a keyboard. `test/browser/axe-check.sh` and
   `tools/ios-check.sh` still apply.
 
 ### 22.7 Chat (PR 2)
@@ -3549,7 +3549,7 @@ no content is stored), `cancel` (Stop), `dismiss` and `result`.
   the keyboard.
 - **Checks.** `TestChatSheets`; `tools/jstest/runs.test.ts`
   (`runs.response`: streaming, resume from the last id, interrupted, the
-  empty resume); `tools/chat-runs-check.sh` (headless Chrome against a
+  empty resume); `test/browser/chat-runs-check.sh` (headless Chrome against a
   scratch gateway with the fake llama-server: leave mid-reply and come back
   to the whole reply, the "Generating…" pill, Stop keeps the partial text,
   the draft survives, a dropped connection resumes without gaps or
@@ -3583,7 +3583,7 @@ have; Get models, add one that fits.
   lists.
 - **Checks:** `TestLibraryModelsFirst`, `TestLibraryEmpty`,
   `TestTaskFilter`, `TestGetModelsCatalog`, `TestRecipeCompact`.
-  `tools/phone-check.sh` now also fails on text cut off inside a control
+  `test/browser/phone-check.sh` now also fails on text cut off inside a control
   (segmented items, tab labels, chips, pills, buttons, nav and list rows)
   and on a control that sticks out of its group (a segmented switch, the
   docked composer, the tab bar), not only on page-level overflow.
@@ -3608,7 +3608,7 @@ and whether it is busy.
   carries one sentence (`data-announce`). `shell.js` writes it into a
   status region outside the swapped part only when it changes, so screen
   readers hear "… is busy." once, not every refresh.
-- **Checks:** `TestRunningNow`; `tools/chat-runs-check.sh` checks two
+- **Checks:** `TestRunningNow`; `test/browser/chat-runs-check.sh` checks two
   unchanged polls announce nothing, the loaded model shows Idle, and a
   request announces "… is busy." once.
 
@@ -3647,11 +3647,11 @@ speech, a transcript) and get it back.
   shows above the tray.
 - **Checks:** `TestLabImageRun`, `TestLabRunInterrupted`, `TestLabDock`
   (plus the existing Lab tests on the direct path);
-  `tools/chat-runs-check.sh` (Lab steps with the fake as sd-server: the
+  `test/browser/chat-runs-check.sh` (Lab steps with the fake as sd-server: the
   prompt sits right on the tab bar; an item appears with its caption; the
   finished image is in the tray on another tool's page after leaving the
   Lab; Stop; Remove drops item and run; while typing the prompt sits on
-  the keyboard and the tab bar is hidden); `tools/phone-check.sh` (the
+  the keyboard and the tab bar is hidden); `test/browser/phone-check.sh` (the
   four-way switch fits at 360 px).
 
 ### 22.11 My voices (PR 6)
@@ -3670,9 +3670,9 @@ The one thing people come to do: add a voice, hear it, and use it.
 - Without models:manage the page lists names only (no playback, add or
   options), as the API allows.
 - **Checks:** `TestVoicesSheets` (and `TestVoicesPage`);
-  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE` adds a voice through
+  `test/browser/chat-runs-check.sh` with `LBGO_VOICE_FILE` adds a voice through
   the sheet (it closes, the list says "Added …") and plays one;
-  `tools/phone-check.sh` types in the Add sheet with the keyboard open.
+  `test/browser/phone-check.sh` types in the Add sheet with the keyboard open.
 
 ### 22.12 Settings (PR 7)
 
@@ -3769,7 +3769,7 @@ not "Create", because transcribing and deciding are not creating.
   state in words; the shimmer stops with reduced motion.
 - **Checks:** `TestStudioLanding`, `TestLabRedirects`, `TestLabImageRun`
   (tray per tool, Recent), `TestResultImageFallback`,
-  `tools/chat-runs-check.sh` (a real PNG decodes; a missing file falls back),
+  `test/browser/chat-runs-check.sh` (a real PNG decodes; a missing file falls back),
   `phone-check`, `axe`. `phone-check` now seeds a result with a long prompt,
   so pages are checked with content in them, and fails when a card or list
   leaves the 16 px gutter at 360, 390 or 430 px; page overflow alone had
@@ -3830,7 +3830,7 @@ The one thing people come to do: describe a picture and get it back.
 - **Not built:** "Use as input" needs an edit flow and an edit-capable model
   (the API has `/v1/images/edits` as a run target); it is a follow-up.
 - **Checks:** `TestImageBatch`, `TestImageAgain`, `TestImageDelete`,
-  `TestLabImageRun`, `TestLabDock`; `tools/chat-runs-check.sh` now opens the
+  `TestLabImageRun`, `TestLabDock`; `test/browser/chat-runs-check.sh` now opens the
   viewer and checks it fills the screen with its actions and 44 px targets (a
   closed dialog had hidden a stylesheet mistake from every other check) and
   moves between pictures, and walks Share's three paths: without the prompt, a
@@ -3891,7 +3891,7 @@ their own place. It asks `POST /v1/systemone`.
   comparing against an expected answer. Follow-ups if asked for.
 - **Checks:** `TestDecisionsPage`, `tools/jstest/decisions.test.ts` (band edges,
   a model with its own row, each type, requests, code, CSV), and
-  `tools/chat-runs-check.sh` walks templates, every word, Stop, a reload, saved
+  `test/browser/chat-runs-check.sh` walks templates, every word, Stop, a reload, saved
   examples and a batch against the fake backend, whose state text (`fake:close`,
   `fake:unsure`, `fake:leaning`, `fake:slow`) reaches each word.
 - **The form is not boosted.** `<body hx-boost>` also takes forms, and with it on
@@ -3951,7 +3951,7 @@ runs."). The 10 minutes is the model's limit, not a measurement.
   one. A file, or one of the last six generated pictures; it is cropped to fill
   the frame, previewed, and can be removed.
 - **Not built:** a thumbnail of a finished video on the landing.
-- **Checks:** `TestLabVideo`, and `tools/chat-runs-check.sh` walks stage, shape, Stop
+- **Checks:** `TestLabVideo`, and `test/browser/chat-runs-check.sh` walks stage, shape, Stop
   on the first screen, the busy message, the pill, leaving and returning, playback
   of a real file, a failure, Try again, a recent picture and Remove. Its scratch
   root needs sparse model files marked verified and an `LOCALBASE_FFMPEG` that
@@ -4039,7 +4039,7 @@ control, because the API takes only speed 1 (§24).
   choosing a pause length.
 - **Checks:** `TestSplitScript`, `TestJoinWAV`, `TestShapeEdges`, `TestWavePeaks`, `TestSpeechJob` (parts,
   one at a time, the cut flag, Stop, a failure part way, over the limit) and
-  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
+  `test/browser/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The fake's `fake:slow` slows each
   part, and `fake:cut` runs a part to the cap.
 
 ### 22.20 Transcribe studio (PR 14)
@@ -4099,7 +4099,7 @@ Record or choose a file, and get the words with their times.
   text to a draft in one step, with no panel, no Pause and no times, so the only code to
   share would be the WAV encoding.
 - **Checks:** `TestSubtitleFormats`, `TestSegmentWords`, `TestTranscriptExport` and
-  `tools/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The microphone there is a generated
+  `test/browser/chat-runs-check.sh` with `LBGO_VOICE_FILE`. The microphone there is a generated
   tone through the real recorder, level and sending, because the headless browser's
   own never answers, so a real microphone has not been tried. The fake's whisper
   answers a fixed transcript. Very quiet, Too loud and the 13 minute stop have not been
@@ -4247,7 +4247,7 @@ The owner's bar: "The UI is still trash and needs real work." What shipped was s
 
 - **One theme file.** `css/theme.css` holds every value a direction chooses. `TestThemeIsOneFile` fails on a color anywhere else.
 - **Budgets in CI.** `TestSizeBudgets` holds gzipped HTML, CSS, scripts and fonts per page.
-- **Screenshots.** `tools/ui-shots.sh` shoots every page at 360, 390, 430, 768 and 1280 in both schemes, with contact sheets, and compares with a baseline. Pictures stay out of the repository. It is not in CI, because it needs a scratch gateway.
+- **Screenshots.** `test/browser/ui-shots.sh` shoots every page at 360, 390, 430, 768 and 1280 in both schemes, with contact sheets, and compares with a baseline. Pictures stay out of the repository. It is not in CI, because it needs a scratch gateway.
 - **Inventory.** `docs/ui-components.md` lists every component and how far it has come.
 
 ### 25.3 The strip's facts
@@ -5110,7 +5110,7 @@ own notes are in §22.15 to §22.20, and this says what v2 changed about them.
   test pictures, so it now draws warm, quiet ones. No product style changed for this, and real
   pictures are as colorful as they are.
 
-**Checks:** `TestStudioLanding`, `TestStudioTile`, and `tools/chat-runs-check.sh` (words on a
+**Checks:** `TestStudioLanding`, `TestStudioTile`, and `test/browser/chat-runs-check.sh` (words on a
 result, a tile that settles and keeps the strip's place, and the seeded landing at 320, 360, 390,
 430, 768 and 1280). `contract/studio_models_test.go` runs the real binary from the defaults `init`
 really chooses: each of the five tools offers only what is on disk, and half a model isn't one. On

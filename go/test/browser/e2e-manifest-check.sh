@@ -4,12 +4,12 @@
 # what must not be tolerated: a failed journey is 5, and so is a key in the gateway's log, whose
 # report names the file and line and holds no part of the key. Two pages at one width, so about
 # two minutes.
-#   tools/e2e-manifest-check.sh
-# Chrome comes as for tools/e2e.sh. Results go to a fixed place the next run replaces; the exit
+#   test/browser/e2e-manifest-check.sh
+# Chrome comes as for test/browser/e2e.sh. Results go to a fixed place the next run replaces; the exit
 # status is read first, so an old file cannot answer for a run that never got that far.
 # Exit 0: it held. Exit 1: a gap went unnoticed, or a clean run had one. Exit 2: could not run.
 set -u
-cd "$(dirname "$0")/.." || exit 2
+cd "$(dirname "$0")/../.." || exit 2
 . tools/disk-guard.sh
 disk_guard e2e-manifest-check
 command -v bun >/dev/null 2>&1 || { echo "e2e-manifest-check: needs bun" >&2; exit 2; }
@@ -28,7 +28,7 @@ kinds() {
 }
 
 echo "e2e-manifest-check: nothing guarded off"
-E2E_PLANT_OFF= tools/e2e.sh -out "$out/clean" > "$out/clean.log" 2>&1
+E2E_PLANT_OFF= test/browser/e2e.sh -out "$out/clean" > "$out/clean.log" 2>&1
 status=$?
 if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
   echo "e2e-manifest-check: FAIL: the clean run exited $status; its output is in $out/clean.log" >&2
@@ -37,7 +37,7 @@ if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
 fi
 
 echo "e2e-manifest-check: every section guarded off"
-E2E_PLANT_OFF=studio,selftests,overflow,axe,errors,keyboard,sheets,motion,landing tools/e2e.sh -out "$out/planted" > "$out/planted.log" 2>&1
+E2E_PLANT_OFF=studio,selftests,overflow,axe,errors,keyboard,sheets,motion,landing test/browser/e2e.sh -out "$out/planted" > "$out/planted.log" 2>&1
 status=$?
 if [ "$status" -ne 4 ]; then
   echo "e2e-manifest-check: FAIL: the planted run exited $status, not 4; its output is in $out/planted.log" >&2
@@ -50,7 +50,7 @@ if printf '%s\n' "$counts" | awk -F'\t' '$2 == 0 { print "e2e-manifest-check: FA
 fi
 
 echo "e2e-manifest-check: a journey that fails"
-E2E_PART=journeys E2E_PLANT_OFF=fail-a-journey tools/e2e.sh -out "$out/journey" > "$out/journey.log" 2>&1
+E2E_PART=journeys E2E_PLANT_OFF=fail-a-journey test/browser/e2e.sh -out "$out/journey" > "$out/journey.log" 2>&1
 status=$?
 if [ "$status" -ne 5 ]; then
   echo "e2e-manifest-check: FAIL: a failed journey exited $status, not 5; its output is in $out/journey.log" >&2
@@ -58,7 +58,7 @@ if [ "$status" -ne 5 ]; then
 fi
 
 echo "e2e-manifest-check: a key in the gateway's log"
-E2E_PART=journeys E2E_PLANT_OFF=logged-key tools/e2e.sh -out "$out/key" > "$out/key.log" 2>&1
+E2E_PART=journeys E2E_PLANT_OFF=logged-key test/browser/e2e.sh -out "$out/key" > "$out/key.log" 2>&1
 status=$?
 if [ "$status" -ne 5 ]; then
   echo "e2e-manifest-check: FAIL: a logged key exited $status, not 5; its output is in $out/key.log" >&2

@@ -1,16 +1,16 @@
 #!/bin/sh
-. "$(dirname "$0")/test-ports.sh"
+. "$(dirname "$0")/../../tools/test-ports.sh"
 # axe-core in desktop Chrome (headless) against a running LocalBase UI
 # (DESIGN §17.9): chat, the model picker, the history drawer, generation
 # controls, Admin, the Lab and the other pages, at 1280 and 390 px, light
 # and dark. The pinned axe-core is cached in go/.cache, verified by sha256,
 # and injected over the DevTools protocol only for the test.
-#   tools/axe-check.sh http://127.0.0.1:<port>   (a --no-auth gateway)
-#   AXE_COOKIE=name=value tools/axe-check.sh ...  (a gateway with sign-in on, as that session)
+#   test/browser/axe-check.sh http://127.0.0.1:<port>   (a --no-auth gateway)
+#   AXE_COOKIE=name=value test/browser/axe-check.sh ...  (a gateway with sign-in on, as that session)
 set -eu
-here=$(cd "$(dirname "$0")/.." && pwd)
+here=$(cd "$(dirname "$0")/../.." && pwd)
 base=${1:?usage: axe-check.sh <base-url>}
-pins="$here/tools/axe.pins"
+pins="$here/test/browser/axe.pins"
 version=$(awk '$1=="version"{print $2}' "$pins")
 axe="$here/.cache/axe-core-$version.min.js"
 if [ ! -s "$axe" ]; then
@@ -23,10 +23,10 @@ fi
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile="$here/.cache/browser-profile-axe-check"
 port=$(test_port_pick)
-. "$here/tools/browser-run.sh"
+. "$here/test/browser/browser-run.sh"
 browser_guard axe-check
 (cd "$here" && rm -rf .cache/browser-profile-axe-check)
 "$chrome" --headless=new --use-mock-keychain --password-store=basic --remote-debugging-address=127.0.0.1 --remote-debugging-port=$port --user-data-dir="$profile" --no-first-run about:blank >/dev/null 2>&1 &
 browser_started $!
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:$port/json/version" >/dev/null && break; sleep 0.5; done
-browser_run bun run "$here/tools/axe-check/run.ts" "http://127.0.0.1:$port" "$base" "$axe"
+browser_run bun run "$here/test/browser/axe-check/run.ts" "http://127.0.0.1:$port" "$base" "$axe"

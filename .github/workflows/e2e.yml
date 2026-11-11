@@ -7,9 +7,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "go/internal/web/**"
-      - "go/tools/e2e/**"
-      - "go/tools/e2e.sh"
-      - "go/tools/axe.pins"
+      - "go/test/browser/e2e/**"
+      - "go/test/browser/e2e.sh"
+      - "go/test/browser/axe.pins"
       - ".github/scripts/e2e-artifacts.sh"
       - ".github/workflows/e2e.yml"
   schedule:
@@ -50,7 +50,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .e2e-cache
-          key: e2e-v3-${{ runner.os }}-${{ hashFiles('go/tools/e2e/pins', 'go/tools/axe.pins') }}
+          key: e2e-v3-${{ runner.os }}-${{ hashFiles('go/test/browser/e2e/pins', 'go/test/browser/axe.pins') }}
       - name: Let Chrome's sandbox run
         # Ubuntu's AppArmor stops unprivileged user namespaces, which the sandbox needs.
         # This relaxes it on this disposable runner, so the sandbox can stay on.
@@ -59,7 +59,7 @@ jobs:
         working-directory: go
         run: |
           code=0
-          tools/e2e.sh -out "$RUNNER_TEMP/e2e" || code=$?
+          test/browser/e2e.sh -out "$RUNNER_TEMP/e2e" || code=$?
           case "$code" in
             0) ;;
             1) echo "::warning title=Browser suite findings::see result.md in the artifact" ;;

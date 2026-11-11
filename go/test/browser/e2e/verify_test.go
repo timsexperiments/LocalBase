@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// fakeChrome is a directory as tools/e2e.sh leaves it: chrome.zip with what it holds beside it.
+// fakeChrome is a directory as test/browser/e2e.sh leaves it: chrome.zip with what it holds beside it.
 func fakeChrome(t *testing.T) (dir, archive, sum string) {
 	t.Helper()
 	dir = t.TempDir()

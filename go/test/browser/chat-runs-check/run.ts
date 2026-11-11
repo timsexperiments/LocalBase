@@ -1,4 +1,4 @@
-// Drives headless Chrome for tools/chat-runs-check.sh: detached chat runs
+// Drives headless Chrome for test/browser/chat-runs-check.sh: detached chat runs
 // end to end (leave and return, the pill, Stop, the draft, a dropped
 // connection). Exits 1 when any check fails.
 import { evaluate, openPage } from "../cdp/cdp.ts";
@@ -7,7 +7,7 @@ const [cdpBase, base] = process.argv.slice(2);
 // This script leaves its gateway changed, and on one it has already used it fails in ways that
 // say nothing about the page. So: once per gateway, known by when it started.
 {
-  const marker = new URL("../../.cache/chat-runs-check.gateway", import.meta.url).pathname;
+  const marker = new URL("../../../.cache/chat-runs-check.gateway", import.meta.url).pathname;
   const health = await (await fetch(base + "/health")).json();
   if (typeof health.uptimeSeconds === "number") {
     const started = Date.now() / 1000 - health.uptimeSeconds;

@@ -159,7 +159,7 @@ const models = await (await fetch(`${control}/models`)).json();
 
 // What ran. A check with no record fails the table: a section guarded off, a page that went
 // somewhere else, or a loop with nothing in it must not read as a pass. E2E_PLANT_OFF guards a
-// section off on purpose, and tools/e2e-manifest-check.sh requires that to fail.
+// section off on purpose, and test/browser/e2e-manifest-check.sh requires that to fail.
 const ran = new Set<string>();
 const did = (...what: (string | number)[]) => { if (!selfTesting) ran.add(what.join("|")); };
 const planted = list("E2E_PLANT_OFF") ?? [];

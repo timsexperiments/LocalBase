@@ -15,10 +15,9 @@ import (
 var startsChrome = regexp.MustCompile(`--headless|--remote-debugging-port=|--remote-debugging-pipe`)
 
 // launchersWithoutMockKeychain lists the scripts under fsys that start a Chrome without
-// --use-mock-keychain. A flag only in a comment does not count.
-func launchersWithoutMockKeychain(fsys fs.FS) ([]string, error) {
-	var missing []string
-	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
+// --use-mock-keychain, and counts the files it read. A flag only in a comment does not count.
+func launchersWithoutMockKeychain(fsys fs.FS) (missing []string, read int, err error) {
+	err = fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -44,6 +43,7 @@ func launchersWithoutMockKeychain(fsys fs.FS) ([]string, error) {
 		default:
 			return nil
 		}
+		read++
 		var code strings.Builder
 		for _, line := range strings.Split(string(b), "\n") {
 			if t := strings.TrimSpace(line); !strings.HasPrefix(t, "#") && !strings.HasPrefix(t, "//") {
@@ -55,25 +55,39 @@ func launchersWithoutMockKeychain(fsys fs.FS) ([]string, error) {
 		}
 		return nil
 	})
-	return missing, err
+	return missing, read, err
 }
 
-// Every script under tools that starts Chrome keeps it away from the Keychain: see
+// launcherTrees are the trees whose scripts start Chrome, from this package: go/tools and go/test.
+var launcherTrees = map[string]string{"tools": "../../../tools", "test": "../.."}
+
+// minLaunchersRead is the fewest files the check reads across both trees. Fewer means a tree moved
+// out of its reach, so the check fails rather than pass on less.
+const minLaunchersRead = 100
+
+// Every script under go/tools and go/test that starts Chrome keeps it away from the Keychain: see
 // tools/README.md for what happens otherwise.
 func TestEveryChromeLauncherStaysAwayFromTheKeychain(t *testing.T) {
-	missing, err := launchersWithoutMockKeychain(os.DirFS(".."))
-	if err != nil {
-		t.Fatal(err)
+	total := 0
+	for prefix, dir := range launcherTrees {
+		missing, read, err := launchersWithoutMockKeychain(os.DirFS(dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += read
+		for _, name := range missing {
+			t.Errorf("%s/%s starts Chrome without --use-mock-keychain --password-store=basic; see tools/README.md", prefix, name)
+		}
 	}
-	for _, name := range missing {
-		t.Errorf("tools/%s starts Chrome without --use-mock-keychain --password-store=basic; see tools/README.md", name)
+	if total < minLaunchersRead {
+		t.Errorf("read %d files under go/tools and go/test, fewer than %d: a tree moved out of reach", total, minLaunchersRead)
 	}
 }
 
 // The check itself can fail, and is not fooled by a comment.
 func TestLauncherCheckFindsWhatItShould(t *testing.T) {
 	file := func(s string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(s)} }
-	got, err := launchersWithoutMockKeychain(fstest.MapFS{
+	got, read, err := launchersWithoutMockKeychain(fstest.MapFS{
 		"bare.sh":          file(`"$chrome" --headless=new --user-data-dir=/x` + "\n"),
 		"port-only.ts":     file(`spawn(chrome, ["--remote-debugging-port=1"])` + "\n"),
 		"comment-only.sh":  file("# --use-mock-keychain\n\"$chrome\" --headless=new\n"),
@@ -93,5 +107,8 @@ func TestLauncherCheckFindsWhatItShould(t *testing.T) {
 	want := []string{"bare.sh", "comment-only.sh", "no-extension", "port-only.ts", "sub/nested.go"}
 	if !slices.Equal(got, want) {
 		t.Errorf("found %q, want %q", got, want)
+	}
+	if read != 9 {
+		t.Errorf("read %d files, want the 9 that are code", read)
 	}
 }
