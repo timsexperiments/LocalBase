@@ -103,8 +103,7 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		e.audit.Record("Administration change.", "event", "audit.api-key-changed", "action", "create",
-			"actor_kind", "cli", "target_kind", "api-key", "target_id", k.ID)
+		e.audit.KeyChange("create", k) // the line keys create writes: with actor_id and the key's scopes
 		target.Key = raw
 		key = publicKey(k)
 		// The secret goes out once: in the snippets, or in the envelope.

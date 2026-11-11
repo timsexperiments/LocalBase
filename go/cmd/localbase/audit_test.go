@@ -73,7 +73,7 @@ var auditClasses = map[string]string{
 	"voices list": "read", "voices add": "audited", "voices remove": "audited",
 	"speech marking": "audited",
 	"usage":          "read", "usage clear": "audited", "usage retention": "audited", "usage recording": "audited",
-	"connect":               "audited-elsewhere", // its own line, tested with it
+	"connect":               "audited-elsewhere", // keys create's line; TestConnectLogsTheKeyItCreatesAsKeysCreateDoes
 	"backup":                "audited-elsewhere", // backup.created
 	"restore":               "audited-elsewhere", // backup.restored
 	"smoke":                 "audited-temporary-key",
