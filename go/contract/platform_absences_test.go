@@ -64,11 +64,12 @@ func skipsIn(t *testing.T, pattern string) (int, map[string]string) {
 	return len(names), found
 }
 
-// Floors for TestPlatformAbsencesAreNamed: below these, a glob found too little to vouch for
-// (57 test files here, and 7 files in go/test/harness and its fsguard, at step 7's R2).
+// Floors for TestPlatformAbsencesAreNamed: what the globs read now (15 test files here, 47 in
+// go/test/system, and 8 files in go/test/harness and its fsguard, at step 7's R3).
 const (
-	minAbsenceOwnFiles     = 50
-	minAbsenceHarnessFiles = 6
+	minAbsenceOwnFiles     = 15
+	minAbsenceSystemFiles  = 47
+	minAbsenceHarnessFiles = 8
 )
 
 func mentions(n ast.Node, words ...string) bool {
@@ -86,8 +87,11 @@ func mentions(n ast.Node, words ...string) bool {
 
 func TestPlatformAbsencesAreNamed(t *testing.T) {
 	own, found := skipsIn(t, "*_test.go")
-	// The harness left this package in step 7 (R2). Its files, tests or not, are read too, so a
-	// platform skip there is still found: a move must not narrow a source-reading check.
+	// The harness left this package in step 7 (R2), and the system tests in R3. Their files are
+	// read too (the harness's, tests or not), so a platform skip there is still found: a move
+	// must not narrow a source-reading check.
+	system, more := skipsIn(t, filepath.Join(testutil.RepoRoot(t), "go", "test", "system", "*_test.go"))
+	maps.Copy(found, more)
 	harness := filepath.Join(testutil.RepoRoot(t), "go", "test", "harness")
 	harnessFiles := 0
 	for _, dir := range []string{harness, filepath.Join(harness, "fsguard")} {
@@ -95,9 +99,9 @@ func TestPlatformAbsencesAreNamed(t *testing.T) {
 		harnessFiles += n
 		maps.Copy(found, more)
 	}
-	if own < minAbsenceOwnFiles || harnessFiles < minAbsenceHarnessFiles {
-		t.Fatalf("read %d test files and %d harness files, under the floors (%d, %d)",
-			own, harnessFiles, minAbsenceOwnFiles, minAbsenceHarnessFiles)
+	if own < minAbsenceOwnFiles || system < minAbsenceSystemFiles || harnessFiles < minAbsenceHarnessFiles {
+		t.Fatalf("read %d test files here, %d in go/test/system and %d harness files, under the floors (%d, %d, %d)",
+			own, system, harnessFiles, minAbsenceOwnFiles, minAbsenceSystemFiles, minAbsenceHarnessFiles)
 	}
 	for name, where := range found {
 		if _, ok := platformAbsences[name]; !ok {
