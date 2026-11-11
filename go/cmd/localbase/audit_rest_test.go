@@ -257,10 +257,10 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 
 func TestUpgradeOutcome(t *testing.T) {
 	for want, got := range map[string]string{
-		"applied":      upgradeOutcome(upgrade.Result{}, nil),
-		"rolled-back":  upgradeOutcome(upgrade.Result{RolledBack: true}, errors.New("PLANTED")),
-		"smoke-failed": upgradeOutcome(upgrade.Result{}, &upgrade.SmokeFailed{Err: errors.New("PLANTED")}),
-		"failed":       upgradeOutcome(upgrade.Result{}, errors.New("PLANTED")),
+		"applied":      ApplyOutcome(upgrade.Result{}, nil),
+		"rolled-back":  ApplyOutcome(upgrade.Result{RolledBack: true}, errors.New("PLANTED")),
+		"smoke-failed": ApplyOutcome(upgrade.Result{}, &upgrade.SmokeFailed{Err: errors.New("PLANTED")}),
+		"failed":       ApplyOutcome(upgrade.Result{}, errors.New("PLANTED")),
 	} {
 		if got != want {
 			t.Errorf("%q, want %q", got, want)
@@ -288,7 +288,7 @@ func TestAnOddTargetIsNotLogged(t *testing.T) {
 func TestVersionForAudit(t *testing.T) {
 	for in, want := range map[string]string{"0.2.0": "0.2.0", "9.9.9": "9.9.9", "not a version": "unknown", "": "unknown",
 		"0.2.0\nPLANTED": "unknown", strings.Repeat("9", 100000): "unknown"} {
-		if got := versionForAudit(in); got != want {
+		if got := VersionForAudit(in); got != want {
 			t.Errorf("%.40q: %.40q, want %q", in, got, want)
 		}
 	}

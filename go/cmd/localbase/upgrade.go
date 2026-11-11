@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -96,44 +97,44 @@ func runUpgradeCheck(c *cli.Ctx) (any, error) {
 	return data, nil
 }
 
-// gatewayState is what runs on this root, for an upgrade's purposes.
-type gatewayState int
+// GatewayState is what runs on this root, for an upgrade's purposes.
+type GatewayState int
 
 const (
-	gatewayNone gatewayState = iota
-	gatewayManaged
+	GatewayNone GatewayState = iota
+	GatewayManaged
 )
 
-// classifyGateway decides from the facts, so each refusal can be tested on its own.
-type gatewayFacts struct {
-	lockState, lockDetail          string
-	ownerManaged                   bool
-	definitionInstalled, reachable bool
-	serviceProgram, binary         string
+// ClassifyGateway decides from the facts, so each refusal can be tested on its own.
+type GatewayFacts struct {
+	LockState, LockDetail          string
+	OwnerManaged                   bool
+	DefinitionInstalled, Reachable bool
+	ServiceProgram, Binary         string
 }
 
-func classifyGateway(f gatewayFacts) (gatewayState, error) {
-	switch f.lockState {
+func ClassifyGateway(f GatewayFacts) (GatewayState, error) {
+	switch f.LockState {
 	case "missing", "stale":
-		return gatewayNone, nil
+		return GatewayNone, nil
 	case "active":
 	default:
-		detail := f.lockDetail
+		detail := f.LockDetail
 		if detail == "" {
 			detail = "its lock could not be read"
 		}
 		return 0, errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing was changed.")
 	}
-	if !f.ownerManaged {
+	if !f.OwnerManaged {
 		return 0, errors.New("A gateway is running on this root in the foreground. Stop it first: this cannot restart what it did not start. Nothing was changed.")
 	}
-	if !f.definitionInstalled || !f.reachable {
+	if !f.DefinitionInstalled || !f.Reachable {
 		return 0, errors.New("A gateway is running under the service manager, but the service manager cannot be reached, so it could not be restarted safely. Nothing was changed.")
 	}
-	if f.serviceProgram != f.binary {
-		return 0, fmt.Errorf("The service on this root runs %s, not this binary (%s), so this could not restart it safely. Run that one's upgrade. Nothing was changed.", f.serviceProgram, f.binary)
+	if f.ServiceProgram != f.Binary {
+		return 0, fmt.Errorf("The service on this root runs %s, not this binary (%s), so this could not restart it safely. Run that one's upgrade. Nothing was changed.", f.ServiceProgram, f.Binary)
 	}
-	return gatewayManaged, nil
+	return GatewayManaged, nil
 }
 
 func upgradeBinaryPath() (string, error) {
@@ -165,7 +166,7 @@ func checkInstalled(binary string) error {
 // idleWaitBase is where the running gateway answers, proven to be this root's. The wait sends it
 // a temporary key, so an owner record that names something else (a reused PID, another listener on
 // the port) gets nothing. It is checked again here, though gatherGatewayFacts already proved it:
-// time has passed, and the owner may be gone or changed. The refusal is classifyGateway's.
+// time has passed, and the owner may be gone or changed. The refusal is ClassifyGateway's.
 func idleWaitBase(e *env) (string, error) {
 	state, owner, detail := service.VerifiedOwnerState(e.Root)
 	if state != "active" || owner == nil {
@@ -177,7 +178,7 @@ func idleWaitBase(e *env) (string, error) {
 	return strings.TrimSuffix(owner.HealthURL(), "/health"), nil
 }
 
-// waitGatewayIdle waits for the running gateway's work to finish (waitIdle), asking with one
+// waitGatewayIdle waits for the running gateway's work to finish (WaitIdle), asking with one
 // temporary key for the whole wait: created once, and deleted once at the end, each audited.
 // Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
 func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep func(time.Duration)) error {
@@ -194,7 +195,7 @@ func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
-	return waitIdle(func() (bool, string, error) { return gatewayActivity(base, raw) }, limit, sleep)
+	return WaitIdle(func() (bool, string, error) { return gatewayActivity(base, raw) }, limit, sleep)
 }
 
 // gatewayActivity asks the running gateway how busy it is, with the key it is given.
@@ -209,7 +210,13 @@ func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 		return false, "", err
 	}
 	defer resp.Body.Close()
-	var body struct {
+	return ParseActivity(resp.StatusCode, resp.Body)
+}
+
+// ParseActivity reads the gateway's answer to /_localbase/host: whether it is busy, and what with,
+// in words. Anything but a 200 whose body decodes is "the gateway answered HTTP <status>".
+func ParseActivity(status int, body io.Reader) (busy bool, detail string, err error) {
+	var answer struct {
 		Host struct {
 			Activity struct {
 				Busy bool `json:"busy"`
@@ -223,17 +230,17 @@ func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 			} `json:"activity"`
 		} `json:"host"`
 	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&body) != nil {
-		return false, "", fmt.Errorf("the gateway answered HTTP %d", resp.StatusCode)
+	if status != http.StatusOK || json.NewDecoder(body).Decode(&answer) != nil {
+		return false, "", fmt.Errorf("the gateway answered HTTP %d", status)
 	}
-	a := body.Host.Activity
+	a := answer.Host.Activity
 	work := a.LLM.InFlight + a.STT.InFlight + a.TTS.InFlight + a.Image.InFlight + a.Video.InFlight
 	queued := a.LLM.Queued + a.STT.Queued + a.TTS.Queued + a.Image.Queued + a.Video.Queued
 	return a.Busy, fmt.Sprintf("%d in flight, %d queued, %d detached runs", work, queued, a.Runs.Active), nil
 }
 
-// waitIdle waits for a gateway's work to finish, and cuts nothing if it does not.
-func waitIdle(ask func() (bool, string, error), limit time.Duration, sleep func(time.Duration)) error {
+// WaitIdle waits for a gateway's work to finish, and cuts nothing if it does not.
+func WaitIdle(ask func() (bool, string, error), limit time.Duration, sleep func(time.Duration)) error {
 	deadline := time.Now().Add(limit)
 	for {
 		busy, detail, err := ask()
@@ -373,19 +380,19 @@ func rollbackLine(binary string) string {
 	return "mv " + binary + upgrade.PreviousSuffix + " " + binary + " && local-base restart"
 }
 
-func gatherGatewayFacts(e *env, binary string) (gatewayFacts, []string) {
+func gatherGatewayFacts(e *env, binary string) (GatewayFacts, []string) {
 	// Proven, not only alive: whether the gateway is managed comes from its owner record, and the
 	// upgrade sends what it learns here a key (idleWaitBase).
 	state, owner, detail := service.VerifiedOwnerState(e.Root)
-	f := gatewayFacts{lockState: state, lockDetail: detail, binary: binary, ownerManaged: state == "active" && owner != nil && owner.ServiceID != ""}
+	f := GatewayFacts{LockState: state, LockDetail: detail, Binary: binary, OwnerManaged: state == "active" && owner != nil && owner.ServiceID != ""}
 	if state != "active" {
 		return f, nil
 	}
 	if in, err := service.Inspect(e.Root, false); err == nil {
-		f.definitionInstalled, f.reachable = in.Service.DefinitionInstalled, in.Service.ManagerAvailable
+		f.DefinitionInstalled, f.Reachable = in.Service.DefinitionInstalled, in.Service.ManagerAvailable
 	}
 	program, arguments := service.InstalledInvocation(e.Root.Dir)
-	f.serviceProgram = program
+	f.ServiceProgram = program
 	return f, arguments
 }
 
@@ -408,7 +415,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 		return nil, err
 	}
 	facts, arguments := gatherGatewayFacts(e, binary)
-	state, err := classifyGateway(facts)
+	state, err := ClassifyGateway(facts)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +454,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	}
 
 	// Busy, or not. --force skips asking.
-	if state == gatewayManaged && !c.Bool("force") {
+	if state == GatewayManaged && !c.Bool("force") {
 		base, err := idleWaitBase(e)
 		if err != nil {
 			return nil, err
@@ -467,7 +474,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	data["signedBy"] = cand.KeyID
 
 	plan := "This replaces " + binary + " (" + version.Version + " to " + target + ") and keeps the old one for rollback."
-	if state == gatewayManaged {
+	if state == GatewayManaged {
 		plan += " It stops the gateway, restarts it through the service manager, and runs smoke."
 	}
 	c.Info("%s", plan)
@@ -486,12 +493,12 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	}
 
 	ops := upgrade.Ops{}
-	if state == gatewayManaged {
+	if state == GatewayManaged {
 		ops = managedOps(c, e, binary, arguments)
 	}
 	res, err := upgrade.Apply(cand, binary, ops)
 	data["rolledBack"] = res.RolledBack
-	e.audit.Upgrade("audit.upgrade-applied", version.Version, target, cand.SHA256, upgradeOutcome(res, err))
+	e.audit.Upgrade("audit.upgrade-applied", version.Version, target, cand.SHA256, ApplyOutcome(res, err))
 	if err != nil {
 		var smoke *upgrade.SmokeFailed
 		if errors.As(err, &smoke) {
@@ -503,7 +510,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	data["changed"] = true
 	e.audit.WithResult(data)
 	c.Info("Now running %s.", target)
-	if state != gatewayManaged {
+	if state != GatewayManaged {
 		c.Info("No gateway was running here. To start one: local-base start")
 	}
 	c.Info("To go back: local-base upgrade rollback")
@@ -548,18 +555,18 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 		return nil, errors.New("There is no previous version to go back to. Nothing was changed.")
 	}
 	facts, arguments := gatherGatewayFacts(e, binary)
-	state, err := classifyGateway(facts)
+	state, err := ClassifyGateway(facts)
 	if err != nil {
 		return nil, err
 	}
 	ops := upgrade.Ops{}
-	if state == gatewayManaged {
+	if state == GatewayManaged {
 		ops = managedOps(c, e, binary, arguments)
 	}
 	// What it goes back to, for the record, if the file will say.
 	to := "unknown"
 	if v, err := upgrade.RunVersion(binary + upgrade.PreviousSuffix); err == nil {
-		to = versionForAudit(v)
+		to = VersionForAudit(v)
 	}
 	// The previous version doesn't keep the -wal owner record, so a crash under it would leave a -wal
 	// the next upgrade refuses. Only once it's in place, and nothing else is removed.

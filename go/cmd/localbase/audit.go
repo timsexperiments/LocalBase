@@ -16,16 +16,16 @@ func sayIfInstalled(c *cli.Ctx, dir, what string) {
 	}
 }
 
-// versionForAudit is what a binary said its version is, if it is one: whatever else it says stays out.
-func versionForAudit(v string) string {
+// VersionForAudit is what a binary said its version is, if it is one: whatever else it says stays out.
+func VersionForAudit(v string) string {
 	if !upgrade.Compare(v, "v0.0.0").Known {
 		return "unknown"
 	}
 	return v
 }
 
-// upgradeOutcome is how an Apply ended, in words from a short list.
-func upgradeOutcome(res upgrade.Result, err error) string {
+// ApplyOutcome is how an Apply ended, in words from a short list.
+func ApplyOutcome(res upgrade.Result, err error) string {
 	var smoke *upgrade.SmokeFailed
 	switch {
 	case err == nil:
