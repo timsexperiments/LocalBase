@@ -50,8 +50,7 @@ func issueLoginLink(e *env, addr string, forced bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	e.audit.Record("Local sign-in link issued.", "event", "audit.local-login-issued", "link_id", auth.LocalLinkID(token),
-		"actor_kind", "cli", "forced", forced)
+	e.audit.LocalLinkIssued(auth.LocalLinkID(token), forced)
 	return base + auth.LocalOncePath + "#" + token, nil
 }
 
@@ -97,7 +96,7 @@ func loginLinkCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			e.audit.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "count", n)
+			e.audit.LocalSessionsRevoked(n)
 			c.Info("Ended %d local sessions and any unused link.", n)
 			return map[string]any{"revoked": n}, nil
 		}
@@ -148,7 +147,7 @@ func localSessionsCommand() *cli.Command {
 					if err != nil {
 						return nil, err
 					}
-					e.audit.Record("All sessions revoked.", "event", "audit.sessions-revoked", "actor_kind", "cli", "count", n)
+					e.audit.SessionsRevoked(n)
 					c.Info("Ended %d sessions.", n)
 					return map[string]any{"revoked": n}, nil
 				}
@@ -159,7 +158,7 @@ func localSessionsCommand() *cli.Command {
 				if !found {
 					return nil, errors.New("No local session with that id.")
 				}
-				e.audit.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "session_id", c.Args[0], "count", 1)
+				e.audit.LocalSessionRevoked(c.Args[0])
 				c.Info("Ended the session.")
 				return map[string]any{"revoked": 1}, nil
 			})},
