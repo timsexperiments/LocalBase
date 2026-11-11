@@ -246,7 +246,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if restart, err = RestartDecision(policy, wait, plan.RestartRequired, in.Service.State, in.Service.ManagerAvailable); err != nil {
+		if restart, err = conf.RestartDecision(policy, wait, plan.RestartRequired, in.Service.State, in.Service.ManagerAvailable); err != nil {
 			return nil, inputError(err)
 		}
 	}
@@ -362,29 +362,6 @@ func runConfigShow(c *cli.Ctx) (any, error) {
 		}
 	}
 	return map[string]any{"document": document, "pendingRestart": pending}, nil
-}
-
-// RestartDecision is whether apply restarts the managed service, or why it
-// refuses before saving (TS applyConfiguration), with a *conf.DocumentError (bad input): auto restarts for
-// restart-required changes unless the gateway is foreground, unknown or
-// stopping; always restarts; --wait needs a running gateway or a restart.
-func RestartDecision(policy string, wait, restartRequired bool, state string, managerAvailable bool) (bool, error) {
-	restart := policy == "always"
-	running := state == "running" || state == "starting"
-	unsafe := state == "foreground" || state == "unknown" || state == "stopping"
-	if policy == "auto" && restartRequired {
-		if unsafe {
-			return false, &conf.DocumentError{Message: "Cannot automatically restart this gateway. Use --restart never to save, then restart its owner explicitly."}
-		}
-		restart = true
-	}
-	if restart && (!managerAvailable || unsafe) {
-		return false, &conf.DocumentError{Message: "Cannot safely restart this gateway with the service manager."}
-	}
-	if wait && !restart && (restartRequired || (!running && state != "foreground")) {
-		return false, &conf.DocumentError{Message: "--wait requires a running gateway without pending restart changes, or --restart always."}
-	}
-	return restart, nil
 }
 
 // activationFailed says what is owed. If the pending restart couldn't be recorded, status won't show
