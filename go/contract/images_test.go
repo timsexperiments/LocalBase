@@ -11,7 +11,6 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -73,7 +72,7 @@ func imageForm(parts ...imgPart) (string, string) {
 // TestDifferentialImageRejections sends invalid image generation and edit
 // requests to both gateways; none reaches a backend.
 func TestDifferentialImageRejections(t *testing.T) {
-	logFreeMemoryOnFailure(t)
+	harness.LogFreeMemoryOnFailure(t)
 	post := func(path, ctype, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
 		for _, tg := range harness.Targets(t) {
@@ -293,36 +292,8 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 	}
 }
 
-// logFreeMemoryOnFailure makes a failing admission test diagnosable: memory
-// refusals depend on what else is loaded on the machine.
-func logFreeMemoryOnFailure(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		if t.Failed() {
-			t.Logf("free memory at failure: %s", freeMemoryReading())
-		}
-	})
-}
-
-// freeMemoryReading is the operating system's own figure: memory_pressure on
-// macOS, MemAvailable on Linux.
-func freeMemoryReading() string {
-	if out, err := exec.Command("memory_pressure").Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		return strings.TrimSpace(lines[len(lines)-1])
-	}
-	if b, err := os.ReadFile("/proc/meminfo"); err == nil {
-		for _, line := range strings.Split(string(b), "\n") {
-			if strings.HasPrefix(line, "MemAvailable:") {
-				return strings.Join(strings.Fields(line), " ")
-			}
-		}
-	}
-	return "unavailable"
-}
-
 func TestFreeMemoryReading(t *testing.T) {
-	if got := freeMemoryReading(); got == "unavailable" || got == "" {
+	if got := harness.FreeMemoryReading(); got == "unavailable" || got == "" {
 		t.Errorf("no reading on this machine: %q", got)
 	}
 }

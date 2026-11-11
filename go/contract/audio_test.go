@@ -86,7 +86,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 		}
 	}
 	// Method and permission.
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		// TS reads any method's body as a form; Go takes POST only (DESIGN §13.6).
 		wantGET := 405
 		if tg.Name == "ts" {
@@ -160,7 +160,7 @@ func TestTranscriptionReal(t *testing.T) {
 				var ja, jb any
 				json.Unmarshal([]byte(a[format]), &ja)
 				json.Unmarshal([]byte(b[format]), &jb)
-				if d := diffJSON("", ja, jb, nil); len(d) > 0 {
+				if d := harness.DiffJSON("", ja, jb, nil); len(d) > 0 {
 					t.Errorf("%s differs: %v", format, d)
 				}
 				continue

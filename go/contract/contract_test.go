@@ -13,7 +13,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/health", nil, "")
 		if r.Status != 200 {
 			t.Fatalf("status %d", r.Status)
@@ -43,7 +43,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestReadiness(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/health/ready", nil, "")
 		body := r.JSON(t)
 		if r.Status != 200 || body["status"] != "ready" || body["reason"] != "request_admission_available" {
@@ -76,7 +76,7 @@ func TestReadiness(t *testing.T) {
 }
 
 func TestAuthentication(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", nil, "")
 		if r.Status != 401 || r.ErrorCode(t) != "invalid_api_key" || r.Header.Get("WWW-Authenticate") != "Bearer" {
 			t.Errorf("no key: %d %s", r.Status, r.Body)
@@ -103,7 +103,7 @@ func TestAuthentication(t *testing.T) {
 }
 
 func TestUnmatchedRoute(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/nope", nil, ""); r.Status != 401 {
 			t.Errorf("unauthenticated unmatched: %d", r.Status)
 		}
@@ -131,7 +131,7 @@ func models(t *testing.T, tg *harness.Target) []map[string]any {
 }
 
 func TestModelsList(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		data := models(t, tg)
 		ids := []string{}
 		for _, m := range data {
@@ -197,7 +197,7 @@ func TestModelsList(t *testing.T) {
 }
 
 func TestModelRetrieve(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		list := models(t, tg)
 		for _, want := range list {
 			id := want["id"].(string)
@@ -223,7 +223,7 @@ func TestModelRetrieve(t *testing.T) {
 }
 
 func TestChatRejections(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		post := func(body string) *harness.Resp {
 			return harness.Do(t, "POST", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key), body)
 		}
@@ -257,7 +257,7 @@ func TestChatRejections(t *testing.T) {
 }
 
 func TestChatCompletion(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("set LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES for real inference")
 		}
@@ -427,7 +427,7 @@ func TestDifferentialRejections(t *testing.T) {
 }
 
 func TestEmbeddings(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("needs LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
 		}
@@ -448,52 +448,6 @@ func TestEmbeddings(t *testing.T) {
 			t.Errorf("embedding has %d dimensions", len(vec))
 		}
 	})
-}
-
-// diffJSON returns the paths where a and b differ, skipping paths for which
-// skip returns true.
-func diffJSON(path string, a, b any, skip func(string) bool) []string {
-	if skip != nil && skip(path) {
-		return nil
-	}
-	switch av := a.(type) {
-	case map[string]any:
-		bv, ok := b.(map[string]any)
-		if !ok {
-			return []string{path}
-		}
-		var out []string
-		keys := map[string]bool{}
-		for k := range av {
-			keys[k] = true
-		}
-		for k := range bv {
-			keys[k] = true
-		}
-		sorted := make([]string, 0, len(keys))
-		for k := range keys {
-			sorted = append(sorted, k)
-		}
-		sort.Strings(sorted)
-		for _, k := range sorted {
-			out = append(out, diffJSON(path+"."+k, av[k], bv[k], skip)...)
-		}
-		return out
-	case []any:
-		bv, ok := b.([]any)
-		if !ok || len(av) != len(bv) {
-			return []string{path + fmt.Sprintf(" (len %d vs %v)", len(av), len(bv))}
-		}
-		var out []string
-		for i := range av {
-			out = append(out, diffJSON(fmt.Sprintf("%s[%d]", path, i), av[i], bv[i], skip)...)
-		}
-		return out
-	}
-	if !reflect.DeepEqual(a, b) {
-		return []string{fmt.Sprintf("%s: %v vs %v", path, a, b)}
-	}
-	return nil
 }
 
 // TestDifferentialModelMetadata compares /_localbase/models between the two
@@ -526,7 +480,7 @@ func TestDifferentialModelMetadata(t *testing.T) {
 			t.Errorf("%s: status %d vs %d", path, statuses[0], statuses[1])
 			continue
 		}
-		if d := diffJSON("", bodies[0], bodies[1], volatile); len(d) > 0 {
+		if d := harness.DiffJSON("", bodies[0], bodies[1], volatile); len(d) > 0 {
 			if len(d) > 15 {
 				d = append(d[:15], fmt.Sprintf("... %d more", len(d)-15))
 			}

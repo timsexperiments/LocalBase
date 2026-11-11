@@ -203,7 +203,7 @@ func TestDifferentialManagement(t *testing.T) {
 	a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
 	for i, s := range manageScript {
 		ra, rb := a[i], b[i]
-		diffs := diffJSON("", ra.body, rb.body, nil)
+		diffs := harness.DiffJSON("", ra.body, rb.body, nil)
 		if ra.status != rb.status || len(diffs) > 0 {
 			t.Errorf("step %d %s %s %s\n  %s %d %s\n  %s %d %s\n  %v", i, s.method, s.path, s.body,
 				harness.Targets(t)[0].Name, ra.status, ra.raw, harness.Targets(t)[1].Name, rb.status, rb.raw, diffs)
