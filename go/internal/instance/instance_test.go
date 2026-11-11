@@ -239,8 +239,8 @@ func nonLoopbackIPv4() string {
 // once per process, so the calls are made in a child run of this test with HTTP_PROXY set from the
 // start; the "proxy" here forwards what it gets, and records it.
 //
-// Only the client's own calls are checked. The identity check before them is
-// service.VerifiedOwnerState's, which has its own client (reported separately).
+// Nothing goes through it: not the client's own calls, and not the identity check before them,
+// which is service.VerifiedOwnerState's. Both are on localhttp's client.
 func TestACallDoesNotGoThroughAProxy(t *testing.T) {
 	if os.Getenv("INSTANCE_PROXY_CHILD") == "1" {
 		r, _ := ownedRootAt(t, os.Getenv("INSTANCE_PROXY_HOST")+":0", true, func(w http.ResponseWriter, req *http.Request) { w.Write([]byte(`{}`)) })
@@ -287,9 +287,7 @@ func TestACallDoesNotGoThroughAProxy(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	t.Logf("through the proxy: %v (host %s)", proxied, host)
-	for _, p := range proxied {
-		if p == "/through-the-client" {
-			t.Errorf("a call went through HTTP_PROXY: %v", proxied)
-		}
+	if len(proxied) > 0 {
+		t.Errorf("a request went through HTTP_PROXY: %v", proxied)
 	}
 }
