@@ -100,7 +100,7 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 To see pages with fixture data, run from `go/`:
 
 ```sh
-LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./contract -run TestServeForUI -args -impl=go
+LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -args -impl=go
 ```
 
 ### Write a test

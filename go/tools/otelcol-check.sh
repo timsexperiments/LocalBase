@@ -33,4 +33,4 @@ if [ ! -x "$dir/otelcol" ]; then
   rm -rf "$dl"
 fi
 cd "$(dirname "$0")/.."
-LOCALBASE_CONTRACT_OTELCOL="$dir/otelcol" exec go test ./contract -count=1 -run 'TestRealCollector' -v -args -impl=both
+LOCALBASE_CONTRACT_OTELCOL="$dir/otelcol" exec go test ./test/system -count=1 -run 'TestRealCollector' -v -args -impl=both

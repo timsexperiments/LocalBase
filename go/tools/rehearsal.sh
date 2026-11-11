@@ -153,7 +153,7 @@ smoke && ok "Go smoke" || bad "Go smoke"
 if [ -n "${LBGO_KEY_FILE:-}" ]; then
   echo "== client replay and contract subset with the temporary key"
   LOCALBASE_CONTRACT_KEY="$(cat "$LBGO_KEY_FILE")" LOCALBASE_REPLAY=1 LOCALBASE_REPLAY_CHAT="$chat" LOCALBASE_REPLAY_DECISION="$decision" \
-    go test ./contract -count=1 -v -run '^(TestClientReplay|TestHealth|TestReadiness|TestAuthentication|TestUnmatchedRoute|TestModelRetrieve|TestChatRejections)$' \
+    go test ./test/contract -count=1 -v -run '^(TestClientReplay|TestHealth|TestReadiness|TestAuthentication|TestUnmatchedRoute|TestModelRetrieve|TestChatRejections)$' \
     -args -url "http://127.0.0.1:$gport" 2>&1 | grep -E "replay_test.go|^--- |^ok|^FAIL" | tee "$work/clients.txt"
   grep -q "^ok" "$work/clients.txt" && ok "replay and contract subset" || bad "replay or contract subset"
 fi
@@ -208,7 +208,7 @@ echo "rollback time to smoke: $(( $(date +%s) - t0 )) s" | tee "$work/rollback-t
 [ "$(plutil -extract ProgramArguments.0 raw -o - "$plist")" = "$bin" ] && ok "TS rewrote the plist under the same label and path" || bad "plist after TS"
 if [ -n "${LBGO_KEY_FILE:-}" ]; then
   LOCALBASE_CONTRACT_KEY="$(cat "$LBGO_KEY_FILE")" LOCALBASE_REPLAY=1 LOCALBASE_REPLAY_CHAT="$chat" LOCALBASE_REPLAY_DECISION="$decision" \
-    go test ./contract -count=1 -run '^TestClientReplay$' -args -url "http://127.0.0.1:$gport3" >/dev/null 2>&1 && ok "replay on TS" || bad "replay on TS"
+    go test ./test/contract -count=1 -run '^TestClientReplay$' -args -url "http://127.0.0.1:$gport3" >/dev/null 2>&1 && ok "replay on TS" || bad "replay on TS"
 fi
 
 echo "== forward to Go again"
