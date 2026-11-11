@@ -28,9 +28,10 @@ func hubFixtures(t *testing.T) string {
 // recording fails the test, otherwise it is a 404.
 func hubFixtureServer(t *testing.T, strict bool) string {
 	t.Helper()
+	recordings := filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "hub")
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sum := sha256.Sum256([]byte("https://huggingface.co" + r.URL.RequestURI()))
-		b, err := os.ReadFile(filepath.Join("..", "internal", "hub", "testdata", "hub", hex.EncodeToString(sum[:])[:24]+".json"))
+		b, err := os.ReadFile(filepath.Join(recordings, hex.EncodeToString(sum[:])[:24]+".json"))
 		if err != nil {
 			if strict {
 				t.Errorf("no Hub fixture for %s", r.URL.RequestURI())

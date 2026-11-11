@@ -82,7 +82,7 @@ func (k *upgradeKit) build(t *testing.T, ver string, withKey bool) string {
 	if withKey {
 		flags += " -X " + modulePath + "/upgrade.testKey=" + testKeyID + ":" + k.pub
 	}
-	cmd := exec.Command("go", "build", "-ldflags", flags, "-o", out, "../cmd/localbase")
+	cmd := exec.Command("go", "build", "-ldflags", flags, "-o", out, "github.com/timsexperiments/LocalBase/go/cmd/localbase")
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build %s: %v\n%s", name, err, b)
 	}
