@@ -1,16 +1,15 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"net"
-	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
@@ -175,24 +174,20 @@ type statusWithDefault struct {
 // reportLogOutages says which logs the running gateway can't rotate or write. Only that gateway
 // knows, so with none running there is nothing to report.
 func reportLogOutages(c *cli.Ctx, e *env) []obs.LogOutage {
-	state, o, _ := service.VerifiedOwnerState(e.Root)
-	if state != "active" || o == nil {
+	gw, _, _ := instance.Dial(e.Root)
+	if gw == nil {
 		return nil
 	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/instance", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	a, err := gw.Get(ctx, "/_localbase/instance", nil)
 	if err != nil {
 		return nil
 	}
-	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
-	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
 	var answer struct {
 		LogOutages []obs.LogOutage `json:"logOutages"`
 	}
-	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&answer) != nil {
+	if a.Status != 200 || a.Decode(&answer) != nil {
 		return nil
 	}
 	for _, out := range answer.LogOutages {
@@ -210,22 +205,18 @@ type gatewayDefault struct {
 
 // gatewayDefault asks the running gateway, with its instance token.
 func gatewayDefaultModel(e *env) *gatewayDefault {
-	state, o, _ := service.VerifiedOwnerState(e.Root)
-	if state != "active" || o == nil {
+	gw, _, _ := instance.Dial(e.Root)
+	if gw == nil {
 		return nil
 	}
-	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/default-model", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	a, err := gw.Get(ctx, "/_localbase/default-model", nil)
 	if err != nil {
 		return nil
 	}
-	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
-	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
 	var d gatewayDefault
-	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&d) != nil || d.ModelID == "" {
+	if a.Status != 200 || a.Decode(&d) != nil || d.ModelID == "" {
 		return nil
 	}
 	return &d

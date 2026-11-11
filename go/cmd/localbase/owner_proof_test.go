@@ -60,6 +60,9 @@ func TestTheCLITrustsOnlyAProvenGateway(t *testing.T) {
 	if l := gatewayPlacement(e, "qwen3.5-4b-q4_k_m"); l != nil {
 		t.Errorf("placement from an unproven gateway: %+v", l)
 	}
+	if o := reportLogOutages(&cli.Ctx{Stdout: new(strings.Builder), Stderr: new(strings.Builder)}, e); o != nil {
+		t.Errorf("log outages from an unproven gateway: %+v", o)
+	}
 	wrote := false
 	if _, err := writeThroughGateway(e, "/_localbase/usage", map[string]any{"action": "clear"}, func() (map[string]any, error) {
 		wrote = true
