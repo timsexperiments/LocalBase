@@ -34,3 +34,11 @@ import (
 func TestMain(m *testing.M) {
 	os.Exit(harness.Main(m))
 }
+
+// each runs f as a subtest per shared target. Only this package's tests use it, so it lives here
+// rather than in the harness (step 7's rule for exports, R3).
+func each(t *testing.T, f func(t *testing.T, tg *harness.Target)) {
+	for _, tg := range harness.Targets(t) {
+		t.Run(tg.Name, func(t *testing.T) { f(t, tg) })
+	}
+}

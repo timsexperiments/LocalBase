@@ -1,5 +1,5 @@
 // Package harness launches the LocalBase gateways the black-box suites test (go/contract): the
-// shared targets the matrix tests run against (Targets, Each), a gateway of a test's own
+// shared targets the matrix tests run against (Targets), a gateway of a test's own
 // (Launch), the scratch root a gateway serves (Fixture), and the request helpers (Do). Its
 // writes go through fsguard. It is for test packages only: no non-test file outside go/test
 // and go/tools may import it (TestNoProductionImports).
@@ -485,13 +485,6 @@ func Do(t *testing.T, method, url string, headers map[string]string, body string
 
 // Bearer is the Authorization header for key.
 func Bearer(key string) map[string]string { return map[string]string{"Authorization": "Bearer " + key} }
-
-// Each runs f as a subtest per shared target.
-func Each(t *testing.T, f func(t *testing.T, tg *Target)) {
-	for _, tg := range Targets(t) {
-		t.Run(tg.Name, func(t *testing.T) { f(t, tg) })
-	}
-}
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 

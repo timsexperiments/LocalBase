@@ -13,7 +13,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/health", nil, "")
 		if r.Status != 200 {
 			t.Fatalf("status %d", r.Status)
@@ -43,7 +43,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestReadiness(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/health/ready", nil, "")
 		body := r.JSON(t)
 		if r.Status != 200 || body["status"] != "ready" || body["reason"] != "request_admission_available" {
@@ -76,7 +76,7 @@ func TestReadiness(t *testing.T) {
 }
 
 func TestAuthentication(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", nil, "")
 		if r.Status != 401 || r.ErrorCode(t) != "invalid_api_key" || r.Header.Get("WWW-Authenticate") != "Bearer" {
 			t.Errorf("no key: %d %s", r.Status, r.Body)
@@ -103,7 +103,7 @@ func TestAuthentication(t *testing.T) {
 }
 
 func TestUnmatchedRoute(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/nope", nil, ""); r.Status != 401 {
 			t.Errorf("unauthenticated unmatched: %d", r.Status)
 		}
@@ -131,7 +131,7 @@ func models(t *testing.T, tg *harness.Target) []map[string]any {
 }
 
 func TestModelsList(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		data := models(t, tg)
 		ids := []string{}
 		for _, m := range data {
@@ -197,7 +197,7 @@ func TestModelsList(t *testing.T) {
 }
 
 func TestModelRetrieve(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		list := models(t, tg)
 		for _, want := range list {
 			id := want["id"].(string)
@@ -223,7 +223,7 @@ func TestModelRetrieve(t *testing.T) {
 }
 
 func TestChatRejections(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		post := func(body string) *harness.Resp {
 			return harness.Do(t, "POST", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key), body)
 		}
@@ -257,7 +257,7 @@ func TestChatRejections(t *testing.T) {
 }
 
 func TestChatCompletion(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("set LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES for real inference")
 		}
@@ -427,7 +427,7 @@ func TestDifferentialRejections(t *testing.T) {
 }
 
 func TestEmbeddings(t *testing.T) {
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("needs LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
 		}

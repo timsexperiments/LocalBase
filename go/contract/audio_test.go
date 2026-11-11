@@ -86,7 +86,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 		}
 	}
 	// Method and permission.
-	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+	each(t, func(t *testing.T, tg *harness.Target) {
 		// TS reads any method's body as a form; Go takes POST only (DESIGN §13.6).
 		wantGET := 405
 		if tg.Name == "ts" {
