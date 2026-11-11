@@ -1,7 +1,7 @@
 // Package rmguard holds a check: no script or command file may delete through a variable, a
 // glob, or a path outside an explicit scratch prefix. Run it before every commit:
 //
-//	go test -count=1 ./tools/rmguard
+//	go test -count=1 ./test/guards/rmguard
 //
 // LOCALBASE_RM_GUARD_DIRS adds directories of command files, separated by colons, and
 // LOCALBASE_RM_GUARD_TREE scans another checkout's go/tools instead of this one, reporting
@@ -134,7 +134,7 @@ func scanRead(fsys fs.FS) (map[string][]string, int, error) {
 // trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
 // their scripts out of go/tools. A move from one to the other changes neither what is read nor how
 // much. Findings are named from the go directory, tools/... or test/....
-var trees = []struct{ label, dir string }{{"tools", ".."}, {"test", "../../test"}}
+var trees = []struct{ label, dir string }{{"tools", "../../../tools"}, {"test", "../.."}}
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
