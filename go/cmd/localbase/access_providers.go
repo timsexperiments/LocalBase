@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strings"
 
@@ -39,28 +40,55 @@ func registrationOptions(c *cli.Ctx) (id, name string, err error) {
 	return
 }
 
-// saveRegistration upserts a registration after validating the result.
-func saveRegistration(e *env, reg auth.Registration, origin string, perms []string, check func(*auth.BrowserAccess) error) (*auth.BrowserAccess, error) {
+// defaultPermissions is the permissions a provider command saves: the ones given, or when none
+// were, the current set, or DefaultBrowserPermissions when browser access is off.
+func defaultPermissions(current *auth.BrowserAccess, perms []string) []string {
+	if perms != nil {
+		return perms
+	}
+	if current != nil {
+		return current.Permissions
+	}
+	return auth.DefaultBrowserPermissions
+}
+
+// planError is the command line's words for a plan's refusal; other errors pass through.
+func planError(err error) error {
+	var invalid *auth.ValidationError
+	var exists *auth.MagicLinkExistsError
+	switch {
+	case errors.As(err, &invalid):
+		return cli.Inputf("%s", invalid.Message)
+	case errors.Is(err, auth.ErrEmailNotConfigured):
+		return cli.Inputf("Configure email delivery before enabling magic-link authentication.")
+	case errors.As(err, &exists):
+		return cli.Inputf("Remove magic-link registration %s before adding another.", exists.ID)
+	}
+	return err
+}
+
+// saveRegistration upserts a registration after validating the result. A magic-link one is
+// checked first: email delivery configured (a file that can't be read counts as none) and no
+// other magic-link registration. It saves even when nothing changed, and its callers audit it.
+func saveRegistration(e *env, reg auth.Registration, origin string, perms []string) (*auth.BrowserAccess, error) {
 	var saved *auth.BrowserAccess
 	err := withOperation(e, "configure browser access", func() error {
 		current, err := auth.LoadAccess(e.Root.Dir)
 		if err != nil {
 			return err
 		}
-		if check != nil {
-			if err := check(current); err != nil {
-				return err
+		if reg.Kind == "magic-link" {
+			email, err := auth.LoadEmail(e.Root.Dir)
+			if err != nil {
+				email = nil
+			}
+			if err := auth.CheckMagicLink(current, email, reg.ID); err != nil {
+				return planError(err)
 			}
 		}
-		if perms == nil {
-			perms = auth.DefaultBrowserPermissions
-			if current != nil {
-				perms = current.Permissions
-			}
-		}
-		next := auth.UpsertRegistration(current, reg, origin, perms)
-		if err := next.Validate(); err != nil {
-			return cli.Inputf("%s", err.Error())
+		next, _, err := auth.PlanRegistration(current, reg, origin, defaultPermissions(current, perms))
+		if err != nil {
+			return planError(err)
 		}
 		if err := auth.SaveAccess(e.Root.Dir, next); err != nil {
 			return err
@@ -115,8 +143,14 @@ func removeRegistration(c *cli.Ctx, e *env, kind, label string) (any, error) {
 		if !found {
 			return cli.Inputf("%s %s not found.", label, id)
 		}
-		state, next := auth.RemoveRegistration(current, id)
-		if state == "disabled" {
+		next, disable, err := auth.PlanRemoveRegistration(current, id)
+		if errors.Is(err, auth.ErrRegistrationNotFound) {
+			return cli.Inputf("%s %s not found.", label, id)
+		}
+		if err != nil {
+			return err
+		}
+		if disable {
 			_, err := auth.DisableAccess(e.Root.Dir)
 			return err
 		}
@@ -193,16 +227,10 @@ func accessProviderCommands() []*cli.Command {
 				if err != nil {
 					return err
 				}
-				if perms == nil {
-					perms = auth.DefaultBrowserPermissions
-					if current != nil {
-						perms = current.Permissions
-					}
-				}
-				cfg = &auth.BrowserAccess{Provider: auth.Provider{Kind: "cloudflare-access", TeamDomain: team, Audience: audience},
-					Origin: o, Permissions: perms}
-				if err := cfg.Validate(); err != nil {
-					return cli.Inputf("%s", err.Error())
+				// It saves even when nothing changed, and is audited.
+				cfg, _, err = auth.PlanCloudflare(current, team, audience, o, defaultPermissions(current, perms))
+				if err != nil {
+					return planError(err)
 				}
 				return auth.SaveAccess(e.Root.Dir, cfg)
 			})
@@ -259,7 +287,7 @@ func accessProviderCommands() []*cli.Command {
 					clientAuth = &auth.ClientAuth{Kind: "client-secret-basic", ClientSecret: secret}
 				}
 				reg := auth.Registration{Kind: "oidc", ID: id, Name: name, Issuer: issuer, ClientID: clientID, ClientAuthentication: clientAuth}
-				cfg, err := saveRegistration(e, reg, o, perms, nil)
+				cfg, err := saveRegistration(e, reg, o, perms)
 				if err != nil {
 					return nil, err
 				}
@@ -292,20 +320,7 @@ func accessProviderCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				cfg, err := saveRegistration(e, auth.Registration{Kind: "magic-link", ID: id, Name: name}, o, perms,
-					func(current *auth.BrowserAccess) error {
-						if email, err := auth.LoadEmail(e.Root.Dir); err != nil || email == nil {
-							return cli.Inputf("Configure email delivery before enabling magic-link authentication.")
-						}
-						if current != nil && current.Provider.Kind == "direct" {
-							for _, r := range current.Provider.Registrations {
-								if r.Kind == "magic-link" && r.ID != id {
-									return cli.Inputf("Remove magic-link registration %s before adding another.", r.ID)
-								}
-							}
-						}
-						return nil
-					})
+				cfg, err := saveRegistration(e, auth.Registration{Kind: "magic-link", ID: id, Name: name}, o, perms)
 				if err != nil {
 					return nil, err
 				}
