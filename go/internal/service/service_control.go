@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -324,24 +324,28 @@ func removeIfThere(path string) error {
 // no restart is pending.
 func WaitReady(r *root.Root, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	client := &http.Client{Timeout: 750 * time.Millisecond}
 	for {
-		if in, err := Inspect(r, false); err == nil && in.Gateway.State == "ready" {
-			resp, err := client.Get(strings.TrimSuffix(in.Gateway.URL, "/health") + "/health/ready")
-			if err == nil {
-				var body struct{ Status string }
-				json.NewDecoder(resp.Body).Decode(&body)
-				resp.Body.Close()
-				if resp.StatusCode == 200 && body.Status == "ready" && !restartPending(r) {
-					return nil
-				}
-			}
+		if in, err := Inspect(r, false); err == nil && in.Gateway.State == "ready" && answersReady(in.Gateway.URL) && !restartPending(r) {
+			return nil
 		}
 		if time.Now().After(deadline) {
 			return errors.New("Timed out waiting for LocalBase gateway readiness.")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// answersReady asks the gateway whose health URL is healthURL for /health/ready, on the local
+// client (no proxy, no redirect).
+func answersReady(healthURL string) bool {
+	resp, err := localhttp.New(750 * time.Millisecond).Get(strings.TrimSuffix(healthURL, "/health") + "/health/ready")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var body struct{ Status string }
+	json.NewDecoder(resp.Body).Decode(&body)
+	return resp.StatusCode == 200 && body.Status == "ready"
 }
 
 // restartPending reports a recorded pending restart (read-only).

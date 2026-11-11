@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 )
 
@@ -63,8 +64,8 @@ func ownerState(r *root.Root) (state string, o *root.Owner, detail string) {
 		return "unknown", o, "gateway process is present but did not prove its instance identity"
 	}
 	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
-	client := &http.Client{Timeout: 750 * time.Millisecond}
-	resp, err := client.Do(req)
+	// The token goes to the recorded address alone: no proxy, no redirect (localhttp).
+	resp, err := localhttp.New(750 * time.Millisecond).Do(req)
 	if err != nil {
 		return "unknown", o, "gateway process is present but did not prove its instance identity"
 	}
@@ -77,8 +78,7 @@ func ownerState(r *root.Root) (state string, o *root.Owner, detail string) {
 }
 
 func readHealth(o *root.Owner) json.RawMessage {
-	client := &http.Client{Timeout: 750 * time.Millisecond}
-	resp, err := client.Get(o.HealthURL())
+	resp, err := localhttp.New(750 * time.Millisecond).Get(o.HealthURL())
 	if err != nil {
 		return nil
 	}
