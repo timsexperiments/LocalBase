@@ -1,4 +1,4 @@
-// Drives Chat's dictation in headless Chrome for tools/mic-check.sh: tap
+// Drives Chat's dictation in headless Chrome for test/browser/mic-check.sh: tap
 // the microphone, let the fake device play the clip, tap again, and wait
 // for the transcript in the message box.
 import { evaluate as evaluateIn, openPage } from "../cdp/cdp.ts";

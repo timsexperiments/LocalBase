@@ -9,7 +9,7 @@ themselves.
 | `make soak` (`tools/soak.sh`) | A real gateway over fake backends, through memory phases, drain and restart |
 | `make chaos` (`test/chaos`) | What breaks, and what a person sees when it does |
 | `make bench` (`tools/bench.sh`) | What the gateway adds per request and per token, against budgets |
-| `make e2e` (`tools/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
+| `make e2e` (`test/browser/e2e.sh`) | Headless Chrome: journeys and a matrix of pages, widths and themes |
 | `go run ./tools/mutcheck <mutations.json>` | Breaks code on purpose and says whether the tests noticed. A mutation that doesn't compile is reported as that, never as a result |
 | `../scripts/bootstrap.sh golangci-lint gitleaks` | The lint and secret-scan tools at CI's versions, from `scripts/tools.pins`, into `../.cache/tools/bin`. Nothing fetched runs before its checksum matches. Then `../.cache/tools/bin/golangci-lint run --config .golangci.yml ./...` and `../.cache/tools/bin/gitleaks dir .. --config ../.gitleaks.toml` |
 
@@ -74,9 +74,9 @@ For any script that starts Chrome:
 - Pass both flags, whichever Chrome `LBGO_CHROME` names.
 - Give each run a new `--user-data-dir` in scratch, and a debugging port from your own block.
 - Start it in its own process group, and stop that group on every way out, including a
-  watcher for when the script itself is killed. `tools/e2e/main.go` shows all of this.
+  watcher for when the script itself is killed. `test/browser/e2e/main.go` shows all of this.
 
-To talk to Chrome, a check imports `tools/cdp/cdp.ts` rather than carrying its own client. It
+To talk to Chrome, a check imports `test/browser/cdp/cdp.ts` rather than carrying its own client. It
 holds the connection, commands and their answers, events, an optional time limit per command,
 and a stop with status 2 when the browser goes away. Every browser check under `tools/` uses it.
 

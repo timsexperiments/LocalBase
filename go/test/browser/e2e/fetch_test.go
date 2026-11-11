@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// fetchRun runs tools/e2e.sh with a curl that does what the case says, and a cache of its own.
+// fetchRun runs test/browser/e2e.sh with a curl that does what the case says, and a cache of its own.
 // Nothing here gets as far as a browser, or uses the network.
 func fetchRun(t *testing.T, curl string, seedAxe bool) (cache string, cmd *exec.Cmd, output *bytes.Buffer) {
 	t.Helper()

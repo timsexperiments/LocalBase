@@ -1,12 +1,12 @@
 #!/bin/bash
 # Shows that the browser suite leaves nothing running however it ends: stopped through the
 # wrapper, killed outright, and at the last-resort exit past its hard deadline.
-#   tools/e2e-kill-check.sh [sigterm] [sigkill] [deadline]       about a minute for all three
-# Chrome comes as for tools/e2e.sh. It watches Chrome's process group, the driver, and
+#   test/browser/e2e-kill-check.sh [sigterm] [sigkill] [deadline]       about a minute for all three
+# Chrome comes as for test/browser/e2e.sh. It watches Chrome's process group, the driver, and
 # everything running from the run's scratch directory, by exact pid, and exits 1 if anything
 # stays. A stopped run leaves its scratch and results behind, and this prints where.
 set -u
-cd "$(dirname "$0")/.." || exit 2
+cd "$(dirname "$0")/../.." || exit 2
 . tools/disk-guard.sh
 disk_guard e2e-kill-check
 cases=${*:-sigterm sigkill deadline}
@@ -20,7 +20,7 @@ one() {
   local mode=$1 out=$base/$1 force="" wrapper suite chrome bunp gw scratch began i n
   mkdir -p "$out"
   [ "$mode" = deadline ] && force=30
-  E2E_PART=matrix LOCALBASE_E2E_FORCE_EXIT_SECONDS=$force tools/e2e.sh -out "$out" > "$out/stdout.txt" 2> "$out/stderr.txt" &
+  E2E_PART=matrix LOCALBASE_E2E_FORCE_EXIT_SECONDS=$force test/browser/e2e.sh -out "$out" > "$out/stdout.txt" 2> "$out/stderr.txt" &
   wrapper=$!
   for i in $(seq 1 480); do
     grep -q 'overflow self-test' "$out/stdout.txt" 2>/dev/null && break

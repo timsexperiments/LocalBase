@@ -1,4 +1,4 @@
-// Drives headless Chrome over the DevTools protocol for tools/phone-check.sh.
+// Drives headless Chrome over the DevTools protocol for test/browser/phone-check.sh.
 // Exits 1 when any check fails.
 import { evaluate as evaluateIn, openPage } from "../cdp/cdp.ts";
 

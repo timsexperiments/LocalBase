@@ -285,15 +285,15 @@ request 86. Its early part overlaps another thread's build and tests.
 
 ```
 make e2e                              # about a minute
-E2E_PART=journeys tools/e2e.sh        # the journeys alone, under a minute
-E2E_PAGES=chat,studio E2E_WIDTHS=390 E2E_THEMES=dark tools/e2e.sh
+E2E_PART=journeys test/browser/e2e.sh        # the journeys alone, under a minute
+E2E_PAGES=chat,studio E2E_WIDTHS=390 E2E_THEMES=dark test/browser/e2e.sh
 ```
 
 Run from `go/`. It needs `bun`. Chrome comes from `LBGO_CHROME`, or else the Chrome for Testing pinned
-in `tools/e2e/pins` is fetched into a cache (`LOCALBASE_E2E_CACHE`, default `~/.cache/localbase-e2e`),
+in `test/browser/e2e/pins` is fetched into a cache (`LOCALBASE_E2E_CACHE`, default `~/.cache/localbase-e2e`),
 checked against its sha256 and never installed, so that every run checks the same browser. Only a
 platform with no pin, such as linux/arm64, falls back to an installed Chrome. axe-core comes the
-same way from `tools/axe.pins`. Headless, fake backends, a fake memory host, and
+same way from `test/browser/axe.pins`. Headless, fake backends, a fake memory host, and
 ports from the lab's block. Results and captures go to a new directory under
 `$TMPDIR/localbase-e2e`, or `-out <dir>`. `LOCALBASE_E2E_SCRATCH` moves that default and the run's
 scratch out of `$TMPDIR`, so that clearing up never means reaching outside a directory of your own.
@@ -380,7 +380,7 @@ used-link journey failed once in four Linux CI runs with `Inspected target navig
 its own on macOS it never failed at natural timing (0 of 500), and failed 9 of 300 at 80 ms of added latency
 and 8 of 300 at 200 ms. With only that change, it was 0 of 500, 0 of 300 and 0 of 300.
 
-**Adding to it.** A new page goes in `ALL_PAGES` in `tools/e2e/run.ts`. A new journey is an
+**Adding to it.** A new page goes in `ALL_PAGES` in `test/browser/e2e/run.ts`. A new journey is an
 `await journey("what a person sees", async () => { ... })`: use `until` to wait, and `need` to assert.
 
 Not covered: video generation, installing a first model from an empty root (no chat model means the

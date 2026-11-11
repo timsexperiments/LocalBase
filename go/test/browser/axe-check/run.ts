@@ -1,4 +1,4 @@
-// Drives headless Chrome over the DevTools protocol for tools/axe-check.sh:
+// Drives headless Chrome over the DevTools protocol for test/browser/axe-check.sh:
 // opens each UI state, injects the pinned axe-core and prints violations.
 // Exits 1 when any WCAG 2.x A/AA rule fails.
 import { evaluate as evaluateIn, openPage } from "../cdp/cdp.ts";

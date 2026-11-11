@@ -1,4 +1,4 @@
-// The DevTools client the browser checks under tools/ share: chat-runs-check, phone-check,
+// The DevTools client the browser checks under test/browser/ share: chat-runs-check, phone-check,
 // axe-check, mic-check, ui-shots and e2e. It holds what each of them used to carry its own copy
 // of: the connection to Chrome, commands and their answers, events, an optional time limit per
 // command, and what happens when the browser goes away. Opening has a time limit of its own, so
@@ -6,7 +6,7 @@
 // keeps its own words for a failure, through the options.
 //
 // Starting Chrome, and stopping it with everything it started, stays with the shell scripts
-// (tools/browser-run.sh) and the suite's driver (tools/e2e/main.go).
+// (test/browser/browser-run.sh) and the suite's driver (test/browser/e2e/main.go).
 //
 //   import { evaluate, openPage } from "../cdp/cdp.ts";
 //   const { send } = await openPage(cdpBase);

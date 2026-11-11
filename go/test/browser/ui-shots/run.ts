@@ -1,4 +1,4 @@
-// Drives headless Chrome for tools/ui-shots.sh: every page at every width in both color
+// Drives headless Chrome for test/browser/ui-shots.sh: every page at every width in both color
 // schemes, a contact sheet per scheme, and, with a baseline folder, a pixel comparison.
 import { evaluate, openPage } from "../cdp/cdp.ts";
 

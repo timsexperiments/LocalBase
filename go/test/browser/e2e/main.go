@@ -6,7 +6,7 @@
 //
 //	make e2e
 //
-// Use tools/e2e.sh rather than running this directly: it finds or fetches a pinned
+// Use test/browser/e2e.sh rather than running this directly: it finds or fetches a pinned
 // Chrome, and gives a run its own session and a hard stop. The checks themselves are in
 // run.ts. See docs/reliability.md.
 //
@@ -39,7 +39,7 @@ import (
 )
 
 // exitIncomplete is run.ts's status for a run that finished and left something unchecked. Its
-// scratch explains nothing that result.md does not, and tools/e2e-manifest-check.sh ends this
+// scratch explains nothing that result.md does not, and test/browser/e2e-manifest-check.sh ends this
 // way every time, so it is not kept.
 const exitIncomplete = 4
 
@@ -63,7 +63,7 @@ func main() {
 	flag.Parse()
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, 0, 10)
 	if err := p.verify(*axe); err != nil {
-		fmt.Fprintf(os.Stderr, "e2e: refusing to run what is in the cache: %v\ne2e: remove it, and tools/e2e.sh fetches it again\n", err)
+		fmt.Fprintf(os.Stderr, "e2e: refusing to run what is in the cache: %v\ne2e: remove it, and test/browser/e2e.sh fetches it again\n", err)
 		os.Exit(2)
 	}
 	os.Exit(run(*out, *chrome, *axe, *keep))
@@ -103,7 +103,7 @@ func (p pins) verify(axe string) error {
 
 func run(out, chrome, axe string, keep bool) (code int) {
 	if chrome == "" || axe == "" {
-		fmt.Fprintln(os.Stderr, "e2e: needs -chrome and -axe; use tools/e2e.sh")
+		fmt.Fprintln(os.Stderr, "e2e: needs -chrome and -axe; use test/browser/e2e.sh")
 		return 2
 	}
 	// LOCALBASE_E2E_SCRATCH keeps a run's scratch in one place of the caller's, so that clearing up
@@ -140,7 +140,7 @@ func run(out, chrome, axe string, keep bool) (code int) {
 	// Findings are in the result with their captures. Only a suite that could not finish
 	// needs what is in the scratch root to work out why, however early it stopped.
 	defer func() {
-		// A planted failure explains itself, and tools/e2e-manifest-check.sh ends that way every time.
+		// A planted failure explains itself, and test/browser/e2e-manifest-check.sh ends that way every time.
 		planted := code == exitBroken && os.Getenv("E2E_PLANT_OFF") != ""
 		if code > 1 && code != exitIncomplete && !planted {
 			w.Keep = true
@@ -148,7 +148,7 @@ func run(out, chrome, axe string, keep bool) (code int) {
 		}
 		w.Close()
 	}()
-	// The last resort, for a suite stuck past its deadline. tools/e2e-kill-check.sh brings it
+	// The last resort, for a suite stuck past its deadline. test/browser/e2e-kill-check.sh brings it
 	// forward to show that it leaves nothing running.
 	forceExit := hard + 30*time.Second
 	if v, err := strconv.Atoi(os.Getenv("LOCALBASE_E2E_FORCE_EXIT_SECONDS")); err == nil && v > 0 {
@@ -200,7 +200,7 @@ func run(out, chrome, axe string, keep bool) (code int) {
 		fmt.Fprintln(os.Stderr, "e2e:", err)
 		return 2
 	}
-	cmd := exec.CommandContext(ctx, "bun", "run", filepath.Join(module, "tools", "e2e", "run.ts"), cdp, g.Base, control, out, axe, wav)
+	cmd := exec.CommandContext(ctx, "bun", "run", filepath.Join(module, "test", "browser", "e2e", "run.ts"), cdp, g.Base, control, out, axe, wav)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	err = cmd.Run()
 	if err != nil {
@@ -280,7 +280,7 @@ func checkLog(path string, secrets []string) string {
 	}
 }
 
-// plantOn says a run was asked to fail in this way, to show that it does (tools/e2e-manifest-check.sh).
+// plantOn says a run was asked to fail in this way, to show that it does (test/browser/e2e-manifest-check.sh).
 func plantOn(name string) bool {
 	return slices.Contains(strings.Split(os.Getenv("E2E_PLANT_OFF"), ","), name)
 }
