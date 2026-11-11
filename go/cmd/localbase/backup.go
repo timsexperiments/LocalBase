@@ -81,8 +81,7 @@ func runBackup(c *cli.Ctx) (any, error) {
 	printManifest(c, res.Manifest)
 	if !res.DryRun {
 		c.Info("To restore it: local-base --root <directory> restore %s", res.Output)
-		audit.New(r, nil).Record("backup.created", "event", "backup.created", "category", "audit", "component", "backup",
-			"secretsIncluded", len(res.Manifest.SecretNames) > 0, "bytes", res.Bytes)
+		audit.New(r, nil).BackupCreated(len(res.Manifest.SecretNames) > 0, res.Bytes)
 	}
 	return res, nil
 }
@@ -199,12 +198,12 @@ func printIssuers(c *cli.Ctx, lines []backup.IssuerLine) {
 	}
 }
 
-func keyIDs(keys []backup.KeyChange) string {
+func keyIDs(keys []backup.KeyChange) []string {
 	ids := make([]string, len(keys))
 	for i, k := range keys {
 		ids[i] = k.ID
 	}
-	return strings.Join(ids, ",")
+	return ids
 }
 
 func runRestore(c *cli.Ctx) (any, error) {
@@ -278,9 +277,8 @@ func runRestore(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	if r, err := root.Open(rep.Target); err == nil {
-		audit.New(r, nil).Record("backup.restored", "event", "backup.restored", "category", "audit", "component", "backup",
-			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept,
-			"keysKept", len(rep.KeysKept), "keysLeftOut", len(rep.KeysLeftOut), "keysHeldBack", len(rep.KeysHeldBack), "keysBroughtBack", keyIDs(rep.KeysBroughtBack))
+		audit.New(r, nil).BackupRestored(audit.Restored{SecretsIncluded: len(rep.Manifest.SecretNames) > 0, RevocationsKept: rep.RevocationsKept,
+			KeysKept: len(rep.KeysKept), KeysLeftOut: len(rep.KeysLeftOut), KeysHeldBack: len(rep.KeysHeldBack), KeysBroughtBack: keyIDs(rep.KeysBroughtBack)})
 	}
 	printRestoreNext(c, rep, done)
 	return map[string]any{"report": rep, "beforeDir": done.BeforeDir}, nil

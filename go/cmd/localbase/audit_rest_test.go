@@ -120,6 +120,7 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 		{"models feed use", []string{"models", "feed", "use", "off"}, "feed", "use", "feed", ""},
 		{"backends add", []string{"backends", "add", "--file", write("backend.json", definition)}, "audit.backend-registered", "add", "backend", "audit-fake"},
 		{"models import", []string{"models", "import", weights, "--task", "chat", "--id", "audit-import", "--name", "Audit"}, "imports", "import", "model", "audit-import"},
+		{"models backend", []string{"models", "backend", "audit-import", "--set", "audit-fake"}, "audit.model-backend-changed", "set", "model", "audit-import"},
 		{"models backend", []string{"models", "backend", "audit-import", "--auto"}, "audit.model-backend-changed", "reset", "model", "audit-import"},
 		{"models delete", []string{"models", "delete", "audit-import", "--yes"}, "imports", "delete", "model", "audit-import"},
 		{"models add-definition", nil, "imports", "add-definition", "model", "audit-import"},
