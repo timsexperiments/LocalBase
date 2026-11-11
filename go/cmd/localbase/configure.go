@@ -395,8 +395,8 @@ type Overrides struct {
 	SystemReserve, AcceleratorReserve                                          *store.MemoryReserve
 }
 
-// loadOverrides reads a configure TOML file (TS loadTomlOverrides): known
-// keys only, checked by type and range.
+// loadOverrides reads a configure TOML file (TS loadTomlOverrides). A file that isn't valid is bad
+// input (exit 2), with parseOverrides's message.
 func loadOverrides(path string) (*Overrides, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -405,9 +405,19 @@ func loadOverrides(path string) (*Overrides, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := toml.Parse(string(b))
+	o, err := parseOverrides(string(b))
 	if err != nil {
-		return nil, cli.Inputf("Invalid TOML configuration: %v", err)
+		return nil, inputError(err)
+	}
+	return o, nil
+}
+
+// parseOverrides reads a configure TOML document: known keys only, checked by type and range. A
+// document that isn't valid is a *conf.DocumentError, whose message names the problem.
+func parseOverrides(text string) (*Overrides, error) {
+	doc, err := toml.Parse(text)
+	if err != nil {
+		return nil, &conf.DocumentError{Message: fmt.Sprintf("Invalid TOML configuration: %v", err)}
 	}
 	o := &Overrides{Selected: map[string][]string{}, Active: map[string]*string{}}
 	var issues []string
@@ -550,7 +560,7 @@ func loadOverrides(path string) (*Overrides, error) {
 		}
 	}
 	if len(issues) > 0 {
-		return nil, cli.Inputf("%s", strings.Join(issues, "; "))
+		return nil, &conf.DocumentError{Message: strings.Join(issues, "; ")}
 	}
 	return o, nil
 }

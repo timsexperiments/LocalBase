@@ -402,6 +402,8 @@ func TestConfigureRefusesBadInput(t *testing.T) {
 		"a bad parallel flag":         {"", []string{"--parallel", "9"}, "Invalid parallel value: 9"},
 		"a port out of range":         {"", []string{"--port", "70000"}, "port"},
 		"a port out of range in file": {"port = 70000", nil, "port: must be an integer from 1 to 65535"},
+		"a file that isn't TOML":      {"port = ", nil, "Invalid TOML configuration: "},
+		"an unknown key in the file":  {"colour = \"red\"", nil, "colour: Unrecognized key"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := newMergeRoot(t)
