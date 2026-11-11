@@ -26,8 +26,9 @@ import (
 // caller's own deadline stands, longer or shorter.
 const DefaultTimeout = 10 * time.Second
 
-// MaxAnswer is the most of an answer a call reads: the gateway's admin answers are small.
-const MaxAnswer = 1 << 20
+// MaxAnswer is the most of an answer a call reads: the gateway's admin answers are small. It is
+// localhttp's, the one bound on what is read from a local gateway.
+const MaxAnswer = localhttp.MaxAnswer
 
 // ErrAnswerTooLarge is returned for an answer larger than MaxAnswer.
 var ErrAnswerTooLarge = errors.New("instance: the gateway's answer is larger than the most a call reads")
