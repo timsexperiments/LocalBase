@@ -388,6 +388,12 @@ func TestAddressesNameTheirProvider(t *testing.T) {
 	if !strings.Contains(out, a) || !strings.Contains(out, b) || !strings.Contains(out, "new@example.test") {
 		t.Errorf("message: %s", out)
 	}
+	// The refusal names the address as it would be stored: the request's policy is
+	// normalized before its issuers are bound.
+	out = f.access(f.owner, gatewaytest.PolicyRequest(f.revision(), roles, named+`,{"kind":"email","role":"chat","email":"Mixed@Example.TEST"}`, "null"), 400, "issuer_required")
+	if !strings.Contains(out, "A binding for mixed@example.test must name") {
+		t.Errorf("a mixed-case address: %s", out)
+	}
 	out = f.access(f.owner, `{"action":"invite-user","email":"x@example.test","roles":["chat"]}`, 400, "issuer_required")
 	if !strings.Contains(out, a) || !strings.Contains(out, b) {
 		t.Errorf("message: %s", out)

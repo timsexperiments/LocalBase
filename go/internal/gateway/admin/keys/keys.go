@@ -687,11 +687,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			if in.Policy == nil {
 				return
 			}
-			candidate := *in.Policy
-			candidate.Roles = slices.Clone(candidate.Roles)
-			candidate.Bindings = slices.Clone(candidate.Bindings)
-			if candidate.Normalize() == nil {
-				next.Policy = &candidate
+			if candidate := in.Policy.Clone(); candidate.Normalize() == nil {
+				next.Policy = candidate
 			}
 		}) {
 			return
@@ -867,8 +864,9 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		if in.Policy == nil || !has("expectedPolicyRevision") || (in.ExpectedRevision != nil && !revisionRe.MatchString(*in.ExpectedRevision)) {
 			return nil, false
 		}
-		copyPolicy := *in.Policy
-		if err := copyPolicy.Normalize(); err != nil {
+		// The policy itself is normalized, not a copy: what follows (the issuer binding, its
+		// refusals' words, the lockout check) judges it as it will be stored.
+		if err := in.Policy.Normalize(); err != nil {
 			if errors.Is(err, auth.ErrPolicyLockout) {
 				return &accessRequest{lockedOut: true}, false
 			}

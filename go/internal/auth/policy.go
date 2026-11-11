@@ -69,6 +69,20 @@ type Policy struct {
 	DefaultRole *string   `json:"defaultRole"`
 }
 
+// Clone is a deep copy: Normalize or BindIssuers on it leaves p as it was. (A struct copy
+// shares the role and binding arrays, so either would write through to p.)
+func (p *Policy) Clone() *Policy {
+	c := &Policy{Roles: slices.Clone(p.Roles), Bindings: slices.Clone(p.Bindings)}
+	for i := range c.Roles {
+		c.Roles[i].Permissions = slices.Clone(c.Roles[i].Permissions)
+	}
+	if p.DefaultRole != nil {
+		role := *p.DefaultRole
+		c.DefaultRole = &role
+	}
+	return c
+}
+
 // StarterPolicy gives one address every permission, through one provider, and nobody else
 // anything. It has a member role for people added later, bound to nobody.
 func StarterPolicy(email, issuer string) *Policy {

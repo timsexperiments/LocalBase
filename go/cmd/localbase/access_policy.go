@@ -50,8 +50,9 @@ func accessPolicyCommands() []*cli.Command {
 				if err := strictJSON(b, &policy); err != nil {
 					return nil, cli.Inputf("Invalid access policy: %s", err.Error())
 				}
-				check := policy
-				if err := check.Normalize(); err != nil {
+				// The policy itself is normalized, not a copy: binding its issuers, the words of
+				// a refusal and what is applied all see it as it will be stored.
+				if err := policy.Normalize(); err != nil {
 					return nil, cli.Inputf("Invalid access policy: %s", err.Error())
 				}
 				warn := noManagerWarning(c, e)
