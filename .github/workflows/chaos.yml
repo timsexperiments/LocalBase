@@ -52,7 +52,7 @@ jobs:
           sudo chown "$(id -u):$(id -g)" /mnt/small
           echo "LOCALBASE_CHAOS_SMALL_DISK=/mnt/small" >> "$GITHUB_ENV"
       - name: Chaos suite
-        run: go test ./tools/chaos -count=1 -timeout 10m -v
+        run: go test ./test/chaos -count=1 -timeout 10m -v
 
   known-bugs:
     # Skips must name an open PR. This goes red when a named PR merges, until its skip

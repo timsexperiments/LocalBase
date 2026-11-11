@@ -53,7 +53,14 @@ func findings(text string) []string {
 }
 
 func scan(fsys fs.FS) (map[string][]string, error) {
+	found, _, err := scanRead(fsys)
+	return found, err
+}
+
+// scanRead is scan, and how many files it read.
+func scanRead(fsys fs.FS) (map[string][]string, int, error) {
 	found := map[string][]string{}
+	read := 0
 	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -77,32 +84,56 @@ func scan(fsys fs.FS) (map[string][]string, error) {
 		default:
 			return nil
 		}
+		read++
 		if f := findings(string(b)); len(f) > 0 {
 			found[name] = f
 		}
 		return nil
 	})
-	return found, err
+	return found, read, err
 }
+
+// trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
+// their scripts out of go/tools. A move from one to the other changes neither what is read nor how
+// much. Findings are named from the go directory, tools/... or test/....
+var trees = []struct{ label, dir string }{{"tools", ".."}, {"test", "../../test"}}
+
+// minRead is how many files the trees held when it was last raised. A tree that stops being read,
+// or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
+// arrive.
+const minRead = 127
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. An entry can be absent from a tree: browser-run.sh's are being fixed on another
 // branch, and not every branch holds it. Lower a number, or remove a line, as they are fixed.
 var known = map[string]int{
-	"browser-run.sh":            2, // pkill -f on the run's own profile path
-	"rehearsal.sh":              1, // the scratch root's own label; it refuses the live one
-	"upgrade-rehearsal/main.go": 2, // a scratch root's service, one line per platform; it checks the label against the live ones first
+	"tools/browser-run.sh":            2, // pkill -f on the run's own profile path
+	"tools/rehearsal.sh":              1, // the scratch root's own label; it refuses the live one
+	"tools/upgrade-rehearsal/main.go": 2, // a scratch root's service, one line per platform; it checks the label against the live ones first
 }
 
 func TestNothingStopsAProcessByNameOrAServiceOrWithoutARoot(t *testing.T) {
-	tree := ".."
-	if other := os.Getenv("LOCALBASE_KILL_GUARD_TREE"); other != "" {
-		tree = other
+	roots := trees
+	other := os.Getenv("LOCALBASE_KILL_GUARD_TREE")
+	if other != "" {
+		roots = []struct{ label, dir string }{{"tools", other}} // laid out as go/tools is
 	}
-	found, err := scan(os.DirFS(tree))
-	if err != nil {
-		t.Fatal(err)
+	found := map[string][]string{}
+	read := 0
+	for _, r := range roots {
+		f, n, err := scanRead(os.DirFS(r.dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, lines := range f {
+			found[r.label+"/"+name] = lines
+		}
+		read += n
 	}
+	if other == "" && read < minRead {
+		t.Errorf("read %d files in go/tools and go/test, fewer than the %d they held: a tree stopped being read, or files moved where neither reaches", read, minRead)
+	}
+	t.Logf("read %d files (floor %d)", read, minRead)
 	var names []string
 	for name := range found {
 		names = append(names, name)
@@ -112,7 +143,7 @@ func TestNothingStopsAProcessByNameOrAServiceOrWithoutARoot(t *testing.T) {
 		if n, ok := known[name]; ok && len(found[name]) <= n {
 			continue
 		}
-		t.Errorf("tools/%s ends a process in a way that can reach something else. Use a pid you started, or your own process group:\n  %s", name, strings.Join(found[name], "\n  "))
+		t.Errorf("%s ends a process in a way that can reach something else. Use a pid you started, or your own process group:\n  %s", name, strings.Join(found[name], "\n  "))
 	}
 }
 
