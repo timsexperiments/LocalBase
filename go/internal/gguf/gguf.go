@@ -306,8 +306,9 @@ func (g *ggufReader) array(keep bool) (any, error) {
 	return nil, nil
 }
 
-// ReadKeys reads the geometry-relevant header keys of a GGUF file.
-func ReadKeys(path string) (map[string]any, error) {
+// readGeometryKeys reads the geometry-relevant header keys of a GGUF file: readKeys with keepKey,
+// and each kept string bounded to maxKeptStringBytes.
+func readGeometryKeys(path string) (map[string]any, error) {
 	return readKeys(path, keepKey, func(string) int { return maxKeptStringBytes })
 }
 
@@ -442,7 +443,7 @@ func parseKeyBlock(src io.Reader, keep func(string) bool, maxStr func(string) in
 
 // ReadGeometry returns nil on any failure, like the TS reader.
 func ReadGeometry(path string) *Geometry {
-	values, err := ReadKeys(path)
+	values, err := readGeometryKeys(path)
 	if err != nil {
 		return nil
 	}
