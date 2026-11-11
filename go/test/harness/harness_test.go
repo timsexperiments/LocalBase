@@ -95,11 +95,12 @@ func (r *fatalRecorder) Helper() {}
 
 func (r *fatalRecorder) Fatalf(format string, args ...any) { r.msg = fmt.Sprintf(format, args...) }
 
-// Floors for TestNoProductionImports: below these, the walk missed most of the product
-// (340 files in 54 packages at step 7's R2).
+// Floors for TestNoProductionImports: what the walk reads now (341 files in 55 packages at step
+// 7's R2). It is the one guard of its kind (O3 drops treewalk's), so a floor below that would let
+// files drop out unnoticed (ci-rules 8). Raise them as the product grows.
 const (
-	minProductFiles    = 300
-	minProductPackages = 48
+	minProductFiles    = 341
+	minProductPackages = 55
 )
 
 // TestNoProductionImports keeps test code out of the product: no non-test .go file outside
