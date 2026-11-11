@@ -22,7 +22,7 @@ import (
 // configuration. TestConfigureMergeTableCoversEverySetting reads them for every configuration field
 // they set, so a setting the table doesn't cover fails it. When the merge moves, this list moves
 // with it.
-var mergeFuncs = []struct{ file, fn string }{{"configure.go", "runConfigure"}}
+var mergeFuncs = []struct{ file, fn string }{{"configure.go", "mergeConfigure"}}
 
 // mergeFieldsSet is every field of the configuration the merge functions assign, or take the
 // address of to assign: cfg.X = …, cfg.X[k] = …, &cfg.X.
