@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"net/http"
 	"slices"
 	"strconv"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/usage"
 )
@@ -232,10 +231,10 @@ func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error)
 // with one running, the change goes through it, and otherwise this refuses. It writes the database
 // only when no gateway has the root.
 func writeThroughGateway(e *env, route string, body map[string]any, direct func() (map[string]any, error)) (map[string]any, error) {
-	state, owner, detail := service.VerifiedOwnerState(e.Root) // a write goes only to a proven gateway
+	gw, state, detail := instance.Dial(e.Root) // a write goes only to a proven gateway
 	switch state {
 	case "active":
-		return throughGateway(e.Root.Dir, owner, route, body)
+		return throughGateway(e.Root.Dir, gw, route, body)
 	case "missing", "stale":
 		out, err := direct()
 		if err != nil {
@@ -262,27 +261,21 @@ func stopGatewayAdvice(rootDir string, owner *root.Owner) string {
 	return start + " Try again, or stop the gateway first: local-base --root " + q + " stop. That also disables the service, until you run: local-base --root " + q + " start"
 }
 
-func throughGateway(rootDir string, owner *root.Owner, route string, body map[string]any) (map[string]any, error) {
-	healthURL, token := owner.HealthURL(), owner.InstanceToken
-	stopIt := stopGatewayAdvice(rootDir, owner)
+func throughGateway(rootDir string, gw *instance.Client, route string, body map[string]any) (map[string]any, error) {
+	stopIt := stopGatewayAdvice(rootDir, gw.Owner())
 	b, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(healthURL, "/health")+route, bytes.NewReader(b))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Localbase-Instance-Token", token)
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	a, err := gw.Post(ctx, route, json.RawMessage(b))
 	if err != nil {
 		return nil, errors.New("A gateway is running on this root, but it did not answer." + stopIt)
 	}
-	defer resp.Body.Close()
 	var out map[string]any
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&out) != nil {
-		return nil, fmt.Errorf("The gateway running on this root did not accept the change (HTTP %d). It may be an older build, or not reachable from this computer's loopback address.%s", resp.StatusCode, stopIt)
+	if a.Status != http.StatusOK || a.Decode(&out) != nil {
+		return nil, fmt.Errorf("The gateway running on this root did not accept the change (HTTP %d). It may be an older build, or not reachable from this computer's loopback address.%s", a.Status, stopIt)
 	}
 	delete(out, "object")
 	out["via"] = "gateway"
