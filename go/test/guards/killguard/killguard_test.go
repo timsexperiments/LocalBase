@@ -75,7 +75,7 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 129
+const minRead = 199
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. An entry can be absent from a tree: browser-run.sh's are being fixed on another

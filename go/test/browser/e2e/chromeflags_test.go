@@ -48,7 +48,7 @@ var launcherTrees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {La
 
 // minLaunchersRead is the fewest files the check reads across both trees. Fewer means a tree moved
 // out of its reach, so the check fails rather than pass on less.
-const minLaunchersRead = 101
+const minLaunchersRead = 106
 
 // Every script under go/tools and go/test that starts Chrome keeps it away from the Keychain: see
 // tools/README.md for what happens otherwise.
