@@ -1,0 +1,908 @@
+== access
+summary "Manage browser access"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [show cloudflare github magic-link email oidc disable policy bindings users login-link sessions]
+help exit 0:
+Manage browser access
+
+USAGE local-base access [OPTIONS] show|cloudflare|github|magic-link|email|oidc|disable|policy|bindings|users|login-link|sessions
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+        show    Show browser identity provider configuration
+  cloudflare    Configure Cloudflare Access browser authentication
+      github    Manage GitHub OAuth registrations
+  magic-link    Manage native magic-link authentication
+       email    Manage email delivery
+        oidc    Manage OpenID Connect registrations
+     disable    Disable browser authentication
+      policy    Manage browser authorization policy
+    bindings    Name the sign-in provider on older email bindings and invitations
+       users    Provision and manage browser users
+  login-link    Print a one-time browser sign-in link for this computer
+    sessions    List and end local browser sessions
+
+Use local-base access <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access show
+summary "Show browser identity provider configuration"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Show browser identity provider configuration
+
+USAGE local-base access show [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access cloudflare
+summary "Configure Cloudflare Access browser authentication"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:team-domain Alias: Bool:false Repeatable:false Value:<team.cloudflareaccess.com> Help:Cloudflare Access team domain Default:}
+option {Name:audience Alias: Bool:false Repeatable:false Value:<AUD tag> Help:Cloudflare Access application audience Default:}
+option {Name:origin Alias: Bool:false Repeatable:false Value:<https://localbase.example.com> Help:Exact public UI origin Default:}
+option {Name:permissions Alias: Bool:false Repeatable:false Value:<permission,...> Help:Browser permissions; preserves the current set when omitted Default:}
+help exit 0:
+Configure Cloudflare Access browser authentication
+
+USAGE local-base access cloudflare [OPTIONS]
+
+OPTIONS
+
+                              --root=<path>    LocalBase data directory
+                          --non-interactive    Never open interactive prompts
+                                     --json    Emit machine-readable JSON
+  --team-domain=<team.cloudflareaccess.com>    Cloudflare Access team domain
+                       --audience=<AUD tag>    Cloudflare Access application audience
+   --origin=<https://localbase.example.com>    Exact public UI origin
+             --permissions=<permission,...>    Browser permissions; preserves the current set when omitted
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access github
+summary "Manage GitHub OAuth registrations"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [list remove]
+help exit 0:
+Manage GitHub OAuth registrations
+
+USAGE local-base access github [OPTIONS] list|remove
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+    list    List GitHub OAuth registrations
+  remove    Remove a GitHub OAuth registration
+
+Use local-base access github <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access github list
+summary "List GitHub OAuth registrations"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+List GitHub OAuth registrations
+
+USAGE local-base access github list [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access github remove
+summary "Remove a GitHub OAuth registration"
+usage "<provider-id>"
+args 1-1 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Remove a GitHub OAuth registration
+
+USAGE local-base access github remove [OPTIONS] <provider-id>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access magic-link
+summary "Manage native magic-link authentication"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [add list remove]
+help exit 0:
+Manage native magic-link authentication
+
+USAGE local-base access magic-link [OPTIONS] add|list|remove
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+     add    Add or update native magic-link authentication
+    list    List magic-link registrations
+  remove    Remove native magic-link authentication
+
+Use local-base access magic-link <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access magic-link add
+summary "Add or update native magic-link authentication"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:id Alias: Bool:false Repeatable:false Value:<email> Help:Stable lowercase registration ID Default:}
+option {Name:name Alias: Bool:false Repeatable:false Value:<Email> Help:Name shown on the sign-in page Default:}
+option {Name:origin Alias: Bool:false Repeatable:false Value:<https://localbase.example.com> Help:Exact public UI origin Default:}
+option {Name:permissions Alias: Bool:false Repeatable:false Value:<permission,...> Help:Browser permissions; preserves the current set when omitted Default:}
+help exit 0:
+Add or update native magic-link authentication
+
+USAGE local-base access magic-link add [OPTIONS]
+
+OPTIONS
+
+                             --root=<path>    LocalBase data directory
+                         --non-interactive    Never open interactive prompts
+                                    --json    Emit machine-readable JSON
+                              --id=<email>    Stable lowercase registration ID
+                            --name=<Email>    Name shown on the sign-in page
+  --origin=<https://localbase.example.com>    Exact public UI origin
+            --permissions=<permission,...>    Browser permissions; preserves the current set when omitted
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access magic-link list
+summary "List magic-link registrations"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+List magic-link registrations
+
+USAGE local-base access magic-link list [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access magic-link remove
+summary "Remove native magic-link authentication"
+usage "<provider-id>"
+args 1-1 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Remove native magic-link authentication
+
+USAGE local-base access magic-link remove [OPTIONS] <provider-id>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access email
+summary "Manage email delivery"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [show configure test disable]
+help exit 0:
+Manage email delivery
+
+USAGE local-base access email [OPTIONS] show|configure|test|disable
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+       show    Show email delivery configuration
+  configure    Configure SMTP email delivery
+       test    Send a test email
+    disable    Disable email delivery
+
+Use local-base access email <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access email show
+summary "Show email delivery configuration"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Show email delivery configuration
+
+USAGE local-base access email show [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access email configure
+summary "Configure SMTP email delivery"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:host Alias: Bool:false Repeatable:false Value:<smtp.example.com> Help:SMTP server hostname Default:}
+option {Name:port Alias: Bool:false Repeatable:false Value:<587> Help:SMTP server port Default:}
+option {Name:security Alias: Bool:false Repeatable:false Value:<tls|starttls> Help:SMTP transport security Default:}
+option {Name:username Alias: Bool:false Repeatable:false Value:<username> Help:SMTP username Default:}
+option {Name:password-env Alias: Bool:false Repeatable:false Value:<ENVIRONMENT_VARIABLE> Help:Environment variable containing the SMTP password Default:}
+option {Name:from Alias: Bool:false Repeatable:false Value:<localbase@example.com> Help:Sender email address Default:}
+help exit 0:
+Configure SMTP email delivery
+
+USAGE local-base access email configure [OPTIONS]
+
+OPTIONS
+
+                          --root=<path>    LocalBase data directory
+                      --non-interactive    Never open interactive prompts
+                                 --json    Emit machine-readable JSON
+              --host=<smtp.example.com>    SMTP server hostname
+                           --port=<587>    SMTP server port
+              --security=<tls|starttls>    SMTP transport security
+                  --username=<username>    SMTP username
+  --password-env=<ENVIRONMENT_VARIABLE>    Environment variable containing the SMTP password
+         --from=<localbase@example.com>    Sender email address
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access email test
+summary "Send a test email"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:to Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Test recipient Default:}
+help exit 0:
+Send a test email
+
+USAGE local-base access email test [OPTIONS]
+
+OPTIONS
+
+              --root=<path>    LocalBase data directory
+          --non-interactive    Never open interactive prompts
+                     --json    Emit machine-readable JSON
+  --to=<person@example.com>    Test recipient
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access email disable
+summary "Disable email delivery"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Disable email delivery
+
+USAGE local-base access email disable [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access oidc
+summary "Manage OpenID Connect registrations"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [add list remove]
+help exit 0:
+Manage OpenID Connect registrations
+
+USAGE local-base access oidc [OPTIONS] add|list|remove
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+     add    Add or update an OpenID Connect registration
+    list    List OpenID Connect registrations
+  remove    Remove an OpenID Connect registration
+
+Use local-base access oidc <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access oidc add
+summary "Add or update an OpenID Connect registration"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:id Alias: Bool:false Repeatable:false Value:<provider-id> Help:Stable lowercase registration ID Default:}
+option {Name:name Alias: Bool:false Repeatable:false Value:<Provider name> Help:Name shown on the sign-in page Default:}
+option {Name:issuer Alias: Bool:false Repeatable:false Value:<https://identity.example.com> Help:Exact OpenID Connect issuer Default:}
+option {Name:client-id Alias: Bool:false Repeatable:false Value:<CLIENT_ID> Help:OpenID Connect client ID Default:}
+option {Name:client-secret-env Alias: Bool:false Repeatable:false Value:<ENVIRONMENT_VARIABLE> Help:Environment variable containing the client secret Default:}
+option {Name:public-client Alias: Bool:true Repeatable:false Value: Help:Configure an OpenID Connect public client Default:}
+option {Name:origin Alias: Bool:false Repeatable:false Value:<https://localbase.example.com> Help:Exact public UI origin Default:}
+option {Name:permissions Alias: Bool:false Repeatable:false Value:<permission,...> Help:Browser permissions; preserves the current set when omitted Default:}
+help exit 0:
+Add or update an OpenID Connect registration
+
+USAGE local-base access oidc add [OPTIONS]
+
+OPTIONS
+
+                               --root=<path>    LocalBase data directory
+                           --non-interactive    Never open interactive prompts
+                                      --json    Emit machine-readable JSON
+                          --id=<provider-id>    Stable lowercase registration ID
+                      --name=<Provider name>    Name shown on the sign-in page
+     --issuer=<https://identity.example.com>    Exact OpenID Connect issuer
+                     --client-id=<CLIENT_ID>    OpenID Connect client ID
+  --client-secret-env=<ENVIRONMENT_VARIABLE>    Environment variable containing the client secret
+                             --public-client    Configure an OpenID Connect public client
+    --origin=<https://localbase.example.com>    Exact public UI origin
+              --permissions=<permission,...>    Browser permissions; preserves the current set when omitted
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access oidc list
+summary "List OpenID Connect registrations"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+List OpenID Connect registrations
+
+USAGE local-base access oidc list [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access oidc remove
+summary "Remove an OpenID Connect registration"
+usage "<provider-id>"
+args 1-1 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Remove an OpenID Connect registration
+
+USAGE local-base access oidc remove [OPTIONS] <provider-id>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access disable
+summary "Disable browser authentication"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Disable browser authentication
+
+USAGE local-base access disable [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy
+summary "Manage browser authorization policy"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [show apply starter test clear]
+help exit 0:
+Manage browser authorization policy
+
+USAGE local-base access policy [OPTIONS] show|apply|starter|test|clear
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+     show    Show the browser authorization policy
+    apply    Atomically apply a browser authorization policy
+  starter    Give one address every permission, and nobody else anything
+     test    Evaluate a browser identity against the local policy
+    clear    Clear the local policy and use provider-wide permissions
+
+Use local-base access policy <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy show
+summary "Show the browser authorization policy"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Show the browser authorization policy
+
+USAGE local-base access policy show [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy apply
+summary "Atomically apply a browser authorization policy"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:file Alias: Bool:false Repeatable:false Value:<policy.json> Help:Complete policy JSON file Default:}
+help exit 0:
+Atomically apply a browser authorization policy
+
+USAGE local-base access policy apply [OPTIONS]
+
+OPTIONS
+
+         --root=<path>    LocalBase data directory
+     --non-interactive    Never open interactive prompts
+                --json    Emit machine-readable JSON
+  --file=<policy.json>    Complete policy JSON file
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy starter
+summary "Give one address every permission, and nobody else anything"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:The verified address that gets every permission Default:}
+option {Name:issuer Alias: Bool:false Repeatable:false Value:<https://identity.example.com> Help:The sign-in provider that address uses; needed when several are configured Default:}
+help exit 0:
+Give one address every permission, and nobody else anything
+
+USAGE local-base access policy starter [OPTIONS]
+
+OPTIONS
+
+                            --root=<path>    LocalBase data directory
+                        --non-interactive    Never open interactive prompts
+                                   --json    Emit machine-readable JSON
+             --email=<person@example.com>    The verified address that gets every permission
+  --issuer=<https://identity.example.com>    The sign-in provider that address uses; needed when several are configured
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy test
+summary "Evaluate a browser identity against the local policy"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:issuer Alias: Bool:false Repeatable:false Value:<https://identity.example.com> Help:Verified identity issuer Default:}
+option {Name:subject Alias: Bool:false Repeatable:false Value:<subject> Help:Exact verified subject Default:}
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Verified email address Default:}
+help exit 0:
+Evaluate a browser identity against the local policy
+
+USAGE local-base access policy test [OPTIONS]
+
+OPTIONS
+
+                            --root=<path>    LocalBase data directory
+                        --non-interactive    Never open interactive prompts
+                                   --json    Emit machine-readable JSON
+  --issuer=<https://identity.example.com>    Verified identity issuer
+                      --subject=<subject>    Exact verified subject
+             --email=<person@example.com>    Verified email address
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access policy clear
+summary "Clear the local policy and use provider-wide permissions"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+Clear the local policy and use provider-wide permissions
+
+USAGE local-base access policy clear [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access bindings
+summary "Name the sign-in provider on older email bindings and invitations"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [adopt]
+help exit 0:
+Name the sign-in provider on older email bindings and invitations
+
+USAGE local-base access bindings [OPTIONS] adopt
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+  adopt    Give every email binding and invitation that names no provider this one
+
+Use local-base access bindings <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access bindings adopt
+summary "Give every email binding and invitation that names no provider this one"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:issuer Alias: Bool:false Repeatable:false Value:<https://identity.example.com> Help:A configured sign-in provider's issuer Default:}
+help exit 0:
+Give every email binding and invitation that names no provider this one
+
+USAGE local-base access bindings adopt [OPTIONS]
+
+OPTIONS
+
+                            --root=<path>    LocalBase data directory
+                        --non-interactive    Never open interactive prompts
+                                   --json    Emit machine-readable JSON
+  --issuer=<https://identity.example.com>    A configured sign-in provider's issuer
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users
+summary "Provision and manage browser users"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [list invite roles enable disable remove]
+help exit 0:
+Provision and manage browser users
+
+USAGE local-base access users [OPTIONS] list|invite|roles|enable|disable|remove
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+     list    List provisioned browser users
+   invite    Provision a browser user by verified email
+    roles    Replace a browser user's named roles
+   enable    Enable a browser user
+  disable    Disable a browser user and revoke all browser permissions
+   remove    Remove a browser user and linked identities
+
+Use local-base access users <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users list
+summary "List provisioned browser users"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+List provisioned browser users
+
+USAGE local-base access users list [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users invite
+summary "Provision a browser user by verified email"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Verified email address Default:}
+option {Name:roles Alias: Bool:false Repeatable:false Value:<role,...> Help:Named roles to grant after first sign-in Default:}
+option {Name:send-email Alias: Bool:true Repeatable:false Value: Help:Send the invitation using configured email delivery Default:}
+option {Name:issuer Alias: Bool:false Repeatable:false Value:<https://identity.example.com> Help:The sign-in provider this person will use; needed when several are configured Default:}
+help exit 0:
+Provision a browser user by verified email
+
+USAGE local-base access users invite [OPTIONS]
+
+OPTIONS
+
+                            --root=<path>    LocalBase data directory
+                        --non-interactive    Never open interactive prompts
+                                   --json    Emit machine-readable JSON
+             --email=<person@example.com>    Verified email address
+                       --roles=<role,...>    Named roles to grant after first sign-in
+                             --send-email    Send the invitation using configured email delivery
+  --issuer=<https://identity.example.com>    The sign-in provider this person will use; needed when several are configured
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users roles
+summary "Replace a browser user's named roles"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Managed user email address Default:}
+option {Name:roles Alias: Bool:false Repeatable:false Value:<role,...> Help:Complete named role set, or empty to grant none Default:}
+help exit 0:
+Replace a browser user's named roles
+
+USAGE local-base access users roles [OPTIONS]
+
+OPTIONS
+
+                 --root=<path>    LocalBase data directory
+             --non-interactive    Never open interactive prompts
+                        --json    Emit machine-readable JSON
+  --email=<person@example.com>    Managed user email address
+            --roles=<role,...>    Complete named role set, or empty to grant none
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users enable
+summary "Enable a browser user"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Managed user email address Default:}
+help exit 0:
+Enable a browser user
+
+USAGE local-base access users enable [OPTIONS]
+
+OPTIONS
+
+                 --root=<path>    LocalBase data directory
+             --non-interactive    Never open interactive prompts
+                        --json    Emit machine-readable JSON
+  --email=<person@example.com>    Managed user email address
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users disable
+summary "Disable a browser user and revoke all browser permissions"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Managed user email address Default:}
+help exit 0:
+Disable a browser user and revoke all browser permissions
+
+USAGE local-base access users disable [OPTIONS]
+
+OPTIONS
+
+                 --root=<path>    LocalBase data directory
+             --non-interactive    Never open interactive prompts
+                        --json    Emit machine-readable JSON
+  --email=<person@example.com>    Managed user email address
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access users remove
+summary "Remove a browser user and linked identities"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:email Alias: Bool:false Repeatable:false Value:<person@example.com> Help:Managed user email address Default:}
+help exit 0:
+Remove a browser user and linked identities
+
+USAGE local-base access users remove [OPTIONS]
+
+OPTIONS
+
+                 --root=<path>    LocalBase data directory
+             --non-interactive    Never open interactive prompts
+                        --json    Emit machine-readable JSON
+  --email=<person@example.com>    Managed user email address
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access login-link
+summary "Print a one-time browser sign-in link for this computer"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:force Alias: Bool:true Repeatable:false Value: Help:Issue one even though an identity provider is configured Default:}
+option {Name:revoke Alias: Bool:true Repeatable:false Value: Help:End every local session and unused link instead Default:}
+help exit 0:
+Print a one-time browser sign-in link for this computer
+
+USAGE local-base access login-link [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+            --force    Issue one even though an identity provider is configured
+           --revoke    End every local session and unused link instead
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access sessions
+summary "List and end local browser sessions"
+usage ""
+args 0-0 id=false
+run=false exitCodeFor=false inputExit=0
+subs [list revoke]
+help exit 0:
+List and end local browser sessions
+
+USAGE local-base access sessions [OPTIONS] list|revoke
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+COMMANDS
+
+    list    List local browser sessions
+  revoke    End one local browser session, or every session
+
+Use local-base access sessions <command> --help for more information about a command.
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access sessions list
+summary "List local browser sessions"
+usage ""
+args 0-0 id=false
+run=true exitCodeFor=false inputExit=0
+subs []
+help exit 0:
+List local browser sessions
+
+USAGE local-base access sessions list [OPTIONS]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+== access sessions revoke
+summary "End one local browser session, or every session"
+usage "[<id>]"
+args 0-1 id=true
+run=true exitCodeFor=false inputExit=0
+subs []
+option {Name:all Alias: Bool:true Repeatable:false Value: Help:End every browser session, local or through a provider, and unused sign-in links Default:}
+help exit 0:
+End one local browser session, or every session
+
+USAGE local-base access sessions revoke [OPTIONS] [<id>]
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+              --all    End every browser session, local or through a provider, and unused sign-in links
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
