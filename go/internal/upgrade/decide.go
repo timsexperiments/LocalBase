@@ -1,12 +1,15 @@
 package upgrade
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 )
 
 // The decisions an upgrade makes, apart from the binary steps (Prepare, Apply, Rollback): whether
@@ -54,7 +57,8 @@ func ClassifyGateway(f GatewayFacts) (GatewayState, error) {
 }
 
 // ParseActivity reads the gateway's answer to /_localbase/host: whether it is busy, and what with,
-// in words. Anything but a 200 whose body decodes is "the gateway answered HTTP <status>".
+// in words. It reads at most localhttp.MaxAnswer of the body. Anything but a 200 whose body fits
+// and decodes is "the gateway answered HTTP <status>".
 func ParseActivity(status int, body io.Reader) (busy bool, detail string, err error) {
 	var answer struct {
 		Host struct {
@@ -70,7 +74,8 @@ func ParseActivity(status int, body io.Reader) (busy bool, detail string, err er
 			} `json:"activity"`
 		} `json:"host"`
 	}
-	if status != http.StatusOK || json.NewDecoder(body).Decode(&answer) != nil {
+	b, err := io.ReadAll(io.LimitReader(body, localhttp.MaxAnswer+1))
+	if status != http.StatusOK || err != nil || len(b) > localhttp.MaxAnswer || json.NewDecoder(bytes.NewReader(b)).Decode(&answer) != nil {
 		return false, "", fmt.Errorf("the gateway answered HTTP %d", status)
 	}
 	a := answer.Host.Activity

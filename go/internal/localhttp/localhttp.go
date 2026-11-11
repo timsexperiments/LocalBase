@@ -27,6 +27,10 @@ var transport = func() *http.Transport {
 	return t
 }()
 
+// MaxAnswer is the most of a local gateway's answer a caller reads: its admin answers are small,
+// and a larger one is refused rather than read whole. instance and upgrade both read to it.
+const MaxAnswer = 1 << 20
+
 // New returns a client with no proxy that follows no redirect. timeout is the client's whole-call
 // limit, as http.Client.Timeout; 0 leaves the limit to the request's context.
 func New(timeout time.Duration) *http.Client {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 )
 
 func TestClassifyGateway(t *testing.T) {
@@ -96,12 +98,18 @@ func TestVersionForAudit(t *testing.T) {
 	}
 }
 
-// ParseActivity reads what /_localbase/host answers, whatever that is. This pins today's
-// behaviour, odd corners included: a 200 whose body doesn't decode reads as "answered HTTP 200",
-// only the first JSON value is read (anything after it is ignored), null and {} read as idle, and
-// nothing here bounds the size: a large body is read whole (the client's 5 s timeout is the bound).
+// ParseActivity reads what /_localbase/host answers, whatever that is, odd corners included: a 200
+// whose body doesn't decode reads as "answered HTTP 200", only the first JSON value is read
+// (anything after it is ignored), and null and {} read as idle. It reads at most
+// localhttp.MaxAnswer: an answer of exactly that size is read, and a larger one is refused, as
+// "answered HTTP 200", even when its first value is small.
 func TestParseActivity(t *testing.T) {
 	big := `{"pad":"` + strings.Repeat("x", 2<<20) + `","host":{"activity":{"busy":true}}}`
+	// exactly MaxAnswer bytes, busy
+	head, tail := `{"host":{"activity":{"busy":true}},"pad":"`, `"}`
+	full := head + strings.Repeat("x", localhttp.MaxAnswer-len(head)-len(tail)) + tail
+	// a small answer, then enough after it to pass the bound
+	smallThenMore := `{"host":{"activity":{"busy":true}}} ` + strings.Repeat(" ", localhttp.MaxAnswer)
 	for _, tc := range []struct {
 		name   string
 		status int
@@ -122,7 +130,9 @@ func TestParseActivity(t *testing.T) {
 		{"not JSON", 200, `<html>busy</html>`, false, "", "the gateway answered HTTP 200"},
 		{"a wrong type", 200, `{"host":{"activity":{"busy":"yes"}}}`, false, "", "the gateway answered HTTP 200"},
 		{"trailing bytes after the answer", 200, `{"host":{"activity":{"busy":true}}} and more`, true, "0 in flight, 0 queued, 0 detached runs", ""},
-		{"a 2 MiB answer", 200, big, true, "0 in flight, 0 queued, 0 detached runs", ""},
+		{"a 2 MiB answer", 200, big, false, "", "the gateway answered HTTP 200"},
+		{"an answer of exactly MaxAnswer", 200, full, true, "0 in flight, 0 queued, 0 detached runs", ""},
+		{"a small answer with more than MaxAnswer after it", 200, smallThenMore, false, "", "the gateway answered HTTP 200"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			busy, detail, err := ParseActivity(tc.status, strings.NewReader(tc.body))
