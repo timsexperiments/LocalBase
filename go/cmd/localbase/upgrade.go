@@ -160,6 +160,21 @@ func checkInstalled(binary string) error {
 	return nil
 }
 
+// idleWaitBase is where the running gateway answers, proven to be this root's. The wait sends it
+// a temporary key, so an owner record that names something else (a reused PID, another listener on
+// the port) gets nothing. It is checked again here, though gatherGatewayFacts already proved it:
+// time has passed, and the owner may be gone or changed. The refusal is classifyGateway's.
+func idleWaitBase(e *env) (string, error) {
+	state, owner, detail := service.VerifiedOwnerState(e.Root)
+	if state != "active" || owner == nil {
+		if detail == "" {
+			detail = "its lock could not be read"
+		}
+		return "", errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing was changed.")
+	}
+	return strings.TrimSuffix(owner.HealthURL(), "/health"), nil
+}
+
 // waitGatewayIdle waits for the running gateway's work to finish (waitIdle), asking with one
 // temporary key for the whole wait: created once, and deleted once at the end, each audited.
 // Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
@@ -296,6 +311,9 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 				return err
 			}
 			for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+				// A live process at the recorded PID counts as still running, proven or not: this sends
+				// it nothing, and a gateway that is stopping stops answering for its identity before it
+				// exits, so asking for proof would take a gateway still shutting down for one gone.
 				state, _, _ := e.Root.OwnerState()
 				var survivors []string
 				if state != "active" {
@@ -354,8 +372,10 @@ func rollbackLine(binary string) string {
 }
 
 func gatherGatewayFacts(e *env, binary string) (gatewayFacts, []string) {
-	state, owner, detail := e.Root.OwnerState()
-	f := gatewayFacts{lockState: state, lockDetail: detail, binary: binary, ownerManaged: owner != nil && owner.ServiceID != ""}
+	// Proven, not only alive: whether the gateway is managed comes from its owner record, and the
+	// upgrade sends what it learns here a key (idleWaitBase).
+	state, owner, detail := service.VerifiedOwnerState(e.Root)
+	f := gatewayFacts{lockState: state, lockDetail: detail, binary: binary, ownerManaged: state == "active" && owner != nil && owner.ServiceID != ""}
 	if state != "active" {
 		return f, nil
 	}
@@ -426,8 +446,10 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 
 	// Busy, or not. --force skips asking.
 	if state == gatewayManaged && !c.Bool("force") {
-		_, owner, _ := e.Root.OwnerState()
-		base := strings.TrimSuffix(owner.HealthURL(), "/health")
+		base, err := idleWaitBase(e)
+		if err != nil {
+			return nil, err
+		}
 		if err := waitGatewayIdle(c, e, base, time.Duration(wait)*time.Second, time.Sleep); err != nil {
 			return nil, err
 		}
