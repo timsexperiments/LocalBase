@@ -80,6 +80,9 @@ linters:
     rules:
       - path: _test\.go
         linters: [errcheck, gosec]
+      # go/test/harness was go/contract's _test.go files until step 7 (R2): the same two stay off.
+      - path: ^test/harness/
+        linters: [errcheck, gosec]
       # The errcheck baseline, per file: see docs/lint-baseline.md. A function not named
       # here for a file still fails. Remove an entry when its calls are handled.
       - path: ^cmd/localbase/config\.go$
