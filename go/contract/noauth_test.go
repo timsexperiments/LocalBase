@@ -10,12 +10,15 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // `serve --no-auth` starts on every loopback name and refuses anything wider.
 // A Go-only rule: TS 0.1.0 has no such check.
 func TestNoAuthOnlyOnLoopback(t *testing.T) {
-	root := filepath.Join(scratchDir(t), "root")
+	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s", res.stderr)
 	}
@@ -24,7 +27,7 @@ func TestNoAuthOnlyOnLoopback(t *testing.T) {
 			"--host", host, "--port", fmt.Sprint(port)}
 	}
 	for _, host := range []string{"0.0.0.0", "::"} {
-		cmd := exec.Command(goCLI(t), args(host, freePort())...)
+		cmd := exec.Command(goCLI(t), args(host, testutil.FreePort())...)
 		cmd.Env = cleanEnv()
 		out, err := cmd.CombinedOutput()
 		if err == nil || !strings.Contains(string(out), "Refusing --no-auth") {
@@ -40,7 +43,7 @@ func TestNoAuthOnlyOnLoopback(t *testing.T) {
 			}
 			ln.Close()
 		}
-		port := freePort()
+		port := testutil.FreePort()
 		cmd := exec.Command(goCLI(t), args(c.host, port)...)
 		cmd.Env = cleanEnv()
 		if err := cmd.Start(); err != nil {

@@ -11,18 +11,21 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // An install stuck on a silent server can be cancelled: other installs are free
 // again at once, the partial stays, and installing again resumes it. Go only: TS has
 // no cancel, and answers this action 400.
 func TestInstallCancel(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	big, other := ggufFile(t, "qwen3", nil, 64*1024), ggufFile(t, "qwen3", nil, 32*1024)
@@ -60,7 +63,7 @@ func TestInstallCancel(t *testing.T) {
 	e.serve("--no-auth")
 	defer e.stop()
 
-	act := func(id, action string) *Resp {
+	act := func(id, action string) *harness.Resp {
 		t.Helper()
 		return e.do("POST", freshPath, `{"modelId":"`+id+`","action":"`+action+`"}`)
 	}
@@ -141,10 +144,10 @@ func TestInstallCancel(t *testing.T) {
 // The command, on a real binary, against a real gateway with auth on: the same result as the route,
 // and it needs nothing but being on this machine with the instance token.
 func TestInstallCancelCommand(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	big := ggufFile(t, "qwen3", nil, 64*1024)
 	half := len(big) / 2
 	release := make(chan struct{})

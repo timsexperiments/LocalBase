@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // Every command that reads a root's database, with the real binary, while another process holds it
@@ -17,7 +19,7 @@ import (
 // and never a report that exits 0 on settings it couldn't read.
 func TestCommandsOnABusyRootSaySo(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	commands := []string{"status", "usage", "keys list", "models list", "doctor"}
 	for _, c := range commands {
@@ -41,7 +43,7 @@ func TestCommandsOnABusyRootSaySo(t *testing.T) {
 	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
-	shm, err := mustOpenRW(dbPath + "-shm")
+	shm, err := fsguard.OpenRW(dbPath + "-shm")
 	if err != nil {
 		t.Fatal(err)
 	}

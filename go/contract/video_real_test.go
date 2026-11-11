@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestVideoReal runs one FastWan text-to-video job at the catalog's
@@ -34,11 +36,11 @@ func TestVideoReal(t *testing.T) {
 	}
 	out := os.Getenv("LOCALBASE_CONTRACT_VIDEO_OUT")
 	if out == "" {
-		out = scratchDir(t)
+		out = fsguard.ScratchDir(t)
 	}
-	mustMkdirAll(out, 0o700)
-	byName := map[string]*Target{}
-	for _, tg := range targets {
+	fsguard.MkdirAll(out, 0o700)
+	byName := map[string]*harness.Target{}
+	for _, tg := range harness.Targets(t) {
 		byName[tg.Name] = tg
 	}
 	host := memory.NewHostProvider()
@@ -51,7 +53,7 @@ func TestVideoReal(t *testing.T) {
 		r := runRealVideo(t, tg, host, out)
 		report[name] = r
 		b, _ := json.MarshalIndent(report, "", "  ")
-		mustWriteFile(filepath.Join(out, "report.json"), b, 0o600)
+		fsguard.WriteFile(filepath.Join(out, "report.json"), b, 0o600)
 		if t.Failed() {
 			return
 		}
@@ -63,7 +65,7 @@ func TestVideoReal(t *testing.T) {
 		report[name].(map[string]any)["probe"] = probe[name]
 	}
 	b, _ := json.MarshalIndent(report, "", "  ")
-	mustWriteFile(filepath.Join(out, "report.json"), b, 0o600)
+	fsguard.WriteFile(filepath.Join(out, "report.json"), b, 0o600)
 	t.Logf("report:\n%s", b)
 	if len(probe) == 2 {
 		for _, k := range []string{"container", "codec", "frames", "width", "height", "fps"} {
@@ -76,7 +78,7 @@ func TestVideoReal(t *testing.T) {
 
 const liveGateway = "http://127.0.0.1:2273"
 
-func runRealVideo(t *testing.T, tg *Target, host memory.HostProvider, out string) map[string]any {
+func runRealVideo(t *testing.T, tg *harness.Target, host memory.HostProvider, out string) map[string]any {
 	t.Helper()
 	ctx := context.Background()
 	gib := func(b int64) float64 { return float64(b) / float64(memory.GiB) }
@@ -89,9 +91,9 @@ func runRealVideo(t *testing.T, tg *Target, host memory.HostProvider, out string
 	}
 	started := time.Now()
 	body := `{"model":"fastwan2.2-ti2v-5b-q6_k","prompt":"a red paper boat drifting on a calm pond, soft morning light","width":480,"height":832,"frames":81,"fps":16,"input":{"kind":"text"}}`
-	h := bearer(tg.Key)
+	h := harness.Bearer(tg.Key)
 	h["Content-Type"] = "application/json"
-	res := do(t, "POST", tg.BaseURL+"/v1/videos", h, body)
+	res := harness.Do(t, "POST", tg.BaseURL+"/v1/videos", h, body)
 	if res.Status != 202 {
 		t.Fatalf("%s: create %d %s", tg.Name, res.Status, res.Body)
 	}
@@ -154,29 +156,29 @@ func runRealVideo(t *testing.T, tg *Target, host memory.HostProvider, out string
 		why := abort
 		mu.Unlock()
 		if why != "" {
-			do(t, "POST", tg.BaseURL+"/v1/videos/"+id+"/cancel", bearer(tg.Key), "")
-			tg.halt()
+			harness.Do(t, "POST", tg.BaseURL+"/v1/videos/"+id+"/cancel", harness.Bearer(tg.Key), "")
+			tg.Halt()
 			killSdServers(tg.Root)
 			t.Fatalf("%s: stopped: %s", tg.Name, why)
 		}
-		s := do(t, "GET", tg.BaseURL+"/v1/videos/"+id, bearer(tg.Key), "").JSON(t)
+		s := harness.Do(t, "GET", tg.BaseURL+"/v1/videos/"+id, harness.Bearer(tg.Key), "").JSON(t)
 		if s["status"] != "queued" && s["status"] != "in_progress" {
 			final = s
 			break
 		}
 		if time.Since(started) > 12*time.Minute {
-			do(t, "POST", tg.BaseURL+"/v1/videos/"+id+"/cancel", bearer(tg.Key), "")
-			tg.halt()
+			harness.Do(t, "POST", tg.BaseURL+"/v1/videos/"+id+"/cancel", harness.Bearer(tg.Key), "")
+			tg.Halt()
 			killSdServers(tg.Root)
 			t.Fatalf("%s: job still %v after 12 minutes", tg.Name, s["status"])
 		}
 		time.Sleep(time.Second)
 	}
 	wall := time.Since(started)
-	content := do(t, "GET", tg.BaseURL+"/v1/videos/"+id+"/content", bearer(tg.Key), "")
+	content := harness.Do(t, "GET", tg.BaseURL+"/v1/videos/"+id+"/content", harness.Bearer(tg.Key), "")
 	close(stop)
 	<-watched
-	tg.halt() // the gateway and its sd-server stop as soon as the job ends
+	tg.Halt() // the gateway and its sd-server stop as soon as the job ends
 	left := killSdServers(tg.Root)
 	mu.Lock()
 	defer mu.Unlock()
@@ -188,7 +190,7 @@ func runRealVideo(t *testing.T, tg *Target, host memory.HostProvider, out string
 		t.Errorf("%s: %v (content %d)", tg.Name, final, content.Status)
 		return r
 	}
-	mustWriteFile(filepath.Join(out, tg.Name+".mp4"), content.Body, 0o600)
+	fsguard.WriteFile(filepath.Join(out, tg.Name+".mp4"), content.Body, 0o600)
 	t.Logf("%s: %.0f s, min available %.1f GiB, peak sd-server %.1f GiB, live health failures %d",
 		tg.Name, wall.Seconds(), gib(minAvail), gib(peakFootprint), healthFailures)
 	return r

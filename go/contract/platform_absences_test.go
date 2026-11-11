@@ -4,9 +4,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // platformAbsences names each test that doesn't run on every platform: where it is absent,
@@ -23,7 +27,15 @@ var platformAbsences = map[string]struct{ absentOn, why, ranBy string }{
 // skipsOnPlatform lists the test functions that call t.Skip in an if that reads GOOS or GOARCH.
 func skipsOnPlatform(t *testing.T, dir string) map[string]string {
 	t.Helper()
-	names, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
+	_, found := skipsIn(t, filepath.Join(dir, "*_test.go"))
+	return found
+}
+
+// skipsIn is skipsOnPlatform over the files a glob names, any function in them, with the number
+// of files it read.
+func skipsIn(t *testing.T, pattern string) (int, map[string]string) {
+	t.Helper()
+	names, err := filepath.Glob(pattern)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +61,15 @@ func skipsOnPlatform(t *testing.T, dir string) map[string]string {
 			})
 		}
 	}
-	return found
+	return len(names), found
 }
+
+// Floors for TestPlatformAbsencesAreNamed: below these, a glob found too little to vouch for
+// (57 test files here, and 7 files in go/test/harness and its fsguard, at step 7's R2).
+const (
+	minAbsenceOwnFiles     = 50
+	minAbsenceHarnessFiles = 6
+)
 
 func mentions(n ast.Node, words ...string) bool {
 	seen := false
@@ -66,7 +85,20 @@ func mentions(n ast.Node, words ...string) bool {
 }
 
 func TestPlatformAbsencesAreNamed(t *testing.T) {
-	found := skipsOnPlatform(t, ".")
+	own, found := skipsIn(t, "*_test.go")
+	// The harness left this package in step 7 (R2). Its files, tests or not, are read too, so a
+	// platform skip there is still found: a move must not narrow a source-reading check.
+	harness := filepath.Join(testutil.RepoRoot(t), "go", "test", "harness")
+	harnessFiles := 0
+	for _, dir := range []string{harness, filepath.Join(harness, "fsguard")} {
+		n, more := skipsIn(t, filepath.Join(dir, "*.go"))
+		harnessFiles += n
+		maps.Copy(found, more)
+	}
+	if own < minAbsenceOwnFiles || harnessFiles < minAbsenceHarnessFiles {
+		t.Fatalf("read %d test files and %d harness files, under the floors (%d, %d)",
+			own, harnessFiles, minAbsenceOwnFiles, minAbsenceHarnessFiles)
+	}
 	for name, where := range found {
 		if _, ok := platformAbsences[name]; !ok {
 			t.Errorf("%s: %s skips on the platform and isn't in platformAbsences", where, name)
@@ -82,7 +114,7 @@ func TestPlatformAbsencesAreNamed(t *testing.T) {
 	}
 
 	// The search finds what it is for, or this says nothing.
-	dir := scratchDir(t)
+	dir := fsguard.ScratchDir(t)
 	const planted = `package p
 import ("runtime"; "testing")
 func TestPlanted(t *testing.T) {
@@ -91,7 +123,7 @@ func TestPlanted(t *testing.T) {
 	}
 }
 `
-	if err := mustWriteFile(filepath.Join(dir, "p_test.go"), []byte(planted), 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(dir, "p_test.go"), []byte(planted), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := skipsOnPlatform(t, dir); !strings.HasSuffix(got["TestPlanted"], ":4:2") {

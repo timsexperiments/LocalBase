@@ -25,6 +25,8 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 const (
@@ -55,7 +57,7 @@ func theKit(t *testing.T) *upgradeKit {
 			kitErr = err
 			return
 		}
-		dir, err := scratchTemp("lbgo-upgrade-")
+		dir, err := fsguard.ScratchTemp("lbgo-upgrade-")
 		if err != nil {
 			kitErr = err
 			return
@@ -156,8 +158,8 @@ func (f *fakeReleases) env() []string {
 // installBinary places a binary in a scratch "bin" directory, as an installer would.
 func installBinary(t *testing.T, from string) string {
 	t.Helper()
-	dir := filepath.Join(scratchDir(t), "bin")
-	if err := mustMkdirAll(dir, 0o700); err != nil {
+	dir := filepath.Join(fsguard.ScratchDir(t), "bin")
+	if err := fsguard.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(from)
@@ -165,7 +167,7 @@ func installBinary(t *testing.T, from string) string {
 		t.Fatal(err)
 	}
 	to := filepath.Join(dir, "local-base")
-	if err := mustWriteFile(to, b, 0o755); err != nil {
+	if err := fsguard.WriteFile(to, b, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return to
@@ -216,7 +218,7 @@ func TestUpgradeEndToEnd(t *testing.T) {
 	rel := newFakeReleases(t, "v9.9.9")
 	rel.tags["v9.9.9"] = k.releaseFiles(t, next)
 	bin := installBinary(t, old)
-	rootDir := filepath.Join(scratchDir(t), "root")
+	rootDir := filepath.Join(fsguard.ScratchDir(t), "root")
 	before, err := os.Stat(bin)
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +268,7 @@ func TestUpgradeEndToEnd(t *testing.T) {
 func TestUpgradeRollbackWithNothingToGoBackTo(t *testing.T) {
 	k := theKit(t)
 	bin := installBinary(t, k.build(t, "0.2.0", true))
-	res := runBinary(t, bin, nil, "--root", filepath.Join(scratchDir(t), "root"), "upgrade", "rollback")
+	res := runBinary(t, bin, nil, "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "upgrade", "rollback")
 	if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "no previous version") {
 		t.Errorf("%d %s %s", res.code, res.stdout, res.stderr)
 	}
@@ -277,7 +279,7 @@ func TestUpgradeCheck(t *testing.T) {
 	k := theKit(t)
 	rel := newFakeReleases(t, "v9.9.9")
 	bin := installBinary(t, k.build(t, "0.2.0", true))
-	rootDir := filepath.Join(scratchDir(t), "root-never-made")
+	rootDir := filepath.Join(fsguard.ScratchDir(t), "root-never-made")
 	res := runBinary(t, bin, rel.env(), "--root", rootDir, "--json", "upgrade", "--check")
 	if res.code != 0 || !strings.Contains(res.stdout, `"newer":true`) || !strings.Contains(res.stdout, `"latest":"v9.9.9"`) {
 		t.Errorf("newer: %d %s %s", res.code, res.stdout, res.stderr)
@@ -310,7 +312,7 @@ func TestSignatureGateRealBinary(t *testing.T) {
 	rel := newFakeReleases(t, "v9.9.9")
 	rel.tags["v9.9.9"] = k.releaseFiles(t, k.build(t, "9.9.9", true))
 	bin := installBinary(t, k.build(t, "0.2.0", false))
-	root := filepath.Join(scratchDir(t), "root")
+	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	res := runBinary(t, bin, rel.env(), "--root", root, "upgrade", "--yes")
 	if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "signature verification required") {
 		t.Errorf("%d %s %s", res.code, res.stdout, res.stderr)
@@ -348,7 +350,7 @@ func TestUpgradeRefusesBadReleasesRealBinary(t *testing.T) {
 			change(files)
 			rel.tags["v9.9.9"] = files
 			bin := installBinary(t, old)
-			res := runBinary(t, bin, rel.env(), "--root", filepath.Join(scratchDir(t), "root"), "upgrade", "--yes")
+			res := runBinary(t, bin, rel.env(), "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "upgrade", "--yes")
 			if res.code != 1 {
 				t.Errorf("%d %s %s", res.code, res.stdout, res.stderr)
 			}
@@ -364,7 +366,7 @@ func TestUpgradeRefusesBadReleasesRealBinary(t *testing.T) {
 	rel := newFakeReleases(t, "v9.9.9")
 	rel.tags["v9.9.9"] = k.releaseFiles(t, k.build(t, "8.8.8", true))
 	bin := installBinary(t, old)
-	res := runBinary(t, bin, rel.env(), "--root", filepath.Join(scratchDir(t), "root"), "upgrade", "--yes")
+	res := runBinary(t, bin, rel.env(), "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "upgrade", "--yes")
 	if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "reports") || versionOf(t, bin) != "0.2.0" {
 		t.Errorf("the wrong version: %d %s %s", res.code, res.stdout, res.stderr)
 	}
@@ -376,7 +378,7 @@ func TestUpgradeDowngrade(t *testing.T) {
 	rel := newFakeReleases(t, "v0.2.0")
 	rel.tags["v0.2.0"] = k.releaseFiles(t, old)
 	bin := installBinary(t, next)
-	root := filepath.Join(scratchDir(t), "root")
+	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	for _, args := range [][]string{{"upgrade", "--yes"}, {"upgrade", "--yes", "--version", "v0.2.0"}} {
 		res := runBinary(t, bin, rel.env(), append([]string{"--root", root}, args...)...)
 		if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "--allow-downgrade") {
@@ -396,7 +398,7 @@ func TestUpgradeInputs(t *testing.T) {
 	k := theKit(t)
 	rel := newFakeReleases(t, "v9.9.9")
 	bin := installBinary(t, k.build(t, "0.2.0", true))
-	root := filepath.Join(scratchDir(t), "root")
+	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	for name, args := range map[string][]string{
 		"not a version":   {"upgrade", "--yes", "--version", "latest"},
 		"too long a wait": {"upgrade", "--yes", "--wait", "601"},
@@ -421,7 +423,7 @@ func TestUpgradeInputs(t *testing.T) {
 // A development build has nothing to upgrade from.
 func TestUpgradeDevelopmentBuild(t *testing.T) {
 	bin := installBinary(t, goCLI(t))
-	res := runBinary(t, bin, nil, "--root", filepath.Join(scratchDir(t), "root"), "upgrade", "--yes")
+	res := runBinary(t, bin, nil, "--root", filepath.Join(fsguard.ScratchDir(t), "root"), "upgrade", "--yes")
 	if res.code != 1 || !strings.Contains(res.stderr+res.stdout, "development build") {
 		t.Errorf("%d %s %s", res.code, res.stdout, res.stderr)
 	}
@@ -432,8 +434,8 @@ func TestUpgradeDevelopmentBuild(t *testing.T) {
 
 // A gateway in the foreground: this cannot restart what it did not start.
 func TestUpgradeRefusesForegroundGateway(t *testing.T) {
-	var target *Target
-	for _, c := range targets {
+	var target *harness.Target
+	for _, c := range harness.Targets(t) {
 		if c.Name == "go" {
 			target = c
 		}
@@ -470,8 +472,8 @@ func TestUpgradeCheckUpdatesToggle(t *testing.T) {
 	if res := runCLI(t, "go", rootDir, "upgrade", "check-updates", "maybe"); res.code != 2 {
 		t.Errorf("not on or off: %d", res.code)
 	}
-	var target *Target
-	for _, c := range targets {
+	var target *harness.Target
+	for _, c := range harness.Targets(t) {
 		if c.Name == "go" {
 			target = c
 		}
@@ -508,7 +510,7 @@ func TestUpgradeIsAudited(t *testing.T) {
 	rel := newFakeReleases(t, "v9.9.9")
 	rel.tags["v9.9.9"] = k.releaseFiles(t, next)
 	bin := installBinary(t, old)
-	rootDir := filepath.Join(scratchDir(t), "root")
+	rootDir := filepath.Join(fsguard.ScratchDir(t), "root")
 	const token = "PLANTED_download_token_4e71a0"
 	host := strings.TrimPrefix(rel.srv.URL, "http://")
 	env := []string{"LOCALBASE_RELEASE_URL=http://mirror:" + token + "@" + host + "/files",

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // lockedBuffer is written by a process's copier and read by the test.
@@ -175,7 +176,7 @@ func TestARootThatChangedWhileRestoreAskedStopsIt(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+			tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 			e := backupRoot(t, tmp, "root")
 			db, err := sql.Open("sqlite", "file:"+filepath.Join(e.root, "local-base.db"))
 			if err != nil {
@@ -227,7 +228,7 @@ func TestARootThatChangedWhileRestoreAskedStopsIt(t *testing.T) {
 // The control: with nothing changed, the same steps restore, and a key revoked before it asked is kept.
 func TestARootThatDidntChangeIsRestored(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	created := e.json("keys", "create", "--name", "asked", "--scopes", "models:read")
 	leaked := created["secret"].(string)

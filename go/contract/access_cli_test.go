@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestCLIAccess runs the same `access` session on twin roots.
@@ -17,22 +19,22 @@ func TestCLIAccess(t *testing.T) {
 	roots := [2]string{ts, gr}
 	t.Setenv("CONTRACT_OIDC_SECRET", "shh")
 	t.Setenv("CONTRACT_SMTP_PASSWORD", "pw")
-	dir := scratchDir(t)
+	dir := fsguard.ScratchDir(t)
 	policy := filepath.Join(dir, "policy.json")
 	policyText := `{"roles":[{"name":"chat","description":"Chat","permissions":["inference:chat"]},` +
 		`{"name":"admin","description":"Admin","permissions":["access:manage","access:read"]}],` +
 		`"bindings":[{"kind":"email","role":"admin","email":"owner@example.com"},{"kind":"email-domain","role":"chat","domain":"example.com"}],"defaultRole":null}`
-	mustWriteFile(policy, []byte(policyText), 0o600)
+	fsguard.WriteFile(policy, []byte(policyText), 0o600)
 	// With several providers Go wants to know which one vouches for an address, and TS has no
 	// such field (DESIGN §13.6, item 5b).
 	const vouching = "https://accounts.google.com"
 	goPolicy := filepath.Join(dir, "go-policy.json")
-	mustWriteFile(goPolicy, []byte(strings.NewReplacer(`"kind":"email",`, `"kind":"email","issuer":"`+vouching+`",`,
+	fsguard.WriteFile(goPolicy, []byte(strings.NewReplacer(`"kind":"email",`, `"kind":"email","issuer":"`+vouching+`",`,
 		`"kind":"email-domain",`, `"kind":"email-domain","issuer":"`+vouching+`",`).Replace(policyText)), 0o600)
 	badPolicy := filepath.Join(dir, "bad.json")
-	mustWriteFile(badPolicy, []byte(`{"roles":[],"bindings":[],"defaultRole":null,"extra":1}`), 0o600)
+	fsguard.WriteFile(badPolicy, []byte(`{"roles":[],"bindings":[],"defaultRole":null,"extra":1}`), 0o600)
 	notJSON := filepath.Join(dir, "not.json")
-	mustWriteFile(notJSON, []byte(`{`), 0o600)
+	fsguard.WriteFile(notJSON, []byte(`{`), 0o600)
 	msg := func(p string) bool { return p == ".error.message" }
 	origin := []string{"--origin", "https://lb.example.com"}
 	with := func(args ...string) []string { return append(append([]string{"--json", "access"}, args...), origin...) }

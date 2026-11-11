@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 const (
@@ -34,8 +36,8 @@ func freshRootModel(t *testing.T, root, id, src string, data []byte) {
 		"inputModalities": []string{"text"}, "outputModalities": []string{"text"}, "capabilities": []string{"chat"},
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 	})
-	mustMkdirAll(filepath.Join(root, "catalog.d"), 0o700)
-	if err := mustWriteFile(filepath.Join(root, "catalog.d", id+".json"), b, 0o600); err != nil {
+	fsguard.MkdirAll(filepath.Join(root, "catalog.d"), 0o700)
+	if err := fsguard.WriteFile(filepath.Join(root, "catalog.d", id+".json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -49,7 +51,7 @@ func freshRootInit(t *testing.T, e *e2e, tmp string) {
 		t.Fatalf("init: %s", r.stderr)
 	}
 	cfg := filepath.Join(tmp, "small.toml")
-	mustWriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
+	fsguard.WriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
 	if r := e.cli(nil, "--non-interactive", "configure", "--config", cfg); r.code != 0 {
 		t.Fatalf("configure: %s%s", r.stdout, r.stderr)
 	}
@@ -60,12 +62,12 @@ func freshRootInit(t *testing.T, e *e2e, tmp string) {
 // default model could not be installed because it was selected, nor disabled
 // because it was the default. Deliberately Go only (DESIGN 13.6 item 10).
 func TestFreshRootFirstInstall(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	tiny, second := ggufFile(t, "qwen3", nil, 64*1024), ggufFile(t, "qwen3", nil, 32*1024)
@@ -91,7 +93,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 		t.Helper()
 		return entryOf(t, e.do("GET", freshPath, "").JSON(t), id)
 	}
-	act := func(id, action string) *Resp {
+	act := func(id, action string) *harness.Resp {
 		t.Helper()
 		return e.do("POST", freshPath, `{"modelId":"`+id+`","action":"`+action+`"}`)
 	}
@@ -202,12 +204,12 @@ func TestFreshRootFirstInstall(t *testing.T) {
 // The same first step from the command line: `models install` on a fresh root
 // leaves a working default for the next serve.
 func TestFreshRootCLIInstall(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	tiny := ggufFile(t, "qwen3", nil, 64*1024)

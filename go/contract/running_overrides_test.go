@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A real gateway with its LLM port set by the environment: an unrelated management change, then a
@@ -13,10 +16,10 @@ import (
 // so no management change could move it; LOCALBASE_PORT is the kind of override that went missing.
 func TestAManagementChangeKeepsARealOverride(t *testing.T) {
 	backupGoOnly(t)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := backupRoot(t, tmp, "root")
 	e.key = e.json("keys", "create", "--name", "manager", "--scopes", "inference:chat,models:read,models:manage")["secret"].(string)
-	port := freePort()
+	port := testutil.FreePort()
 	e.env = append(e.env, fmt.Sprintf("LOCALBASE_PORT=%d", port))
 	e.noLLMPortFlag = true
 	e.serve()

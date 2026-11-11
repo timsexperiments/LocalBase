@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // An existing root has email bindings and invitations that don't say which sign-in provider
@@ -15,10 +17,10 @@ import (
 // in. With several, the gateway still starts: nobody guesses, those rows grant nothing until
 // someone chooses, and the log, doctor and status say how. The host commands keep working.
 func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	must := func(args ...string) cliResult {
 		t.Helper()
@@ -63,7 +65,7 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 		return out.Data.MatchedRoles
 	}
 	policy := filepath.Join(tmp, "policy.json")
-	mustWriteFile(policy, []byte(`{"roles":[{"name":"owner","description":"","permissions":["access:manage","access:read"]},`+
+	fsguard.WriteFile(policy, []byte(`{"roles":[{"name":"owner","description":"","permissions":["access:manage","access:read"]},`+
 		`{"name":"chat","description":"","permissions":["inference:chat"]}],`+
 		`"bindings":[{"kind":"email","role":"owner","email":"owner@example.test"}],"defaultRole":null}`), 0o600)
 
@@ -99,7 +101,7 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 	// Several providers: it starts, names nothing, and says so once per group.
 	provider("b", b)
 	forget()
-	mustWriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
+	fsguard.WriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
 	e.serve()
 	e.stop()
 	if got := matched(a); len(got) != 0 {
@@ -128,7 +130,7 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 		}
 	}
 	// Without sign-in nothing depends on it, so that mode says nothing about it.
-	mustWriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
+	fsguard.WriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
 	e.serve("--no-auth")
 	e.stop()
 	log, err = os.ReadFile(filepath.Join(e.root, "logs", "events.jsonl"))
@@ -171,7 +173,7 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 	// With no provider at all, nobody can sign in and there is nothing to choose: quiet.
 	must("--json", "access", "disable")
 	forget()
-	mustWriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
+	fsguard.WriteFile(filepath.Join(e.root, "logs", "events.jsonl"), nil, 0o600)
 	e.serve()
 	e.stop()
 	log, err = os.ReadFile(filepath.Join(e.root, "logs", "events.jsonl"))
@@ -190,10 +192,10 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 // Whatever it prints, the address never reaches a log. And a default role, kept on
 // purpose, comes with a plain warning.
 func TestPolicyStarterCommand(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	must := func(args ...string) cliResult {
 		t.Helper()
@@ -249,7 +251,7 @@ func TestPolicyStarterCommand(t *testing.T) {
 	}
 	// A default role, on purpose: it applies, and says what it means, each place it's asked.
 	policy := filepath.Join(tmp, "policy.json")
-	mustWriteFile(policy, []byte(`{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},{"name":"user","description":"","permissions":["inference:chat"]}],`+
+	fsguard.WriteFile(policy, []byte(`{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},{"name":"user","description":"","permissions":["inference:chat"]}],`+
 		`"bindings":[{"kind":"email","role":"admin","email":"`+owner+`"}],"defaultRole":"user"}`), 0o600)
 	const warning = "Anyone who can sign in through Example gets: inference:chat."
 	if r := must("access", "policy", "apply", "--file", policy); !strings.Contains(r.stdout+r.stderr, warning) {

@@ -14,6 +14,9 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // collector records OTLP/HTTP protobuf exports, decoded.
@@ -116,27 +119,27 @@ func runOTLP(t *testing.T, impl string, status int) *otlpRun {
 // endpoint; the caller fills in what was received.
 func runOTLPAt(t *testing.T, impl, endpoint string) *otlpRun {
 	t.Helper()
-	tg, err := launchEnv(impl, []string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
-		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret})
+	tg, err := harness.Launch(impl, harness.Env([]string{"OTEL_EXPORTER_OTLP_ENDPOINT=" + endpoint, "OTEL_TRACES_SAMPLER=always_on",
+		"OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	run := &otlpRun{root: tg.Root, requests: map[string]string{}, real: tg.RealModel}
 	send := func(label, method, path string, headers map[string]string, body string) {
-		r := do(t, method, tg.BaseURL+path, headers, body)
+		r := harness.Do(t, method, tg.BaseURL+path, headers, body)
 		run.requests[label] = r.Header.Get("X-Localbase-Request-Id")
 	}
-	send("models", "GET", "/v1/models", bearer(tg.Key), "")
-	send("unmatched", "GET", "/v1/nope/x", bearer(tg.Key), "")
+	send("models", "GET", "/v1/models", harness.Bearer(tg.Key), "")
+	send("unmatched", "GET", "/v1/nope/x", harness.Bearer(tg.Key), "")
 	send("missing", "GET", "/v1/models", nil, "")
-	send("invalid", "GET", "/v1/models", bearer("lb_not_a_real_key_0123456789abcdef"), "")
+	send("invalid", "GET", "/v1/models", harness.Bearer("lb_not_a_real_key_0123456789abcdef"), "")
 	if tg.RealModel {
 		send("chat", "POST", "/v1/chat/completions", map[string]string{"Authorization": "Bearer " + tg.Key,
 			"traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},
 			`{"model":"qwen2.5-coder-1.5b-instruct-q4_k_m","messages":[{"role":"user","content":"Say hi"}],"max_tokens":4}`)
 	}
-	tg.halt() // flushes the exporter; the files stay for the checks
-	t.Cleanup(tg.stop)
+	tg.Halt() // flushes the exporter; the files stay for the checks
+	t.Cleanup(tg.Stop)
 	return run
 }
 
@@ -424,12 +427,12 @@ func bodyText(v any) any {
 // the shutdown flush's failure reports reach events.jsonl, written while
 // the file sink is still open, and nothing about OTLP reaches stderr.
 func TestOtelShutdownDiagnosticsStayInTheLog(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
-		env: []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:" + strconv.Itoa(freePort())}}
+		env: []string{"OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:" + strconv.Itoa(testutil.FreePort())}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
 	}

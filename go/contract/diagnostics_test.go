@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // Planted in the logs, catalog files, the feed URL, the OTLP headers and the
@@ -60,18 +61,18 @@ func TestCLIDiagnostics(t *testing.T) {
 		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
 			t.Fatalf("init: %s", res.stderr)
 		}
-		mustMkdirAll(filepath.Join(r, "logs"), 0o700)
-		mustWriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
-		mustWriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
-		mustMkdirAll(filepath.Join(r, "catalog.d"), 0o700)
-		mustWriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-q8_0", "notes": "Patched.",
+		fsguard.MkdirAll(filepath.Join(r, "logs"), 0o700)
+		fsguard.WriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
+		fsguard.WriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
+		fsguard.MkdirAll(filepath.Join(r, "catalog.d"), 0o700)
+		fsguard.WriteFile(filepath.Join(r, "catalog.d", "patch.json"), []byte(`{"modelId": "whisper-base-q8_0", "notes": "Patched.",
 			"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
-		mustWriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
+		fsguard.WriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
 		plantPrivateState(t, r)
 	}
 	env := []string{"LOCALBASE_CATALOG_FEED_URL=https://user:feedUserPassword@feed.example.com/feed.json?sig=feedSignature99#frag",
 		"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=otlpHeaderSecret77"}
-	out := scratchDir(t)
+	out := fsguard.ScratchDir(t)
 	bundle := func(impl, root, name string) (cliResult, map[string][]byte) {
 		path := filepath.Join(out, name)
 		res := runCLIEnv(t, impl, root, env, "--json", "diagnostics", "--output", path)
@@ -129,7 +130,7 @@ func TestCLIDiagnostics(t *testing.T) {
 	compareManifests(t, tf["manifest.json"], gf["manifest.json"])
 
 	// Output rules.
-	mustWriteFile(filepath.Join(out, "exists.zip"), []byte("x"), 0o600)
+	fsguard.WriteFile(filepath.Join(out, "exists.zip"), []byte("x"), 0o600)
 	for _, args := range [][]string{
 		{"--json", "diagnostics", "--output", filepath.Join(out, "exists.zip")},
 		{"--json", "diagnostics", "--output", filepath.Join(out, "report.txt")},
@@ -176,10 +177,10 @@ func compareManifests(t *testing.T, a, b []byte) {
 func plantPrivateState(t *testing.T, root string) {
 	t.Helper()
 	// A run checkpoint: in-flight model output (DESIGN §21.6).
-	mustMkdirAll(filepath.Join(root, "runs"), 0o700)
-	mustWriteFile(filepath.Join(root, "runs", "run_0123.json"), []byte(`{"id":"run_0123","owner":"local","status":"in_progress","output":{"content":"runOutputSecret55"}}`), 0o600)
-	mustMkdirAll(filepath.Join(root, "credentials"), 0o700)
-	mustWriteFile(filepath.Join(root, "credentials", "auth-profiles.json"), []byte(`{"profiles":[{"id":"vendor","origins":["https://cdn.example.com"],`+
+	fsguard.MkdirAll(filepath.Join(root, "runs"), 0o700)
+	fsguard.WriteFile(filepath.Join(root, "runs", "run_0123.json"), []byte(`{"id":"run_0123","owner":"local","status":"in_progress","output":{"content":"runOutputSecret55"}}`), 0o600)
+	fsguard.MkdirAll(filepath.Join(root, "credentials"), 0o700)
+	fsguard.WriteFile(filepath.Join(root, "credentials", "auth-profiles.json"), []byte(`{"profiles":[{"id":"vendor","origins":["https://cdn.example.com"],`+
 		`"headers":{"X-Vendor-Key":"authProfileHeaderSecret31"}}]}`), 0o600)
 	st, err := store.Open(filepath.Join(root, "local-base.db"))
 	if err != nil {
@@ -203,7 +204,7 @@ func plantPrivateState(t *testing.T, root string) {
 		}
 	}
 	// The voice is referenced in the log by id, as the gateway logs it.
-	f, _ := mustAppend(filepath.Join(root, "logs", "events.jsonl"))
+	f, _ := fsguard.Append(filepath.Join(root, "logs", "events.jsonl"))
 	b, _ := json.Marshal(map[string]any{"schemaVersion": 2, "id": "00000000-0000-4000-8000-000000000099", "timestamp": "2026-10-20T10:00:09.000Z",
 		"severity": "info", "eventName": "voices.created", "category": "runtime", "component": "voices", "runtime": "tts",
 		"message": "Custom voice created.", "attributes": map[string]any{"voice_id": "voice_planted"}})

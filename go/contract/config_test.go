@@ -13,6 +13,9 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestCLIConfigDeclarative compares `config validate|plan|apply|show` on twin
@@ -24,7 +27,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	requireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
-	docs := scratchDir(t)
+	docs := fsguard.ScratchDir(t)
 	for _, r := range roots {
 		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
 			t.Fatalf("init: %s", res.stderr)
@@ -50,12 +53,12 @@ func TestCLIConfigDeclarative(t *testing.T) {
 			doc = re.ReplaceAllString(doc, pairs[i+1])
 		}
 		p := filepath.Join(docs, name+".toml")
-		mustWriteFile(p, []byte(doc), 0o600)
+		fsguard.WriteFile(p, []byte(doc), 0o600)
 		return p
 	}
 	write := func(name, doc string) string {
 		p := filepath.Join(docs, name+".toml")
-		mustWriteFile(p, []byte(doc), 0o600)
+		fsguard.WriteFile(p, []byte(doc), 0o600)
 		return p
 	}
 	basePath := edit("base")
@@ -202,7 +205,7 @@ import { parseConfiguration } from "./src/domains/config/declarative";
 try { parseConfiguration(readFileSync(process.argv.at(-1)!, "utf8")); console.log("OK"); }
 catch (e) { console.log((e as Error).message); }`
 	cmd := exec.Command("bun", "-e", script, path)
-	cmd.Dir = repoRoot()
+	cmd.Dir = testutil.RepoRoot(t)
 	cmd.Env = cleanEnv()
 	want, err := cmd.Output()
 	if err != nil {
@@ -227,7 +230,7 @@ catch (e) { console.log((e as Error).message); }`
 // document with --wait waits for its readiness.
 func TestCLIConfigForegroundGateway(t *testing.T) {
 	requireTS(t)
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		t.Run(tg.Name, func(t *testing.T) {
 			shown := runCLI(t, tg.Name, tg.Root, "--json", "config", "show")
 			var env struct {
@@ -237,11 +240,11 @@ func TestCLIConfigForegroundGateway(t *testing.T) {
 			if env.Data.Document == "" {
 				t.Fatalf("show: %s %s", shown.stdout, shown.stderr)
 			}
-			dir := scratchDir(t)
+			dir := fsguard.ScratchDir(t)
 			same := filepath.Join(dir, "same.toml")
-			mustWriteFile(same, []byte(env.Data.Document), 0o600)
+			fsguard.WriteFile(same, []byte(env.Data.Document), 0o600)
 			moved := filepath.Join(dir, "moved.toml")
-			mustWriteFile(moved, []byte(regexp.MustCompile(`(?m)^port = (\d+)$`).ReplaceAllString(env.Data.Document, "port = 1")), 0o600)
+			fsguard.WriteFile(moved, []byte(regexp.MustCompile(`(?m)^port = (\d+)$`).ReplaceAllString(env.Data.Document, "port = 1")), 0o600)
 			res := runCLI(t, tg.Name, tg.Root, "--json", "config", "apply", "--file", moved)
 			if res.code != 1 || !strings.Contains(res.stdout, "Cannot automatically restart this gateway") {
 				t.Errorf("restart-required apply: %d %s", res.code, res.stdout)

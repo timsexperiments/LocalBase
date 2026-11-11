@@ -5,13 +5,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // The root v0.1.0's installer really leaves: only licenses/, holding LICENSE and
 // THIRD_PARTY_NOTICES.txt. Everyone who followed its instructions has this, and every
 // command used to refuse it as nonempty.
 func TestRootFromV010Installer(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	for _, first := range [][]string{
@@ -21,12 +24,12 @@ func TestRootFromV010Installer(t *testing.T) {
 		{"--non-interactive", "doctor"},
 	} {
 		t.Run(strings.Join(first[1:], " "), func(t *testing.T) {
-			tmp := scratchDir(t)
+			tmp := fsguard.ScratchDir(t)
 			e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 			licenses := filepath.Join(e.root, "licenses")
-			mustMkdirAll(licenses, 0o755)
-			mustWriteFile(filepath.Join(licenses, "LICENSE"), []byte("the license"), 0o644)
-			mustWriteFile(filepath.Join(licenses, "THIRD_PARTY_NOTICES.txt"), []byte("the notices"), 0o644)
+			fsguard.MkdirAll(licenses, 0o755)
+			fsguard.WriteFile(filepath.Join(licenses, "LICENSE"), []byte("the license"), 0o644)
+			fsguard.WriteFile(filepath.Join(licenses, "THIRD_PARTY_NOTICES.txt"), []byte("the notices"), 0o644)
 			r := e.cli(nil, first...)
 			if strings.Contains(r.stderr+r.stdout, "nonempty") {
 				t.Fatalf("%v refused it: %s%s", first, r.stdout, r.stderr)

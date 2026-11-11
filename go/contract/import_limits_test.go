@@ -9,15 +9,17 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // What one import may cost is the owner's to set, and --help says so, including what a
 // larger model needs.
 func TestConfigureImportLimits(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)
@@ -65,19 +67,19 @@ func TestConfigureImportLimits(t *testing.T) {
 // A crash can leave files under a model's directory that nothing records. Importing that
 // model again through the CLI clears them, and a model that is recorded stays refused.
 func TestCLIImportAfterACrash(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)
 	}
 	model := filepath.Join(tmp, "m.gguf")
-	mustWriteFile(model, ggufFile(t, "qwen3", nil, 4096), 0o600)
+	fsguard.WriteFile(model, ggufFile(t, "qwen3", nil, 4096), 0o600)
 	leftBehind := filepath.Join(e.root, "models", "imported", "crashed", "left-behind")
-	mustMkdirAll(filepath.Dir(leftBehind), 0o700)
-	mustWriteFile(leftBehind, []byte("x"), 0o600)
+	fsguard.MkdirAll(filepath.Dir(leftBehind), 0o700)
+	fsguard.WriteFile(leftBehind, []byte("x"), 0o600)
 	args := []string{"--non-interactive", "models", "import", model, "--id", "crashed", "--task", "chat", "--yes"}
 	if r := e.cli(nil, args...); r.code != 0 {
 		t.Fatalf("importing after a crash: %s %s", r.stdout, r.stderr)

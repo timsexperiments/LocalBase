@@ -14,6 +14,9 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestDifferentialUnlistedUser pins a deliberate difference (DESIGN §13.6 item 11):
@@ -27,7 +30,7 @@ import (
 const unlistedModel = "contract-unlisted-llm"
 
 func TestDifferentialUnlistedUser(t *testing.T) {
-	if *implFlag != "both" {
+	if harness.Impl() != "both" {
 		t.Skip("needs -impl=both")
 	}
 	logFreeMemoryOnFailure(t)
@@ -39,17 +42,17 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		origin = "https://lb.example.com"
 		host   = "lb.example.com"
 	)
-	bins := filepath.Join(scratchDir(t), "bin")
-	mustMkdirAll(bins, 0o700)
+	bins := filepath.Join(fsguard.ScratchDir(t), "bin")
+	fsguard.MkdirAll(bins, 0o700)
 	fake := filepath.Join(bins, "llama-server")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	raw, err := os.ReadFile(fake)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(bins, "sd-server"), raw, 0o700); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(bins, "sd-server"), raw, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,15 +62,15 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 	}
 	run := func(impl string) map[string]answer {
 		t.Helper()
-		tmp := scratchDir(t)
+		tmp := fsguard.ScratchDir(t)
 		rootDir := filepath.Join(tmp, "root")
-		if _, _, _, _, err := fixture(rootDir, freePort()); err != nil {
+		if _, _, _, _, err := harness.Fixture(rootDir, testutil.FreePort()); err != nil {
 			t.Fatal(err)
 		}
 		// Small reserves, so the model fits a small CI runner and the chat reaches the fake: this
 		// test is about permissions, and a 422 for memory would say nothing about them.
 		small := filepath.Join(tmp, "small.toml")
-		mustWriteFile(small, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o600)
+		fsguard.WriteFile(small, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o600)
 		if r := runCLI(t, impl, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
 			t.Fatalf("%s configure: %s%s", impl, r.stdout, r.stderr)
 		}
@@ -82,10 +85,10 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		mustWriteFile(entry, bytes.Replace(written, []byte(`"capabilities":["chat"]`), []byte(`"capabilities":[]`), 1), 0o600)
+		fsguard.WriteFile(entry, bytes.Replace(written, []byte(`"capabilities":["chat"]`), []byte(`"capabilities":[]`), 1), 0o600)
 		models := filepath.Join(rootDir, "models", "llm")
-		mustMkdirAll(models, 0o700)
-		mustWriteFile(filepath.Join(models, unlistedModel+".gguf"), tiny, 0o600)
+		fsguard.MkdirAll(models, 0o700)
+		fsguard.WriteFile(filepath.Join(models, unlistedModel+".gguf"), tiny, 0o600)
 		policy := filepath.Join(tmp, "policy.json")
 		b, _ := json.Marshal(auth.Policy{Roles: []auth.Role{
 			{Name: "admin", Description: "Admin", Permissions: []string{"access:manage", "access:read", "models:read"}},
@@ -94,7 +97,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 			{Kind: "email", Role: "admin", Email: "owner@example.com"},
 			{Kind: "email", Role: "chatter", Email: "chatter@example.com"},
 		}})
-		mustWriteFile(policy, b, 0o600)
+		fsguard.WriteFile(policy, b, 0o600)
 		for _, args := range [][]string{
 			{"--json", "access", "oidc", "add", "--id", "google", "--name", "Google", "--issuer", issuer, "--client-id", "cid", "--public-client", "--origin", origin},
 			{"--json", "access", "policy", "apply", "--file", policy},
@@ -107,7 +110,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		selected, _ := json.Marshal([]string{chatModel, decisionModel, embeddingModel, unlistedModel})
+		selected, _ := json.Marshal([]string{harness.ChatModel, harness.DecisionModel, harness.EmbeddingModel, unlistedModel})
 		if _, err := st.DB.Exec(`UPDATE config SET selected_llm_models = ?`, string(selected)); err != nil {
 			t.Fatal(err)
 		}
@@ -124,7 +127,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		// The fake backends come first on PATH (TS finds its runtime there), and through
 		// the override for Go.
 		e := &e2e{t: t, root: rootDir, outDir: tmp, impl: impl,
-			env: []string{"PATH=" + bins + string(os.PathListSeparator) + withoutRealBackends(os.Getenv("PATH")), "LOCALBASE_LLAMA_SERVER=" + fake}}
+			env: []string{"PATH=" + bins + string(os.PathListSeparator) + harness.WithoutRealBackends(os.Getenv("PATH")), "LOCALBASE_LLAMA_SERVER=" + fake}}
 		e.serve()
 		defer e.stop()
 		send := func(method, path, cookie, body string) answer {

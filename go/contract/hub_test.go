@@ -13,6 +13,9 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // hubFixtures serves the Hub responses tools/golden/hub.ts recorded.
@@ -50,10 +53,10 @@ func hubFixtureServer(t *testing.T, strict bool) string {
 // against the recorded Hub and compares output lines, data, written catalog
 // files and errors with what the TS command handlers produced.
 func TestCLIHubGolden(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go CLI")
 	}
-	b, err := os.ReadFile("../internal/hub/testdata/golden.json")
+	b, err := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +73,7 @@ func TestCLIHubGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := hubFixtures(t)
-	dir := scratchDir(t)
+	dir := fsguard.ScratchDir(t)
 	dir, _ = filepath.EvalSymlinks(dir)
 	rootDir := filepath.Join(dir, "root")
 	env := []string{"HF_ENDPOINT=" + endpoint, "HF_TOKEN="}
@@ -161,16 +164,16 @@ func selectSTT(t *testing.T, rootDir, id string) {
 // Hub request, on both gateways.
 func TestDifferentialModelDiscoveryRejections(t *testing.T) {
 	const path = "/_localbase/model-discovery"
-	post := func(key func(*Target) string, body string) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			h := bearer(key(tg))
+	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(key(tg))
 			h["Content-Type"] = "application/json"
-			out[tg.Name] = do(t, "POST", tg.BaseURL+path, h, body)
+			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
 		}
 		return out
 	}
-	admin := func(tg *Target) string { return tg.Admin }
+	admin := func(tg *harness.Target) string { return tg.Admin }
 	for label, body := range map[string]string{
 		"not json": `{`, "array": `[]`, "no action": `{}`, "unknown action": `{"action":"delete"}`,
 		"search extra key": `{"action":"search","query":"x","limit":3}`, "search bad kind": `{"action":"search","kind":"tts"}`,
@@ -178,17 +181,17 @@ func TestDifferentialModelDiscoveryRejections(t *testing.T) {
 		"preview short repo": `{"action":"preview","repo":"ab"}`, "preview missing repo": `{"action":"preview"}`,
 		"preview bad repo": `{"action":"preview","repo":"not a repo"}`, "add bad repo": `{"action":"add","repo":"a/../b"}`,
 		"add empty selector": `{"action":"add","repo":"org/repo","selector":""}`, "add install string": `{"action":"add","repo":"org/repo","install":"yes"}`,
-		"add owned id":         `{"action":"add","repo":"bad repo name","modelId":"` + chatModel + `"}`,
+		"add owned id":         `{"action":"add","repo":"bad repo name","modelId":"` + harness.ChatModel + `"}`,
 		"recipe unknown model": `{"action":"install-recipe","modelId":"no-such-model"}`,
-		"recipe without feed":  `{"action":"install-recipe","modelId":"` + chatModel + `"}`,
+		"recipe without feed":  `{"action":"install-recipe","modelId":"` + harness.ChatModel + `"}`,
 		"too large":            `{"action":"search","query":"` + strings.Repeat("q", 2100) + `"}`,
 	} {
 		sameError(t, "discovery "+label, post(admin, body))
 	}
-	sameError(t, "discovery as reader", post(func(tg *Target) string { return tg.Key }, `{"action":"search"}`))
-	get := map[string]*Resp{}
-	for _, tg := range targets {
-		get[tg.Name] = do(t, "GET", tg.BaseURL+path, bearer(tg.Admin), "")
+	sameError(t, "discovery as reader", post(func(tg *harness.Target) string { return tg.Key }, `{"action":"search"}`))
+	get := map[string]*harness.Resp{}
+	for _, tg := range harness.Targets(t) {
+		get[tg.Name] = harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Admin), "")
 	}
 	sameError(t, "discovery GET", get)
 }
@@ -197,10 +200,10 @@ func TestDifferentialModelDiscoveryRejections(t *testing.T) {
 // recorded Hub: search, a preview equal to TS's, and an add the catalog
 // picks up without a restart.
 func TestModelDiscoveryEndToEnd(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	b, _ := os.ReadFile("../internal/hub/testdata/golden.json")
+	b, _ := os.ReadFile(filepath.Join(testutil.RepoRoot(t), "go", "internal", "hub", "testdata", "golden.json"))
 	var g struct {
 		Discovery struct {
 			OK struct {
@@ -215,7 +218,7 @@ func TestModelDiscoveryEndToEnd(t *testing.T) {
 		} `json:"previews"`
 	}
 	json.Unmarshal(b, &g)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true, env: []string{"HF_ENDPOINT=" + hubFixtures(t), "HF_TOKEN="}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)

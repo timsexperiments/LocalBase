@@ -1,11 +1,10 @@
-package contract
+package harness
 
 import (
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"testing"
 )
 
 // allowRealModelsEnv lets a run see real backends on PATH. Real runs otherwise go
@@ -22,7 +21,7 @@ var offlineEnv = []string{"HTTPS_PROXY=http://127.0.0.1:9", "HTTP_PROXY=http://1
 
 // withoutRealBackends drops PATH directories holding a real backend, unless
 // allowRealModelsEnv is set, so a test cannot start one by accident.
-func withoutRealBackends(path string) string {
+func WithoutRealBackends(path string) string {
 	if os.Getenv(allowRealModelsEnv) == "1" {
 		return path
 	}
@@ -39,7 +38,7 @@ func withoutRealBackends(path string) string {
 }
 
 // guarded applies the guard to an environment: the last PATH wins.
-func guarded(env []string) []string {
+func Guarded(env []string) []string {
 	out := make([]string, 0, len(env)+len(offlineEnv)+1)
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
@@ -48,39 +47,5 @@ func guarded(env []string) []string {
 		}
 	}
 	out = append(out, offlineEnv...)
-	return append(out, "PATH="+withoutRealBackends(os.Getenv("PATH")))
-}
-
-func TestRealModelGuard(t *testing.T) {
-	dir := scratchDir(t)
-	withBackend := filepath.Join(dir, "with")
-	clean := filepath.Join(dir, "clean")
-	mustMkdirAll(withBackend, 0o700)
-	mustMkdirAll(clean, 0o700)
-	mustWriteFile(filepath.Join(withBackend, "llama-server"), []byte("#!/bin/sh\n"), 0o700)
-	t.Setenv("PATH", withBackend+string(os.PathListSeparator)+clean)
-	t.Setenv("HTTPS_PROXY", "http://real.example:1")
-	t.Setenv(allowRealModelsEnv, "")
-
-	check := func(env []string) {
-		t.Helper()
-		value := map[string]string{}
-		for _, kv := range env {
-			k, v, _ := strings.Cut(kv, "=")
-			value[k] = v // the last wins, as for a process
-		}
-		if value["PATH"] != clean {
-			t.Errorf("PATH: %q", value["PATH"])
-		}
-		if value["HTTPS_PROXY"] != "http://127.0.0.1:9" || value["NO_PROXY"] != "127.0.0.1,localhost" {
-			t.Errorf("network: %v %v", value["HTTPS_PROXY"], value["NO_PROXY"])
-		}
-	}
-	check(cleanEnv())
-
-	// Only an explicit setting brings real backends back.
-	t.Setenv(allowRealModelsEnv, "1")
-	if got := withoutRealBackends(os.Getenv("PATH")); !strings.Contains(got, withBackend) {
-		t.Errorf("with %s: %q", allowRealModelsEnv, got)
-	}
+	return append(out, "PATH="+WithoutRealBackends(os.Getenv("PATH")))
 }

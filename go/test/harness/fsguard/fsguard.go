@@ -1,4 +1,12 @@
-package contract
+// Package fsguard is the write guard of the black-box suites and their harness
+// (go/test/harness). It keeps one list of scratch roots for the whole test binary, so a gateway
+// root the harness registers is writable by the tests that use it.
+//
+// The plain-named writes (WriteFile, Create, Append, OpenRW, MkdirAll, Chmod, Symlink,
+// RemoveLink, RemoveAll, Grow) panic on a guard refusal and return any other error, as the
+// suites' must* forms did. Sparse, CopyDir, CloneModel and AssertNoLinks return a refusal as an
+// error wrapping ErrGuard and never panic.
+package fsguard
 
 import (
 	"errors"
@@ -22,7 +30,7 @@ import (
 //   - writing through a symlink, or to an existing file with more than one
 //     link (a hard link shares its inode with another file);
 //   - real model files brought in any way but an APFS clone or a read-only
-//     copy (cloneModel): never a symlink or hard link into the live root.
+//     copy (CloneModel): never a symlink or hard link into the live root.
 //
 // Scratch roots are directories the tests created themselves: the
 // harness's per-gateway roots and each test's t.TempDir().
@@ -48,8 +56,9 @@ func registerScratch(dir string) (string, error) {
 	return real, nil
 }
 
-// scratchDir is t.TempDir(), registered as a scratch root.
-func scratchDir(t testing.TB) string {
+// ScratchDir fails the test, without a panic, when the directory can't be registered.
+// ScratchDir is t.TempDir(), registered as a scratch root.
+func ScratchDir(t testing.TB) string {
 	t.Helper()
 	dir, err := registerScratch(t.TempDir())
 	if err != nil {
@@ -180,9 +189,10 @@ func guardedRemoveAll(path string) error {
 	return os.RemoveAll(path)
 }
 
-// guardedSparse creates a new file of size bytes (a sparse placeholder).
+// Sparse returns a guard refusal as an error wrapping ErrGuard, and never panics.
+// Sparse creates a new file of size bytes (a sparse placeholder).
 // An existing entry is left alone.
-func guardedSparse(path string, size int64) error {
+func Sparse(path string, size int64) error {
 	if _, err := os.Lstat(path); err == nil {
 		return nil
 	}
@@ -201,7 +211,7 @@ func guardedSparse(path string, size int64) error {
 }
 
 // guardedGrow makes a file at least size bytes long, sparse, creating it if it's missing. Unlike
-// guardedSparse, it also grows a file that's already there.
+// Sparse, it also grows a file that's already there.
 func guardedGrow(path string, size int64) error {
 	if err := checkWrite(path); err != nil {
 		return err
@@ -219,8 +229,9 @@ func guardedGrow(path string, size int64) error {
 	return err
 }
 
-// guardedCopyDir copies a directory tree into a scratch root (cp -R).
-func guardedCopyDir(src, dst string) error {
+// CopyDir returns a guard refusal as an error wrapping ErrGuard, and never panics.
+// CopyDir copies a directory tree into a scratch root (cp -R).
+func CopyDir(src, dst string) error {
 	if err := checkWrite(dst); err != nil {
 		return err
 	}
@@ -237,12 +248,13 @@ func guardedCopyDir(src, dst string) error {
 // possible; larger ones need an APFS clone.
 const maxReadOnlyCopy = 64 << 20
 
-// cloneModel brings a real model file into a scratch root as an APFS clone
+// CloneModel returns a guard refusal as an error wrapping ErrGuard, and never panics.
+// CloneModel brings a real model file into a scratch root as an APFS clone
 // (cp -c, copy-on-write: the source is only read) or, for a small file, a
 // read-only copy. Never a symlink or hard link. The result is made
 // read-only and checked: a regular file with one link, a different inode
 // from the source.
-func cloneModel(src, dst string) error {
+func CloneModel(src, dst string) error {
 	if err := checkWrite(dst); err != nil {
 		return err
 	}
@@ -309,121 +321,6 @@ func assertDetached(src, dst string) error {
 	return nil
 }
 
-// --- tests --------------------------------------------------------------------------------
-
-// TestFSGuard tries every forbidden write and shows the guard refuses it.
-func TestFSGuard(t *testing.T) {
-	root := scratchDir(t)
-	outside := t.TempDir() // never registered
-	victim := filepath.Join(outside, "victim.bin")
-	if err := os.WriteFile(victim, []byte("precious"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	refused := func(label string, err error) {
-		t.Helper()
-		if !errors.Is(err, ErrGuard) {
-			t.Errorf("%s: not refused (%v)", label, err)
-		}
-	}
-
-	// Outside every scratch root.
-	refused("write outside", guardedWriteFile(filepath.Join(outside, "x"), []byte("x"), 0o600))
-	refused("create outside", func() error { _, err := guardedCreate(filepath.Join(outside, "y")); return err }())
-	refused("sparse outside", guardedSparse(filepath.Join(outside, "z"), 10))
-	refused("mkdir outside", guardedMkdirAll(filepath.Join(outside, "d"), 0o700))
-	refused("remove outside", guardedRemoveAll(victim))
-	refused("dot-dot escape", guardedWriteFile(filepath.Join(root, "..", filepath.Base(outside), "victim.bin"), []byte("x"), 0o600))
-	// A directory symlink inside the scratch root that points outside it.
-	link := filepath.Join(root, "models")
-	os.Symlink(outside, link)
-	refused("through a directory symlink", guardedWriteFile(filepath.Join(link, "victim.bin"), []byte("x"), 0o600))
-	refused("new file under a directory symlink", guardedSparse(filepath.Join(link, "new.bin"), 10))
-
-	// A symlink to a file, even one inside the root.
-	inner := filepath.Join(root, "inner.bin")
-	os.WriteFile(inner, []byte("inner"), 0o600)
-	fileLink := filepath.Join(root, "file-link.bin")
-	os.Symlink(victim, fileLink)
-	refused("write through a file symlink", guardedWriteFile(fileLink, []byte("x"), 0o600))
-	refused("create through a file symlink", func() error { _, err := guardedCreate(fileLink); return err }())
-	refused("append through a file symlink", func() error { _, err := guardedAppend(fileLink); return err }())
-	innerLink := filepath.Join(root, "inner-link.bin")
-	os.Symlink(inner, innerLink)
-	refused("symlink to a file in the root", guardedWriteFile(innerLink, []byte("x"), 0o600))
-
-	// A hard link: an existing file with more than one link.
-	hard := filepath.Join(root, "hard.bin")
-	if err := os.Link(inner, hard); err != nil {
-		t.Fatal(err)
-	}
-	refused("write to a hard link", guardedWriteFile(hard, []byte("x"), 0o600))
-	refused("write to the other name of a hard link", guardedWriteFile(inner, []byte("x"), 0o600))
-	refused("append to a hard link", func() error { _, err := guardedAppend(hard); return err }())
-
-	// The live root.
-	if live := liveRoot(); live != "" {
-		refused("write into the live root", checkWrite(filepath.Join(live, "models", "fsguard-probe")))
-		if _, err := registerScratch(filepath.Join(live, "models")); err == nil {
-			t.Error("the live root was accepted as a scratch root")
-		}
-	}
-
-	// Clones only: a model already linked in, or an existing destination,
-	// is refused; a clone or small copy is detached and read-only.
-	refused("clone over an existing entry", cloneModel(victim, fileLink))
-	model := filepath.Join(outside, "model.gguf")
-	os.WriteFile(model, []byte("weights"), 0o600)
-	dst := filepath.Join(root, "model.gguf")
-	if err := cloneModel(model, dst); err != nil {
-		t.Fatalf("clone: %v", err)
-	}
-	if fi, _ := os.Stat(dst); fi.Mode().Perm() != 0o400 {
-		t.Errorf("clone is %v, want read-only", fi.Mode().Perm())
-	}
-	refused("write to a read-only clone's link check", assertDetached(model, hard))
-	refused("a symlink presented as a clone", assertDetached(victim, fileLink))
-
-	// Nothing outside changed.
-	if b, _ := os.ReadFile(victim); string(b) != "precious" {
-		t.Fatalf("the victim file changed: %q", b)
-	}
-	if b, _ := os.ReadFile(model); string(b) != "weights" {
-		t.Fatalf("the source model changed: %q", b)
-	}
-	// Allowed writes still work.
-	if err := guardedWriteFile(filepath.Join(root, "ok.txt"), []byte("ok"), 0o600); err != nil {
-		t.Errorf("an allowed write was refused: %v", err)
-	}
-}
-
-// TestNoUnguardedWrites keeps every write in this package behind the guard:
-// only fsguard_test.go may call the os write functions directly.
-func TestNoUnguardedWrites(t *testing.T) {
-	files, _ := filepath.Glob("*_test.go")
-	forbidden := []string{"os.WriteFile(", "os.Create(", "os.OpenFile(", "os.Symlink(", "os.Link(", ".Truncate(",
-		"os.MkdirAll(", "os.Mkdir(", "os.Remove(", "os.RemoveAll(", "os.Rename(", "os.Chmod(", `"cp"`, "t.TempDir()"}
-	for _, f := range files {
-		if f == "fsguard_test.go" {
-			continue
-		}
-		b, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, line := range strings.Split(string(b), "\n") {
-			code := line
-			if j := strings.Index(code, "//"); j >= 0 {
-				code = code[:j]
-			}
-			for _, call := range forbidden {
-				if strings.Contains(code, call) {
-					t.Errorf("%s:%d: %s outside the guard: %s", f, i+1, strings.TrimSuffix(call, "("), strings.TrimSpace(line))
-				}
-			}
-		}
-	}
-}
-
 // The must* forms are for call sites that ignore os errors, as the tests
 // did before the guard: a guard refusal still stops the run (a panic fails
 // the test, or the whole run in TestMain), so it is never silent.
@@ -435,53 +332,64 @@ func mustGuard(err error) error {
 	return err
 }
 
-func mustWriteFile(path string, b []byte, perm os.FileMode) error {
+// WriteFile panics on a guard refusal and returns any other error. It is os.WriteFile behind the guard.
+func WriteFile(path string, b []byte, perm os.FileMode) error {
 	return mustGuard(guardedWriteFile(path, b, perm))
 }
 
-func mustCreate(path string) (*os.File, error) {
+// Create panics on a guard refusal and returns any other error. It is os.Create behind the guard.
+func Create(path string) (*os.File, error) {
 	f, err := guardedCreate(path)
 	return f, mustGuard(err)
 }
 
-func mustAppend(path string) (*os.File, error) {
+// Append panics on a guard refusal and returns any other error. It opens an existing file to append, behind the guard.
+func Append(path string) (*os.File, error) {
 	f, err := guardedAppend(path)
 	return f, mustGuard(err)
 }
 
-func mustOpenRW(path string) (*os.File, error) {
+// OpenRW panics on a guard refusal and returns any other error. It opens an existing file to read and write in place, behind the guard.
+func OpenRW(path string) (*os.File, error) {
 	f, err := guardedOpenRW(path)
 	return f, mustGuard(err)
 }
 
-func mustMkdirAll(path string, perm os.FileMode) error { return mustGuard(guardedMkdirAll(path, perm)) }
+// MkdirAll panics on a guard refusal and returns any other error. It is os.MkdirAll behind the guard.
+func MkdirAll(path string, perm os.FileMode) error { return mustGuard(guardedMkdirAll(path, perm)) }
 
-func mustChmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
+// Chmod panics on a guard refusal and returns any other error. It is os.Chmod behind the guard.
+func Chmod(path string, perm os.FileMode) error { return mustGuard(guardedChmod(path, perm)) }
 
-// mustSymlink plants a link in a scratch directory. Its target may be elsewhere.
-func mustSymlink(target, link string) error {
+// Symlink panics on a guard refusal and returns any other error.
+// Symlink plants a link in a scratch directory. Its target may be elsewhere.
+func Symlink(target, link string) error {
 	if err := mustGuard(checkWrite(filepath.Dir(link))); err != nil {
 		return err
 	}
 	return os.Symlink(target, link)
 }
 
-// mustRemoveLink removes a symlink a test planted in its scratch directory. The guard
+// RemoveLink panics on a guard refusal and returns any other error.
+// RemoveLink removes a symlink a test planted in its scratch directory. The guard
 // checks the link's own directory: its target is outside on purpose.
-func mustRemoveLink(path string) error {
+func RemoveLink(path string) error {
 	if err := mustGuard(checkWrite(filepath.Dir(path))); err != nil {
 		return err
 	}
 	return os.Remove(path)
 }
 
-func mustRemoveAll(path string) error { return mustGuard(guardedRemoveAll(path)) }
+// RemoveAll panics on a guard refusal and returns any other error. It is os.RemoveAll behind the guard.
+func RemoveAll(path string) error { return mustGuard(guardedRemoveAll(path)) }
 
-func mustGrow(path string, size int64) error { return mustGuard(guardedGrow(path, size)) }
+// Grow panics on a guard refusal and returns any other error. It makes a file at least size bytes long, behind the guard.
+func Grow(path string, size int64) error { return mustGuard(guardedGrow(path, size)) }
 
-// scratchTemp is os.MkdirTemp under the system temp directory, registered
+// ScratchTemp returns every failure, a refusal included, as an error.
+// ScratchTemp is os.MkdirTemp under the system temp directory, registered
 // as a scratch root.
-func scratchTemp(pattern string) (string, error) {
+func ScratchTemp(pattern string) (string, error) {
 	dir, err := os.MkdirTemp("", pattern)
 	if err != nil {
 		return "", err
@@ -489,10 +397,11 @@ func scratchTemp(pattern string) (string, error) {
 	return registerScratch(dir)
 }
 
-// assertNoLinks walks a scratch root after the fixture is built: no symlink
+// AssertNoLinks returns what it finds as an error wrapping ErrGuard, and never panics.
+// AssertNoLinks walks a scratch root after the fixture is built: no symlink
 // and no file sharing its inode anywhere in it, so nothing a gateway writes
 // there can reach another file.
-func assertNoLinks(root string) error {
+func AssertNoLinks(root string) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err

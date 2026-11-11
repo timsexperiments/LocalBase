@@ -1,6 +1,8 @@
 package contract
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"math"
@@ -12,10 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"crypto/sha256"
-	"encoding/hex"
-
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 const searchModel = "search-tiny"
@@ -38,7 +39,7 @@ func addEmbeddingModel(t *testing.T, e *e2e) {
 		"inputModalities": []string{"text"}, "outputModalities": []string{"text"}, "contextWindowTokens": 4096, "capabilities": []string{"embeddings"},
 		"llmRuntime":       map[string]any{"capability": "embedding-only", "pooling": "last", "dimensions": map[string]any{"minimum": 64, "maximum": 64}},
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture."})
-	if err := mustWriteFile(filepath.Join(e.root, "catalog.d", searchModel+".json"), entry, 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(e.root, "catalog.d", searchModel+".json"), entry, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "models", "backend", searchModel, "--set", "backup-fake"); r.code != 0 {
@@ -53,7 +54,7 @@ func addEmbeddingModel(t *testing.T, e *e2e) {
 		}
 	}
 	cfg := filepath.Join(e.outDir, "search-config.toml")
-	if err := mustWriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+	if err := fsguard.WriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "config", "apply", "--file", cfg, "--restart", "never"); r.code != 0 {
@@ -113,7 +114,7 @@ func signInLocally(t *testing.T, e *e2e) string {
 // fake backend: how it calls, what comes back, what it must handle, and that no text stays.
 func TestSearchContract(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	addEmbeddingModel(t, e)
 	chatOnly := e.key
@@ -126,11 +127,11 @@ func TestSearchContract(t *testing.T) {
 		another = "PLANTEDPASSAGE tax forms are due in the spring"
 		query   = "PLANTEDQUERY where does the river run"
 	)
-	embed := func(headers map[string]string, base string, inputs ...string) *Resp {
+	embed := func(headers map[string]string, base string, inputs ...string) *harness.Resp {
 		body, _ := json.Marshal(map[string]any{"model": searchModel, "input": inputs})
-		return do(t, "POST", base, headers, string(body))
+		return harness.Do(t, "POST", base, headers, string(body))
 	}
-	vectors := func(t *testing.T, r *Resp) [][]float64 {
+	vectors := func(t *testing.T, r *harness.Resp) [][]float64 {
 		t.Helper()
 		if r.Status != 200 {
 			t.Fatalf("%d %s", r.Status, r.Body)
@@ -151,7 +152,7 @@ func TestSearchContract(t *testing.T) {
 
 	t.Run("a model that isn't selected doesn't exist to the API", func(t *testing.T) {
 		body := `{"model":"backup-other-model","input":"x"}`
-		if r := do(t, "POST", e.base+"/v1/embeddings", bearer(e.key), body); r.Status != 404 || !strings.Contains(string(r.Body), "model_not_found") {
+		if r := harness.Do(t, "POST", e.base+"/v1/embeddings", harness.Bearer(e.key), body); r.Status != 404 || !strings.Contains(string(r.Body), "model_not_found") {
 			t.Errorf("%d %s", r.Status, r.Body)
 		}
 	})
@@ -164,25 +165,25 @@ func TestSearchContract(t *testing.T) {
 
 	var docs [][]float64
 	t.Run("one vector per input, in order, and they rank", func(t *testing.T) {
-		docs = vectors(t, embed(bearer(e.key), e.base+"/v1/embeddings", about, unlike, another))
+		docs = vectors(t, embed(harness.Bearer(e.key), e.base+"/v1/embeddings", about, unlike, another))
 		if len(docs) != 3 || len(docs[0]) == 0 {
 			t.Fatalf("%v", docs)
 		}
-		q := vectors(t, embed(bearer(e.key), e.base+"/v1/embeddings", query))[0]
+		q := vectors(t, embed(harness.Bearer(e.key), e.base+"/v1/embeddings", query))[0]
 		if !(cosine(q, docs[0]) > cosine(q, docs[1]) && cosine(q, docs[0]) > cosine(q, docs[2])) {
 			t.Errorf("the passage sharing the most words should rank first: %v %v %v", cosine(q, docs[0]), cosine(q, docs[1]), cosine(q, docs[2]))
 		}
 	})
 
 	t.Run("a passage that is too long says so", func(t *testing.T) {
-		r := embed(bearer(e.key), e.base+"/v1/embeddings", "fine", "fake:batch")
+		r := embed(harness.Bearer(e.key), e.base+"/v1/embeddings", "fine", "fake:batch")
 		if r.Status != 400 || !strings.Contains(string(r.Body), "context_length_exceeded") || !strings.Contains(string(r.Body), "this embedding model accepts") {
 			t.Errorf("%d %s", r.Status, r.Body)
 		}
 	})
 
 	t.Run("without the permission", func(t *testing.T) {
-		if r := embed(bearer(chatOnly), e.base+"/v1/embeddings", "x"); r.Status != 403 {
+		if r := embed(harness.Bearer(chatOnly), e.base+"/v1/embeddings", "x"); r.Status != 403 {
 			t.Errorf("%d %s", r.Status, r.Body)
 		}
 	})

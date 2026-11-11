@@ -11,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // CLI contract: the same command through both binaries, on twin scratch
@@ -27,20 +31,20 @@ var (
 func removeGoCLI() {
 	for _, p := range []string{goCLIPath, goLabCLIPath} {
 		if p != "" {
-			_ = guardedRemoveAll(filepath.Dir(p))
+			_ = fsguard.RemoveAll(filepath.Dir(p))
 		}
 	}
 }
 
 func goCLI(t *testing.T) string {
 	goCLIOnce.Do(func() {
-		dir, err := scratchTemp("lbgo-cli-bin-")
+		dir, err := fsguard.ScratchTemp("lbgo-cli-bin-")
 		if err != nil {
 			goCLIErr = err
 			return
 		}
 		goCLIPath = filepath.Join(dir, "local-base")
-		if out, err := exec.Command("go", goBuildArgs(goCLIPath)...).CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", harness.GoBuildArgs(goCLIPath)...).CombinedOutput(); err != nil {
 			goCLIErr = err
 			t.Log(string(out))
 		}
@@ -61,13 +65,13 @@ var (
 // file (onFixedHost). Built once, like goCLI.
 func goLabCLI(t *testing.T) string {
 	goLabCLIOnce.Do(func() {
-		dir, err := scratchTemp("lbgo-cli-lab-bin-")
+		dir, err := fsguard.ScratchTemp("lbgo-cli-lab-bin-")
 		if err != nil {
 			goLabCLIErr = err
 			return
 		}
 		goLabCLIPath = filepath.Join(dir, "local-base")
-		args := goBuildArgs(goLabCLIPath)
+		args := harness.GoBuildArgs(goLabCLIPath)
 		args = append([]string{args[0], "-tags", "localbase_lab"}, args[1:]...)
 		if out, err := exec.Command("go", args...).CombinedOutput(); err != nil {
 			goLabCLIErr = err
@@ -93,7 +97,7 @@ func cleanEnv() []string {
 			env = append(env, kv)
 		}
 	}
-	return guarded(append(env, "LOCALBASE_CATALOG_FEED_URL=off", "NO_COLOR=1"))
+	return harness.Guarded(append(env, "LOCALBASE_CATALOG_FEED_URL=off", "NO_COLOR=1"))
 }
 
 func runCLI(t *testing.T, impl, root string, args ...string) cliResult {
@@ -108,12 +112,12 @@ func runCLIEnv(t *testing.T, impl, root string, env []string, args ...string) cl
 	var cmd *exec.Cmd
 	if impl == "ts" {
 		cmd = exec.Command("bun", append([]string{"run", "src/cli.ts"}, full...)...)
-		cmd.Dir = repoRoot()
+		cmd.Dir = testutil.RepoRoot(t)
 	} else {
 		cmd = exec.Command(goCLI(t), full...)
 	}
 	cmd.Env = cleanEnv()
-	cmd.Env = append(cmd.Env, coverEnv()...)
+	cmd.Env = append(cmd.Env, harness.CoverEnv()...)
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
 		cmd.Env = slices.DeleteFunc(cmd.Env, func(e string) bool { return strings.HasPrefix(e, name+"=") })
@@ -165,7 +169,7 @@ type cliCase struct {
 }
 
 func twinRoots(t *testing.T) (string, string) {
-	base := scratchDir(t)
+	base := fsguard.ScratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
 	return filepath.Join(base, "ts"), filepath.Join(base, "go")
 }
@@ -199,7 +203,7 @@ func requireTS(t *testing.T) {
 	if _, err := exec.LookPath("bun"); err != nil {
 		t.Skip("bun is not installed")
 	}
-	if *implFlag != "both" {
+	if harness.Impl() != "both" {
 		t.Skip("run with -impl=both")
 	}
 }
@@ -301,9 +305,9 @@ func TestCLIConfigure(t *testing.T) {
 	roots := [2]string{ts, gr}
 	msg := func(p string) bool { return p == ".error.message" }
 	tomlPath := filepath.Join(filepath.Dir(ts), "overrides.toml")
-	mustWriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
+	fsguard.WriteFile(tomlPath, []byte("ctxSize = 65536\nparallel = 2\nselectedSttModels = []\nactiveSttModel = \"\"\n[memory.systemReserve]\npercent = 20\n"), 0o600)
 	badToml := filepath.Join(filepath.Dir(ts), "bad.toml")
-	mustWriteFile(badToml, []byte("bogus = 1\n"), 0o600)
+	fsguard.WriteFile(badToml, []byte("bogus = 1\n"), 0o600)
 	for _, c := range []cliCase{
 		{args: []string{"--json", "configure"}, skip: msg},
 		{args: []string{"--json", "configure", "--defaults", "--no-create-key"}},
@@ -333,8 +337,8 @@ func TestCLIConfigure(t *testing.T) {
 // file: every line Go wrote must pass the TS event schema.
 func TestTSReadsGoLogs(t *testing.T) {
 	requireTS(t)
-	var goT *Target
-	for _, tg := range targets {
+	var goT *harness.Target
+	for _, tg := range harness.Targets(t) {
 		if tg.Name == "go" {
 			goT = tg
 		}
@@ -343,10 +347,10 @@ func TestTSReadsGoLogs(t *testing.T) {
 		t.Skip("no Go target")
 	}
 	// Make a few events of different kinds.
-	do(t, "GET", goT.BaseURL+"/v1/models", bearer(goT.Key), "")
-	do(t, "GET", goT.BaseURL+"/nope", bearer(goT.Key), "")
-	do(t, "POST", goT.BaseURL+"/v1/chat/completions", bearer(goT.Key), `{"model":"x","messages":[]}`)
-	do(t, "GET", goT.BaseURL+"/app/models", nil, "")
+	harness.Do(t, "GET", goT.BaseURL+"/v1/models", harness.Bearer(goT.Key), "")
+	harness.Do(t, "GET", goT.BaseURL+"/nope", harness.Bearer(goT.Key), "")
+	harness.Do(t, "POST", goT.BaseURL+"/v1/chat/completions", harness.Bearer(goT.Key), `{"model":"x","messages":[]}`)
+	harness.Do(t, "GET", goT.BaseURL+"/app/models", nil, "")
 	raw, err := os.ReadFile(filepath.Join(goT.Root, "logs", "events.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -371,12 +375,12 @@ func TestTSReadsGoLogs(t *testing.T) {
 // file must give the same events.
 func TestCLILogs(t *testing.T) {
 	requireTS(t)
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" {
 			continue
 		}
-		do(t, "GET", tg.BaseURL+"/v1/models", bearer(tg.Key), "")
-		do(t, "GET", tg.BaseURL+"/nope", bearer(tg.Key), "")
+		harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer(tg.Key), "")
+		harness.Do(t, "GET", tg.BaseURL+"/nope", harness.Bearer(tg.Key), "")
 		for _, args := range [][]string{{"--json", "logs"}, {"--json", "logs", "--limit", "2"}, {"--json", "logs", "--level", "warn"},
 			{"--json", "logs", "--runtime", "gateway", "--since", "2020-01-01T00:00:00Z"}, {"--json", "logs", "--limit", "0"},
 			{"--json", "logs", "--level", "loud"}} {
@@ -400,7 +404,7 @@ func TestCLILogs(t *testing.T) {
 // TestCLISmoke runs each CLI's smoke check against its own gateway.
 func TestCLISmoke(t *testing.T) {
 	requireTS(t)
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" || !tg.RealModel {
 			continue
 		}
