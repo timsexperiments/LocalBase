@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A real OpenTelemetry Collector (LOCALBASE_CONTRACT_OTELCOL: a pinned
@@ -30,8 +32,8 @@ func startOtelcol(t *testing.T, bin string) (endpoint, out string, stop func()) 
 	if v, err := exec.Command(bin, "--version").Output(); err != nil || !strings.Contains(string(v), otelcolVersion) {
 		t.Fatalf("otelcol %s required: %s %v", otelcolVersion, v, err)
 	}
-	dir := scratchDir(t)
-	port := freePort()
+	dir := fsguard.ScratchDir(t)
+	port := testutil.FreePort()
 	out = filepath.Join(dir, "export.json")
 	cfg := fmt.Sprintf(`receivers:
   otlp:
@@ -54,9 +56,9 @@ service:
       exporters: [file]
 `, port, out)
 	cfgPath := filepath.Join(dir, "config.yaml")
-	mustWriteFile(cfgPath, []byte(cfg), 0o600)
+	fsguard.WriteFile(cfgPath, []byte(cfg), 0o600)
 	cmd := exec.Command(bin, "--config", cfgPath)
-	logf, _ := mustCreate(filepath.Join(dir, "otelcol.log"))
+	logf, _ := fsguard.Create(filepath.Join(dir, "otelcol.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

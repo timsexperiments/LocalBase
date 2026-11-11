@@ -5,15 +5,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // On the real binary: a fresh root's database is private, and serve fixes a loose
 // older root at startup. Go only: TS leaves its database under the umask.
 func TestRootFilesArePrivate(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
@@ -31,14 +34,14 @@ func TestRootFilesArePrivate(t *testing.T) {
 		t.Errorf("fresh database: %o", m)
 	}
 	backup := db + ".bak-test"
-	mustWriteFile(backup, []byte("copy"), 0o644)
+	fsguard.WriteFile(backup, []byte("copy"), 0o644)
 	log := filepath.Join(e.root, "logs", "older.jsonl")
-	mustMkdirAll(filepath.Dir(log), 0o755)
-	mustWriteFile(log, []byte("x"), 0o644)
+	fsguard.MkdirAll(filepath.Dir(log), 0o755)
+	fsguard.WriteFile(log, []byte("x"), 0o644)
 	for _, p := range []string{db, backup, log} {
-		mustChmod(p, 0o644)
+		fsguard.Chmod(p, 0o644)
 	}
-	mustChmod(filepath.Dir(log), 0o755)
+	fsguard.Chmod(filepath.Dir(log), 0o755)
 	e.serve("--no-auth", "--no-llm", "--no-stt", "--no-tts", "--no-image", "--no-video")
 	defer e.stop()
 	for _, p := range []string{db, backup, log} {

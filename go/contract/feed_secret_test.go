@@ -7,13 +7,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A signed feed URL carries its secret in the query, under whatever name the signer chose, and the
 // log is something people share. So the log names the feed's address and not the query, whether
 // the refresh worked or failed. The name here isn't one the log's redaction knows.
 func TestAFeedURLsQueryStaysOutOfTheLog(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	const planted = "planted-feed-query-value"
@@ -26,7 +29,7 @@ func TestAFeedURLsQueryStaysOutOfTheLog(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { c.answer(w) }), false)
-			tmp := scratchDir(t)
+			tmp := fsguard.ScratchDir(t)
 			e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
 				env: []string{"LOCALBASE_CATALOG_FEED_URL=" + srv.URL + "/feed.json?signature=" + planted}}
 			if r := e.cli(nil, "--json", "init"); r.code != 0 {

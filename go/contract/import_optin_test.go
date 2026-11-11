@@ -7,19 +7,22 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // On the host, the opt-in to private sources works per import and as a setting, and
 // it can be turned off again. Local paths need no opt-in here.
 func TestImportOptInFromTheCLI(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("Go-only feature")
 	}
 	weights := ggufFile(t, "qwen3", nil, 2048)
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, "m.gguf", time.Time{}, strings.NewReader(string(weights)))
 	}), false)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
@@ -57,7 +60,7 @@ func TestImportOptInFromTheCLI(t *testing.T) {
 	}
 	// A file on this machine stays a CLI import.
 	local := filepath.Join(tmp, "local.gguf")
-	mustWriteFile(local, weights, 0o600)
+	fsguard.WriteFile(local, weights, 0o600)
 	if r := e.cli(nil, "--json", "models", "import", local, "--task", "chat", "--id", "local"); r.code != 0 {
 		t.Fatalf("local path: %s %s", r.stdout, r.stderr)
 	}

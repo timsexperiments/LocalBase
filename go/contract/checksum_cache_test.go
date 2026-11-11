@@ -10,12 +10,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // After a Go install re-records a file's identity, TS's own verifier still trusts the
 // checksum cache, so rolling back does not cost a hash or lose anything.
 func TestChecksumCacheStaysValidForTS(t *testing.T) {
-	if *implFlag != "both" {
+	if harness.Impl() != "both" {
 		t.Skip("needs -impl=both")
 	}
 	if _, err := exec.LookPath("bun"); err != nil {
@@ -23,7 +27,7 @@ func TestChecksumCacheStaysValidForTS(t *testing.T) {
 	}
 	data := []byte(strings.Repeat("model bytes ", 500))
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveBytes(w, r, data) }), false)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
@@ -38,8 +42,8 @@ func TestChecksumCacheStaysValidForTS(t *testing.T) {
 		"inputModalities": []string{"audio"}, "outputModalities": []string{"text"}, "capabilities": []string{"speech-to-text"},
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 	})
-	mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
-	mustWriteFile(filepath.Join(e.root, "catalog.d", "cache-stt.json"), entry, 0o600)
+	fsguard.MkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
+	fsguard.WriteFile(filepath.Join(e.root, "catalog.d", "cache-stt.json"), entry, 0o600)
 	allowPrivateImports(t, e.root)
 	if r := e.cli(nil, "--non-interactive", "models", "install", "cache-stt"); r.code != 0 {
 		t.Fatalf("install: %s", r.stderr)
@@ -49,7 +53,7 @@ func TestChecksumCacheStaysValidForTS(t *testing.T) {
 console.log(await verifyAuthoritativeFile(%q, { filename: "c.bin", expectedSizeBytes: %d, sha256: %q }, %q));`,
 		filepath.Join(dir, "c.bin"), len(data), digest, dir)
 	cmd := exec.Command("bun", "-e", script)
-	cmd.Dir = repoRoot()
+	cmd.Dir = testutil.RepoRoot(t)
 	cmd.Env = cleanEnv()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

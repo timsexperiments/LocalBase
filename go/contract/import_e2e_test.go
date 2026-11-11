@@ -25,6 +25,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestModelImportAcceptance runs the acceptance checks of
@@ -75,7 +77,7 @@ func ggufFile(t *testing.T, arch string, extra map[string]any, size int) []byte 
 	for k, v := range extra {
 		kv[k] = v
 	}
-	p := filepath.Join(scratchDir(t), "f.gguf")
+	p := filepath.Join(fsguard.ScratchDir(t), "f.gguf")
 	if err := testutil.GGUF(p, kv, size); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +123,7 @@ func (e *e2e) scan(label, text string) {
 func (e *e2e) command(args ...string) *exec.Cmd {
 	if e.impl == "ts" {
 		cmd := exec.Command("bun", append([]string{"run", "src/cli.ts"}, args...)...)
-		cmd.Dir = repoRoot()
+		cmd.Dir = testutil.RepoRoot(e.t)
 		return cmd
 	}
 	if len(args) < 2 || args[0] != "--root" {
@@ -165,34 +167,34 @@ func (e *e2e) json(args ...string) map[string]any {
 }
 
 // do sends an API request and scans the response for credentials.
-func (e *e2e) do(method, path, body string) *Resp {
+func (e *e2e) do(method, path, body string) *harness.Resp {
 	e.t.Helper()
-	h := bearer(e.key)
+	h := harness.Bearer(e.key)
 	if e.noAuth {
 		h = map[string]string{}
 	}
-	r := do(e.t, method, e.base+path, h, body)
+	r := harness.Do(e.t, method, e.base+path, h, body)
 	e.scan(method+" "+path, string(r.Body))
 	return r
 }
 
 func (e *e2e) serve(extra ...string) {
 	e.t.Helper()
-	port, llmPort := freePort(), freePort()
+	port, llmPort := testutil.FreePort(), testutil.FreePort()
 	args := append([]string{"--root", e.root, "serve", "--host", "127.0.0.1", "--port", fmt.Sprint(port), "--llm-port", fmt.Sprint(llmPort),
-		"--stt-port", fmt.Sprint(freePort()), "--tts-port", fmt.Sprint(freePort()), "--image-port", fmt.Sprint(freePort()), "--video-port", fmt.Sprint(freePort())}, extra...)
+		"--stt-port", fmt.Sprint(testutil.FreePort()), "--tts-port", fmt.Sprint(testutil.FreePort()), "--image-port", fmt.Sprint(testutil.FreePort()), "--video-port", fmt.Sprint(testutil.FreePort())}, extra...)
 	if e.noLLMPortFlag {
 		args = slices.DeleteFunc(args, func(a string) bool { return a == "--llm-port" || a == fmt.Sprint(llmPort) })
 	}
 	cmd := e.command(args...)
 	cmd.Env = append(cleanEnv(), e.env...)
-	logf, _ := mustCreate(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
+	logf, _ := fsguard.Create(filepath.Join(e.outDir, fmt.Sprintf("serve-%d.log", port)))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		e.t.Fatal(err)
 	}
-	watchGateway(cmd.Process.Pid)
+	harness.WatchGateway(cmd.Process.Pid)
 	e.base = fmt.Sprintf("http://127.0.0.1:%d", port)
 	stopped := false
 	e.kill = func() {
@@ -237,14 +239,14 @@ func (e *e2e) serve(extra ...string) {
 	}
 }
 
-func (e *e2e) chat(model string) *Resp {
+func (e *e2e) chat(model string) *harness.Resp {
 	return e.do("POST", "/v1/chat/completions", `{"model":"`+model+`","messages":[{"role":"user","content":"fake:reply hello there"}]}`)
 }
 
 // chatRetrying retries a transient insufficient_memory 503 as a client
 // honouring Retry-After would: a small CI runner's free memory moves with
 // everything else on it, while admission itself stays on.
-func (e *e2e) chatRetrying(model string) *Resp {
+func (e *e2e) chatRetrying(model string) *harness.Resp {
 	for i := 0; ; i++ {
 		r := e.chat(model)
 		if r.Status != 503 || !strings.Contains(string(r.Body), "insufficient_memory") || i == 5 {
@@ -276,7 +278,7 @@ func (e *e2e) selection(model string) map[string]any {
 	return r.JSON(e.t)["selection"].(map[string]any)
 }
 
-func wantCode(t *testing.T, r *Resp, status int, code string) {
+func wantCode(t *testing.T, r *harness.Resp, status int, code string) {
 	t.Helper()
 	if r.Status != status {
 		t.Fatalf("want %d %s, got %d %s", status, code, r.Status, r.Body)
@@ -307,13 +309,13 @@ func warningCodes(f map[string]any) []string {
 }
 
 func TestModelImportAcceptance(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("Go-only feature")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 
@@ -399,7 +401,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	for _, s := range []*httptest.Server{tlsSource, tlsHF} {
 		caPEM = append(caPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.Certificate().Raw})...)
 	}
-	mustWriteFile(caFile, caPEM, 0o644)
+	fsguard.WriteFile(caFile, caPEM, 0o644)
 
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp,
 		env: []string{"HF_ENDPOINT=" + hf.URL, "LOCALBASE_LLAMA_SERVER=" + fake, "LOCALBASE_DEVICE_ID=device-one",
@@ -432,7 +434,7 @@ func TestModelImportAcceptance(t *testing.T) {
 		// runners; memory admission itself stays on (an override must not
 		// bypass it, see the AC5 memory step).
 		cfg := filepath.Join(tmp, "small.toml")
-		mustWriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
+		fsguard.WriteFile(cfg, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o644)
 		if r := e.cli(nil, "--non-interactive", "configure", "--config", cfg); r.code != 0 {
 			t.Fatalf("configure: %s%s", r.stdout, r.stderr)
 		}
@@ -561,15 +563,15 @@ func TestModelImportAcceptance(t *testing.T) {
 
 	step("AC2 a GGUF extension is not evidence; an incomplete multi-file model names its missing files", func(t *testing.T) {
 		dir := filepath.Join(tmp, "split")
-		mustMkdirAll(dir, 0o755)
+		fsguard.MkdirAll(dir, 0o755)
 		for i := 1; i <= 2; i++ {
-			mustWriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
+			fsguard.WriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), ggufFile(t, "qwen3", map[string]any{"split.count": 3, "split.no": i - 1}, 4096), 0o644)
 		}
 		r := e.cli(nil, "models", "import", filepath.Join(dir, "big-00001-of-00003.gguf"), "--task", "chat")
 		if r.code == 0 || !strings.Contains(r.stdout+r.stderr, "big-00003-of-00003.gguf") {
 			t.Fatalf("incomplete split: %s%s", r.stdout, r.stderr)
 		}
-		mustWriteFile(filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), []byte("not a model at all, only a name"), 0o644)
+		fsguard.WriteFile(filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), []byte("not a model at all, only a name"), 0o644)
 		e.json("models", "import", filepath.Join(tmp, "llama-3-8b-instruct.Q4_K_M.gguf"), "--task", "chat", "--id", "named-only")
 		sel := e.json("models", "backend", "named-only")["selection"].(map[string]any)
 		if sel["backendId"] != "" {
@@ -634,7 +636,7 @@ func TestModelImportAcceptance(t *testing.T) {
 					"precision": map[string]any{}, "contextLength": map[string]any{}, "dimensions": map[string]any{}, "artifacts": artifacts}}}
 			b, _ := json.Marshal(def)
 			file := filepath.Join(tmp, id+".json")
-			mustWriteFile(file, b, 0o644)
+			fsguard.WriteFile(file, b, 0o644)
 			return e.json("models", "add-definition", file)["selection"].(map[string]any)
 		}
 		local := map[string]any{"kind": "local"}
@@ -714,7 +716,7 @@ func TestModelImportAcceptance(t *testing.T) {
 			"platforms":     []any{map[string]any{"os": goruntime.GOOS, "arch": map[string]string{"arm64": "arm64", "amd64": "x64"}[goruntime.GOARCH], "accelerator": "cpu"}},
 			"launch": map[string]any{"command": fake, "args": []string{"--host", "{host}", "--port", "{port}", "-m", "{model}"}, "healthPath": "/health",
 				"memory": map[string]any{"weightsFactor": factor, "overheadGb": 0, "assumption": "weights times the factor; declared for this test"}}})
-		mustWriteFile(p, b, 0o644)
+		fsguard.WriteFile(p, b, 0o644)
 		return p
 	}
 
@@ -757,7 +759,7 @@ func TestModelImportAcceptance(t *testing.T) {
 			}
 		}
 		file := filepath.Join(tmp, "mystery-export.json")
-		mustWriteFile(file, []byte(exp.stdout), 0o644)
+		fsguard.WriteFile(file, []byte(exp.stdout), 0o644)
 		// The exported bytes: no selection, device id (override or hash) or credential.
 		exported, _ := os.ReadFile(file)
 		e.scan("exported model", string(exported))
@@ -941,7 +943,7 @@ func TestModelImportAcceptance(t *testing.T) {
 	})
 
 	step("rollback: TS opens the database Go wrote", func(t *testing.T) {
-		if _, err := exec.LookPath("bun"); err != nil || *implFlag != "both" {
+		if _, err := exec.LookPath("bun"); err != nil || harness.Impl() != "both" {
 			t.Skip("needs bun and -impl=both")
 		}
 		if r := runCLI(t, "ts", e.root, "--json", "keys", "list"); r.code != 0 {

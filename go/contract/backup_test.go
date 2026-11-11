@@ -22,6 +22,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 const backupModel = "backup-tiny"
@@ -32,7 +34,7 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 	t.Helper()
 	fake := filepath.Join(tmp, "fakebackend")
 	if _, err := os.Stat(fake); err != nil {
-		if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+		if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 			t.Fatalf("build fakebackend: %v %s", err, out)
 		}
 	}
@@ -47,12 +49,12 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 		"launch": map[string]any{"command": fake, "args": []string{"--host", "{host}", "--port", "{port}", "-m", "{model}"}, "healthPath": "/health",
 			"memory": map[string]any{"weightsFactor": 1, "overheadGb": 0, "assumption": "a fake backend holds next to nothing"}}})
 	defPath := filepath.Join(tmp, name+"-backend.json")
-	if err := mustWriteFile(defPath, def, 0o600); err != nil {
+	if err := fsguard.WriteFile(defPath, def, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	e.json("backends", "add", "--file", defPath)
 	models := filepath.Join(e.root, "models", "llm")
-	if err := mustMkdirAll(models, 0o700); err != nil {
+	if err := fsguard.MkdirAll(models, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(models, "backup-tiny.gguf")
@@ -69,10 +71,10 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 		"artifacts":       []any{map[string]any{"sourcePath": "backup-tiny.gguf", "filename": "backup-tiny.gguf", "expectedSizeBytes": len(data), "sha256": hex.EncodeToString(sum[:]), "role": "primary"}},
 		"inputModalities": []string{"text"}, "outputModalities": []string{"text"}, "contextWindowTokens": 4096, "capabilities": []string{"text-generation"},
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture."})
-	if err := mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(e.root, "catalog.d"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(e.root, "catalog.d", backupModel+".json"), entry, 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(e.root, "catalog.d", backupModel+".json"), entry, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	show := e.cli(nil, "config", "show")
@@ -91,7 +93,7 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 		}
 	}
 	cfg := filepath.Join(tmp, name+"-config.toml")
-	if err := mustWriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+	if err := fsguard.WriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "config", "apply", "--file", cfg, "--restart", "never"); r.code != 0 {
@@ -106,7 +108,7 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 
 func backupGoOnly(t *testing.T) {
 	t.Helper()
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("Go-only feature")
 	}
 }
@@ -115,7 +117,7 @@ func backupGoOnly(t *testing.T) {
 // root.Open's owner checks, and serves a chat request with the fake backend.
 func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	one := backupRoot(t, tmp, "root-one")
 	one.serve()
 	if r := one.chat(backupModel); r.Status != 200 {
@@ -124,7 +126,7 @@ func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 
 	// While it serves: a backup does not need the gateway stopped.
 	file := filepath.Join(tmp, "out", "b"+backup.Extension)
-	if err := mustMkdirAll(filepath.Dir(file), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	made := one.cli(nil, "backup", "--output", file)
@@ -181,10 +183,10 @@ func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mustMkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := two.chat(backupModel); r.Status != 200 {
@@ -193,7 +195,7 @@ func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 	if !strings.Contains(string(two.do("GET", "/v1/models", "").Body), backupModel) {
 		t.Error("the restored catalog entry isn't listed")
 	}
-	stale := do(t, "POST", two.base+"/v1/chat/completions", bearer("lb_notAKeyThisRootEverHad0000000000"), `{"model":"`+backupModel+`","messages":[]}`)
+	stale := harness.Do(t, "POST", two.base+"/v1/chat/completions", harness.Bearer("lb_notAKeyThisRootEverHad0000000000"), `{"model":"`+backupModel+`","messages":[]}`)
 	if stale.Status != 401 {
 		t.Errorf("a key it never had: %d", stale.Status)
 	}
@@ -203,7 +205,7 @@ func TestBackupRestoresIntoFreshRootAndServes(t *testing.T) {
 // without secrets must start, and must hold none of them.
 func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	one := backupRoot(t, tmp, "root-one")
 	const oidc, smtp, header = "PLANTED_OIDC_SECRET_77", "PLANTED_SMTP_SECRET_77", "PLANTED_HEADER_SECRET_77"
 	plants := map[string]string{
@@ -215,10 +217,10 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	}
 	for name, body := range plants {
 		p := filepath.Join(one.root, name)
-		if err := mustMkdirAll(filepath.Dir(p), 0o700); err != nil {
+		if err := fsguard.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := mustWriteFile(p, []byte(body), 0o600); err != nil {
+		if err := fsguard.WriteFile(p, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -281,10 +283,10 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mustMkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	two.serve()
@@ -296,7 +298,7 @@ func TestRestoreWithoutSecretsStarts(t *testing.T) {
 
 func TestBackupClassifiesEveryRootEntry(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	e.serve()
 	defer e.stop()
@@ -334,7 +336,7 @@ func TestBackupClassifiesEveryRootEntry(t *testing.T) {
 
 func TestBackupRestoreCLI(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	file := filepath.Join(tmp, "b"+backup.Extension)
 	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
@@ -346,19 +348,19 @@ func TestBackupRestoreCLI(t *testing.T) {
 
 	// A root that fails the checks a gateway gets isn't backed up, and says why.
 	access := filepath.Join(e.root, "email-delivery.json")
-	if err := mustWriteFile(access, []byte(`{}`), 0o600); err != nil {
+	if err := fsguard.WriteFile(access, []byte(`{}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustChmod(access, 0o666); err != nil {
+	if err := fsguard.Chmod(access, 0o666); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "backup", "--dry-run"); r.code == 0 || !strings.Contains(r.stderr+r.stdout, "other users can change it") {
 		t.Errorf("an unsafe root: %d %s%s", r.code, r.stdout, r.stderr)
 	}
-	if err := mustChmod(access, 0o600); err != nil {
+	if err := fsguard.Chmod(access, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustRemoveAll(access); err != nil {
+	if err := fsguard.RemoveAll(access); err != nil {
 		t.Fatal(err)
 	}
 
@@ -408,7 +410,7 @@ func TestBackupRestoreCLI(t *testing.T) {
 
 func TestRestoreWarnsAboutBusyPorts(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -428,14 +430,14 @@ func TestRestoreWarnsAboutBusyPorts(t *testing.T) {
 			line = fmt.Sprintf("port = %d", busy)
 		}
 		if section == "[runtime]" && strings.HasPrefix(line, "port = ") {
-			line = fmt.Sprintf("port = %d", freePort())
+			line = fmt.Sprintf("port = %d", testutil.FreePort())
 		}
 		if section == "[runtime]" && strings.HasPrefix(line, "sttPort = ") {
-			line = fmt.Sprintf("sttPort = %d", freePort())
+			line = fmt.Sprintf("sttPort = %d", testutil.FreePort())
 		}
 		out = append(out, line)
 	}
-	if err := mustWriteFile(cfg, []byte(strings.Join(out, "\n")), 0o600); err != nil {
+	if err := fsguard.WriteFile(cfg, []byte(strings.Join(out, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "config", "apply", "--file", cfg, "--restart", "never"); r.code != 0 {
@@ -499,15 +501,15 @@ func mustOpenRoot(t *testing.T, dir string) *root.Root {
 
 func TestBeforeRestoreIsNeverRead(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	const planted = "PLANTED_OLD_SECRET_FROM_BEFORE_RESTORE"
 	old := filepath.Join(e.root, ".before-restore-20260101-000000")
-	if err := mustMkdirAll(filepath.Join(old, "credentials"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(old, "credentials"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"ui-access.json", "email-delivery.json", filepath.Join("credentials", "auth-profiles.json"), "local-base.db"} {
-		if err := mustWriteFile(filepath.Join(old, name), []byte(planted), 0o600); err != nil {
+		if err := fsguard.WriteFile(filepath.Join(old, name), []byte(planted), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -566,11 +568,11 @@ func TestBeforeRestoreIsNeverRead(t *testing.T) {
 // before it asks the service manager anything, so nothing outside the scratch home is touched.
 func TestRestoreOverAForegroundGatewaySaysWhatStopsIt(t *testing.T) {
 	backupGoOnly(t)
-	home, _ := filepath.EvalSymlinks(scratchDir(t))
+	home, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, home, filepath.Join(".local", "share", "local-base"))
 	e.env = append(e.env, "HOME="+home)
 	file := filepath.Join(home, "out", "b"+backup.Extension)
-	if err := mustMkdirAll(filepath.Dir(file), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
@@ -599,7 +601,7 @@ func TestRestoreOverAForegroundGatewaySaysWhatStopsIt(t *testing.T) {
 
 func TestUninstallNamesBackups(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	if r := e.cli(nil, "backup"); r.code != 0 {
 		t.Fatalf("%s%s", r.stdout, r.stderr)
@@ -634,7 +636,7 @@ func TestUninstallNamesBackups(t *testing.T) {
 func bigBackupRoot(t *testing.T, tmp string) *e2e {
 	t.Helper()
 	e := backupRoot(t, tmp, "root")
-	if err := mustMkdirAll(filepath.Join(e.root, "voices"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(e.root, "voices"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 8 {
@@ -642,7 +644,7 @@ func bigBackupRoot(t *testing.T, tmp string) *e2e {
 		if _, err := rand.Read(clip); err != nil {
 			t.Fatal(err)
 		}
-		if err := mustWriteFile(filepath.Join(e.root, "voices", fmt.Sprintf("voice-aaaaaaaaaaa%d.wav", i)), clip, 0o600); err != nil {
+		if err := fsguard.WriteFile(filepath.Join(e.root, "voices", fmt.Sprintf("voice-aaaaaaaaaaa%d.wav", i)), clip, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -679,7 +681,7 @@ func noWorkingFiles(t *testing.T, place, when string) {
 // that can clean up, and named by doctor and the next run after one that can't.
 func TestInterruptedRunsLeaveNothing(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := bigBackupRoot(t, tmp)
 	file := filepath.Join(tmp, "b"+backup.Extension)
 	if r := e.cli(nil, "backup", "--exclude-secrets", "--output", file); r.code != 0 {
@@ -746,7 +748,7 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 	if err != nil {
 		t.Skip("needs lsof")
 	}
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	show := e.cli(nil, "config", "show")
 	lines := strings.Split(show.stdout, "\n")
@@ -761,7 +763,7 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 		}
 	}
 	cfg := filepath.Join(tmp, "open-hosts.toml")
-	if err := mustWriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+	if err := fsguard.WriteFile(cfg, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "config", "apply", "--file", cfg, "--restart", "never"); r.code != 0 {
@@ -786,10 +788,10 @@ func TestRestoredBackendStaysOnLoopback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mustMkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
+	if err := fsguard.MkdirAll(filepath.Join(two.root, "models", "llm"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(two.root, "models", "llm", "backup-tiny.gguf"), weights, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	two.serve()
@@ -836,7 +838,7 @@ func crashDatabase(t *testing.T, tmp, dbPath string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := mustWriteFile(work, body, 0o600); err != nil {
+	if err := fsguard.WriteFile(work, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", "file:"+work+"?_pragma=cache_size(8)")
@@ -863,7 +865,7 @@ func crashDatabase(t *testing.T, tmp, dbPath string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := mustWriteFile(to, b, 0o600); err != nil {
+		if err := fsguard.WriteFile(to, b, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -874,7 +876,7 @@ func crashDatabase(t *testing.T, tmp, dbPath string) {
 // keeps it, and an ordinary command clears the -wal without saying anything.
 func TestAKilledGatewaysWriteIsKeptAndNothingIsRefused(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	created := e.json("keys", "create", "--name", "leaked", "--scopes", "models:read")
 	leaked := created["secret"].(string)
@@ -927,7 +929,7 @@ func TestAKilledGatewaysWriteIsKeptAndNothingIsRefused(t *testing.T) {
 // After a crash, backup and restore refuse and name a command. That command has to work.
 func TestCrashedRootIsRefusedUntilStatusRecoversIt(t *testing.T) {
 	backupGoOnly(t)
-	tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+	tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 	e := backupRoot(t, tmp, "root")
 	file := filepath.Join(tmp, "b"+backup.Extension)
 	if r := e.cli(nil, "backup", "--output", file); r.code != 0 {
@@ -961,7 +963,7 @@ func TestCrashedRootEveryCommand(t *testing.T) {
 	backupGoOnly(t)
 	crashed := func(t *testing.T) (*e2e, string) {
 		t.Helper()
-		tmp, _ := filepath.EvalSymlinks(scratchDir(t))
+		tmp, _ := filepath.EvalSymlinks(fsguard.ScratchDir(t))
 		e := backupRoot(t, tmp, "root")
 		crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
 		return e, tmp
@@ -1017,7 +1019,7 @@ func TestCrashedRootEveryCommand(t *testing.T) {
 		}
 		crashDatabase(t, tmp, filepath.Join(e.root, "local-base.db"))
 		file := filepath.Join(tmp, "config.toml")
-		mustWriteFile(file, []byte(doc.stdout), 0o600)
+		fsguard.WriteFile(file, []byte(doc.stdout), 0o600)
 		if r := e.cli(nil, "config", "plan", "--file", file); r.code == 0 || !strings.Contains(r.stdout+r.stderr, "never finished") {
 			t.Errorf("plan: %d %s%s", r.code, r.stdout, r.stderr)
 		}

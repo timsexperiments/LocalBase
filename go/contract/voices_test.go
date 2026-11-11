@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // voiceClip is a 4 s 16 kHz PCM16 WAV of deterministic noise.
@@ -63,11 +66,11 @@ func voiceForm(parts ...voicePart) (string, string) {
 }
 
 // sameError requires the same status and error envelope on every target.
-func sameError(t *testing.T, label string, rs map[string]*Resp) {
+func sameError(t *testing.T, label string, rs map[string]*harness.Resp) {
 	t.Helper()
-	var first *Resp
+	var first *harness.Resp
 	var firstName string
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		r := rs[tg.Name]
 		if r.Status < 400 {
 			t.Errorf("%s: %s answered %d %s", label, tg.Name, r.Status, r.Body)
@@ -114,34 +117,34 @@ func TestDifferentialVoices(t *testing.T) {
 	type call struct {
 		method, path, key, ctype, body string
 	}
-	run := func(c func(tg *Target) call) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
+	run := func(c func(tg *harness.Target) call) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
 			x := c(tg)
 			h := map[string]string{}
 			if x.key != "" {
-				h = bearer(x.key)
+				h = harness.Bearer(x.key)
 			}
 			if x.ctype != "" {
 				h["Content-Type"] = x.ctype
 			}
-			out[tg.Name] = do(t, x.method, tg.BaseURL+x.path, h, x.body)
+			out[tg.Name] = harness.Do(t, x.method, tg.BaseURL+x.path, h, x.body)
 		}
 		return out
 	}
-	admin := func(method, path, ctype, body string) map[string]*Resp {
-		return run(func(tg *Target) call { return call{method, path, tg.Admin, ctype, body} })
+	admin := func(method, path, ctype, body string) map[string]*harness.Resp {
+		return run(func(tg *harness.Target) call { return call{method, path, tg.Admin, ctype, body} })
 	}
-	create := func(parts ...voicePart) map[string]*Resp {
+	create := func(parts ...voicePart) map[string]*harness.Resp {
 		body, ct := voiceForm(parts...)
 		return admin("POST", base, ct, body)
 	}
 	clip := voiceClip(7)
 
 	// The list, as a reader: limits and the consent statement, no voices.
-	list := run(func(tg *Target) call { return call{"GET", base, tg.Key, "", ""} })
+	list := run(func(tg *harness.Target) call { return call{"GET", base, tg.Key, "", ""} })
 	var firstList string
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		r := list[tg.Name]
 		if r.Status != 200 || r.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s list: %d %s", tg.Name, r.Status, r.Body)
@@ -182,13 +185,13 @@ func TestDifferentialVoices(t *testing.T) {
 		r.ErrorCode(t)
 	}
 	sameError(t, "PUT collection", admin("PUT", base, "", ""))
-	reader := func(method, path, ctype, body string) map[string]*Resp {
-		return run(func(tg *Target) call { return call{method, path, tg.Key, ctype, body} })
+	reader := func(method, path, ctype, body string) map[string]*harness.Resp {
+		return run(func(tg *harness.Target) call { return call{method, path, tg.Key, ctype, body} })
 	}
 	body, ct := voiceForm(voicePart{name: "name", value: "Narrator"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
 	sameError(t, "create as reader", reader("POST", base, ct, body))
-	sameError(t, "list as chat-only", run(func(tg *Target) call { return call{"GET", base, tg.ChatOnly, "", ""} }))
-	sameError(t, "list without credentials", run(func(tg *Target) call { return call{"GET", base, "", "", ""} }))
+	sameError(t, "list as chat-only", run(func(tg *harness.Target) call { return call{"GET", base, tg.ChatOnly, "", ""} }))
+	sameError(t, "list without credentials", run(func(tg *harness.Target) call { return call{"GET", base, "", "", ""} }))
 	sameError(t, "unknown voice", admin("GET", base+"/voice-000000000000", "", ""))
 	sameError(t, "unknown voice audio", admin("GET", base+"/voice-000000000000/audio", "", ""))
 	sameError(t, "delete unknown voice", admin("DELETE", base+"/voice-000000000000", "", ""))
@@ -199,7 +202,7 @@ func TestDifferentialVoices(t *testing.T) {
 	created := create(voicePart{name: "name", value: "  Narrator\t Voice "}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
 	ids := map[string]string{}
 	var want map[string]any
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		r := created[tg.Name]
 		if r.Status != 201 {
 			t.Fatalf("%s create: %d %s", tg.Name, r.Status, r.Body)
@@ -222,14 +225,14 @@ func TestDifferentialVoices(t *testing.T) {
 	if want["name"] != "Narrator Voice" {
 		t.Errorf("name %v", want["name"])
 	}
-	at := func(suffix string) func(tg *Target) string {
-		return func(tg *Target) string { return base + "/" + ids[tg.Name] + suffix }
+	at := func(suffix string) func(tg *harness.Target) string {
+		return func(tg *harness.Target) string { return base + "/" + ids[tg.Name] + suffix }
 	}
-	on := func(method string, path func(*Target) string, key func(*Target) string, ctype, body string) map[string]*Resp {
-		return run(func(tg *Target) call { return call{method, path(tg), key(tg), ctype, body} })
+	on := func(method string, path func(*harness.Target) string, key func(*harness.Target) string, ctype, body string) map[string]*harness.Resp {
+		return run(func(tg *harness.Target) call { return call{method, path(tg), key(tg), ctype, body} })
 	}
-	asAdmin := func(tg *Target) string { return tg.Admin }
-	asReader := func(tg *Target) string { return tg.Key }
+	asAdmin := func(tg *harness.Target) string { return tg.Admin }
+	asReader := func(tg *harness.Target) string { return tg.Key }
 
 	// Audio: managers only; the stored bytes match the recorded checksum.
 	for name, r := range on("GET", at("/audio"), asAdmin, "", "") {
@@ -275,7 +278,7 @@ func TestDifferentialVoices(t *testing.T) {
 		}
 	}
 	sameError(t, "get deleted", on("GET", at(""), asAdmin, "", ""))
-	sameError(t, "speech with a deleted voice", run(func(tg *Target) call {
+	sameError(t, "speech with a deleted voice", run(func(tg *harness.Target) call {
 		return call{"POST", "/v1/audio/speech", tg.Key, "application/json",
 			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"hi","voice":"` + ids[tg.Name] + `"}`}
 	}))
@@ -283,7 +286,7 @@ func TestDifferentialVoices(t *testing.T) {
 
 func mustJSON(t *testing.T, s string) map[string]any {
 	t.Helper()
-	return (&Resp{Body: []byte(s)}).JSON(t)
+	return (&harness.Resp{Body: []byte(s)}).JSON(t)
 }
 
 // TestCLIVoices compares `voices list|add|remove` on twin roots.
@@ -296,11 +299,11 @@ func TestCLIVoices(t *testing.T) {
 			t.Fatalf("%s init: %s %s", impl, r.stdout, r.stderr)
 		}
 	}
-	dir := scratchDir(t)
+	dir := fsguard.ScratchDir(t)
 	clip := filepath.Join(dir, "clip.wav")
-	mustWriteFile(clip, voiceClip(11), 0o600)
+	fsguard.WriteFile(clip, voiceClip(11), 0o600)
 	short := filepath.Join(dir, "short.wav")
-	mustWriteFile(short, voiceClip(11)[:44+16000*2], 0o600)
+	fsguard.WriteFile(short, voiceClip(11)[:44+16000*2], 0o600)
 	volatile := func(p string) bool { return strings.HasSuffix(p, ".id") }
 	for _, c := range []cliCase{
 		{args: []string{"--json", "voices", "list"}},

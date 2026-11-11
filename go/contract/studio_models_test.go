@@ -10,6 +10,8 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A fresh install selects default models before any is downloaded, and selected isn't usable.
@@ -17,7 +19,7 @@ import (
 // offers only what is on disk, and a tool with nothing to run shows no prompt that could only
 // fail (DESIGN §27). Go only: TS has no Studio. No model runs here, so the files are sparse.
 func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	tools := []struct {
@@ -29,7 +31,7 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 		{"transcribe", "selected_stt_models", "whisper-base-q8_0", "whisper-small-q8_0", "No transcription model yet", "transcription"},
 		{"decisions", "selected_llm_models", "clef-flash-q4_k_m", "clef-q4_k_m", "No decision model yet", "decisions"},
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
@@ -86,9 +88,9 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 			t.Fatalf("no model %s", id)
 		}
 		dir := filepath.Join(e.root, "models", s.Kind)
-		mustMkdirAll(dir, 0o700)
+		fsguard.MkdirAll(dir, 0o700)
 		for _, a := range s.Artifacts {
-			if err := guardedSparse(filepath.Join(dir, a.Filename), a.ExpectedSizeBytes); err != nil {
+			if err := fsguard.Sparse(filepath.Join(dir, a.Filename), a.ExpectedSizeBytes); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -146,15 +148,15 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 	if len(video.Artifacts) < 2 {
 		t.Fatalf("%s should need more than one file", video.ModelID)
 	}
-	if err := guardedRemoveAll(filepath.Join(e.root, "models", video.Kind, video.Artifacts[len(video.Artifacts)-1].Filename)); err != nil {
+	if err := fsguard.RemoveAll(filepath.Join(e.root, "models", video.Kind, video.Artifacts[len(video.Artifacts)-1].Filename)); err != nil {
 		t.Fatal(err)
 	}
 	image := specs["image"]
 	short := filepath.Join(e.root, "models", image.Kind, image.Artifacts[0].Filename)
-	if err := guardedRemoveAll(short); err != nil {
+	if err := fsguard.RemoveAll(short); err != nil {
 		t.Fatal(err)
 	}
-	if err := guardedSparse(short, image.Artifacts[0].ExpectedSizeBytes-1); err != nil {
+	if err := fsguard.Sparse(short, image.Artifacts[0].ExpectedSizeBytes-1); err != nil {
 		t.Fatal(err)
 	}
 	for _, tool := range tools[:2] {

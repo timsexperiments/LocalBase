@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
 // The admin APIs (/_localbase/api-keys, /_localbase/access-management,
@@ -139,23 +141,23 @@ type manageResult struct {
 	raw    string
 }
 
-func runManageScript(t *testing.T, tg *Target) []manageResult {
+func runManageScript(t *testing.T, tg *harness.Target) []manageResult {
 	var key, rev string
 	var out []manageResult
 	for _, s := range manageScript {
 		h := map[string]string{}
 		switch s.auth {
 		case "key":
-			h = bearer(tg.Key)
+			h = harness.Bearer(tg.Key)
 		case "admin":
-			h = bearer(tg.Admin)
+			h = harness.Bearer(tg.Admin)
 		}
 		body := strings.NewReplacer("{{key}}", key, "{{rev}}", rev).Replace(s.body)
-		r := do(t, s.method, tg.BaseURL+s.path, h, body)
+		r := harness.Do(t, s.method, tg.BaseURL+s.path, h, body)
 		if r.Status == 400 && strings.Contains(string(r.Body), `"issuer_required"`) {
 			// With several providers Go wants to know which one vouches for an address, and TS
 			// has no such field (DESIGN §13.6, item 5b). What follows is still compared.
-			r = do(t, s.method, tg.BaseURL+s.path, h, withIssuer(body))
+			r = harness.Do(t, s.method, tg.BaseURL+s.path, h, withIssuer(body))
 		}
 		if r.Header.Get("Cache-Control") != "no-store" && r.Status != 405 && !(s.path == hfPath && r.Status < 404 && r.Status > 400) {
 			t.Errorf("%s %s %s: Cache-Control %q", s.method, s.path, s.body, r.Header.Get("Cache-Control"))
@@ -189,22 +191,22 @@ func runManageScript(t *testing.T, tg *Target) []manageResult {
 
 func TestDifferentialManagement(t *testing.T) {
 	results := map[string][]manageResult{}
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		if tg.Admin == "" {
 			t.Skip("needs launched gateways")
 		}
 		results[tg.Name] = runManageScript(t, tg)
 	}
-	if len(targets) < 2 {
+	if len(harness.Targets(t)) < 2 {
 		return
 	}
-	a, b := results[targets[0].Name], results[targets[1].Name]
+	a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
 	for i, s := range manageScript {
 		ra, rb := a[i], b[i]
 		diffs := diffJSON("", ra.body, rb.body, nil)
 		if ra.status != rb.status || len(diffs) > 0 {
 			t.Errorf("step %d %s %s %s\n  %s %d %s\n  %s %d %s\n  %v", i, s.method, s.path, s.body,
-				targets[0].Name, ra.status, ra.raw, targets[1].Name, rb.status, rb.raw, diffs)
+				harness.Targets(t)[0].Name, ra.status, ra.raw, harness.Targets(t)[1].Name, rb.status, rb.raw, diffs)
 		}
 	}
 }

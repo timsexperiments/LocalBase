@@ -14,6 +14,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
 func testPNG(w, h int) []byte {
@@ -72,16 +74,18 @@ func imageForm(parts ...imgPart) (string, string) {
 // requests to both gateways; none reaches a backend.
 func TestDifferentialImageRejections(t *testing.T) {
 	logFreeMemoryOnFailure(t)
-	post := func(path, ctype, body string) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			h := bearer(tg.Key)
+	post := func(path, ctype, body string) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = ctype
-			out[tg.Name] = do(t, "POST", tg.BaseURL+path, h, body)
+			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
 		}
 		return out
 	}
-	gen := func(body string) map[string]*Resp { return post("/v1/images/generations", "application/json", body) }
+	gen := func(body string) map[string]*harness.Resp {
+		return post("/v1/images/generations", "application/json", body)
+	}
 	long := strings.Repeat("x", 16_385)
 	for label, body := range map[string]string{
 		"array":                  `[]`,
@@ -111,7 +115,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		"model number":           `{"prompt":"a","model":5}`,
 		"many issues":            `{"seed":-1,"steps":0,"n":20,"size":"1x1","model":""}`,
 		"lora on default model":  `{"prompt":"a","lora_strength":1}`,
-		"lora on chat model":     `{"prompt":"a","model":"` + chatModel + `","lora_strength":1}`,
+		"lora on chat model":     `{"prompt":"a","model":"` + harness.ChatModel + `","lora_strength":1}`,
 		"unknown model":          `{"prompt":"a","model":"no-such-model"}`,
 		"unknown model lora":     `{"prompt":"a","model":"no-such-model","lora_strength":1}`,
 		"files missing":          `{"prompt":"a","model":"realvis-xl-v5.0","size":"512x512","unknown_field":true}`,
@@ -119,7 +123,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		sameError(t, "generation "+label, gen(body))
 	}
 
-	edit := func(parts ...imgPart) map[string]*Resp {
+	edit := func(parts ...imgPart) map[string]*harness.Resp {
 		body, ct := imageForm(parts...)
 		return post("/v1/images/edits", ct, body)
 	}
@@ -144,7 +148,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		{"long prompt", []imgPart{field("prompt", strings.Repeat("p", 16_385)), i2i, pngImg}},
 		{"prompt marker", []imgPart{field("prompt", "x sd_cpp_extra_args"), i2i, pngImg}},
 		{"unknown model", []imgPart{prompt, field("model", "no-such-model"), pngImg}},
-		{"chat model", []imgPart{prompt, field("model", chatModel), pngImg}},
+		{"chat model", []imgPart{prompt, field("model", harness.ChatModel), pngImg}},
 		{"no image-to-image", []imgPart{prompt, field("model", "dreamshaper-8-lcm"), pngImg}},
 		{"default model", []imgPart{prompt, file("image", "", testPNG(4, 4))}},
 		{"no images", []imgPart{prompt, i2i}},
@@ -180,17 +184,13 @@ func TestDifferentialImageRejections(t *testing.T) {
 	}
 }
 
-// imageFile is dreamshaper-v8's checkpoint, the smallest catalog image model
-// with image-to-image.
-const imageFile = "DreamShaper_8_pruned.safetensors"
-
 // TestImageReal generates and edits with DreamShaper 8 through sd-server on
 // both gateways (same seed, same runtime build) and checks the PNGs.
 func TestImageReal(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_IMAGE_MODELS") == "" || os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_IMAGE_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
 	}
-	decode := func(t *testing.T, label string, r *Resp) []byte {
+	decode := func(t *testing.T, label string, r *harness.Resp) []byte {
 		t.Helper()
 		if r.Status != 200 {
 			t.Fatalf("%s: %d %.400s", label, r.Status, r.Body)
@@ -210,21 +210,21 @@ func TestImageReal(t *testing.T) {
 		return b
 	}
 	outputs := map[string][2][]byte{}
-	for _, tg := range targets {
-		h := bearer(tg.Key)
+	for _, tg := range harness.Targets(t) {
+		h := harness.Bearer(tg.Key)
 		h["Content-Type"] = "application/json"
-		gen := do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
+		gen := harness.Do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
 			`{"model":"dreamshaper-v8","prompt":"a red apple on a table","size":"256x256","seed":42,"steps":6,"cfg_scale":7,"negative_prompt":"blurry","response_format":"b64_json"}`)
 		g := decode(t, tg.Name+" generation", gen)
 		body, ct := imageForm(field("model", "dreamshaper-v8"), field("prompt", "a green apple"), field("size", "256x256"),
 			field("seed", "7"), field("steps", "6"), field("strength", "0.6"), imgPart{name: "image", filename: "apple.png", file: g, isFile: true})
-		eh := bearer(tg.Key)
+		eh := harness.Bearer(tg.Key)
 		eh["Content-Type"] = ct
-		e := decode(t, tg.Name+" edit", do(t, "POST", tg.BaseURL+"/v1/images/edits", eh, body))
+		e := decode(t, tg.Name+" edit", harness.Do(t, "POST", tg.BaseURL+"/v1/images/edits", eh, body))
 		outputs[tg.Name] = [2][]byte{g, e}
 	}
-	if len(targets) == 2 {
-		a, b := outputs[targets[0].Name], outputs[targets[1].Name]
+	if len(harness.Targets(t)) == 2 {
+		a, b := outputs[harness.Targets(t)[0].Name], outputs[harness.Targets(t)[1].Name]
 		// Same seed, runtime build and tuning block: the same bytes.
 		if !bytes.Equal(a[0], b[0]) || !bytes.Equal(a[1], b[1]) {
 			t.Errorf("outputs differ: generation equal %v, edit equal %v", bytes.Equal(a[0], b[0]), bytes.Equal(a[1], b[1]))
@@ -245,17 +245,17 @@ func TestDifferentialRetrySemantics(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_RUNTIMES") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_RUNTIMES (a real sd-server that fails to load placeholder weights)")
 	}
-	ask := func(model string) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			h := bearer(tg.Key)
+	ask := func(model string) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = "application/json"
-			out[tg.Name] = do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
+			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+"/v1/images/generations", h,
 				`{"model":"`+model+`","prompt":"a","size":"256x256","response_format":"b64_json"}`)
 		}
 		return out
 	}
-	check := func(label string, rs map[string]*Resp, status int, code string, retry bool) {
+	check := func(label string, rs map[string]*harness.Resp, status int, code string, retry bool) {
 		t.Helper()
 		for name, r := range rs {
 			got := r.JSON(t)["error"].(map[string]any)["code"]

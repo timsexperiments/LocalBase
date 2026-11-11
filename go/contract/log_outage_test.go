@@ -9,18 +9,21 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A real gateway whose log can't rotate: doctor and status say so, in words and in JSON, and the
 // file stays where it was.
 func TestDoctorAndStatusReportALogThatCannotRotate(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory modes")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)
@@ -32,23 +35,23 @@ func TestDoctorAndStatusReportALogThatCannotRotate(t *testing.T) {
 	}
 	logDir := filepath.Join(e.root, "logs")
 	active := filepath.Join(logDir, "events.jsonl")
-	if err := mustMkdirAll(logDir, 0o700); err != nil {
+	if err := fsguard.MkdirAll(logDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	const limit = 10 << 20
 	// The commands above write their audit lines here (#608), so the file usually exists already, and
 	// guardedSparse leaves an existing file alone: it only makes a missing one. mustGrow grows it to
 	// just under the limit either way.
-	if err := mustGrow(active, limit-64<<10); err != nil {
+	if err := fsguard.Grow(active, limit-64<<10); err != nil {
 		t.Fatal(err)
 	}
 	e.serve()
 	defer e.stop()
 	// The gateway makes its directories private when it starts, so this has to come after.
-	if err := mustChmod(logDir, 0o500); err != nil {
+	if err := fsguard.Chmod(logDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = mustChmod(logDir, 0o700) })
+	t.Cleanup(func() { _ = fsguard.Chmod(logDir, 0o700) })
 	full := func() bool {
 		info, err := os.Stat(active)
 		return err == nil && info.Size() > limit-4<<10

@@ -16,61 +16,28 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
-
-// tinyModel is a user catalog entry whose 4 KiB file is already in place, so
-// an install completes through checksum verification without a network.
-const tinyModel = "contract-tiny-stt"
-
-func tinyBytes() []byte {
-	b := make([]byte, 4096)
-	for i := range b {
-		b[i] = byte(i * 7)
-	}
-	return b
-}
-
-func addTinyCatalogModel(rootDir, sttDir string) error {
-	data := tinyBytes()
-	sum := sha256.Sum256(data)
-	entry := map[string]any{
-		"modelId": tinyModel, "displayName": "Contract Tiny", "kind": "stt", "provider": "LocalBase tests", "family": "Whisper",
-		"version": "test", "size": "tiny", "quant": "Q8_0", "storageGb": 0.01,
-		"source": "https://huggingface.co/localbase/contract-tiny", "repositoryRevision": strings.Repeat("a", 40),
-		"artifacts": []any{map[string]any{"sourcePath": "ggml-contract-tiny.bin", "filename": "ggml-contract-tiny.bin",
-			"expectedSizeBytes": len(data), "sha256": hex.EncodeToString(sum[:]), "role": "primary"}},
-		"inputModalities": []string{"audio"}, "outputModalities": []string{"text"}, "capabilities": []string{"speech-to-text"},
-		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
-	}
-	b, _ := json.MarshalIndent(entry, "", "  ")
-	if err := mustMkdirAll(filepath.Join(rootDir, "catalog.d"), 0o700); err != nil {
-		return err
-	}
-	if err := mustWriteFile(filepath.Join(rootDir, "catalog.d", tinyModel+".json"), b, 0o600); err != nil {
-		return err
-	}
-	mustMkdirAll(sttDir, 0o700)
-	return mustWriteFile(filepath.Join(sttDir, "ggml-contract-tiny.bin"), data, 0o600)
-}
 
 // TestDifferentialModelManagement compares /_localbase/model-management on
 // both gateways: the catalog state, every rejection, enable/activate/disable,
 // uninstall, and an install polled to completion.
 func TestDifferentialModelManagement(t *testing.T) {
 	const path = "/_localbase/model-management"
-	post := func(key func(*Target) string, body string) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			h := bearer(key(tg))
+	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(key(tg))
 			h["Content-Type"] = "application/json"
-			out[tg.Name] = do(t, "POST", tg.BaseURL+path, h, body)
+			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
 		}
 		return out
 	}
-	admin := func(tg *Target) string { return tg.Admin }
-	reader := func(tg *Target) string { return tg.Key }
-	state := func(tg *Target) map[string]any {
-		r := do(t, "GET", tg.BaseURL+path, bearer(tg.Admin), "")
+	admin := func(tg *harness.Target) string { return tg.Admin }
+	reader := func(tg *harness.Target) string { return tg.Key }
+	state := func(tg *harness.Target) map[string]any {
+		r := harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Admin), "")
 		if r.Status != 200 || r.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s GET: %d %s", tg.Name, r.Status, r.Body)
 		}
@@ -79,7 +46,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	same := func(label string) {
 		t.Helper()
 		var first map[string]any
-		for _, tg := range targets {
+		for _, tg := range harness.Targets(t) {
 			s := state(tg)
 			// Deliberate difference (DESIGN 13.6 item 10): Go can install a
 			// configured model with files missing; TS refuses. Only that.
@@ -115,7 +82,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 			}
 		}
 	}
-	sameOK := func(label string, rs map[string]*Resp, status int) {
+	sameOK := func(label string, rs map[string]*harness.Resp, status int) {
 		t.Helper()
 		var first string
 		for name, r := range rs {
@@ -133,15 +100,15 @@ func TestDifferentialModelManagement(t *testing.T) {
 	// Start from the same active LLM on both. An earlier decision request
 	// makes the decision model active on TS but not on Go, which activates
 	// chat models only (DESIGN §13.6 item 9).
-	if len(targets) > 1 {
-		sameOK("activate the chat model", post(admin, `{"modelId":"`+chatModel+`","action":"activate"}`), 200)
+	if len(harness.Targets(t)) > 1 {
+		sameOK("activate the chat model", post(admin, `{"modelId":"`+harness.ChatModel+`","action":"activate"}`), 200)
 	}
 	same("initial")
 	// The active LLM, whichever earlier tests left as the default.
-	activeLLM := chatModel
-	for _, m := range state(targets[0])["models"].([]any) {
+	activeLLM := harness.ChatModel
+	for _, m := range state(harness.Targets(t)[0])["models"].([]any) {
 		e := m.(map[string]any)
-		if id, _ := e["id"].(string); e["active"] == true && slices.Contains([]string{chatModel, decisionModel, embeddingModel}, id) {
+		if id, _ := e["id"].(string); e["active"] == true && slices.Contains([]string{harness.ChatModel, harness.DecisionModel, harness.EmbeddingModel}, id) {
 			activeLLM = id
 		}
 	}
@@ -161,21 +128,21 @@ func TestDifferentialModelManagement(t *testing.T) {
 			t.Errorf("disable default llm %s: %d %s", name, r.Status, r.Body)
 		}
 	}
-	sameError(t, "management as reader", post(reader, `{"modelId":"`+tinyModel+`","action":"enable"}`))
-	sameError(t, "management PUT", func() map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			out[tg.Name] = do(t, "PUT", tg.BaseURL+path, bearer(tg.Admin), "")
+	sameError(t, "management as reader", post(reader, `{"modelId":"`+harness.TinyModel+`","action":"enable"}`))
+	sameError(t, "management PUT", func() map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			out[tg.Name] = harness.Do(t, "PUT", tg.BaseURL+path, harness.Bearer(tg.Admin), "")
 		}
 		return out
 	}())
 
 	// Install (already present: verified, then complete), polled to the end.
-	sameOK("install", post(admin, `{"modelId":"`+tinyModel+`","action":"install"}`), 202)
-	for _, tg := range targets {
+	sameOK("install", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"install"}`), 202)
+	for _, tg := range harness.Targets(t) {
 		deadline := time.Now().Add(30 * time.Second)
 		for {
-			op := entryOf(t, state(tg), tinyModel)["operation"].(map[string]any)
+			op := entryOf(t, state(tg), harness.TinyModel)["operation"].(map[string]any)
 			if op["state"] != "running" {
 				if op["state"] != "complete" || op["detail"] != "Installation complete" {
 					t.Errorf("%s install: %v", tg.Name, op)
@@ -189,35 +156,35 @@ func TestDifferentialModelManagement(t *testing.T) {
 		}
 	}
 	same("after install")
-	sameOK("enable", post(admin, `{"modelId":"`+tinyModel+`","action":"enable"}`), 200)
-	sameError(t, "management install selected and installed", post(admin, `{"modelId":"`+tinyModel+`","action":"install"}`))
-	sameOK("activate", post(admin, `{"modelId":"`+tinyModel+`","action":"activate"}`), 200)
+	sameOK("enable", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"enable"}`), 200)
+	sameError(t, "management install selected and installed", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"install"}`))
+	sameOK("activate", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"activate"}`), 200)
 	same("after activate")
-	sameOK("disable active stt", post(admin, `{"modelId":"`+tinyModel+`","action":"disable"}`), 200)
+	sameOK("disable active stt", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"disable"}`), 200)
 	// Deliberate difference: TS reconciles a running runtime eagerly when the
 	// active model changes, so while its STT runtime is up it still references
 	// the model and refuses the uninstall (409 conflict). Go switches on the
 	// next request, holds nothing, and uninstalls.
 	tsEager := false
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		if tg.Name == "ts" {
-			mods := do(t, "GET", tg.BaseURL+"/health", nil, "").JSON(t)["modalities"].(map[string]any)
+			mods := harness.Do(t, "GET", tg.BaseURL+"/health", nil, "").JSON(t)["modalities"].(map[string]any)
 			state := mods["stt"].(map[string]any)["state"]
 			tsEager = state != "idle" && state != "disabled"
 		}
 	}
-	uninstall := post(admin, `{"modelId":"`+tinyModel+`","action":"uninstall"}`)
+	uninstall := post(admin, `{"modelId":"`+harness.TinyModel+`","action":"uninstall"}`)
 	if !tsEager {
 		sameOK("uninstall", uninstall, 200)
 		same("after uninstall")
 	} else if r := uninstall["ts"]; r.Status != 409 || r.ErrorCode(t) != "conflict" {
 		t.Errorf("ts uninstall with a running STT runtime: %d %s", r.Status, r.Body)
 	}
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		if tg.Name == "ts" && tsEager {
 			continue
 		}
-		if e := entryOf(t, state(tg), tinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
+		if e := entryOf(t, state(tg), harness.TinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
 			t.Errorf("%s after uninstall: %v", tg.Name, e)
 		}
 	}
@@ -268,7 +235,7 @@ func (a *slowArtifact) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // as interrupted after a restart, not forgotten; the shutdown does not
 // wait for the download; installing again resumes the partial file.
 func TestInstallInterruptedByGatewayStop(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	for _, how := range []string{"sigterm", "sigkill"} {
@@ -280,7 +247,7 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 			sum := sha256.Sum256(data)
 			art := &slowArtifact{data: data, release: make(chan struct{})}
 			srv := rangeServer(t, art, false)
-			tmp := scratchDir(t)
+			tmp := fsguard.ScratchDir(t)
 			e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 			if r := e.cli(nil, "--json", "init"); r.code != 0 {
 				t.Fatalf("init: %s", r.stderr)
@@ -295,8 +262,8 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 				"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 			}
 			b, _ := json.Marshal(entry)
-			mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
-			mustWriteFile(filepath.Join(e.root, "catalog.d", "slow-stt.json"), b, 0o600)
+			fsguard.MkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
+			fsguard.WriteFile(filepath.Join(e.root, "catalog.d", "slow-stt.json"), b, 0o600)
 			// The fixture serves the model from this machine.
 			st, err := store.Open(filepath.Join(e.root, "local-base.db"))
 			if err != nil {
@@ -378,11 +345,11 @@ func TestInstallInterruptedByGatewayStop(t *testing.T) {
 // A failed install says why, in the operations API and on the command line, with
 // the old sentence unchanged. Go only: TS has one sentence for every cause.
 func TestInstallFailureReasonExposed(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) }), false)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s", r.stderr)
@@ -396,8 +363,8 @@ func TestInstallFailureReasonExposed(t *testing.T) {
 		"inputModalities": []string{"audio"}, "outputModalities": []string{"text"}, "capabilities": []string{"speech-to-text"},
 		"commercialStatus": "open", "catch": "Test data.", "notes": "Contract fixture.",
 	})
-	mustMkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
-	mustWriteFile(filepath.Join(e.root, "catalog.d", "gated-stt.json"), b, 0o600)
+	fsguard.MkdirAll(filepath.Join(e.root, "catalog.d"), 0o700)
+	fsguard.WriteFile(filepath.Join(e.root, "catalog.d", "gated-stt.json"), b, 0o600)
 	allowPrivateImports(t, e.root)
 
 	human := e.cli(nil, "--non-interactive", "models", "install", "gated-stt")

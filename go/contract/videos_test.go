@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
 // TestDifferentialVideoRejections sends video requests that never start a
@@ -17,14 +19,14 @@ import (
 // job routes for jobs that do not exist. Status, error type, code, param,
 // message and Allow must match.
 func TestDifferentialVideoRejections(t *testing.T) {
-	send := func(method, path, ctype, body string) map[string]*Resp {
-		out := map[string]*Resp{}
-		for _, tg := range targets {
-			h := bearer(tg.Key)
+	send := func(method, path, ctype, body string) map[string]*harness.Resp {
+		out := map[string]*harness.Resp{}
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(tg.Key)
 			if ctype != "" {
 				h["Content-Type"] = ctype
 			}
-			out[tg.Name] = do(t, method, tg.BaseURL+path, h, body)
+			out[tg.Name] = harness.Do(t, method, tg.BaseURL+path, h, body)
 		}
 		return out
 	}
@@ -63,7 +65,7 @@ func TestDifferentialVideoRejections(t *testing.T) {
 		"reference with image": request(fastwan, 480, 832, 81, 16, map[string]any{"input_reference": ref,
 			"input": map[string]any{"kind": "image", "image": map[string]any{"format": "png", "data": ref}}}),
 		"unknown model":        request("no-such-video", 320, 320, 33, 16, nil),
-		"chat model":           request(chatModel, 320, 320, 33, 16, nil),
+		"chat model":           request(harness.ChatModel, 320, 320, 33, 16, nil),
 		"wrong size":           request(wan, 336, 320, 33, 16, nil),
 		"wrong frames":         request(wan, 320, 320, 32, 16, nil),
 		"wrong fps":            request(wan, 320, 320, 33, 24, nil),
@@ -121,10 +123,10 @@ func TestDifferentialVideoRejections(t *testing.T) {
 func TestDifferentialVideoJobFailure(t *testing.T) {
 	body := `{"model":"wan2.1-t2v-1.3b-q8_0","prompt":"a lighthouse at dusk","width":320,"height":320,"frames":33,"fps":16,"input":{"kind":"text"}}`
 	final := map[string]map[string]any{}
-	for _, tg := range targets {
-		h := bearer(tg.Key)
+	for _, tg := range harness.Targets(t) {
+		h := harness.Bearer(tg.Key)
 		h["Content-Type"] = "application/json"
-		r := do(t, "POST", tg.BaseURL+"/v1/videos", h, body)
+		r := harness.Do(t, "POST", tg.BaseURL+"/v1/videos", h, body)
 		if r.Status != 202 {
 			t.Fatalf("%s: %d %s", tg.Name, r.Status, r.Body)
 		}
@@ -135,7 +137,7 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 		id := job["id"].(string)
 		deadline := time.Now().Add(5 * time.Minute)
 		for {
-			s := do(t, "GET", tg.BaseURL+"/v1/videos/"+id, bearer(tg.Key), "").JSON(t)
+			s := harness.Do(t, "GET", tg.BaseURL+"/v1/videos/"+id, harness.Bearer(tg.Key), "").JSON(t)
 			if s["status"] != "queued" && s["status"] != "in_progress" {
 				final[tg.Name] = s
 				break
@@ -145,7 +147,7 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 			}
 			time.Sleep(250 * time.Millisecond)
 		}
-		if c := do(t, "GET", tg.BaseURL+"/v1/videos/"+id+"/content", bearer(tg.Key), ""); c.Status != 404 {
+		if c := harness.Do(t, "GET", tg.BaseURL+"/v1/videos/"+id+"/content", harness.Bearer(tg.Key), ""); c.Status != 404 {
 			t.Errorf("%s: content of a failed job answered %d", tg.Name, c.Status)
 		}
 	}

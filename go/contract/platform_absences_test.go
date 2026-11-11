@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // platformAbsences names each test that doesn't run on every platform: where it is absent,
@@ -82,7 +84,7 @@ func TestPlatformAbsencesAreNamed(t *testing.T) {
 	}
 
 	// The search finds what it is for, or this says nothing.
-	dir := scratchDir(t)
+	dir := fsguard.ScratchDir(t)
 	const planted = `package p
 import ("runtime"; "testing")
 func TestPlanted(t *testing.T) {
@@ -91,7 +93,7 @@ func TestPlanted(t *testing.T) {
 	}
 }
 `
-	if err := mustWriteFile(filepath.Join(dir, "p_test.go"), []byte(planted), 0o600); err != nil {
+	if err := fsguard.WriteFile(filepath.Join(dir, "p_test.go"), []byte(planted), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if got := skipsOnPlatform(t, dir); !strings.HasSuffix(got["TestPlanted"], ":4:2") {

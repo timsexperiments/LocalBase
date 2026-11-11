@@ -8,11 +8,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
 func TestHealth(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
-		r := do(t, "GET", tg.BaseURL+"/health", nil, "")
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+		r := harness.Do(t, "GET", tg.BaseURL+"/health", nil, "")
 		if r.Status != 200 {
 			t.Fatalf("status %d", r.Status)
 		}
@@ -30,10 +32,10 @@ func TestHealth(t *testing.T) {
 		if _, ok := body["uptimeSeconds"].(float64); !ok {
 			t.Error("uptimeSeconds missing")
 		}
-		if h := do(t, "HEAD", tg.BaseURL+"/health", nil, ""); h.Status != 200 || len(h.Body) != 0 {
+		if h := harness.Do(t, "HEAD", tg.BaseURL+"/health", nil, ""); h.Status != 200 || len(h.Body) != 0 {
 			t.Errorf("HEAD = %d, %d bytes", h.Status, len(h.Body))
 		}
-		p := do(t, "POST", tg.BaseURL+"/health", nil, "")
+		p := harness.Do(t, "POST", tg.BaseURL+"/health", nil, "")
 		if p.Status != 405 || p.ErrorCode(t) != "method_not_allowed" || p.Header.Get("Allow") != "GET, HEAD" {
 			t.Errorf("POST /health = %d %s allow=%q", p.Status, p.Body, p.Header.Get("Allow"))
 		}
@@ -41,8 +43,8 @@ func TestHealth(t *testing.T) {
 }
 
 func TestReadiness(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
-		r := do(t, "GET", tg.BaseURL+"/health/ready", nil, "")
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+		r := harness.Do(t, "GET", tg.BaseURL+"/health/ready", nil, "")
 		body := r.JSON(t)
 		if r.Status != 200 || body["status"] != "ready" || body["reason"] != "request_admission_available" {
 			t.Fatalf("%d %s", r.Status, r.Body)
@@ -55,13 +57,13 @@ func TestReadiness(t *testing.T) {
 	// Every configured media modality admits requests on both. Video arrives in
 	// Go with M6, so only TS lists it for now. An external gateway (-url, the
 	// M7 rehearsal) has its own media selection, so only the LLM is checked.
-	if len(targets) == 1 && targets[0].Name == "external" {
+	if len(harness.Targets(t)) == 1 && harness.Targets(t)[0].Name == "external" {
 		return
 	}
 	admitting := map[string]string{}
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		var list []string
-		for _, m := range do(t, "GET", tg.BaseURL+"/health/ready", nil, "").JSON(t)["modalities"].([]any) {
+		for _, m := range harness.Do(t, "GET", tg.BaseURL+"/health/ready", nil, "").JSON(t)["modalities"].([]any) {
 			if m != "video" {
 				list = append(list, m.(string))
 			}
@@ -74,25 +76,25 @@ func TestReadiness(t *testing.T) {
 }
 
 func TestAuthentication(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
-		r := do(t, "GET", tg.BaseURL+"/v1/models", nil, "")
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+		r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", nil, "")
 		if r.Status != 401 || r.ErrorCode(t) != "invalid_api_key" || r.Header.Get("WWW-Authenticate") != "Bearer" {
 			t.Errorf("no key: %d %s", r.Status, r.Body)
 		}
-		if r := do(t, "GET", tg.BaseURL+"/v1/models", bearer("lb_not-a-real-key"), ""); r.Status != 401 {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer("lb_not-a-real-key"), ""); r.Status != 401 {
 			t.Errorf("bad key: %d", r.Status)
 		}
-		if r := do(t, "GET", tg.BaseURL+"/v1/models", map[string]string{"x-api-key": tg.Key}, ""); r.Status != 200 {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", map[string]string{"x-api-key": tg.Key}, ""); r.Status != 200 {
 			t.Errorf("x-api-key: %d", r.Status)
 		}
 		// API keys never authenticate browser requests.
-		h := bearer(tg.Key)
+		h := harness.Bearer(tg.Key)
 		h["Origin"] = "https://example.com"
-		if r := do(t, "GET", tg.BaseURL+"/v1/models", h, ""); r.Status != 401 {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", h, ""); r.Status != 401 {
 			t.Errorf("browser request with key: %d", r.Status)
 		}
 		if tg.ChatOnly != "" {
-			r := do(t, "GET", tg.BaseURL+"/v1/models", bearer(tg.ChatOnly), "")
+			r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer(tg.ChatOnly), "")
 			if r.Status != 403 || r.ErrorCode(t) != "insufficient_permissions" {
 				t.Errorf("chat-only key on models: %d %s", r.Status, r.Body)
 			}
@@ -101,19 +103,19 @@ func TestAuthentication(t *testing.T) {
 }
 
 func TestUnmatchedRoute(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
-		if r := do(t, "GET", tg.BaseURL+"/v1/nope", nil, ""); r.Status != 401 {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/nope", nil, ""); r.Status != 401 {
 			t.Errorf("unauthenticated unmatched: %d", r.Status)
 		}
-		r := do(t, "GET", tg.BaseURL+"/v1/nope/deeper", bearer(tg.Key), "")
+		r := harness.Do(t, "GET", tg.BaseURL+"/v1/nope/deeper", harness.Bearer(tg.Key), "")
 		if r.Status != 404 || r.ErrorCode(t) != "route_disabled" {
 			t.Errorf("unmatched: %d %s", r.Status, r.Body)
 		}
 	})
 }
 
-func models(t *testing.T, tg *Target) []map[string]any {
-	r := do(t, "GET", tg.BaseURL+"/v1/models", bearer(tg.Key), "")
+func models(t *testing.T, tg *harness.Target) []map[string]any {
+	r := harness.Do(t, "GET", tg.BaseURL+"/v1/models", harness.Bearer(tg.Key), "")
 	if r.Status != 200 {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
@@ -129,7 +131,7 @@ func models(t *testing.T, tg *Target) []map[string]any {
 }
 
 func TestModelsList(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
 		data := models(t, tg)
 		ids := []string{}
 		for _, m := range data {
@@ -154,7 +156,7 @@ func TestModelsList(t *testing.T) {
 				images = slices.Concat([]string{images[i]}, images[:i], images[i+1:])
 			}
 		}
-		want := slices.Concat([]string{chatModel, decisionModel, embeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
+		want := slices.Concat([]string{harness.ChatModel, harness.DecisionModel, harness.EmbeddingModel, "whisper-base-en-q8_0", "qwen3-tts-1.7b-base-q4_k_m",
 			"kokoro-82m-v1.0-q8"}, images, []string{"wan2.1-t2v-1.3b-q8_0", "fastwan2.2-ti2v-5b-q6_k"})
 		// With a real whisper model linked, tiny.en is selected too, and a request
 		// to it makes it the active (first) STT model.
@@ -172,17 +174,17 @@ func TestModelsList(t *testing.T) {
 			arch := m["architecture"].(map[string]any)
 			out := arch["output_modalities"].([]any)
 			switch m["id"] {
-			case decisionModel:
+			case harness.DecisionModel:
 				if out[0] != "decisions" {
 					t.Errorf("decision output = %v", out)
 				}
-			case embeddingModel:
+			case harness.EmbeddingModel:
 				if out[0] != "embeddings" {
 					t.Errorf("embedding output = %v", out)
 				}
 			}
 			_, hasBudget := m["context_budget"].(map[string]any)
-			if isLLM := len(ids) > 0 && (m["id"] == chatModel || m["id"] == decisionModel || m["id"] == embeddingModel); hasBudget != isLLM {
+			if isLLM := len(ids) > 0 && (m["id"] == harness.ChatModel || m["id"] == harness.DecisionModel || m["id"] == harness.EmbeddingModel); hasBudget != isLLM {
 				t.Errorf("%s: context_budget present = %v", m["id"], hasBudget)
 			}
 			if _, ok := m["memory"].(map[string]any); !ok {
@@ -195,11 +197,11 @@ func TestModelsList(t *testing.T) {
 }
 
 func TestModelRetrieve(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
 		list := models(t, tg)
 		for _, want := range list {
 			id := want["id"].(string)
-			r := do(t, "GET", tg.BaseURL+"/v1/models/"+id, bearer(tg.Key), "")
+			r := harness.Do(t, "GET", tg.BaseURL+"/v1/models/"+id, harness.Bearer(tg.Key), "")
 			if r.Status != 200 {
 				t.Errorf("%s: %d %s", id, r.Status, r.Body)
 				continue
@@ -209,11 +211,11 @@ func TestModelRetrieve(t *testing.T) {
 				t.Errorf("%s retrieve differs from list entry:\n got %s\nwant %s", id, j(got), j(want))
 			}
 		}
-		r := do(t, "GET", tg.BaseURL+"/v1/models/no%2Fsuch-model", bearer(tg.Key), "")
+		r := harness.Do(t, "GET", tg.BaseURL+"/v1/models/no%2Fsuch-model", harness.Bearer(tg.Key), "")
 		if r.Status != 404 || r.ErrorCode(t) != "model_not_found" {
 			t.Errorf("unknown: %d %s", r.Status, r.Body)
 		}
-		r = do(t, "POST", tg.BaseURL+"/v1/models/"+chatModel, bearer(tg.Key), "{}")
+		r = harness.Do(t, "POST", tg.BaseURL+"/v1/models/"+harness.ChatModel, harness.Bearer(tg.Key), "{}")
 		if r.Status != 405 || r.Header.Get("Allow") != "GET" {
 			t.Errorf("POST: %d allow=%q", r.Status, r.Header.Get("Allow"))
 		}
@@ -221,13 +223,15 @@ func TestModelRetrieve(t *testing.T) {
 }
 
 func TestChatRejections(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
-		post := func(body string) *Resp { return do(t, "POST", tg.BaseURL+"/v1/chat/completions", bearer(tg.Key), body) }
-		r := post(`{"model":"` + decisionModel + `","messages":[{"role":"user","content":"hi"}]}`)
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
+		post := func(body string) *harness.Resp {
+			return harness.Do(t, "POST", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key), body)
+		}
+		r := post(`{"model":"` + harness.DecisionModel + `","messages":[{"role":"user","content":"hi"}]}`)
 		if r.Status != 400 || r.ErrorCode(t) != "validation_failed" || !strings.Contains(string(r.Body), "/v1/systemone") {
 			t.Errorf("decision model: %d %s", r.Status, r.Body)
 		}
-		r = post(`{"model":"` + embeddingModel + `","messages":[{"role":"user","content":"hi"}]}`)
+		r = post(`{"model":"` + harness.EmbeddingModel + `","messages":[{"role":"user","content":"hi"}]}`)
 		if r.Status != 400 || r.ErrorCode(t) != "validation_failed" {
 			t.Errorf("embedding model: %d %s", r.Status, r.Body)
 		}
@@ -235,7 +239,7 @@ func TestChatRejections(t *testing.T) {
 		if r.Status != 404 || r.ErrorCode(t) != "model_not_found" {
 			t.Errorf("unknown model: %d %s", r.Status, r.Body)
 		}
-		r = post(`{"model":"` + chatModel + `","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object","properties":{}}}}]}`)
+		r = post(`{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"hi"}],"tools":[{"type":"function","function":{"name":"f","parameters":{"type":"object","properties":{}}}}]}`)
 		if r.Status != 400 || r.ErrorCode(t) != "unsupported_model_capability" {
 			t.Errorf("tools on non-tool model: %d %s", r.Status, r.Body)
 		}
@@ -244,7 +248,7 @@ func TestChatRejections(t *testing.T) {
 		}
 		// Deliberate difference: TS answers 400 (it parses the empty body as
 		// JSON), Go answers 405. Both use the error envelope.
-		if r := do(t, "GET", tg.BaseURL+"/v1/chat/completions", bearer(tg.Key), ""); r.Status != 400 && r.Status != 405 {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key), ""); r.Status != 400 && r.Status != 405 {
 			t.Errorf("GET chat: %d", r.Status)
 		} else {
 			r.ErrorCode(t)
@@ -253,12 +257,12 @@ func TestChatRejections(t *testing.T) {
 }
 
 func TestChatCompletion(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("set LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES for real inference")
 		}
-		r := do(t, "POST", tg.BaseURL+"/v1/chat/completions", bearer(tg.Key),
-			`{"model":"`+chatModel+`","max_tokens":8,"messages":[{"role":"user","content":"Say hello."}]}`)
+		r := harness.Do(t, "POST", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key),
+			`{"model":"`+harness.ChatModel+`","max_tokens":8,"messages":[{"role":"user","content":"Say hello."}]}`)
 		if r.Status != 200 {
 			t.Fatalf("%d %s", r.Status, r.Body)
 		}
@@ -271,22 +275,22 @@ func TestChatCompletion(t *testing.T) {
 		if s, _ := msg["content"].(string); s == "" {
 			t.Errorf("empty content: %s", r.Body)
 		}
-		if body["model"] != chatModel {
-			t.Errorf("model = %v, want the public id %s", body["model"], chatModel)
+		if body["model"] != harness.ChatModel {
+			t.Errorf("model = %v, want the public id %s", body["model"], harness.ChatModel)
 		}
 		if r.Header.Get("X-Localbase-Request-Id") == "" {
 			t.Error("no x-localbase-request-id")
 		}
 
-		s := do(t, "POST", tg.BaseURL+"/v1/chat/completions", bearer(tg.Key),
-			`{"model":"`+chatModel+`","stream":true,"max_tokens":8,"messages":[{"role":"user","content":"Count."}]}`)
+		s := harness.Do(t, "POST", tg.BaseURL+"/v1/chat/completions", harness.Bearer(tg.Key),
+			`{"model":"`+harness.ChatModel+`","stream":true,"max_tokens":8,"messages":[{"role":"user","content":"Count."}]}`)
 		if s.Status != 200 || !strings.HasPrefix(s.Header.Get("Content-Type"), "text/event-stream") {
 			t.Fatalf("stream: %d %s", s.Status, s.Header.Get("Content-Type"))
 		}
 		if !strings.Contains(string(s.Body), "data: [DONE]") {
 			t.Errorf("stream did not end with [DONE]")
 		}
-		if strings.Contains(string(s.Body), ".gguf") || !strings.Contains(string(s.Body), `"model":"`+chatModel+`"`) {
+		if strings.Contains(string(s.Body), ".gguf") || !strings.Contains(string(s.Body), `"model":"`+harness.ChatModel+`"`) {
 			t.Errorf("stream chunks must carry the public model id")
 		}
 	})
@@ -295,12 +299,12 @@ func TestChatCompletion(t *testing.T) {
 // TestDifferentialModels compares the TS and Go /v1/models on identical
 // fixtures. Only meaningful with -impl=both.
 func TestDifferentialModels(t *testing.T) {
-	if len(targets) < 2 {
+	if len(harness.Targets(t)) < 2 {
 		t.Skip("run with -impl=both")
 	}
-	a, b := models(t, targets[0]), models(t, targets[1])
+	a, b := models(t, harness.Targets(t)[0]), models(t, harness.Targets(t)[1])
 	if len(a) != len(b) {
-		t.Fatalf("%s has %d models, %s has %d", targets[0].Name, len(a), targets[1].Name, len(b))
+		t.Fatalf("%s has %d models, %s has %d", harness.Targets(t)[0].Name, len(a), harness.Targets(t)[1].Name, len(b))
 	}
 	// Measured peaks come from two different processes; compare presence only.
 	volatile := func(m map[string]any) {
@@ -312,7 +316,7 @@ func TestDifferentialModels(t *testing.T) {
 		volatile(a[i])
 		volatile(b[i])
 		if !sameIgnoring(a[i], b[i]) {
-			t.Errorf("%v differs:\n%s: %s\n%s: %s", a[i]["id"], targets[0].Name, j(a[i]), targets[1].Name, j(b[i]))
+			t.Errorf("%v differs:\n%s: %s\n%s: %s", a[i]["id"], harness.Targets(t)[0].Name, j(a[i]), harness.Targets(t)[1].Name, j(b[i]))
 		}
 	}
 }
@@ -350,17 +354,17 @@ func j(v any) string {
 var rejectionCases = []struct{ path, body string }{
 	{"/v1/chat/completions", `not json`},
 	{"/v1/chat/completions", `{"model":"","messages":[{"role":"user","content":"x"}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"robot","content":"x"}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"assistant"}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"temperature":3}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"top_p":-1}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"max_tokens":0}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"tool","content":"x"}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":[{"type":"image_url","image_url":{}}]}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"tool_choice":{"type":"function","function":{"name":"x"}}}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"tools":[{"type":"function","function":{"name":"f","extra":1}}]}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"yaml"}}`},
-	{"/v1/chat/completions", `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"bad name","schema":{}}}}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"robot","content":"x"}]}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"assistant"}]}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"temperature":3}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"top_p":-1}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"max_tokens":0}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"tool","content":"x"}]}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":[{"type":"image_url","image_url":{}}]}]}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"tool_choice":{"type":"function","function":{"name":"x"}}}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"tools":[{"type":"function","function":{"name":"f","extra":1}}]}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"yaml"}}`},
+	{"/v1/chat/completions", `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"bad name","schema":{}}}}`},
 	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string","pattern":"x"}},"required":["a"],"additionalProperties":false}`)},
 	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string"}},"required":["a"]}`)},
 	{"/v1/chat/completions", schemaCase(`{"type":"object","foo":1}`)},
@@ -373,35 +377,35 @@ var rejectionCases = []struct{ path, body string }{
 	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"$ref":"#/$defs/missing"}},"required":["a"],"additionalProperties":false}`)},
 	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"enum":["x",{"y":1}]}},"required":["a"],"additionalProperties":false}`)},
 	{"/v1/chat/completions", schemaCase(`{"type":"object","properties":{"a":{"type":"string","format":"date"}},"required":["a"],"additionalProperties":false}`)},
-	{"/v1/embeddings", `{"model":"` + embeddingModel + `"}`},
-	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":[1,"a"]}`},
-	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","encoding_format":"base64"}`},
-	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","dimensions":-1}`},
-	{"/v1/embeddings", `{"model":"` + embeddingModel + `","input":"x","dimensions":5000}`},
-	{"/v1/embeddings", `{"model":"` + decisionModel + `","input":"x"}`},
+	{"/v1/embeddings", `{"model":"` + harness.EmbeddingModel + `"}`},
+	{"/v1/embeddings", `{"model":"` + harness.EmbeddingModel + `","input":[1,"a"]}`},
+	{"/v1/embeddings", `{"model":"` + harness.EmbeddingModel + `","input":"x","encoding_format":"base64"}`},
+	{"/v1/embeddings", `{"model":"` + harness.EmbeddingModel + `","input":"x","dimensions":-1}`},
+	{"/v1/embeddings", `{"model":"` + harness.EmbeddingModel + `","input":"x","dimensions":5000}`},
+	{"/v1/embeddings", `{"model":"` + harness.DecisionModel + `","input":"x"}`},
 	{"/v1/embeddings", `{"model":"no-such-model","input":"x"}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{}}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"choice","criteria":{"a":null}}}}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"score","criteria":["a"]}}}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"questions":{"q":{"type":"maybe"}}}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"files":["x"],"questions":{"q":{"type":"noul"}}}`},
-	{"/v1/systemone", `{"model":"` + decisionModel + `","state":null,"extra":1,"questions":{"q":{"type":"noul"}}}`},
-	{"/v1/systemone", `{"model":"` + chatModel + `","state":null,"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"questions":{}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"questions":{"q":{"type":"choice","criteria":{"a":null}}}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"questions":{"q":{"type":"score","criteria":["a"]}}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"questions":{"q":{"type":"maybe"}}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"files":["x"],"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"` + harness.DecisionModel + `","state":null,"extra":1,"questions":{"q":{"type":"noul"}}}`},
+	{"/v1/systemone", `{"model":"` + harness.ChatModel + `","state":null,"questions":{"q":{"type":"noul"}}}`},
 	{"/v1/systemone", `{"model":"no-such-model","state":null,"questions":{"q":{"type":"noul"}}}`},
 }
 
 func schemaCase(schema string) string {
-	return `{"model":"` + chatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
+	return `{"model":"` + harness.ChatModel + `","messages":[{"role":"user","content":"x"}],"response_format":{"type":"json_schema","json_schema":{"name":"s","schema":` + schema + `}}}`
 }
 
 // TestDifferentialRejections sends requests that fail validation to every
 // target and requires the same status, error type, code and param.
 func TestDifferentialRejections(t *testing.T) {
 	for _, c := range rejectionCases {
-		var first *Resp
+		var first *harness.Resp
 		var firstName string
-		for _, tg := range targets {
-			r := do(t, "POST", tg.BaseURL+c.path, bearer(tg.Key), c.body)
+		for _, tg := range harness.Targets(t) {
+			r := harness.Do(t, "POST", tg.BaseURL+c.path, harness.Bearer(tg.Key), c.body)
 			if r.Status != 400 && r.Status != 404 {
 				t.Errorf("%s %s %s: %d %s", tg.Name, c.path, c.body, r.Status, r.Body)
 				continue
@@ -423,11 +427,11 @@ func TestDifferentialRejections(t *testing.T) {
 }
 
 func TestEmbeddings(t *testing.T) {
-	each(t, func(t *testing.T, tg *Target) {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
 		if !tg.RealModel {
 			t.Skip("needs LOCALBASE_CONTRACT_MODELS and LOCALBASE_CONTRACT_RUNTIMES")
 		}
-		r := do(t, "POST", tg.BaseURL+"/v1/embeddings", bearer(tg.Key), `{"model":"`+embeddingModel+`","input":["hello","world"]}`)
+		r := harness.Do(t, "POST", tg.BaseURL+"/v1/embeddings", harness.Bearer(tg.Key), `{"model":"`+harness.EmbeddingModel+`","input":["hello","world"]}`)
 		if r.Status == 404 {
 			t.Skip("embedding model file not linked")
 		}
@@ -436,7 +440,7 @@ func TestEmbeddings(t *testing.T) {
 		}
 		body := r.JSON(t)
 		data, _ := body["data"].([]any)
-		if body["model"] != embeddingModel || len(data) != 2 {
+		if body["model"] != harness.EmbeddingModel || len(data) != 2 {
 			t.Fatalf("%s", r.Body)
 		}
 		vec, _ := data[0].(map[string]any)["embedding"].([]any)
@@ -495,7 +499,7 @@ func diffJSON(path string, a, b any, skip func(string) bool) []string {
 // TestDifferentialModelMetadata compares /_localbase/models between the two
 // implementations, apart from live host memory and runtime queue state.
 func TestDifferentialModelMetadata(t *testing.T) {
-	if len(targets) < 2 {
+	if len(harness.Targets(t)) < 2 {
 		t.Skip("run with -impl=both")
 	}
 	volatile := func(p string) bool {
@@ -506,14 +510,14 @@ func TestDifferentialModelMetadata(t *testing.T) {
 			strings.HasSuffix(p, ".memory.source") || strings.HasSuffix(p, ".memory.launchShape") ||
 			strings.HasSuffix(p, ".fit.headroomGb") || strings.HasSuffix(p, ".fit.verdict")
 	}
-	for _, path := range []string{"/_localbase/models", "/_localbase/models/" + chatModel, "/_localbase/models/" + embeddingModel,
+	for _, path := range []string{"/_localbase/models", "/_localbase/models/" + harness.ChatModel, "/_localbase/models/" + harness.EmbeddingModel,
 		"/_localbase/models?kind=stt,tts&sort=size", "/_localbase/models?q=qwen%20coder", "/_localbase/models?capability=tool-calling&fit=fits,tight",
 		"/_localbase/models?installed=true", "/_localbase/models?sort=context&reverse=true", "/_localbase/models?license=open&sort=name",
 		"/_localbase/models?sort=fit", "/_localbase/models/no-such-model"} {
 		var bodies []any
 		var statuses []int
-		for _, tg := range targets {
-			r := do(t, "GET", tg.BaseURL+path, bearer(tg.Key), "")
+		for _, tg := range harness.Targets(t) {
+			r := harness.Do(t, "GET", tg.BaseURL+path, harness.Bearer(tg.Key), "")
 			var v any
 			json.Unmarshal(r.Body, &v)
 			bodies, statuses = append(bodies, v), append(statuses, r.Status)
@@ -526,7 +530,7 @@ func TestDifferentialModelMetadata(t *testing.T) {
 			if len(d) > 15 {
 				d = append(d[:15], fmt.Sprintf("... %d more", len(d)-15))
 			}
-			t.Errorf("%s differs (%s vs %s):\n  %s", path, targets[0].Name, targets[1].Name, strings.Join(d, "\n  "))
+			t.Errorf("%s differs (%s vs %s):\n  %s", path, harness.Targets(t)[0].Name, harness.Targets(t)[1].Name, strings.Join(d, "\n  "))
 		}
 	}
 }

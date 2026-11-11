@@ -14,6 +14,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // testFeed builds a v2 feed: a community model, an entry for a built-in id
@@ -152,12 +154,12 @@ func TestCLIFeed(t *testing.T) {
 // TestFeedSchedulerReloadsCatalog: a gateway downloads its feed at start and
 // serves the community model without a restart (Go; TS does the same).
 func TestFeedSchedulerReloadsCatalog(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
 	feed := testFeed(t)
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(feed) }), false)
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true,
 		env: []string{"LOCALBASE_CATALOG_FEED_URL=" + srv.URL + "/feed.json"}}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {

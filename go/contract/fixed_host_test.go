@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 const gib = int64(1) << 30
@@ -25,7 +28,7 @@ func onFixedHost(t *testing.T, e *e2e, capacityGiB, availableMiB int64) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(e.outDir, "lab-host.json")
-	if err := mustWriteFile(path, b, 0o600); err != nil {
+	if err := fsguard.WriteFile(path, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	e.lab = true
@@ -35,10 +38,10 @@ func onFixedHost(t *testing.T, e *e2e, capacityGiB, availableMiB int64) {
 // The fixed host is what the gateway sees: if the lab build or the file were left out, it would
 // report this machine's memory instead.
 func TestAFixedHostIsWhatTheGatewaySees(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	onFixedHost(t, e, 16, 12345)
 	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {

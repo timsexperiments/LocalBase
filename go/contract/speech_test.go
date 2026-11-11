@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // TestDifferentialSpeechRejections sends invalid speech requests to both
@@ -36,17 +36,17 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 		{"instructions", `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"default","instructions":"calm"}`},
 		{"unknown key", `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"default","pitch":1}`},
 		{"unknown model", `{"model":"no-such-model","input":"hi","voice":"default"}`},
-		{"chat model", `{"model":"` + chatModel + `","input":"hi","voice":"default"}`},
+		{"chat model", `{"model":"` + harness.ChatModel + `","input":"hi","voice":"default"}`},
 		{"missing custom voice", `{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"hi","voice":"voice-0123456789ab"}`},
 		{"voice not on model", `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"harbor"}`},
 	}
 	for _, c := range cases {
-		var first *Resp
+		var first *harness.Resp
 		var firstName string
-		for _, tg := range targets {
-			h := bearer(tg.Key)
+		for _, tg := range harness.Targets(t) {
+			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = "application/json"
-			r := do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, c.body)
+			r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, c.body)
 			if r.Status < 400 {
 				t.Errorf("%s %s: %d %s", tg.Name, c.name, r.Status, r.Body)
 				continue
@@ -67,39 +67,6 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 	}
 }
 
-// linkCrispASR prepares Kokoro through CrispASR in a scratch root from
-// LOCALBASE_CONTRACT_CRISPASR: rt/crispasr-macos-arm64/ (the pinned release,
-// unpacked), misaki-merged.json and models/kokoro-*.gguf. The runtime is
-// copied into the managed layout; the weights are cloned (APFS) read-only.
-func linkCrispASR(r *root.Root) error {
-	src := os.Getenv("LOCALBASE_CONTRACT_CRISPASR")
-	if src == "" || goruntime.GOOS != "darwin" || goruntime.GOARCH != "arm64" {
-		return nil
-	}
-	pkg := filepath.Join(r.RuntimesDir(), "crispasr", crispasrPin)
-	if err := mustMkdirAll(pkg, 0o700); err != nil {
-		return err
-	}
-	if err := guardedCopyDir(filepath.Join(src, "rt", "crispasr-macos-arm64"), pkg); err != nil {
-		return err
-	}
-	if err := cloneModel(filepath.Join(src, "misaki-merged.json"), filepath.Join(pkg, "misaki-merged.json")); err != nil {
-		return err
-	}
-	if err := mustMkdirAll(r.ModelsDir("tts"), 0o700); err != nil {
-		return err
-	}
-	for _, f := range []string{"kokoro-82m-f16.gguf", "kokoro-voice-af_heart.gguf"} {
-		if err := cloneModel(filepath.Join(src, "models", f), filepath.Join(r.ModelsDir("tts"), f)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// crispasrPin is the managed CrispASR package directory (its archive sha256).
-const crispasrPin = "5c13fbbc12eb45c3f01823a6bbfbbb22e0682bc76c6b78a0d9511da1aaf88831"
-
 // TestSpeechKokoroCrispASR synthesizes speech with Kokoro through CrispASR
 // on the Go gateway, checks every output shape, and transcribes the result
 // with whisper tiny.en to confirm it says the input.
@@ -107,8 +74,8 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	if os.Getenv("LOCALBASE_CONTRACT_CRISPASR") == "" || os.Getenv("LOCALBASE_CONTRACT_STT_MODELS") == "" {
 		t.Skip("needs LOCALBASE_CONTRACT_CRISPASR and LOCALBASE_CONTRACT_STT_MODELS")
 	}
-	var tg *Target
-	for _, x := range targets {
+	var tg *harness.Target
+	for _, x := range harness.Targets(t) {
 		if x.Name == "go" {
 			tg = x
 		}
@@ -116,14 +83,14 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	if tg == nil {
 		t.Skip("needs the go target")
 	}
-	sel := do(t, "GET", tg.BaseURL+"/_localbase/model-backend?model=kokoro-82m-v1.0-q8", bearer(tg.Admin), "")
+	sel := harness.Do(t, "GET", tg.BaseURL+"/_localbase/model-backend?model=kokoro-82m-v1.0-q8", harness.Bearer(tg.Admin), "")
 	if s, _ := sel.JSON(t)["selection"].(map[string]any); s == nil || s["backendId"] != "crispasr-metal" || s["variantId"] != "crispasr-f16" {
 		t.Fatalf("automatic selection: %d %s", sel.Status, sel.Body)
 	}
-	h := bearer(tg.Key)
+	h := harness.Bearer(tg.Key)
 	h["Content-Type"] = "application/json"
-	speak := func(extra string) *Resp {
-		return do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
+	speak := func(extra string) *harness.Resp {
+		return harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
 			`{"model":"kokoro-82m-v1.0-q8","input":"The weather is lovely today.","voice":"af_heart"`+extra+`}`)
 	}
 	r := speak("")
@@ -146,14 +113,14 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 		t.Errorf("sse: %d %.300s", r.Status, r.Body)
 	}
 	// A catalog voice the pinned variant does not carry.
-	if r := do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"af_bella"}`); r.Status != 400 || r.ErrorCode(t) != "voice_not_supported" {
+	if r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, `{"model":"kokoro-82m-v1.0-q8","input":"hi","voice":"af_bella"}`); r.Status != 400 || r.ErrorCode(t) != "voice_not_supported" {
 		t.Errorf("af_bella: %d %s", r.Status, r.Body)
 	}
 
 	// Round trip: whisper hears the input.
-	in := filepath.Join(scratchDir(t), "speech.wav")
-	out := filepath.Join(scratchDir(t), "speech-16k.wav")
-	mustWriteFile(in, wav, 0o600)
+	in := filepath.Join(fsguard.ScratchDir(t), "speech.wav")
+	out := filepath.Join(fsguard.ScratchDir(t), "speech-16k.wav")
+	fsguard.WriteFile(in, wav, 0o600)
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", in, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}
@@ -165,9 +132,9 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	w.WriteField("model", "whisper-tiny-en-q8_0")
 	w.WriteField("response_format", "text")
 	w.Close()
-	sh := bearer(tg.Key)
+	sh := harness.Bearer(tg.Key)
 	sh["Content-Type"] = w.FormDataContentType()
-	tr := do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", sh, b.String())
+	tr := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", sh, b.String())
 	text := strings.ToLower(string(tr.Body))
 	if tr.Status != 200 || !strings.Contains(text, "weather") || !strings.Contains(text, "lovely") {
 		t.Fatalf("transcript: %d %q", tr.Status, tr.Body)
@@ -178,8 +145,8 @@ func TestSpeechKokoroCrispASR(t *testing.T) {
 	// off` restarts the server without it on the next request.
 	detector := filepath.Join(os.Getenv("LOCALBASE_CONTRACT_CRISPASR"), "rt", "crispasr-macos-arm64", "crispasr")
 	marked := func(wav []byte) bool {
-		p := filepath.Join(scratchDir(t), "check.wav")
-		mustWriteFile(p, wav, 0o600)
+		p := filepath.Join(fsguard.ScratchDir(t), "check.wav")
+		fsguard.WriteFile(p, wav, 0o600)
 		out, _ := exec.Command(detector, "--detect-watermark", p).CombinedOutput()
 		return strings.Contains(string(out), "WATERMARK DETECTED")
 	}
@@ -206,7 +173,7 @@ func TestSpeechQwenReal(t *testing.T) {
 	if err != nil {
 		t.Skip("no reference clip")
 	}
-	checkWAV := func(label string, r *Resp) []byte {
+	checkWAV := func(label string, r *harness.Resp) []byte {
 		t.Helper()
 		b := r.Body
 		if r.Status != 200 || len(b) < 44+24000 || string(b[:4]) != "RIFF" || binary.LittleEndian.Uint32(b[24:]) != 24000 {
@@ -215,30 +182,30 @@ func TestSpeechQwenReal(t *testing.T) {
 		return b
 	}
 	outputs := map[string][2][]byte{}
-	for _, tg := range targets {
-		h := bearer(tg.Key)
+	for _, tg := range harness.Targets(t) {
+		h := harness.Bearer(tg.Key)
 		h["Content-Type"] = "application/json"
-		ref := checkWAV(tg.Name+" reference voice", do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
+		ref := checkWAV(tg.Name+" reference voice", harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
 			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Good morning, this is a test.","voice":"harbor"}`))
 
 		body, ct := voiceForm(voicePart{name: "name", value: "Cloned"}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
-		ah := bearer(tg.Admin)
+		ah := harness.Bearer(tg.Admin)
 		ah["Content-Type"] = ct
-		created := do(t, "POST", tg.BaseURL+"/_localbase/voices", ah, body)
+		created := harness.Do(t, "POST", tg.BaseURL+"/_localbase/voices", ah, body)
 		if created.Status != 201 {
 			t.Fatalf("%s create voice: %d %s", tg.Name, created.Status, created.Body)
 		}
 		id := created.JSON(t)["id"].(string)
 		// The warm server loads voices at launch: the new voice restarts it.
-		custom := checkWAV(tg.Name+" custom voice", do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
+		custom := checkWAV(tg.Name+" custom voice", harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h,
 			`{"model":"qwen3-tts-1.7b-base-q4_k_m","input":"Good morning, this is a test.","voice":"`+id+`"}`))
-		do(t, "DELETE", tg.BaseURL+"/_localbase/voices/"+id, bearer(tg.Admin), "")
+		harness.Do(t, "DELETE", tg.BaseURL+"/_localbase/voices/"+id, harness.Bearer(tg.Admin), "")
 		outputs[tg.Name] = [2][]byte{ref, custom}
 	}
 	// Sampling differs run to run, so compare what was said: whisper must hear
 	// the sentence in every output.
 	if os.Getenv("LOCALBASE_CONTRACT_STT_MODELS") != "" {
-		goTarget := targets[len(targets)-1]
+		goTarget := harness.Targets(t)[len(harness.Targets(t))-1]
 		for name, outs := range outputs {
 			for i, wav := range outs {
 				heard := transcribe(t, goTarget, wav)
@@ -249,7 +216,7 @@ func TestSpeechQwenReal(t *testing.T) {
 			}
 		}
 	}
-	if len(targets) == 2 {
+	if len(harness.Targets(t)) == 2 {
 		a, b := outputs["ts"], outputs["go"]
 		t.Logf("reference voice identical: %v (%d vs %d bytes); custom voice identical: %v (%d vs %d bytes)",
 			bytes.Equal(a[0], b[0]), len(a[0]), len(b[0]), bytes.Equal(a[1], b[1]), len(a[1]), len(b[1]))
@@ -257,11 +224,11 @@ func TestSpeechQwenReal(t *testing.T) {
 }
 
 // transcribe runs whisper tiny.en on a 24 kHz WAV through tg (afconvert to 16 kHz).
-func transcribe(t *testing.T, tg *Target, wav []byte) string {
+func transcribe(t *testing.T, tg *harness.Target, wav []byte) string {
 	t.Helper()
-	in := filepath.Join(scratchDir(t), "in.wav")
-	out := filepath.Join(scratchDir(t), "out.wav")
-	mustWriteFile(in, wav, 0o600)
+	in := filepath.Join(fsguard.ScratchDir(t), "in.wav")
+	out := filepath.Join(fsguard.ScratchDir(t), "out.wav")
+	fsguard.WriteFile(in, wav, 0o600)
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", in, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}
@@ -273,9 +240,9 @@ func transcribe(t *testing.T, tg *Target, wav []byte) string {
 	w.WriteField("model", "whisper-tiny-en-q8_0")
 	w.WriteField("response_format", "text")
 	w.Close()
-	h := bearer(tg.Key)
+	h := harness.Bearer(tg.Key)
 	h["Content-Type"] = w.FormDataContentType()
-	r := do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
+	r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
 	if r.Status != 200 {
 		t.Fatalf("transcribe: %d %s", r.Status, r.Body)
 	}

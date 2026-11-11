@@ -6,12 +6,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // `local-base connect` (DESIGN §30.5), a Go-only command: the snippet on stdout, so it can
 // go into a file, everything else on stderr, and no secret unless a key was asked for.
 func TestCLIConnect(t *testing.T) {
-	root := filepath.Join(scratchDir(t), "root")
+	root := filepath.Join(fsguard.ScratchDir(t), "root")
 	if res := runCLI(t, "go", root, "--json", "init"); res.code != 0 {
 		t.Fatalf("init: %s", res.stderr)
 	}

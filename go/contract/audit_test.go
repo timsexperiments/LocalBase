@@ -6,6 +6,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // Admin changes through a real Go gateway leave audit events with actor and
@@ -13,10 +16,10 @@ import (
 // SMTP password, invited emails, issued and rotated key secrets) appear in
 // no event: the planted-secret scan, extended to audit events.
 func TestAdminAuditRedaction(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
 		t.Fatalf("init: %s %s", r.stdout, r.stderr)

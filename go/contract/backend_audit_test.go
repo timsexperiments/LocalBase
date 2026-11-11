@@ -8,17 +8,20 @@ import (
 	goruntime "runtime"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // On the host too: registering, removing and choosing a backend are on record, by id. The
 // command a backend runs is not logged, since a path can hold a name.
 func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
-	if *implFlag != "go" && *implFlag != "both" {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
 		t.Skip("runs the Go gateway")
 	}
-	tmp := scratchDir(t)
+	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
-	if out, err := exec.Command("go", "build", "-o", fake, "../internal/runtime/fakebackend").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
 		t.Fatalf("build fakebackend: %v %s", err, out)
 	}
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
@@ -32,7 +35,7 @@ func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
 		"launch": map[string]any{"command": fake, "args": []string{"--host", "{host}", "--port", "{port}", "-m", "{model}"}, "healthPath": "/health",
 			"memory": map[string]any{"weightsFactor": 1, "overheadGb": 0, "assumption": "a fake backend holds next to nothing"}}})
 	defPath := filepath.Join(tmp, "backend.json")
-	if err := mustWriteFile(defPath, def, 0o600); err != nil {
+	if err := fsguard.WriteFile(defPath, def, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	e.json("backends", "add", "--file", defPath)
@@ -43,7 +46,7 @@ func TestBackendChangesFromTheCommandLineAreAudited(t *testing.T) {
 	e.json("backends", "remove", "audit-fake")
 	// Choosing one while importing counts too. Automatic isn't a choice.
 	file := filepath.Join(tmp, "tiny.gguf")
-	if err := mustWriteFile(file, []byte("GGUF not really"), 0o600); err != nil {
+	if err := fsguard.WriteFile(file, []byte("GGUF not really"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.cli(nil, "models", "import", file, "--id", "chosen", "--task", "chat", "--backend", "llama.cpp-cpu", "--yes"); r.code != 0 {

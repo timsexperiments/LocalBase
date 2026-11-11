@@ -9,6 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/timsexperiments/LocalBase/go/test/harness"
+	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 type formCase struct {
@@ -49,10 +52,10 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 	}
 	for _, path := range []string{"/v1/audio/transcriptions", "/v1/audio/translations"} {
 		for _, c := range cases {
-			var first *Resp
+			var first *harness.Resp
 			var firstName string
-			for _, tg := range targets {
-				h := bearer(tg.Key)
+			for _, tg := range harness.Targets(t) {
+				h := harness.Bearer(tg.Key)
 				var body string
 				if c.raw != "" {
 					body = c.raw
@@ -62,7 +65,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 					body, ct = multipartBody(c.fields)
 					h["Content-Type"] = ct
 				}
-				r := do(t, "POST", tg.BaseURL+path, h, body)
+				r := harness.Do(t, "POST", tg.BaseURL+path, h, body)
 				if r.Status < 400 {
 					t.Errorf("%s %s %s: %d %s", tg.Name, path, c.name, r.Status, r.Body)
 					continue
@@ -83,19 +86,19 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 		}
 	}
 	// Method and permission.
-	each(t, func(t *testing.T, tg *Target) {
+	harness.Each(t, func(t *testing.T, tg *harness.Target) {
 		// TS reads any method's body as a form; Go takes POST only (DESIGN §13.6).
 		wantGET := 405
 		if tg.Name == "ts" {
 			wantGET = 400
 		}
-		if r := do(t, "GET", tg.BaseURL+"/v1/audio/transcriptions", bearer(tg.Key), ""); r.Status != wantGET {
+		if r := harness.Do(t, "GET", tg.BaseURL+"/v1/audio/transcriptions", harness.Bearer(tg.Key), ""); r.Status != wantGET {
 			t.Errorf("GET: %d, want %d", r.Status, wantGET)
 		}
 		body, ct := multipartBody([][2]string{{"file", "@file"}})
-		h := bearer(tg.ChatOnly)
+		h := harness.Bearer(tg.ChatOnly)
 		h["Content-Type"] = ct
-		if r := do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, body); r.Status != 403 {
+		if r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, body); r.Status != 403 {
 			t.Errorf("chat-only key: %d %s", r.Status, r.Body)
 		}
 	})
@@ -112,7 +115,7 @@ func speechClip(t *testing.T) []byte {
 	if _, err := exec.LookPath("afconvert"); err != nil {
 		t.Skip("afconvert is not available")
 	}
-	out := filepath.Join(scratchDir(t), "speech-16k.wav")
+	out := filepath.Join(fsguard.ScratchDir(t), "speech-16k.wav")
 	if b, err := exec.Command("afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", src, out).CombinedOutput(); err != nil {
 		t.Fatalf("afconvert: %v %s", err, b)
 	}
@@ -128,7 +131,7 @@ func TestTranscriptionReal(t *testing.T) {
 	}
 	clip := speechClip(t)
 	results := map[string]map[string]string{}
-	for _, tg := range targets {
+	for _, tg := range harness.Targets(t) {
 		results[tg.Name] = map[string]string{}
 		for _, format := range []string{"json", "text", "verbose_json", "srt", "vtt"} {
 			var b bytes.Buffer
@@ -138,9 +141,9 @@ func TestTranscriptionReal(t *testing.T) {
 			w.WriteField("model", "whisper-tiny-en-q8_0")
 			w.WriteField("response_format", format)
 			w.Close()
-			h := bearer(tg.Key)
+			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = w.FormDataContentType()
-			r := do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
+			r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/transcriptions", h, b.String())
 			if r.Status != 200 {
 				t.Fatalf("%s %s: %d %s", tg.Name, format, r.Status, r.Body)
 			}
@@ -150,8 +153,8 @@ func TestTranscriptionReal(t *testing.T) {
 			t.Errorf("%s: transcript looks empty: %q", tg.Name, results[tg.Name]["text"])
 		}
 	}
-	if len(targets) == 2 {
-		a, b := results[targets[0].Name], results[targets[1].Name]
+	if len(harness.Targets(t)) == 2 {
+		a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
 		for format := range a {
 			if format == "verbose_json" || format == "json" {
 				var ja, jb any
@@ -167,5 +170,5 @@ func TestTranscriptionReal(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("transcript: %s", results[targets[0].Name]["text"])
+	t.Logf("transcript: %s", results[harness.Targets(t)[0].Name]["text"])
 }
