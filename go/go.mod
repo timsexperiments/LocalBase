@@ -1,6 +1,6 @@
 module github.com/timsexperiments/LocalBase/go
 
-go 1.26.10
+go 1.26.11
 
 require modernc.org/sqlite v1.60.1
 
