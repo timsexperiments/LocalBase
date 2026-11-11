@@ -25,6 +25,8 @@ for target in \
 	./internal/otlp:FuzzExtract; do
 	pkg=${target%%:*}
 	name=${target##*:}
+	# go test -fuzz passes on a package without the target, so a moved target would fuzz nothing.
+	go test -list "^$name\$" "$pkg" | grep -qx "$name" || { echo "fuzz.sh: $pkg has no $name" >&2; exit 1; }
 	echo "== $name ($pkg) for $time"
 	go test "$pkg" -run '^$' -fuzz "^$name\$" -fuzztime "$time"
 done
