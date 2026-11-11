@@ -12,12 +12,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"
 )
 
 var byNameOrService = []*regexp.Regexp{
@@ -52,56 +53,29 @@ func findings(text string) []string {
 	return out
 }
 
-func scan(fsys fs.FS) (map[string][]string, error) {
-	found, _, err := scanRead(fsys)
-	return found, err
+// filter is what the guard reads: scripts and code, tests too, but not the guard itself, whose
+// test plants every shape it looks for.
+var filter = treewalk.Filter{
+	SkipDirs:    []string{"node_modules", "testdata", ".git", "killguard"},
+	RegularOnly: true,
+	Exts:        []string{".sh", ".go", ".ts", ".js", ".mjs", ".py", ".pl"},
+	Makefile:    true,
 }
 
-// scanRead is scan, and how many files it read.
-func scanRead(fsys fs.FS) (map[string][]string, int, error) {
-	found := map[string][]string{}
-	read := 0
-	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if base := path.Base(name); base == "node_modules" || base == "testdata" || base == ".git" || base == "killguard" {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		b, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			return err
-		}
-		switch ext := path.Ext(name); {
-		case ext == ".sh", ext == ".go", ext == ".ts", ext == ".js", ext == ".mjs", ext == ".py", ext == ".pl", path.Base(name) == "Makefile":
-		case ext == "" && strings.HasPrefix(string(b), "#!"):
-		default:
-			return nil
-		}
-		read++
-		if f := findings(string(b)); len(f) > 0 {
-			found[name] = f
-		}
-		return nil
-	})
-	return found, read, err
+func scan(fsys fs.FS) (map[string][]string, error) {
+	found, _, err := treewalk.Walk(fsys, filter, findings)
+	return found, err
 }
 
 // trees are what the guard reads: go/tools, and go/test, where step 7 moves the test suites and
 // their scripts out of go/tools. A move from one to the other changes neither what is read nor how
 // much. Findings are named from the go directory, tools/... or test/....
-var trees = []struct{ label, dir string }{{"tools", "../../../tools"}, {"test", "../.."}}
+var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}}
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
 // arrive.
-const minRead = 127
+const minRead = 129
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. An entry can be absent from a tree: browser-run.sh's are being fixed on another
@@ -113,27 +87,12 @@ var known = map[string]int{
 }
 
 func TestNothingStopsAProcessByNameOrAServiceOrWithoutARoot(t *testing.T) {
-	roots := trees
-	other := os.Getenv("LOCALBASE_KILL_GUARD_TREE")
-	if other != "" {
-		roots = []struct{ label, dir string }{{"tools", other}} // laid out as go/tools is
+	var found map[string][]string
+	if other := os.Getenv("LOCALBASE_KILL_GUARD_TREE"); other != "" {
+		found = treewalk.WalkTrees(t, []treewalk.Tree{{Label: "tools", Dir: other}}, 0, filter, findings) // laid out as go/tools is
+	} else {
+		found = treewalk.WalkTrees(t, trees, minRead, filter, findings)
 	}
-	found := map[string][]string{}
-	read := 0
-	for _, r := range roots {
-		f, n, err := scanRead(os.DirFS(r.dir))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for name, lines := range f {
-			found[r.label+"/"+name] = lines
-		}
-		read += n
-	}
-	if other == "" && read < minRead {
-		t.Errorf("read %d files in go/tools and go/test, fewer than the %d they held: a tree stopped being read, or files moved where neither reaches", read, minRead)
-	}
-	t.Logf("read %d files (floor %d)", read, minRead)
 	var names []string
 	for name := range found {
 		names = append(names, name)
