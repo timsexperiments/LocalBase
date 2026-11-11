@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -322,7 +323,9 @@ func runSmoke(c *cli.Ctx) (any, error) {
 			return nil, cli.Inputf("Unknown LLM model id: %s", target)
 		}
 	}
-	s := &smoker{timeout: time.Duration(timeout) * time.Second, client: &http.Client{}}
+	// The key goes to the proven gateway alone: no proxy, and no redirect, so a 3xx is the step's
+	// answer (a failure) and nothing else sees the key (localhttp).
+	s := &smoker{timeout: time.Duration(timeout) * time.Second, client: localhttp.New(0)}
 	var steps []smokeStep
 	var gatewayURL, failure *string
 	step := func(name string, model string, work func() (string, error)) error {
