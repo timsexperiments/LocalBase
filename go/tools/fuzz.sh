@@ -19,8 +19,8 @@ for target in \
 	./internal/gateway/infer:FuzzValidateSpeech \
 	./internal/gateway/infer:FuzzValidators \
 	./internal/gateway/runs:FuzzRequestModel \
+	./internal/gguf:FuzzGGUFHeader \
 	./internal/jsjson:FuzzParse \
-	./internal/memory:FuzzGGUFHeader \
 	./internal/models:FuzzInspectVariant \
 	./internal/otlp:FuzzExtract; do
 	pkg=${target%%:*}
