@@ -5,7 +5,7 @@
 # composer above the software keyboard, Return adding a line while Send
 # submits, and runs Apple's accessibility audit (the Accessibility Inspector
 # engine) on chat, the model picker, the history drawer, Admin and the Lab.
-#   tools/ios-check.sh http://127.0.0.1:<port> [simulator-udid]
+#   test/platform/ios-check.sh http://127.0.0.1:<port> [simulator-udid]
 # The default device is the first booted iPhone. Results: $out (xcresult,
 # screenshots, audit reports).
 set -eu

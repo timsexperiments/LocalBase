@@ -6,7 +6,7 @@ import XCTest
 // keyboard, Return adding a line on touch while Send submits, and Apple's
 // accessibility audit (the engine behind Accessibility Inspector) on chat,
 // the model picker, the history drawer, Admin and the Lab. Screenshots and
-// the audit report are attachments; tools/ios-check.sh exports them.
+// the audit report are attachments; test/platform/ios-check.sh exports them.
 final class LBSafariUITests: XCTestCase {
     let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
     var base: String { ProcessInfo.processInfo.environment["LB_BASE_URL"] ?? "http://127.0.0.1:24795" }

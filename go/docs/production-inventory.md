@@ -211,7 +211,7 @@ uncovered, since this ran on macOS.
 | Behaviour | Guard | Status |
 |---|---|---|
 | Rendered launchd and systemd units | `TestUnitsMatchTS`, `TestRenderSystemd`, `TestParseLaunchctl`, `TestParseLaunchdEnabled` | Guarded |
-| **Start, stop, restart, remove, including restart rewriting the plist** | `Start`, `Stop`, `RestartWithin`, `write`, `enable`, `disable`, `Remove`, `WaitReady` 0%. Only the manual `tools/rehearsal.sh`, `tools/systemd-check.sh` | **GAP** |
+| **Start, stop, restart, remove, including restart rewriting the plist** | `Start`, `Stop`, `RestartWithin`, `write`, `enable`, `disable`, `Remove`, `WaitReady` 0%. Only the manual `tools/rehearsal.sh`, `test/platform/systemd-check.sh` | **GAP** |
 | Gateway lock | `TestOperationLease`; `root.Lock`, `ClearStale` 0%, `LockAs` 42% | **GAP** |
 
 ### Configuration and database

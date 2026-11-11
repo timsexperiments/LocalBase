@@ -34,7 +34,7 @@ updates:
       bun:
         patterns: ["*"]
   - package-ecosystem: docker
-    directories: [/, /go/tools/systemd-check]
+    directories: [/, /go/test/platform/systemd-check]
     schedule:
       interval: weekly
     open-pull-requests-limit: 3

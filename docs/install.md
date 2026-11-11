@@ -65,7 +65,7 @@ loginctl enable-linger "$USER"
 
 Output goes to the user journal (`journalctl --user -u 'local-base-gateway-*'`). To run without a service manager, use `local-base serve`.
 
-**Linux status:** the install script, archives and `serve` pass in CI on Ubuntu x86-64 and ARM64. **`local-base start` and the service flow are untested on a real host.** They last passed on 2026-10-21 in a disposable Debian container (`go/tools/systemd-check.sh`).
+**Linux status:** the install script, archives and `serve` pass in CI on Ubuntu x86-64 and ARM64. **`local-base start` and the service flow are untested on a real host.** They last passed on 2026-10-21 in a disposable Debian container (`go/test/platform/systemd-check.sh`).
 
 ## Uninstall
 
