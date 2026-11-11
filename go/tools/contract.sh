@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs the contract suite (go/contract and go/test/system) and keeps the evidence of a failing run: the full
+# Runs the contract suite (go/test/contract and go/test/system) and keeps the evidence of a failing run: the full
 # `go test -json` stream is written to a timestamped file, kept (and its path
 # printed) when the run fails, and removed when it passes. A failure without
 # output then still leaves its events behind.
@@ -16,7 +16,7 @@ mkdir -p "$dir"
 log="$dir/contract-$(date -u +%Y%m%dT%H%M%SZ)-$$.jsonl"
 # -p 1: one package at a time. Each launches its own shared targets (Go, and TS under -impl=both),
 # and two at once could load real models side by side on a small runner.
-go test -json -p 1 ./contract ./test/system -count=1 "$@" > "$log"
+go test -json -p 1 ./test/contract ./test/system -count=1 "$@" > "$log"
 code=$?
 # Show the run as go test would (package results and failures).
 if command -v jq >/dev/null; then

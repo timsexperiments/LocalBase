@@ -16,7 +16,7 @@ mkdir -p "$dir/bin"
 go=$(go env GOROOT)/bin/go
 # Packages with no tests fail to build under -coverprofile with a switched
 # toolchain, so only packages with tests run; -coverpkg still counts the rest.
-tested=$("$go" list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -E '/contract$|/test/system$|third_party')
+tested=$("$go" list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -E '/test/contract$|/test/system$|third_party')
 "$go" test $tested -count=1 -coverpkg=github.com/timsexperiments/LocalBase/go/... \
   -coverprofile="$dir/unit.out" -covermode=atomic >"$dir/unit.log" 2>&1 || { tail -30 "$dir/unit.log"; exit 1; }
 LOCALBASE_CONTRACT_COVERDIR="$dir/bin" LOCALBASE_CONTRACT_LOGS="$dir/runs" \

@@ -19,7 +19,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/internal/root/` | Data directory, marker and the gateway lock |
 | `go/internal/service/` | launchd and systemd user units |
 | `go/internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
-| `go/contract/` | Black-box HTTP contract suite |
+| `go/test/contract/` | Black-box HTTP contract suite |
 | `go/tools/` | Check scripts and golden generators |
 | `docs/` | User documentation |
 | `scripts/release/`, `packaging/` | Go release build, installer test, Homebrew template |

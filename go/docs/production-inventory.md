@@ -37,7 +37,7 @@ nothing in CI would stop a PR breaking TS parity, including this cleanup.
 
 Real-model tests (**R**) stay manual: no runner has the weights or memory.
 
-**Tests absent on a platform** are named in `contract/platform_absences_test.go`, with why and what
+**Tests absent on a platform** are named in `test/contract/platform_absences_test.go`, with why and what
 runs them; a skip on the platform alone fails `TestPlatformAbsencesAreNamed`.
 
 ## 2. Baseline
@@ -300,7 +300,7 @@ Listed so they are not "cleaned up" early. About 100 source files mention TS.
 | `internal/third_party/norm` (9,935 lines) | voice names matching JS `normalize`; used only by `voices` | Likely removable with a one-time check of stored names |
 | `jsNumber`, `utf16Len`, `toml` matching Bun | JS number and string semantics | Simplify |
 | `tools/golden/*.ts` (20 files), `TestPlanMatchesTypeScript` and the other `*MatchesTypeScript`/`TestUnitsMatchTS` | generated TS expectations | Freeze goldens as Go's own, drop the generators |
-| `contract/` TS target and differentials | the parity proof | Keep the suite, Go-only |
+| `test/contract/` TS target and differentials | the parity proof | Keep the suite, Go-only |
 | Session rows and cookie names | sessions survive a switch | Free to change |
 | Odd TS behaviours kept deliberately (for example no method check on transcription) | parity | Fix, as visible API changes needing approval |
 

@@ -1,11 +1,11 @@
-// Package harness launches the LocalBase gateways the black-box suites test (go/contract): the
+// Package harness launches the LocalBase gateways the black-box suites test (go/test/contract): the
 // shared targets the matrix tests run against (Targets), a gateway of a test's own
 // (Launch), the scratch root a gateway serves (Fixture), and the request helpers (Do). Its
 // writes go through fsguard. It is for test packages only: no non-test file outside go/test
 // and go/tools may import it (TestNoProductionImports).
 //
 // The flags -impl, -url, -key and -keyless-key are registered here, so every test binary that
-// imports the harness takes them. go/contract's package doc lists them and the environment.
+// imports the harness takes them. go/test/contract's package doc lists them and the environment.
 //
 // The shared targets are launched by the first test that asks for them, once per test binary,
 // and stopped by Main when the package's tests end. A package whose tests never ask launches

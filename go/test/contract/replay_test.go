@@ -18,7 +18,7 @@ import (
 // /v1/models/{id}, POST /v1/chat/completions and POST /v1/systemone;
 // the editor client streams chat completions.
 //
-//	LOCALBASE_REPLAY=1 LOCALBASE_CONTRACT_KEY=… go test ./contract -run TestClientReplay -args -url http://127.0.0.1:<port>
+//	LOCALBASE_REPLAY=1 LOCALBASE_CONTRACT_KEY=… go test ./test/contract -run TestClientReplay -args -url http://127.0.0.1:<port>
 //
 // LOCALBASE_REPLAY_CHAT and LOCALBASE_REPLAY_DECISION name the models
 // (default: the gateway's first chat model, and no decision request).
