@@ -1,11 +1,8 @@
 package main
 
 import (
-	"errors"
-
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 // sayIfInstalled says what's about to happen when it's the installed service, the one on the default
@@ -14,28 +11,6 @@ func sayIfInstalled(c *cli.Ctx, dir, what string) {
 	if root.IsDefault(dir) {
 		c.Error("%s", what)
 	}
-}
-
-// VersionForAudit is what a binary said its version is, if it is one: whatever else it says stays out.
-func VersionForAudit(v string) string {
-	if !upgrade.Compare(v, "v0.0.0").Known {
-		return "unknown"
-	}
-	return v
-}
-
-// ApplyOutcome is how an Apply ended, in words from a short list.
-func ApplyOutcome(res upgrade.Result, err error) string {
-	var smoke *upgrade.SmokeFailed
-	switch {
-	case err == nil:
-		return "applied"
-	case res.RolledBack:
-		return "rolled-back"
-	case errors.As(err, &smoke):
-		return "smoke-failed"
-	}
-	return "failed"
 }
 
 // userAction is the route's word for what userCommand does, by the status it sets.

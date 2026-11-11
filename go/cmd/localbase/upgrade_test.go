@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,72 +13,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
-
-func TestClassifyGateway(t *testing.T) {
-	const binary = "/bin/local-base"
-	ok := GatewayFacts{LockState: "active", OwnerManaged: true, DefinitionInstalled: true, Reachable: true, ServiceProgram: binary, Binary: binary}
-	with := func(change func(*GatewayFacts)) GatewayFacts {
-		f := ok
-		change(&f)
-		return f
-	}
-	if state, err := ClassifyGateway(ok); err != nil || state != GatewayManaged {
-		t.Errorf("a managed gateway on this binary: %v %v", state, err)
-	}
-	for _, lock := range []string{"missing", "stale"} {
-		if state, err := ClassifyGateway(GatewayFacts{LockState: lock}); err != nil || state != GatewayNone {
-			t.Errorf("%s: %v %v", lock, state, err)
-		}
-	}
-	for name, tc := range map[string]struct {
-		f    GatewayFacts
-		want string
-	}{
-		"foreground":            {with(func(f *GatewayFacts) { f.OwnerManaged = false }), "foreground"},
-		"manager unreachable":   {with(func(f *GatewayFacts) { f.Reachable = false }), "cannot be reached"},
-		"no service definition": {with(func(f *GatewayFacts) { f.DefinitionInstalled = false }), "cannot be reached"},
-		"another binary":        {with(func(f *GatewayFacts) { f.ServiceProgram = "/other/local-base" }), "not this binary"},
-		"an unreadable lock":    {GatewayFacts{LockState: "invalid", LockDetail: "gateway owner record is invalid"}, "Cannot tell"},
-		"a lock being set up":   {GatewayFacts{LockState: "unknown"}, "Cannot tell"},
-	} {
-		_, err := ClassifyGateway(tc.f)
-		if err == nil || !strings.Contains(err.Error(), tc.want) {
-			t.Errorf("%s: %v, want %q", name, err, tc.want)
-		}
-		if err != nil && !strings.Contains(err.Error(), "Nothing was changed") {
-			t.Errorf("%s: it should say nothing changed: %v", name, err)
-		}
-	}
-}
-
-func TestWaitIdle(t *testing.T) {
-	noSleep := func(time.Duration) {}
-	if err := WaitIdle(func() (bool, string, error) { return false, "", nil }, 0, noSleep); err != nil {
-		t.Errorf("idle: %v", err)
-	}
-	busy := func() (bool, string, error) { return true, "1 in flight, 0 queued, 0 detached runs", nil }
-	err := WaitIdle(busy, 0, noSleep)
-	if err == nil || !strings.Contains(err.Error(), "--wait") || !strings.Contains(err.Error(), "--force") || !strings.Contains(err.Error(), "1 in flight") {
-		t.Errorf("busy, no wait: %v", err)
-	}
-	// Finishes in time: goes on.
-	left := 3
-	calls := 0
-	err = WaitIdle(func() (bool, string, error) { calls++; left--; return left > 0, "x", nil }, time.Minute, noSleep)
-	if err != nil || calls != 3 {
-		t.Errorf("in time: %v after %d asks", err, calls)
-	}
-	// Does not: refuses, having cut nothing.
-	err = WaitIdle(busy, time.Millisecond, func(time.Duration) { time.Sleep(2 * time.Millisecond) })
-	if err == nil || !strings.Contains(err.Error(), "nothing was cut") {
-		t.Errorf("not in time: %v", err)
-	}
-	// Cannot ask: it does not guess.
-	err = WaitIdle(func() (bool, string, error) { return false, "", errors.New("refused") }, 0, noSleep)
-	if err == nil || !strings.Contains(err.Error(), "refused") {
-		t.Errorf("cannot ask: %v", err)
-	}
-}
 
 func TestBackendPorts(t *testing.T) {
 	uses := func(kinds ...string) map[string][]string {

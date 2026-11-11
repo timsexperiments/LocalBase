@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 // upgradeImpostor is a root whose owner.json names a live PID (this test's), a service, and an
@@ -69,8 +70,8 @@ func TestUpgradeSendsItsKeyOnlyToAProvenGateway(t *testing.T) {
 	if facts.LockState == "active" || facts.OwnerManaged {
 		t.Errorf("an unproven owner was taken for a running, managed gateway: %+v", facts)
 	}
-	if _, err := ClassifyGateway(facts); err == nil || !strings.Contains(err.Error(), "Cannot tell whether a gateway is running on this root") {
-		t.Errorf("ClassifyGateway with an unproven owner: %v", err)
+	if _, err := upgrade.ClassifyGateway(facts); err == nil || !strings.Contains(err.Error(), "Cannot tell whether a gateway is running on this root") {
+		t.Errorf("upgrade.ClassifyGateway with an unproven owner: %v", err)
 	}
 	// The wait, as runUpgradeInstall runs it: a base only from a proven gateway, then the key.
 	var stderr bytes.Buffer

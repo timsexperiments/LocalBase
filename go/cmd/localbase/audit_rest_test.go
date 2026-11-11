@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
 // changedConfig is this root's configuration as a file to apply, with one setting changed.
@@ -255,19 +253,6 @@ func TestOtherCommandsAreAudited(t *testing.T) {
 	}
 }
 
-func TestUpgradeOutcome(t *testing.T) {
-	for want, got := range map[string]string{
-		"applied":      ApplyOutcome(upgrade.Result{}, nil),
-		"rolled-back":  ApplyOutcome(upgrade.Result{RolledBack: true}, errors.New("PLANTED")),
-		"smoke-failed": ApplyOutcome(upgrade.Result{}, &upgrade.SmokeFailed{Err: errors.New("PLANTED")}),
-		"failed":       ApplyOutcome(upgrade.Result{}, errors.New("PLANTED")),
-	} {
-		if got != want {
-			t.Errorf("%q, want %q", got, want)
-		}
-	}
-}
-
 // A target from a file someone else wrote is only logged in the shape of an id.
 func TestAnOddTargetIsNotLogged(t *testing.T) {
 	t.Setenv("LOCALBASE_ROOT", "")
@@ -282,15 +267,6 @@ func TestAnOddTargetIsNotLogged(t *testing.T) {
 	lines := auditLines(t, dir)
 	if len(lines) != 2 || lines[0].TargetID != "" || lines[1].TargetID != "ok.id-1" || lines[0].Event != "audit.imports-changed" {
 		t.Errorf("%+v", lines)
-	}
-}
-
-func TestVersionForAudit(t *testing.T) {
-	for in, want := range map[string]string{"0.2.0": "0.2.0", "9.9.9": "9.9.9", "not a version": "unknown", "": "unknown",
-		"0.2.0\nPLANTED": "unknown", strings.Repeat("9", 100000): "unknown"} {
-		if got := VersionForAudit(in); got != want {
-			t.Errorf("%.40q: %.40q, want %q", in, got, want)
-		}
 	}
 }
 
