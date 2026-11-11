@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"strconv"
 
@@ -31,10 +30,8 @@ type env struct {
 	Catalog         *catalog.Catalog
 	Config          *store.Config
 	Host            memory.HostProvider
-	// auditFailure is why an audit record of this command wasn't written, as auditFailureClass says it.
-	auditFailure string
-	// warnings is where this command says so; stderr when it isn't set.
-	warnings io.Writer
+	// audit is where this command's audit records go.
+	audit *auditLog
 }
 
 func (e *env) Close() {
@@ -60,7 +57,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &env{Root: r, Store: st, Host: newHostProvider(), warnings: c.Stderr} // the seam exists only so tests can swap the host
+	e := &env{Root: r, Store: st, Host: newHostProvider(), audit: newAuditLog(r, c.Stderr)} // the seam exists only so tests can swap the host
 	if e.Catalog, err = catalog.LoadRoot(r.Dir, nil); err != nil {
 		e.Close()
 		return nil, err

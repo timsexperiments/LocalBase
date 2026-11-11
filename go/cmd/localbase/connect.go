@@ -102,7 +102,7 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		auditCLI(e, "Administration change.", "event", "audit.api-key-changed", "action", "create",
+		auditCLI(e.audit, "Administration change.", "event", "audit.api-key-changed", "action", "create",
 			"actor_kind", "cli", "target_kind", "api-key", "target_id", k.ID)
 		target.Key = raw
 		key = publicKey(k)

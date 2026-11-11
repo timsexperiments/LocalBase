@@ -185,10 +185,10 @@ func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep
 	if err != nil {
 		return fmt.Errorf("Could not ask the gateway how busy it is: %w. Nothing was changed. --force goes ahead anyway.", err)
 	}
-	auditKeyChange(e, "create", k, "purpose", "upgrade")
+	auditKeyChange(e.audit, "create", k, "purpose", "upgrade")
 	defer func() {
 		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr == nil {
-			auditKeyChange(e, "delete", k, "purpose", "upgrade")
+			auditKeyChange(e.audit, "delete", k, "purpose", "upgrade")
 		} else {
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
@@ -307,7 +307,7 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 		Stop: func() error {
 			c.Info("Stopping the gateway...")
 			_, err := service.Stop(e.Root)
-			auditService(e, "audit.service-stopped", err, "purpose", "upgrade", "disabled", err == nil)
+			auditService(e.audit, "audit.service-stopped", err, "purpose", "upgrade", "disabled", err == nil)
 			if err != nil {
 				return err
 			}
@@ -490,7 +490,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	}
 	res, err := upgrade.Apply(cand, binary, ops)
 	data["rolledBack"] = res.RolledBack
-	auditUpgrade(e, "audit.upgrade-applied", version.Version, target, cand.SHA256, upgradeOutcome(res, err))
+	auditUpgrade(e.audit, "audit.upgrade-applied", version.Version, target, cand.SHA256, upgradeOutcome(res, err))
 	if err != nil {
 		var smoke *upgrade.SmokeFailed
 		if errors.As(err, &smoke) {
@@ -500,7 +500,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 		return nil, err
 	}
 	data["changed"] = true
-	e.withAuditResult(data)
+	e.audit.withResult(data)
 	c.Info("Now running %s.", target)
 	if state != gatewayManaged {
 		c.Info("No gateway was running here. To start one: local-base start")
@@ -564,10 +564,10 @@ func runUpgradeRollback(c *cli.Ctx, e *env) (any, error) {
 	// the next upgrade refuses. Only once it's in place, and nothing else is removed.
 	ops.OnPrevious = func() error { return store.ForgetWALOwner(e.Root.DB()) }
 	if err := upgrade.Rollback(binary, ops); err != nil {
-		auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "failed")
+		auditUpgrade(e.audit, "audit.upgrade-rolled-back", version.Version, to, "", "failed")
 		return nil, err
 	}
-	auditUpgrade(e, "audit.upgrade-rolled-back", version.Version, to, "", "rolled-back")
+	auditUpgrade(e.audit, "audit.upgrade-rolled-back", version.Version, to, "", "rolled-back")
 	c.Info("Back on the previous version. To undo this: local-base upgrade rollback")
 	return map[string]any{"rolledBack": true}, nil
 }

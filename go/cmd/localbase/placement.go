@@ -73,7 +73,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 		if _, err := e.Store.ResetPlacement(ctx, id, lib.DeviceID); err != nil {
 			return nil, err
 		}
-		auditChange(e, "placement", "clear", "model", id)
+		auditChange(e.audit, "placement", "clear", "model", id)
 	} else if changing {
 		cur := src.Request(id)
 		req := placement.Request{Mode: cur.Mode}
@@ -138,10 +138,10 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 				return nil, err
 			}
 		}
-		auditChange(e, "placement", "set", "model", id)
+		auditChange(e.audit, "placement", "set", "model", id)
 	}
 	st := placementStatus(e, llm, src, id, live)
-	st.auditOutcome = e.auditOutcome()
+	st.auditOutcome = e.audit.outcome()
 	for _, l := range placementTextLines(st) {
 		c.Info("%s", l)
 	}
