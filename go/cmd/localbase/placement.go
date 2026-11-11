@@ -73,7 +73,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 		if _, err := e.Store.ResetPlacement(ctx, id, lib.DeviceID); err != nil {
 			return nil, err
 		}
-		auditChange(e.audit, "placement", "clear", "model", id)
+		e.audit.Change("placement", "clear", "model", id)
 	} else if changing {
 		cur := src.Request(id)
 		req := placement.Request{Mode: cur.Mode}
@@ -138,10 +138,10 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 				return nil, err
 			}
 		}
-		auditChange(e.audit, "placement", "set", "model", id)
+		e.audit.Change("placement", "set", "model", id)
 	}
 	st := placementStatus(e, llm, src, id, live)
-	st.auditOutcome = e.audit.outcome()
+	st.AuditOutcome = e.audit.Outcome()
 	for _, l := range placementTextLines(st) {
 		c.Info("%s", l)
 	}
@@ -150,7 +150,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 
 // placementState is the JSON `models placement` returns.
 type placementState struct {
-	auditOutcome
+	AuditOutcome
 	Model           string            `json:"model"`
 	Requested       map[string]any    `json:"requested"`
 	Loaded          bool              `json:"loaded"`

@@ -79,7 +79,7 @@ func runBackup(c *cli.Ctx) (any, error) {
 	printManifest(c, res.Manifest)
 	if !res.DryRun {
 		c.Info("To restore it: local-base --root <directory> restore %s", res.Output)
-		auditCLI(newAuditLog(r, nil), "backup.created", "event", "backup.created", "category", "audit", "component", "backup",
+		NewAuditLog(r, nil).Record("backup.created", "event", "backup.created", "category", "audit", "component", "backup",
 			"secretsIncluded", len(res.Manifest.SecretNames) > 0, "bytes", res.Bytes)
 	}
 	return res, nil
@@ -276,7 +276,7 @@ func runRestore(c *cli.Ctx) (any, error) {
 		return nil, err
 	}
 	if r, err := root.Open(rep.Target); err == nil {
-		auditCLI(newAuditLog(r, nil), "backup.restored", "event", "backup.restored", "category", "audit", "component", "backup",
+		NewAuditLog(r, nil).Record("backup.restored", "event", "backup.restored", "category", "audit", "component", "backup",
 			"secretsIncluded", len(rep.Manifest.SecretNames) > 0, "revocationsKept", rep.RevocationsKept,
 			"keysKept", len(rep.KeysKept), "keysLeftOut", len(rep.KeysLeftOut), "keysHeldBack", len(rep.KeysHeldBack), "keysBroughtBack", keyIDs(rep.KeysBroughtBack))
 	}

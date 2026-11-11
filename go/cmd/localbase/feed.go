@@ -165,11 +165,11 @@ func feedCommand() *cli.Command {
 				if err := catalog.WriteFeedSettings(dir, value); err != nil {
 					return nil, err
 				}
-				var audited *auditLog // none when the root can't be opened
+				var audited *Log // none when the root can't be opened
 				if r, err := root.Open(dir); err == nil {
-					audited = newAuditLog(r, c.Stderr)
+					audited = NewAuditLog(r, c.Stderr)
 					// The URL isn't named: it can carry a credential.
-					auditChange(audited, "feed", "use", "feed", "")
+					audited.Change("feed", "use", "feed", "")
 				}
 				s := catalog.ReadFeedSettings(dir, nil)
 				if s.Source == "environment" {
@@ -186,7 +186,11 @@ func feedCommand() *cli.Command {
 				if s.URL != "" && feed != "off" {
 					c.Info("Run `local-base models feed refresh` to download it now; a running gateway checks within the hour.")
 				}
-				return audited.withResult(map[string]any{"feed": currentFeedStatus(dir)}), nil
+				data := map[string]any{"feed": currentFeedStatus(dir)}
+				if audited != nil { // a root that couldn't be opened has no log, and no record to report on
+					data = audited.WithResult(data)
+				}
+				return data, nil
 			}},
 	}}
 }

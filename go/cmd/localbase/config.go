@@ -181,7 +181,7 @@ func runConfigPlan(c *cli.Ctx) (any, error) {
 
 type applyResult struct {
 	*conf.Plan
-	auditOutcome
+	AuditOutcome
 	Activation string `json:"activation"`
 	Readiness  string `json:"readiness"`
 }
@@ -222,7 +222,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		}
 		st.Close()
 	}
-	var audited *auditLog
+	var audited *Log
 	current, pending, err := readConfigIfPresent(dir, cat)
 	if err != nil {
 		return nil, err
@@ -282,8 +282,8 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 		if r, err := root.Open(dir); err == nil {
-			audited = newAuditLog(r, c.Stderr)
-			auditChange(audited, "config", "apply", "configuration", "")
+			audited = NewAuditLog(r, c.Stderr)
+			audited.Change("config", "apply", "configuration", "")
 		}
 	}
 	if restart {
@@ -330,7 +330,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		res.Readiness = "ready"
 	}
 	if audited != nil {
-		res.auditOutcome = audited.outcome()
+		res.AuditOutcome = audited.Outcome()
 	}
 	printPlan(c, plan)
 	c.Info("Activation: %s. Readiness: %s.", res.Activation, res.Readiness)

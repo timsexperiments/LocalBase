@@ -26,7 +26,7 @@ var printsDirectly = map[string]string{
 	"internal/cli/cli.go:printHelp":            "this program's help",
 	"cmd/localbase/usage.go:printUsage":        "a table's writer; each outside value goes through Printable",
 	"cmd/localbase/models.go:progressReporter": "a percentage",
-	"cmd/localbase/audit.go:auditCLI":          "its writer is the command's, with no Ctx; the class is a word of ours and the path goes through Printable",
+	"cmd/localbase/audit.go:Record":            "its writer is the command's, with no Ctx; the class is a word of ours and the path goes through Printable",
 	"cmd/localbase/logs.go:logsCommand":        "--json lines, unchanged, which a script reads",
 }
 
