@@ -24,7 +24,7 @@ func speechCommand() *cli.Command {
 					if err := e.Store.SetSetting(ctx, runtime.SpeechMarkingKey, v); err != nil {
 						return nil, err
 					}
-					auditChange(e.audit, "speech", v, "setting", "speech-marking")
+					e.audit.Change("speech", v, "setting", "speech-marking")
 				}
 				on := runtime.SpeechMarking(ctx, e.Store)
 				state := map[bool]string{true: "on", false: "off"}[on]

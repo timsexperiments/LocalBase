@@ -54,7 +54,7 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 	} else if canon, cerr := root.Canonical(dir); cerr == nil {
 		e.Root = &root.Root{Dir: canon}
 	}
-	e.audit = newAuditLog(e.Root, nil) // a record it can't write is reported on stderr
+	e.audit = NewAuditLog(e.Root, nil) // a record it can't write is reported on stderr
 	// Read-only, this cannot undo a write a process left unfinished, and what it reads below
 	// would quietly be defaults, reported as the real settings.
 	if msg := backup.UnfinishedWrite(context.Background(), e.Root.Dir); msg != "" {
@@ -185,7 +185,7 @@ func modelsForgetPeaks() *cli.Command {
 				c.Info("No memory peaks are recorded for %s.", id)
 			} else {
 				// It changes what admission allows this model, so it's on record, like placement.
-				auditChange(e.audit, "models", "forget-peaks", "model", id, "count", n)
+				e.audit.Change("models", "forget-peaks", "model", id, "count", n)
 				c.Info("Forgot %d memory peaks for %s. Its next load is sized from its estimate, and a model that is loaded now keeps recording.", n, id)
 			}
 			return map[string]any{"modelId": id, "forgotten": n}, nil
@@ -580,7 +580,7 @@ func modelsInstall() *cli.Command {
 						c.Error("Failed to install %q: %v", id, err)
 						return nil, err
 					}
-					auditChange(e.audit, "models", "install", "model", id)
+					e.audit.Change("models", "install", "model", id)
 					c.Info("Installed: %s", path)
 					installed = append(installed, map[string]string{"modelId": id, "path": path})
 				}
@@ -588,7 +588,7 @@ func modelsInstall() *cli.Command {
 					return nil, err
 				}
 				c.Info("\nAll selected models installed successfully.")
-				return e.audit.withResult(map[string]any{"installed": installed}), nil
+				return e.audit.WithResult(map[string]any{"installed": installed}), nil
 			}
 			if len(c.Args) == 0 {
 				return nil, cli.Inputf("Provide a model ID or --all.")
@@ -601,12 +601,12 @@ func modelsInstall() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			auditChange(e.audit, "models", "install", "model", id)
+			e.audit.Change("models", "install", "model", id)
 			c.Info("Installed: %s", path)
 			if err := activateInstalled(c, e, id); err != nil {
 				return nil, err
 			}
-			return e.audit.withResult(map[string]any{"installed": []map[string]string{{"modelId": id, "path": path}}}), nil
+			return e.audit.WithResult(map[string]any{"installed": []map[string]string{{"modelId": id, "path": path}}}), nil
 		}}
 }
 
@@ -623,7 +623,7 @@ func activateInstalled(c *cli.Ctx, e *env, ids ...string) error {
 		if err := e.save(e.Config); err != nil {
 			return err
 		}
-		auditChange(e.audit, "default-models", "set", "model", id)
+		e.audit.Change("default-models", "set", "model", id)
 		c.Info("%s is now the default LLM.", id)
 		return nil
 	}

@@ -362,9 +362,13 @@ func TestAnAuditRecordThatCannotBeWrittenIsMentioned(t *testing.T) {
 			if code, out := runApp(t, "--root", root, "configure", "--defaults", "--no-create-key"); code != 0 {
 				t.Fatalf("configure: %s", out)
 			}
+			changed := changedConfig(t, root, tmp)
 			tc.breakIt(t, root)
 			// A keys command and an access command: the result is added in one place, for all of them.
-			for _, args := range [][]string{{"keys", "create", "--name", "k"}, {"access", "cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "a", "--origin", "https://lb.example"}} {
+			// models placement and config apply return a struct, not a map, so each result carries the
+			// outcome itself (Log.Outcome, embedded as AuditOutcome).
+			for _, args := range [][]string{{"keys", "create", "--name", "k"}, {"access", "cloudflare", "--team-domain", "team.cloudflareaccess.com", "--audience", "a", "--origin", "https://lb.example"},
+				{"models", "placement", "qwen3.5-4b-q4_k_m", "--reset"}, {"config", "apply", "--file", changed, "--restart", "never"}} {
 				var stdout, stderr bytes.Buffer
 				a := app()
 				a.Stdout, a.Stderr = &stdout, &stderr

@@ -274,9 +274,9 @@ func TestAnOddTargetIsNotLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := newAuditLog(r, &bytes.Buffer{})
-	auditChange(a, "imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
-	auditChange(a, "imports", "add-definition", "model", "ok.id-1")
+	a := NewAuditLog(r, &bytes.Buffer{})
+	a.Change("imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
+	a.Change("imports", "add-definition", "model", "ok.id-1")
 	lines := auditLines(t, dir)
 	if len(lines) != 2 || lines[0].TargetID != "" || lines[1].TargetID != "ok.id-1" || lines[0].Event != "audit.imports-changed" {
 		t.Errorf("%+v", lines)
@@ -359,9 +359,30 @@ func TestReadEnvHasTheRootsAuditLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer e.Close()
-	auditChange(e.audit, "models", "forget-peaks", "model", "m")
+	e.audit.Change("models", "forget-peaks", "model", "m")
 	lines := auditLines(t, dir)
 	if len(lines) != before+1 || lines[len(lines)-1].Event != "audit.models-changed" || lines[len(lines)-1].TargetID != "m" {
 		t.Errorf("after one record from readEnv's env: %+v", lines[before:])
+	}
+}
+
+// models feed use can save the setting in a root it can't open (its marker unreadable), and then has
+// no audit log: the one place a command has none. It succeeds, and its result says nothing about
+// a record, as before; it doesn't hand WithResult a nil Log.
+func TestFeedUseWithARootThatCannotBeOpenedHasNoAuditFields(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	dir := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", dir, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".localbase-root.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Open(dir); err == nil {
+		t.Fatal("the root should not open with a broken marker")
+	}
+	code, out := runApp(t, "--root", dir, "--json", "models", "feed", "use", "default")
+	if code != 0 || !strings.Contains(out, `"feed"`) || strings.Contains(out, "auditWritten") || strings.Contains(out, "auditError") {
+		t.Errorf("models feed use in a root that can't be opened: exit %d\n%s", code, out)
 	}
 }

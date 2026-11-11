@@ -31,7 +31,7 @@ type env struct {
 	Config          *store.Config
 	Host            memory.HostProvider
 	// audit is where this command's audit records go.
-	audit *auditLog
+	audit *Log
 }
 
 func (e *env) Close() {
@@ -57,7 +57,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &env{Root: r, Store: st, Host: newHostProvider(), audit: newAuditLog(r, c.Stderr)} // the seam exists only so tests can swap the host
+	e := &env{Root: r, Store: st, Host: newHostProvider(), audit: NewAuditLog(r, c.Stderr)} // the seam exists only so tests can swap the host
 	if e.Catalog, err = catalog.LoadRoot(r.Dir, nil); err != nil {
 		e.Close()
 		return nil, err

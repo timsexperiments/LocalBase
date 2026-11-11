@@ -214,7 +214,7 @@ func modelsImportCommand() *cli.Command {
 			if backend != "" && backend != "auto" {
 				auditBackend(e, "audit.model-backend-changed", "import", res.Model.ID, backend)
 			}
-			auditChange(e.audit, "imports", "import", "model", res.Model.ID)
+			e.audit.Change("imports", "import", "model", res.Model.ID)
 			c.Info("Imported %s into %s.", res.Model.ID, res.Dir)
 			c.Info("Downloading a model does not prove it runs; the backend below starts it on first use.")
 			printSelection(c, sel, l.Registry)
@@ -273,7 +273,7 @@ func auditBackend(e *env, event, action, target, backend string) {
 	if event != "audit.model-backend-changed" {
 		kind = "backend"
 	}
-	auditCLI(e.audit, "Administration change.", "event", event, "action", action, "actor_kind", "cli", "target_kind", kind, "target_id", target, "backend_id", backend)
+	e.audit.Record("Administration change.", "event", event, "action", action, "actor_kind", "cli", "target_kind", kind, "target_id", target, "backend_id", backend)
 }
 
 func modelsInspectCommand() *cli.Command {
@@ -368,7 +368,7 @@ func modelsDeleteCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			auditChange(e.audit, "imports", "delete", "model", id)
+			e.audit.Change("imports", "delete", "model", id)
 			c.Info("Deleted %s.", id)
 			return map[string]any{"deleted": id}, nil
 		})}
@@ -510,7 +510,7 @@ func authProfilesCommand() *cli.Command {
 				return nil, cli.Inputf("%v", err)
 			}
 			pub := p.Public()
-			auditChange(e.audit, "auth-profiles", "add", "auth-profile", pub.ID)
+			e.audit.Change("auth-profiles", "add", "auth-profile", pub.ID)
 			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), cli.PrintableASCII(strings.Join(pub.Origins, ", ")))
 			return map[string]any{"profile": pub}, nil
 		})},
@@ -521,7 +521,7 @@ func authProfilesCommand() *cli.Command {
 					return nil, err
 				}
 				if removed {
-					auditChange(e.audit, "auth-profiles", "remove", "auth-profile", c.Args[0])
+					e.audit.Change("auth-profiles", "remove", "auth-profile", c.Args[0])
 				}
 				return map[string]any{"removed": removed}, nil
 			})},
@@ -572,7 +572,7 @@ func modelsAddDefinitionCommand() *cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			auditChange(e.audit, "imports", "add-definition", "model", m.ID)
+			e.audit.Change("imports", "add-definition", "model", m.ID)
 			c.Info("Added %s. Its files are not downloaded; backend selection on this device is automatic.", m.ID)
 			printSelection(c, sel, l.Registry)
 			return map[string]any{"model": m, "selection": sel}, nil

@@ -326,9 +326,9 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		}
 		return nil, err
 	}
-	auditChange(e.audit, "config", "configure", "configuration", "")
+	e.audit.Change("config", "configure", "configuration", "")
 	for _, s := range changed {
-		auditChange(e.audit, "config", "set-setting", "setting", s.key, "setting", s.key, "value", s.value)
+		e.audit.Change("config", "set-setting", "setting", s.key, "setting", s.key, "value", s.value)
 	}
 	c.Info("Saved configuration to %s/local-base.db", cfg.Root)
 	for _, k := range kinds {
@@ -358,7 +358,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		auditKeyChange(e.audit, "create", k, "purpose", "initial")
+		e.audit.KeyChange("create", k, "purpose", "initial")
 		c.Info("\nCreated initial API key:")
 		c.Info("id=%s name=%s prefix=%s", k.ID, k.Name, k.Prefix)
 		if !c.Global.JSON {
@@ -369,7 +369,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		created["secret"] = raw
 		data["createdKey"] = created
 	}
-	return e.audit.withResult(data), nil
+	return e.audit.WithResult(data), nil
 }
 
 var kindLabel = map[string]string{"llm": "LLM", "stt": "STT", "tts": "TTS", "image": "Image", "video": "Video"}
