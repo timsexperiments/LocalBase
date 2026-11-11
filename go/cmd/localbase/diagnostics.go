@@ -31,6 +31,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -263,7 +264,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 	// could not read from the database is marked unavailable above.
 	// The bundle says only that it couldn't: bundles get shared, and the error can hold a path.
 	if databaseErr != nil {
-		c.Error("Could not read this root's database: %s", cli.Printable(databaseErr.Error()))
+		c.Error("Could not read this root's database: %s", termsafe.Printable(databaseErr.Error()))
 	}
 	unfinished := backup.UnfinishedWrite(ctx, dir)
 	if code := databaseProblem(databaseErr != nil, unfinished != ""); code != "" {
@@ -447,7 +448,7 @@ func printDiagnosticModels(c *cli.Ctx, data *jsjson.Object) {
 		if e, ok := field(feed, "lastError").(string); ok && e != "" {
 			lastErr = "; last error: " + e
 		}
-		c.Info("Catalog feed: %s (%d community model(s), %s%s)%s", cli.PrintableASCII(fmt.Sprint(field(feed, "url"))), len(added), fetched, stale, lastErr)
+		c.Info("Catalog feed: %s (%d community model(s), %s%s)%s", termsafe.PrintableASCII(fmt.Sprint(field(feed, "url"))), len(added), fetched, stale, lastErr)
 	} else {
 		c.Info("Catalog feed: off")
 	}

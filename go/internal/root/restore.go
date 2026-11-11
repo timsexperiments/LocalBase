@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // RestoreJournalName is left in a root by a restore that did not finish (DESIGN §34.5).
@@ -25,7 +25,7 @@ func unfinishedRestore(dir string) error {
 	}
 	// Telling someone to undo a restore that's still running would be wrong, and the undo would refuse.
 	if restoreRunning(dir) {
-		return &UnsafeRootError{Problem: "A restore is running on " + shellQuote(cli.Printable(dir)) + "." + DefaultRootNote(dir) + " Wait for it to finish, then run this again."}
+		return &UnsafeRootError{Problem: "A restore is running on " + shellQuote(termsafe.Printable(dir)) + "." + DefaultRootNote(dir) + " Wait for it to finish, then run this again."}
 	}
 	return &UnsafeRootError{path, "a restore did not finish", "Run: local-base --root " + shellQuote(dir) + " restore --undo"}
 }

@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // InputError is invalid command input (exit 2, code invalid_input).
@@ -221,7 +222,7 @@ func (a *App) fail(json bool, code string, err error, exit int, help *Command, p
 	// The envelope's JSON encoding keeps its message safe, and a script may compare it.
 	fmt.Fprintf(a.Stderr, "Error: %s\n", shownMessage(err, err.Error(), message))
 	if a.reason != "" {
-		fmt.Fprintf(a.Stderr, "Reason: %s\n", Printable(a.reason))
+		fmt.Fprintf(a.Stderr, "Reason: %s\n", termsafe.Printable(a.reason))
 	}
 	if help != nil {
 		fmt.Fprintln(a.Stderr, a.help(help, path))

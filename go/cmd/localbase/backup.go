@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -285,10 +286,10 @@ func runRestore(c *cli.Ctx) (any, error) {
 }
 
 // printable is a copy of the report that's safe to show on a terminal. Every string in it, wherever
-// it came from, has been through cli.PrintableASCII, because a person judges what's in this report by
+// it came from, has been through termsafe.PrintableASCII, because a person judges what's in this report by
 // eye, and a letter from another alphabet can make one address or program look like another. Only a
 // field tagged report:"letters", which is a name a person gave or the path they typed, keeps its
-// letters, through cli.Printable. Doing it here, once, means a field added to the report can't be
+// letters, through termsafe.Printable. Doing it here, once, means a field added to the report can't be
 // missed at the line that prints it. The report itself stays as it is for --json. A field of a kind
 // this doesn't know stops it, and TestEveryStringInTheReportIsMadePrintable finds that first.
 func printable(rep *backup.Report) *backup.Report {
@@ -301,9 +302,9 @@ func copyPrintable(dst, src reflect.Value, letters bool) {
 	switch src.Kind() {
 	case reflect.String:
 		if letters {
-			dst.SetString(cli.Printable(src.String()))
+			dst.SetString(termsafe.Printable(src.String()))
 		} else {
-			dst.SetString(cli.PrintableASCII(src.String()))
+			dst.SetString(termsafe.PrintableASCII(src.String()))
 		}
 	case reflect.Struct:
 		for i := range src.NumField() {
@@ -620,7 +621,7 @@ func backupArgument(c *cli.Ctx) string {
 	if abs, err := filepath.Abs(file); err == nil {
 		file = abs
 	}
-	return shellQuoted(cli.Printable(file))
+	return shellQuoted(termsafe.Printable(file))
 }
 
 func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
@@ -655,7 +656,7 @@ func printRestoreNext(c *cli.Ctx, rep *backup.Report, done *backup.Done) {
 	}
 	// Last, so it isn't missed. These files hold secrets.
 	if done.BeforeDir != "" {
-		before := cli.Printable(done.BeforeDir)
+		before := termsafe.Printable(done.BeforeDir)
 		c.Info("The old files are in %s. They hold secrets. When you no longer need them: rm -rf %s", before, shellQuoted(before))
 	}
 }

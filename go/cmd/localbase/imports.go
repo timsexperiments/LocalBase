@@ -17,6 +17,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // Model import, backend selection, backend registration and auth profiles
@@ -471,7 +472,7 @@ func authProfilesCommand() *cli.Command {
 			out := []acquire.PublicProfile{}
 			for _, p := range ps.Profiles {
 				pub := p.Public()
-				c.Info("%s: %s -> %s", pub.ID, strings.Join(pub.HeaderNames, ", "), cli.PrintableASCII(strings.Join(pub.Origins, ", ")))
+				c.Info("%s: %s -> %s", pub.ID, strings.Join(pub.HeaderNames, ", "), termsafe.PrintableASCII(strings.Join(pub.Origins, ", ")))
 				out = append(out, pub)
 			}
 			return map[string]any{"profiles": out}, nil
@@ -511,7 +512,7 @@ func authProfilesCommand() *cli.Command {
 			}
 			pub := p.Public()
 			e.audit.Change("auth-profiles", "add", "auth-profile", pub.ID)
-			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), cli.PrintableASCII(strings.Join(pub.Origins, ", ")))
+			c.Info("Saved auth profile %s (%s) for %s.", pub.ID, strings.Join(pub.HeaderNames, ", "), termsafe.PrintableASCII(strings.Join(pub.Origins, ", ")))
 			return map[string]any{"profile": pub}, nil
 		})},
 		{Name: "remove", Summary: "Remove an auth profile", Usage: "<id>", MinArgs: 1, MaxArgs: 1,

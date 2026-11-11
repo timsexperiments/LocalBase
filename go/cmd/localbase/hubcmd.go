@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // models search | add hf: | remove-entry (TS models/commands/hf.ts).
@@ -114,7 +115,7 @@ func modelsSearch() *cli.Command {
 					if h.Gated {
 						gated = "yes"
 					}
-					rows = append(rows, []string{cli.Printable(h.Repo), compactCount(h.Downloads), cli.Printable(dash(h.License)), cli.Printable(dash(h.PipelineTag)), gated, h.Likely.Label})
+					rows = append(rows, []string{termsafe.Printable(h.Repo), compactCount(h.Downloads), termsafe.Printable(dash(h.License)), termsafe.Printable(dash(h.PipelineTag)), gated, h.Likely.Label})
 				}
 				widths := make([]int, len(rows[0]))
 				for _, row := range rows {

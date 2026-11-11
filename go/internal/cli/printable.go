@@ -5,66 +5,10 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
-
-// Printable makes text from somewhere else safe to show on a terminal. A control character can move
-// the cursor and erase what was printed, and a format character can reorder it, so each is shown as
-// an escape instead. That way the person can see it was there. A newline shows as \n, since that's
-// how anyone would write it. Everything else is unchanged, and text already escaped stays as it is.
-func Printable(s string) string {
-	if !strings.ContainsFunc(s, needsEscape) && utf8.ValidString(s) {
-		return s
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		switch {
-		case r == utf8.RuneError && size == 1:
-			fmt.Fprintf(&b, `\x%02x`, s[i])
-		case r == '\n':
-			b.WriteString(`\n`)
-		case needsEscape(r) && r < 0x100:
-			fmt.Fprintf(&b, `\x%02x`, r)
-		case needsEscape(r):
-			fmt.Fprintf(&b, `\u%04x`, r)
-		default:
-			b.WriteString(s[i : i+size])
-		}
-		i += size
-	}
-	return b.String()
-}
-
-func needsEscape(r rune) bool {
-	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
-}
-
-// PrintableASCII is Printable for a value a person judges by its letters, like an address. A letter
-// from another alphabet can make one address look like another, so anything outside ASCII shows as
-// an escape as well. A real internationalised address does too, which is the right trade where
-// someone is deciding whether to trust it.
-func PrintableASCII(s string) string {
-	s = Printable(s)
-	if !strings.ContainsFunc(s, func(r rune) bool { return r > unicode.MaxASCII }) {
-		return s
-	}
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r <= unicode.MaxASCII:
-			b.WriteRune(r)
-		case r <= 0xffff:
-			fmt.Fprintf(&b, `\u%04x`, r)
-		default:
-			fmt.Fprintf(&b, `\U%08x`, r)
-		}
-	}
-	return b.String()
-}
 
 // Lines is text whose line breaks are real, for a document this program encoded itself, like JSON or
 // TOML, where a line break in a value is already written out. Each line is still escaped. Every use
@@ -74,7 +18,7 @@ type Lines string
 func (l Lines) printable() string {
 	lines := strings.Split(string(l), "\n")
 	for i, line := range lines {
-		lines[i] = Printable(line)
+		lines[i] = termsafe.Printable(line)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -97,15 +41,15 @@ func shownValue(v any) any {
 	case Lines:
 		return x.printable()
 	case error:
-		return Printable(x.Error())
+		return termsafe.Printable(x.Error())
 	case fmt.Stringer:
-		return Printable(x.String())
+		return termsafe.Printable(x.String())
 	case []byte:
-		return Printable(string(x))
+		return termsafe.Printable(string(x))
 	}
 	switch rv.Kind() {
 	case reflect.String:
-		return Printable(rv.String())
+		return termsafe.Printable(rv.String())
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
 		reflect.Float32, reflect.Float64:
@@ -115,7 +59,7 @@ func shownValue(v any) any {
 			return v // numbers, for a verb like %d
 		}
 	}
-	return Printable(fmt.Sprint(v))
+	return termsafe.Printable(fmt.Sprint(v))
 }
 
 // TextError is an error written by this program with line breaks of its own, and any value in it
@@ -137,8 +81,8 @@ func shownMessage(err error, raw, redacted string) string {
 	var text *TextError
 	if errors.As(err, &text) {
 		if before, after, ok := strings.Cut(message, text.Text); ok {
-			return Printable(before) + text.Text + Printable(after)
+			return termsafe.Printable(before) + text.Text + termsafe.Printable(after)
 		}
 	}
-	return Printable(message)
+	return termsafe.Printable(message)
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
@@ -87,7 +88,7 @@ func runUpgradeCheck(c *cli.Ctx) (any, error) {
 		c.Info("Current version: %s. GitHub's answer (%q) is not a LocalBase release, so there is nothing to compare.", version.Version, latest.Tag)
 	case cmp.Newer:
 		c.Info("A newer version is available: %s (this is %s).", latest.Tag, version.Version)
-		c.Info("Release notes: %s", cli.PrintableASCII(latest.URL))
+		c.Info("Release notes: %s", termsafe.PrintableASCII(latest.URL))
 		c.Info("To install it: local-base upgrade")
 	default:
 		c.Info("This is up to date: %s (the latest release is %s).", version.Version, latest.Tag)
