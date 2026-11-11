@@ -66,11 +66,11 @@ func upgradeImpostor(t *testing.T) (e *env, asked func() []string) {
 func TestUpgradeSendsItsKeyOnlyToAProvenGateway(t *testing.T) {
 	e, asked := upgradeImpostor(t)
 	facts, _ := gatherGatewayFacts(e, "/nowhere/local-base")
-	if facts.lockState == "active" || facts.ownerManaged {
+	if facts.LockState == "active" || facts.OwnerManaged {
 		t.Errorf("an unproven owner was taken for a running, managed gateway: %+v", facts)
 	}
-	if _, err := classifyGateway(facts); err == nil || !strings.Contains(err.Error(), "Cannot tell whether a gateway is running on this root") {
-		t.Errorf("classifyGateway with an unproven owner: %v", err)
+	if _, err := ClassifyGateway(facts); err == nil || !strings.Contains(err.Error(), "Cannot tell whether a gateway is running on this root") {
+		t.Errorf("ClassifyGateway with an unproven owner: %v", err)
 	}
 	// The wait, as runUpgradeInstall runs it: a base only from a proven gateway, then the key.
 	var stderr bytes.Buffer
