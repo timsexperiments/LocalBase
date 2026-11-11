@@ -173,13 +173,13 @@ func scanTrees(t *testing.T, other string) map[string][]string {
 // and no other file may join. Lower a number, or remove a line, as they are fixed.
 var knownToDelete = map[string]int{
 	"tools/contract.sh":                  1,
-	"tools/ios-check.sh":                 2,
+	"test/platform/ios-check.sh":         2,
 	"tools/otelcol-check.sh":             1,
 	"tools/placement-rollback-check.sh":  1,
 	"tools/rehearsal.sh":                 1,
 	"tools/shadow.sh":                    6,
 	"tools/sync-catalog.sh":              1,
-	"tools/systemd-check.sh":             1,
+	"test/platform/systemd-check.sh":     1,
 	"tools/tailwind.sh":                  1,
 	"tools/upgrade-rehearsal-systemd.sh": 1,
 }

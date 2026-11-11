@@ -1,5 +1,5 @@
 // Renders the systemd user unit TS would install for a service manifest
-// (<root>/service/manifest.json on stdin), for tools/systemd-check.sh to
+// (<root>/service/manifest.json on stdin), for test/platform/systemd-check.sh to
 // compare byte for byte with the unit the Go binary installed.
 import { basename } from "node:path";
 import { renderSystemdDefinition } from "../../../src/domains/service/definitions";

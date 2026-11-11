@@ -3,7 +3,7 @@
 # local-base binary as a systemd user service inside a disposable Debian
 # container with systemd as PID 1, then removes the container and image.
 #
-#   tools/systemd-check.sh            # from go/, needs Docker and bun
+#   test/platform/systemd-check.sh            # from go/, needs Docker and bun
 #
 # Inside the container, as a non-root user with lingering enabled, on a
 # scratch root (so a scratch unit label): start, status, the installed unit
@@ -11,7 +11,7 @@
 # applies (config apply --restart never), the gateway's stderr in the
 # journal, stop, and removal. No GPU, no published ports.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 tag="localbase-systemd-check:$$"
 name="lbsc-$$"
 work=$(mktemp -d "${TMPDIR:-/tmp}/lbsc-XXXXXX")
@@ -28,7 +28,7 @@ bad() { printf 'FAIL %s\n' "$*"; fails=$((fails + 1)); }
 
 step "build the linux/arm64 binary and the image"
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o "$work/local-base" ./cmd/localbase || exit 1
-docker build --platform linux/arm64 -q -t "$tag" tools/systemd-check >/dev/null || exit 1
+docker build --platform linux/arm64 -q -t "$tag" test/platform/systemd-check >/dev/null || exit 1
 ok "built"
 
 step "start systemd as PID 1"

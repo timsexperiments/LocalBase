@@ -1,6 +1,6 @@
 #!/bin/bash
 # tools/upgrade-rehearsal under real systemd: a disposable Debian with systemd as PID 1, the
-# same image as tools/systemd-check.sh, then the container and image are removed. No published
+# same image as test/platform/systemd-check.sh, then the container and image are removed. No published
 # ports, no GPU, no network use by the drill.
 #
 #   tools/upgrade-rehearsal-systemd.sh       # from go/, needs Docker
@@ -22,7 +22,7 @@ trap cleanup EXIT
 
 go run ./tools/upgrade-rehearsal --build-kit "$work/kit" --goos linux --goarch "$arch" || exit 1
 GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -o "$work/upgrade-rehearsal" ./tools/upgrade-rehearsal || exit 1
-[ -n "${LBUR_IMAGE:-}" ] || docker build --platform "linux/$arch" -q -t "$tag" tools/systemd-check >/dev/null || exit 1
+[ -n "${LBUR_IMAGE:-}" ] || docker build --platform "linux/$arch" -q -t "$tag" test/platform/systemd-check >/dev/null || exit 1
 docker run -d --name "$name" --platform "linux/$arch" --privileged --cgroupns=private \
   --tmpfs /run --tmpfs /run/lock --tmpfs /tmp "$tag" >/dev/null || exit 1
 for _ in $(seq 1 60); do

@@ -1987,9 +1987,9 @@ carries `not-chosen-automatically` (`TestUnpinnedManagedBackendIsManualOnly`).
 
 The GPU test host is not used for this: it is shared and held by other
 work. The qualification runs locally and is opt-in:
-`tools/systemd-check.sh` (Docker and bun). It builds the linux/arm64
+`test/platform/systemd-check.sh` (Docker and bun). It builds the linux/arm64
 binary, then starts a disposable Debian container with systemd as PID 1:
-`tools/systemd-check/Dockerfile`, base pinned to the `debian:bookworm-slim`
+`test/platform/systemd-check/Dockerfile`, base pinned to the `debian:bookworm-slim`
 index digest, `--privileged --cgroupns=private`, cgroup v2, no published
 ports, no GPU. Inside it, as a non-root user with lingering enabled, on a
 scratch root, so the unit label is a scratch one, the script checks:
@@ -2064,7 +2064,7 @@ Each item is done, or waived on record by the operator.
    - `config apply` restarting a launchd service, under a throwaway label
      (folded into the rehearsal, §17.2 step 5).
 5. **A green build:** CI on macOS and Linux, a full dual contract run, and
-   `tools/systemd-check.sh`, all on the release-candidate commit.
+   `test/platform/systemd-check.sh`, all on the release-candidate commit.
 6. **Version string: `0.2.0`** (operator decision). The `-go` suffix was
    dropped at the release candidate (2026-10-21).
 
@@ -2412,8 +2412,8 @@ llama-server and sparse weights, so no model was loaded.
 
 **How the checks run:**
 
-- **Simulator Safari:** `tools/ios-check.sh <url>` runs an XCUITest
-  project, `tools/ios-check/LBCheck.xcodeproj`, that drives real iOS
+- **Simulator Safari:** `test/platform/ios-check.sh <url>` runs an XCUITest
+  project, `test/platform/ios-check/LBCheck.xcodeproj`, that drives real iOS
   Safari. The environment is Xcode 27, an iPhone 17 Simulator (402 pt
   wide) and iOS 27. Xcode 27 has no Simulator.app, so a test
   host app opens the URL in Safari. The accessibility audit is
@@ -2477,7 +2477,7 @@ the Chat script, the tools and this document):
   - model management, which is difference 4 of §13.6;
   - the video job failure: both gateways answered `insufficient_memory`,
     sampled moments apart.
-- `tools/systemd-check.sh` passed all 24 steps.
+- `test/platform/systemd-check.sh` passed all 24 steps.
 
 **Drill on a fresh copy, after #368 went live.**
 - **The copy and the swap target.** The copy was taken under the idle
@@ -3515,7 +3515,7 @@ no content is stored), `cancel` (Stop), `dismiss` and `result`.
   hidden under the tab bar; the More sheet takes focus, closes on Escape
   and returns focus; a focused field hides the tab bar and stays in view
   when the viewport shrinks for a keyboard. `test/browser/axe-check.sh` and
-  `tools/ios-check.sh` still apply.
+  `test/platform/ios-check.sh` still apply.
 
 ### 22.7 Chat (PR 2)
 
@@ -3726,7 +3726,7 @@ Across the eight pages:
   removes this tab's session copy of chats and the unsent message.
 - **Dark mode:** every page and sheet was captured at 390 px in dark
   (`.design/screens/dark/`); the selected segment carries a ring.
-- **iOS Safari** (`tools/ios-check.sh` on a dedicated simulator, booted
+- **iOS Safari** (`test/platform/ios-check.sh` on a dedicated simulator, booted
   for the run and deleted after): the composer moves above the keyboard
   (y 614 → 341 in a 874-point web view), Return adds a line and Send
   submits. Apple's audit flagged the tab labels (12 px text taken as the
@@ -4134,7 +4134,7 @@ real connection adds to the first response. The public hostname's tunnel was not
 (`.design/screens/before-after/`): nothing regressed, and the pages' copy now says Studio.
 Added here: press feedback on buttons, chips and rows (dimming always, a small scale only
 without reduced motion), and "Expired" where a player outlives its file. iOS Safari
-(`tools/ios-check.sh`, iOS 27 simulator) passes the composer test on the new build, and its
+(`test/platform/ios-check.sh`, iOS 27 simulator) passes the composer test on the new build, and its
 accessibility audit now covers every studio. It still flags Dynamic Type as partly unsupported
 on every page, plain text as small hit areas, and an unnamed element it cannot locate.
 
