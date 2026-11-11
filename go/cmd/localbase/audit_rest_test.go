@@ -274,9 +274,9 @@ func TestAnOddTargetIsNotLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{Root: r, warnings: &bytes.Buffer{}}
-	auditChange(e, "imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
-	auditChange(e, "imports", "add-definition", "model", "ok.id-1")
+	a := newAuditLog(r, &bytes.Buffer{})
+	auditChange(a, "imports", "add-definition", "model", "x\n{\"eventName\":\"audit.forged-changed\"}")
+	auditChange(a, "imports", "add-definition", "model", "ok.id-1")
 	lines := auditLines(t, dir)
 	if len(lines) != 2 || lines[0].TargetID != "" || lines[1].TargetID != "ok.id-1" || lines[0].Event != "audit.imports-changed" {
 		t.Errorf("%+v", lines)
@@ -342,5 +342,26 @@ func TestScratchRootsGetNoInstalledNotice(t *testing.T) {
 	code, out := runApp(t, "--root", dir, "uninstall", "--yes")
 	if code != 0 || strings.Contains(out, "installed LocalBase service") || !strings.Contains(out, "Its audit log goes with it.") {
 		t.Errorf("%d %.400q", code, out)
+	}
+}
+
+// An env from readEnv has its root's audit log, as openEnv's does, so a command that opens the
+// root with readEnv and makes a change writes its record.
+func TestReadEnvHasTheRootsAuditLog(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	dir := filepath.Join(t.TempDir(), "root")
+	if code, out := runApp(t, "--root", dir, "configure", "--defaults", "--no-create-key"); code != 0 {
+		t.Fatalf("configure: %s", out)
+	}
+	before := len(auditLines(t, dir))
+	e, err := readEnv(&cli.Ctx{Global: cli.Global{Root: dir}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	auditChange(e.audit, "models", "forget-peaks", "model", "m")
+	lines := auditLines(t, dir)
+	if len(lines) != before+1 || lines[len(lines)-1].Event != "audit.models-changed" || lines[len(lines)-1].TargetID != "m" {
+		t.Errorf("after one record from readEnv's env: %+v", lines[before:])
 	}
 }

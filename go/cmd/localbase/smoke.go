@@ -383,10 +383,10 @@ func runSmoke(c *cli.Ctx) (any, error) {
 		if err != nil {
 			return err
 		}
-		auditKeyChange(e, "create", k, "purpose", "smoke")
+		auditKeyChange(e.audit, "create", k, "purpose", "smoke")
 		defer func() {
 			if derr := e.Store.DeleteAPIKey(context.Background(), k.ID); derr == nil {
-				auditKeyChange(e, "delete", k, "purpose", "smoke")
+				auditKeyChange(e.audit, "delete", k, "purpose", "smoke")
 			}
 		}()
 		s.key = raw

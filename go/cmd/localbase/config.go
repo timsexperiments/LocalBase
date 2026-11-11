@@ -222,7 +222,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		}
 		st.Close()
 	}
-	var audited *env
+	var audited *auditLog
 	current, pending, err := readConfigIfPresent(dir, cat)
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 			return nil, err
 		}
 		if r, err := root.Open(dir); err == nil {
-			audited = &env{Root: r, warnings: c.Stderr}
+			audited = newAuditLog(r, c.Stderr)
 			auditChange(audited, "config", "apply", "configuration", "")
 		}
 	}
@@ -330,7 +330,7 @@ func runConfigApply(c *cli.Ctx) (any, error) {
 		res.Readiness = "ready"
 	}
 	if audited != nil {
-		res.auditOutcome = audited.auditOutcome()
+		res.auditOutcome = audited.outcome()
 	}
 	printPlan(c, plan)
 	c.Info("Activation: %s. Readiness: %s.", res.Activation, res.Readiness)

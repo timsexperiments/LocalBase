@@ -73,7 +73,7 @@ func serviceCommands() []*cli.Command {
 				sayIfInstalled(c, e.Root.Dir, "This restarts the installed LocalBase service.")
 			}
 			in, err := service.Start(e.Root, restart, c.Bool("install-missing"))
-			auditService(e, event, err)
+			auditService(e.audit, event, err)
 			if err != nil {
 				return nil, err
 			}
@@ -115,7 +115,7 @@ func serviceCommands() []*cli.Command {
 			defer e.Close()
 			sayIfInstalled(c, e.Root.Dir, "This stops the installed LocalBase service.")
 			in, err := service.Stop(e.Root)
-			auditService(e, "audit.service-stopped", err, "disabled", err == nil)
+			auditService(e.audit, "audit.service-stopped", err, "disabled", err == nil)
 			if err != nil {
 				return nil, err
 			}

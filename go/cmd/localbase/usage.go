@@ -220,7 +220,7 @@ func usageWrite(e *env, body map[string]any, direct func(*usage.Recorder) error)
 			return nil, err
 		}
 		action, _ := body["action"].(string)
-		auditChange(e, "usage", action, "usage", "")
+		auditChange(e.audit, "usage", action, "usage", "")
 		recording, days := rec.Settings()
 		return map[string]any{"recording": recording, "retentionDays": days, "cleared": body["action"] == "clear"}, nil
 	})

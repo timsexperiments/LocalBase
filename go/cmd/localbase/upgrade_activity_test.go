@@ -34,7 +34,7 @@ func TestActivityKeyIsGoneAfterAsking(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, 0, func(time.Duration) {}); err != nil {
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, activityEnv(t, st), srv.URL, 0, func(time.Duration) {}); err != nil {
 		t.Fatal(err)
 	}
 	keys, err := st.ListAPIKeys(context.Background())
@@ -56,7 +56,7 @@ func TestActivityKeyThatCannotBeDeletedIsReported(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, 0, func(time.Duration) {}); err != nil {
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, activityEnv(t, st), srv.URL, 0, func(time.Duration) {}); err != nil {
 		t.Fatalf("the answer was good, so the question should still succeed: %v", err)
 	}
 	if got := stderr.String(); !strings.Contains(got, "temporary key") || !strings.Contains(got, "local-base keys revoke ") {
@@ -77,7 +77,7 @@ func TestWaitingForAnIdleGatewayUsesOneKey(t *testing.T) {
 	}))
 	defer srv.Close()
 	var stderr bytes.Buffer
-	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, &env{Store: st, Root: &root.Root{Dir: t.TempDir()}}, srv.URL, time.Minute, func(time.Duration) {}); err != nil {
+	if err := waitGatewayIdle(&cli.Ctx{Stdout: io.Discard, Stderr: &stderr}, activityEnv(t, st), srv.URL, time.Minute, func(time.Duration) {}); err != nil {
 		t.Fatal(err)
 	}
 	if polls != 4 || len(keys) != 1 {
@@ -86,4 +86,10 @@ func TestWaitingForAnIdleGatewayUsesOneKey(t *testing.T) {
 	if left, err := st.ListAPIKeys(context.Background()); err != nil || len(left) != 0 {
 		t.Errorf("keys left: %v %v", left, err)
 	}
+}
+
+// activityEnv is the env the wait runs with: a store, a scratch root, and that root's audit log.
+func activityEnv(t *testing.T, st *store.Store) *env {
+	r := &root.Root{Dir: t.TempDir()}
+	return &env{Store: st, Root: r, audit: newAuditLog(r, nil)}
 }
