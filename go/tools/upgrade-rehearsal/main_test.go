@@ -560,3 +560,61 @@ func TestFixturePassesSmoke(t *testing.T) {
 		t.Errorf("a default model is still selected:\n%s", show)
 	}
 }
+
+// The kit builds a release the way tools/build.sh, the one build recipe, does: the same go build
+// flags and environment, and the same -ldflags plus exactly one -X for the throwaway signing key.
+// Nothing is copied, so a change to the recipe changes the kit.
+func TestKitBuildsLikeTheRelease(t *testing.T) {
+	goDir(t)
+	script := func(flag string) string {
+		t.Helper()
+		cmd := exec.Command("tools/build.sh", flag)
+		cmd.Env = append(os.Environ(), "VERSION="+newVersion)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("tools/build.sh %s: %v", flag, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	rb, err := readReleaseBuild(newVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := rb.goArgs(testKeyFlag(pub), "out", "./cmd/localbase")
+	i := slices.Index(args, "-ldflags")
+	if i < 1 || i+1 >= len(args) {
+		t.Fatalf("no -ldflags in %q", args)
+	}
+	if want := script("--ldflags") + " " + testKeyFlag(pub); args[i+1] != want {
+		t.Errorf("the kit's -ldflags:\n  %s\nwant the release's plus the test key:\n  %s", args[i+1], want)
+	}
+	if n := strings.Count(args[i+1], "/upgrade.testKey="); n != 1 {
+		t.Errorf("%d test-key flags in the kit's build, want exactly 1", n)
+	}
+	if got, want := args[1:i], strings.Fields(script("--goflags")); !slices.Equal(got, want) {
+		t.Errorf("the kit's go build flags %q, want the release's %q", got, want)
+	}
+	if got, want := rb.env, strings.Fields(script("--env")); !slices.Equal(got, want) {
+		t.Errorf("the kit's build environment %q, want the release's %q", got, want)
+	}
+	// What the recipe prints is what a release has, and its own build uses what it prints.
+	printed := script("--goflags") + " " + script("--ldflags") + " " + script("--env")
+	for _, f := range []string{"-trimpath", "-buildvcs=false", "-s -w", "/version.Version=" + newVersion, "/version.Commit=", "/version.Date=", "CGO_ENABLED=0"} {
+		if !strings.Contains(printed, f) {
+			t.Errorf("tools/build.sh doesn't print %q: %s", f, printed)
+		}
+	}
+	b, err := os.ReadFile("tools/build.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, uses := range []string{"flags=$(ldflags)", `env $env go build $goflags -ldflags "$flags"`} {
+		if !strings.Contains(string(b), uses) {
+			t.Errorf("tools/build.sh no longer builds with what it prints: no %q", uses)
+		}
+	}
+}
