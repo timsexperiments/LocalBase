@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -194,24 +192,20 @@ type livePlacement struct {
 
 // gatewayPlacement asks a running gateway, with its instance token.
 func gatewayPlacement(e *env, id string) *livePlacement {
-	state, o, _ := service.VerifiedOwnerState(e.Root)
-	if state != "active" || o == nil {
+	gw, _, _ := instance.Dial(e.Root)
+	if gw == nil {
 		return nil
 	}
-	// The id is a query value: escaped, so an id with &, a space or a control byte can't break the
-	// URL (or make NewRequest fail, which used to leave req nil).
-	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(o.HealthURL(), "/health")+"/_localbase/placement-state?model="+url.QueryEscape(id), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	// The id is a query value, which the client encodes: an id with &, a space or a control byte
+	// can't break the URL.
+	a, err := gw.Get(ctx, "/_localbase/placement-state", url.Values{"model": {id}})
 	if err != nil {
 		return nil
 	}
-	req.Header.Set("X-Localbase-Instance-Token", o.InstanceToken)
-	resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
 	var l livePlacement
-	if resp.StatusCode != 200 || json.NewDecoder(resp.Body).Decode(&l) != nil {
+	if a.Status != 200 || a.Decode(&l) != nil {
 		return nil
 	}
 	return &l
