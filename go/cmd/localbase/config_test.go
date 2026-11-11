@@ -36,7 +36,7 @@ func TestApplyDecision(t *testing.T) {
 		{"never", true, false, "running", true, false, ""},   // and a running one
 		{"auto", true, true, "running", true, true, ""},      // auto restarts, then waits
 	} {
-		restart, err := applyDecision(c.policy, c.wait, c.required, c.state, c.manager)
+		restart, err := RestartDecision(c.policy, c.wait, c.required, c.state, c.manager)
 		msg := ""
 		if err != nil {
 			msg = err.Error()

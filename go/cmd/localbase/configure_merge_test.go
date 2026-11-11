@@ -22,7 +22,7 @@ import (
 // configuration. TestConfigureMergeTableCoversEverySetting reads them for every configuration field
 // they set, so a setting the table doesn't cover fails it. When the merge moves, this list moves
 // with it.
-var mergeFuncs = []struct{ file, fn string }{{"configure.go", "mergeConfigure"}}
+var mergeFuncs = []struct{ file, fn string }{{"configure.go", "MergeInput"}}
 
 // mergeFieldsSet is every field of the configuration the merge functions assign, or take the
 // address of to assign: cfg.X = …, cfg.X[k] = …, &cfg.X.
@@ -203,7 +203,7 @@ func modelSettings(t *testing.T) []mergeSetting {
 	var out []mergeSetting
 	for _, k := range kinds {
 		ids := eligibleIDs(t, k)
-		title := fieldTitle(k)
+		title := conf.KindField(k)
 		// A video model is eligible only on a platform its runtime supports (conf.Ineligible,
 		// VideoTarget: darwin/arm64 today), and the --config file checks that. So video's row is
 		// the empty selection on every platform, to keep the rows the same on macOS and Linux. The
