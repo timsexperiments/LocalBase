@@ -28,7 +28,6 @@ func TestAnInstallHoldsOnlyItsFamilyAndWaitingCanBeEnded(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	defer close(release)
 	oldURL, oldManifest := fetchURL, goManifestJSON
 	defer func() { fetchURL, goManifestJSON = oldURL, oldManifest }()
 	fetchURL = func(u string) string { return srv.URL + u[strings.LastIndex(u, "/"):] }
@@ -42,7 +41,20 @@ func TestAnInstallHoldsOnlyItsFamilyAndWaitingCanBeEnded(t *testing.T) {
 	runtimes := filepath.Join(t.TempDir(), "runtimes")
 
 	first := make(chan error, 1)
-	go func() { _, err := EnsureBinary(context.Background(), runtimes, "crispasr"); first <- err }()
+	installed := make(chan struct{})
+	go func() {
+		defer close(installed)
+		_, err := EnsureBinary(context.Background(), runtimes, "crispasr")
+		first <- err
+	}()
+	// The first install outlives the checks below. On the way out the slow download is let go and
+	// the test waits for that install to end, so it has removed its .install-* directory before
+	// fetchURL and goManifestJSON go back and t.TempDir's cleanup runs. Without the wait, the
+	// cleanup raced the install's own (unlinkat .install-*: directory not empty).
+	defer func() {
+		close(release)
+		<-installed
+	}()
 	time.Sleep(300 * time.Millisecond) // the first install is downloading
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)

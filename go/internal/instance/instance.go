@@ -1,6 +1,6 @@
 // Package instance is the CLI's one client of the gateway that owns a root. It talks only to a
 // gateway that has proven it is that root's (service.VerifiedOwnerState), sends the instance token
-// straight to it (no proxy, no redirect), bounds what it reads, and gives a call DefaultTimeout
+// straight to it on localhttp's client (no proxy, no redirect), bounds what it reads, and gives a call DefaultTimeout
 // only when the caller set no deadline. What a call means, and what to tell the user when it
 // fails, stays with the caller.
 package instance
@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 )
@@ -47,23 +48,7 @@ func Dial(r *root.Root) (c *Client, state, detail string) {
 	if state != "active" || o == nil {
 		return nil, state, detail
 	}
-	return &Client{base: strings.TrimSuffix(o.HealthURL(), "/health"), token: o.InstanceToken, owner: o, http: newHTTPClient()}, state, detail
-}
-
-// newHTTPClient is the client every call goes through. The instance token goes to the proven
-// gateway and nowhere else:
-//   - no proxy: DefaultTransport honours HTTP_PROXY and HTTPS_PROXY for an owner whose host isn't
-//     loopback (a gateway bound to a LAN address), and the token would pass through the proxy;
-//   - no redirect: a redirect is not followed, and the caller gets the 3xx answer as it came
-//     (http.ErrUseLastResponse). Go copies a custom header like the token onto a followed
-//     request, even to another host, and the gateway's admin routes never redirect.
-func newHTTPClient() *http.Client {
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.Proxy = nil
-	return &http.Client{
-		Transport:     t,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	return &Client{base: strings.TrimSuffix(o.HealthURL(), "/health"), token: o.InstanceToken, owner: o, http: localhttp.New(0)}, state, detail
 }
 
 // Owner is the proven gateway's owner record.
