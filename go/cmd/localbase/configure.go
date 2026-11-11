@@ -61,20 +61,6 @@ func configureCommand() *cli.Command {
 		Run: runConfigure}
 }
 
-func intFlag(c *cli.Ctx, name string, lo, hi int) (*int, error) {
-	n, ok, err := c.Int(name)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, nil
-	}
-	if n < lo || n > hi {
-		return nil, cli.Inputf("%s: must be from %d to %d", name, lo, hi)
-	}
-	return &n, nil
-}
-
 func runConfigure(c *cli.Ctx) (any, error) {
 	var overrides *Overrides
 	if p := c.String("config"); c.Has("config") {
@@ -114,161 +100,12 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	}
 	defer e.Close()
 	cfg := e.Config.Clone()
-	if overrides == nil {
-		overrides = &Overrides{}
+	warnings, err := mergeConfigure(cfg, configureInputOf(c, hasConfig, e.memoryGB()), overrides, e.Catalog)
+	for _, w := range warnings {
+		c.Error("%s", w)
 	}
-
-	lists := map[string][]string{}
-	for _, k := range kinds {
-		name := k + "-models"
-		if !c.Has(name) {
-			continue
-		}
-		ids := cli.SplitList(c.String(name))
-		if ids == nil {
-			ids = []string{}
-		}
-		if k == "llm" && len(ids) == 0 {
-			return nil, cli.Inputf("llmModels: Too small: expected array to have >=1 items")
-		}
-		probe := cfg.Clone()
-		probe.Selected = map[string][]string{k: ids}
-		probe.Active = map[string]string{}
-		for _, is := range conf.ValidateModels(probe, e.Catalog, k != "video") {
-			if strings.HasPrefix(is.Path, "selected"+fieldTitle(k)+"Models") {
-				return nil, cli.Inputf("%s", is.String())
-			}
-		}
-		lists[k] = ids
-	}
-	for _, k := range kinds {
-		if ids, ok := lists[k]; ok {
-			cfg.Selected[k] = ids
-		} else if ids := overrides.Selected[k]; ids != nil {
-			cfg.Selected[k] = ids
-		}
-		flag := "active-" + k
-		switch {
-		case c.Has(flag):
-			if c.String(flag) == "" {
-				return nil, cli.Inputf("active%s: Too small: expected string to have >=1 characters", fieldTitle(k))
-			}
-			cfg.Active[k] = c.String(flag)
-		case overrides.Active[k] != nil:
-			cfg.Active[k] = *overrides.Active[k]
-		case !slices.Contains(cfg.Selected[k], cfg.Active[k]):
-			cfg.Active[k] = ""
-			if len(cfg.Selected[k]) > 0 {
-				cfg.Active[k] = cfg.Selected[k][0]
-			}
-		}
-	}
-	if c.Has("default-llm-models") {
-		ids := cli.SplitList(c.String("default-llm-models"))
-		seen := map[string]bool{}
-		for _, id := range ids {
-			s := e.Catalog.ByID(id)
-			switch {
-			case !slices.Contains(cfg.Selected["llm"], id):
-				return nil, cli.Inputf("defaultLlmModels: %s must also be present in selectedLlmModels", id)
-			case s != nil && (s.IsDecision() || s.IsEmbedding()):
-				return nil, cli.Inputf("defaultLlmModels: %s must name a chat model", id)
-			case seen[id]:
-				return nil, cli.Inputf("defaultLlmModels: must not contain duplicates")
-			}
-			seen[id] = true
-		}
-		cfg.DefaultLLMs = nil
-		switch {
-		case len(ids) == 1 && c.Has("active-llm") && ids[0] != cfg.Active["llm"]:
-			return nil, cli.Inputf("defaultLlmModels: a single default must equal activeLlmModel")
-		case len(ids) == 1:
-			cfg.Active["llm"] = ids[0]
-		case len(ids) >= 2:
-			// activeLlmModel stays as it is: TS launches it at start after
-			// a rollback, without the fit fallback.
-			cfg.DefaultLLMs = ids
-		}
-	}
-	str := func(flag string, toml *string, dst *string) {
-		if c.Has(flag) {
-			*dst = c.String(flag)
-		} else if toml != nil {
-			*dst = *toml
-		}
-	}
-	str("host", overrides.Host, &cfg.Host)
-	str("stt-host", overrides.SttHost, &cfg.SttHost)
-	str("ctx-mode", overrides.CtxMode, &cfg.CtxMode)
-	str("otel-endpoint", overrides.OtelEndpoint, &cfg.OtelEndpoint)
-	str("otel-headers", overrides.OtelHeaders, &cfg.OtelHeaders)
-	for _, f := range []struct {
-		flag   string
-		toml   *int
-		dst    *int
-		lo, hi int
-	}{{"port", overrides.Port, &cfg.Port, 1, 65535}, {"stt-port", overrides.SttPort, &cfg.SttPort, 1, 65535},
-		{"ctx-size", overrides.CtxSize, &cfg.CtxSize, 1, 2_147_483_647}, {"otel-sample-ratio", overrides.OtelSampleRatio, &cfg.OtelSampleRatio, 0, 100}} {
-		v, err := intFlag(c, f.flag, f.lo, f.hi)
-		if err != nil {
-			return nil, err
-		}
-		if v != nil {
-			*f.dst = *v
-		} else if f.toml != nil {
-			*f.dst = *f.toml
-		}
-	}
-	if c.Has("ctx-mode") && cfg.CtxMode != "auto" && cfg.CtxMode != "explicit" {
-		return nil, cli.Inputf(`ctxMode: Invalid option: expected one of "auto"|"explicit"`)
-	}
-	if c.Has("otel-endpoint") && cfg.OtelEndpoint != "" {
-		if msg := obs.ValidateEndpoint(cfg.OtelEndpoint); msg != "" {
-			return nil, cli.Inputf("otelEndpoint: %s", msg)
-		}
-	}
-	if c.Has("otel-headers") {
-		if _, err := obs.ParseHeaders(cfg.OtelHeaders); err != nil {
-			return nil, cli.Inputf("otelHeaders: %s", err.Error())
-		}
-	}
-	warnAboutSecretOption(c, "otel-headers", "Set OTEL_EXPORTER_OTLP_HEADERS, or use --config")
-	warnAboutSecretOption(c, "hf-token", "Set HF_TOKEN, or save it in Settings")
-	parallel := c.String("parallel")
-	if !c.Has("parallel") && overrides.Parallel != nil {
-		parallel = *overrides.Parallel
-	}
-	if parallel != "" {
-		p := strings.ToLower(strings.TrimSpace(parallel))
-		if p != "auto" && !slices.Contains([]string{"1", "2", "3", "4"}, p) {
-			return nil, cli.Inputf("Invalid parallel value: %s. Use 'auto' or an integer from 1 to 4.", parallel)
-		}
-		cfg.Parallel = p
-	}
-	if overrides.SystemReserve != nil {
-		cfg.SystemReserve = *overrides.SystemReserve
-	}
-	if overrides.AcceleratorReserve != nil {
-		cfg.AcceleratorReserve = *overrides.AcceleratorReserve
-	}
-	// --hf-token always replaces ("" clears); a TOML token only fills a missing one.
-	switch {
-	case c.Has("hf-token"):
-		cfg.HFToken = c.String("hf-token")
-	case overrides.HFToken != nil:
-		if cfg.HFToken == "" || cfg.HFToken == *overrides.HFToken {
-			cfg.HFToken = *overrides.HFToken
-		} else {
-			c.Error("Warning: the hfToken in the TOML file was not applied because a different Hugging Face token is already saved, for example from the admin UI. Replace it there, or pass --hf-token.")
-		}
-	case cfg.HFToken == "" && !hasConfig:
-		cfg.HFToken = os.Getenv("HF_TOKEN")
-	}
-	if issues := conf.ValidateModels(cfg, e.Catalog, false); len(issues) > 0 {
-		return nil, cli.Inputf("%s", conf.Summary(issues))
-	}
-	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && e.memoryGB() < 16 {
-		c.Error("Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.", p, e.memoryGB())
+	if err != nil {
+		return nil, inputError(err)
 	}
 	// Every setting option is checked before anything is written, then the configuration and the
 	// settings go in together, in this order and in one transaction: a refused command writes
@@ -370,6 +207,247 @@ func runConfigure(c *cli.Ctx) (any, error) {
 		data["createdKey"] = created
 	}
 	return e.audit.WithResult(data), nil
+}
+
+// configureInput is what configure was given, apart from the --config file: each option as the
+// person typed it (nil when not given; a model list split, and present when given), and what the
+// merge needs to know of the root and the machine.
+type configureInput struct {
+	Models      map[string][]string // --<kind>-models
+	Active      map[string]*string  // --active-<kind>
+	DefaultLLMs *[]string           // --default-llm-models
+
+	Host, SttHost, CtxMode, OtelEndpoint, OtelHeaders, Parallel, HFToken *string
+	Port, SttPort, CtxSize, OtelSampleRatio                              *string // parsed by the merge
+
+	ExistingRoot bool   // the root had a database before this command
+	HFTokenEnv   string // HF_TOKEN, which a new root takes when nothing else gives a token
+	MemoryGB     int    // this machine's memory, for the parallel warning
+}
+
+// mergeConfigure merges what configure was given (in) and the --config file (overrides, nil for
+// none) into cfg: an option given wins over the file, and the file over what is saved. It checks
+// each option as it goes and stops at the first that isn't valid, with a *conf.DocumentError
+// (bad input). warnings are what to tell the person, in order, including on a refusal.
+func mergeConfigure(cfg *store.Config, in configureInput, overrides *Overrides, cat *catalog.Catalog) (warnings []string, err error) {
+	if overrides == nil {
+		overrides = &Overrides{}
+	}
+
+	lists := map[string][]string{}
+	for _, k := range kinds {
+		ids, given := in.Models[k]
+		if !given {
+			continue
+		}
+		if k == "llm" && len(ids) == 0 {
+			return warnings, &conf.DocumentError{Message: "llmModels: Too small: expected array to have >=1 items"}
+		}
+		probe := cfg.Clone()
+		probe.Selected = map[string][]string{k: ids}
+		probe.Active = map[string]string{}
+		for _, is := range conf.ValidateModels(probe, cat, k != "video") {
+			if strings.HasPrefix(is.Path, "selected"+fieldTitle(k)+"Models") {
+				return warnings, &conf.DocumentError{Message: is.String()}
+			}
+		}
+		lists[k] = ids
+	}
+	for _, k := range kinds {
+		if ids, ok := lists[k]; ok {
+			cfg.Selected[k] = ids
+		} else if ids := overrides.Selected[k]; ids != nil {
+			cfg.Selected[k] = ids
+		}
+		switch {
+		case in.Active[k] != nil:
+			if *in.Active[k] == "" {
+				return warnings, &conf.DocumentError{Message: fmt.Sprintf("active%s: Too small: expected string to have >=1 characters", fieldTitle(k))}
+			}
+			cfg.Active[k] = *in.Active[k]
+		case overrides.Active[k] != nil:
+			cfg.Active[k] = *overrides.Active[k]
+		case !slices.Contains(cfg.Selected[k], cfg.Active[k]):
+			cfg.Active[k] = ""
+			if len(cfg.Selected[k]) > 0 {
+				cfg.Active[k] = cfg.Selected[k][0]
+			}
+		}
+	}
+	if in.DefaultLLMs != nil {
+		ids := *in.DefaultLLMs
+		seen := map[string]bool{}
+		for _, id := range ids {
+			s := cat.ByID(id)
+			switch {
+			case !slices.Contains(cfg.Selected["llm"], id):
+				return warnings, &conf.DocumentError{Message: fmt.Sprintf("defaultLlmModels: %s must also be present in selectedLlmModels", id)}
+			case s != nil && (s.IsDecision() || s.IsEmbedding()):
+				return warnings, &conf.DocumentError{Message: fmt.Sprintf("defaultLlmModels: %s must name a chat model", id)}
+			case seen[id]:
+				return warnings, &conf.DocumentError{Message: "defaultLlmModels: must not contain duplicates"}
+			}
+			seen[id] = true
+		}
+		cfg.DefaultLLMs = nil
+		switch {
+		case len(ids) == 1 && in.Active["llm"] != nil && ids[0] != cfg.Active["llm"]:
+			return warnings, &conf.DocumentError{Message: "defaultLlmModels: a single default must equal activeLlmModel"}
+		case len(ids) == 1:
+			cfg.Active["llm"] = ids[0]
+		case len(ids) >= 2:
+			// activeLlmModel stays as it is: TS launches it at start after
+			// a rollback, without the fit fallback.
+			cfg.DefaultLLMs = ids
+		}
+	}
+	str := func(flag *string, toml *string, dst *string) {
+		if flag != nil {
+			*dst = *flag
+		} else if toml != nil {
+			*dst = *toml
+		}
+	}
+	str(in.Host, overrides.Host, &cfg.Host)
+	str(in.SttHost, overrides.SttHost, &cfg.SttHost)
+	str(in.CtxMode, overrides.CtxMode, &cfg.CtxMode)
+	str(in.OtelEndpoint, overrides.OtelEndpoint, &cfg.OtelEndpoint)
+	str(in.OtelHeaders, overrides.OtelHeaders, &cfg.OtelHeaders)
+	for _, f := range []struct {
+		flag   string
+		given  *string
+		toml   *int
+		dst    *int
+		lo, hi int
+	}{{"port", in.Port, overrides.Port, &cfg.Port, 1, 65535}, {"stt-port", in.SttPort, overrides.SttPort, &cfg.SttPort, 1, 65535},
+		{"ctx-size", in.CtxSize, overrides.CtxSize, &cfg.CtxSize, 1, 2_147_483_647}, {"otel-sample-ratio", in.OtelSampleRatio, overrides.OtelSampleRatio, &cfg.OtelSampleRatio, 0, 100}} {
+		v, err := intInput(f.flag, f.given, f.lo, f.hi)
+		if err != nil {
+			return warnings, err
+		}
+		if v != nil {
+			*f.dst = *v
+		} else if f.toml != nil {
+			*f.dst = *f.toml
+		}
+	}
+	if in.CtxMode != nil && cfg.CtxMode != "auto" && cfg.CtxMode != "explicit" {
+		return warnings, &conf.DocumentError{Message: `ctxMode: Invalid option: expected one of "auto"|"explicit"`}
+	}
+	if in.OtelEndpoint != nil && cfg.OtelEndpoint != "" {
+		if msg := obs.ValidateEndpoint(cfg.OtelEndpoint); msg != "" {
+			return warnings, &conf.DocumentError{Message: "otelEndpoint: " + msg}
+		}
+	}
+	if in.OtelHeaders != nil {
+		if _, err := obs.ParseHeaders(cfg.OtelHeaders); err != nil {
+			return warnings, &conf.DocumentError{Message: "otelHeaders: " + err.Error()}
+		}
+	}
+	warnings = append(warnings, secretOptionWarnings(in)...)
+	parallel := ""
+	if in.Parallel != nil {
+		parallel = *in.Parallel
+	}
+	if in.Parallel == nil && overrides.Parallel != nil {
+		parallel = *overrides.Parallel
+	}
+	if parallel != "" {
+		p := strings.ToLower(strings.TrimSpace(parallel))
+		if p != "auto" && !slices.Contains([]string{"1", "2", "3", "4"}, p) {
+			return warnings, &conf.DocumentError{Message: fmt.Sprintf("Invalid parallel value: %s. Use 'auto' or an integer from 1 to 4.", parallel)}
+		}
+		cfg.Parallel = p
+	}
+	if overrides.SystemReserve != nil {
+		cfg.SystemReserve = *overrides.SystemReserve
+	}
+	if overrides.AcceleratorReserve != nil {
+		cfg.AcceleratorReserve = *overrides.AcceleratorReserve
+	}
+	// --hf-token always replaces ("" clears); a TOML token only fills a missing one.
+	switch {
+	case in.HFToken != nil:
+		cfg.HFToken = *in.HFToken
+	case overrides.HFToken != nil:
+		if cfg.HFToken == "" || cfg.HFToken == *overrides.HFToken {
+			cfg.HFToken = *overrides.HFToken
+		} else {
+			warnings = append(warnings, "Warning: the hfToken in the TOML file was not applied because a different Hugging Face token is already saved, for example from the admin UI. Replace it there, or pass --hf-token.")
+		}
+	case cfg.HFToken == "" && !in.ExistingRoot:
+		cfg.HFToken = in.HFTokenEnv
+	}
+	if issues := conf.ValidateModels(cfg, cat, false); len(issues) > 0 {
+		return warnings, &conf.DocumentError{Message: conf.Summary(issues)}
+	}
+	if p, err := strconv.Atoi(cfg.Parallel); err == nil && p > 1 && in.MemoryGB < 16 {
+		warnings = append(warnings, fmt.Sprintf("Warning: Setting parallel slots to %d on a system with only %d GB VRAM may cause Out-Of-Memory (OOM) crashes.", p, in.MemoryGB))
+	}
+	return warnings, nil
+}
+
+// intInput is an integer option as given (nil when not), checked against its range, as cli's Int
+// and intFlag read one from the command line.
+func intInput(name string, given *string, lo, hi int) (*int, error) {
+	if given == nil {
+		return nil, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(*given))
+	if err != nil {
+		return nil, &conf.DocumentError{Message: fmt.Sprintf("--%s must be an integer", name)}
+	}
+	if n < lo || n > hi {
+		return nil, &conf.DocumentError{Message: fmt.Sprintf("%s: must be from %d to %d", name, lo, hi)}
+	}
+	return &n, nil
+}
+
+// secretOptionWarnings say what a secret on the command line costs. Clearing one with an empty
+// value costs nothing, and the value itself is never repeated.
+func secretOptionWarnings(in configureInput) []string {
+	var out []string
+	for _, o := range []struct {
+		name    string
+		given   *string
+		instead string
+	}{{"otel-headers", in.OtelHeaders, "Set OTEL_EXPORTER_OTLP_HEADERS, or use --config"}, {"hf-token", in.HFToken, "Set HF_TOKEN, or save it in Settings"}} {
+		if o.given != nil && *o.given != "" {
+			out = append(out, fmt.Sprintf("Warning: --%s can be read by other users of this computer while the command runs, and stays in your shell history. %s.", o.name, o.instead))
+		}
+	}
+	return out
+}
+
+// configureInputOf is what configure was given on the command line.
+func configureInputOf(c *cli.Ctx, existingRoot bool, memoryGB int) configureInput {
+	given := func(name string) *string {
+		if !c.Has(name) {
+			return nil
+		}
+		v := c.String(name)
+		return &v
+	}
+	in := configureInput{Models: map[string][]string{}, Active: map[string]*string{},
+		Host: given("host"), SttHost: given("stt-host"), CtxMode: given("ctx-mode"), OtelEndpoint: given("otel-endpoint"),
+		OtelHeaders: given("otel-headers"), Parallel: given("parallel"), HFToken: given("hf-token"),
+		Port: given("port"), SttPort: given("stt-port"), CtxSize: given("ctx-size"), OtelSampleRatio: given("otel-sample-ratio"),
+		ExistingRoot: existingRoot, HFTokenEnv: os.Getenv("HF_TOKEN"), MemoryGB: memoryGB}
+	for _, k := range kinds {
+		if c.Has(k + "-models") {
+			ids := cli.SplitList(c.String(k + "-models"))
+			if ids == nil {
+				ids = []string{}
+			}
+			in.Models[k] = ids
+		}
+		in.Active[k] = given("active-" + k)
+	}
+	if c.Has("default-llm-models") {
+		ids := cli.SplitList(c.String("default-llm-models"))
+		in.DefaultLLMs = &ids
+	}
+	return in
 }
 
 var kindLabel = map[string]string{"llm": "LLM", "stt": "STT", "tts": "TTS", "image": "Image", "video": "Video"}
@@ -563,12 +641,4 @@ func parseOverrides(text string) (*Overrides, error) {
 		return nil, &conf.DocumentError{Message: strings.Join(issues, "; ")}
 	}
 	return o, nil
-}
-
-// warnAboutSecretOption says what a secret on the command line costs. Clearing one with an empty value
-// costs nothing, and the value itself is never repeated.
-func warnAboutSecretOption(c *cli.Ctx, name, instead string) {
-	if c.Has(name) && c.String(name) != "" {
-		c.Error("Warning: --%s can be read by other users of this computer while the command runs, and stays in your shell history. %s.", name, instead)
-	}
 }
