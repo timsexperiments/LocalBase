@@ -68,7 +68,7 @@ func testFeed(t *testing.T) []byte {
 
 // TestCLIFeed compares `models feed` on twin roots against one local feed.
 func TestCLIFeed(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	feed := testFeed(t)
 	var hits atomic.Int32
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,7 @@ func TestCLIFeed(t *testing.T) {
 			return
 		}
 		a, b := normalize(t, outs[0].stdout, roots[0]), normalize(t, outs[1].stdout, roots[1])
-		if d := diffJSON("", a, b, func(p string) bool { return p == ".error.message" }); len(d) > 0 {
+		if d := harness.DiffJSON("", a, b, func(p string) bool { return p == ".error.message" }); len(d) > 0 {
 			if len(d) > 20 {
 				d = d[:20]
 			}

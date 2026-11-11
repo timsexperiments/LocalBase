@@ -16,6 +16,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -174,7 +175,7 @@ func readCollectorFile(t *testing.T, path string) *collector {
 // real collector parsed them, give the same span trees and request records;
 // the Go export is accepted without a reported failure.
 func TestRealCollector(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	bin := os.Getenv("LOCALBASE_CONTRACT_OTELCOL")
 	if bin == "" {
 		t.Skip("set LOCALBASE_CONTRACT_OTELCOL to a pinned otelcol binary")
@@ -210,7 +211,7 @@ func TestRealCollector(t *testing.T) {
 		skip := func(p string) bool {
 			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms")
 		}
-		if d := diffJSON("", a, b, skip); len(d) > 0 {
+		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
 			t.Errorf("%s span tree differs (as the collector parsed it):\n  %s", label, strings.Join(d, "\n  "))
 		}
 	}

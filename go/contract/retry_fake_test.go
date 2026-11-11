@@ -26,7 +26,7 @@ import (
 func TestDifferentialRetrySemanticsFake(t *testing.T) {
 	impls := []string{harness.Impl()}
 	if harness.Impl() == "both" {
-		requireTS(t)
+		harness.RequireTS(t)
 		impls = []string{"ts", "go"}
 	}
 	if flag.Lookup("url").Value.String() != "" {

@@ -262,7 +262,7 @@ func otlpPlain(v any) any {
 // same request and inference log records, correlated to the same spans,
 // for the same requests; exporter headers are sent and never logged.
 func TestDifferentialOTLP(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	runs := map[string]*otlpRun{"ts": runOTLP(t, "ts", 0), "go": runOTLP(t, "go", 0)}
 	records := map[string]map[string]map[string]any{}
 	for impl, run := range runs {
@@ -314,7 +314,7 @@ func TestDifferentialOTLP(t *testing.T) {
 		skip := func(p string) bool {
 			return strings.HasSuffix(p, "service.version") || strings.HasSuffix(p, "attributes.localbase.inference.queue.duration_ms") || goOnly(p)
 		}
-		if d := diffJSON("", a, b, skip); len(d) > 0 {
+		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
 			t.Errorf("%s span tree differs:\n  %s", label, strings.Join(d, "\n  "))
 		}
 		for _, ev := range []string{"http.request", "inference.completed"} {
@@ -329,7 +329,7 @@ func TestDifferentialOTLP(t *testing.T) {
 			na := map[string]any{"attributes": normAttrs(ra["attributes"].(map[string]any)), "severity": ra["severityText"], "flags": ra["flags"]}
 			nb := map[string]any{"attributes": normAttrs(rb["attributes"].(map[string]any)), "severity": rb["severityText"], "flags": rb["flags"]}
 			skipMs := func(p string) bool { return strings.HasSuffix(p, "_ms") || goOnly(p) }
-			if d := diffJSON("", na, nb, skipMs); len(d) > 0 {
+			if d := harness.DiffJSON("", na, nb, skipMs); len(d) > 0 {
 				t.Errorf("%s %s record differs:\n  %s", label, ev, strings.Join(d, "\n  "))
 			}
 		}
@@ -340,7 +340,7 @@ func TestDifferentialOTLP(t *testing.T) {
 // the local log, with the same event and attributes on both gateways, and
 // never exported.
 func TestDifferentialOTLPFailures(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	got := map[string][]map[string]any{}
 	for _, impl := range []string{"ts", "go"} {
 		run := runOTLP(t, impl, 500)
@@ -370,7 +370,7 @@ func TestDifferentialOTLPFailures(t *testing.T) {
 		return out
 	}
 	a, b := distinct(got["ts"]), distinct(got["go"])
-	if d := diffJSON("", a, b, nil); len(d) > 0 {
+	if d := harness.DiffJSON("", a, b, nil); len(d) > 0 {
 		t.Errorf("failure reports differ:\n  %s\nts %v\ngo %v", strings.Join(d, "\n  "), a, b)
 	}
 }
@@ -379,7 +379,7 @@ func TestDifferentialOTLPFailures(t *testing.T) {
 // exporter settings, OTEL_* applied, as TS does; an invalid variable fails
 // both the same way.
 func TestCLIOtelEnvironment(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for _, r := range roots {
@@ -407,7 +407,7 @@ func TestCLIOtelEnvironment(t *testing.T) {
 				t.Errorf("%s: an exporter header was printed", label)
 			}
 			skip := func(p string) bool { return p == ".error.message" }
-			if d := diffJSON("", normalize(t, a.stdout, ts), normalize(t, b.stdout, gr), skip); len(d) > 0 {
+			if d := harness.DiffJSON("", normalize(t, a.stdout, ts), normalize(t, b.stdout, gr), skip); len(d) > 0 {
 				t.Errorf("%s differs:\n  %s", label, strings.Join(d, "\n  "))
 			}
 		}

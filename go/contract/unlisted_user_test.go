@@ -33,7 +33,7 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 	if harness.Impl() != "both" {
 		t.Skip("needs -impl=both")
 	}
-	logFreeMemoryOnFailure(t)
+	harness.LogFreeMemoryOnFailure(t)
 	if _, err := exec.LookPath("bun"); err != nil {
 		t.Skip("needs bun")
 	}

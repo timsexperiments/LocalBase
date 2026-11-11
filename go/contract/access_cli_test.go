@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -14,7 +15,7 @@ import (
 var goOwnIssuer = regexp.MustCompile(`^\.data\.(user|users\[\d+\]|policy\.bindings\[[01]\])\.issuer$`)
 
 func TestCLIAccess(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	t.Setenv("CONTRACT_OIDC_SECRET", "shh")

@@ -91,7 +91,7 @@ func TestFreshRootFirstInstall(t *testing.T) {
 
 	state := func(id string) map[string]any {
 		t.Helper()
-		return entryOf(t, e.do("GET", freshPath, "").JSON(t), id)
+		return harness.EntryOf(t, e.do("GET", freshPath, "").JSON(t), id)
 	}
 	act := func(id, action string) *harness.Resp {
 		t.Helper()
@@ -224,7 +224,7 @@ func TestFreshRootCLIInstall(t *testing.T) {
 	}
 	e.serve("--no-auth")
 	defer e.stop()
-	if s := entryOf(t, e.do("GET", freshPath, "").JSON(t), freshTiny); s["active"] != true || s["enabled"] != true || s["installed"] != true {
+	if s := harness.EntryOf(t, e.do("GET", freshPath, "").JSON(t), freshTiny); s["active"] != true || s["enabled"] != true || s["installed"] != true {
 		t.Fatalf("after install: %v", s)
 	}
 	if r := e.chatRetrying(freshTiny); r.Status != 200 {

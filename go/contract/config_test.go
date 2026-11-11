@@ -24,7 +24,7 @@ import (
 // service: restart-required applies use --restart never, and the automatic
 // restart refusal runs against the foreground contract gateways.
 func TestCLIConfigDeclarative(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	docs := fsguard.ScratchDir(t)
@@ -229,7 +229,7 @@ catch (e) { console.log((e as Error).message); }`
 // a restart-required apply is refused before saving, and an unchanged
 // document with --wait waits for its readiness.
 func TestCLIConfigForegroundGateway(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	for _, tg := range harness.Targets(t) {
 		t.Run(tg.Name, func(t *testing.T) {
 			shown := runCLI(t, tg.Name, tg.Root, "--json", "config", "show")

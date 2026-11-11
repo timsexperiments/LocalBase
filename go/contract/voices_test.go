@@ -3,7 +3,6 @@ package contract
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"mime/multipart"
@@ -16,31 +15,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
-
-// voiceClip is a 4 s 16 kHz PCM16 WAV of deterministic noise.
-func voiceClip(seed uint32) []byte {
-	const frames = 64000
-	b := make([]byte, 44, 44+frames*2)
-	copy(b, "RIFF")
-	copy(b[8:], "WAVEfmt ")
-	le := binary.LittleEndian
-	le.PutUint32(b[16:], 16)
-	le.PutUint16(b[20:], 1)
-	le.PutUint16(b[22:], 1)
-	le.PutUint32(b[24:], 16000)
-	le.PutUint32(b[28:], 32000)
-	le.PutUint16(b[32:], 2)
-	le.PutUint16(b[34:], 16)
-	copy(b[36:], "data")
-	le.PutUint32(b[40:], frames*2)
-	x := seed
-	for i := 0; i < frames*2; i++ {
-		x = x*1664525 + 1013904223
-		b = append(b, byte(x>>24))
-	}
-	le.PutUint32(b[4:], uint32(len(b)-8))
-	return b
-}
 
 type voicePart struct {
 	name, value string
@@ -139,7 +113,7 @@ func TestDifferentialVoices(t *testing.T) {
 		body, ct := voiceForm(parts...)
 		return admin("POST", base, ct, body)
 	}
-	clip := voiceClip(7)
+	clip := harness.VoiceClip(7)
 
 	// The list, as a reader: limits and the consent statement, no voices.
 	list := run(func(tg *harness.Target) call { return call{"GET", base, tg.Key, "", ""} })
@@ -151,7 +125,7 @@ func TestDifferentialVoices(t *testing.T) {
 		}
 		if firstList == "" {
 			firstList = string(r.Body)
-		} else if d := diffJSON("", mustJSON(t, firstList), r.JSON(t), nil); len(d) > 0 {
+		} else if d := harness.DiffJSON("", mustJSON(t, firstList), r.JSON(t), nil); len(d) > 0 {
 			t.Errorf("list differs: %v", d)
 		}
 	}
@@ -216,7 +190,7 @@ func TestDifferentialVoices(t *testing.T) {
 			want = v
 			continue
 		}
-		if d := diffJSON("", want, v, func(p string) bool {
+		if d := harness.DiffJSON("", want, v, func(p string) bool {
 			return p == ".id" || p == ".createdAt" || p == ".consent.attestedAt" || p == ".createdBy"
 		}); len(d) > 0 {
 			t.Errorf("create differs: %v", d)
@@ -291,7 +265,7 @@ func mustJSON(t *testing.T, s string) map[string]any {
 
 // TestCLIVoices compares `voices list|add|remove` on twin roots.
 func TestCLIVoices(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for i, impl := range []string{"ts", "go"} {
@@ -301,9 +275,9 @@ func TestCLIVoices(t *testing.T) {
 	}
 	dir := fsguard.ScratchDir(t)
 	clip := filepath.Join(dir, "clip.wav")
-	fsguard.WriteFile(clip, voiceClip(11), 0o600)
+	fsguard.WriteFile(clip, harness.VoiceClip(11), 0o600)
 	short := filepath.Join(dir, "short.wav")
-	fsguard.WriteFile(short, voiceClip(11)[:44+16000*2], 0o600)
+	fsguard.WriteFile(short, harness.VoiceClip(11)[:44+16000*2], 0o600)
 	volatile := func(p string) bool { return strings.HasSuffix(p, ".id") }
 	for _, c := range []cliCase{
 		{args: []string{"--json", "voices", "list"}},

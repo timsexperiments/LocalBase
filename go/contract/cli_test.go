@@ -191,7 +191,7 @@ func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 	skip := func(p string) bool {
 		return strings.HasSuffix(p, ".prefix") || (c.goArgs != nil && strings.HasSuffix(p, ".issuer")) || (c.skip != nil && c.skip(p))
 	}
-	if d := diffJSON("", a, b, skip); len(d) > 0 {
+	if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
 		if len(d) > 20 {
 			d = append(d[:20], "...")
 		}
@@ -199,17 +199,8 @@ func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 	}
 }
 
-func requireTS(t *testing.T) {
-	if _, err := exec.LookPath("bun"); err != nil {
-		t.Skip("bun is not installed")
-	}
-	if harness.Impl() != "both" {
-		t.Skip("run with -impl=both")
-	}
-}
-
 func TestCLIInitAndKeys(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	errorMessage := func(p string) bool { return p == ".error.message" }
@@ -253,14 +244,14 @@ func TestCLIInitAndKeys(t *testing.T) {
 			}
 			outs[i] = normalize(t, r.stdout, roots[i])
 		}
-		if d := diffJSON("", outs[0], outs[1], func(p string) bool { return strings.HasSuffix(p, ".prefix") }); len(d) > 0 {
+		if d := harness.DiffJSON("", outs[0], outs[1], func(p string) bool { return strings.HasSuffix(p, ".prefix") }); len(d) > 0 {
 			t.Errorf("%v differs: %v", args, d)
 		}
 	}
 }
 
 func TestCLIModels(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for i, impl := range []string{"ts", "go"} {
@@ -300,7 +291,7 @@ func TestCLIModels(t *testing.T) {
 }
 
 func TestCLIConfigure(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	msg := func(p string) bool { return p == ".error.message" }
@@ -336,7 +327,7 @@ func TestCLIConfigure(t *testing.T) {
 // TestTSReadsGoLogs runs the TS `logs` command over the Go gateway's event
 // file: every line Go wrote must pass the TS event schema.
 func TestTSReadsGoLogs(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	var goT *harness.Target
 	for _, tg := range harness.Targets(t) {
 		if tg.Name == "go" {
@@ -374,7 +365,7 @@ func TestTSReadsGoLogs(t *testing.T) {
 // TestCLILogs reads each launched gateway's log with both CLIs: the same
 // file must give the same events.
 func TestCLILogs(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" {
 			continue
@@ -391,7 +382,7 @@ func TestCLILogs(t *testing.T) {
 				continue
 			}
 			skip := func(p string) bool { return p == ".error.message" }
-			if d := diffJSON("", normalize(t, ts.stdout, tg.Root), normalize(t, gr.stdout, tg.Root), skip); len(d) > 0 {
+			if d := harness.DiffJSON("", normalize(t, ts.stdout, tg.Root), normalize(t, gr.stdout, tg.Root), skip); len(d) > 0 {
 				if len(d) > 10 {
 					d = d[:10]
 				}
@@ -403,7 +394,7 @@ func TestCLILogs(t *testing.T) {
 
 // TestCLISmoke runs each CLI's smoke check against its own gateway.
 func TestCLISmoke(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	for _, tg := range harness.Targets(t) {
 		if tg.Root == "" || !tg.RealModel {
 			continue

@@ -69,7 +69,7 @@ func TestInstallCancel(t *testing.T) {
 	}
 	op := func(id string) map[string]any {
 		t.Helper()
-		o, _ := entryOf(t, e.do("GET", freshPath, "").JSON(t), id)["operation"].(map[string]any)
+		o, _ := harness.EntryOf(t, e.do("GET", freshPath, "").JSON(t), id)["operation"].(map[string]any)
 		return o
 	}
 	waitState := func(id, want string) {

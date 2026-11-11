@@ -160,7 +160,7 @@ func TestTranscriptionReal(t *testing.T) {
 				var ja, jb any
 				json.Unmarshal([]byte(a[format]), &ja)
 				json.Unmarshal([]byte(b[format]), &jb)
-				if d := diffJSON("", ja, jb, nil); len(d) > 0 {
+				if d := harness.DiffJSON("", ja, jb, nil); len(d) > 0 {
 					t.Errorf("%s differs: %v", format, d)
 				}
 				continue

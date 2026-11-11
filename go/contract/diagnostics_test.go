@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -54,7 +55,7 @@ func diagnosticsLog() string {
 // captured stderr: the manifests and redacted logs match, and no planted
 // secret reaches either archive.
 func TestCLIDiagnostics(t *testing.T) {
-	requireTS(t)
+	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	for _, r := range roots {
@@ -107,7 +108,7 @@ func TestCLIDiagnostics(t *testing.T) {
 	gres, gfiles := bundle("go", gr, "go.zip")
 	if a, b := normalize(t, strings.ReplaceAll(tres.stdout, "ts.zip", "X.zip"), ts), normalize(t, strings.ReplaceAll(gres.stdout, "go.zip", "X.zip"), gr); true {
 		skip := func(p string) bool { return p == ".data.archive.bytes" }
-		if d := diffJSON("", a, b, skip); len(d) > 0 {
+		if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
 			t.Errorf("envelope differs:\n  %s", strings.Join(d, "\n  "))
 		}
 	}
@@ -162,7 +163,7 @@ func compareManifests(t *testing.T, a, b []byte) {
 	skip := func(p string) bool {
 		return p == ".generatedAt" || p == ".version" || p == ".logs.data.serviceStderr.modifiedAt" // written separately
 	}
-	if d := diffJSON("", x, y, skip); len(d) > 0 {
+	if d := harness.DiffJSON("", x, y, skip); len(d) > 0 {
 		t.Errorf("manifests differ:\n  %s\nts %s\ngo %s", strings.Join(d, "\n  "), a, b)
 	}
 	if string(a[:2]) != "{\n" || string(b[:2]) != "{\n" || !strings.HasSuffix(string(b), "}\n") {

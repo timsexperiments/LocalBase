@@ -74,7 +74,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 				continue
 			}
 			// Free space moves between two reads; everything else must match.
-			if d := diffJSON("", first, s, func(p string) bool { return strings.HasSuffix(p, ".availableBytes") }); len(d) > 0 {
+			if d := harness.DiffJSON("", first, s, func(p string) bool { return strings.HasSuffix(p, ".availableBytes") }); len(d) > 0 {
 				if len(d) > 15 {
 					d = d[:15]
 				}
@@ -142,7 +142,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	for _, tg := range harness.Targets(t) {
 		deadline := time.Now().Add(30 * time.Second)
 		for {
-			op := entryOf(t, state(tg), harness.TinyModel)["operation"].(map[string]any)
+			op := harness.EntryOf(t, state(tg), harness.TinyModel)["operation"].(map[string]any)
 			if op["state"] != "running" {
 				if op["state"] != "complete" || op["detail"] != "Installation complete" {
 					t.Errorf("%s install: %v", tg.Name, op)
@@ -184,21 +184,10 @@ func TestDifferentialModelManagement(t *testing.T) {
 		if tg.Name == "ts" && tsEager {
 			continue
 		}
-		if e := entryOf(t, state(tg), harness.TinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
+		if e := harness.EntryOf(t, state(tg), harness.TinyModel); e["installed"] != false || e["installedBytes"] != 0.0 {
 			t.Errorf("%s after uninstall: %v", tg.Name, e)
 		}
 	}
-}
-
-func entryOf(t *testing.T, state map[string]any, id string) map[string]any {
-	t.Helper()
-	for _, m := range state["models"].([]any) {
-		if e := m.(map[string]any); e["id"] == id {
-			return e
-		}
-	}
-	t.Fatalf("%s not listed", id)
-	return nil
 }
 
 // slowArtifact serves a model file: the first download sends half and then
@@ -389,7 +378,7 @@ func TestInstallFailureReasonExposed(t *testing.T) {
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		op, _ := entryOf(t, e.do("GET", "/_localbase/model-management", "").JSON(t), "gated-stt")["operation"].(map[string]any)
+		op, _ := harness.EntryOf(t, e.do("GET", "/_localbase/model-management", "").JSON(t), "gated-stt")["operation"].(map[string]any)
 		if op != nil && op["state"] != "running" {
 			detail, _ := op["detail"].(string)
 			why, _ := op["error"].(map[string]any)
