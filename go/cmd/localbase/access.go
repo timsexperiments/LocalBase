@@ -227,7 +227,15 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 }
 
 func accessCommand() *cli.Command {
-	ctx := context.Background()
+	var sub []*cli.Command
+	for _, group := range [][]*cli.Command{accessProviderCommands(), accessEmailCommands(), accessPolicyCommands(), accessUserCommands()} {
+		sub = append(sub, group...)
+	}
+	return ordered(&cli.Command{Name: "access", Summary: "Manage browser access", Sub: sub}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "bindings", "users", "login-link", "sessions")
+}
+
+// accessProviderCommands are the access commands for sign-in providers: show, cloudflare, oidc, github, magic-link and disable.
+func accessProviderCommands() []*cli.Command {
 	permissions := cli.Option{Name: "permissions", Value: "<permission,...>", Help: "Browser permissions; preserves the current set when omitted"}
 	origin := cli.Option{Name: "origin", Value: "<https://localbase.example.com>", Help: "Exact public UI origin"}
 	idPositional := func(name, summary, kind, label string) *cli.Command {
@@ -244,7 +252,7 @@ func accessCommand() *cli.Command {
 			return map[string]any{"registrations": regs}, nil
 		})}
 	}
-	return ordered(&cli.Command{Name: "access", Summary: "Manage browser access", Sub: []*cli.Command{
+	return []*cli.Command{
 		{Name: "show", Summary: "Show browser identity provider configuration", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 			cfg, err := auth.LoadAccess(e.Root.Dir)
 			if err != nil {
@@ -407,8 +415,6 @@ func accessCommand() *cli.Command {
 			list("List magic-link registrations", "magic-link", "magic-link"),
 			idPositional("remove", "Remove native magic-link authentication", "magic-link", "Magic-link registration"),
 		}},
-		loginLinkCommand(),
-		localSessionsCommand(),
 		{Name: "disable", Summary: "Disable browser authentication", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 			var disabled bool
 			err := withOperation(e, "configure browser access", func() (err error) {
@@ -426,6 +432,12 @@ func accessCommand() *cli.Command {
 			}
 			return map[string]any{"disabled": disabled, "restartRequired": disabled}, nil
 		})},
+	}
+}
+
+// accessEmailCommands is the access command for email delivery.
+func accessEmailCommands() []*cli.Command {
+	return []*cli.Command{
 		{Name: "email", Summary: "Manage email delivery", Sub: []*cli.Command{
 			{Name: "show", Summary: "Show email delivery configuration", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				cfg, err := auth.LoadEmail(e.Root.Dir)
@@ -544,6 +556,13 @@ func accessCommand() *cli.Command {
 				return map[string]any{"disabled": disabled, "restartRequired": false}, nil
 			})},
 		}},
+	}
+}
+
+// accessPolicyCommands are the access commands for the authorization policy and its bindings.
+func accessPolicyCommands() []*cli.Command {
+	ctx := context.Background()
+	return []*cli.Command{
 		{Name: "policy", Summary: "Manage browser authorization policy", Sub: []*cli.Command{
 			{Name: "show", Summary: "Show the browser authorization policy", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				policy, err := auth.LoadPolicy(ctx, e.Store.DB)
@@ -742,6 +761,13 @@ func accessCommand() *cli.Command {
 				return map[string]any{"adopted": adopted, "issuer": issuer}, nil
 			})},
 		}},
+	}
+}
+
+// accessUserCommands are the access commands for browser users and local sign-in: users, login-link and sessions.
+func accessUserCommands() []*cli.Command {
+	ctx := context.Background()
+	return []*cli.Command{
 		{Name: "users", Summary: "Provision and manage browser users", Sub: []*cli.Command{
 			{Name: "list", Summary: "List provisioned browser users", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				users, err := auth.ListUsers(ctx, e.Store)
@@ -837,7 +863,9 @@ func accessCommand() *cli.Command {
 			userCommand("disable", "Disable a browser user and revoke all browser permissions", "disable a browser user", "Disabled", "disabled"),
 			userCommand("remove", "Remove a browser user and linked identities", "remove a browser user", "Removed", ""),
 		}},
-	}}, "show", "cloudflare", "github", "magic-link", "email", "oidc", "disable", "policy", "bindings", "users", "login-link", "sessions")
+		loginLinkCommand(),
+		localSessionsCommand(),
+	}
 }
 
 // ordered puts a group's subcommands in the TS help order.
