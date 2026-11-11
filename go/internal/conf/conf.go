@@ -115,6 +115,10 @@ func Ineligible(s *catalog.Spec, allowExperimental bool) string {
 
 var fieldNames = map[string]string{"llm": "Llm", "stt": "Stt", "tts": "Tts", "image": "Image", "video": "Video"}
 
+// KindField is a kind as it appears inside a configuration field's name: "llm" is the Llm of
+// selectedLlmModels and activeLlmModel.
+func KindField(kind string) string { return fieldNames[kind] }
+
 // Issue is one validation failure, formatted like TS issue summaries.
 type Issue struct{ Path, Message string }
 

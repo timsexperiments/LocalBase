@@ -100,7 +100,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	}
 	defer e.Close()
 	cfg := e.Config.Clone()
-	warnings, err := mergeConfigure(cfg, configureInputOf(c, hasConfig, e.memoryGB()), overrides, e.Catalog)
+	warnings, err := MergeInput(cfg, configureInputOf(c, hasConfig, e.memoryGB()), overrides, e.Catalog)
 	for _, w := range warnings {
 		c.Error("%s", w)
 	}
@@ -209,10 +209,11 @@ func runConfigure(c *cli.Ctx) (any, error) {
 	return e.audit.WithResult(data), nil
 }
 
-// configureInput is what configure was given, apart from the --config file: each option as the
-// person typed it (nil when not given; a model list split, and present when given), and what the
-// merge needs to know of the root and the machine.
-type configureInput struct {
+// Input is what configure was given on the command line, apart from the --config file: each option
+// as the person typed it (nil when not given; a model list split, and present when given), and what
+// the merge needs to know of the root and the machine. Because it is the command line's, MergeInput's
+// refusals and warnings name its flags (--hf-token, --otel-headers).
+type Input struct {
 	Models      map[string][]string // --<kind>-models
 	Active      map[string]*string  // --active-<kind>
 	DefaultLLMs *[]string           // --default-llm-models
@@ -225,17 +226,17 @@ type configureInput struct {
 	MemoryGB     int    // this machine's memory, for the parallel warning
 }
 
-// mergeConfigure merges what configure was given (in) and the --config file (overrides, nil for
+// MergeInput merges what configure was given (in) and the --config file (overrides, nil for
 // none) into cfg: an option given wins over the file, and the file over what is saved. It checks
 // each option as it goes and stops at the first that isn't valid, with a *conf.DocumentError
 // (bad input). warnings are what to tell the person, in order, including on a refusal.
-func mergeConfigure(cfg *store.Config, in configureInput, overrides *Overrides, cat *catalog.Catalog) (warnings []string, err error) {
+func MergeInput(cfg *store.Config, in Input, overrides *Overrides, cat *catalog.Catalog) (warnings []string, err error) {
 	if overrides == nil {
 		overrides = &Overrides{}
 	}
 
 	lists := map[string][]string{}
-	for _, k := range kinds {
+	for _, k := range store.Kinds {
 		ids, given := in.Models[k]
 		if !given {
 			continue
@@ -247,13 +248,13 @@ func mergeConfigure(cfg *store.Config, in configureInput, overrides *Overrides, 
 		probe.Selected = map[string][]string{k: ids}
 		probe.Active = map[string]string{}
 		for _, is := range conf.ValidateModels(probe, cat, k != "video") {
-			if strings.HasPrefix(is.Path, "selected"+fieldTitle(k)+"Models") {
+			if strings.HasPrefix(is.Path, "selected"+conf.KindField(k)+"Models") {
 				return warnings, &conf.DocumentError{Message: is.String()}
 			}
 		}
 		lists[k] = ids
 	}
-	for _, k := range kinds {
+	for _, k := range store.Kinds {
 		if ids, ok := lists[k]; ok {
 			cfg.Selected[k] = ids
 		} else if ids := overrides.Selected[k]; ids != nil {
@@ -262,7 +263,7 @@ func mergeConfigure(cfg *store.Config, in configureInput, overrides *Overrides, 
 		switch {
 		case in.Active[k] != nil:
 			if *in.Active[k] == "" {
-				return warnings, &conf.DocumentError{Message: fmt.Sprintf("active%s: Too small: expected string to have >=1 characters", fieldTitle(k))}
+				return warnings, &conf.DocumentError{Message: fmt.Sprintf("active%s: Too small: expected string to have >=1 characters", conf.KindField(k))}
 			}
 			cfg.Active[k] = *in.Active[k]
 		case overrides.Active[k] != nil:
@@ -405,7 +406,7 @@ func intInput(name string, given *string, lo, hi int) (*int, error) {
 
 // secretOptionWarnings say what a secret on the command line costs. Clearing one with an empty
 // value costs nothing, and the value itself is never repeated.
-func secretOptionWarnings(in configureInput) []string {
+func secretOptionWarnings(in Input) []string {
 	var out []string
 	for _, o := range []struct {
 		name    string
@@ -420,7 +421,7 @@ func secretOptionWarnings(in configureInput) []string {
 }
 
 // configureInputOf is what configure was given on the command line.
-func configureInputOf(c *cli.Ctx, existingRoot bool, memoryGB int) configureInput {
+func configureInputOf(c *cli.Ctx, existingRoot bool, memoryGB int) Input {
 	given := func(name string) *string {
 		if !c.Has(name) {
 			return nil
@@ -428,7 +429,7 @@ func configureInputOf(c *cli.Ctx, existingRoot bool, memoryGB int) configureInpu
 		v := c.String(name)
 		return &v
 	}
-	in := configureInput{Models: map[string][]string{}, Active: map[string]*string{},
+	in := Input{Models: map[string][]string{}, Active: map[string]*string{},
 		Host: given("host"), SttHost: given("stt-host"), CtxMode: given("ctx-mode"), OtelEndpoint: given("otel-endpoint"),
 		OtelHeaders: given("otel-headers"), Parallel: given("parallel"), HFToken: given("hf-token"),
 		Port: given("port"), SttPort: given("stt-port"), CtxSize: given("ctx-size"), OtelSampleRatio: given("otel-sample-ratio"),
@@ -452,10 +453,6 @@ func configureInputOf(c *cli.Ctx, existingRoot bool, memoryGB int) configureInpu
 
 var kindLabel = map[string]string{"llm": "LLM", "stt": "STT", "tts": "TTS", "image": "Image", "video": "Video"}
 
-func fieldTitle(k string) string {
-	return map[string]string{"llm": "Llm", "stt": "Stt", "tts": "Tts", "image": "Image", "video": "Video"}[k]
-}
-
 func rootDBPath(c *cli.Ctx) string {
 	dir := root.Resolve(c.Global.Root)
 	if canon, err := root.Canonical(dir); err == nil {
@@ -474,7 +471,7 @@ type Overrides struct {
 }
 
 // loadOverrides reads a configure TOML file (TS loadTomlOverrides). A file that isn't valid is bad
-// input (exit 2), with parseOverrides's message.
+// input (exit 2), with ParseOverrides's message.
 func loadOverrides(path string) (*Overrides, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -483,16 +480,16 @@ func loadOverrides(path string) (*Overrides, error) {
 	if err != nil {
 		return nil, err
 	}
-	o, err := parseOverrides(string(b))
+	o, err := ParseOverrides(string(b))
 	if err != nil {
 		return nil, inputError(err)
 	}
 	return o, nil
 }
 
-// parseOverrides reads a configure TOML document: known keys only, checked by type and range. A
+// ParseOverrides reads a configure TOML document: known keys only, checked by type and range. A
 // document that isn't valid is a *conf.DocumentError, whose message names the problem.
-func parseOverrides(text string) (*Overrides, error) {
+func ParseOverrides(text string) (*Overrides, error) {
 	doc, err := toml.Parse(text)
 	if err != nil {
 		return nil, &conf.DocumentError{Message: fmt.Sprintf("Invalid TOML configuration: %v", err)}
@@ -609,8 +606,8 @@ func parseOverrides(text string) (*Overrides, error) {
 			}
 		default:
 			kind := ""
-			for _, kk := range kinds {
-				if k == "selected"+fieldTitle(kk)+"Models" || k == "active"+fieldTitle(kk)+"Model" {
+			for _, kk := range store.Kinds {
+				if k == "selected"+conf.KindField(kk)+"Models" || k == "active"+conf.KindField(kk)+"Model" {
 					kind = kk
 				}
 			}
