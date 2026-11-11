@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -263,13 +262,9 @@ func stopGatewayAdvice(rootDir string, owner *root.Owner) string {
 
 func throughGateway(rootDir string, gw *instance.Client, route string, body map[string]any) (map[string]any, error) {
 	stopIt := stopGatewayAdvice(rootDir, gw.Owner())
-	b, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	a, err := gw.Post(ctx, route, json.RawMessage(b))
+	a, err := gw.Post(ctx, route, body)
 	if err != nil {
 		return nil, errors.New("A gateway is running on this root, but it did not answer." + stopIt)
 	}
