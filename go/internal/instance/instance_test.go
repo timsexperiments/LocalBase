@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,12 +37,18 @@ func (g *fakeGateway) requests() []*http.Request {
 
 func ownedRoot(t *testing.T, proven bool, handler http.HandlerFunc) (*root.Root, *fakeGateway) {
 	t.Helper()
+	return ownedRootAt(t, "127.0.0.1:0", proven, handler)
+}
+
+// ownedRootAt is ownedRoot with the gateway listening at addr.
+func ownedRootAt(t *testing.T, addr string, proven bool, handler http.HandlerFunc) (*root.Root, *fakeGateway) {
+	t.Helper()
 	r, err := root.Init(filepath.Join(t.TempDir(), "root"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	g := &fakeGateway{body: map[string][]byte{}}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/_localbase/instance" && req.Method == http.MethodGet {
 			id, hash := "someone-else", "not-this-root"
 			if proven && req.Header.Get("X-Localbase-Instance-Token") == "the-token" {
@@ -57,6 +64,13 @@ func ownedRoot(t *testing.T, proven bool, handler http.HandlerFunc) (*root.Root,
 		g.mu.Unlock()
 		handler(w, req)
 	}))
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Listener.Close()
+	srv.Listener = ln
+	srv.Start()
 	t.Cleanup(srv.Close)
 	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
 	p, _ := strconv.Atoi(port)
@@ -174,5 +188,108 @@ func TestACallKeepsToItsDeadline(t *testing.T) {
 	start := time.Now()
 	if _, err := c.Get(ctx, "/slow", nil); err == nil || time.Since(start) > 2*time.Second {
 		t.Errorf("a slow answer past the deadline: %v after %v", err, time.Since(start))
+	}
+}
+
+// A redirect isn't followed: the caller gets the 3xx as it came, and where it points never sees
+// the instance token.
+func TestARedirectIsNotFollowed(t *testing.T) {
+	var elsewhere []string
+	var mu sync.Mutex
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		elsewhere = append(elsewhere, req.URL.Path+" token="+req.Header.Get("X-Localbase-Instance-Token"))
+		mu.Unlock()
+	}))
+	defer other.Close()
+	r, _ := ownedRoot(t, true, func(w http.ResponseWriter, req *http.Request) {
+		http.Redirect(w, req, other.URL+"/caught", http.StatusTemporaryRedirect)
+	})
+	c, _, _ := Dial(r)
+	a, err := c.Get(context.Background(), "/_localbase/placement-state", nil)
+	if err != nil || a.Status != http.StatusTemporaryRedirect {
+		t.Errorf("a redirect: %v %+v, want the 307 itself", err, a)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(elsewhere) > 0 {
+		t.Errorf("the redirect was followed: %v", elsewhere)
+	}
+}
+
+// nonLoopbackIPv4 is an address of this machine that isn't loopback, where a test can listen: Go
+// never proxies a loopback host (127.0.0.2 included), so only such an address can show a proxy.
+func nonLoopbackIPv4() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.To4() != nil && !n.IP.IsLoopback() && !n.IP.IsLinkLocalUnicast() {
+			if ln, err := net.Listen("tcp", n.IP.String()+":0"); err == nil {
+				ln.Close()
+				return n.IP.String()
+			}
+		}
+	}
+	return ""
+}
+
+// A call goes straight to the gateway even with HTTP_PROXY set. Go reads the proxy environment
+// once per process, so the calls are made in a child run of this test with HTTP_PROXY set from the
+// start; the "proxy" here forwards what it gets, and records it.
+//
+// Only the client's own calls are checked. The identity check before them is
+// service.VerifiedOwnerState's, which has its own client (reported separately).
+func TestACallDoesNotGoThroughAProxy(t *testing.T) {
+	if os.Getenv("INSTANCE_PROXY_CHILD") == "1" {
+		r, _ := ownedRootAt(t, os.Getenv("INSTANCE_PROXY_HOST")+":0", true, func(w http.ResponseWriter, req *http.Request) { w.Write([]byte(`{}`)) })
+		c, state, detail := Dial(r)
+		if c == nil {
+			t.Fatalf("child: Dial %q %q", state, detail)
+		}
+		if _, err := c.Get(context.Background(), "/through-the-client", nil); err != nil {
+			t.Fatalf("child: %v", err)
+		}
+		return
+	}
+	host := nonLoopbackIPv4()
+	if host == "" {
+		t.Skip("this machine has no non-loopback IPv4 address to listen on, and Go never proxies a loopback host")
+	}
+	var mu sync.Mutex
+	var proxied []string
+	direct := &http.Transport{Proxy: nil}
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		mu.Lock()
+		proxied = append(proxied, req.URL.Path)
+		mu.Unlock()
+		out := req.Clone(req.Context())
+		out.RequestURI = ""
+		resp, err := direct.RoundTrip(out)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+	defer proxy.Close()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestACallDoesNotGoThroughAProxy$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "INSTANCE_PROXY_CHILD=1", "INSTANCE_PROXY_HOST="+host, "HTTP_PROXY="+proxy.URL, "http_proxy="+proxy.URL, "NO_PROXY=", "no_proxy=")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("the child run: %v\n%s", err, out)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	t.Logf("through the proxy: %v (host %s)", proxied, host)
+	for _, p := range proxied {
+		if p == "/through-the-client" {
+			t.Errorf("a call went through HTTP_PROXY: %v", proxied)
+		}
 	}
 }
