@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -22,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
+	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -211,17 +210,17 @@ func modelsCancel() *cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			state, owner, detail := service.VerifiedOwnerState(e.Root) // the cancel goes only to a proven gateway
+			gw, state, detail := instance.Dial(e.Root) // the cancel goes only to a proven gateway
 			if state == "unknown" || state == "invalid" {
 				if detail == "" {
 					detail = "its lock could not be read"
 				}
 				return nil, errors.New("Cannot tell whether a gateway is running on this root: " + detail + ". Nothing changed.")
 			}
-			if state != "active" || owner == nil {
+			if gw == nil {
 				return nil, errors.New("No gateway is running on this root, so it isn't installing anything. An install started with local-base models install stops with Ctrl-C in its terminal.")
 			}
-			op, err := cancelInstall(owner.HealthURL(), owner.InstanceToken, c.Args[0])
+			op, err := cancelInstall(gw, c.Args[0])
 			if err != nil {
 				return nil, err
 			}
@@ -234,35 +233,26 @@ func modelsCancel() *cli.Command {
 		}}
 }
 
-func cancelInstall(healthURL, token, modelID string) (map[string]any, error) {
-	body, err := json.Marshal(map[string]string{"modelId": modelID, "action": "cancel"})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimSuffix(healthURL, "/health")+"/_localbase/model-management", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Localbase-Instance-Token", token)
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+func cancelInstall(gw *instance.Client, modelID string) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	a, err := gw.Post(ctx, "/_localbase/model-management", map[string]string{"modelId": modelID, "action": "cancel"})
 	if err != nil {
 		return nil, errors.New("A gateway is running on this root, but it did not answer. Nothing changed. Try again.")
 	}
-	defer resp.Body.Close()
 	var out map[string]any
-	decodeErr := json.NewDecoder(resp.Body).Decode(&out)
+	decodeErr := a.Decode(&out)
 	switch {
-	case (resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted) && decodeErr == nil:
+	case (a.Status == http.StatusOK || a.Status == http.StatusAccepted) && decodeErr == nil:
 		return out, nil
-	case resp.StatusCode == http.StatusConflict || resp.StatusCode == http.StatusBadRequest:
+	case a.Status == http.StatusConflict || a.Status == http.StatusBadRequest:
 		if e, ok := out["error"].(map[string]any); ok {
 			if message, ok := e["message"].(string); ok {
 				return nil, errors.New(message)
 			}
 		}
 	}
-	return nil, fmt.Errorf("The gateway running on this root did not accept this (HTTP %d). It may be an older version: run local-base restart.", resp.StatusCode)
+	return nil, fmt.Errorf("The gateway running on this root did not accept this (HTTP %d). It may be an older version: run local-base restart.", a.Status)
 }
 
 func modelsCatalog() *cli.Command {
