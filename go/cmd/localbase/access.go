@@ -12,6 +12,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // `access`: browser sign-in providers, email delivery, the authorization
@@ -253,7 +254,7 @@ func accessCommand() *cli.Command {
 				c.Info("Browser access is not configured.")
 				return map[string]any{"config": nil}, nil
 			}
-			c.Info("Browser access: %s for %s", cfg.Provider.Kind, cli.PrintableASCII(cfg.Origin))
+			c.Info("Browser access: %s for %s", cfg.Provider.Kind, termsafe.PrintableASCII(cfg.Origin))
 			return map[string]any{"config": cfg.Summary()}, nil
 		})},
 		{Name: "cloudflare", Summary: "Configure Cloudflare Access browser authentication", Options: []cli.Option{
@@ -435,7 +436,7 @@ func accessCommand() *cli.Command {
 					c.Info("Email delivery is not configured.")
 					return map[string]any{"config": nil}, nil
 				}
-				c.Info("Email delivery: %s:%d from %s", cli.PrintableASCII(cfg.Host), cfg.Port, cli.PrintableASCII(cfg.From))
+				c.Info("Email delivery: %s:%d from %s", termsafe.PrintableASCII(cfg.Host), cfg.Port, termsafe.PrintableASCII(cfg.From))
 				return map[string]any{"config": cfg.Summary()}, nil
 			})},
 			{Name: "configure", Summary: "Configure SMTP email delivery", Options: []cli.Option{
@@ -737,7 +738,7 @@ func accessCommand() *cli.Command {
 				if adopted > 0 {
 					e.audit.Change("access", "adopt-binding-issuer", "issuer", issuer, "count", adopted)
 				}
-				c.Info("%d email bindings and invitations now trust %s.", adopted, cli.PrintableASCII(issuer))
+				c.Info("%d email bindings and invitations now trust %s.", adopted, termsafe.PrintableASCII(issuer))
 				return map[string]any{"adopted": adopted, "issuer": issuer}, nil
 			})},
 		}},
@@ -800,9 +801,9 @@ func accessCommand() *cli.Command {
 				case delivered:
 					c.Info("Invited %s and sent an email.", user.Email)
 				case delivery != nil: // asked for, and not sent: say so, without the server's words
-					c.Error("Invited %s, but the email could not be sent. Sign in at %s", cli.PrintableASCII(user.Email), cli.PrintableASCII(signIn))
+					c.Error("Invited %s, but the email could not be sent. Sign in at %s", termsafe.PrintableASCII(user.Email), termsafe.PrintableASCII(signIn))
 				default:
-					c.Info("Invited %s. Sign in at %s", cli.PrintableASCII(user.Email), cli.PrintableASCII(signIn))
+					c.Info("Invited %s. Sign in at %s", termsafe.PrintableASCII(user.Email), termsafe.PrintableASCII(signIn))
 				}
 				return map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered}, nil
 			})},

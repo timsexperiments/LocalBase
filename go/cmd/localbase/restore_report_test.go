@@ -12,6 +12,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 const plantedTail = "\x1b[2K\nsecond-line\u202e\u009b\u0430"
@@ -145,7 +146,7 @@ func TestTheReportPrintsNothingThatActsOnATerminal(t *testing.T) {
 	rep, _ := plantedReport(t)
 	got := rendered(t, rep)
 	for _, r := range got {
-		if r != '\n' && cli.Printable(string(r)) != string(r) {
+		if r != '\n' && termsafe.Printable(string(r)) != string(r) {
 			t.Errorf("%U reached the terminal", r)
 		}
 	}
@@ -243,7 +244,7 @@ func TestTheReportPrintsWhatItHolds(t *testing.T) {
 		"the target":            rep.Target,
 		"a binding coming back": rep.ReturningBindings[1].Issuer,
 	} {
-		if !strings.Contains(got, cli.PrintableASCII(value)) && !strings.Contains(got, cli.Printable(value)) {
+		if !strings.Contains(got, termsafe.PrintableASCII(value)) && !strings.Contains(got, termsafe.Printable(value)) {
 			t.Errorf("%s isn't there", name)
 		}
 	}

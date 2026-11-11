@@ -19,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/upgrade"
 )
 
@@ -53,7 +54,7 @@ func (a *Log) Record(msg string, attrs ...any) {
 		if w == nil {
 			w = os.Stderr
 		}
-		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", a.failure, cli.Printable(a.root.LogsDir()))
+		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", a.failure, termsafe.Printable(a.root.LogsDir()))
 	}
 	sink, err := openAuditSink(a.root.LogsDir())
 	if err != nil {

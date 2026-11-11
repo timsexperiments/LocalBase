@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // Refused is a backup or a target that restore will not use. Nothing has changed.
@@ -25,9 +25,9 @@ func refuse(format string, a ...any) error {
 	for i, v := range a {
 		switch x := v.(type) {
 		case string:
-			shown[i] = cli.Printable(x)
+			shown[i] = termsafe.Printable(x)
 		case error:
-			shown[i] = cli.Printable(x.Error())
+			shown[i] = termsafe.Printable(x.Error())
 		default:
 			shown[i] = v
 		}

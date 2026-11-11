@@ -15,6 +15,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 // connectScopes are what --create-key grants by default: enough for an editor or an
@@ -159,7 +160,7 @@ func printClient(c *cli.Ctx, client connect.Client, hasKey bool) {
 	if !hasKey && slices.ContainsFunc(client.Snippets, func(s connect.Snippet) bool { return strings.Contains(s.Text, connect.KeyToken) }) {
 		c.Error("\nGet a key: local-base connect %s --create-key", client.ID)
 	}
-	c.Error("\nIts documentation: %s", cli.PrintableASCII(client.Docs))
+	c.Error("\nIts documentation: %s", termsafe.PrintableASCII(client.Docs))
 }
 
 func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, running bool, key string) {
@@ -170,10 +171,10 @@ func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, runn
 	}
 	c.Info("")
 	if baseURL != bases[0].URL {
-		c.Info("Address: %s", cli.PrintableASCII(baseURL))
+		c.Info("Address: %s", termsafe.PrintableASCII(baseURL))
 	}
 	for _, b := range bases {
-		c.Info("%s: %s", b.Label, cli.PrintableASCII(b.URL))
+		c.Info("%s: %s", b.Label, termsafe.PrintableASCII(b.URL))
 		if b.Note != "" {
 			c.Info("  %s", b.Note)
 		}

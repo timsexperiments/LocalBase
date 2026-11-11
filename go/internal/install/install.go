@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"io"
 	"net/http"
 	"net/url"
@@ -29,6 +28,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/netguard"
 	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 
 	_ "modernc.org/sqlite"
 )
@@ -269,7 +269,7 @@ func downloadError(src, token string, err error) error {
 		return &messageError{cause: err, message: fmt.Sprintf("Failed to download model from %s.\n\nThis model is gated on Hugging Face. To download it:\n"+
 			"1. Accept the model terms on Hugging Face (e.g., https://huggingface.co/google/gemma-3-27b-it)\n"+
 			"2. Save your access token in the database: local-base configure --hf-token \"your_token\" (or set the HF_TOKEN environment variable)\n"+
-			"3. Re-run the command.", cli.PrintableASCII(src))}
+			"3. Re-run the command.", termsafe.PrintableASCII(src))}
 	}
 	return fmt.Errorf("Failed to download model from %s: %w", src, err)
 }
@@ -447,7 +447,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		return "", err
 	}
 	if id.Size != a.ExpectedSizeBytes {
-		return "", &integrityError{fmt.Sprintf("Size mismatch for %s: expected %d bytes, got %d bytes.", cli.Printable(a.Filename), a.ExpectedSizeBytes, id.Size)}
+		return "", &integrityError{fmt.Sprintf("Size mismatch for %s: expected %d bytes, got %d bytes.", termsafe.Printable(a.Filename), a.ExpectedSizeBytes, id.Size)}
 	}
 	digest := strings.ToLower(a.SHA256)
 	if e, ok := readCache(dir).Entries[a.Filename]; ok && strings.ToLower(e.AuthoritativeSha256) == digest &&
@@ -460,7 +460,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 	}
 	if actual != digest {
 		return "", &integrityError{fmt.Sprintf("Checksum mismatch for %s!\n  Expected: %s\n  Got:      %s\n  File may be corrupted or tampered with. Delete it and retry.",
-			cli.Printable(a.Filename), cli.Printable(digest), actual)}
+			termsafe.Printable(a.Filename), termsafe.Printable(digest), actual)}
 	}
 	err = withCacheLock(dir, func() error {
 		c := readCache(dir)

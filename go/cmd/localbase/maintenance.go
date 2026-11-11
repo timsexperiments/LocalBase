@@ -13,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
 func maintenanceCommands() []*cli.Command {
@@ -106,7 +107,7 @@ func maintenanceCommands() []*cli.Command {
 				for _, left := range leftCopies {
 					if err := store.RemoveReadCopy(left); err != nil {
 						shown := shownPath(left.Path)
-						copyFailures = append(copyFailures, fmt.Sprintf("Could not remove a private copy of this root's database at %s: %s. It may hold secrets. To delete it: rm -rf %s", shown, cli.Printable(err.Error()), shown))
+						copyFailures = append(copyFailures, fmt.Sprintf("Could not remove a private copy of this root's database at %s: %s. It may hold secrets. To delete it: rm -rf %s", shown, termsafe.Printable(err.Error()), shown))
 						continue
 					}
 					copiesRemoved++
@@ -143,4 +144,4 @@ func withHelp(o cli.Option, help string) cli.Option {
 }
 
 // shownPath is a path as a person reads it and pastes it: nothing in it acts on the terminal.
-func shownPath(path string) string { return root.ShellQuote(cli.Printable(path)) }
+func shownPath(path string) string { return root.ShellQuote(termsafe.Printable(path)) }

@@ -15,6 +15,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
+	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
 
@@ -57,7 +58,7 @@ func doctorCommand() *cli.Command {
 				return nil, err
 			}
 			if eff.Enabled {
-				c.Info("OpenTelemetry: enabled via %s (%s)", eff.Source, cli.PrintableASCII(eff.DisplayEndpoint))
+				c.Info("OpenTelemetry: enabled via %s (%s)", eff.Source, termsafe.PrintableASCII(eff.DisplayEndpoint))
 			} else {
 				c.Info("OpenTelemetry: disabled")
 			}
