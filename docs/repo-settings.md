@@ -16,6 +16,7 @@ The `default` ruleset covers the default branch.
 - [x] Block force pushes and deletions. Any history rewrite means lifting this deliberately.
 - [x] Require the `validate` check.
 - [ ] After #403 merges, also require `hygiene` and `secrets`. A required check has to exist on `main` first. `release-go.yml` runs only when its paths change, and a required check that doesn't run blocks the merge, so don't require its jobs.
+- [ ] Require `go-checks`, from `go.yml`, once it has run on `main` at least once. It passes only when every Go job that should run has passed, and passes when a change doesn't touch the Go tree.
 - [ ] After #403 merges, turn off merge commits and rebase merging in Settings → General, so the options match the ruleset.
 
 ## Release tags
