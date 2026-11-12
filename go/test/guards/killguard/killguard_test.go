@@ -78,10 +78,8 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 const minRead = 199
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
-// other file may join. An entry can be absent from a tree: browser-run.sh's are being fixed on another
-// branch, and not every branch holds it. Lower a number, or remove a line, as they are fixed.
+// other file may join. Lower a number, or remove a line, as they are fixed.
 var known = map[string]int{
-	"test/browser/browser-run.sh":     2, // pkill -f on the run's own profile path
 	"tools/rehearsal.sh":              1, // the scratch root's own label; it refuses the live one
 	"tools/upgrade-rehearsal/main.go": 2, // a scratch root's service, one line per platform; it checks the label against the live ones first
 }

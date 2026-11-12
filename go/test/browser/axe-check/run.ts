@@ -27,6 +27,10 @@ const states: [string, string, string][] = [
   ["lab-image", "/app/studio/image", ""],
   ["image-shape", "/app/studio/image", `document.querySelector("[data-open-sheet=image-shape]")?.click()`],
   ["image-viewer", "/app/studio/image", `document.querySelector(".image-open")?.click()`],
+  ["image-details", "/app/studio/image", `(async () => { document.querySelector(".image-open")?.click(); await new Promise((r) => setTimeout(r, 250)); document.querySelector("dialog.viewer[open] [data-view-details]")?.click(); })()`],
+  // Editing a picture, or where no model can, the sheet that says what is needed.
+  ["image-edit", "/app/studio/image", `(async () => { document.querySelector(".image-open")?.click(); await new Promise((r) => setTimeout(r, 250)); document.querySelector("dialog.viewer[open] [data-edit-picture]")?.click(); })()`],
+  ["image-edit-change", "/app/studio/image", `(async () => { document.querySelector(".image-open")?.click(); await new Promise((r) => setTimeout(r, 250)); document.querySelector("dialog.viewer[open] [data-edit-picture]")?.click(); await new Promise((r) => setTimeout(r, 250)); if (!document.getElementById("image-needs-edit")?.open) document.querySelector("[data-open-sheet=image-change]")?.click(); })()`],
   ["lab-video", "/app/studio/video", ""],
   ["video-sheet", "/app/studio/video", `document.querySelector("[data-video-chip]")?.click()`],
   ["lab-speech", "/app/studio/speech", ""],
