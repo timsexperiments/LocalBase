@@ -8,8 +8,8 @@ go build -o local-base ./cmd/localbase       # one static binary, UI included
 tools/build.sh dist/local-base              # the reproducible release build, stamped
 ./local-base --root /path/to/root serve --port 26410 --runtime-port-base 26411
 go test ./internal/...                        # unit tests (no models needed)
-go test ./contract -args -impl=go             # HTTP contract suite against Go
-go test ./contract -args -impl=both           # against TS and Go, plus differential checks
+tools/contract.sh -args -impl=go              # contract and system suites against Go
+tools/contract.sh -args -impl=both            # against TS and Go, plus differential checks
 tools/tailwind.sh                             # rebuild internal/web/static/app.css (commit it)
 go generate ./internal/catalog ./internal/runtime  # re-sync catalog and runtime pins from the TS tree
 ```

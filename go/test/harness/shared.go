@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// The helpers below are used by the tests of more than one suite package (go/contract and
+// The helpers below are used by the tests of more than one suite package (go/test/contract and
 // go/test/system), so they live here rather than in either (step 7, R3).
 
 // DiffJSON returns the paths where a and b differ, skipping paths for which

@@ -27,7 +27,7 @@ Removal starts only after the maintainer signs off on all of these:
 
 1. **Move sources into `go/`.** The catalog goes to `go/internal/catalog/data` as the source of truth, the runtime manifest to `go/internal/runtime`, and `drizzle/` SQL to `go/internal/store/migrations`. Remove the sync scripts and their `go:generate` lines. Bytes must stay identical, because migration checksums are in the journal.
 2. **Freeze the goldens.** Keep `testdata/`, remove `go/tools/golden/`, and document that goldens are now reviewed by hand.
-3. **Remove the differential tests.** Remove `go-dual.yml`, `-impl=ts`, `-impl=both` and the Bun harness in `go/contract/`.
+3. **Remove the differential tests.** Remove `go-dual.yml`, `-impl=ts`, `-impl=both` and the Bun harness in `go/test/harness/`.
 4. **Port or keep runtime release scripts.** They're independent of the gateway. Move the ones still in use to `scripts/runtimes/`, keeping Bun for them or porting to Go. This is the largest single task, so it can land after the others.
 5. **Remove the rest.** `src/`, `ci.yml`, `release.yml`, `Dockerfile.runtime-smoke`, `scripts/release-artifacts.ts` and related scripts, `scripts/release-notices/`, and `tsconfig.json`. Trim `package.json` and `bun.lock` to what `go/tools/jstest` and the browser checks still need, and update `AGENTS.md`, `CONTRIBUTING.md` and `DEVELOPMENT.md`.
 

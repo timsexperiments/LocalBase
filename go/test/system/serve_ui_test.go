@@ -19,7 +19,7 @@ import (
 // the LOCALBASE_CONTRACT_* variables link) with --no-auth on loopback, for
 // checking the browser UI by hand:
 //
-//	LOCALBASE_CONTRACT_SERVE_UI=<port in LOCALBASE_TEST_PORTS> go test ./contract -run TestServeForUI -timeout 2h
+//	LOCALBASE_CONTRACT_SERVE_UI=<port in LOCALBASE_TEST_PORTS> go test ./test/system -run TestServeForUI -timeout 2h
 //
 // It stops when the stop file it prints is deleted, or after an hour.
 func TestServeForUI(t *testing.T) {

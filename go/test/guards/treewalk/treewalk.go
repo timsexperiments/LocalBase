@@ -4,8 +4,8 @@
 // and fails a guard that read fewer files than its floor, so a tree that moves out of reach fails
 // the guard rather than passing it on less.
 //
-// It is for tests. No file outside go/test and go/tools may import it, which this package's own
-// test checks.
+// It is for tests. No file outside go/test and go/tools may import it, which
+// TestNoProductionImports in go/test/harness checks for every package under go/test.
 package treewalk
 
 import (

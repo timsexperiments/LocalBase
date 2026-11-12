@@ -135,7 +135,7 @@ go/
     web/        server-rendered UI: templates, static assets (htmx, CSS, small JS)
     obs/        slog JSONL sink (redaction, rotation), OTLP exporter, stderr capture
     service/    launchd / systemd unit rendering and control
-  contract/     black-box contract suite (runs against TS or Go by URL)
+  test/contract/ black-box contract suite (runs against TS or Go by URL)
   tools/        build helpers (tailwind fetch/verify)
 ```
 
@@ -568,7 +568,7 @@ migration. The UI runs under a strict CSP (`script-src 'self'`,
   - structured-output schema limits
   - catalog strict decoding against every built-in JSON
   - drizzle journal compatibility
-- **Black-box contract suite (`go/contract`).** `go test ./contract
+- **Black-box contract suite (`go/test/contract`).** `go test ./test/contract
   -args -base-url=… -root=…` starts or targets any gateway by URL. It's one
   suite for both implementations. The harness launches the TS gateway (`bun
   run src/cli.ts serve`) or the Go binary on a scratch root and port, seeds

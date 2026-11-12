@@ -88,7 +88,7 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 1. Add it to `routeTable` in `go/internal/gateway/routes.go`, with `guarded: true` and its `permission`: the table wraps the handler in `s.guard` and builds the mux from it. Permissions are listed in `go/internal/auth/auth.go`.
 2. Errors use the OpenAI envelope. Transient failures are 503 or 429 with `Retry-After`; permanent ones are 4xx.
 3. If the browser needs it, give the route its `ui` methods in the same table (or `uiSub` for the paths under it). `allowedUIRoute` in `go/internal/gateway/ui_routes.go` reads them.
-4. Add a contract test in `go/contract/`, and list the route in [docs/api.md](docs/api.md).
+4. Add a contract test in `go/test/contract/`, and list the route in [docs/api.md](docs/api.md).
 
 ### Add a UI page
 
@@ -100,13 +100,13 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 To see pages with fixture data, run from `go/`:
 
 ```sh
-LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./contract -run TestServeForUI -args -impl=go
+LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -args -impl=go
 ```
 
 ### Write a test
 
 - **Unit tests** live beside the code. Prefer real behaviour over mocks; fakes exist only at real boundaries, such as `internal/runtime/fakebackend`.
-- **Contract tests** in `go/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `fsguard_test.go`, and `TestNoUnguardedWrites` enforces that.
+- **Contract tests** in `go/test/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `go/test/harness/fsguard`, and `TestNoUnguardedWrites` enforces that.
 - **Differential tests** compare the Go and TypeScript gateways with `-impl=both`. They need Bun and `LOCALBASE_CONTRACT_MODELS`.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.

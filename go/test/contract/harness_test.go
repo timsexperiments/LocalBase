@@ -1,11 +1,11 @@
 // Package contract is a black-box HTTP contract suite that runs against the
 // TypeScript and the Go gateway alike.
 //
-//	go test ./contract -args -impl=go          # build and launch the Go gateway
-//	go test ./contract -args -impl=ts          # launch `bun run src/cli.ts serve`
-//	go test ./contract -args -impl=both        # both, plus differential checks
-//	go test ./contract -args -url=http://127.0.0.1:P -key=lb_... -keyless-key=lb_...
-//	                                           # an already running gateway
+//	go test ./test/contract -args -impl=go          # build and launch the Go gateway
+//	go test ./test/contract -args -impl=ts          # launch `bun run src/cli.ts serve`
+//	go test ./test/contract -args -impl=both        # both, plus differential checks
+//	go test ./test/contract -args -url=http://127.0.0.1:P -key=lb_... -keyless-key=lb_...
+//	                                                # an already running gateway
 //
 // Launched gateways get a fresh scratch root in a temp dir and ports from
 // LOCALBASE_TEST_PORTS (default 25000-25499). LOCALBASE_CONTRACT_MODELS names a models/llm directory (read

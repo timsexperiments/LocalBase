@@ -1,13 +1,8 @@
 package treewalk
 
 import (
-	"go/parser"
-	"go/token"
-	"io/fs"
 	"os"
-	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -125,56 +120,3 @@ func (r *recorder) Errorf(format string, args ...any) {
 }
 
 func (r *recorder) Logf(string, ...any) {}
-
-// testOnly are packages that exist for tests. No non-test file outside go/test and go/tools may
-// import one.
-var testOnly = []string{"github.com/timsexperiments/LocalBase/go/test/guards/treewalk"}
-
-// minOutside is how many non-test Go files there were outside go/test and go/tools when it was
-// last raised. Fewer means the walk stopped reaching them.
-const minOutside = 340
-
-func TestOnlyTestsImportThisPackage(t *testing.T) {
-	module := "../../.."
-	if _, err := os.Stat(module + "/go.mod"); err != nil {
-		t.Fatalf("the go module is not at %s: %v", module, err)
-	}
-	read := 0
-	err := fs.WalkDir(os.DirFS(module), ".", func(name string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch {
-			case name == "test", name == "tools", path.Base(name) == "node_modules", path.Base(name) == "testdata", path.Base(name) == ".git":
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if path.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
-			return nil
-		}
-		read++
-		file, err := parser.ParseFile(token.NewFileSet(), module+"/"+name, nil, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-		for _, imp := range file.Imports {
-			p, err := strconv.Unquote(imp.Path.Value)
-			if err != nil {
-				return err
-			}
-			if slices.Contains(testOnly, p) {
-				t.Errorf("go/%s imports %s, which is for tests in go/test and go/tools only", name, p)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if read < minOutside {
-		t.Errorf("%s", FloorMessage(read, minOutside, []string{"go, outside go/test and go/tools,"}))
-	}
-	t.Logf("read %d files (floor %d)", read, minOutside)
-}

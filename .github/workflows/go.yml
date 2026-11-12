@@ -52,7 +52,7 @@ jobs:
         env:
           BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
         run: |
-          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
       - name: Backup's crash and large-file tests, without -race
         # They copy, sync and measure large files, and -race makes them 6-21 times slower while
         # adding little to what they test: about 45% of internal/backup's time under -race. They
@@ -113,7 +113,7 @@ jobs:
         env:
           BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
         run: |
-          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
       - name: Backup's crash and large-file tests, without -race
         # They copy, sync and measure large files, and -race makes them 6-21 times slower while
         # adding little to what they test: about 45% of internal/backup's time under -race. They

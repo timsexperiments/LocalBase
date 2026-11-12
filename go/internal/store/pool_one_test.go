@@ -28,7 +28,7 @@ func TestNothingNeedsTwoConnections(t *testing.T) {
 	for _, run := range [][]string{
 		{"test", "-count=1", "-timeout=240s", "-skip", skip, "./internal/auth", "./internal/store", "./internal/gateway/..."},
 		// A real gateway process, built with the same tag through GOFLAGS.
-		{"test", "-count=1", "-timeout=240s", "-run", "TestLimitedChangesCannotPushOutWhoChangedKeys|TestRefusedChangesCannotPushOutWhoChangedWhat|TestInstallCancel", "./contract"},
+		{"test", "-count=1", "-timeout=240s", "-run", "TestLimitedChangesCannotPushOutWhoChangedKeys|TestRefusedChangesCannotPushOutWhoChangedWhat|TestInstallCancel", "./test/system"},
 	} {
 		cmd := exec.Command("go", run...)
 		cmd.Dir = moduleRoot

@@ -15,8 +15,11 @@ dir=${COVERAGE_DIR:-$(mktemp -d)}
 mkdir -p "$dir/bin"
 go=$(go env GOROOT)/bin/go
 # Packages with no tests fail to build under -coverprofile with a switched
-# toolchain, so only packages with tests run; -coverpkg still counts the rest.
-tested=$("$go" list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -E '/contract$|/test/system$|third_party')
+# toolchain, so only packages with tests run; -coverpkg still counts the rest. The suites that need
+# their own setup are left out of the unit pass: contract and system run through contract.sh below,
+# and test/chaos (chaos.yml) here would run without its setup.
+tested=$("$go" list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v -E '/test/contract$|/test/system$|/test/chaos$|third_party')
+[ -n "$tested" ] || { echo "coverage: no packages with tests to run" >&2; exit 1; }
 "$go" test $tested -count=1 -coverpkg=github.com/timsexperiments/LocalBase/go/... \
   -coverprofile="$dir/unit.out" -covermode=atomic >"$dir/unit.log" 2>&1 || { tail -30 "$dir/unit.log"; exit 1; }
 LOCALBASE_CONTRACT_COVERDIR="$dir/bin" LOCALBASE_CONTRACT_LOGS="$dir/runs" \

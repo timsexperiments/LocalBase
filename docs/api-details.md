@@ -1,6 +1,6 @@
 # API details
 
-Request and response contracts carried over from the 0.1 documentation. The Go gateway keeps these HTTP contracts, checked by the contract suite in `go/contract/`, so read this for the detail behind [the API overview](api.md). Where this text mentions TypeScript internals or differs from the running gateway, the gateway wins, and a correction is welcome.
+Request and response contracts carried over from the 0.1 documentation. The Go gateway keeps these HTTP contracts, checked by the contract suite in `go/test/contract/`, so read this for the detail behind [the API overview](api.md). Where this text mentions TypeScript internals or differs from the running gateway, the gateway wins, and a correction is welcome.
 
 ## Current capabilities
 

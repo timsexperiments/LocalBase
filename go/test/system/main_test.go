@@ -1,7 +1,7 @@
 // Package system holds the black-box tests that launch a LocalBase gateway of their own, run its
-// command line or run its built binaries (step 7, R3). go/contract keeps the tests that run only
+// command line or run its built binaries (step 7, R3). go/test/contract keeps the tests that run only
 // against the shared targets. Both take the same flags and environment through go/test/harness;
-// go/contract's package doc lists them, and tools/contract.sh runs both packages.
+// go/test/contract's package doc lists them, and tools/contract.sh runs both packages.
 package system
 
 import (
