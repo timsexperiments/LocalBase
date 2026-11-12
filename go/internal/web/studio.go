@@ -60,7 +60,7 @@ func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool
 }
 
 func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
-	items := u.labRuns(r)
+	items, _ := splitLost(u.labRuns(r)) // what was lost has nothing to show here
 	lines := map[string]string{
 		"image":      "A picture, from a few words.",
 		"video":      "A short clip, from words or a picture.",

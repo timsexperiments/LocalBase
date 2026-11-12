@@ -52,12 +52,12 @@ The inventory for UI v2 (DESIGN §25). Styles are in `internal/web/css/input.css
 | Component | Where | v2 |
 |---|---|---|
 | Landing, `.studio-card`, `.studio-tile`, `tool-icon` | Studio | done |
-| Picture gallery and viewer, `.image-*`, `.viewer` | Image | tokens |
+| Picture gallery and viewer, `.image-*`, `.viewer`; editing a picture, `.image-source` | Image | done |
 | Video item | Video | tokens |
 | Speech item, waveform, `.speech-*` | Speech | tokens |
 | Recording panel, transcript, `.transcribe-*`, `.transcript-*` | Transcribe | tokens |
-| Decision result, batch, `.decide-*` | Decisions | tokens |
+| Decision result, batch, `.decide-*` | Decisions | done |
 
 ## Not built yet
 
-First-run pages, sign-in landing, no-access, expired, 404 and error pages; the model chip and picker in Chat's header; the viewer's zoom; the v2 icon set (`icon-*` in the templates are still v1 drawings).
+First-run pages, sign-in landing, no-access, expired, 404 and error pages; the model chip and picker in Chat's header; the v2 icon set (`icon-*` in the templates are still v1 drawings).

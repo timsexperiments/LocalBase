@@ -54,8 +54,11 @@ type backendView struct {
 	DownloadBytes int64
 	Recommended   string
 	Options       []optionView
-	Message       string
-	Error         string
+	// CustomChoice: a custom backend that can run this model is among the choices. LocalBase never
+	// picks a custom backend by itself (#534), so "none detected as compatible" would be false.
+	CustomChoice bool
+	Message      string
+	Error        string
 }
 
 func options(reg *backends.Registry, h backends.Host, rec backends.Recommendation, selected string) []optionView {
@@ -88,10 +91,25 @@ func (u *UI) backendView(modelID string, s backends.Selection) backendView {
 			v.Recommended = d.Name
 		}
 	}
+	v.CustomChoice = customChoice(reg, s.Recommendation)
 	if f := s.Finding; f != nil {
 		v.Rating, v.RatingLabel, v.Reasons, v.Warnings = f.Rating, ratingLabels[f.Rating], backends.Messages(f.Reasons), backends.Messages(f.Warnings)
 	}
 	return v
+}
+
+// customChoice says whether a custom (not built-in) backend that can run the model is among its
+// choices: one rated supported or likely.
+func customChoice(reg *backends.Registry, rec backends.Recommendation) bool {
+	for _, o := range rec.Options {
+		if o.Rating != backends.Supported && o.Rating != backends.Likely {
+			continue
+		}
+		if d := reg.Get(o.BackendID); d != nil && !d.BuiltIn {
+			return true
+		}
+	}
+	return false
 }
 
 // mutating guards a state-changing form post: an htmx request from this

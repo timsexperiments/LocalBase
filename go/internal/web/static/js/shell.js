@@ -150,21 +150,78 @@ document.addEventListener("htmx:afterOnLoad", (event) => {
   stripNextTry = 0;
   stripWait = 3000;
   showRefused();
+  askAdmission();
 });
-// A request this computer just refused says more than "Ready" does (chat.js). It lasts until
-// the person moves on, through refreshes.
+// Back can bring a page out of the browser's memory exactly as it was, whoever is signed in now,
+// and no-store doesn't prevent it. So a restored page is never shown:
+// it's blanked and fetched again, as whoever is here now.
+addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  document.documentElement.style.visibility = "hidden";
+  location.reload();
+});
+
+// A request this computer just refused says more than "Ready" does (chat.js). It lasts until the
+// person moves on, or until the gateway's preview would admit that model. Then "try again" still
+// waits for the gateway to stop being short or settling, because a retry before then is refused too.
+// The preview is a good guess, not a promise: its reading can be a second old, and it counts running
+// models as if stopped. So the words say "looks", and a retry refused after them isn't told the same
+// thing again until the reading has really moved.
 let refusedWord = null;
+let refusedModel = null;
+let refusedAdmitted = false;
+let askingAdmission = false;
+let lookedFree = null; // { model, available }: the reading we last said "looks free" on
+let notBefore = null; // { model, available }: refused after saying so; wait for more than this
+const moreThanDrift = 2 ** 30; // A judgment, not measured: what's free moves about this much by itself.
 function showRefused() {
   if (!refusedWord) return;
   const strip = document.querySelector("[data-strip] .strip");
   const word = strip?.querySelector("[data-strip-word]");
   if (!word) return;
+  if (refusedAdmitted) {
+    if (strip.classList.contains("strip-settling")) return;
+    // Short by the gateway's own say, not because this function marked it after the refusal.
+    if (!strip.classList.contains("strip-short") || strip.dataset.refusedHere) {
+      strip.classList.remove("strip-short");
+      word.textContent = "Memory looks free. Try again.";
+      return;
+    }
+  }
   word.textContent = refusedWord;
+  if (!strip.classList.contains("strip-short")) strip.dataset.refusedHere = "1";
   strip.classList.add("strip-short");
+}
+// The gateway's preview, which changes nothing. Asked once per strip refresh, only while a refusal
+// stands, one at a time. No answer changes nothing.
+async function askAdmission() {
+  const model = refusedModel;
+  if (!refusedWord || !model || askingAdmission) return;
+  askingAdmission = true;
+  try {
+    const res = await fetch(`/app/api/_localbase/models/${encodeURIComponent(model)}/admission`, { headers: { "x-localbase-ui": "1" } });
+    if (!res.ok) return;
+    const answer = await res.json();
+    if (model !== refusedModel) return;
+    const available = answer.availableBytes ?? null;
+    const held = notBefore?.model === model && (available === null || available < notBefore.available + moreThanDrift);
+    refusedAdmitted = answer.admitted === true && !held;
+    if (refusedAdmitted) lookedFree = { model, available };
+    showRefused();
+  } catch {
+    // No answer: the words stand.
+  } finally {
+    askingAdmission = false;
+  }
 }
 document.addEventListener("localbase:refused", (event) => {
   const cleared = refusedWord && !event.detail;
-  refusedWord = event.detail;
+  refusedWord = event.detail?.word ?? null;
+  refusedModel = event.detail?.model ?? null;
+  refusedAdmitted = false;
+  // Refused after we said it looked free: don't say so again on the same reading.
+  if (refusedWord && lookedFree?.model === refusedModel && lookedFree.available !== null) notBefore = lookedFree;
+  if (refusedWord) lookedFree = null;
   showRefused();
   if (cleared) {
     stripNextTry = 0;
@@ -172,6 +229,19 @@ document.addEventListener("localbase:refused", (event) => {
   }
 });
 document.addEventListener("htmx:afterSettle", showRefused);
+// Reached, but it can't read its own state for a moment (a held store, say). What the strip last
+// said is out of date, so it doesn't go on saying it. The next good answer redraws it.
+document.addEventListener("htmx:responseError", (event) => {
+  const elt = event.detail.elt;
+  if (!elt?.hasAttribute?.("data-strip") || event.detail.xhr?.status !== 503) return;
+  elt.removeAttribute("hx-headers");
+  const strip = elt.querySelector(".strip");
+  if (strip) strip.className = "strip strip-load strip-stale";
+  const word = elt.querySelector("[data-strip-word]");
+  if (word) word.textContent = "LocalBase is busy";
+  const free = elt.querySelector("[data-strip-free]");
+  if (free) free.textContent = "";
+});
 // The strip when the computer can't be reached: same place, same shape, and it says so.
 // The next refresh that works redraws it.
 document.addEventListener("htmx:sendError", (event) => {

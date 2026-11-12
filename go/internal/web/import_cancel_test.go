@@ -97,6 +97,10 @@ func TestImportCancelRoute(t *testing.T) {
 	if w := adminPost(manager, "/app/models/import/cancel", form("imp_nope")); w.Code != http.StatusNotFound {
 		t.Errorf("an unknown job: %d", w.Code)
 	}
+	// While it runs, its page offers a one-tap cancel for this job.
+	if b := get(manager, "/app/models/import/jobs/"+job).Body.String(); !strings.Contains(b, ">Cancel import</button>") || !strings.Contains(b, `name="job" value="`+job+`"`) || !strings.Contains(b, `hx-post="/app/models/import/cancel"`) {
+		t.Errorf("a running job offers no cancel: %.300s", b)
+	}
 	// The real one: the same job fragment comes back.
 	w = adminPost(manager, "/app/models/import/cancel", form(job))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `id="import-job"`) {
@@ -112,6 +116,9 @@ func TestImportCancelRoute(t *testing.T) {
 	body := get(manager, "/app/models/import/jobs/"+job).Body.String()
 	if !strings.Contains(body, "was cancelled") {
 		t.Errorf("the job page: %.200s", body)
+	}
+	if strings.Contains(body, "Cancel import") {
+		t.Errorf("a cancelled job still offers a cancel: %.300s", body)
 	}
 	// The job's own card says it calmly: it isn't shown as a failure.
 	at := strings.Index(body, `id="import-job"`)

@@ -22,6 +22,11 @@
 <section id="backend-add" class="card mt-6 grid gap-2 p-5" aria-labelledby="backend-add-title">
   <h2 id="backend-add-title" class="font-bold">Add a backend</h2>
   <p class="text-sm text-muted">Backends are registered from this computer only, because a backend names a program to run. LocalBase starts it only for models you choose.</p>
-  <code class="block rounded-lg bg-surface-muted p-3 wrap-anywhere">local-base backends add --file &lt;definition.json&gt;</code>
+  <div class="flex min-w-0 flex-wrap items-center gap-2" data-copy-scope>
+    <code class="block min-w-0 flex-1 rounded-lg bg-surface-muted p-3 wrap-anywhere" data-copy-text>local-base backends add --file &lt;definition.json&gt;</code>
+    <button type="button" class="btn btn-quiet min-h-11" data-copy>Copy</button>
+  </div>
+  <p class="sr-only" role="status" data-copy-status></p>
 </section>
+<script type="module" src="{{asset "js/connect.js"}}"></script>
 {{end}}

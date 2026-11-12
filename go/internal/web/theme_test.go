@@ -103,7 +103,7 @@ func TestGaugeSegments(t *testing.T) {
 		{runtime.Snapshot{State: "running"}, "constrained", false, "Memory is tight"},
 		{runtime.Snapshot{State: "running"}, "constrained", true, "Busy"},
 	} {
-		if word, _ := stripWord(c.st, c.pressure, c.busy); word != c.word {
+		if word, _ := stripWord(c.st, c.pressure, false, c.busy); word != c.word {
 			t.Errorf("%+v, %s, %v: %q, want %q", c.st, c.pressure, c.busy, word, c.word)
 		}
 	}
@@ -212,4 +212,7 @@ func TestSizeBudgets(t *testing.T) {
 	}
 }
 
-const budgetChatAssets = 86 << 10
+// budgetChatAssets was 86 KiB (88,064 B). Raised by 512 B on 2026-11-06 (operator's decision): every page loads
+// session.js, the growth is the approved notice behaviour (DESIGN §22.3a, +436 B on Chat), and pass 5 had
+// left Chat 62 B under. Chat measured 88,438 B with it, about 140 B under this.
+const budgetChatAssets = 86<<10 + 512

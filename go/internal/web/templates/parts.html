@@ -22,6 +22,7 @@
   <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
     <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if not .Installed}} download{{end}}{{if and .Installed (eq .Fit "fits")}} · fits this computer{{else if and .Installed (eq .Fit "tight")}} · tight fit{{end}}</span>
+    {{if .EditsPictures}}<span class="block text-sm text-muted">Can edit pictures</span>{{end}}
     {{if .Forecast}}<span class="block text-sm text-muted">{{if eq .Fit "fits"}}Fits now.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{else if eq .Fit "close-others"}}Close other apps first.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{if .FreeFirstBytes}} Free {{aboutGib .FreeFirstBytes}} first.{{end}}{{else if eq .Fit "wont-fit"}}Too big for this computer.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{end}}</span>
     {{else if .MayNotFit}}<span class="block text-sm text-muted">{{.MayNotFit}}</span>{{end}}
   </a>
@@ -104,7 +105,7 @@
   <a class="strip strip-{{.State}}" href="/app/models/running">
     {{template "strip-body" .}}<span class="sr-only">. Open Running.</span>
   </a>
-  {{with .Advice}}<p class="strip-advice"><span>{{.}}</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
+  {{with .Advice}}<p class="strip-advice"><span class="strip-advice-full">{{.}}</span><span class="strip-advice-short">A reply may not start.</span><a class="btn btn-quiet" href="/app/models/running">Free memory</a></p>{{end}}
 </div>
 {{end}}
 
@@ -121,7 +122,11 @@
   {{if .Unavailable}}
   <p class="mt-2" role="alert"><span class="badge badge-warn">Unavailable</span> You chose <span class="font-semibold">{{.BackendID}}</span>, which is no longer registered. Nothing else was picked in its place; choose a replacement.</p>
   {{else if not .BackendID}}
+  {{if .CustomChoice}}
+  <p class="mt-2"><span class="badge badge-warn">No backend chosen</span> LocalBase doesn’t pick a custom backend by itself. Choose one below to run this model.</p>
+  {{else}}
   <p class="mt-2"><span class="badge badge-warn">No backend</span> No backend was detected as compatible. Select a backend to run this model.</p>
+  {{end}}
   {{else}}
   <p class="mt-2"><span class="font-semibold">{{.BackendName}}</span>
     <span class="badge">{{if eq .Mode "manual"}}Your choice{{else}}Automatic{{end}}</span>
