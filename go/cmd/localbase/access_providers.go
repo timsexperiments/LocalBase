@@ -78,9 +78,12 @@ func saveRegistration(e *env, reg auth.Registration, origin string, perms []stri
 			return err
 		}
 		if reg.Kind == "magic-link" {
-			email, err := auth.LoadEmail(e.Root.Dir)
-			if err != nil {
-				email = nil
+			// A file that can't be read is said as such, with exit 1: it's the machine's state,
+			// not bad input. None at all is CheckMagicLink's input error (exit 2).
+			email, err := auth.RequireEmail(e.Root.Dir)
+			var unreadable *auth.EmailLoadError
+			if errors.As(err, &unreadable) {
+				return unreadable
 			}
 			if err := auth.CheckMagicLink(current, email, reg.ID); err != nil {
 				return planError(err)

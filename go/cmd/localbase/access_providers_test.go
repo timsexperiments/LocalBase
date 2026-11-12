@@ -62,12 +62,23 @@ func TestProviderCommandsSayWhyAChangeWasRefused(t *testing.T) {
 		append([]string{"access", "oidc", "add", "--id", "idp", "--name", "Provider", "--issuer", "http://id.example.com",
 			"--client-id", "c", "--public-client"}, origin...)...)
 
-	// An email delivery file that can't be read counts as none.
+	// An email delivery file that can't be read is said as such, in LoadEmail's words, with exit
+	// 1: it's the machine's state, not bad input (the operator's ruling with the gateway's
+	// email_delivery_unreadable; before, it counted as none, exit 2). Nothing is written.
 	if err := os.WriteFile(filepath.Join(root, "email-delivery.json"), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	refused("Configure email delivery before enabling magic-link authentication.",
-		append([]string{"access", "magic-link", "add", "--id", "email", "--name", "Email"}, origin...)...)
+	{
+		before := saved()
+		args := append([]string{"access", "magic-link", "add", "--id", "email", "--name", "Email"}, origin...)
+		const want = "Invalid email-delivery.json. Configure email delivery again with the LocalBase CLI."
+		if code, out := run(args...); code != 1 || !strings.Contains(out, want) {
+			t.Errorf("magic-link add with an unreadable email file: exit %d, %q; want exit 1 and %q", code, out, want)
+		}
+		if after := saved(); after != before {
+			t.Errorf("a refused magic-link add wrote ui-access.json:\nwas %s\nnow %s", before, after)
+		}
+	}
 
 	ok("access", "email", "configure", "--host", "smtp.example", "--port", "587", "--security", "starttls",
 		"--username", "user", "--password-env", "PROVIDERS_TEST_SMTP_PASSWORD", "--from", "sender@example.com")

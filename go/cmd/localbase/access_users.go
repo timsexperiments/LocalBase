@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -93,10 +94,12 @@ func accessUserCommands() []*cli.Command {
 						return cli.Inputf("Configure a browser identity provider first.")
 					}
 					if c.Bool("send-email") {
-						if delivery, err = auth.LoadEmail(e.Root.Dir); err != nil {
-							return err
-						} else if delivery == nil {
+						// None is bad input (exit 2); a file that can't be read is the machine's
+						// state, said in LoadEmail's words (exit 1).
+						if delivery, err = auth.RequireEmail(e.Root.Dir); errors.Is(err, auth.ErrEmailNotConfigured) {
 							return cli.Inputf("Configure email delivery before sending an invitation email.")
+						} else if err != nil {
+							return err
 						}
 					}
 					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
