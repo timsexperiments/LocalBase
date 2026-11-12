@@ -549,7 +549,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		httpx.NoStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
 		cfg := &auth.BrowserAccess{Provider: *in.Provider, Origin: in.Origin, Permissions: in.Permissions}
+		changed := auth.AccessChanged(current, cfg)
 		if !signInLockout(cfg) && save(cfg) {
+			if !changed {
+				httpx.Unchanged(r)
+			}
 			configured(cfg)
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
@@ -568,7 +572,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		cfg := auth.UpsertRegistration(current, *in.Registration, in.Origin, in.Permissions)
+		changed := auth.AccessChanged(current, cfg)
 		if !signInLockout(cfg) && save(cfg) {
+			if !changed {
+				httpx.Unchanged(r)
+			}
 			configured(cfg)
 		}
 	case "remove-registration":
@@ -605,9 +613,14 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.NoStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
 	case "configure-email-delivery":
+		// A configuration that can't be read counts as changed: the save replaces it.
+		previous, perr := auth.LoadEmail(root)
 		if err := auth.SaveEmail(root, in.Config); err != nil {
 			httpx.ManagementError(w, 400, "validation_failed")
 			return
+		}
+		if perr == nil && !auth.EmailChanged(previous, in.Config) {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"emailDelivery": in.Config.Summary(), "restartRequired": false})
 	case "disable-email-delivery":
@@ -719,7 +732,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		httpx.NoStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": auth.Revision(in.Policy), "restartRequired": false})
+		applied := auth.Revision(in.Policy)
+		if rev != nil && *rev == *applied { // the revision is the policy's content, in any order
+			httpx.Unchanged(r)
+		}
+		httpx.NoStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": applied, "restartRequired": false})
 	}
 }
 
