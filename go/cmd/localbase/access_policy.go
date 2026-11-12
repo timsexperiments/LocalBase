@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -65,8 +66,23 @@ func accessPolicyCommands() []*cli.Command {
 					if cfg == nil {
 						return cli.Inputf("Configure a browser identity provider first.")
 					}
+					// Both issuer refusals are bad input (exit 2): a binding that names no provider
+					// among several, and a new one that names a provider which isn't configured.
 					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
-						return err
+						return issuerInput(err)
+					}
+					// The gateway's rule: a new email or domain binding may name only a configured
+					// provider, since one that names another matches nobody. A binding the policy
+					// already has may stay, for its provider may come back.
+					if issuers := cfg.Issuers(); len(issuers) > 0 {
+						existing, err := auth.LoadPolicy(ctx, e.Store.DB)
+						if err != nil {
+							return err
+						}
+						g := &auth.Guard{Policy: existing, Issuers: issuers}
+						if err := g.CheckBindingIssuers(&policy); err != nil {
+							return issuerInput(err)
+						}
 					}
 					open = auth.OpenSignIn(cfg, &policy)
 					return auth.ApplyPolicy(ctx, e.Store, &policy)
@@ -166,12 +182,9 @@ func accessPolicyCommands() []*cli.Command {
 			{Name: "clear", Summary: "Clear the local policy and use provider-wide permissions", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				var cleared bool
 				warn := noManagerWarning(c, e)
+				// Clearing needs no provider, as on the gateway: it only ever falls back to the
+				// provider-wide permissions, and with no policy it says so.
 				err := withOperation(e, "configure browser access", func() (err error) {
-					if cfg, err := auth.LoadAccess(e.Root.Dir); err != nil {
-						return err
-					} else if cfg == nil {
-						return cli.Inputf("Configure a browser identity provider first.")
-					}
 					cleared, err = auth.ClearPolicy(ctx, e.Store)
 					return err
 				})
@@ -216,6 +229,16 @@ func accessPolicyCommands() []*cli.Command {
 			})},
 		}},
 	}
+}
+
+// issuerInput is an issuer refusal (an AccessError) as an input error, in its own words; other
+// errors pass through.
+func issuerInput(err error) error {
+	var ae *auth.AccessError
+	if errors.As(err, &ae) {
+		return cli.Inputf("%s", ae.Message)
+	}
+	return err
 }
 
 // strictJSON decodes rejecting unknown fields.
