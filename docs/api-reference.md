@@ -1328,7 +1328,7 @@ The only thing that cancels a run. Stopping a finished run changes nothing.
 
 Follow a run.
 
-Everything after `Last-Event-ID` or `after`, then live, until the `end` event. Events are `status`, `chunk`, `error`, `snapshot` and `end`. A restarted gateway sends only `snapshot` and `end`.
+Everything after `Last-Event-ID` or `after`, then live, until the `end` event. Events are `status`, `chunk`, `error`, `snapshot` and `end`. An `error` event's data is `{"error": …}`, with the same error as the run's own read. A restarted gateway sends only `snapshot` and `end`.
 
 **Needs:** `any`.
 
