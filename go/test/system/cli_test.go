@@ -174,6 +174,19 @@ func twinRoots(t *testing.T) (string, string) {
 	return filepath.Join(base, "ts"), filepath.Join(base, "go")
 }
 
+// initOwnTwinRoots runs each implementation's own `init` on its twin root (ts, go), so neither
+// reads a root the other made. A Go-made root can't be read by TS: Go's store is WAL (#647), and TS
+// opens the database read-only (src/db/client.ts openReadOnlyDatabase), which SQLite refuses for a
+// WAL file with no -shm.
+func initOwnTwinRoots(t *testing.T, roots [2]string) {
+	t.Helper()
+	for i, impl := range []string{"ts", "go"} {
+		if res := runCLI(t, impl, roots[i], "--json", "init"); res.code != 0 {
+			t.Fatalf("%s init: %s%s", impl, res.stdout, res.stderr)
+		}
+	}
+}
+
 func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 	t.Helper()
 	ts := runCLI(t, "ts", roots[0], c.args...)

@@ -382,11 +382,7 @@ func TestCLIOtelEnvironment(t *testing.T) {
 	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
-	for _, r := range roots {
-		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
-			t.Fatalf("init: %s", res.stderr)
-		}
-	}
+	initOwnTwinRoots(t, roots)
 	envs := [][]string{
 		{"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_TRACES_SAMPLER=traceidratio", "OTEL_TRACES_SAMPLER_ARG=0.25"},
 		{"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://traces.example/v1/traces", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=" + otlpSecret},
