@@ -2179,7 +2179,7 @@
                               "oldestExpiresAt": {"type": "string", "format": "date-time"}
                             },
                             "additionalProperties": false,
-                            "description": "Present only for a run that failed with an error. It is the run's own error, with only these fields, each only as its own kind and each text bounded and redacted. `code` is a text, or a whole number as llama-server sends it. An error with none of these fields says the run ended without a result."
+                            "description": "Present only for a run that failed with an error. It is the run's own error, with only these fields, each only as its own kind and each text bounded and redacted. `code` is a text, or a whole number as a backend may send it. An error with none of these fields says the run ended without a result."
                           },
                           "createdAt": {"type": "string", "format": "date-time"},
                           "startedAt": {"type": ["string", "null"], "format": "date-time"},
@@ -5880,7 +5880,7 @@
               "oldestExpiresAt": {"type": "string", "format": "date-time"}
             },
             "additionalProperties": false,
-            "description": "The run's error, null when it has none. It keeps only these fields of the `/v1` error the backend or route sent, each only as its own kind, and each text is bounded and redacted. `code` is a text, or a whole number as llama-server sends it. An error with none of these fields says the run ended without a result. The run list gives the same."
+            "description": "The run's error, null when it has none. It keeps only these fields of the `/v1` error the backend or route sent, each only as its own kind, and each text is bounded and redacted. `code` is a text, or a whole number as a backend may send it. An error with none of these fields says the run ended without a result. The run list gives the same."
           },
           "requestId": {"type": "string", "description": "The inner `/v1` request's id."},
           "createdAt": {"type": "string", "format": "date-time"},
