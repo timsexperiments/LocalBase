@@ -1,0 +1,913 @@
+== test with no provider
+request: {"action":"test-policy","identity":{"issuer":"https://a.example.test","subject":"s","verifiedEmail":"owner@example.test"}}
+status: 409
+answer: {
+    "error": {
+      "code": "provider_not_configured",
+      "message": "Configure a browser identity provider first."
+    }
+  }
+audit: audit.access-refused test-policy
+ui-access.json: (none)
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== apply with no provider
+request: {"action":"apply-policy","expectedPolicyRevision":null,"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"Owner@Example.test"}],"defaultRole":null}}
+status: 409
+answer: {
+    "error": {
+      "code": "provider_not_configured",
+      "message": "Configure a browser identity provider first."
+    }
+  }
+audit: audit.access-refused apply-policy
+ui-access.json: (none)
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== clear with no policy
+request: {"action":"clear-policy","expectedPolicyRevision":null}
+status: 200
+answer: {
+    "cleared": false,
+    "policyRevision": null,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== a provider
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"P","issuer":"https://a.example.test","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "none",
+            "clientId": "x",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "P"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== test with no policy
+request: {"action":"test-policy","identity":{"issuer":"https://a.example.test","subject":"s","verifiedEmail":"owner@example.test"}}
+status: 200
+answer: {
+    "matchedRoles": [],
+    "permissions": [
+      "inference:chat",
+      "access:read",
+      "access:manage"
+    ],
+    "policyConfigured": false
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== apply, the binding naming no provider
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"Owner@Example.test"},{"kind":"email-domain","role":"chat","domain":"example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        },
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        },
+        {
+          "kind": "email-domain",
+          "role": "chat",
+          "domain": "example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999",
+    "restartRequired": false
+  }
+audit: audit.access-changed apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== the same again
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"Owner@Example.test"},{"kind":"email-domain","role":"chat","domain":"example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        },
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        },
+        {
+          "kind": "email-domain",
+          "role": "chat",
+          "domain": "example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999",
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== reordered
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"admin","description":"","permissions":["access:manage","access:read"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test"},{"kind":"email","role":"admin","email":"Owner@Example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        },
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email-domain",
+          "role": "chat",
+          "domain": "example.test",
+          "issuer": "https://a.example.test"
+        },
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999",
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== test the owner
+request: {"action":"test-policy","identity":{"issuer":"https://a.example.test","subject":"s","verifiedEmail":"owner@example.test"}}
+status: 200
+answer: {
+    "matchedRoles": [
+      "admin",
+      "chat"
+    ],
+    "permissions": [
+      "inference:chat",
+      "access:read",
+      "access:manage"
+    ],
+    "policyConfigured": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== test someone in the domain
+request: {"action":"test-policy","identity":{"issuer":"https://a.example.test","subject":"t","verifiedEmail":"friend@example.test"}}
+status: 200
+answer: {
+    "matchedRoles": [
+      "chat"
+    ],
+    "permissions": [
+      "inference:chat"
+    ],
+    "policyConfigured": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== test a stranger
+request: {"action":"test-policy","identity":{"issuer":"https://a.example.test","subject":"u","verifiedEmail":"stranger@elsewhere.test"}}
+status: 200
+answer: {
+    "matchedRoles": [],
+    "permissions": [],
+    "policyConfigured": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== a new binding on an unknown provider
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"Owner@Example.test"},{"kind":"email-domain","role":"chat","domain":"example.test"},{"kind":"email","role":"chat","email":"new@example.test","issuer":"https://c.example.test"}],"defaultRole":null}}
+status: 400
+answer: {
+    "error": {
+      "code": "issuer_unknown",
+      "message": "https://c.example.test is not a configured sign-in provider; these are: https://a.example.test."
+    }
+  }
+audit: audit.access-refused apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== a second provider
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"b","name":"P","issuer":"https://b.example.test","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "none",
+            "clientId": "x",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "P"
+          },
+          {
+            "clientAuthentication": "none",
+            "clientId": "x",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "P"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== a new binding naming none, with two
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"Owner@Example.test"},{"kind":"email-domain","role":"chat","domain":"example.test"},{"kind":"email","role":"chat","email":"new@example.test"}],"defaultRole":null}}
+status: 400
+answer: {
+    "error": {
+      "code": "issuer_required",
+      "message": "A binding for owner@example.test must name the sign-in provider that vouches for it, because several are configured. Add \"issuer\" with one of: https://a.example.test, https://b.example.test."
+    }
+  }
+audit: audit.access-refused apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== a stale revision
+request: {"action":"apply-policy","expectedPolicyRevision":"0000000000000000000000000000000000000000000000000000000000000000","policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"},{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"}],"defaultRole":null}}
+status: 409
+answer: {
+    "error": {
+      "code": "policy_revision_conflict",
+      "message": "The browser access policy changed. Refresh it and try again."
+    }
+  }
+audit: audit.access-refused apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== the same, named, with two
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"},{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        },
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        },
+        {
+          "kind": "email-domain",
+          "role": "chat",
+          "domain": "example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999",
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email-domain","role":"chat","domain":"example.test","issuer":"https://a.example.test"},{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "08761869a6909de50dc849e0c890bfa23389141b53d9a1a507b380cc404c7999"
+
+== a binding fewer
+request: {"action":"apply-policy","expectedPolicyRevision":{{rev}},"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        },
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "cc6281c60831f64148bc7f713d6ff3e4d380d45edd2796f4eea9d69fc152f154",
+    "restartRequired": false
+  }
+audit: audit.access-changed apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: {"roles":[{"name":"admin","description":"","permissions":["access:read","access:manage"]},{"name":"chat","description":"","permissions":["inference:chat"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test","issuer":"https://a.example.test"}],"defaultRole":null}
+policyRevision: "cc6281c60831f64148bc7f713d6ff3e4d380d45edd2796f4eea9d69fc152f154"
+
+== clear
+request: {"action":"clear-policy","expectedPolicyRevision":{{rev}}}
+status: 200
+answer: {
+    "cleared": true,
+    "policyRevision": null,
+    "restartRequired": false
+  }
+audit: audit.access-changed clear-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
+== clear again
+request: {"action":"clear-policy","expectedPolicyRevision":null}
+status: 200
+answer: {
+    "cleared": false,
+    "policyRevision": null,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "P",
+        "issuer": "https://b.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+policy: null
+policyRevision: null
+
