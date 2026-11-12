@@ -1,0 +1,244 @@
+== a test email with none configured
+request: {"action":"test-email-delivery","to":"friend@example.test"}
+status: 409
+answer: {
+    "error": {
+      "code": "email_delivery_not_configured",
+      "message": "Configure email delivery before enabling magic-link authentication."
+    }
+  }
+audit: audit.access-refused test-email-delivery
+ui-access.json: (none)
+email-delivery.json: (none)
+
+== disable with none configured
+request: {"action":"disable-email-delivery"}
+status: 200
+answer: {
+    "emailDeliveryDisabled": false,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: (none)
+
+== configure
+request: {"action":"configure-email-delivery","config":{"host":"smtp.example.test","port":587,"security":"starttls","authentication":{"kind":"password","username":"user","password":"PLANTED-smtp-password"},"from":"sender@example.test"}}
+status: 200
+answer: {
+    "emailDelivery": {
+      "authentication": "password",
+      "from": "sender@example.test",
+      "host": "smtp.example.test",
+      "port": 587,
+      "security": "starttls"
+    },
+    "restartRequired": false
+  }
+audit: audit.access-changed configure-email-delivery
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== the same again
+request: {"action":"configure-email-delivery","config":{"host":"smtp.example.test","port":587,"security":"starttls","authentication":{"kind":"password","username":"user","password":"PLANTED-smtp-password"},"from":"sender@example.test"}}
+status: 200
+answer: {
+    "emailDelivery": {
+      "authentication": "password",
+      "from": "sender@example.test",
+      "host": "smtp.example.test",
+      "port": 587,
+      "security": "starttls"
+    },
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== another host
+request: {"action":"configure-email-delivery","config":{"host":"mail.example.test","port":587,"security":"starttls","authentication":{"kind":"password","username":"user","password":"PLANTED-smtp-password"},"from":"sender@example.test"}}
+status: 200
+answer: {
+    "emailDelivery": {
+      "authentication": "password",
+      "from": "sender@example.test",
+      "host": "mail.example.test",
+      "port": 587,
+      "security": "starttls"
+    },
+    "restartRequired": false
+  }
+audit: audit.access-changed configure-email-delivery
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "mail.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== a magic link that needs it
+request: {"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-magic-link
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "mail.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== disable while the magic link needs it
+request: {"action":"disable-email-delivery"}
+status: 409
+answer: {
+    "error": {
+      "code": "email_delivery_in_use",
+      "message": "Remove the magic-link registration before disabling email delivery."
+    }
+  }
+audit: audit.access-refused disable-email-delivery
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "mail.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== remove the magic link
+request: {"action":"remove-registration","registrationId":"email"}
+status: 200
+answer: {
+    "config": null,
+    "removedRegistrationId": "email",
+    "restartRequired": true
+  }
+audit: audit.access-changed remove-registration
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "mail.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "password",
+    "username": "user",
+    "password": "PLANTED-smtp-password"
+  },
+  "from": "sender@example.test"
+}
+
+== disable
+request: {"action":"disable-email-delivery"}
+status: 200
+answer: {
+    "emailDeliveryDisabled": true,
+    "restartRequired": false
+  }
+audit: audit.access-changed disable-email-delivery
+ui-access.json: (none)
+email-delivery.json: (none)
+
+== disable again
+request: {"action":"disable-email-delivery"}
+status: 200
+answer: {
+    "emailDeliveryDisabled": false,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: (none)
+
