@@ -58,10 +58,8 @@ func TestCLIDiagnostics(t *testing.T) {
 	harness.RequireTS(t)
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
-	for _, r := range roots {
-		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
-			t.Fatalf("init: %s", res.stderr)
-		}
+	initOwnTwinRoots(t, roots)
+	for i, r := range roots {
 		fsguard.MkdirAll(filepath.Join(r, "logs"), 0o700)
 		fsguard.WriteFile(filepath.Join(r, "logs", "events.jsonl"), []byte(diagnosticsLog()), 0o600)
 		fsguard.WriteFile(filepath.Join(r, "logs", "service-stderr.log"), []byte("panic: stderrCrashSecret\n"), 0o600)
@@ -70,6 +68,9 @@ func TestCLIDiagnostics(t *testing.T) {
 			"repositoryRevision": "`+strings.Repeat("e", 40)+`"}`), 0o600)
 		fsguard.WriteFile(filepath.Join(r, "catalog.d", "broken.json"), []byte(`{"modelId": "qwen3.5-4b-q4_k_m", "storageGb": "big"}`), 0o600)
 		plantPrivateState(t, r)
+		if i == 0 {
+			toRollbackJournal(t, r)
+		}
 	}
 	env := []string{"LOCALBASE_CATALOG_FEED_URL=https://user:feedUserPassword@feed.example.com/feed.json?sig=feedSignature99#frag",
 		"OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example:4318/base/", "OTEL_EXPORTER_OTLP_HEADERS=x-auth=otlpHeaderSecret77"}
@@ -112,9 +113,11 @@ func TestCLIDiagnostics(t *testing.T) {
 			t.Errorf("envelope differs:\n  %s", strings.Join(d, "\n  "))
 		}
 	}
-	if strings.ReplaceAll(tres.stderr, ts, "<root>") != strings.ReplaceAll(strings.ReplaceAll(gres.stderr, gr, "<root>"), "go.zip", "ts.zip") {
+	var notices readCopyNotices // Go's read-copy notice is a named difference
+	if strings.ReplaceAll(tres.stderr, ts, "<root>") != strings.ReplaceAll(strings.ReplaceAll(notices.strip(gres.stderr), gr, "<root>"), "go.zip", "ts.zip") {
 		t.Errorf("human output:\n ts %s\n go %s", tres.stderr, gres.stderr)
 	}
+	notices.expectSeen(t)
 	if len(tfiles) != 2 || len(gfiles) != 2 {
 		t.Fatalf("entries: ts %d, go %d", len(tfiles), len(gfiles))
 	}
@@ -175,6 +178,40 @@ func compareManifests(t *testing.T, a, b []byte) {
 // download auth profile, an imported model whose source is a signed URL, a
 // custom voice whose display name is personal (logs carry its id only),
 // and a Go-only setting.
+// toRollbackJournal puts a TS root's database back on a rollback journal after plantPrivateState
+// wrote it through Go's store, which made it WAL (#647). TS opens its database read-only, and SQLite
+// refuses that for a WAL file with no -shm (tsCannotReadGoRoot). The switch is read back, and the
+// file's header is checked once the store is closed, so a store that turned WAL back on would fail
+// here rather than as an unreadable TS manifest.
+func toRollbackJournal(t *testing.T, root string) {
+	t.Helper()
+	db := filepath.Join(root, "local-base.db")
+	st, err := store.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mode string
+	if err := st.DB.QueryRow("PRAGMA journal_mode=DELETE").Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || mode != "delete" {
+		t.Fatalf("the TS root's journal mode reads back as %q (%v), not delete", mode, err)
+	}
+	st.Close()
+	header := make([]byte, 20)
+	f, err := os.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := io.ReadFull(f, header); err != nil {
+		t.Fatal(err)
+	}
+	if header[18] != 1 || header[19] != 1 { // 1, 1: a rollback journal; 2, 2: WAL
+		t.Fatalf("the TS root's database header says read/write versions %d/%d, not a rollback journal", header[18], header[19])
+	}
+}
+
 func plantPrivateState(t *testing.T, root string) {
 	t.Helper()
 	// A run checkpoint: in-flight model output (DESIGN §21.6).

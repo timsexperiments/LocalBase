@@ -166,12 +166,28 @@ type cliCase struct {
 	goArgs []string
 	args   []string
 	skip   func(path string) bool
+	// goOnly names paths only Go's answer has, each a named difference in
+	// dual_differences_test.go: Go must have it and TS must not, and it is left out of the diff.
+	goOnly []string
 }
 
 func twinRoots(t *testing.T) (string, string) {
 	base := fsguard.ScratchDir(t)
 	base, _ = filepath.EvalSymlinks(base)
 	return filepath.Join(base, "ts"), filepath.Join(base, "go")
+}
+
+// initOwnTwinRoots runs each implementation's own `init` on its twin root (ts, go), so neither
+// reads a root the other made. A Go-made root can't be read by TS: Go's store is WAL (#647), and TS
+// opens the database read-only (src/db/client.ts openReadOnlyDatabase), which SQLite refuses for a
+// WAL file with no -shm.
+func initOwnTwinRoots(t *testing.T, roots [2]string) {
+	t.Helper()
+	for i, impl := range []string{"ts", "go"} {
+		if res := runCLI(t, impl, roots[i], "--json", "init"); res.code != 0 {
+			t.Fatalf("%s init: %s%s", impl, res.stdout, res.stderr)
+		}
+	}
 }
 
 func compareCLI(t *testing.T, roots [2]string, c cliCase) {
@@ -188,8 +204,16 @@ func compareCLI(t *testing.T, roots [2]string, c cliCase) {
 		return
 	}
 	a, b := normalize(t, ts.stdout, roots[0]), normalize(t, gr.stdout, roots[1])
+	for _, p := range c.goOnly {
+		_, inTS := jsonAt(a, p)
+		_, inGo := jsonAt(b, p)
+		if inTS || !inGo {
+			t.Errorf("%s: %s is a named Go-only difference, but ts has it: %v, go has it: %v", label, p, inTS, inGo)
+		}
+	}
 	skip := func(p string) bool {
-		return strings.HasSuffix(p, ".prefix") || (c.goArgs != nil && strings.HasSuffix(p, ".issuer")) || (c.skip != nil && c.skip(p))
+		return strings.HasSuffix(p, ".prefix") || (c.goArgs != nil && strings.HasSuffix(p, ".issuer")) || (c.skip != nil && c.skip(p)) ||
+			slices.Contains(c.goOnly, p)
 	}
 	if d := harness.DiffJSON("", a, b, skip); len(d) > 0 {
 		if len(d) > 20 {
@@ -283,7 +307,7 @@ func TestCLIModels(t *testing.T) {
 		{args: []string{"--json", "reset", "--yes"}},
 		{args: []string{"--json", "keys", "list"}},
 		{args: []string{"--json", "uninstall"}, skip: func(p string) bool { return p == ".error.message" }},
-		{args: []string{"--json", "uninstall", "-y"}},
+		{args: []string{"--json", "uninstall", "-y"}, goOnly: []string{goOnlyUninstallReadCopies}},
 		{args: []string{"--json", "reset", "--yes"}, skip: func(p string) bool { return p == ".error.message" }},
 	} {
 		compareCLI(t, roots, c)
