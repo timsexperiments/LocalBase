@@ -28,11 +28,7 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	ts, gr := twinRoots(t)
 	roots := [2]string{ts, gr}
 	docs := fsguard.ScratchDir(t)
-	for _, r := range roots {
-		if res := runCLI(t, "go", r, "--json", "init"); res.code != 0 {
-			t.Fatalf("init: %s", res.stderr)
-		}
-	}
+	initOwnTwinRoots(t, roots)
 	compareCLI(t, roots, cliCase{args: []string{"--json", "config", "show"}})
 	shown := runCLI(t, "go", gr, "--json", "config", "show")
 	var env struct {
@@ -146,14 +142,16 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	} {
 		compareCLI(t, roots, cliCase{args: args})
 	}
-	// Each implementation reads the other's pending-restart record.
-	for _, impl := range []string{"ts", "go"} {
-		other := map[string]string{"ts": gr, "go": ts}[impl]
-		if res := runCLI(t, impl, other, "--json", "config", "show"); res.code != 0 || !strings.Contains(res.stdout, `"pendingRestart":true`) {
-			t.Errorf("%s reading the other root: %d %s", impl, res.code, res.stdout)
-		}
+	// Go reads TS's pending-restart record. TS can't read Go's root at all (tsCannotReadGoRoot): its
+	// refusal is checked exactly, so a TS that starts reading it shows up here.
+	if res := runCLI(t, "go", ts, "--json", "config", "show"); res.code != 0 || !strings.Contains(res.stdout, `"pendingRestart":true`) {
+		t.Errorf("go reading the TS root: %d %s", res.code, res.stdout)
 	}
-	// Human output: plan lines and the rendered document.
+	if res := runCLI(t, "ts", gr, "--json", "config", "show"); res.code != 1 || strings.TrimSpace(res.stdout) != tsCannotReadGoRoot {
+		t.Errorf("ts reading the Go root: want the named refusal (exit 1) %s, got %d %s", tsCannotReadGoRoot, res.code, res.stdout)
+	}
+	// Human output: plan lines and the rendered document. Go's read-copy notice is a named difference.
+	var notices readCopyNotices
 	for _, args := range [][]string{
 		{"config", "plan", "--file", basePath},
 		{"config", "show"},
@@ -161,10 +159,11 @@ func TestCLIConfigDeclarative(t *testing.T) {
 	} {
 		a, b := runCLI(t, "ts", ts, args...), runCLI(t, "go", gr, args...)
 		if a.code != b.code || strings.ReplaceAll(a.stdout, ts, "<root>") != strings.ReplaceAll(b.stdout, gr, "<root>") ||
-			strings.ReplaceAll(a.stderr, ts, "<root>") != strings.ReplaceAll(b.stderr, gr, "<root>") {
+			strings.ReplaceAll(a.stderr, ts, "<root>") != strings.ReplaceAll(notices.strip(b.stderr), gr, "<root>") {
 			t.Errorf("%v:\n ts %d %q %q\n go %d %q %q", args, a.code, a.stdout, a.stderr, b.code, b.stdout, b.stderr)
 		}
 	}
+	notices.expectSeen(t)
 	// Apply to a root that does not exist yet creates it.
 	fresh := [2]string{filepath.Join(filepath.Dir(ts), "fresh-ts"), filepath.Join(filepath.Dir(gr), "fresh-go")}
 	compareCLI(t, fresh, cliCase{args: []string{"--json", "config", "show"}})
@@ -182,8 +181,19 @@ func TestCLIConfigDeclarative(t *testing.T) {
 		})
 		return out
 	}
-	if a, b := list(fresh[0]), list(fresh[1]); !slices.Equal(a, b) {
-		t.Errorf("fresh root files:\n ts %v\n go %v", a, b)
+	// Each fresh root against its own implementation's set: TS's, and TS's plus goOnlyRootFiles for Go.
+	tsFiles, goFiles := list(fresh[0]), list(fresh[1])
+	slices.Sort(tsFiles)
+	slices.Sort(goFiles)
+	wantGo := append(slices.Clone(tsFiles), goOnlyRootFiles...)
+	slices.Sort(wantGo)
+	for _, f := range goOnlyRootFiles {
+		if slices.Contains(tsFiles, f) {
+			t.Errorf("fresh TS root has %s, a named Go-only file", f)
+		}
+	}
+	if !slices.Equal(goFiles, wantGo) {
+		t.Errorf("fresh root files:\n ts %v\n go %v\n want go %v (ts's plus the Go-only %v)", tsFiles, goFiles, wantGo, goOnlyRootFiles)
 	}
 	// Stdin is the same document as the file.
 	cmd := exec.Command(goCLI(t), "--root", gr, "--json", "config", "plan", "--file", "-")
