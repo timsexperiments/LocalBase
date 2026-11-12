@@ -29,8 +29,31 @@ var labTargets = map[string]string{
 // labRun is the part of a run object the tray uses.
 type labRun struct {
 	ID, Target, Status, Reason, Model string
-	Error                             *struct{ Code, Message string } `json:"error"`
-	CreatedAt                         time.Time
+	Error                             *struct {
+		Code    runErrorCode
+		Message string
+	} `json:"error"`
+	CreatedAt time.Time
+}
+
+// runErrorCode is a run's error code, which is a text or a whole number: a backend's streamed
+// error can carry code 400, and the run list keeps it. A number is kept as its digits, and
+// anything else as no code. Read as a plain string, one such run would fail the whole list and
+// empty the tray, so this never fails.
+type runErrorCode string
+
+func (c *runErrorCode) UnmarshalJSON(b []byte) error {
+	var s string
+	var n json.Number
+	switch {
+	case json.Unmarshal(b, &s) == nil:
+		*c = runErrorCode(s)
+	case json.Unmarshal(b, &n) == nil:
+		*c = runErrorCode(n.String())
+	default:
+		*c = ""
+	}
+	return nil
 }
 
 // unloadingMessage: a request reached a model while someone unloaded it
