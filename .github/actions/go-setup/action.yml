@@ -1,0 +1,45 @@
+name: Go setup
+description: >-
+  Go from go/go.mod, and the build and module caches restored from the newest save on main for this
+  runner, Go version and go.sum. Only go.yml's unit jobs save, on a push to main.
+outputs:
+  key:
+    description: The cache key a save on main uses (prefix plus the commit).
+    value: ${{ steps.keys.outputs.key }}
+  paths:
+    description: GOCACHE and GOMODCACHE, one per line.
+    value: ${{ steps.keys.outputs.paths }}
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      id: go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go/go.mod
+        # Its own cache is keyed on go.sum alone and never saved again once that key exists, so it
+        # holds the build from whenever go.sum last changed. The steps below replace it.
+        cache: false
+    - name: Cache key and paths
+      id: keys
+      shell: bash
+      working-directory: go
+      env:
+        GO_VERSION: ${{ steps.go.outputs.go-version }}
+        SUM: ${{ hashFiles('go/go.sum') }}
+      run: |
+        prefix="go-${RUNNER_OS}-${RUNNER_ARCH}-${GO_VERSION}-${SUM}-"
+        {
+          echo "prefix=$prefix"
+          echo "key=${prefix}${GITHUB_SHA}"
+          echo "paths<<EOF"
+          go env GOCACHE
+          go env GOMODCACHE
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+    - name: Restore the build cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.keys.outputs.paths }}
+        key: ${{ steps.keys.outputs.key }}
+        restore-keys: ${{ steps.keys.outputs.prefix }}

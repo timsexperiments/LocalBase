@@ -1,19 +1,29 @@
 name: Go rewrite
 
+# No paths filter: go-checks is meant to be a required check, and a required check that never
+# starts blocks the merge. The scope job decides instead, and the test jobs skip when nothing of
+# the Go tree changed (a skipped job satisfies a required check).
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
-    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
   push:
     branches: [main, rewrite/go]
-    paths: ["go/**", "drizzle/**", "src/catalog/models/**", "src/manager/managed-runtime-manifest.json", ".github/workflows/go.yml"]
 
 permissions:
   contents: read
 
-# A runner has no other work on it, so tests get a wide block to pick from.
 env:
+  # A runner has no other work on it, so tests get a wide block to pick from.
   LOCALBASE_TEST_PORTS: 24000-29999
+  # internal/backup's tests that copy, sync and measure large files. They run without -race, in
+  # backup-files: -race makes them 4-21 times slower and adds little to what they test. They run on
+  # macOS too, since SQLite's locking and -wal handling differ by OS. Every other backup test runs
+  # under -race in the backup-race shards; tools/backup-shards.sh checks that each test runs exactly
+  # once, that BACKUP_FILE_TESTS matches BACKUP_FILE_COUNT tests, and that the package holds at
+  # least BACKUP_TEST_FLOOR.
+  BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle|TestAFileLargerThanItsManifestSaysIsRefused|TestASettingsFileAtItsLimit|TestAFormerListAtItsLimit|TestAnHonestBackupAllocatesLittle|TestBackingUpAFileOverItsLimitSaysSo)$
+  BACKUP_FILE_COUNT: 10
+  BACKUP_TEST_FLOOR: 237
 
 # A new push to a pull request cancels that pull request's older run. Any other event gets a
 # group of its own, so a push to main, a tag, a schedule or a dispatch is never cancelled or dropped.
@@ -22,11 +32,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    # macOS costs the most: it runs after merge, or on a pull request labelled "macos".
-    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos'))
-    runs-on: macos-15
-    timeout-minutes: 60
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      go: ${{ steps.scope.outputs.go }}
+    steps:
+      - name: Does anything the Go tests read change?
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            files="$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$AFTER" --jq '.files[].filename')"
+          else
+            echo go=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # The paths the old filter named, plus this workflow's setup action.
+          if printf '%s\n' "$files" | grep -qE '^(go/|drizzle/|src/catalog/models/|src/manager/managed-runtime-manifest\.json$|\.github/workflows/go\.yml$|\.github/actions/go-setup/)'; then
+            echo go=true >> "$GITHUB_OUTPUT"
+          else
+            echo go=false >> "$GITHUB_OUTPUT"
+          fi
+
+  # Linux runs on every pull request that isn't a draft. Its jobs run side by side.
+
+  unit:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: go
@@ -36,42 +80,224 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
+        id: setup
+        uses: ./.github/actions/go-setup
       - name: Format
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
       - name: Unit tests
-        # Every package with tests runs here, so a new one is covered by default. The five left out
-        # run in their own steps or workflows: contract and test/system (tools/contract.sh, below),
-        # test/chaos (chaos.yml), tools/soak and tools/lab (the next step, without -race). Five of
-        # internal/backup's tests run in the step after this one, without -race.
-        env:
-          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
+        # Every package with tests runs here, so a new one is covered by default. Left out, and run
+        # in their own jobs or workflows: internal/backup (backup-race, backup-files), contract and
+        # system (contract), test/chaos (chaos.yml, and one test in small), tools/soak and tools/lab
+        # (small, without -race).
         run: |
-          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
-      - name: Backup's crash and large-file tests, without -race
-        # They copy, sync and measure large files, and -race makes them 6-21 times slower while
-        # adding little to what they test: about 45% of internal/backup's time under -race. They
-        # run on macOS too, since SQLite's locking and -wal handling differ by OS. The count check
-        # keeps a renamed test from being skipped above and run nowhere.
+          # shellcheck disable=SC2046 # one argument per package
+          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+      - name: Build everything the other jobs build, for the cache
+        # Compiles and links every test binary, with and without -race, and runs none of them.
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          go build ./...
+          go test -count=1 -exec /usr/bin/true ./... > /dev/null
+          go test -race -count=1 -exec /usr/bin/true ./... > /dev/null
+      - name: Save the build cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.paths }}
+          key: ${{ steps.setup.outputs.key }}
+
+  backup-race:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Backup's tests under -race, shard ${{ matrix.shard }} of 3
         env:
-          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
+          SHARD: ${{ matrix.shard }}
+        run: |
+          pattern=$(tools/backup-shards.sh "$SHARD" 3)
+          go test -race -timeout 25m -count=1 -run "$pattern" ./internal/backup
+
+  backup-files:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Backup's large-file tests, without -race
         run: |
           n=$(go test -list "$BACKUP_FILE_TESTS" ./internal/backup | grep -c '^Test')
-          if [ "$n" -ne 5 ]; then echo "expected 5 tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
-          go test -timeout 30m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
+          if [ "$n" -ne "$BACKUP_FILE_COUNT" ]; then echo "expected $BACKUP_FILE_COUNT tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
+          go test -timeout 15m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
+
+  contract:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Contract and system suites against the Go gateway
+        # tools/contract.sh keeps a failing run's full go test -json stream.
+        env:
+          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
+        run: tools/contract.sh -args -impl=go
+      - name: Keep the failing contract run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: contract-run-linux
+          path: ${{ runner.temp }}/contract-runs
+          if-no-files-found: ignore
+
+  small:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Reliability tool tests
+        run: go test ./tools/soak ./tools/lab
+      - name: A killed gateway leaves no backend behind
+        run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
+
+  # macOS costs the most: it runs after merge, or on a pull request labelled "macos". It has fewer
+  # jobs than Linux, since only five macOS jobs run at once.
+
+  macos-unit:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos')))
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        id: setup
+        uses: ./.github/actions/go-setup
+      - name: Format
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        # The same packages as Linux's unit job.
+        run: |
+          # shellcheck disable=SC2046 # one argument per package
+          go test -race -timeout 30m $(go list ./... | grep -v -e '/go/internal/backup$' -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
+      - name: Build everything the other jobs build, for the cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          go build ./...
+          go test -count=1 -exec /usr/bin/true ./... > /dev/null
+          go test -race -count=1 -exec /usr/bin/true ./... > /dev/null
+      - name: Save the build cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.setup.outputs.paths }}
+          key: ${{ steps.setup.outputs.key }}
+
+  macos-backup-race:
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos')))
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Backup's tests under -race, shard ${{ matrix.shard }} of 2
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          pattern=$(tools/backup-shards.sh "$SHARD" 2)
+          go test -race -timeout 25m -count=1 -run "$pattern" ./internal/backup
+
+  macos-contract:
+    # The contract suite, plus what Linux runs in backup-files and small, plus the CSS check.
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'macos')))
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: Backup's large-file tests, without -race
+        run: |
+          n=$(go test -list "$BACKUP_FILE_TESTS" ./internal/backup | grep -c '^Test')
+          if [ "$n" -ne "$BACKUP_FILE_COUNT" ]; then echo "expected $BACKUP_FILE_COUNT tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
+          go test -timeout 15m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
       - name: Reliability tool tests
         run: go test ./tools/soak ./tools/lab
       - name: A killed gateway leaves no backend behind
         run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
       - name: Compiled CSS is current
         run: tools/tailwind.sh --check
-      - name: Contract suite against the Go gateway
-        # tools/contract.sh keeps a failing run's full go test -json stream.
+      - name: Contract and system suites against the Go gateway
         env:
           LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
         run: tools/contract.sh -args -impl=go
@@ -83,60 +309,32 @@ jobs:
           path: ${{ runner.temp }}/contract-runs
           if-no-files-found: ignore
 
-  test-linux:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    # Linux qualification (M6 step 3): the same checks on Ubuntu.
+  go-checks:
+    # The one check to require: it passes only when every job above that should have run passed.
+    needs: [scope, unit, backup-race, backup-files, contract, small, macos-unit, macos-backup-race, macos-contract]
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    defaults:
-      run:
-        working-directory: go
+    timeout-minutes: 5
     steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.sum
-      - name: Format
-        run: test -z "$(gofmt -l .)"
-      - name: Vet
-        run: go vet ./...
-      - name: Unit tests
-        # Every package with tests runs here, so a new one is covered by default. The five left out
-        # run in their own steps or workflows: contract and test/system (tools/contract.sh, below),
-        # test/chaos (chaos.yml), tools/soak and tools/lab (the next step, without -race). Five of
-        # internal/backup's tests run in the step after this one, without -race.
+      - name: Did every job that should run pass?
         env:
-          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          MACOS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'macos') }}
         run: |
-          go test -race -timeout 30m -skip "$BACKUP_FILE_TESTS" $(go list ./... | grep -v -e '/go/test/contract$' -e '/go/test/system$' -e '/go/test/chaos$' -e '/go/tools/soak$' -e '/go/tools/lab$')
-      - name: Backup's crash and large-file tests, without -race
-        # They copy, sync and measure large files, and -race makes them 6-21 times slower while
-        # adding little to what they test: about 45% of internal/backup's time under -race. They
-        # run on macOS too, since SQLite's locking and -wal handling differ by OS. The count check
-        # keeps a renamed test from being skipped above and run nowhere.
-        env:
-          BACKUP_FILE_TESTS: ^(TestRestoreFailureAndCrashBringBackDatabaseAndJournal|TestRestoreFailureAndCrash|TestADatabaseHoldingALotAllocatesLittle|TestADatabaseAtItsLimits|TestAFileThatUnpacksToALotAllocatesLittle)$
-        run: |
-          n=$(go test -list "$BACKUP_FILE_TESTS" ./internal/backup | grep -c '^Test')
-          if [ "$n" -ne 5 ]; then echo "expected 5 tests matching BACKUP_FILE_TESTS in internal/backup, found $n"; exit 1; fi
-          go test -timeout 30m -count=1 -run "$BACKUP_FILE_TESTS" ./internal/backup
-      - name: Reliability tool tests
-        run: go test ./tools/soak ./tools/lab
-      - name: A killed gateway leaves no backend behind
-        run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
-      - name: Contract suite against the Go gateway
-        env:
-          LOCALBASE_CONTRACT_LOGS: ${{ runner.temp }}/contract-runs
-        run: tools/contract.sh -args -impl=go
-      - name: Keep the failing contract run
-        if: failure()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: contract-run-linux
-          path: ${{ runner.temp }}/contract-runs
-          if-no-files-found: ignore
+          set -euo pipefail
+          result() { jq -r --arg j "$1" '.[$j].result' <<<"$NEEDS"; }
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          [ "$(result scope)" = success ] || { echo "scope did not succeed"; exit 1; }
+          bad=$(jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key' <<<"$NEEDS")
+          [ -z "$bad" ] || { echo "failed or cancelled: $bad"; exit 1; }
+          go=$(jq -r '.scope.outputs.go' <<<"$NEEDS")
+          if [ "$go" != true ]; then echo "nothing of the Go tree changed"; exit 0; fi
+          if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then echo "draft: the tests run once it is ready"; exit 0; fi
+          must="unit backup-race backup-files contract small"
+          if [ "$EVENT" != pull_request ] || [ "$MACOS_LABEL" = true ]; then must="$must macos-unit macos-backup-race macos-contract"; fi
+          for j in $must; do
+            [ "$(result "$j")" = success ] || { echo "$j should have run and passed, but is $(result "$j")"; exit 1; }
+          done
+          echo "every job that should run passed"
