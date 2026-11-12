@@ -1,3 +1,5 @@
+import "./icon-names.js";
+
 // The Video studio's starting picture (TS studio chooseSource and cover): an
 // image from a file or a recent result is scaled and center-cropped to
 // fill exactly the model's frame (data-width × data-height), encoded as PNG,

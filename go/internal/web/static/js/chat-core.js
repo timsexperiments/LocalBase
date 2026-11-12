@@ -83,6 +83,11 @@ export function thinkSplitter() {
 // --- device history --------------------------------------------------------------
 
 export const historyKey = "localbase.playground.history.v1";
+// Each person's chats under their own key, so the next person on this browser doesn't get them.
+// The older key above was shared; nothing reads it now, and Clear removes it.
+export const personKey = () => document.documentElement.dataset.person ?? "none";
+export const historyKeyFor = (person) => `localbase.chat.history.v2.${person}`;
+export const draftKeyFor = (person) => `localbase.chat.draft.v2.${person}`;
 const storedReasoningLimit = 20_000;
 const modes = ["llm", "image", "tts", "stt", "video", "embedding", "decision"];
 
@@ -133,8 +138,8 @@ export function parseHistory(value) {
 }
 
 /** Saved conversations, or null when saving is off (no key). */
-export function readHistory(storage) {
-  const raw = storage.getItem(historyKey);
+export function readHistory(storage, key = historyKey) {
+  const raw = storage.getItem(key);
   return raw === null ? null : parseHistory(JSON.parse(raw));
 }
 
@@ -162,8 +167,8 @@ export function serializeHistory(conversations) {
   );
 }
 
-export function writeHistory(storage, conversations) {
-  storage.setItem(historyKey, serializeHistory(conversations));
+export function writeHistory(storage, conversations, key = historyKey) {
+  storage.setItem(key, serializeHistory(conversations));
 }
 
 // --- request context -------------------------------------------------------------

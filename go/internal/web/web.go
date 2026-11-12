@@ -201,6 +201,7 @@ func New(d Deps) *UI {
 	m.HandleFunc("GET /app/lab/results/{id}", u.need("models:read", u.labResult))
 	m.HandleFunc("GET /app/lab/runs/{id}", u.need("models:read", u.labRunGet))
 	m.HandleFunc("GET /app/lab/runs/{id}/export", u.need("models:read", u.labTranscriptExport))
+	m.HandleFunc("POST /app/lab/clear-lost", u.mutating("models:read", u.labRunsClearLost))
 	m.HandleFunc("POST /app/lab/runs/{id}/stop", u.mutating("models:read", u.labRunStop))
 	m.HandleFunc("POST /app/lab/runs/{id}/again", u.mutating("inference:image", u.labImageAgain))
 	m.HandleFunc("POST /app/lab/runs/{id}/remove", u.mutating("models:read", u.labRunRemove))
@@ -388,6 +389,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	}
 	if p, ok := r.Context().Value(ctxKey{}).(*auth.Principal); ok {
 		data["Principal"] = p
+		data["PersonKey"] = personKey(p)
 	}
 	data["Page"] = page
 	// Everywhere someone is signed in. Running draws its own, with the legend under it.

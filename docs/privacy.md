@@ -33,7 +33,7 @@ Everything is under the data directory, `~/.local/share/local-base` by default, 
 | Custom voices | `voices/` (0700, files 0600) | The reference audio you added |
 | Models and runtimes | `models/`, `bin/runtimes/` | Downloaded files |
 
-**Chat history is stored in your browser**, not on the server. Clearing your browser's site data removes it.
+**Chat history is stored in your browser**, not on the server, and only if you turn it on in Settings. Each person's is kept separately. It stays on this device after you sign out and comes back when you sign in, and others signing in on this browser don't see it. It isn't encrypted, so someone with access to this browser's files could read it, and while saving is on, chat names also appear in your browser's history. **Clear saved chats on this device** in Settings removes yours, and clearing your browser's site data removes everyone's. Chats saved before this was added are no longer shown; Clear removes them too.
 
 ## Diagnostics bundles
 

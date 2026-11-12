@@ -70,6 +70,19 @@ func (m videoLabModel) Limit() string {
 	return fmt.Sprintf("%d minutes", minutes)
 }
 
+// elapsedText is how long a job has been going, in words. It says what has happened, and
+// promises nothing about how much is left: the API reports no steps.
+func elapsedText(d time.Duration) string {
+	minutes := int(d.Minutes())
+	if minutes < 1 {
+		return "Under a minute so far"
+	}
+	if minutes == 1 {
+		return "1 minute so far"
+	}
+	return fmt.Sprintf("%d minutes so far", minutes)
+}
+
 // videoRequest is what a job was asked for, to show and to try again.
 type videoRequest struct {
 	Model, Negative string
@@ -183,7 +196,9 @@ func (u *UI) startVideo(w http.ResponseWriter, r *http.Request, prompt string, q
 	u.notes.setVideo(owner, job.ID, q)
 	w.Header().Set("HX-Retarget", "#lab-items")
 	w.Header().Set("HX-Reswap", "afterbegin")
-	u.fragment(w, r, "lab", "lab-item", u.videoItem(job, u.notes.get(owner, job.ID)))
+	v := u.videoItem(job, u.notes.get(owner, job.ID))
+	v.Fresh = true
+	u.fragment(w, r, "lab", "lab-item", v)
 }
 
 // labVideoAgain makes a job's video again: same words, model and picture.
@@ -342,6 +357,9 @@ func (u *UI) videoItem(job videoJobView, note *labNote) labItemView {
 				v.Shape = m.Shape()
 				v.Length = m.Seconds()
 				v.Slow = v.Active && m.Deadline > 0 && time.Since(at) > m.Deadline/2
+				if m.Deadline > 0 {
+					v.Limit = m.Limit()
+				}
 			}
 		}
 	}
@@ -350,6 +368,7 @@ func (u *UI) videoItem(job videoJobView, note *labNote) labItemView {
 		v.Message = "Waiting for its turn…"
 	case "in_progress":
 		v.Message = "Making the video…"
+		v.Elapsed = elapsedText(time.Since(at))
 	case "completed":
 		v.Video = "/app/lab/video/" + job.ID + "/content"
 	case "failed":
