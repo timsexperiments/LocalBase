@@ -526,8 +526,15 @@ func TestAFloodDoesNotHideKeyChanges(t *testing.T) {
 	if status, out := f.send(f.key, "POST", "/_localbase/api-keys", "application/json", []byte(`{"action":"create","name":"later","scopes":["keys:read"]}`)); status != 200 && status != 201 {
 		t.Fatalf("%d %s", status, out)
 	}
-	if status, out := f.send(f.key, "POST", "/_localbase/access-management", "application/json", []byte(`{"action":"disable"}`)); status != 200 {
-		t.Fatalf("%d %s", status, out)
+	// Two real access changes: configuring sign-in, then turning it off. (Turning off what is
+	// already off changes nothing, and writes no line.)
+	for _, body := range []string{
+		`{"action":"configure-cloudflare","provider":{"kind":"cloudflare-access","teamDomain":"team.cloudflareaccess.com","audience":"aud"},"origin":"https://lb.example.test","permissions":[]}`,
+		`{"action":"disable"}`,
+	} {
+		if status, out := f.send(f.key, "POST", "/_localbase/access-management", "application/json", []byte(body)); status != 200 {
+			t.Fatalf("%s: %d %s", body, status, out)
+		}
 	}
 	f.srv.LogHeldBack()
 	events := f.auditEvents(0)
@@ -547,7 +554,7 @@ func TestAFloodDoesNotHideKeyChanges(t *testing.T) {
 			}
 		}
 	}
-	if changed != changeAuditBurst || keys != 1 || access != 1 || summary != 1 {
+	if changed != changeAuditBurst || keys != 1 || access != 2 || summary != 1 {
 		t.Errorf("%d lines of the limited route, %d key lines, %d access lines, %d summaries", changed, keys, access, summary)
 	}
 }

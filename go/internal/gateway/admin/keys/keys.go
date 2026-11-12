@@ -600,6 +600,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
+		if !disabled {
+			httpx.Unchanged(r)
+		}
 		httpx.NoStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
 	case "configure-email-delivery":
 		if err := auth.SaveEmail(root, in.Config); err != nil {
@@ -620,6 +623,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
+		}
+		if !disabled {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
 	case "replace-user-roles", "enable-user", "disable-user", "remove-user":
@@ -700,6 +706,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 					httpx.ServiceUnavailable(w, r, "Access management")
 				}
 				return
+			}
+			if !cleared {
+				httpx.Unchanged(r)
 			}
 			httpx.NoStore(w, 200, map[string]any{"cleared": cleared, "policyRevision": nil, "restartRequired": false})
 			return
