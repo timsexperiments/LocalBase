@@ -22,6 +22,7 @@
   <a href="/app/models/m/{{.ID}}" class="flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg text-ink">
     <span class="block font-semibold leading-snug wrap-anywhere">{{.Name}}</span>
     <span class="block text-sm text-muted">{{.Task}} · {{size .DownloadBytes}}{{if not .Installed}} download{{end}}{{if and .Installed (eq .Fit "fits")}} · fits this computer{{else if and .Installed (eq .Fit "tight")}} · tight fit{{end}}</span>
+    {{if .EditsPictures}}<span class="block text-sm text-muted">Can edit pictures</span>{{end}}
     {{if .Forecast}}<span class="block text-sm text-muted">{{if eq .Fit "fits"}}Fits now.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{else if eq .Fit "close-others"}}Close other apps first.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{if .FreeFirstBytes}} Free {{aboutGib .FreeFirstBytes}} first.{{end}}{{else if eq .Fit "wont-fit"}}Too big for this computer.{{if .UsesBytes}} {{uses .UsesBytes}}{{end}}{{end}}</span>
     {{else if .MayNotFit}}<span class="block text-sm text-muted">{{.MayNotFit}}</span>{{end}}
   </a>
