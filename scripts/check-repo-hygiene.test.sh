@@ -58,5 +58,13 @@ printf 'name: bad\npermissions: {}\njobs:\n  a:\n    steps:\n      - uses: actio
 expect fail "action pinned by tag"
 printf 'name: ok\npermissions: {}\njobs:\n  a:\n    steps:\n      - uses: actions/checkout@%s # v4\n      - uses: ./.github/actions/local\n' "$sha" > .github/workflows/bad.yml
 expect pass "action pinned by SHA and a local action"
+git rm -qf --cached .github/workflows/bad.yml && rm .github/workflows/bad.yml
+
+mkdir -p .github/actions/local
+printf 'name: local\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-go@v6\n' > .github/actions/local/action.yml
+git add -A
+expect fail "local action using an action pinned by tag"
+printf 'name: local\nruns:\n  using: composite\n  steps:\n    - uses: actions/setup-go@%s # v6\n' "$sha" > .github/actions/local/action.yml
+expect pass "local action pinned by SHA, with no permissions block"
 
 printf 'repo guard test: %s cases pass\n' "$pass"

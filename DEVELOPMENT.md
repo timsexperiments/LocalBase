@@ -65,7 +65,7 @@ sequenceDiagram
 
 | Workflow | Runs |
 | --- | --- |
-| `go.yml` | Format, vet, race tests, CSS check and contract suite, on macOS and Linux |
+| `go.yml` | Format, vet, race tests (internal/backup in shards), CSS check and the contract and system suites, as parallel jobs on Linux and macOS; `go-checks` passes only when all of them do |
 | `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
 | `go-lint.yml` | golangci-lint with `go/.golangci.yml` |
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |

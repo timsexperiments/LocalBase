@@ -48,9 +48,12 @@ done < <(
     done
 )
 
-for workflow in .github/workflows/*.yml; do
+for workflow in .github/workflows/*.yml .github/actions/*/action.yml; do
   [ -e "$workflow" ] || continue
-  grep -qE '^permissions:' "$workflow" || fail "$workflow has no top-level permissions block"
+  # A local action has no permissions of its own: it runs with its caller's.
+  case "$workflow" in
+    .github/workflows/*) grep -qE '^permissions:' "$workflow" || fail "$workflow has no top-level permissions block" ;;
+  esac
   while IFS= read -r action; do
     case "$action" in
       ./*) ;;
