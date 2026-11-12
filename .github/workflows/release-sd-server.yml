@@ -101,7 +101,7 @@ jobs:
 
   macos-arm64:
     needs: preflight
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,7 +129,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
       - name: Build verified patched source
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
         run: bun run scripts/build-sd-server.ts
+      - name: Runs on macOS 14 and later
+        run: |
+          minos="$(vtool -show-build build-sd-server/sd-server | awk '/minos/ {print $2}')"
+          echo "minimum macOS: $minos"
+          test "$minos" = 14.0
       - name: Verify Metal configuration and standalone runtime
         run: |
           test "$(uname -m)" = arm64
