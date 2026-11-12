@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
@@ -224,11 +226,61 @@ func (m *Manager) memoryFullError() map[string]any {
 	if oldest == nil {
 		message += " Nothing has finished yet, so wait for the running ones and try again."
 	} else {
+		// The message is read later than it's written, so the wait is said from the stop, not from now.
 		at := oldest.UTC().Format("15:04") + " UTC"
-		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.", mib(finished), at)
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires %s after this was stopped (%s). Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.",
+			mib(finished), afterTheStop(oldest.Sub(m.now())), at)
 		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
 	}
 	out["message"] = message
+	return out
+}
+
+// maxListErrorText bounds each text in a run's error, as other error messages are bounded.
+const maxListErrorText = 1024
+
+// listErrorFields are the fields a run's error keeps in the API: what LocalBase's own errors have,
+// so the run list and a run's own read give the same error. Anything else a backend sent stays out.
+var listErrorFields = []string{"type", "code", "message", "param", "heldBytes", "limitBytes", "finishedBytes", "oldestExpiresAt"}
+
+// listError is a run's error as the API gives it, in the run list and in a run's own read alike.
+// An error can come from a backend as it sent it, and the list carries every run a person has, so
+// each text is bounded and redacted, and only plain values are kept.
+func listError(e map[string]any) map[string]any {
+	if e == nil {
+		return nil
+	}
+	out := map[string]any{}
+	for _, k := range listErrorFields {
+		switch v := e[k].(type) {
+		case string:
+			out[k] = obs.BoundedText(v, maxListErrorText)
+		case int, int64, float64, bool:
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// afterTheStop says a wait in whole minutes, rounded up, so it isn't shorter than it is.
+func afterTheStop(d time.Duration) string {
+	if d < time.Minute {
+		return "less than a minute"
+	}
+	minutes := int((d + time.Minute - 1) / time.Minute)
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	if minutes < 60 {
+		return plural(minutes, "minute")
+	}
+	out := plural(minutes/60, "hour")
+	if minutes%60 != 0 {
+		out += " " + plural(minutes%60, "minute")
+	}
 	return out
 }
 
