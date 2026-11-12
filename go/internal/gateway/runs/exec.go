@@ -272,7 +272,7 @@ func (m *Manager) finish(r *run, rw *runWriter) {
 		if json.Unmarshal(rw.body.Bytes(), &env) == nil && env.Error != nil {
 			r.Error = env.Error
 		} else {
-			r.Error = map[string]any{"type": "server_error", "code": "upstream_error", "message": "The run ended without a result."}
+			r.Error = noResultError()
 		}
 	}
 	if rw.body.Len() > 0 && r.result == nil { // The error was taken from it, if anything was.

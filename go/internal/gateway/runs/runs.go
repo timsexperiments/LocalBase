@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -239,25 +240,59 @@ func (m *Manager) memoryFullError() map[string]any {
 // maxListErrorText bounds each text in a run's error, as other error messages are bounded.
 const maxListErrorText = 1024
 
-// listErrorFields are the fields a run's error keeps in the API: what LocalBase's own errors have,
-// so the run list and a run's own read give the same error. Anything else a backend sent stays out.
-var listErrorFields = []string{"type", "code", "message", "param", "heldBytes", "limitBytes", "finishedBytes", "oldestExpiresAt"}
+// The fields a run's error keeps in the API, each only as its own kind: what LocalBase's own errors
+// have, so the run list and a run's own read give the same error, and it always fits the schema.
+// Anything else a backend sent, or a field of the wrong kind, stays out.
+var (
+	listErrorTexts   = []string{"type", "message", "param", "oldestExpiresAt"}
+	listErrorNumbers = []string{"heldBytes", "limitBytes", "finishedBytes"}
+)
+
+// noResultError is what a failed run says when nothing better says why.
+func noResultError() map[string]any {
+	return map[string]any{"type": "server_error", "code": "upstream_error", "message": "The run ended without a result."}
+}
+
+// wholeNumber is v when it is a whole number, as JSON decodes one (float64) or as Go holds one.
+func wholeNumber(v any) (any, bool) {
+	switch n := v.(type) {
+	case int, int64:
+		return n, true
+	case float64:
+		if !math.IsInf(n, 0) && !math.IsNaN(n) && n == math.Trunc(n) {
+			return n, true
+		}
+	}
+	return nil, false
+}
 
 // listError is a run's error as the API gives it, in the run list and in a run's own read alike.
 // An error can come from a backend as it sent it, and the list carries every run a person has, so
-// each text is bounded and redacted, and only plain values are kept.
+// each text is bounded and redacted, and each field is kept only as its own kind. code is a text or
+// a whole number: llama-server's streamed errors carry a number, which the relay keeps. An error
+// with nothing left to keep says the run ended without a result, so a failed run always says why.
 func listError(e map[string]any) map[string]any {
 	if e == nil {
 		return nil
 	}
 	out := map[string]any{}
-	for _, k := range listErrorFields {
-		switch v := e[k].(type) {
-		case string:
-			out[k] = obs.BoundedText(v, maxListErrorText)
-		case int, int64, float64, bool:
-			out[k] = v
+	for _, k := range listErrorTexts {
+		if s, ok := e[k].(string); ok {
+			out[k] = obs.BoundedText(s, maxListErrorText)
 		}
+	}
+	for _, k := range listErrorNumbers {
+		if n, ok := wholeNumber(e[k]); ok {
+			out[k] = n
+		}
+	}
+	if s, ok := e["code"].(string); ok {
+		out["code"] = obs.BoundedText(s, maxListErrorText)
+	} else if n, ok := wholeNumber(e["code"]); ok {
+		out["code"] = n
+	}
+	if len(out) == 0 {
+		return noResultError()
 	}
 	return out
 }

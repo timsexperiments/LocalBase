@@ -59,7 +59,8 @@ func stubOptions(dir string) Options {
 //   - a chat (POST /v1/chat/completions, streamed, as runs always ask): the last message's
 //     content says what comes back. "fake:slow <n>" streams n words 50 ms apart, "fake:burst <n>"
 //     streams n words at once, "fake:reply <text>" streams the text, "fake:context" is refused
-//     with 400 and the backend's context error; anything else streams "ok".
+//     with 400 and the backend's context error, "fake:streamerr <payload>" starts the stream and
+//     then sends the payload as an event, as llama-server sends its errors; anything else streams "ok".
 //     A model other than the catalog's chat model is refused with 404 before the queue.
 //   - an image (POST /v1/images/generations): a JSON result, as the image route answers.
 //
@@ -149,6 +150,14 @@ func stubInner() http.Handler {
 			}
 		}
 		chunk(map[string]any{"role": "assistant"}, nil)
+		// "fake:streamerr <payload>" sends an error event in the stream, as llama-server does once
+		// it has started, and the relay forwards it as it came.
+		if payload, ok := strings.CutPrefix(mode, "fake:streamerr "); ok {
+			fmt.Fprintf(w, "data: %s\n\n", payload)
+			flush()
+			hooks.Finish("")
+			return
+		}
 		for _, word := range words {
 			if pause > 0 {
 				select {

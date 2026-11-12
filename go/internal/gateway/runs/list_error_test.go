@@ -114,3 +114,99 @@ func TestARunsOwnReadBoundsItsError(t *testing.T) {
 		}
 	}
 }
+
+// Each field is kept only as its own kind, so a backend's error can't break the schema: texts as
+// texts, the byte figures as whole numbers, and code as a text or a whole number.
+func TestTheRunErrorKeepsEachFieldAsItsOwnKind(t *testing.T) {
+	got := listError(map[string]any{"type": 5, "message": 5, "param": true, "oldestExpiresAt": 1.0,
+		"heldBytes": 1.5, "limitBytes": "7", "finishedBytes": true, "code": 1.5})
+	if len(got) != 3 || got["type"] != "server_error" || got["code"] != "upstream_error" {
+		t.Errorf("only wrong kinds should give the no-result error: %v", got)
+	}
+	got = listError(map[string]any{"type": "t", "message": "m", "param": "p", "oldestExpiresAt": "2026-11-12T00:00:00Z",
+		"heldBytes": float64(1 << 20), "limitBytes": int64(2 << 20), "finishedBytes": 3, "code": float64(400)})
+	want := map[string]any{"type": "t", "message": "m", "param": "p", "oldestExpiresAt": "2026-11-12T00:00:00Z",
+		"heldBytes": float64(1 << 20), "limitBytes": int64(2 << 20), "finishedBytes": 3, "code": float64(400)}
+	if len(got) != len(want) {
+		t.Errorf("right kinds: %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s: %v (%T), want %v", k, got[k], got[k], v)
+		}
+	}
+	for _, c := range []struct {
+		field string
+		value any
+	}{
+		{"type", 5}, {"message", 5.0}, {"param", false}, {"oldestExpiresAt", int64(1)},
+		{"heldBytes", 1.5}, {"limitBytes", "7"}, {"finishedBytes", true},
+		{"code", 1.5}, {"code", true}, {"code", map[string]any{}},
+	} {
+		got := listError(map[string]any{"type": "t", "message": "m", c.field: c.value})
+		if c.field == "type" || c.field == "message" {
+			got = listError(map[string]any{"param": "p", c.field: c.value})
+		}
+		if v, ok := got[c.field]; ok {
+			t.Errorf("%s as %T was kept: %v", c.field, c.value, v)
+		}
+	}
+	if got := listError(map[string]any{"code": "x"}); got["code"] != "x" || len(got) != 1 {
+		t.Errorf("a text code: %v", got)
+	}
+}
+
+// An error with nothing to keep, such as a backend's {"detail": "x"}, says the run ended without a
+// result, so a failed run always says why.
+func TestARunErrorWithNothingToKeepSaysTheRunEndedWithoutAResult(t *testing.T) {
+	for _, e := range []map[string]any{{}, {"detail": "x"}, {"error": map[string]any{"message": "nested"}}} {
+		got := listError(e)
+		if got["type"] != "server_error" || got["code"] != "upstream_error" || got["message"] != "The run ended without a result." || len(got) != 3 {
+			t.Errorf("%v gave %v", e, got)
+		}
+	}
+}
+
+// A backend's error event in the stream, as llama-server sends it and the relay forwards it: code
+// is a number, and the backend's own fields come too. The list and the read give the same error,
+// with code 400 kept and the rest of the backend's fields, and a field of the wrong kind, left out.
+func TestAStreamedBackendErrorComesOutInItsOwnKinds(t *testing.T) {
+	ts, _ := newRunHarness(t)
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	id := c.Start(streamErr(`{"error":{"code":400,"type":"exceed_context_size_error","message":"the request exceeds the available context size","n_prompt_tokens":5000,"n_ctx":4096,"param":7}}`))
+	own := c.WaitStatus(id, "failed")
+	e, _ := own["error"].(map[string]any)
+	want := map[string]any{"type": "exceed_context_size_error", "code": float64(400), "message": "the request exceeds the available context size"}
+	if len(e) != len(want) {
+		t.Errorf("the run's read: %v", e)
+	}
+	listed, _ := listEntry(t, c, id)["error"].(map[string]any)
+	for k, v := range want {
+		if e[k] != v || listed[k] != v {
+			t.Errorf("%s: the read has %v, the list %v, want %v", k, e[k], listed[k], v)
+		}
+	}
+	if len(listed) != len(want) {
+		t.Errorf("the list: %v", listed)
+	}
+}
+
+// A streamed error with nothing LocalBase keeps still says why the run failed, in the list and the read.
+func TestAStreamedErrorWithNothingToKeepSaysWhy(t *testing.T) {
+	ts, _ := newRunHarness(t)
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	id := c.Start(streamErr(`{"error":{"detail":"x"}}`))
+	own := c.WaitStatus(id, "failed")
+	for where, got := range map[string]any{"read": own["error"], "list": listEntry(t, c, id)["error"]} {
+		e, _ := got.(map[string]any)
+		if e["code"] != "upstream_error" || e["message"] != "The run ended without a result." {
+			t.Errorf("the %s: %v", where, got)
+		}
+	}
+}
+
+// streamErr is the chat content that makes the fake backend send payload as a stream event. The
+// test client puts content into its JSON as it is, so the payload's quotes are escaped here.
+func streamErr(payload string) string {
+	return "fake:streamerr " + strings.ReplaceAll(payload, `"`, `\"`)
+}
