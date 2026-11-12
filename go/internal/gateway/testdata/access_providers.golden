@@ -1,0 +1,1269 @@
+== disable with nothing configured
+request: {"action":"disable"}
+status: 200
+answer: {
+    "disabled": false,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: (none)
+
+== remove from nothing
+request: {"action":"remove-registration","registrationId":"a"}
+status: 404
+answer: {
+    "error": {
+      "code": "registration_not_found",
+      "message": "The identity provider registration was not found."
+    }
+  }
+audit: audit.access-refused remove-registration
+ui-access.json: (none)
+email-delivery.json: (none)
+
+== Cloudflare
+request: {"action":"configure-cloudflare","provider":{"kind":"cloudflare-access","teamDomain":"team.cloudflareaccess.com","audience":"aud"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "audience": "aud",
+        "kind": "cloudflare-access",
+        "teamDomain": "team.cloudflareaccess.com"
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed configure-cloudflare
+ui-access.json: {
+  "provider": {
+    "kind": "cloudflare-access",
+    "teamDomain": "team.cloudflareaccess.com",
+    "audience": "aud"
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== Cloudflare again, permissions reordered
+request: {"action":"configure-cloudflare","provider":{"kind":"cloudflare-access","teamDomain":"team.cloudflareaccess.com","audience":"aud"},"origin":"https://lb.example.test","permissions":["access:read","inference:chat","access:manage"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "audience": "aud",
+        "kind": "cloudflare-access",
+        "teamDomain": "team.cloudflareaccess.com"
+      }
+    },
+    "restartRequired": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "cloudflare-access",
+    "teamDomain": "team.cloudflareaccess.com",
+    "audience": "aud"
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== remove from Cloudflare
+request: {"action":"remove-registration","registrationId":"a"}
+status: 404
+answer: {
+    "error": {
+      "code": "registration_not_found",
+      "message": "The identity provider registration was not found."
+    }
+  }
+audit: audit.access-refused remove-registration
+ui-access.json: {
+  "provider": {
+    "kind": "cloudflare-access",
+    "teamDomain": "team.cloudflareaccess.com",
+    "audience": "aud"
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== OpenID Connect replaces Cloudflare
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"b","name":"B","issuer":"https://b.example.test","clientId":"client","clientAuthentication":{"kind":"client-secret-basic","clientSecret":"PLANTED-oidc-secret"}},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== a second OpenID Connect
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"A","issuer":"https://a.example.test","clientId":"client","clientAuthentication":{"kind":"client-secret-basic","clientSecret":"PLANTED-oidc-secret"}},"origin":"https://lb.example.test","permissions":["models:read","inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "models:read",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "A"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "A",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "models:read",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== the same again, reordered
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"A","issuer":"https://a.example.test","clientId":"client","clientAuthentication":{"kind":"client-secret-basic","clientSecret":"PLANTED-oidc-secret"}},"origin":"https://lb.example.test","permissions":["access:read","access:manage","inference:chat","models:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "models:read",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "A"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "A",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "models:read",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== renamed
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"Renamed","issuer":"https://a.example.test","clientId":"client","clientAuthentication":{"kind":"client-secret-basic","clientSecret":"PLANTED-oidc-secret"}},"origin":"https://lb.example.test","permissions":["models:read","inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "models:read",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "Renamed"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "models:read",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== GitHub
+request: {"action":"upsert-github","registration":{"kind":"github-oauth","id":"gh","name":"GitHub","clientId":"c","clientSecret":"PLANTED-github-secret"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "Renamed"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          },
+          {
+            "clientAuthentication": "client-secret",
+            "clientId": "c",
+            "id": "gh",
+            "kind": "github-oauth",
+            "name": "GitHub"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-github
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== magic link without email delivery
+request: {"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 409
+answer: {
+    "error": {
+      "code": "email_delivery_not_configured",
+      "message": "Configure email delivery before enabling magic-link authentication."
+    }
+  }
+audit: audit.access-refused upsert-magic-link
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+
+== email delivery
+request: {"action":"configure-email-delivery","config":{"host":"smtp.example.test","port":587,"security":"starttls","authentication":{"kind":"none"},"from":"sender@example.test"}}
+status: 200
+answer: {
+    "emailDelivery": {
+      "authentication": "none",
+      "from": "sender@example.test",
+      "host": "smtp.example.test",
+      "port": 587,
+      "security": "starttls"
+    },
+    "restartRequired": false
+  }
+audit: audit.access-changed configure-email-delivery
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== magic link
+request: {"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "Renamed"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          },
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          },
+          {
+            "clientAuthentication": "client-secret",
+            "clientId": "c",
+            "id": "gh",
+            "kind": "github-oauth",
+            "name": "GitHub"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-magic-link
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== the same magic link again
+request: {"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "Renamed"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          },
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          },
+          {
+            "clientAuthentication": "client-secret",
+            "clientId": "c",
+            "id": "gh",
+            "kind": "github-oauth",
+            "name": "GitHub"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== a second magic link
+request: {"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email2","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 400
+answer: {
+    "error": {
+      "code": "validation_failed",
+      "message": "The management request is invalid."
+    }
+  }
+audit: audit.access-refused upsert-magic-link
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== remove an unknown one
+request: {"action":"remove-registration","registrationId":"nobody"}
+status: 404
+answer: {
+    "error": {
+      "code": "registration_not_found",
+      "message": "The identity provider registration was not found."
+    }
+  }
+audit: audit.access-refused remove-registration
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      },
+      {
+        "kind": "github-oauth",
+        "id": "gh",
+        "name": "GitHub",
+        "clientId": "c",
+        "clientSecret": "PLANTED-github-secret"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== remove GitHub
+request: {"action":"remove-registration","registrationId":"gh"}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "Renamed"
+          },
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          },
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          }
+        ]
+      }
+    },
+    "removedRegistrationId": "gh",
+    "restartRequired": true
+  }
+audit: audit.access-changed remove-registration
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "Renamed",
+        "issuer": "https://a.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== remove a
+request: {"action":"remove-registration","registrationId":"a"}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "client-secret-basic",
+            "clientId": "client",
+            "id": "b",
+            "issuer": "https://b.example.test",
+            "kind": "oidc",
+            "name": "B"
+          },
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          }
+        ]
+      }
+    },
+    "removedRegistrationId": "a",
+    "restartRequired": true
+  }
+audit: audit.access-changed remove-registration
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "b",
+        "name": "B",
+        "issuer": "https://b.example.test",
+        "clientId": "client",
+        "clientAuthentication": {
+          "kind": "client-secret-basic",
+          "clientSecret": "PLANTED-oidc-secret"
+        }
+      },
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== remove b
+request: {"action":"remove-registration","registrationId":"b"}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "id": "email",
+            "kind": "magic-link",
+            "name": "Email"
+          }
+        ]
+      }
+    },
+    "removedRegistrationId": "b",
+    "restartRequired": true
+  }
+audit: audit.access-changed remove-registration
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "magic-link",
+        "id": "email",
+        "name": "Email"
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== remove the last, the magic link
+request: {"action":"remove-registration","registrationId":"email"}
+status: 200
+answer: {
+    "config": null,
+    "removedRegistrationId": "email",
+    "restartRequired": true
+  }
+audit: audit.access-changed remove-registration
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== disable when already off
+request: {"action":"disable"}
+status: 200
+answer: {
+    "disabled": false,
+    "restartRequired": false
+  }
+audit: 
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== Cloudflare once more
+request: {"action":"configure-cloudflare","provider":{"kind":"cloudflare-access","teamDomain":"team.cloudflareaccess.com","audience":"aud"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "audience": "aud",
+        "kind": "cloudflare-access",
+        "teamDomain": "team.cloudflareaccess.com"
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed configure-cloudflare
+ui-access.json: {
+  "provider": {
+    "kind": "cloudflare-access",
+    "teamDomain": "team.cloudflareaccess.com",
+    "audience": "aud"
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
+== disable
+request: {"action":"disable"}
+status: 200
+answer: {
+    "disabled": true,
+    "restartRequired": true
+  }
+audit: audit.access-changed disable
+ui-access.json: (none)
+email-delivery.json: {
+  "host": "smtp.example.test",
+  "port": 587,
+  "security": "starttls",
+  "authentication": {
+    "kind": "none"
+  },
+  "from": "sender@example.test"
+}
+
