@@ -1,0 +1,699 @@
+== invite with no provider
+request: {"action":"invite-user","email":"friend@example.test","roles":["chat"]}
+status: 409
+answer: {
+    "error": {
+      "code": "provider_not_configured",
+      "message": "Configure a browser identity provider first."
+    }
+  }
+audit: audit.access-refused invite-user
+ui-access.json: (none)
+email-delivery.json: (none)
+users: []
+
+== a provider
+request: {"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"P","issuer":"https://a.example.test","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}
+status: 200
+answer: {
+    "config": {
+      "origin": "https://lb.example.test",
+      "permissions": [
+        "inference:chat",
+        "access:read",
+        "access:manage"
+      ],
+      "provider": {
+        "kind": "direct",
+        "registrations": [
+          {
+            "clientAuthentication": "none",
+            "clientId": "x",
+            "id": "a",
+            "issuer": "https://a.example.test",
+            "kind": "oidc",
+            "name": "P"
+          }
+        ]
+      }
+    },
+    "restartRequired": true
+  }
+audit: audit.access-changed upsert-oidc
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: []
+
+== invite with no policy
+request: {"action":"invite-user","email":"friend@example.test","roles":["chat"]}
+status: 409
+answer: {
+    "error": {
+      "code": "policy_not_configured",
+      "message": "Configure a browser access policy first."
+    }
+  }
+audit: audit.access-refused invite-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: []
+
+== a policy
+request: {"action":"apply-policy","expectedPolicyRevision":null,"policy":{"roles":[{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test"}],"defaultRole":null}}
+status: 200
+answer: {
+    "policy": {
+      "roles": [
+        {
+          "name": "chat",
+          "description": "",
+          "permissions": [
+            "inference:chat"
+          ]
+        },
+        {
+          "name": "admin",
+          "description": "",
+          "permissions": [
+            "access:read",
+            "access:manage"
+          ]
+        }
+      ],
+      "bindings": [
+        {
+          "kind": "email",
+          "role": "admin",
+          "email": "owner@example.test",
+          "issuer": "https://a.example.test"
+        }
+      ],
+      "defaultRole": null
+    },
+    "policyRevision": "cc6281c60831f64148bc7f713d6ff3e4d380d45edd2796f4eea9d69fc152f154",
+    "restartRequired": false
+  }
+audit: audit.access-changed apply-policy
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: []
+
+== invite
+request: {"action":"invite-user","email":"Friend@Example.test","roles":["chat"]}
+status: 201
+answer: {
+    "emailDelivered": false,
+    "signInUrl": "https://lb.example.test/app/login",
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "pending",
+      "roles": [
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: audit.access-changed invite-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== invite them again
+request: {"action":"invite-user","email":"friend@example.test","roles":["chat"]}
+status: 409
+answer: {
+    "error": {
+      "code": "managed_user_exists",
+      "message": "The managed user already exists."
+    }
+  }
+audit: audit.access-refused invite-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== invite to a role that isn't there
+request: {"action":"invite-user","email":"other@example.test","roles":["missing"]}
+status: 400
+answer: {
+    "error": {
+      "code": "role_not_found",
+      "message": "One or more browser access roles were not found."
+    }
+  }
+audit: audit.access-refused invite-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== invite and send, with no email delivery
+request: {"action":"invite-user","email":"other@example.test","roles":["chat"],"sendEmail":true}
+status: 409
+answer: {
+    "error": {
+      "code": "email_delivery_not_configured",
+      "message": "Configure email delivery before enabling magic-link authentication."
+    }
+  }
+audit: audit.access-refused invite-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== their roles changed
+request: {"action":"replace-user-roles","email":"friend@example.test","roles":["chat","admin"]}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "pending",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: audit.access-changed replace-user-roles
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== the same roles, reordered
+request: {"action":"replace-user-roles","email":"friend@example.test","roles":["admin","chat"]}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "pending",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"pending","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== enabled, as they are not yet
+request: {"action":"enable-user","email":"friend@example.test"}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "active",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: audit.access-changed enable-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"active","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== enabled again
+request: {"action":"enable-user","email":"friend@example.test"}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "active",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"active","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== disabled
+request: {"action":"disable-user","email":"friend@example.test"}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "disabled",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: audit.access-changed disable-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"disabled","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== disabled again
+request: {"action":"disable-user","email":"friend@example.test"}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "disabled",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: 
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"disabled","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== someone who isn't there
+request: {"action":"enable-user","email":"nobody@example.test"}
+status: 404
+answer: {
+    "error": {
+      "code": "managed_user_not_found",
+      "message": "The managed user was not found."
+    }
+  }
+audit: audit.access-refused enable-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: [{"id":"<uuid>","email":"friend@example.test","status":"disabled","roles":["admin","chat"],"issuer":"https://a.example.test","createdAt":"<time>","updatedAt":"<time>"}]
+
+== removed
+request: {"action":"remove-user","email":"friend@example.test"}
+status: 200
+answer: {
+    "user": {
+      "id": "<uuid>",
+      "email": "friend@example.test",
+      "status": "disabled",
+      "roles": [
+        "admin",
+        "chat"
+      ],
+      "issuer": "https://a.example.test",
+      "createdAt": "<time>",
+      "updatedAt": "<time>"
+    }
+  }
+audit: audit.access-changed remove-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: []
+
+== removed again
+request: {"action":"remove-user","email":"friend@example.test"}
+status: 404
+answer: {
+    "error": {
+      "code": "managed_user_not_found",
+      "message": "The managed user was not found."
+    }
+  }
+audit: audit.access-refused remove-user
+ui-access.json: {
+  "provider": {
+    "kind": "direct",
+    "registrations": [
+      {
+        "kind": "oidc",
+        "id": "a",
+        "name": "P",
+        "issuer": "https://a.example.test",
+        "clientId": "x",
+        "clientAuthentication": {
+          "kind": "none"
+        }
+      }
+    ]
+  },
+  "origin": "https://lb.example.test",
+  "permissions": [
+    "inference:chat",
+    "access:read",
+    "access:manage"
+  ]
+}
+email-delivery.json: (none)
+users: []
+
