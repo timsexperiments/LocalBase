@@ -57,7 +57,7 @@ func TestReplaceUserRolesReportsAFailedDelete(t *testing.T) {
 	ctx := context.Background()
 	st := invited(t)
 	failWrites(t, st, "auth_user_roles", "DELETE")
-	u, err := ReplaceUserRoles(ctx, st, "friend@example.com", []string{"view"})
+	u, _, err := ReplaceUserRoles(ctx, st, "friend@example.com", []string{"view"})
 	if err == nil {
 		t.Fatalf("no error: %+v", u)
 	}

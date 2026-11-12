@@ -286,7 +286,7 @@ func TestRefusedAddressStaysOutThroughAnyProvider(t *testing.T) {
 	if _, err := RemoveUser(ctx, st, "gone@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetUserStatus(ctx, st, "off@example.com", "disabled"); err != nil {
+	if _, _, err := SetUserStatus(ctx, st, "off@example.com", "disabled"); err != nil {
 		t.Fatal(err)
 	}
 	for _, email := range []string{"gone@example.com", "off@example.com"} {
@@ -636,7 +636,7 @@ func TestGuardAgreesWithSignIn(t *testing.T) {
 			if _, err := RemoveUser(ctx, st, "removed@example.com"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := SetUserStatus(ctx, st, "off@example.com", "disabled"); err != nil {
+			if _, _, err := SetUserStatus(ctx, st, "off@example.com", "disabled"); err != nil {
 				t.Fatal(err)
 			}
 			g, err := LoadGuard(ctx, st, direct(t, issuerA, issuerB))

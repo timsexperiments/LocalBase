@@ -69,34 +69,37 @@ func planError(err error) error {
 
 // saveRegistration upserts a registration after validating the result. A magic-link one is
 // checked first: email delivery configured (a file that can't be read counts as none) and no
-// other magic-link registration. It saves even when nothing changed, and its callers audit it.
-func saveRegistration(e *env, reg auth.Registration, origin string, perms []string) (*auth.BrowserAccess, error) {
-	var saved *auth.BrowserAccess
-	err := withOperation(e, "configure browser access", func() error {
+// other magic-link registration. It saves even when nothing changed; changed says whether it
+// did, and its callers audit only a change.
+func saveRegistration(e *env, reg auth.Registration, origin string, perms []string) (saved *auth.BrowserAccess, changed bool, err error) {
+	err = withOperation(e, "configure browser access", func() error {
 		current, err := auth.LoadAccess(e.Root.Dir)
 		if err != nil {
 			return err
 		}
 		if reg.Kind == "magic-link" {
-			email, err := auth.LoadEmail(e.Root.Dir)
-			if err != nil {
-				email = nil
+			// A file that can't be read is said as such, with exit 1: it's the machine's state,
+			// not bad input. None at all is CheckMagicLink's input error (exit 2).
+			email, err := auth.RequireEmail(e.Root.Dir)
+			var unreadable *auth.EmailLoadError
+			if errors.As(err, &unreadable) {
+				return unreadable
 			}
 			if err := auth.CheckMagicLink(current, email, reg.ID); err != nil {
 				return planError(err)
 			}
 		}
-		next, _, err := auth.PlanRegistration(current, reg, origin, defaultPermissions(current, perms))
+		next, c, err := auth.PlanRegistration(current, reg, origin, defaultPermissions(current, perms))
 		if err != nil {
 			return planError(err)
 		}
 		if err := auth.SaveAccess(e.Root.Dir, next); err != nil {
 			return err
 		}
-		saved = next
+		saved, changed = next, c
 		return nil
 	})
-	return saved, err
+	return saved, changed, err
 }
 
 func configured(cfg *auth.BrowserAccess) map[string]any {
@@ -222,13 +225,14 @@ func accessProviderCommands() []*cli.Command {
 				return nil, err
 			}
 			var cfg *auth.BrowserAccess
+			var changed bool
 			err = withOperation(e, "configure browser access", func() error {
 				current, err := auth.LoadAccess(e.Root.Dir)
 				if err != nil {
 					return err
 				}
-				// It saves even when nothing changed, and is audited.
-				cfg, _, err = auth.PlanCloudflare(current, team, audience, o, defaultPermissions(current, perms))
+				// It saves even when nothing changed, and audits only a change.
+				cfg, changed, err = auth.PlanCloudflare(current, team, audience, o, defaultPermissions(current, perms))
 				if err != nil {
 					return planError(err)
 				}
@@ -237,7 +241,9 @@ func accessProviderCommands() []*cli.Command {
 			if err != nil {
 				return nil, err
 			}
-			e.audit.Change("access", "configure-cloudflare", "provider", "browser-access")
+			if changed {
+				e.audit.Change("access", "configure-cloudflare", "provider", "browser-access")
+			}
 			c.Info("Saved Cloudflare Access configuration. Restart LocalBase to apply it.")
 			return configured(cfg), nil
 		})},
@@ -287,11 +293,13 @@ func accessProviderCommands() []*cli.Command {
 					clientAuth = &auth.ClientAuth{Kind: "client-secret-basic", ClientSecret: secret}
 				}
 				reg := auth.Registration{Kind: "oidc", ID: id, Name: name, Issuer: issuer, ClientID: clientID, ClientAuthentication: clientAuth}
-				cfg, err := saveRegistration(e, reg, o, perms)
+				cfg, changed, err := saveRegistration(e, reg, o, perms)
 				if err != nil {
 					return nil, err
 				}
-				e.audit.Change("access", "upsert-oidc", "registration", id)
+				if changed {
+					e.audit.Change("access", "upsert-oidc", "registration", id)
+				}
 				c.Info("Saved OpenID Connect registration %s. Restart LocalBase to apply it.", id)
 				return configured(cfg), nil
 			})},
@@ -320,11 +328,13 @@ func accessProviderCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				cfg, err := saveRegistration(e, auth.Registration{Kind: "magic-link", ID: id, Name: name}, o, perms)
+				cfg, changed, err := saveRegistration(e, auth.Registration{Kind: "magic-link", ID: id, Name: name}, o, perms)
 				if err != nil {
 					return nil, err
 				}
-				e.audit.Change("access", "upsert-magic-link", "registration", id)
+				if changed {
+					e.audit.Change("access", "upsert-magic-link", "registration", id)
+				}
 				c.Info("Saved magic-link registration %s. Restart LocalBase to apply it.", id)
 				return configured(cfg), nil
 			})},

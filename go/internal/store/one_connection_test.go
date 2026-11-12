@@ -58,11 +58,11 @@ func TestEveryTransactionNeedsOnlyOneConnection(t *testing.T) {
 			return err
 		}},
 		{"auth.ReplaceUserRoles", func(ctx context.Context) error {
-			_, err := auth.ReplaceUserRoles(ctx, st, person, []string{"admin"})
+			_, _, err := auth.ReplaceUserRoles(ctx, st, person, []string{"admin"})
 			return err
 		}},
 		{"auth.SetUserStatus", func(ctx context.Context) error {
-			_, err := auth.SetUserStatus(ctx, st, person, "active")
+			_, _, err := auth.SetUserStatus(ctx, st, person, "active")
 			return err
 		}},
 		{"auth.IssueMagicLink", func(ctx context.Context) error {

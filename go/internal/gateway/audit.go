@@ -37,11 +37,12 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			io.Closer
 		}{io.TeeReader(r.Body, &limitedWriter{&seen, httpx.MaxManagementBody + 1}), r.Body}
 		rec := &auditRecorder{Recorder: httpx.Recorder{ResponseWriter: w}}
+		r, unchanged := httpx.WithChangeNote(r)
 		next(rec, r)
 		// A request the client abandoned or never finished was not refused.
 		refused := rec.Status >= 400 && rec.Status < 500 && rec.Status != http.StatusRequestTimeout && rec.Status != 499
-		if rec.Status >= 300 && !refused {
-			return
+		if !refused && (rec.Status >= 300 || *unchanged) {
+			return // a change that changed nothing writes no line; a refusal always does
 		}
 		var in struct {
 			Action         string `json:"action"`

@@ -58,6 +58,7 @@ func accessPolicyCommands() []*cli.Command {
 				}
 				warn := noManagerWarning(c, e)
 				open := ""
+				changed := true
 				err = withOperation(e, "configure browser access", func() error {
 					cfg, err := auth.LoadAccess(e.Root.Dir)
 					if err != nil {
@@ -76,12 +77,20 @@ func accessPolicyCommands() []*cli.Command {
 						return issuerInput(err)
 					}
 					open = auth.OpenSignIn(cfg, &policy)
-					return auth.ApplyPolicy(ctx, e.Store, &policy)
+					if err := auth.ApplyPolicy(ctx, e.Store, &policy); err != nil {
+						return err
+					}
+					// The revision is the policy's content, roles and bindings in any order.
+					before := auth.Revision(existing)
+					changed = before == nil || *before != *auth.Revision(&policy)
+					return nil
 				})
 				if err != nil {
 					return nil, accessError(err)
 				}
-				e.audit.PolicyApplied(&policy)
+				if changed {
+					e.audit.PolicyApplied(&policy)
+				}
 				c.Info("Saved browser access policy. Changes apply immediately.")
 				if open != "" {
 					c.Info("%s", open)

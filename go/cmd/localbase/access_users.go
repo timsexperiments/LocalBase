@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
@@ -35,19 +36,22 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 			return nil, err
 		}
 		var user *auth.User
+		changed := true // removing always changes something: a removed person isn't found
 		warn := noManagerWarning(c, e)
 		err = withOperation(e, operation, func() (err error) {
 			if status == "" {
 				user, err = auth.RemoveUser(context.Background(), e.Store, email)
 			} else {
-				user, err = auth.SetUserStatus(context.Background(), e.Store, email, status)
+				user, changed, err = auth.SetUserStatus(context.Background(), e.Store, email, status)
 			}
 			return err
 		})
 		if err != nil {
 			return nil, accessError(err)
 		}
-		e.audit.Change("access", userAction(status), "user", user.ID)
+		if changed {
+			e.audit.Change("access", userAction(status), "user", user.ID)
+		}
 		c.Info("%s %s.", verb, user.Email)
 		warn()
 		return map[string]any{"user": user}, nil
@@ -93,10 +97,12 @@ func accessUserCommands() []*cli.Command {
 						return cli.Inputf("Configure a browser identity provider first.")
 					}
 					if c.Bool("send-email") {
-						if delivery, err = auth.LoadEmail(e.Root.Dir); err != nil {
-							return err
-						} else if delivery == nil {
+						// None is bad input (exit 2); a file that can't be read is the machine's
+						// state, said in LoadEmail's words (exit 1).
+						if delivery, err = auth.RequireEmail(e.Root.Dir); errors.Is(err, auth.ErrEmailNotConfigured) {
 							return cli.Inputf("Configure email delivery before sending an invitation email.")
+						} else if err != nil {
+							return err
 						}
 					}
 					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
@@ -135,15 +141,18 @@ func accessUserCommands() []*cli.Command {
 					return nil, err
 				}
 				var user *auth.User
+				var changed bool
 				warn := noManagerWarning(c, e)
 				err = withOperation(e, "replace browser user roles", func() (err error) {
-					user, err = auth.ReplaceUserRoles(ctx, e.Store, email, roles)
+					user, changed, err = auth.ReplaceUserRoles(ctx, e.Store, email, roles)
 					return err
 				})
 				if err != nil {
 					return nil, accessError(err)
 				}
-				e.audit.Change("access", "replace-user-roles", "user", user.ID)
+				if changed {
+					e.audit.Change("access", "replace-user-roles", "user", user.ID)
+				}
 				c.Info("Replaced roles for %s.", user.Email)
 				warn()
 				return map[string]any{"user": user}, nil

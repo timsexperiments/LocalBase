@@ -73,10 +73,20 @@ func accessEmailCommands() []*cli.Command {
 				if err := cfg.Validate(); err != nil {
 					return nil, cli.Inputf("%s", err.Error())
 				}
-				if err := withOperation(e, "configure email delivery", func() error { return auth.SaveEmail(e.Root.Dir, cfg) }); err != nil {
+				// The current configuration is read only to say whether this changes it: one that
+				// can't be read counts as changed, and is replaced.
+				changed := true
+				if err := withOperation(e, "configure email delivery", func() error {
+					if previous, err := auth.LoadEmail(e.Root.Dir); err == nil {
+						changed = auth.EmailChanged(previous, cfg)
+					}
+					return auth.SaveEmail(e.Root.Dir, cfg)
+				}); err != nil {
 					return nil, err
 				}
-				e.audit.Change("access", "configure-email-delivery", "email-delivery", "smtp")
+				if changed {
+					e.audit.Change("access", "configure-email-delivery", "email-delivery", "smtp")
+				}
 				c.Info("Saved email delivery configuration.")
 				return map[string]any{"config": cfg.Summary(), "restartRequired": false}, nil
 			})},

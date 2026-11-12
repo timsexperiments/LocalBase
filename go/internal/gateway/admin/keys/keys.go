@@ -480,6 +480,20 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 	}
+	// requireEmail is email delivery for an action that needs it, or the answer that it can't be
+	// had: none configured, or a file that can't be read (with LoadEmail's words). It reports
+	// whether it wrote a response.
+	requireEmail := func() (*auth.EmailConfig, bool) {
+		email, err := auth.RequireEmail(root)
+		var unreadable *auth.EmailLoadError
+		switch {
+		case errors.As(err, &unreadable):
+			httpx.ManagementErrorMessage(w, 409, "email_delivery_unreadable", unreadable.Message)
+		case err != nil:
+			httpx.ManagementError(w, 409, "email_delivery_not_configured")
+		}
+		return email, err == nil
+	}
 	configured := func(cfg *auth.BrowserAccess) {
 		httpx.NoStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
 	}
@@ -511,9 +525,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.NoStore(w, 200, map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
 	case "test-email-delivery":
-		email, _ := auth.LoadEmail(root)
-		if email == nil {
-			httpx.ManagementError(w, 409, "email_delivery_not_configured")
+		email, ok := requireEmail()
+		if !ok {
 			return
 		}
 		if err := auth.SendEmail(email, in.To, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
@@ -528,8 +541,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		var email *auth.EmailConfig
 		if in.SendEmail {
-			if email, _ = auth.LoadEmail(root); email == nil {
-				httpx.ManagementError(w, 409, "email_delivery_not_configured")
+			var ok bool
+			if email, ok = requireEmail(); !ok {
 				return
 			}
 		}
@@ -549,13 +562,16 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		httpx.NoStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
 		cfg := &auth.BrowserAccess{Provider: *in.Provider, Origin: in.Origin, Permissions: in.Permissions}
+		changed := auth.AccessChanged(current, cfg)
 		if !signInLockout(cfg) && save(cfg) {
+			if !changed {
+				httpx.Unchanged(r)
+			}
 			configured(cfg)
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
 		if in.Action == "upsert-magic-link" {
-			if email, _ := auth.LoadEmail(root); email == nil {
-				httpx.ManagementError(w, 409, "email_delivery_not_configured")
+			if _, ok := requireEmail(); !ok {
 				return
 			}
 			if current != nil && current.Provider.Kind == "direct" {
@@ -568,7 +584,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		cfg := auth.UpsertRegistration(current, *in.Registration, in.Origin, in.Permissions)
+		changed := auth.AccessChanged(current, cfg)
 		if !signInLockout(cfg) && save(cfg) {
+			if !changed {
+				httpx.Unchanged(r)
+			}
 			configured(cfg)
 		}
 	case "remove-registration":
@@ -600,11 +620,19 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
+		if !disabled {
+			httpx.Unchanged(r)
+		}
 		httpx.NoStore(w, 200, map[string]any{"disabled": disabled, "restartRequired": disabled})
 	case "configure-email-delivery":
+		// A configuration that can't be read counts as changed: the save replaces it.
+		previous, perr := auth.LoadEmail(root)
 		if err := auth.SaveEmail(root, in.Config); err != nil {
 			httpx.ManagementError(w, 400, "validation_failed")
 			return
+		}
+		if perr == nil && !auth.EmailChanged(previous, in.Config) {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"emailDelivery": in.Config.Summary(), "restartRequired": false})
 	case "disable-email-delivery":
@@ -620,6 +648,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
+		}
+		if !disabled {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"emailDeliveryDisabled": disabled, "restartRequired": false})
 	case "replace-user-roles", "enable-user", "disable-user", "remove-user":
@@ -641,13 +672,14 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}) {
 			return
 		}
+		changed := true // removing always changes something: a removed person isn't found
 		switch in.Action {
 		case "replace-user-roles":
-			user, err = auth.ReplaceUserRoles(ctx, h.opts.Store, in.Email, in.Roles)
+			user, changed, err = auth.ReplaceUserRoles(ctx, h.opts.Store, in.Email, in.Roles)
 		case "enable-user":
-			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "active")
+			user, changed, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "active")
 		case "disable-user":
-			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "disabled")
+			user, changed, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "disabled")
 		default:
 			user, err = auth.RemoveUser(ctx, h.opts.Store, in.Email)
 		}
@@ -656,6 +688,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 				httpx.ManagementError(w, 400, "validation_failed")
 			}
 			return
+		}
+		if !changed {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"user": user})
 	case "apply-policy", "clear-policy":
@@ -701,6 +736,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
+			if !cleared {
+				httpx.Unchanged(r)
+			}
 			httpx.NoStore(w, 200, map[string]any{"cleared": cleared, "policyRevision": nil, "restartRequired": false})
 			return
 		}
@@ -710,7 +748,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		httpx.NoStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": auth.Revision(in.Policy), "restartRequired": false})
+		applied := auth.Revision(in.Policy)
+		if rev != nil && *rev == *applied { // the revision is the policy's content, in any order
+			httpx.Unchanged(r)
+		}
+		httpx.NoStore(w, 200, map[string]any{"policy": in.Policy, "policyRevision": applied, "restartRequired": false})
 	}
 }
 
@@ -811,7 +853,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		if k != "action" && !slices.Contains(fields, k) {
 			return nil, false
 		}
-		if string(v) == "null" && !(in.Action == "apply-policy" && k == "expectedPolicyRevision") {
+		if string(v) == "null" && !((in.Action == "apply-policy" || in.Action == "clear-policy") && k == "expectedPolicyRevision") {
 			return nil, false
 		}
 	}
@@ -873,7 +915,8 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 			return nil, false
 		}
 	case "clear-policy":
-		if in.ExpectedRevision == nil || !revisionRe.MatchString(*in.ExpectedRevision) {
+		// Null when no policy is stored: clearing nothing succeeds, and changes nothing.
+		if !has("expectedPolicyRevision") || (in.ExpectedRevision != nil && !revisionRe.MatchString(*in.ExpectedRevision)) {
 			return nil, false
 		}
 	case "test-policy":

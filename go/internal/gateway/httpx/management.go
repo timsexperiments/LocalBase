@@ -17,6 +17,7 @@ var managementMessages = map[string]string{
 	"provider_not_configured":       "Configure a browser identity provider first.",
 	"email_delivery_not_configured": "Configure email delivery before enabling magic-link authentication.",
 	"email_delivery_in_use":         "Remove the magic-link registration before disabling email delivery.",
+	"email_delivery_unreadable":     "Unable to read email delivery configuration.",
 	"email_delivery_failed":         "Email delivery failed.",
 	"policy_not_configured":         "Configure a browser access policy first.",
 	"registration_not_found":        "The identity provider registration was not found.",
@@ -33,6 +34,13 @@ var managementMessages = map[string]string{
 func ManagementError(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Cache-Control", "no-store")
 	JSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": managementMessages[code]}})
+}
+
+// ManagementErrorMessage is ManagementError with a message of the caller's own, for a code whose
+// words depend on what happened (email_delivery_unreadable carries LoadEmail's).
+func ManagementErrorMessage(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Cache-Control", "no-store")
+	JSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
 // NoStore answers v as JSON with status, never stored.

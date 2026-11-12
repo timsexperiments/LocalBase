@@ -37,3 +37,23 @@ func EmailChanged(current, next *EmailConfig) bool {
 	b, _ := json.Marshal(next)
 	return !bytes.Equal(a, b)
 }
+
+// EmailLoadError: email-delivery.json is there and can't be read. Message is LoadEmail's own
+// words, which say what to do. It is the machine's state, not a request's fault.
+type EmailLoadError struct{ Message string }
+
+func (e *EmailLoadError) Error() string { return e.Message }
+
+// RequireEmail is email delivery for something that needs it: ErrEmailNotConfigured when there is
+// none, and an *EmailLoadError when the file can't be read, so a broken file never reads as "not
+// configured".
+func RequireEmail(rootDir string) (*EmailConfig, error) {
+	c, err := LoadEmail(rootDir)
+	if err != nil {
+		return nil, &EmailLoadError{err.Error()}
+	}
+	if c == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	return c, nil
+}
