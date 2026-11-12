@@ -573,13 +573,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			configured(cfg)
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
+		// A magic link needs email delivery. "Only one magic link" is PlanRegistration's
+		// validation below, which gives this route's answer (400 validation_failed) on its own;
+		// the command line asks CheckMagicLink too, for its words, which name the other one.
 		if in.Action == "upsert-magic-link" {
-			email, ok := requireEmail()
-			if !ok {
-				return
-			}
-			if auth.CheckMagicLink(current, email, in.Registration.ID) != nil { // another magic link
-				httpx.ManagementError(w, 400, "validation_failed")
+			if _, ok := requireEmail(); !ok {
 				return
 			}
 		}
