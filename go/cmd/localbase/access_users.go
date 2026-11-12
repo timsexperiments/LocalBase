@@ -104,15 +104,14 @@ func accessUserCommands() []*cli.Command {
 						return issuerInput(err)
 					}
 					user, err = auth.InviteUser(ctx, e.Store, email, roles, issuer)
-					signIn = cfg.Origin + "/app/login"
+					signIn = auth.InvitationSignIn(cfg)
 					return err
 				})
 				if err != nil {
 					return nil, accessError(err)
 				}
 				e.audit.Change("access", "invite-user", "user", user.ID)
-				delivered := delivery != nil && auth.SendEmail(delivery, user.Email, "You were invited to LocalBase",
-					"You were invited to LocalBase. Sign in here:\n\n"+signIn) == nil
+				delivered := delivery != nil && auth.SendInvitation(delivery, user.Email, signIn) == nil
 				switch {
 				case delivered:
 					c.Info("Invited %s and sent an email.", user.Email)
