@@ -127,3 +127,42 @@ func TestPolicyClearNeedsNoProvider(t *testing.T) {
 		t.Errorf("the policy is still there: %s", out)
 	}
 }
+
+// Every command's issuer refusal is bad input (exit 2), in its own words: `policy starter` and
+// `users invite` with several providers and none named, or with one that isn't configured, and
+// `bindings adopt` on a provider that isn't configured (or with none at all).
+func TestIssuerRefusalsAreBadInputEverywhere(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	run := func(args ...string) (int, string) {
+		t.Helper()
+		return runApp(t, append([]string{"--root", root}, args...)...)
+	}
+	ok := func(args ...string) {
+		t.Helper()
+		if code, out := run(args...); code != 0 {
+			t.Fatalf("%s: exit %d, %s", strings.Join(args, " "), code, out)
+		}
+	}
+	refused := func(want string, args ...string) {
+		t.Helper()
+		if code, out := run(args...); code != 2 || !strings.Contains(out, want) {
+			t.Errorf("%s: exit %d, %s; want exit 2 and %q", strings.Join(args, " "), code, out, want)
+		}
+	}
+	ok("configure", "--defaults", "--no-create-key")
+	const a, b, c = "https://a.example.com", "https://b.example.com", "https://c.example.com"
+	const required, unknown = "must name the sign-in provider that vouches for it", " is not a configured sign-in provider"
+
+	refused("no provider is", "access", "bindings", "adopt", "--issuer", c)
+	for _, p := range [][2]string{{"a", a}, {"b", b}} {
+		ok("access", "oidc", "add", "--id", p[0], "--name", "P", "--issuer", p[1], "--client-id", "x",
+			"--public-client", "--origin", "https://lb.example.com")
+	}
+	refused(required, "access", "policy", "starter", "--email", "owner@example.com")
+	refused(c+unknown, "access", "policy", "starter", "--email", "owner@example.com", "--issuer", c)
+	ok("access", "policy", "starter", "--email", "owner@example.com", "--issuer", a)
+	refused(required, "access", "users", "invite", "--email", "friend@example.com", "--roles", "member")
+	refused(c+unknown, "access", "users", "invite", "--email", "friend@example.com", "--roles", "member", "--issuer", c)
+	refused(c+unknown, "access", "bindings", "adopt", "--issuer", c)
+}
