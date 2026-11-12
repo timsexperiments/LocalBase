@@ -561,8 +561,11 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.NoStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
-		cfg := &auth.BrowserAccess{Provider: *in.Provider, Origin: in.Origin, Permissions: in.Permissions}
-		changed := auth.AccessChanged(current, cfg)
+		cfg, changed, err := auth.PlanCloudflare(current, in.Provider.TeamDomain, in.Provider.Audience, in.Origin, in.Permissions)
+		if err != nil { // the parse has checked the same settings, so this is a configuration it can't see
+			httpx.ManagementError(w, 400, "validation_failed")
+			return
+		}
 		if !signInLockout(cfg) && save(cfg) {
 			if !changed {
 				httpx.Unchanged(r)
@@ -570,21 +573,19 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			configured(cfg)
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
+		// A magic link needs email delivery. "Only one magic link" is PlanRegistration's
+		// validation below, which gives this route's answer (400 validation_failed) on its own;
+		// the command line asks CheckMagicLink too, for its words, which name the other one.
 		if in.Action == "upsert-magic-link" {
 			if _, ok := requireEmail(); !ok {
 				return
 			}
-			if current != nil && current.Provider.Kind == "direct" {
-				for _, reg := range current.Provider.Registrations {
-					if reg.Kind == "magic-link" && reg.ID != in.Registration.ID {
-						httpx.ManagementError(w, 400, "validation_failed")
-						return
-					}
-				}
-			}
 		}
-		cfg := auth.UpsertRegistration(current, *in.Registration, in.Origin, in.Permissions)
-		changed := auth.AccessChanged(current, cfg)
+		cfg, changed, err := auth.PlanRegistration(current, *in.Registration, in.Origin, in.Permissions)
+		if err != nil { // the merged configuration is invalid (more than 16 registrations, say)
+			httpx.ManagementError(w, 400, "validation_failed")
+			return
+		}
 		if !signInLockout(cfg) && save(cfg) {
 			if !changed {
 				httpx.Unchanged(r)
@@ -592,12 +593,12 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			configured(cfg)
 		}
 	case "remove-registration":
-		kind, cfg := auth.RemoveRegistration(current, in.RegistrationID)
-		switch kind {
-		case "not-found":
+		cfg, disable, err := auth.PlanRemoveRegistration(current, in.RegistrationID)
+		switch {
+		case err != nil: // ErrRegistrationNotFound, the only refusal it has
 			httpx.ManagementError(w, 404, "registration_not_found")
 			return
-		case "disabled":
+		case disable: // the last one: turn access off rather than save an empty provider
 			if signInLockout(nil) {
 				return
 			}
