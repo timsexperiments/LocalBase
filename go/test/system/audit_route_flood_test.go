@@ -65,7 +65,10 @@ func TestLimitedChangesCannotPushOutWhoChangedKeys(t *testing.T) {
 		secret, _, _ := strings.Cut(after, `"`)
 		secrets["a key made here"] = secret
 		keyChanges++
-		if status, out := send(http.DefaultClient, "POST", "/_localbase/access-management", admin, `{"action":"disable"}`); status != 200 {
+		// A real access change each time (another host): one that changes nothing writes no line.
+		email := `{"action":"configure-email-delivery","config":{"host":"smtp` + strconv.Itoa(keyChanges) +
+			`.example.test","port":587,"security":"starttls","authentication":{"kind":"none"},"from":"sender@example.test"}}`
+		if status, out := send(http.DefaultClient, "POST", "/_localbase/access-management", admin, email); status != 200 {
 			t.Fatalf("the access change: %d %s", status, out)
 		}
 	}
