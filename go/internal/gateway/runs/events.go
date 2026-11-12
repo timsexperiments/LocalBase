@@ -63,7 +63,7 @@ func (r *run) setStatus(status, reason string) {
 // view is the public run object. Called with r.mu held.
 func (r *run) view(withOutput bool) map[string]any {
 	v := map[string]any{"id": r.ID, "object": "localbase.run", "target": r.Target, "label": r.Label, "model": r.Model,
-		"status": r.Status, "error": r.Error, "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"status": r.Status, "error": listError(r.Error), "createdAt": r.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"startedAt": stamp(r.StartedAt), "endedAt": stamp(r.EndedAt), "expiresAt": stamp(r.ExpiresAt),
 		"lastEventId": r.lastEventID(), "resumable": false}
 	if r.Reason != "" {

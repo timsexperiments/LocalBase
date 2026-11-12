@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
+	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
 
@@ -224,11 +227,95 @@ func (m *Manager) memoryFullError() map[string]any {
 	if oldest == nil {
 		message += " Nothing has finished yet, so wait for the running ones and try again."
 	} else {
+		// The message is read later than it's written, so the wait is said from the stop, not from now.
 		at := oldest.UTC().Format("15:04") + " UTC"
-		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires at %s. Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.", mib(finished), at)
+		message += fmt.Sprintf(" Finished results hold %d MiB, and the oldest expires %s after this was stopped (%s). Remove finished results, or wait, and try again. A batch of pictures frees its memory when the last one is removed.",
+			mib(finished), afterTheStop(oldest.Sub(m.now())), at)
 		out["oldestExpiresAt"] = oldest.UTC().Format(time.RFC3339)
 	}
 	out["message"] = message
+	return out
+}
+
+// maxListErrorText bounds each text in a run's error, as other error messages are bounded.
+const maxListErrorText = 1024
+
+// The fields a run's error keeps in the API, each only as its own kind: what LocalBase's own errors
+// have, so the run list and a run's own read give the same error, and it always fits the schema.
+// Anything else a backend sent, or a field of the wrong kind, stays out.
+var (
+	listErrorTexts   = []string{"type", "message", "param", "oldestExpiresAt"}
+	listErrorNumbers = []string{"heldBytes", "limitBytes", "finishedBytes"}
+)
+
+// noResultError is what a failed run says when nothing better says why.
+func noResultError() map[string]any {
+	return map[string]any{"type": "server_error", "code": "upstream_error", "message": "The run ended without a result."}
+}
+
+// wholeNumber is v when it is a whole number, as JSON decodes one (float64) or as Go holds one.
+func wholeNumber(v any) (any, bool) {
+	switch n := v.(type) {
+	case int, int64:
+		return n, true
+	case float64:
+		if !math.IsInf(n, 0) && !math.IsNaN(n) && n == math.Trunc(n) {
+			return n, true
+		}
+	}
+	return nil, false
+}
+
+// listError is a run's error as the API gives it, in the run list and in a run's own read alike.
+// An error can come from a backend as it sent it, and the list carries every run a person has, so
+// each text is bounded and redacted, and each field is kept only as its own kind. code is a text or
+// a whole number: llama-server's streamed errors carry a number, which the relay keeps. An error
+// with nothing left to keep says the run ended without a result, so a failed run always says why.
+func listError(e map[string]any) map[string]any {
+	if e == nil {
+		return nil
+	}
+	out := map[string]any{}
+	for _, k := range listErrorTexts {
+		if s, ok := e[k].(string); ok {
+			out[k] = obs.BoundedText(s, maxListErrorText)
+		}
+	}
+	for _, k := range listErrorNumbers {
+		if n, ok := wholeNumber(e[k]); ok {
+			out[k] = n
+		}
+	}
+	if s, ok := e["code"].(string); ok {
+		out["code"] = obs.BoundedText(s, maxListErrorText)
+	} else if n, ok := wholeNumber(e["code"]); ok {
+		out["code"] = n
+	}
+	if len(out) == 0 {
+		return noResultError()
+	}
+	return out
+}
+
+// afterTheStop says a wait in whole minutes, rounded up, so it isn't shorter than it is.
+func afterTheStop(d time.Duration) string {
+	if d < time.Minute {
+		return "less than a minute"
+	}
+	minutes := int((d + time.Minute - 1) / time.Minute)
+	plural := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	if minutes < 60 {
+		return plural(minutes, "minute")
+	}
+	out := plural(minutes/60, "hour")
+	if minutes%60 != 0 {
+		out += " " + plural(minutes%60, "minute")
+	}
 	return out
 }
 

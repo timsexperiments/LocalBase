@@ -56,6 +56,9 @@ func (m *Manager) List(w http.ResponseWriter, req *http.Request) {
 		if r.Reason != "" {
 			item["reason"] = r.Reason
 		}
+		if r.Error != nil { // a run that stopped says why, as its own read does
+			item["error"] = listError(r.Error)
+		}
 		r.mu.Unlock()
 		data = append(data, item)
 	}

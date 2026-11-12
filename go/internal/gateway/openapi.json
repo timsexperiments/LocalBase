@@ -2166,6 +2166,21 @@
                             "enum": ["stopped", "gateway_restart", "memory_pressure", "max_duration", "output_limit", "memory_limit"],
                             "description": "Present only when it applies."
                           },
+                          "error": {
+                            "type": "object",
+                            "properties": {
+                              "type": {"type": "string"},
+                              "code": {"type": ["string", "integer"]},
+                              "message": {"type": "string", "maxLength": 1024},
+                              "param": {"type": "string"},
+                              "heldBytes": {"type": "integer"},
+                              "limitBytes": {"type": "integer"},
+                              "finishedBytes": {"type": "integer"},
+                              "oldestExpiresAt": {"type": "string", "format": "date-time"}
+                            },
+                            "additionalProperties": false,
+                            "description": "Present only for a run that failed with an error. It is the run's own error, with only these fields, each only as its own kind and each text bounded and redacted. `code` is a text, or a whole number as a backend may send it. An error with none of these fields says the run ended without a result."
+                          },
                           "createdAt": {"type": "string", "format": "date-time"},
                           "startedAt": {"type": ["string", "null"], "format": "date-time"},
                           "endedAt": {"type": ["string", "null"], "format": "date-time"}
@@ -5854,9 +5869,18 @@
           },
           "error": {
             "type": ["object", "null"],
-            "properties": {"type": {"type": "string"}, "code": {"type": ["string", "null"]}, "message": {"type": "string"}},
-            "additionalProperties": true,
-            "description": "The `/v1` error, as the backend or route sent it."
+            "properties": {
+              "type": {"type": "string"},
+              "code": {"type": ["string", "integer"]},
+              "message": {"type": "string", "maxLength": 1024},
+              "param": {"type": "string"},
+              "heldBytes": {"type": "integer"},
+              "limitBytes": {"type": "integer"},
+              "finishedBytes": {"type": "integer"},
+              "oldestExpiresAt": {"type": "string", "format": "date-time"}
+            },
+            "additionalProperties": false,
+            "description": "The run's error, null when it has none. It keeps only these fields of the `/v1` error the backend or route sent, each only as its own kind, and each text is bounded and redacted. `code` is a text, or a whole number as a backend may send it. An error with none of these fields says the run ended without a result. The run list gives the same."
           },
           "requestId": {"type": "string", "description": "The inner `/v1` request's id."},
           "createdAt": {"type": "string", "format": "date-time"},
