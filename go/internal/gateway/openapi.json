@@ -2599,7 +2599,7 @@
         "operationId": "getRunEvents",
         "summary": "Follow a run",
         "tags": ["Runs"],
-        "description": "Everything after `Last-Event-ID` or `after`, then live, until the `end` event. Events are `status`, `chunk`, `error`, `snapshot` and `end`. A restarted gateway sends only `snapshot` and `end`.",
+        "description": "Everything after `Last-Event-ID` or `after`, then live, until the `end` event. Events are `status`, `chunk`, `error`, `snapshot` and `end`. An `error` event's data is `{\"error\": …}`, with the same error as the run's own read. A restarted gateway sends only `snapshot` and `end`.",
         "x-localbase-permission": "any",
         "x-localbase-stability": "unstable",
         "parameters": [

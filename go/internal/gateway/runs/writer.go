@@ -93,7 +93,10 @@ func (w *runWriter) event(block string) {
 		r.Error = e
 		r.held += int64(len(payload))
 		m.held.Add(int64(len(payload)))
-		r.emit("error", []byte(payload))
+		// The event gives the error as the run's read does, in the envelope the backend used: each
+		// field only as its own kind, each text bounded and redacted, the backend's own fields left out.
+		event, _ := json.Marshal(map[string]any{"error": listError(e)})
+		r.emit("error", event)
 		return
 	}
 	stop := func(reason string) {
