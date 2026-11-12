@@ -85,7 +85,7 @@ func TestADisabledPersonGetsNoLink(t *testing.T) {
 	if _, err := InviteUser(ctx, b.Store, "pal@example.com", []string{"chat"}, issuer); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetUserStatus(ctx, b.Store, "friend@example.com", "disabled"); err != nil {
+	if _, _, err := SetUserStatus(ctx, b.Store, "friend@example.com", "disabled"); err != nil {
 		t.Fatal(err)
 	}
 	if token, _, err := IssueMagicLink(ctx, b.Store, "friend@example.com", issuer); token != "" || err != nil {

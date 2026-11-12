@@ -151,3 +151,38 @@ func TestClearingNoPolicySucceeds(t *testing.T) {
 		`{"kind":"email","role":"admin","email":"owner@example.test"}`, "null"), 200, `"policyRevision"`)
 	send(`{"action":"clear-policy","expectedPolicyRevision":null}`, 409, "policy_revision_conflict")
 }
+
+// Tier 3: a person's roles set to the same set (in any order), or their status to what it is,
+// writes no line; a real change does.
+func TestAPersonLeftAsTheyWereWritesNoAuditLine(t *testing.T) {
+	f := newAuditFixture(t)
+	count := func(body string, want int) int {
+		t.Helper()
+		from := len(f.logs.String())
+		if status, out := f.send(f.key, "POST", "/_localbase/access-management", "application/json", []byte(body)); status != want {
+			t.Fatalf("%s: %d %s, want %d", body, status, out, want)
+		}
+		return len(f.auditEvents(from))
+	}
+	count(gatewaytest.ConfigureCloudflare, 200)
+	count(gatewaytest.PolicyRequest("null", gatewaytest.ChatRole+","+gatewaytest.AdminRole,
+		`{"kind":"email","role":"admin","email":"owner@example.test"}`, "null"), 200)
+	count(`{"action":"invite-user","email":"friend@example.test","roles":["chat"]}`, 201)
+	for _, step := range []struct {
+		name, body string
+		lines      int
+	}{
+		{"roles changed", `{"action":"replace-user-roles","email":"friend@example.test","roles":["chat","admin"]}`, 1},
+		{"the same roles", `{"action":"replace-user-roles","email":"friend@example.test","roles":["chat","admin"]}`, 0},
+		{"the same roles in another order", `{"action":"replace-user-roles","email":"friend@example.test","roles":["admin","chat"]}`, 0},
+		{"disabled", `{"action":"disable-user","email":"friend@example.test"}`, 1},
+		{"disabled again", `{"action":"disable-user","email":"friend@example.test"}`, 0},
+		{"enabled", `{"action":"enable-user","email":"friend@example.test"}`, 1},
+		{"enabled again", `{"action":"enable-user","email":"friend@example.test"}`, 0},
+		{"removed", `{"action":"remove-user","email":"friend@example.test"}`, 1},
+	} {
+		if got := count(step.body, 200); got != step.lines {
+			t.Errorf("%s: %d audit lines, want %d", step.name, got, step.lines)
+		}
+	}
+}

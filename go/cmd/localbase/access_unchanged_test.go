@@ -77,3 +77,44 @@ func TestSavingWhatIsSavedWritesNoAuditLine(t *testing.T) {
 		}
 	}
 }
+
+// Tier 3 on the command line: the same roles, or the same status, writes no line.
+func TestAPersonLeftAsTheyWereWritesNoAuditLine(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	run := func(args ...string) {
+		t.Helper()
+		if code, out := runApp(t, append([]string{"--root", root}, args...)...); code != 0 {
+			t.Fatalf("%s: exit %d, %s", strings.Join(args, " "), code, out)
+		}
+	}
+	run("configure", "--defaults", "--no-create-key")
+	run("access", "oidc", "add", "--id", "a", "--name", "P", "--issuer", "https://a.example.com", "--client-id", "x",
+		"--public-client", "--origin", "https://lb.example.com")
+	run("access", "policy", "starter", "--email", "owner@example.com")
+	run("access", "users", "invite", "--email", "friend@example.com", "--roles", "member")
+	lines := func(args ...string) int {
+		t.Helper()
+		before := len(auditLines(t, root))
+		run(args...)
+		return len(auditLines(t, root)) - before
+	}
+	for _, step := range []struct {
+		name  string
+		args  []string
+		lines int
+	}{
+		{"roles changed", []string{"access", "users", "roles", "--email", "friend@example.com", "--roles", "member,admin"}, 1},
+		{"the same roles", []string{"access", "users", "roles", "--email", "friend@example.com", "--roles", "member,admin"}, 0},
+		{"the same roles in another order", []string{"access", "users", "roles", "--email", "friend@example.com", "--roles", "admin,member"}, 0},
+		{"disabled", []string{"access", "users", "disable", "--email", "friend@example.com"}, 1},
+		{"disabled again", []string{"access", "users", "disable", "--email", "friend@example.com"}, 0},
+		{"enabled", []string{"access", "users", "enable", "--email", "friend@example.com"}, 1},
+		{"enabled again", []string{"access", "users", "enable", "--email", "friend@example.com"}, 0},
+		{"removed", []string{"access", "users", "remove", "--email", "friend@example.com"}, 1},
+	} {
+		if got := lines(step.args...); got != step.lines {
+			t.Errorf("%s: %d audit lines, want %d", step.name, got, step.lines)
+		}
+	}
+}

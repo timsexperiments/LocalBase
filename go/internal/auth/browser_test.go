@@ -314,7 +314,7 @@ func TestMagicLinkSignIn(t *testing.T) {
 		t.Errorf("users %+v", users)
 	}
 	// A disabled user loses access on the next request.
-	if _, err := SetUserStatus(ctx, st, "friend@example.com", "disabled"); err != nil {
+	if _, _, err := SetUserStatus(ctx, st, "friend@example.com", "disabled"); err != nil {
 		t.Fatal(err)
 	}
 	if d := b.Authorize(ctx, id); len(d.Permissions) != 0 {

@@ -36,19 +36,22 @@ func userCommand(name, summary, operation, verb, status string) *cli.Command {
 			return nil, err
 		}
 		var user *auth.User
+		changed := true // removing always changes something: a removed person isn't found
 		warn := noManagerWarning(c, e)
 		err = withOperation(e, operation, func() (err error) {
 			if status == "" {
 				user, err = auth.RemoveUser(context.Background(), e.Store, email)
 			} else {
-				user, err = auth.SetUserStatus(context.Background(), e.Store, email, status)
+				user, changed, err = auth.SetUserStatus(context.Background(), e.Store, email, status)
 			}
 			return err
 		})
 		if err != nil {
 			return nil, accessError(err)
 		}
-		e.audit.Change("access", userAction(status), "user", user.ID)
+		if changed {
+			e.audit.Change("access", userAction(status), "user", user.ID)
+		}
 		c.Info("%s %s.", verb, user.Email)
 		warn()
 		return map[string]any{"user": user}, nil
@@ -138,15 +141,18 @@ func accessUserCommands() []*cli.Command {
 					return nil, err
 				}
 				var user *auth.User
+				var changed bool
 				warn := noManagerWarning(c, e)
 				err = withOperation(e, "replace browser user roles", func() (err error) {
-					user, err = auth.ReplaceUserRoles(ctx, e.Store, email, roles)
+					user, changed, err = auth.ReplaceUserRoles(ctx, e.Store, email, roles)
 					return err
 				})
 				if err != nil {
 					return nil, accessError(err)
 				}
-				e.audit.Change("access", "replace-user-roles", "user", user.ID)
+				if changed {
+					e.audit.Change("access", "replace-user-roles", "user", user.ID)
+				}
 				c.Info("Replaced roles for %s.", user.Email)
 				warn()
 				return map[string]any{"user": user}, nil

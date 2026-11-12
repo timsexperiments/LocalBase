@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"regexp"
+	"slices"
 	"sort"
 	"time"
 
@@ -212,68 +213,72 @@ func InviteUser(ctx context.Context, st *store.Store, email string, roles []stri
 	return u, tx.Commit()
 }
 
-// ReplaceUserRoles sets a managed user's roles.
-func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles []string) (*User, error) {
+// ReplaceUserRoles sets a managed user's roles. changed says whether they were another set, from
+// the read before the write (the write is made either way).
+func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles []string) (user *User, changed bool, err error) {
 	if email = ValidEmail(email); email == "" || validRoles(roles) != nil {
-		return nil, errors.New("validation_failed")
+		return nil, false, errors.New("validation_failed")
 	}
 	tx, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer tx.Rollback()
 	if err := requirePolicy(ctx, tx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	u, err := userByEmail(ctx, tx, email)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if u.Status == "removed" {
-		return nil, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
+		return nil, false, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
+	changed = !sameRoles(u.Roles, roles) // from the read above, before the write
 	ids, err := roleIDs(ctx, tx, roles)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM auth_user_roles WHERE user_id = ?`, u.ID); err != nil {
-		return nil, err // otherwise the old roles would stay beside the new ones
+		return nil, false, err // otherwise the old roles would stay beside the new ones
 	}
 	for _, r := range roles {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO auth_user_roles (user_id, role_id) VALUES (?, ?)`, u.ID, ids[r]); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	if u, err = userByEmail(ctx, tx, email); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return u, tx.Commit()
+	return u, changed, tx.Commit()
 }
 
-// SetUserStatus enables (active) or disables a managed user.
-func SetUserStatus(ctx context.Context, st *store.Store, email, status string) (*User, error) {
+// SetUserStatus enables (active) or disables a managed user. changed says whether its status
+// was another, from the read before the write.
+func SetUserStatus(ctx context.Context, st *store.Store, email, status string) (user *User, changed bool, err error) {
 	if email = ValidEmail(email); email == "" {
-		return nil, errors.New("validation_failed")
+		return nil, false, errors.New("validation_failed")
 	}
 	tx, err := st.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer tx.Rollback()
 	u, err := userByEmail(ctx, tx, email)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if u.Status == "removed" {
-		return nil, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
+		return nil, false, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
+	changed = u.Status != status
 	if _, err := tx.ExecContext(ctx, `UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?`, status, now(), u.ID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if u, err = userByEmail(ctx, tx, email); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return u, tx.Commit()
+	return u, changed, tx.Commit()
 }
 
 // RemoveUser marks a user removed and drops its roles and magic link. It
@@ -542,4 +547,12 @@ func ConsumeMagicLink(ctx context.Context, st *store.Store, token, issuer string
 func ClearMagicLinks(ctx context.Context, st *store.Store) error {
 	_, err := st.DB.ExecContext(ctx, `DELETE FROM auth_magic_link_tokens`)
 	return err
+}
+
+// sameRoles says whether two role lists name the same roles, in any order.
+func sameRoles(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(slices.Compact(x), slices.Compact(y))
 }

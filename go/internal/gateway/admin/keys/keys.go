@@ -672,13 +672,14 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}) {
 			return
 		}
+		changed := true // removing always changes something: a removed person isn't found
 		switch in.Action {
 		case "replace-user-roles":
-			user, err = auth.ReplaceUserRoles(ctx, h.opts.Store, in.Email, in.Roles)
+			user, changed, err = auth.ReplaceUserRoles(ctx, h.opts.Store, in.Email, in.Roles)
 		case "enable-user":
-			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "active")
+			user, changed, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "active")
 		case "disable-user":
-			user, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "disabled")
+			user, changed, err = auth.SetUserStatus(ctx, h.opts.Store, in.Email, "disabled")
 		default:
 			user, err = auth.RemoveUser(ctx, h.opts.Store, in.Email)
 		}
@@ -687,6 +688,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 				httpx.ManagementError(w, 400, "validation_failed")
 			}
 			return
+		}
+		if !changed {
+			httpx.Unchanged(r)
 		}
 		httpx.NoStore(w, 200, map[string]any{"user": user})
 	case "apply-policy", "clear-policy":
