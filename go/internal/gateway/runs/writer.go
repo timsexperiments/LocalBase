@@ -90,12 +90,13 @@ func (w *runWriter) event(block string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if e, ok := obj["error"].(map[string]any); ok {
-		r.Error = e
-		r.held += int64(len(payload))
-		m.held.Add(int64(len(payload)))
-		// The event gives the error as the run's read does, in the envelope the backend used: each
-		// field only as its own kind, each text bounded and redacted, the backend's own fields left out.
-		event, _ := json.Marshal(map[string]any{"error": listError(e)})
+		// The run keeps the error as its read gives it, and the event carries the same, in the envelope
+		// the backend used: each field only as its own kind, each text bounded and redacted, the
+		// backend's own fields left out. Nothing keeps the backend's bytes, so the envelope is what is held.
+		r.Error = listError(e)
+		event, _ := json.Marshal(map[string]any{"error": r.Error})
+		r.held += int64(len(event))
+		m.held.Add(int64(len(event)))
 		r.emit("error", event)
 		return
 	}

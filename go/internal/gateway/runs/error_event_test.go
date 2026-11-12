@@ -70,3 +70,43 @@ func TestARunsErrorEventWithNothingToKeepSaysWhy(t *testing.T) {
 		t.Errorf("the event: %v", ev)
 	}
 }
+
+// An oversized backend error event adds only the bounded envelope to what the run holds, and what
+// the manager holds: the run keeps that envelope and the bounded error, not the backend's bytes.
+func TestAnOversizedErrorEventHoldsOnlyTheBoundedEnvelope(t *testing.T) {
+	ts, mgr := newRunHarness(t)
+	c := gatewaytest.RunClient{T: t, Base: ts.URL}
+	huge := strings.Repeat("x", 200<<10) // 200 KiB in the message, and as much in a field of its own
+	id := c.Start(streamErr(`{"error":{"code":400,"type":"exceed_context_size_error","message":"` + huge + `","detail":"` + huge + `"}}`))
+	c.WaitStatus(id, "failed")
+	mgr.mu.Lock()
+	r := mgr.runs[id]
+	mgr.mu.Unlock()
+	r.mu.Lock()
+	held, kept, bytes := r.held, r.Error, r.bytes
+	var events int
+	for _, e := range r.events {
+		if e.name == "error" {
+			events += len(e.data)
+		}
+	}
+	r.mu.Unlock()
+	envelope, _ := json.Marshal(map[string]any{"error": kept})
+	if events != len(envelope) {
+		t.Errorf("the error event is %d bytes, the bounded envelope %d", events, len(envelope))
+	}
+	// What a run holds besides its error is its output: here only the stream's first chunk, counted
+	// as every chunk is (twice its bytes, kept as an event and in the output, and the event's own share).
+	if held != int64(len(envelope))+2*int64(bytes)+runEventHeldFor {
+		t.Errorf("the run holds %d bytes: the envelope is %d and its one chunk %d", held, len(envelope), bytes)
+	}
+	if held > 4<<10 || mgr.held.Load() > 4<<10 {
+		t.Errorf("the run holds %d and the manager %d for a %d-byte backend event", held, mgr.held.Load(), 400<<10)
+	}
+	if msg, _ := kept["message"].(string); utf8.RuneCountInString(msg) > maxListErrorText {
+		t.Errorf("the run keeps a %d-character message", utf8.RuneCountInString(msg))
+	}
+	if _, ok := kept["detail"]; ok {
+		t.Error("the run keeps the backend's own field")
+	}
+}
