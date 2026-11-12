@@ -66,23 +66,14 @@ func accessPolicyCommands() []*cli.Command {
 					if cfg == nil {
 						return cli.Inputf("Configure a browser identity provider first.")
 					}
+					existing, err := auth.LoadPolicy(ctx, e.Store.DB)
+					if err != nil {
+						return err
+					}
 					// Both issuer refusals are bad input (exit 2): a binding that names no provider
 					// among several, and a new one that names a provider which isn't configured.
-					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
+					if err := auth.PreparePolicy(&policy, cfg, existing, nil); err != nil {
 						return issuerInput(err)
-					}
-					// The gateway's rule: a new email or domain binding may name only a configured
-					// provider, since one that names another matches nobody. A binding the policy
-					// already has may stay, for its provider may come back.
-					if issuers := cfg.Issuers(); len(issuers) > 0 {
-						existing, err := auth.LoadPolicy(ctx, e.Store.DB)
-						if err != nil {
-							return err
-						}
-						g := &auth.Guard{Policy: existing, Issuers: issuers}
-						if err := g.CheckBindingIssuers(&policy); err != nil {
-							return issuerInput(err)
-						}
 					}
 					open = auth.OpenSignIn(cfg, &policy)
 					return auth.ApplyPolicy(ctx, e.Store, &policy)
@@ -162,22 +153,15 @@ func accessPolicyCommands() []*cli.Command {
 				if err != nil {
 					return nil, err
 				}
-				if cfg == nil {
+				d, configured, err := auth.TestPolicy(ctx, e.Store, cfg, id)
+				if errors.Is(err, auth.ErrProviderNotConfigured) {
 					return nil, cli.Inputf("Configure a browser identity provider first.")
 				}
-				d, err := auth.ResolvePolicy(ctx, e.Store, id, false)
-				if err != nil {
-					return nil, err
-				}
-				if d == nil {
-					d = &auth.Decision{MatchedRoles: []string{}, Permissions: cfg.Permissions}
-				}
-				policy, err := auth.LoadPolicy(ctx, e.Store.DB)
 				if err != nil {
 					return nil, err
 				}
 				c.Info("Matched %d roles and %d permissions.", len(d.MatchedRoles), len(d.Permissions))
-				return map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions}, nil
+				return map[string]any{"policyConfigured": configured, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions}, nil
 			})},
 			{Name: "clear", Summary: "Clear the local policy and use provider-wide permissions", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				var cleared bool
