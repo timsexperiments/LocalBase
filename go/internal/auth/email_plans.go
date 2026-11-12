@@ -57,3 +57,14 @@ func RequireEmail(rootDir string) (*EmailConfig, error) {
 	}
 	return c, nil
 }
+
+// SendTestEmail sends the email that shows delivery works.
+func SendTestEmail(c *EmailConfig, to string) error {
+	subject, body := testEmail()
+	return SendEmail(c, to, subject, body)
+}
+
+// testEmail is the test email's subject and body.
+func testEmail() (subject, body string) {
+	return "LocalBase email delivery test", "LocalBase successfully sent this test email."
+}

@@ -529,7 +529,7 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		if err := auth.SendEmail(email, in.To, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
+		if err := auth.SendTestEmail(email, in.To); err != nil {
 			httpx.ManagementError(w, 502, "email_delivery_failed")
 			return
 		}
