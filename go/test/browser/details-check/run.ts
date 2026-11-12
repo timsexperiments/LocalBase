@@ -1,13 +1,13 @@
 // Drives headless Chrome over the DevTools protocol for test/browser/details-check.sh.
 // Opens every <details> on the pages people reach and records where its content lands, for compare.ts.
+import { openPage } from "../cdp/cdp.ts";
+
 const [cdp, base, out] = process.argv.slice(2);
-const t = await (await fetch(`${cdp}/json/new?about:blank`, { method: "PUT" })).json();
-const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise((r) => ws.addEventListener("open", r, { once: true }));
-// With its browser gone nothing here can finish: stop rather than wait on it.
-ws.addEventListener("close", () => process.exit(2));
-let id = 0; const w = new Map();
-ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id) { w.get(m.id)?.(m); w.delete(m.id); } });
-const send = (method: string, params: any = {}) => new Promise<any>((r) => { const i = ++id; w.set(i, (m: any) => r(m.result)); ws.send(JSON.stringify({ id: i, method, params })); });
+// With its browser gone nothing here can finish: the client stops the run, and a Chrome that never
+// answers stops it too. A failed command gives undefined here, as it always has, rather than throwing.
+const page = await openPage(cdp);
+const { ws } = page;
+const send = (method: string, params: any = {}) => page.send(method, params).catch(() => undefined);
 const ev = async (expression: string) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }))?.result?.value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 await send("Page.enable");
