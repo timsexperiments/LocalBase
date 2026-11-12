@@ -101,7 +101,7 @@ func accessUserCommands() []*cli.Command {
 					}
 					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
 					if err != nil {
-						return err
+						return issuerInput(err)
 					}
 					user, err = auth.InviteUser(ctx, e.Store, email, roles, issuer)
 					signIn = cfg.Origin + "/app/login"

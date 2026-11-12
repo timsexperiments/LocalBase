@@ -115,7 +115,7 @@ func accessPolicyCommands() []*cli.Command {
 					}
 					issuer, err := auth.InviteIssuer(c.String("issuer"), email, cfg.Issuers(), nil)
 					if err != nil {
-						return err
+						return issuerInput(err)
 					}
 					policy = auth.StarterPolicy(email, issuer)
 					return auth.ApplyPolicy(ctx, e.Store, policy)
@@ -200,7 +200,7 @@ func accessPolicyCommands() []*cli.Command {
 						return err
 					}
 					adopted, err = auth.AdoptBindingIssuer(ctx, e.Store, cfg, issuer)
-					return err
+					return issuerInput(err)
 				})
 				if err != nil {
 					return nil, accessError(err)
