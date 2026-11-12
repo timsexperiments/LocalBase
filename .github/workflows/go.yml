@@ -203,6 +203,27 @@ jobs:
       - name: A killed gateway leaves no backend behind
         run: go test ./test/chaos -run '^TestGatewayKilledOutright$' -count=1
 
+  jstest:
+    # The page scripts' unit tests (go/tools/jstest), which no Go job ran: a module-load error in
+    # one passed every PR. Bun as ci.yml sets it up, at the same pin and version.
+    needs: scope
+    if: needs.scope.outputs.go == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Install the page tests' packages
+        run: bun install --frozen-lockfile
+      - name: Page script unit tests
+        run: bun test go/tools/jstest
+
   # macOS costs the most: it runs after merge, or on a pull request labelled "macos". It has fewer
   # jobs than Linux, since only five macOS jobs run at once.
 
@@ -311,7 +332,7 @@ jobs:
 
   go-checks:
     # The one check to require: it passes only when every job above that should have run passed.
-    needs: [scope, unit, backup-race, backup-files, contract, small, macos-unit, macos-backup-race, macos-contract]
+    needs: [scope, unit, backup-race, backup-files, contract, small, jstest, macos-unit, macos-backup-race, macos-contract]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -332,7 +353,7 @@ jobs:
           go=$(jq -r '.scope.outputs.go' <<<"$NEEDS")
           if [ "$go" != true ]; then echo "nothing of the Go tree changed"; exit 0; fi
           if [ "$EVENT" = pull_request ] && [ "$DRAFT" = true ]; then echo "draft: the tests run once it is ready"; exit 0; fi
-          must="unit backup-race backup-files contract small"
+          must="unit backup-race backup-files contract small jstest"
           if [ "$EVENT" != pull_request ] || [ "$MACOS_LABEL" = true ]; then must="$must macos-unit macos-backup-race macos-contract"; fi
           for j in $must; do
             [ "$(result "$j")" = success ] || { echo "$j should have run and passed, but is $(result "$j")"; exit 1; }
