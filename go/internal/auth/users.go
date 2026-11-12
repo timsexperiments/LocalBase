@@ -214,7 +214,7 @@ func InviteUser(ctx context.Context, st *store.Store, email string, roles []stri
 }
 
 // ReplaceUserRoles sets a managed user's roles. changed says whether they were another set, from
-// the read before the write (the write is made either way).
+// the read before the write; when they weren't, nothing is written.
 func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles []string) (user *User, changed bool, err error) {
 	if email = ValidEmail(email); email == "" || validRoles(roles) != nil {
 		return nil, false, errors.New("validation_failed")
@@ -234,7 +234,10 @@ func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles 
 	if u.Status == "removed" {
 		return nil, false, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
-	changed = !sameRoles(u.Roles, roles) // from the read above, before the write
+	if sameRoles(u.Roles, roles) { // from the read above, before any write
+		return u, false, tx.Commit() // changing nothing writes nothing
+	}
+	changed = true
 	ids, err := roleIDs(ctx, tx, roles)
 	if err != nil {
 		return nil, false, err
@@ -254,7 +257,8 @@ func ReplaceUserRoles(ctx context.Context, st *store.Store, email string, roles 
 }
 
 // SetUserStatus enables (active) or disables a managed user. changed says whether its status
-// was another, from the read before the write.
+// was another, from the read before the write; when it wasn't, nothing is written (updatedAt
+// stays).
 func SetUserStatus(ctx context.Context, st *store.Store, email, status string) (user *User, changed bool, err error) {
 	if email = ValidEmail(email); email == "" {
 		return nil, false, errors.New("validation_failed")
@@ -271,7 +275,10 @@ func SetUserStatus(ctx context.Context, st *store.Store, email, status string) (
 	if u.Status == "removed" {
 		return nil, false, &AccessError{"managed-user-not-found", "Managed user " + email + " was not found."}
 	}
-	changed = u.Status != status
+	if u.Status == status {
+		return u, false, tx.Commit() // changing nothing writes nothing
+	}
+	changed = true
 	if _, err := tx.ExecContext(ctx, `UPDATE auth_users SET status = ?, updated_at = ? WHERE id = ?`, status, now(), u.ID); err != nil {
 		return nil, false, err
 	}
