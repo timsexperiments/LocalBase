@@ -80,3 +80,50 @@ func TestPolicyApplyRefusesANewBindingOnAnUnknownProvider(t *testing.T) {
 		t.Errorf("a binding with no provider among several: exit %d, %s", code, out)
 	}
 }
+
+// `access policy clear` needs no provider, as on the gateway: with no policy it says so, and a
+// policy left behind when browser access was disabled can still be cleared.
+func TestPolicyClearNeedsNoProvider(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	root := filepath.Join(t.TempDir(), "root")
+	run := func(args ...string) (int, string) {
+		t.Helper()
+		return runApp(t, append([]string{"--root", root}, args...)...)
+	}
+	ok := func(args ...string) string {
+		t.Helper()
+		code, out := run(args...)
+		if code != 0 {
+			t.Fatalf("%s: exit %d, %s", strings.Join(args, " "), code, out)
+		}
+		return out
+	}
+	ok("configure", "--defaults", "--no-create-key")
+	audits := func() int { t.Helper(); return len(auditLines(t, root)) }
+
+	before := audits()
+	if out := ok("--json", "access", "policy", "clear"); !strings.Contains(out, `"cleared":false`) {
+		t.Errorf("clear with no provider and no policy: %s", out)
+	}
+	if out := ok("access", "policy", "clear"); !strings.Contains(out, "Browser access policy was already clear.") {
+		t.Errorf("clear with no provider and no policy: %s", out)
+	}
+	if n := audits(); n != before {
+		t.Errorf("clearing nothing wrote %d audit lines", n-before)
+	}
+
+	ok("access", "oidc", "add", "--id", "a", "--name", "P", "--issuer", "https://a.example.com", "--client-id", "x",
+		"--public-client", "--origin", "https://lb.example.com")
+	ok("access", "policy", "starter", "--email", "owner@example.com")
+	ok("access", "disable")
+	before = audits()
+	if out := ok("--json", "access", "policy", "clear"); !strings.Contains(out, `"cleared":true`) {
+		t.Errorf("clear a policy left after disabling browser access: %s", out)
+	}
+	if n := audits(); n != before+1 {
+		t.Errorf("clearing a policy wrote %d audit lines, want 1", n-before)
+	}
+	if out := ok("--json", "access", "policy", "show"); !strings.Contains(out, `"policy":null`) {
+		t.Errorf("the policy is still there: %s", out)
+	}
+}

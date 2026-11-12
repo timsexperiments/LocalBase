@@ -32,6 +32,12 @@ func jsonAt(v any, path string) (any, bool) {
 	return v, true
 }
 
+// tsClearNeedsProvider is TS's refusal of `access policy clear` when no sign-in provider is
+// configured. Go's CLI, like the gateway's clear-policy, needs no provider
+// to clear: clearing only ever falls back to the provider-wide permissions, and with no policy Go
+// says it was already clear (exit 0, cleared false). Asserted at the end of TestCLIAccess.
+const tsClearNeedsProvider = "Configure a browser identity provider first."
+
 // tsCannotReadGoRoot is TS's answer when it reads a root Go made. Go's store is WAL (#647), and TS
 // opens the database read-only (src/db/client.ts openReadOnlyDatabase), which SQLite refuses for a
 // WAL file with no -shm: "unable to open database file". Go is the product and TS only the

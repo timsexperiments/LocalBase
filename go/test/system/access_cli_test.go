@@ -47,7 +47,6 @@ func TestCLIAccess(t *testing.T) {
 		{args: []string{"--json", "access", "users", "list"}},
 		{args: []string{"--json", "access", "oidc", "list"}},
 		{args: []string{"--json", "access", "policy", "test", "--issuer", "https://id.example.com", "--subject", "s"}},
-		{args: []string{"--json", "access", "policy", "clear"}},
 		{args: []string{"--json", "access", "users", "invite", "--email", "a@example.com", "--roles", "chat"}},
 		{args: []string{"--json", "access", "policy", "apply", "--file", policy}, goArgs: []string{"--json", "access", "policy", "apply", "--file", goPolicy}},
 		{args: []string{"--json", "access", "magic-link", "add", "--id", "email", "--name", "Email", "--origin", "https://lb.example.com"}},
@@ -109,5 +108,13 @@ func TestCLIAccess(t *testing.T) {
 		own := c.skip
 		c.skip = func(p string) bool { return goOwnIssuer.MatchString(p) || (own != nil && own(p)) }
 		compareCLI(t, roots, c)
+	}
+	// Both roots now have no provider and no policy: clearing differs on purpose (tsClearNeedsProvider).
+	tsRes := runCLI(t, "ts", ts, "--json", "access", "policy", "clear")
+	if tsRes.code != 2 || !strings.Contains(tsRes.stdout+tsRes.stderr, tsClearNeedsProvider) {
+		t.Errorf("ts policy clear with no provider: want exit 2 and %q, got %d %s%s", tsClearNeedsProvider, tsRes.code, tsRes.stdout, tsRes.stderr)
+	}
+	if goRes := runCLI(t, "go", gr, "--json", "access", "policy", "clear"); goRes.code != 0 || !strings.Contains(goRes.stdout, `"cleared":false`) {
+		t.Errorf("go policy clear with no provider: want exit 0 and cleared false, got %d %s%s", goRes.code, goRes.stdout, goRes.stderr)
 	}
 }

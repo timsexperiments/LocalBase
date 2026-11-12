@@ -183,12 +183,9 @@ func accessPolicyCommands() []*cli.Command {
 			{Name: "clear", Summary: "Clear the local policy and use provider-wide permissions", Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 				var cleared bool
 				warn := noManagerWarning(c, e)
+				// Clearing needs no provider, as on the gateway: it only ever falls back to the
+				// provider-wide permissions, and with no policy it says so.
 				err := withOperation(e, "configure browser access", func() (err error) {
-					if cfg, err := auth.LoadAccess(e.Root.Dir); err != nil {
-						return err
-					} else if cfg == nil {
-						return cli.Inputf("Configure a browser identity provider first.")
-					}
 					cleared, err = auth.ClearPolicy(ctx, e.Store)
 					return err
 				})
