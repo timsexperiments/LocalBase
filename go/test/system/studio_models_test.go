@@ -169,3 +169,76 @@ func TestStudioOffersOnlyModelsOnDisk(t *testing.T) {
 		t.Error("another tool's missing files shouldn't change this one")
 	}
 }
+
+// Through the real binary: only a model that really can edit is marked as able to, and with none on
+// disk the page says what is needed (DESIGN §27.5). No model runs here, so the files are sparse.
+func TestImageEditOnlyWithAModelThatCan(t *testing.T) {
+	if harness.Impl() != "go" && harness.Impl() != "both" {
+		t.Skip("runs the Go gateway")
+	}
+	const plain, capable = "dreamshaper-8-lcm", "juggernaut-xl-v9"
+	tmp := fsguard.ScratchDir(t)
+	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
+	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {
+		t.Fatalf("init: %s", r.stderr)
+	}
+	serve := func() { e.serve("--no-auth", "--no-llm", "--no-stt", "--no-tts", "--no-image", "--no-video") }
+	cat, err := catalog.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	install := func(id string) {
+		t.Helper()
+		s := cat.ByID(id)
+		dir := filepath.Join(e.root, "models", s.Kind)
+		fsguard.MkdirAll(dir, 0o700)
+		for _, a := range s.Artifacts {
+			if err := fsguard.Sparse(filepath.Join(dir, a.Filename), a.ExpectedSizeBytes); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	r, err := root.Open(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(r.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, _ := json.Marshal([]string{plain, capable})
+	if _, err := st.DB.Exec(`UPDATE config SET selected_image_models = ?`, string(list)); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	page := func() string {
+		t.Helper()
+		res := e.do("GET", "/app/studio/image", "")
+		if res.Status != 200 {
+			t.Fatalf("image page: %d", res.Status)
+		}
+		return string(res.Body)
+	}
+
+	install(plain)
+	serve()
+	html := page()
+	if !strings.Contains(html, `id="image-needs-edit"`) || !strings.Contains(html, `href="/app/models/get?filter=images"`) || strings.Contains(html, "data-edits") {
+		t.Error("with no model that can edit, the page should say one is needed")
+	}
+	e.stop()
+
+	install(capable)
+	serve()
+	defer func() { e.stop() }()
+	html = page()
+	if strings.Contains(html, `id="image-needs-edit"`) {
+		t.Error("a model on disk can edit, so nothing should say one is needed")
+	}
+	if !strings.Contains(html, `value="`+capable+`" data-label="Juggernaut XL v9"  data-edits`) {
+		t.Errorf("%s should be marked as able to edit", capable)
+	}
+	if strings.Contains(html, `value="`+plain+`" data-label="DreamShaper 8 LCM"  data-edits`) {
+		t.Errorf("%s can't edit", plain)
+	}
+}
