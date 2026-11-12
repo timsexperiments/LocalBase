@@ -837,7 +837,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		if k != "action" && !slices.Contains(fields, k) {
 			return nil, false
 		}
-		if string(v) == "null" && !(in.Action == "apply-policy" && k == "expectedPolicyRevision") {
+		if string(v) == "null" && !((in.Action == "apply-policy" || in.Action == "clear-policy") && k == "expectedPolicyRevision") {
 			return nil, false
 		}
 	}
@@ -899,7 +899,8 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 			return nil, false
 		}
 	case "clear-policy":
-		if in.ExpectedRevision == nil || !revisionRe.MatchString(*in.ExpectedRevision) {
+		// Null when no policy is stored: clearing nothing succeeds, and changes nothing.
+		if !has("expectedPolicyRevision") || (in.ExpectedRevision != nil && !revisionRe.MatchString(*in.ExpectedRevision)) {
 			return nil, false
 		}
 	case "test-policy":

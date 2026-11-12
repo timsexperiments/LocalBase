@@ -368,7 +368,11 @@
                     "type": "object",
                     "properties": {
                       "action": {"const": "clear-policy"},
-                      "expectedPolicyRevision": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+                      "expectedPolicyRevision": {
+                        "type": ["string", "null"],
+                        "pattern": "^[a-f0-9]{64}$",
+                        "description": "Null when no policy is stored: clearing then succeeds with `cleared: false`, and changes nothing."
+                      }
                     },
                     "required": ["action", "expectedPolicyRevision"],
                     "additionalProperties": false

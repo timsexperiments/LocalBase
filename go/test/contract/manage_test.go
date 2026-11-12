@@ -203,6 +203,13 @@ func TestDifferentialManagement(t *testing.T) {
 	a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
 	for i, s := range manageScript {
 		ra, rb := a[i], b[i]
+		if s.body == goClearsNothing {
+			ts, gr := results["ts"][i], results["go"][i]
+			if ts.status != 400 || gr.status != 200 || !strings.Contains(gr.raw, `"cleared":false`) {
+				t.Errorf("step %d %s: want TS 400 and Go 200 with cleared false (goClearsNothing)\n  ts %d %s\n  go %d %s", i, s.body, ts.status, ts.raw, gr.status, gr.raw)
+			}
+			continue
+		}
 		diffs := harness.DiffJSON("", ra.body, rb.body, nil)
 		if ra.status != rb.status || len(diffs) > 0 {
 			t.Errorf("step %d %s %s %s\n  %s %d %s\n  %s %d %s\n  %v", i, s.method, s.path, s.body,
@@ -210,6 +217,13 @@ func TestDifferentialManagement(t *testing.T) {
 		}
 	}
 }
+
+// goClearsNothing is the one step the two answer differently on purpose. With no policy stored,
+// Go's clear-policy takes a null expectedPolicyRevision and succeeds, changing nothing
+// (`cleared: false`, and no audit line), as the command line's `access policy clear` does. TS's
+// revision isn't nullable there (management-contract.ts), so TS refuses with 400. Both answers are
+// asserted, so a change on either side shows.
+const goClearsNothing = `{"action":"clear-policy","expectedPolicyRevision":null}`
 
 // withIssuer names a provider on the bindings and the invitation a request carries.
 func withIssuer(body string) string {

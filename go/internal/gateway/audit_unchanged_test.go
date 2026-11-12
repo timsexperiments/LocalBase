@@ -126,3 +126,28 @@ func TestSavingWhatIsSavedWritesNoAuditLine(t *testing.T) {
 		}
 	}
 }
+
+// clear-policy with no policy stored takes a null revision and succeeds, changing nothing (no
+// audit line). With a policy, null is a conflict, as is a revision when there is none.
+func TestClearingNoPolicySucceeds(t *testing.T) {
+	f := newAuditFixture(t)
+	send := func(body string, status int, want string) int {
+		t.Helper()
+		from := len(f.logs.String())
+		got, out := f.send(f.key, "POST", "/_localbase/access-management", "application/json", []byte(body))
+		if got != status || !strings.Contains(string(out), want) {
+			t.Errorf("%s: %d %s, want %d and %s", body, got, out, status, want)
+		}
+		return len(f.auditEvents(from))
+	}
+	if n := send(`{"action":"clear-policy","expectedPolicyRevision":null}`, 200, `"cleared":false`); n != 0 {
+		t.Errorf("clearing no policy wrote %d audit lines", n)
+	}
+	send(`{"action":"clear-policy","expectedPolicyRevision":"`+strings.Repeat("0", 64)+`"}`, 409, "policy_revision_conflict")
+	send(`{"action":"clear-policy"}`, 400, "validation_failed")
+
+	send(gatewaytest.ConfigureCloudflare, 200, `"restartRequired":true`)
+	send(gatewaytest.PolicyRequest("null", gatewaytest.ChatRole+","+gatewaytest.AdminRole,
+		`{"kind":"email","role":"admin","email":"owner@example.test"}`, "null"), 200, `"policyRevision"`)
+	send(`{"action":"clear-policy","expectedPolicyRevision":null}`, 409, "policy_revision_conflict")
+}
