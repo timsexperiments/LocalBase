@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -67,6 +68,22 @@ func accessPolicyCommands() []*cli.Command {
 					}
 					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
 						return err
+					}
+					// The gateway's rule: a new email or domain binding may name only a configured
+					// provider, since one that names another matches nobody. A binding the policy
+					// already has may stay, for its provider may come back.
+					if issuers := cfg.Issuers(); len(issuers) > 0 {
+						existing, err := auth.LoadPolicy(ctx, e.Store.DB)
+						if err != nil {
+							return err
+						}
+						g := &auth.Guard{Policy: existing, Issuers: issuers}
+						var ae *auth.AccessError
+						if err := g.CheckBindingIssuers(&policy); errors.As(err, &ae) {
+							return cli.Inputf("%s", ae.Message)
+						} else if err != nil {
+							return err
+						}
 					}
 					open = auth.OpenSignIn(cfg, &policy)
 					return auth.ApplyPolicy(ctx, e.Store, &policy)
