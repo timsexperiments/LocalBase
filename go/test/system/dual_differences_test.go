@@ -1,6 +1,8 @@
 package system
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -63,4 +65,31 @@ func (n *readCopyNotices) expectSeen(t testing.TB) {
 	if n.seen == 0 {
 		t.Errorf("Go never printed its read-copy notice here, so goReadCopyNotice is a stale difference")
 	}
+}
+
+// tsMemoryRefusal marks TS's answer when its admission refuses a runtime start for memory. On
+// macOS, TS counts only free and inactive pages as available
+// (src/domains/runtime/memory/macos-memory-provider.ts), which a busy CI runner can leave short
+// even with 80% of memory free, where Go, measuring differently, admits the same request (go-dual
+// run 43010301192). Admission runs after the permission check (a refused role gets 403 first), so
+// the answer still shows that TS let the request through the permission check.
+const tsMemoryRefusal = `"code":"insufficient_memory"`
+
+// tsAdmissionRejected is the event TS writes to the root's log, with its measured inputs, when it
+// refuses for memory.
+const tsAdmissionRejected = "runtime.memory-admission-rejected"
+
+// lastLogLine is the last line of the log at path that holds marker, for a test's own log.
+func lastLogLine(path, marker string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("(%v)", err)
+	}
+	lines := strings.Split(string(b), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.Contains(lines[i], marker) {
+			return lines[i]
+		}
+	}
+	return fmt.Sprintf("(no %s in %s)", marker, path)
 }
