@@ -66,8 +66,10 @@ func accessPolicyCommands() []*cli.Command {
 					if cfg == nil {
 						return cli.Inputf("Configure a browser identity provider first.")
 					}
+					// Both issuer refusals are bad input (exit 2): a binding that names no provider
+					// among several, and a new one that names a provider which isn't configured.
 					if err := policy.BindIssuers(cfg.Issuers(), nil); err != nil {
-						return err
+						return issuerInput(err)
 					}
 					// The gateway's rule: a new email or domain binding may name only a configured
 					// provider, since one that names another matches nobody. A binding the policy
@@ -78,11 +80,8 @@ func accessPolicyCommands() []*cli.Command {
 							return err
 						}
 						g := &auth.Guard{Policy: existing, Issuers: issuers}
-						var ae *auth.AccessError
-						if err := g.CheckBindingIssuers(&policy); errors.As(err, &ae) {
-							return cli.Inputf("%s", ae.Message)
-						} else if err != nil {
-							return err
+						if err := g.CheckBindingIssuers(&policy); err != nil {
+							return issuerInput(err)
 						}
 					}
 					open = auth.OpenSignIn(cfg, &policy)
@@ -230,6 +229,16 @@ func accessPolicyCommands() []*cli.Command {
 			})},
 		}},
 	}
+}
+
+// issuerInput is an issuer refusal (an AccessError) as an input error, in its own words; other
+// errors pass through.
+func issuerInput(err error) error {
+	var ae *auth.AccessError
+	if errors.As(err, &ae) {
+		return cli.Inputf("%s", ae.Message)
+	}
+	return err
 }
 
 // strictJSON decodes rejecting unknown fields.

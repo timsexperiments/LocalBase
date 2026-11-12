@@ -71,12 +71,12 @@ func TestPolicyApplyRefusesANewBindingOnAnUnknownProvider(t *testing.T) {
 		t.Errorf("a new binding on the removed %s: exit %d, %s; want exit 2 and %q", b, code, out, want)
 	}
 
-	// Recorded as it stands, not changed here: with several providers, a binding that names none is
-	// refused (issuer-required) with exit 1, through accessError.
+	// With several providers, a binding that names none is refused too (issuer-required), also as
+	// bad input: exit 2, like the unknown provider above.
 	ok("access", "oidc", "add", "--id", "b", "--name", "P", "--issuer", b, "--client-id", "x",
 		"--public-client", "--origin", "https://lb.example.com")
 	code, out = apply(`{"kind":"email","role":"admin","email":"owner@example.com"}`)
-	if code != 1 || !strings.Contains(out, "must name the sign-in provider that vouches for it") {
+	if code != 2 || !strings.Contains(out, "must name the sign-in provider that vouches for it") {
 		t.Errorf("a binding with no provider among several: exit %d, %s", code, out)
 	}
 }
