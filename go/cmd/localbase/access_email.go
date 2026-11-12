@@ -107,12 +107,8 @@ func accessEmailCommands() []*cli.Command {
 					if err != nil {
 						return err
 					}
-					if current != nil && current.Provider.Kind == "direct" {
-						for _, r := range current.Provider.Registrations {
-							if r.Kind == "magic-link" {
-								return cli.Inputf("Remove the magic-link registration before disabling email delivery.")
-							}
-						}
+					if auth.CheckDisableEmail(current) != nil {
+						return cli.Inputf("Remove the magic-link registration before disabling email delivery.")
 					}
 					disabled, err = auth.DisableEmail(e.Root.Dir)
 					return err
