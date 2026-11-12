@@ -480,6 +480,20 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 	}
+	// requireEmail is email delivery for an action that needs it, or the answer that it can't be
+	// had: none configured, or a file that can't be read (with LoadEmail's words). It reports
+	// whether it wrote a response.
+	requireEmail := func() (*auth.EmailConfig, bool) {
+		email, err := auth.RequireEmail(root)
+		var unreadable *auth.EmailLoadError
+		switch {
+		case errors.As(err, &unreadable):
+			httpx.ManagementErrorMessage(w, 409, "email_delivery_unreadable", unreadable.Message)
+		case err != nil:
+			httpx.ManagementError(w, 409, "email_delivery_not_configured")
+		}
+		return email, err == nil
+	}
 	configured := func(cfg *auth.BrowserAccess) {
 		httpx.NoStore(w, 200, map[string]any{"config": cfg.Summary(), "restartRequired": true})
 	}
@@ -511,9 +525,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.NoStore(w, 200, map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
 	case "test-email-delivery":
-		email, _ := auth.LoadEmail(root)
-		if email == nil {
-			httpx.ManagementError(w, 409, "email_delivery_not_configured")
+		email, ok := requireEmail()
+		if !ok {
 			return
 		}
 		if err := auth.SendEmail(email, in.To, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
@@ -528,8 +541,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		var email *auth.EmailConfig
 		if in.SendEmail {
-			if email, _ = auth.LoadEmail(root); email == nil {
-				httpx.ManagementError(w, 409, "email_delivery_not_configured")
+			var ok bool
+			if email, ok = requireEmail(); !ok {
 				return
 			}
 		}
@@ -558,8 +571,7 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 	case "upsert-oidc", "upsert-github", "upsert-magic-link":
 		if in.Action == "upsert-magic-link" {
-			if email, _ := auth.LoadEmail(root); email == nil {
-				httpx.ManagementError(w, 409, "email_delivery_not_configured")
+			if _, ok := requireEmail(); !ok {
 				return
 			}
 			if current != nil && current.Provider.Kind == "direct" {

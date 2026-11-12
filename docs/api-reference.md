@@ -1427,7 +1427,7 @@ Change browser access, a policy or a user.
 - `403`: The key lacks the permission (`insufficient_permissions`, in the management shape). A key can't give out more than it holds (`exceeds_caller_permissions`, `exceeds_caller_expiry`). A `--no-auth` gateway refusing the request answers in the OpenAI envelope (`no_auth_request_refused`).
 - `404`: Not found: `registration_not_found` or `managed_user_not_found`.
 - `405`: Wrong method. There is no body; see the `Allow` header.
-- `409`: Not possible now: `provider_not_configured`, `policy_not_configured`, `email_delivery_not_configured`, `email_delivery_in_use`, `managed_user_exists`, `policy_conflict`, `policy_revision_conflict` or `would_lock_out_admins`.
+- `409`: Not possible now: `provider_not_configured`, `policy_not_configured`, `email_delivery_not_configured`, `email_delivery_unreadable` (email-delivery.json can't be read; the message says why), `email_delivery_in_use`, `managed_user_exists`, `policy_conflict`, `policy_revision_conflict` or `would_lock_out_admins`.
 - `413`: The body is over the 64 KiB limit (`payload_too_large`).
 - `499`: The client went away while sending the body (`request_aborted`).
 - `502`: The email could not be sent (`email_delivery_failed`).
@@ -1816,6 +1816,7 @@ Every code this gateway's own routes answer with. `error.code` can also hold a c
 - `email_delivery_failed`
 - `email_delivery_in_use`
 - `email_delivery_not_configured`
+- `email_delivery_unreadable`
 - `exceeds_caller_expiry`
 - `exceeds_caller_permissions`
 - `experimental_model_not_allowed`

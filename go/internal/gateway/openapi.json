@@ -521,7 +521,7 @@
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ManagementError"}}}
           },
           "409": {
-            "description": "Not possible now: `provider_not_configured`, `policy_not_configured`, `email_delivery_not_configured`, `email_delivery_in_use`, `managed_user_exists`, `policy_conflict`, `policy_revision_conflict` or `would_lock_out_admins`.",
+            "description": "Not possible now: `provider_not_configured`, `policy_not_configured`, `email_delivery_not_configured`, `email_delivery_unreadable` (email-delivery.json can't be read; the message says why), `email_delivery_in_use`, `managed_user_exists`, `policy_conflict`, `policy_revision_conflict` or `would_lock_out_admins`.",
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ManagementError"}}}
           },
           "413": {"$ref": "#/components/responses/ManagementTooLarge"},
@@ -4978,6 +4978,7 @@
           "email_delivery_failed",
           "email_delivery_in_use",
           "email_delivery_not_configured",
+          "email_delivery_unreadable",
           "exceeds_caller_expiry",
           "exceeds_caller_permissions",
           "experimental_model_not_allowed",
