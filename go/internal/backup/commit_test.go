@@ -689,15 +689,23 @@ func TestAWriteWhileARestoreHoldsTheDatabaseFails(t *testing.T) {
 	}
 }
 
+// A restore takes its database out of write-ahead logging with exactly this statement, unless a test set another.
+func TestARestoreLeavesWALWithJournalModeDelete(t *testing.T) {
+	if got := (options{}).leaveWALStatement(); got != `PRAGMA journal_mode=DELETE` {
+		t.Fatalf("a restore leaves write-ahead logging with %q", got)
+	}
+	if got := (options{leaveWAL: "PRAGMA x"}).leaveWALStatement(); got != "PRAGMA x" {
+		t.Fatalf("with a test's statement, a restore uses %q", got)
+	}
+}
+
 // SQLite answers with the mode it stayed in when it can't change it. A database still in write-ahead logging
 // can't be moved safely, so that stops the restore with the root as it was.
 func TestARestoreStopsWhenTheDatabaseStaysInWAL(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
 	before := tree(t, r.Dir, "runtime")
-	was := leaveWAL
-	leaveWAL = `PRAGMA journal_mode` // Answers with the mode it's in, and changes nothing.
-	defer func() { leaveWAL = was }()
+	s.opts.leaveWAL = `PRAGMA journal_mode` // Answers with the mode it's in, and changes nothing.
 	_, err := s.Commit()
 	var refused *Refused
 	if !errors.As(err, &refused) || err.Error() != someoneElseHoldsIt {
