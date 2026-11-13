@@ -378,17 +378,12 @@ func runSmoke(c *cli.Ctx) (any, error) {
 		}); err != nil {
 			return err
 		}
-		k, raw, err := e.Store.CreateAPIKeyExpiring(context.Background(), "local-base smoke (temporary)",
-			[]string{"inference:chat", "inference:decision", "models:read"}, 1)
+		_, raw, end, err := e.audit.TemporaryKey(context.Background(), e.Store, "local-base smoke (temporary)",
+			[]string{"inference:chat", "inference:decision", "models:read"}, "smoke")
 		if err != nil {
 			return err
 		}
-		e.audit.KeyChange("create", k, "purpose", "smoke")
-		defer func() {
-			if derr := e.Store.DeleteAPIKey(context.Background(), k.ID); derr == nil {
-				e.audit.KeyChange("delete", k, "purpose", "smoke")
-			}
-		}()
+		defer func() { _ = end() }() // as before, a key it fails to delete is left to expire in a day
 		s.key = raw
 		v, _ := s.llms()
 		isDecision := func(id string) bool {

@@ -117,15 +117,12 @@ func idleWaitBase(e *env) (string, error) {
 // Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
 func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep func(time.Duration)) error {
 	ctx := context.Background()
-	k, raw, err := e.Store.CreateAPIKeyExpiring(ctx, "local-base upgrade (temporary)", []string{"models:read"}, 1)
+	k, raw, end, err := e.audit.TemporaryKey(ctx, e.Store, "local-base upgrade (temporary)", []string{"models:read"}, "upgrade")
 	if err != nil {
 		return fmt.Errorf("Could not ask the gateway how busy it is: %w. Nothing was changed. --force goes ahead anyway.", err)
 	}
-	e.audit.KeyChange("create", k, "purpose", "upgrade")
 	defer func() {
-		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr == nil {
-			e.audit.KeyChange("delete", k, "purpose", "upgrade")
-		} else {
+		if derr := end(); derr != nil {
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
