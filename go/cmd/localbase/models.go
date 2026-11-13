@@ -125,14 +125,11 @@ func specJSON(s *catalog.Spec, extra map[string]any) map[string]any {
 }
 
 func cliFit(e *env, s *catalog.Spec, memoryGB int) (*runtime.Fit, error) {
-	var peaks []store.ObservedPeak
-	if sha := s.Primary().SHA256; sha != "" && e.Store != nil {
-		var err error
-		if peaks, err = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha); err != nil {
-			return nil, &failedRead{Step: "reading the memory peaks seen for " + s.ModelID, Err: err}
-		}
+	fit, err := runtime.ObservedFit(context.Background(), e.Store, e.Catalog, s, memoryGB)
+	if err != nil {
+		return nil, &failedRead{Step: "reading the memory peaks seen for " + s.ModelID, Err: err}
 	}
-	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s)), nil
+	return fit, nil
 }
 
 // cliVoices is the custom voices a speech model's page lists.
