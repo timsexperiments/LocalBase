@@ -174,13 +174,16 @@ func TestOpenOwnedRegularLinkInTheWindow(t *testing.T) {
 	victimUntouched(t, target, content)
 }
 
-// A plain file swapped in between the check and the open is not the file that was checked.
+// A plain file swapped in between the check and the open is not the file that was checked. The
+// original is renamed aside, not removed, so its inode stays in use and the new file gets another:
+// Linux often hands a freed inode straight back, and a same-owner file that reuses ours is the same
+// file to every check, by design and harmlessly.
 func TestOpenOwnedRegularPlainSwapBeforeTheOpen(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
 	plainSwap := func() {
-		os.Remove(path)
+		os.Rename(path, path+".old")
 		os.WriteFile(path, []byte("y"), 0o600)
 	}
 	_, err := openOwnedRegular(path, os.O_WRONLY, options{beforeOpen: plainSwap})
