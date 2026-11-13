@@ -60,6 +60,10 @@ type Options struct {
 	Available func(dir string) (int64, error)
 	// wrapWriter wraps the file a download writes to (tests: a full disk).
 	wrapWriter func(io.Writer) io.Writer
+	// beforeRecord runs between the rename and the new record (tests).
+	beforeRecord func()
+	// hash is what verifying hashes with; nil is SHA256File (tests count the full hashes).
+	hash func(path string) (string, error)
 }
 
 // FreeBytes is the space available to an unprivileged user at the deepest
@@ -153,7 +157,7 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 		e := ev
 		e.Kind = "verification-started"
 		report(e)
-		how, err := Verify(path, a, dir)
+		how, err := verifyWith(path, a, dir, o.hash)
 		if err != nil {
 			return err
 		}
@@ -200,7 +204,7 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 		case p == a.ExpectedSizeBytes:
 			if verify(partial) == nil {
 				*phase = "publishing"
-				return publish(partial, out, a, dir)
+				return publish(partial, out, a, dir, o)
 			}
 			*phase = "preparing"
 			os.Remove(partial)
@@ -224,24 +228,23 @@ func artifact(ctx context.Context, s *catalog.Spec, a catalog.Artifact, dir stri
 		return err
 	}
 	*phase = "publishing"
-	return publish(partial, out, a, dir)
+	return publish(partial, out, a, dir, o)
 }
 
 // publish moves a verified partial to its final name, and records the file's identity
 // again: the rename changes ctime, so otherwise the next Verify, which starts every
 // video runtime, would hash the whole model a second time. ctime stays in the identity,
 // since it is what notices a rewrite that restores size, inode and mtime.
-func publish(partial, out string, a catalog.Artifact, dir string) error {
+func publish(partial, out string, a catalog.Artifact, dir string, o Options) error {
 	if err := os.Rename(partial, out); err != nil {
 		return err
 	}
-	beforeRecord()
+	if o.beforeRecord != nil {
+		o.beforeRecord()
+	}
 	recordPublished(out, a, dir)
 	return nil
 }
-
-// beforeRecord runs between the rename and the new record (tests).
-var beforeRecord = func() {}
 
 // recordPublished updates the record only if this is still the file that was hashed:
 // same inode, size and mtime as when it was verified. Anything else, including failing
@@ -442,6 +445,14 @@ func readCache(dir string) cacheFile {
 // identity (size, times, device, inode) matches a previous verification is
 // trusted without rehashing ("cached-identity").
 func Verify(path string, a catalog.Artifact, dir string) (string, error) {
+	return verifyWith(path, a, dir, nil)
+}
+
+// verifyWith is Verify hashing with hash, or SHA256File when hash is nil.
+func verifyWith(path string, a catalog.Artifact, dir string, hash func(string) (string, error)) (string, error) {
+	if hash == nil {
+		hash = SHA256File
+	}
 	id, err := fileIdentity(path)
 	if err != nil {
 		return "", err
@@ -454,7 +465,7 @@ func Verify(path string, a catalog.Artifact, dir string) (string, error) {
 		e.ExpectedSizeBytes == a.ExpectedSizeBytes && e.File == id {
 		return "cached-identity", nil
 	}
-	actual, err := hashFile(path)
+	actual, err := hash(path)
 	if err != nil {
 		return "", err
 	}
@@ -474,9 +485,6 @@ func writeCache(dir string, c cacheFile) error {
 	b, _ := json.MarshalIndent(c, "", "  ")
 	return safefile.WritePrivateChecked(filepath.Join(dir, ".checksums.json"), b)
 }
-
-// hashFile is what Verify hashes with (tests count the full hashes).
-var hashFile = SHA256File
 
 // SHA256File streams a file through sha256.
 func SHA256File(path string) (string, error) {

@@ -19,15 +19,17 @@ type NoAuthRefusal struct{ Message string }
 
 func (e *NoAuthRefusal) Error() string { return e.Message }
 
-// lookupHost resolves a host name; tests replace it.
-var lookupHost = func(ctx context.Context, host string) ([]net.IP, error) {
-	return net.DefaultResolver.LookupIP(ctx, "ip", host)
-}
-
 // HostIsLoopback reports whether binding host can only reach loopback
 // addresses: 127.0.0.0/8, ::1, localhost, or a name that resolves only to
 // those. An empty host binds every interface, so it is not.
 func HostIsLoopback(host string) bool {
+	return hostIsLoopback(host, func(ctx context.Context, name string) ([]net.IP, error) {
+		return net.DefaultResolver.LookupIP(ctx, "ip", name)
+	})
+}
+
+// hostIsLoopback is HostIsLoopback resolving names with lookup (tests: names that resolve as told).
+func hostIsLoopback(host string, lookup func(ctx context.Context, host string) ([]net.IP, error)) bool {
 	h := strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(host), "["), "]")
 	if h == "" {
 		return false
@@ -40,7 +42,7 @@ func HostIsLoopback(host string) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	ips, err := lookupHost(ctx, h)
+	ips, err := lookup(ctx, h)
 	if err != nil || len(ips) == 0 {
 		return false
 	}

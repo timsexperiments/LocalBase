@@ -14,14 +14,12 @@ func TestHostIsLoopback(t *testing.T) {
 		"lan.test":           {net.IPv4(192, 168, 1, 9)},
 		"nothing.test":       {},
 	}
-	old := lookupHost
-	lookupHost = func(_ context.Context, host string) ([]net.IP, error) {
+	lookup := func(_ context.Context, host string) ([]net.IP, error) {
 		if ips, ok := names[host]; ok {
 			return ips, nil
 		}
 		return nil, errors.New("no such host")
 	}
-	t.Cleanup(func() { lookupHost = old })
 	for host, want := range map[string]bool{
 		"127.0.0.1":          true,
 		"127.1.2.3":          true,
@@ -43,7 +41,7 @@ func TestHostIsLoopback(t *testing.T) {
 		"nothing.test":       false,
 		"unresolvable.test":  false,
 	} {
-		if got := HostIsLoopback(host); got != want {
+		if got := hostIsLoopback(host, lookup); got != want {
 			t.Errorf("HostIsLoopback(%q) = %v, want %v", host, got, want)
 		}
 	}
@@ -73,5 +71,19 @@ func TestNoAuthRefusalsSayWhy(t *testing.T) {
 	a, _ := net.ResolveTCPAddr("tcp", "192.168.1.9:1")
 	if err := NoAuthListener(a); !errors.As(err, &r) || r.Message != "Refusing --no-auth: the gateway bound 192.168.1.9:1, which is not a loopback address." {
 		t.Errorf("listener: %v", err)
+	}
+}
+
+// HostIsLoopback asks the system resolver: a name that can't resolve (.invalid never does) is
+// not loopback, and localhost is, as a name and resolved.
+func TestHostIsLoopbackResolvesForReal(t *testing.T) {
+	if HostIsLoopback("no-such-host.invalid") {
+		t.Error("an unresolvable name counted as loopback")
+	}
+	if !HostIsLoopback("localhost") {
+		t.Error("localhost")
+	}
+	if NoAuthHost("no-such-host.invalid") == nil {
+		t.Error("--no-auth was allowed on an unresolvable name")
 	}
 }
