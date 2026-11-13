@@ -23,18 +23,15 @@ func TestVideoRefusalsFollowTheTargets(t *testing.T) {
 	if got := spec(nvidia, mac).VideoRefusal(); got != VideoHostRefusal {
 		t.Errorf("gaining a supported target must end the second text: %q", got)
 	}
-	before := SupportedVideoTargets
-	t.Cleanup(func() { SupportedVideoTargets = before })
-	SupportedVideoTargets = []string{"linux/x64/nvidia"}
-	if got := spec(nvidia).VideoRefusal(); got == VideoModelRefusal {
+	if got := spec(nvidia).videoRefusalOn([]string{"linux/x64/nvidia"}); got == VideoModelRefusal {
 		t.Errorf("a host that became supported must end the second text: %q", got)
 	}
 }
 
 // If this fails, a target was added: VideoHostRefusal names the hosts, so change it with the list.
 func TestTheHostRefusalNamesTheSupportedHosts(t *testing.T) {
-	if len(SupportedVideoTargets) != 1 || SupportedVideoTargets[0] != "darwin/arm64/apple-unified" {
-		t.Errorf("VideoHostRefusal says %q, and the list is %v", VideoHostRefusal, SupportedVideoTargets)
+	if got := supportedVideoTargets(); len(got) != 1 || got[0] != "darwin/arm64/apple-unified" {
+		t.Errorf("VideoHostRefusal says %q, and the list is %v", VideoHostRefusal, got)
 	}
 }
 
