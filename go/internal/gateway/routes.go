@@ -78,6 +78,7 @@ func (s *Server) routeTable() []route {
 		{pattern: "/_localbase/computer-name", audit: "computer-name", describe: computerNameChange, handler: s.records.ComputerNameAPI, ui: []string{"PUT"}},
 		{pattern: "/_localbase/default-model", handler: s.defaultModel}, // for the local CLI: an empty 404 without its instance token, by design
 		{pattern: "/_localbase/placement-state", handler: s.models.PlacementRuntimeState},
+		{pattern: "/_localbase/model-context", handler: s.modelContext}, // for the local CLI's connect: an empty 404 without its instance token
 		{pattern: "/v1/models", methods: []string{"GET"}, guarded: true, permission: "models:read", handler: s.infer.ListModels},
 		{pattern: "/v1/models/{model...}", guarded: true, permission: "models:read", handler: s.infer.RetrieveModel},
 		{pattern: "/v1/chat/completions", methods: []string{"POST"}, guarded: true, permission: "inference:chat", handler: s.infer.Chat, usage: "chat", ui: []string{"POST"}},

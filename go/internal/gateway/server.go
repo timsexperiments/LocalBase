@@ -590,6 +590,40 @@ func (s *Server) defaultModel(w http.ResponseWriter, r *http.Request) {
 		"defaults": s.cfg.LLM.Config().DefaultLLMList()})
 }
 
+// modelContext reports a chat model's context here to the local CLI (`connect`), behind the instance
+// token like defaultModel: the figure /v1/models gives as context_length (the running model's plan,
+// else a plan made now), so it counts --ctx-size, a CPU-only placement and imported models. 404 when
+// there is no plan.
+func (s *Server) modelContext(w http.ResponseWriter, r *http.Request) {
+	if !httpx.InstanceTokenMatches(s.cfg.Root.Instance(), r) || s.cfg.LLM == nil {
+		w.WriteHeader(404)
+		return
+	}
+	id := r.URL.Query().Get("model")
+	// Only a model /v1/models lists: a catalog LLM or an import. A plan is made for any id.
+	known := false
+	if spec := s.cfg.Catalog.ByID(id); spec != nil && spec.Kind == "llm" {
+		known = true
+	} else if s.cfg.Library != nil {
+		if e, err := s.cfg.Library.Imported(r.Context(), id); err == nil && e != nil {
+			known = true
+		}
+	}
+	if !known {
+		w.WriteHeader(404)
+		return
+	}
+	runningID, plan, _ := s.cfg.LLM.Running()
+	if id != runningID {
+		plan, _ = s.cfg.LLM.Plan(id)
+	}
+	if id == "" || plan == nil {
+		w.WriteHeader(404)
+		return
+	}
+	httpx.JSON(w, 200, map[string]any{"contextLength": plan.Budget.EffectiveContext})
+}
+
 func (s *Server) instance(w http.ResponseWriter, r *http.Request) {
 	o := s.cfg.Root.Instance()
 	if !httpx.InstanceTokenMatches(o, r) {

@@ -57,6 +57,7 @@ var openAPIExempt = map[string]string{
 	"/_localbase/instance":        "behind the instance token, for this machine's CLI",
 	"/_localbase/default-model":   "behind the instance token, for this machine's CLI",
 	"/_localbase/placement-state": "behind the instance token, for this machine's CLI",
+	"/_localbase/model-context":   "behind the instance token, for this machine's CLI",
 	"/app":                        "the browser UI",
 	"/app/":                       "the browser UI",
 	"/{$}":                        "the browser UI",

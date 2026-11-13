@@ -90,6 +90,13 @@ POST	/_localbase/model-backend	403	-	invalid_request_error	insufficient_permissi
 PUT	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
 DELETE	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
 PATCH	/_localbase/model-backend	405	GET, POST	invalid_request_error	method_not_allowed
+GET	/_localbase/model-context	404	-	-	-
+HEAD	/_localbase/model-context	404	-	-	-
+OPTIONS	/_localbase/model-context	403	-	invalid_request_error	insufficient_permissions
+POST	/_localbase/model-context	404	-	-	-
+PUT	/_localbase/model-context	404	-	-	-
+DELETE	/_localbase/model-context	404	-	-	-
+PATCH	/_localbase/model-context	404	-	-	-
 GET	/_localbase/model-discovery	405	POST	invalid_request_error	method_not_allowed
 HEAD	/_localbase/model-discovery	405	POST	-	-
 OPTIONS	/_localbase/model-discovery	403	-	invalid_request_error	insufficient_permissions

@@ -63,7 +63,7 @@ var signInRoutes = []string{"/app/login", "/oidc/callback", "/github/callback", 
 
 // tokenRoutes answer only the local CLI, which proves itself with the instance
 // token; anything else gets the same empty 404.
-var tokenRoutes = []string{"/_localbase/instance", "/_localbase/default-model", "/_localbase/placement-state"}
+var tokenRoutes = []string{"/_localbase/instance", "/_localbase/default-model", "/_localbase/placement-state", "/_localbase/model-context"}
 
 // matrixExtraPaths are more paths for routes that dispatch on the rest of the path.
 var matrixExtraPaths = map[string][]string{

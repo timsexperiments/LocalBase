@@ -26,7 +26,7 @@ var (
 	runtimes   = []string{"gateway", "llm", "stt", "tts", "image", "video", "service", "cli"}
 	// Routes TS recognizes in http.path (route-dispatch.ts gatewayHttpRoutes).
 	apiRoutes = []string{"/_localbase/computer-name", "/_localbase/default-chat-models", "/_localbase/default-model",
-		"/_localbase/host", "/_localbase/local-sessions", "/_localbase/placement-state", "/_localbase/runs",
+		"/_localbase/host", "/_localbase/local-sessions", "/_localbase/model-context", "/_localbase/placement-state", "/_localbase/runs",
 		"/_localbase/runs/{rest}", "/_localbase/update", "/_localbase/usage", "/_localbase/voices/", "/openapi.json",
 		"/health", "/health/ready", "/_localbase/instance", "/_localbase/access-management",
 		"/_localbase/api-keys", "/_localbase/model-management", "/_localbase/model-discovery", "/_localbase/hf-token",
