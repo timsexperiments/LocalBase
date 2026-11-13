@@ -70,6 +70,7 @@ type Request struct {
 	Log *slog.Logger
 
 	hfOrigins []string // extra origins for the token (the "huggingface" profile)
+	maxFiles  int      // the most files one import can fetch; 0 is maxPlanFiles (tests)
 }
 
 // PlannedFile is one file to fetch.
@@ -115,6 +116,9 @@ type Plan struct {
 	hfToken         string
 	allowPrivate    bool
 	onHost          bool
+	// available and checkEvery stand in for install.FreeBytes and freeSpaceEvery (tests).
+	available  func(dir string) (int64, error)
+	checkEvery int64
 }
 
 var (
@@ -191,8 +195,12 @@ func Resolve(ctx context.Context, rootDir string, req Request) (*Plan, error) {
 	if req.Task != "" {
 		p.Task = req.Task
 	}
-	if len(p.Files) > maxPlanFiles {
-		return nil, &RefusedError{CodeTooMany, fmt.Sprintf("This has %d files, more than one import can take (%d).", len(p.Files), maxPlanFiles)}
+	maxFiles := maxPlanFiles
+	if req.maxFiles > 0 {
+		maxFiles = req.maxFiles
+	}
+	if len(p.Files) > maxFiles {
+		return nil, &RefusedError{CodeTooMany, fmt.Sprintf("This has %d files, more than one import can take (%d).", len(p.Files), maxFiles)}
 	}
 	p.SizeKnown = true
 	for _, f := range p.Files {

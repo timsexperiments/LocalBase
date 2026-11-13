@@ -13,14 +13,6 @@ import (
 	"time"
 )
 
-// limit sets one of the package's limits for a test.
-func limit[T any](t *testing.T, v *T, to T) {
-	t.Helper()
-	old := *v
-	*v = to
-	t.Cleanup(func() { *v = old })
-}
-
 // endless sends data with no length, until the client goes away.
 func endless(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -42,10 +34,8 @@ func endless(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func plenty(t *testing.T) {
-	t.Helper()
-	limit(t, &availableBytes, func(string) (int64, error) { return 1 << 50, nil })
-}
+// plenty is a plan's free space when there is plenty of it.
+func plenty(string) (int64, error) { return 1 << 50, nil }
 
 func refusedCode(err error) string {
 	var refused *RefusedError
@@ -66,10 +56,9 @@ func resolveFrom(t *testing.T, root, source string) *Plan {
 
 // A source that does not say how big a file is cannot send for ever.
 func TestUnknownSizeHasABudget(t *testing.T) {
-	plenty(t)
-	limit(t, &maxUnknownSizeBytes, 1<<20)
 	root := t.TempDir()
 	p := resolveFrom(t, root, endless(t).URL+"/m.gguf")
+	p.available, p.MaxUnknownBytes = plenty, 1<<20
 	if p.SizeKnown {
 		t.Fatal("the size should be unknown")
 	}
@@ -88,18 +77,16 @@ func TestUnknownSizeHasABudget(t *testing.T) {
 // A running download stops before it uses the space the database and logs need,
 // whatever the source claimed, and it frees what it used.
 func TestDownloadLeavesTheReserve(t *testing.T) {
-	limit(t, &freeSpaceReserve, 1<<20)
-	limit(t, &freeSpaceEvery, 128<<10)
+	root := t.TempDir()
+	p := resolveFrom(t, root, endless(t).URL+"/m.gguf")
 	calls := 0
-	limit(t, &availableBytes, func(string) (int64, error) {
+	p.checkEvery, p.available = 128<<10, func(string) (int64, error) {
 		calls++
-		if calls > 3 { // something else filled the disk meanwhile
+		if calls > 3 { // something else filled the disk meanwhile, well into the reserve
 			return 1 << 10, nil
 		}
 		return 1 << 40, nil
-	})
-	root := t.TempDir()
-	p := resolveFrom(t, root, endless(t).URL+"/m.gguf")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_, err := Fetch(ctx, root, p, nil)
@@ -114,8 +101,6 @@ func TestDownloadLeavesTheReserve(t *testing.T) {
 
 // What a source says it will send is checked before anything is written.
 func TestClaimedSizeMustFit(t *testing.T) {
-	limit(t, &freeSpaceReserve, 1<<30)
-	limit(t, &availableBytes, func(string) (int64, error) { return 2 << 30, nil })
 	root := t.TempDir()
 	const huge = 1_000_000_000_000_000
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +114,7 @@ func TestClaimedSizeMustFit(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := resolveFrom(t, root, srv.URL+"/m.gguf")
+	p.available = func(string) (int64, error) { return freeSpaceReserve + 1<<30, nil } // 1 GiB usable
 	err := CheckSpace(root, p)
 	if refusedCode(err) != CodeNoSpace || !strings.Contains(err.Error(), "1.0 GiB") {
 		t.Errorf("%v", err)
@@ -143,10 +129,9 @@ func TestClaimedSizeMustFit(t *testing.T) {
 
 // What is already staged counts: resuming needs only the rest.
 func TestResumeNeedsOnlyTheRest(t *testing.T) {
-	limit(t, &freeSpaceReserve, 0)
-	limit(t, &availableBytes, func(string) (int64, error) { return 100, nil })
 	root := t.TempDir()
-	p := &Plan{ID: "m", Kind: "url", Display: "x", Files: []PlannedFile{{Filename: "m.gguf", SizeBytes: 150}}}
+	p := &Plan{ID: "m", Kind: "url", Display: "x", Files: []PlannedFile{{Filename: "m.gguf", SizeBytes: 150}},
+		available: func(string) (int64, error) { return freeSpaceReserve + 100, nil }} // 100 bytes usable
 	if err := CheckSpace(root, p); refusedCode(err) != CodeNoSpace {
 		t.Fatalf("nothing staged: %v", err)
 	}
@@ -164,8 +149,8 @@ func TestResumeNeedsOnlyTheRest(t *testing.T) {
 
 // A disk that cannot be read does not stop an import: the running check still applies.
 func TestUnreadableFreeSpaceDoesNotRefuse(t *testing.T) {
-	limit(t, &availableBytes, func(string) (int64, error) { return 0, errors.New("no") })
-	p := &Plan{ID: "m", Kind: "url", Display: "x", Files: []PlannedFile{{Filename: "m.gguf", SizeBytes: 1 << 40}}}
+	p := &Plan{ID: "m", Kind: "url", Display: "x", Files: []PlannedFile{{Filename: "m.gguf", SizeBytes: 1 << 40}},
+		available: func(string) (int64, error) { return 0, errors.New("no") }}
 	if err := CheckSpace(t.TempDir(), p); err != nil {
 		t.Error(err)
 	}
@@ -173,11 +158,12 @@ func TestUnreadableFreeSpaceDoesNotRefuse(t *testing.T) {
 
 // Nothing is a model until it is published.
 func TestFetchPublishesNothing(t *testing.T) {
-	plenty(t)
 	root := t.TempDir()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { serveRange(w, r, ggufBytes(t, "qwen3", 2048)) }))
 	defer srv.Close()
-	f, err := Fetch(context.Background(), root, resolveFrom(t, root, srv.URL+"/m.gguf"), nil)
+	p := resolveFrom(t, root, srv.URL+"/m.gguf")
+	p.available = plenty
+	f, err := Fetch(context.Background(), root, p, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,15 +185,13 @@ func TestFetchPublishesNothing(t *testing.T) {
 }
 
 func TestPlanHasAFileLimit(t *testing.T) {
-	plenty(t)
-	limit(t, &maxPlanFiles, 2)
 	dir := t.TempDir()
 	for i := 1; i <= 3; i++ {
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("big-%05d-of-00003.gguf", i)), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := Resolve(context.Background(), t.TempDir(), Request{Source: filepath.Join(dir, "big-00001-of-00003.gguf"), AllowLocal: true, Task: "chat"})
+	_, err := Resolve(context.Background(), t.TempDir(), Request{Source: filepath.Join(dir, "big-00001-of-00003.gguf"), AllowLocal: true, Task: "chat", maxFiles: 2})
 	if refusedCode(err) != CodeTooMany {
 		t.Errorf("%v", err)
 	}
@@ -276,12 +260,10 @@ func TestUnknownSizeLimitComesFromThePlan(t *testing.T) {
 		})
 	}
 	// No limit set on the plan: the default, and a stated size isn't limited at all.
-	limit(t, &maxUnknownSizeBytes, 1<<10)
-	if err := (&Plan{}).budget(t.TempDir(), 0).check(1<<10 + 1); err == nil {
-		t.Error("the default limit didn't apply")
+	if b := (&Plan{}).budget(t.TempDir(), 0); b.limit != maxUnknownSizeBytes || b.every != freeSpaceEvery {
+		t.Errorf("the defaults didn't apply: limit %d, every %d", b.limit, b.every)
 	}
-	limit(t, &availableBytes, func(string) (int64, error) { return 1 << 60, nil })
-	if err := (&Plan{}).budget(t.TempDir(), 1<<30).check(1 << 29); err != nil {
+	if err := (&Plan{available: plenty}).budget(t.TempDir(), 1<<30).check(1 << 29); err != nil {
 		t.Errorf("a file of stated size: %v", err)
 	}
 }
