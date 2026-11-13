@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gguf"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -50,19 +50,9 @@ func task(s *catalog.Spec) (string, bool) {
 	return "Video", false
 }
 
-// installedBytes returns the bytes on disk when every artifact is present at
-// its expected size, else 0. It never hashes files.
+// installedBytes is library.InstalledBytes in s's models directory.
 func (u *UI) installedBytes(s *catalog.Spec) int64 {
-	dir := filepath.Join(u.d.RootDir, "models", s.Kind)
-	var total int64
-	for _, a := range s.Artifacts {
-		info, err := os.Stat(filepath.Join(dir, a.Filename))
-		if err != nil || !info.Mode().IsRegular() || (a.ExpectedSizeBytes > 0 && info.Size() != a.ExpectedSizeBytes) {
-			return 0
-		}
-		total += info.Size()
-	}
-	return total
+	return library.InstalledBytes(filepath.Join(u.d.RootDir, "models", s.Kind), s)
 }
 
 func (u *UI) rows() ([]Row, bool) {

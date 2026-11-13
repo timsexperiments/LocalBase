@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"net"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
-	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
@@ -212,50 +209,20 @@ func connectBases(e *env, addr string) []connect.Base {
 	return bases
 }
 
-// connectModels are the installed chat models: catalog ones, then imports.
+// connectModels are the installed chat models (library.ChatCandidates that are ready): catalog
+// ones, then imports.
 func connectModels(e *env) []string {
-	var out []string
-	dir := e.Root.ModelsDir("llm")
-	ids := slices.Clone(e.Config.Selected["llm"])
-	if a := e.Config.Active["llm"]; a != "" && !slices.Contains(ids, a) {
-		ids = append(ids, a)
-	}
-	for _, id := range ids {
-		if s := e.Catalog.ByID(id); s != nil && s.Kind == "llm" && !s.IsEmbedding() && !s.IsDecision() && specInstalled(dir, s) {
-			out = append(out, id)
-		}
-	}
 	lib, err := library.Open(e.Root, e.Store, e.Catalog, nil)
 	if err != nil {
-		return out
+		lib = nil // the catalog ones are still listed
 	}
-	entries, err := lib.Entries(context.Background())
-	if err != nil {
-		return out
-	}
-	for i := range entries {
-		entry := &entries[i]
-		if !entry.Imported || !entry.Model.HasTask("chat") || slices.Contains(out, entry.Model.ID) {
-			continue
-		}
-		for _, in := range lib.Inspect(entry) {
-			if in.Complete() {
-				out = append(out, entry.Model.ID)
-				break
-			}
+	var out []string
+	for _, c := range library.ChatCandidates(context.Background(), e.Config, e.Catalog, e.Root.ModelsDir("llm"), lib) {
+		if c.Ready {
+			out = append(out, c.ID)
 		}
 	}
 	return out
-}
-
-func specInstalled(dir string, s *catalog.Spec) bool {
-	for _, a := range s.Artifacts {
-		info, err := os.Stat(filepath.Join(dir, a.Filename))
-		if err != nil || !info.Mode().IsRegular() || (a.ExpectedSizeBytes > 0 && info.Size() != a.ExpectedSizeBytes) {
-			return false
-		}
-	}
-	return len(s.Artifacts) > 0
 }
 
 // connectDefaultModel is the running gateway's effective default, else the active model,

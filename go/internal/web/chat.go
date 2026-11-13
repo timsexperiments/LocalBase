@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -36,17 +37,14 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 	}
 	cfg := u.d.LLM.Config()
 	def := u.d.LLM.DefaultModel(true) // a page load starts a new conversation
-	ids := slices.Clone(cfg.Selected["llm"])
-	if a := cfg.Active["llm"]; a != "" && !slices.Contains(ids, a) {
-		ids = append(ids, a)
-	}
+	cands := library.ChatCandidates(r.Context(), cfg, u.d.Catalog, filepath.Join(u.d.RootDir, "models", "llm"), u.d.Library)
 	var out []chatModel
-	for _, id := range ids {
-		s := u.d.Catalog.ByID(id)
-		if s == nil || s.Kind != "llm" || s.IsEmbedding() || s.IsDecision() {
+	for _, c := range cands {
+		s := c.Spec
+		if s == nil {
 			continue
 		}
-		m := chatModel{ID: id, Name: s.Name(), Ready: u.installedBytes(s) > 0, Default: id == def.ModelID}
+		m := chatModel{ID: c.ID, Name: s.Name(), Ready: c.Ready, Default: c.ID == def.ModelID}
 		if s.ContextWindowTokens != nil {
 			m.Context = *s.ContextWindowTokens
 		}
@@ -56,7 +54,7 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 		m.Tools = caps.Has("tool-calling")
 		out = append(out, m)
 	}
-	out = append(out, u.importedChatModels(r)...)
+	out = append(out, importedChatModels(cands)...)
 	slices.SortStableFunc(out, func(a, b chatModel) int {
 		rank := func(m chatModel) int {
 			switch {
@@ -72,35 +70,22 @@ func (u *UI) chatModels(r *http.Request) []chatModel {
 	return out
 }
 
-// importedChatModels are imported models (M3.5) for chat, which the API
-// serves like catalog ones. One is ready when a variant has all its files.
-func (u *UI) importedChatModels(r *http.Request) []chatModel {
-	if u.d.Library == nil {
-		return nil
-	}
-	entries, err := u.d.Library.Entries(r.Context())
-	if err != nil {
-		return nil
-	}
+// importedChatModels are the imported models (M3.5) among cands, which the API serves like catalog
+// ones. One is ready when a variant has all its files.
+func importedChatModels(cands []library.ChatCandidate) []chatModel {
 	var out []chatModel
-	for i := range entries {
-		e := &entries[i]
-		if !e.Imported || !e.Model.HasTask("chat") {
+	for _, c := range cands {
+		e := c.Entry
+		if e == nil {
 			continue
 		}
-		m := chatModel{ID: e.Model.ID, Name: e.Model.Name, Inputs: []string{"text"}, Tools: slices.Contains(e.Model.Capabilities, "tools")}
+		m := chatModel{ID: e.Model.ID, Name: e.Model.Name, Inputs: []string{"text"}, Tools: slices.Contains(e.Model.Capabilities, "tools"), Ready: c.Ready}
 		if m.Name == "" {
 			m.Name = m.ID
 		}
 		if slices.Contains(e.Model.Capabilities, "vision") {
 			m.Vision = true
 			m.Inputs = append(m.Inputs, "image")
-		}
-		for _, in := range u.d.Library.Inspect(e) {
-			if in.Complete() {
-				m.Ready = true
-				break
-			}
 		}
 		out = append(out, m)
 	}

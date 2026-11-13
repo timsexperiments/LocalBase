@@ -2,7 +2,6 @@ package web
 
 import (
 	"encoding/json"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,9 +49,8 @@ func TestChatOffersImportedModels(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "w.gguf"), []byte("GGUF"), 0o644)
 
-	u := New(Deps{NoAuth: true, Library: lib, Catalog: cat, Store: st, RootDir: r.Dir})
 	got := map[string]chatModel{}
-	for _, m := range u.importedChatModels(httptest.NewRequest("GET", "/app/chat", nil)) {
+	for _, m := range importedChatModels(library.ChatCandidates(t.Context(), &store.Config{}, cat, r.ModelsDir("llm"), lib)) {
 		got[m.ID] = m
 	}
 	if m := got["my-vision-chat"]; !m.Ready || !m.Vision || m.Name != "My Vision Chat" || strings.Join(m.Inputs, ",") != "text,image" {

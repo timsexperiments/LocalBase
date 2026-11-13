@@ -1,0 +1,2 @@
+models: tiny-chat, imp-ready
+default: tiny-chat
