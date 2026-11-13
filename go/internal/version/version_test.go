@@ -29,3 +29,17 @@ func TestString(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 }
+
+// Only a stamped, unmodified build is a release.
+func TestReleaseBuild(t *testing.T) {
+	old := Commit
+	t.Cleanup(func() { Commit = old })
+	Commit = ""
+	if ReleaseBuild() {
+		t.Error("an unstamped build is a release")
+	}
+	Commit = "0123456789abcdef"
+	if got, want := ReleaseBuild(), !Get().Modified; got != want {
+		t.Errorf("a stamped build: release %v, want %v (modified %v)", got, want, Get().Modified)
+	}
+}

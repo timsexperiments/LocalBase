@@ -66,14 +66,9 @@ func runUpgrade(c *cli.Ctx) (any, error) {
 	return runUpgradeInstall(c, e)
 }
 
-// releaseBuild: a release stamps its commit. A plain go build does not.
-func releaseBuild() bool {
-	return version.Commit != "" && !version.Get().Modified
-}
-
 func runUpgradeCheck(c *cli.Ctx) (any, error) {
-	data := map[string]any{"current": version.Version, "release": releaseBuild()}
-	if !releaseBuild() {
+	data := map[string]any{"current": version.Version, "release": version.ReleaseBuild()}
+	if !version.ReleaseBuild() {
 		c.Info("This is a development build (%s), not a release, so there is nothing to compare.", version.Version)
 		return data, nil
 	}
@@ -316,7 +311,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if waitGiven && c.Bool("force") {
 		return nil, cli.Inputf("give --wait or --force, not both")
 	}
-	if !releaseBuild() {
+	if !version.ReleaseBuild() {
 		return nil, fmt.Errorf("This is a development build (%s), not a release, so there is nothing to upgrade from. Nothing was changed.", version.Version)
 	}
 	binary, err := upgradeBinaryPath()
@@ -441,7 +436,7 @@ func runCheckUpdates(c *cli.Ctx, e *env) (any, error) {
 		return nil, cli.Inputf("check-updates: expected on or off")
 	}
 	out, err := writeThroughGateway(e, "/_localbase/update", map[string]any{"action": "set-check", "enabled": on}, func() (map[string]any, error) {
-		checker := upgrade.NewChecker(e.Store, upgrade.DefaultSource(), version.Version, releaseBuild(), nil)
+		checker := upgrade.NewChecker(e.Store, upgrade.DefaultSource(), version.Version, version.ReleaseBuild(), nil)
 		if err := checker.SetEnabled(context.Background(), on); err != nil {
 			return nil, err
 		}

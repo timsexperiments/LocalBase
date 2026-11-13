@@ -433,7 +433,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}()
 	// The daily check is off by default, and this makes no request unless it is on.
-	gw.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
+	gw.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, version.ReleaseBuild(), log)
 	stopUpdates := gw.Updates.Start()
 	defer stopUpdates()
 	// A managed gateway that is ready acknowledges the static settings it
