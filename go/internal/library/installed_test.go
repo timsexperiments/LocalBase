@@ -1,4 +1,4 @@
-package main
+package library
 
 import (
 	"os"
@@ -27,7 +27,7 @@ func TestLooseModelFiles(t *testing.T) {
 	want := map[string]bool{"my-model.gguf": true, "weights.safetensors": true, "linked.gguf": true}
 	entries, _ := os.ReadDir(dir)
 	for _, en := range entries {
-		if got := looseModelFile(dir, en.Name()); got != want[en.Name()] {
+		if got := LooseModelFile(dir, en.Name()); got != want[en.Name()] {
 			t.Errorf("%s: listed %v, want %v", en.Name(), got, want[en.Name()])
 		}
 	}
