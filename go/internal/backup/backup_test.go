@@ -137,7 +137,13 @@ func newRoot(t *testing.T, parent string) (*root.Root, string) {
 
 func create(t *testing.T, r *root.Root, exclude bool) *Result {
 	t.Helper()
-	res, err := Create(context.Background(), Options{Root: r, Output: filepath.Join(dir(t), "b"+Extension), ExcludeSecrets: exclude, Version: "9.9.9", Now: time.Unix(1_800_000_000, 0)})
+	return createWith(t, r, exclude, options{})
+}
+
+// createWith is create, with a test's options.
+func createWith(t *testing.T, r *root.Root, exclude bool, o options) *Result {
+	t.Helper()
+	res, err := Create(context.Background(), Options{Root: r, Output: filepath.Join(dir(t), "b"+Extension), ExcludeSecrets: exclude, Version: "9.9.9", Now: time.Unix(1_800_000_000, 0), opts: o})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +518,7 @@ func TestBackupLeavesNoFreePages(t *testing.T) {
 		if err := os.WriteFile(p, e.body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		db, err := openReadOnly(p)
+		db, err := openReadOnly(p, options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1215,7 +1221,7 @@ func TestRestoreSchemaMissingTables(t *testing.T) {
 			pack(t, crafted, e)
 			target := filepath.Join(dir(t), "target")
 			restore(t, crafted, target, false)
-			db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+			db, err := openReadOnly(filepath.Join(target, "local-base.db"), options{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1290,7 +1296,7 @@ func TestRestoreAcceptsEveryMigrationLevel(t *testing.T) {
 
 func TestShapeOfAMigratedDatabaseIsExpected(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
-	db, err := openReadOnly(r.DB())
+	db, err := openReadOnly(r.DB(), options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1337,7 +1343,7 @@ func TestRestoreDeletesLeftOutRows(t *testing.T) {
 	pack(t, crafted, e)
 	target := filepath.Join(dir(t), "target")
 	restore(t, crafted, target, false)
-	db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+	db, err := openReadOnly(filepath.Join(target, "local-base.db"), options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1605,7 +1611,7 @@ func TestExcludeSecretsKeepsBindingsAndInvitations(t *testing.T) {
 	if !strings.Contains(rep.UnboundNote, "adopt the only one") || !strings.Contains(rep.UnboundNote, "https://public.example.com") {
 		t.Errorf("the note: %q", rep.UnboundNote)
 	}
-	db, err := openReadOnly(filepath.Join(target, "local-base.db"))
+	db, err := openReadOnly(filepath.Join(target, "local-base.db"), options{})
 	if err != nil {
 		t.Fatal(err)
 	}

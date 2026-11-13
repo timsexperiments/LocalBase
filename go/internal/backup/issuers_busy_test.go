@@ -20,14 +20,14 @@ func TestBusyBindingsAreNeverReadAsNone(t *testing.T) {
 	if err := os.WriteFile(stagedCopy, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	quiet, err := openReadOnly(stagedCopy)
+	quiet, err := openReadOnly(stagedCopy, options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer quiet.Close()
 	holdLock(t, r.DB())
-	shortBusyWaits(t, 0)
-	target, err := openReadOnly(r.DB())
+	o := shortBusyWaits(0)
+	target, err := openReadOnly(r.DB(), o)
 	if err != nil {
 		t.Fatal(err)
 	}

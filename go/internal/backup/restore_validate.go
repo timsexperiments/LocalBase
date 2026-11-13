@@ -28,7 +28,7 @@ import (
 // database's fixes. It is the staged copy, and nothing else is touched.
 func validate(ctx context.Context, dir, target string, m *Manifest, state *targetState, bringBack []string) (*Report, error) {
 	dbPath := filepath.Join(dir, "local-base.db")
-	if err := checkDatabase(ctx, dbPath); err != nil {
+	if err := checkDatabase(ctx, dbPath, state.opts); err != nil {
 		return nil, err
 	}
 	st, err := store.Open(dbPath)
@@ -116,7 +116,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	var liveValues *signInValues
 	if !state.newRoot && state.hasData {
-		v := liveSignIn(ctx, target, state.liveDB, state.liveErr)
+		v := liveSignIn(ctx, target, state.liveDB, state.liveErr, state.opts)
 		liveValues = &v
 	}
 	var signInCaution string
@@ -128,7 +128,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		return nil, refuse("The roles in this backup can't be read: %v", err)
 	}
 	if !state.newRoot && state.hasData {
-		live, liveErr := liveGrants(ctx, state.liveDB, state.liveErr)
+		live, liveErr := liveGrants(ctx, state.liveDB, state.liveErr, state.opts)
 		gone, changed := compareGrants(rep.Grants, live, liveErr)
 		rep.RolesGone = gone
 		switch {
@@ -171,7 +171,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 		liveOwn[o.key] = o.byDefault
 	}
 	if !state.newRoot && state.hasData {
-		liveOwn, liveOwnErr = liveOwnSettings(ctx, state.liveDB, state.liveErr)
+		liveOwn, liveOwnErr = liveOwnSettings(ctx, state.liveDB, state.liveErr, state.opts)
 	}
 	var ownCaution string
 	rep.OwnSettings, ownCaution = ownSettingsReport(backedOwn, liveOwn, liveOwnErr, state.newRoot)
@@ -199,7 +199,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	// What it holds, read the way a backup reads a root, once each file has passed its own check. A file
 	// can say anything about itself.
-	held, err := readSecrets(ctx, dir, dbPath, false)
+	held, err := readSecrets(ctx, dir, dbPath, false, state.opts)
 	if err != nil {
 		return nil, refuse("The secrets in this backup can't be read: %v", err)
 	}

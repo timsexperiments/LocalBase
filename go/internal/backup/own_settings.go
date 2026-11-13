@@ -116,11 +116,11 @@ func backupOwnSettings(ctx context.Context, db *sql.DB) (map[string]string, erro
 
 // liveOwnSettings reads the root being replaced. A failure is returned, and the report then says that
 // root's setting can't be read.
-func liveOwnSettings(ctx context.Context, liveDB string, liveErr error) (map[string]string, error) {
+func liveOwnSettings(ctx context.Context, liveDB string, liveErr error, o options) (map[string]string, error) {
 	if liveErr != nil {
 		return nil, liveErr
 	}
-	db, err := openReadOnly(liveDB)
+	db, err := openReadOnly(liveDB, o)
 	if err != nil {
 		return nil, err
 	}

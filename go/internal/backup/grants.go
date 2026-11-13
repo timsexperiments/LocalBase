@@ -146,11 +146,11 @@ func readGrants(ctx context.Context, db *sql.DB) ([]Grant, error) {
 }
 
 // liveGrants reads the root being replaced, and only reads.
-func liveGrants(ctx context.Context, liveDB string, liveErr error) ([]Grant, error) {
+func liveGrants(ctx context.Context, liveDB string, liveErr error, o options) ([]Grant, error) {
 	if liveErr != nil {
 		return nil, liveErr
 	}
-	db, err := openReadOnly(liveDB)
+	db, err := openReadOnly(liveDB, o)
 	if err != nil {
 		return nil, err
 	}

@@ -60,9 +60,9 @@ func (s *secretSet) found(r RemovedSecret, exclude bool) {
 	s.removed = append(s.removed, r)
 }
 
-func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool) (*secretSet, error) {
+func readSecrets(ctx context.Context, rootDir, dbPath string, exclude bool, o options) (*secretSet, error) {
 	s := &secretSet{reduced: map[string][]byte{}, dropped: map[string]bool{}}
-	hf, otel, err := configSecrets(ctx, dbPath)
+	hf, otel, err := configSecrets(ctx, dbPath, o)
 	if err != nil {
 		return nil, err
 	}
@@ -212,8 +212,8 @@ func sqliteDSN(path string, query string) string {
 }
 
 // readableDatabase says whether a database can be read without changing anything.
-func readableDatabase(ctx context.Context, path string) error {
-	db, err := openReadOnly(path)
+func readableDatabase(ctx context.Context, path string, o options) error {
+	db, err := openReadOnly(path, o)
 	if err != nil {
 		return err
 	}
@@ -238,7 +238,7 @@ func UnfinishedWrite(ctx context.Context, rootDir string) string {
 	if store.InWAL(dbPath) {
 		return ""
 	}
-	if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+	if err := readableDatabase(ctx, dbPath, options{}); isUnfinishedWrite(err) {
 		return unfinishedWriteMessage(rootDir)
 	}
 	return ""
@@ -252,12 +252,12 @@ func unfinishedWriteMessage(rootDir string) string {
 // it directly would leave a -shm and a -wal behind on a stopped root, and fail on one that can't be
 // written. done removes any private copy. A read that fails for a reason of its own comes back here as
 // no error, so that the step that needs the data can say what happened.
-func readRoot(ctx context.Context, dbPath string) (read string, done func(), err error) {
+func readRoot(ctx context.Context, dbPath string, o options) (read string, done func(), err error) {
 	read, done, err = store.ReadablePath(dbPath)
 	if err != nil || read != dbPath {
 		return read, done, err
 	}
-	err = readableDatabase(ctx, read)
+	err = readableDatabase(ctx, read, o)
 	if err == nil || isBusy(err) || isUnfinishedWrite(err) {
 		return read, done, nil
 	}
@@ -269,17 +269,17 @@ func readRoot(ctx context.Context, dbPath string) (read string, done func(), err
 	return copied, removeCopy, nil
 }
 
-func openReadOnly(path string) (*sql.DB, error) {
-	return sql.Open("sqlite", sqliteDSN(path, fmt.Sprintf("mode=ro&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
+func openReadOnly(path string, o options) (*sql.DB, error) {
+	return sql.Open("sqlite", sqliteDSN(path, fmt.Sprintf("mode=ro&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", o.readBusyMillisFor())))
 }
 
 // A backup runs beside a live gateway, and a rollback journal lets a writer keep readers out while
 // it commits. SQLite's own timeout isn't fair to a reader, so a busy spell can outlast it.
-var (
-	// readBusyMillis is how long one read waits on SQLite. busyWait is how long a step keeps trying.
-	// Variables so that a test needn't take a minute.
-	readBusyMillis = 5000
-	busyWait       = 60 * time.Second
+const (
+	// readBusyMillisLimit is how long one read waits on SQLite. busyWaitLimit is how long a step keeps trying.
+	// A test sets shorter ones in its options, so that it needn't take a minute.
+	readBusyMillisLimit = 5000
+	busyWaitLimit       = 60 * time.Second
 )
 
 const busyRetryPause = 100 * time.Millisecond
@@ -293,10 +293,10 @@ func isBusy(err error) bool {
 	return code == sqlite3.SQLITE_BUSY || code == sqlite3.SQLITE_LOCKED
 }
 
-// retryBusy runs a read until the database lets it, for up to busyWait. The read must be safe to
-// run again.
-func retryBusy(ctx context.Context, read func() error) error {
-	deadline := time.Now().Add(busyWait)
+// retryBusy runs a read until the database lets it, for up to busyWaitLimit or a test's shorter wait. The read
+// must be safe to run again.
+func retryBusy(ctx context.Context, read func() error, o options) error {
+	deadline := time.Now().Add(o.busyWaitFor())
 	for {
 		err := read()
 		if !isBusy(err) || !time.Now().Before(deadline) {
@@ -349,8 +349,8 @@ func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, 
 
 // configSecrets reads the database directly: an older one may lack a column, and being wrong
 // here would print the wrong warning.
-func configSecrets(ctx context.Context, dbPath string) (hf, otel bool, err error) {
-	db, err := openReadOnly(dbPath)
+func configSecrets(ctx context.Context, dbPath string, o options) (hf, otel bool, err error) {
+	db, err := openReadOnly(dbPath, o)
 	if err != nil {
 		return false, false, err
 	}
@@ -373,8 +373,8 @@ func configSecrets(ctx context.Context, dbPath string) (hf, otel bool, err error
 	return hf, otel, nil
 }
 
-func appliedMigrations(ctx context.Context, dbPath string) (int, error) {
-	db, err := openReadOnly(dbPath)
+func appliedMigrations(ctx context.Context, dbPath string, o options) (int, error) {
+	db, err := openReadOnly(dbPath, o)
 	if err != nil {
 		return 0, err
 	}
@@ -396,8 +396,8 @@ func migrationLevel(ctx context.Context, db *sql.DB) (int, error) {
 	return n, err
 }
 
-func presentRows(ctx context.Context, dbPath string) ([]string, error) {
-	db, err := openReadOnly(dbPath)
+func presentRows(ctx context.Context, dbPath string, o options) ([]string, error) {
+	db, err := openReadOnly(dbPath, o)
 	if err != nil {
 		return nil, fmt.Errorf("reading the tables: %w", err)
 	}
@@ -417,14 +417,14 @@ func presentRows(ctx context.Context, dbPath string) ([]string, error) {
 
 // selectedModels are the ids a restored root would want installed. It reads through the store. An
 // older database that can't be read that way lists none, and any other failure is a failure.
-func selectedModels(ctx context.Context, dbPath string) ([]string, error) {
+func selectedModels(ctx context.Context, dbPath string, o options) ([]string, error) {
 	unavailable := func(err error) ([]string, error) {
 		if errors.Is(err, store.ErrNotConfigured) || strings.Contains(err.Error(), "no such ") {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("reading the models: %w", err)
 	}
-	db, err := openReadOnly(dbPath)
+	db, err := openReadOnly(dbPath, o)
 	if err != nil {
 		return unavailable(err)
 	}
@@ -489,8 +489,8 @@ func dropRows(ctx context.Context, db *sql.DB) error {
 // copyDatabase makes the database's copy for a backup. VACUUM INTO is a consistent copy that
 // blocks no reader, and a second one leaves out the pages of what was just removed, so a removed
 // secret is not left in free pages.
-func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) error {
-	source, err := openReadOnly(from)
+func copyDatabase(ctx context.Context, from, to, stage string, exclude bool, o options) error {
+	source, err := openReadOnly(from, o)
 	if err != nil {
 		return err
 	}
@@ -505,7 +505,7 @@ func copyDatabase(ctx context.Context, from, to, stage string, exclude bool) err
 		}
 		_, err := source.ExecContext(ctx, `VACUUM INTO ?`, first)
 		return err
-	})
+	}, o)
 	source.Close()
 	if err != nil {
 		return fmt.Errorf("copying the database: %w", err)

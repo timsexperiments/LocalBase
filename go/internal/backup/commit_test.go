@@ -104,7 +104,7 @@ func TestCommitStopsWhenTheSignInSettingsChanged(t *testing.T) {
 func TestStoppingLeavesAnotherProcesssWorkingFilesAlone(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	shortBusyWaits(t, 0)
+	s.opts = shortBusyWaits(0)
 	release := holdLock(t, r.DB())
 	defer release()
 	// Empty, so that SQLite ignores it and this checks only whether a stop removes it.
@@ -410,7 +410,7 @@ func TestCommitGoesAheadWhenNothingChanged(t *testing.T) {
 func TestCommitStopsWhenSomethingElseHoldsTheDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	shortBusyWaits(t, 0)
+	s.opts = shortBusyWaits(0)
 	release := holdLock(t, r.DB())
 	defer release()
 	before := tree(t, r.Dir, "runtime")
@@ -613,7 +613,7 @@ func TestAKilledRestoreIsPutBack(t *testing.T) {
 func TestAConnectionInThisProcessStopsARestore(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	shortBusyWaits(t, 100*time.Millisecond)
+	s.opts = shortBusyWaits(100 * time.Millisecond)
 	open, err := store.Open(r.DB())
 	if err != nil {
 		t.Fatal(err)
