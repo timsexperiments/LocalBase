@@ -129,25 +129,24 @@ func TestOpenOwnedRegular(t *testing.T) {
 	wantUnsafe(t, err, "not a regular file")
 
 	// Someone else's file. Chowning needs root, so this user is told it isn't them.
-	defer func(f func() int) { currentUID = f }(currentUID)
-	real := currentUID()
-	currentUID = func() int { return real + 1 }
-	_, err = OpenOwnedRegular(path, os.O_WRONLY)
+	real := os.Getuid()
+	someoneElse := func() int { return real + 1 }
+	_, err = openOwnedRegular(path, os.O_WRONLY, options{uid: someoneElse})
 	wantUnsafe(t, err, "another user")
 }
 
 // A file swapped in after the first check, even a plain one, is noticed.
 func TestOpenOwnedRegularNoticesASwap(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
-	defer func() { afterSecureOpen = func() {} }()
-	afterSecureOpen = func() {
+	plainSwap := func() {
 		os.Remove(path)
 		os.WriteFile(path, []byte("y"), 0o600)
 	}
-	_, err := OpenOwnedRegular(path, os.O_WRONLY)
+	_, err := openOwnedRegular(path, os.O_WRONLY, options{afterOpen: plainSwap})
 	wantUnsafe(t, err, "changed")
-	afterSecureOpen = func() {
+	linkSwap := func() {
 		target := path + ".target"
 		os.WriteFile(target, []byte("y"), 0o600)
 		os.Remove(path)
@@ -155,45 +154,45 @@ func TestOpenOwnedRegularNoticesASwap(t *testing.T) {
 	}
 	os.Remove(path)
 	os.WriteFile(path, []byte("x"), 0o600)
-	_, err = OpenOwnedRegular(path, os.O_WRONLY)
+	_, err = openOwnedRegular(path, os.O_WRONLY, options{afterOpen: linkSwap})
 	wantUnsafe(t, err, "symbolic link")
 }
 
 // A link planted between the check and the open: only O_NOFOLLOW stops a truncate
 // reaching its target.
 func TestOpenOwnedRegularLinkInTheWindow(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
 	target, content := victim(t)
-	defer func() { beforeSecureOpen = func() {} }()
-	beforeSecureOpen = func() {
+	plantLink := func() {
 		os.Remove(path)
 		os.Symlink(target, path)
 	}
-	_, err := OpenOwnedRegular(path, os.O_WRONLY|os.O_TRUNC)
+	_, err := openOwnedRegular(path, os.O_WRONLY|os.O_TRUNC, options{beforeOpen: plantLink})
 	wantUnsafe(t, err, "symbolic link")
 	victimUntouched(t, target, content)
 }
 
 // A plain file swapped in between the check and the open is not the file that was checked.
 func TestOpenOwnedRegularPlainSwapBeforeTheOpen(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
-	defer func() { beforeSecureOpen = func() {} }()
-	beforeSecureOpen = func() {
+	plainSwap := func() {
 		os.Remove(path)
 		os.WriteFile(path, []byte("y"), 0o600)
 	}
-	_, err := OpenOwnedRegular(path, os.O_WRONLY)
+	_, err := openOwnedRegular(path, os.O_WRONLY, options{beforeOpen: plainSwap})
 	wantUnsafe(t, err, "changed")
 }
 
 // A FIFO swapped in between the check and the open does not hang it. Opened to read, it is
 // refused as not a plain file; opened to write, with no reader, the open itself fails.
 func TestOpenOwnedRegularFIFOSwapBeforeTheOpen(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
-	defer func() { beforeSecureOpen = func() {} }()
-	beforeSecureOpen = func() {
+	fifoSwap := func() {
 		os.Remove(path)
 		syscall.Mkfifo(path, 0o600)
 	}
@@ -202,7 +201,7 @@ func TestOpenOwnedRegularFIFOSwapBeforeTheOpen(t *testing.T) {
 		os.WriteFile(path, []byte("x"), 0o600)
 		done := make(chan error, 1)
 		go func() {
-			_, err := OpenOwnedRegular(path, flags)
+			_, err := openOwnedRegular(path, flags, options{beforeOpen: fifoSwap})
 			done <- err
 		}()
 		select {
@@ -220,31 +219,31 @@ func TestOpenOwnedRegularFIFOSwapBeforeTheOpen(t *testing.T) {
 
 // A second name made for the file after the open is seen on the file that was opened.
 func TestOpenOwnedRegularHardLinkAfterTheOpen(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
-	defer func() { afterSecureOpen = func() {} }()
-	afterSecureOpen = func() { os.Link(path, path+".2") }
-	_, err := OpenOwnedRegular(path, os.O_WRONLY)
+	secondName := func() { os.Link(path, path+".2") }
+	_, err := openOwnedRegular(path, os.O_WRONLY, options{afterOpen: secondName})
 	wantUnsafe(t, err, "hard link")
 }
 
 // The owner is checked three times: the path before the open, the file that was opened, and the
 // path after. Another user's file seen by any one of those checks alone is refused there.
 func TestOpenOwnedRegularChecksTheOwnerThreeTimes(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "log")
 	os.WriteFile(path, []byte("x"), 0o600)
-	defer func(f func() int) { currentUID = f }(currentUID)
 	real := os.Getuid()
 	for at := 1; at <= 3; at++ {
 		calls := 0
-		currentUID = func() int {
+		owner := func() int {
 			calls++
 			if calls == at {
 				return real + 1
 			}
 			return real
 		}
-		_, err := OpenOwnedRegular(path, os.O_WRONLY)
+		_, err := openOwnedRegular(path, os.O_WRONLY, options{uid: owner})
 		wantUnsafe(t, err, "another user")
 		if calls != at {
 			t.Errorf("check %d: the owner was asked %d times before the refusal", at, calls)
