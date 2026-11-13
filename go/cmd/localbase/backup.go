@@ -21,6 +21,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 	"github.com/timsexperiments/LocalBase/go/internal/version"
 )
@@ -233,7 +234,7 @@ func runRestore(c *cli.Ctx) (any, error) {
 		rep.Cautions = append(rep.Cautions, fmt.Sprintf("Ports were not checked. These settings name %v, so make sure they are free before starting this root.", rep.Ports))
 	} else {
 		for _, port := range rep.Ports {
-			if portListening(port) {
+			if runtime.PortListening(port) {
 				rep.Cautions = append(rep.Cautions, fmt.Sprintf("Something already uses port %d, which these settings name. Choose free ports before starting this root: local-base --root '%s' config apply --file <file>", port, rep.Target))
 			}
 		}

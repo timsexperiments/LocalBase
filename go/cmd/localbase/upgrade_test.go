@@ -10,6 +10,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
@@ -31,7 +32,7 @@ func TestBackendPorts(t *testing.T) {
 	}
 
 	e := &env{Config: &store.Config{Port: 18000, SttPort: 18080, Selected: uses("llm", "stt", "tts", "image", "video")}}
-	has := set(backendPorts(e, []string{"--root", "/r", "serve", "--tts-port", "28003", "--image-port", "28004"}))
+	has := set(runtime.BackendPorts(e.Config, []string{"--root", "/r", "serve", "--tts-port", "28003", "--image-port", "28004"}))
 	for _, want := range []int{18000, 18080, 28003, 28004, 8091} {
 		if !has[want] {
 			t.Errorf("%d is missing from %v", want, has)
@@ -44,14 +45,14 @@ func TestBackendPorts(t *testing.T) {
 	// A root with no media model never started a media backend, so another root's on that
 	// port must not read as a survivor of this one. This refused a real upgrade otherwise.
 	e = &env{Config: &store.Config{Port: 29501, SttPort: 29502, Selected: uses("llm")}}
-	has = set(backendPorts(e, []string{"--root", "/r", "serve"}))
+	has = set(runtime.BackendPorts(e.Config, []string{"--root", "/r", "serve"}))
 	if !has[29501] || len(has) != 1 {
 		t.Errorf("only the llm is in use: %v", has)
 	}
 
 	// Active without selected still counts.
 	e = &env{Config: &store.Config{Port: 18000, Active: map[string]string{"tts": "voice"}}}
-	if has = set(backendPorts(e, nil)); !has[8092] || len(has) != 1 {
+	if has = set(runtime.BackendPorts(e.Config, nil)); !has[8092] || len(has) != 1 {
 		t.Errorf("an active model counts: %v", has)
 	}
 }

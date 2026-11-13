@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -23,7 +24,7 @@ func TestUpgradeChecksTheBackendPortsServeUses(t *testing.T) {
 		{[]string{"serve", "--runtime-port-base=30000", "--video-port=9005"}, []int{9005, 30000, 30001, 30002, 30003}},
 		{[]string{"serve", "--llm-port", "9010", "--runtime-port-base", "30000"}, []int{9010, 30001, 30002, 30003, 30004}},
 	} {
-		got := backendPorts(e, c.args)
+		got := runtime.BackendPorts(e.Config, c.args)
 		slices.Sort(got)
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%v: %v, want %v", c.args, got, c.want)
