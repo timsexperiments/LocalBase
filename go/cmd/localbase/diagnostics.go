@@ -16,7 +16,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
@@ -28,6 +27,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
+	"github.com/timsexperiments/LocalBase/go/internal/safefile"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -567,59 +567,29 @@ func writeDiagnosticsArchive(path string, entries []zipEntry) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	b := make([]byte, 16)
-	rand.Read(b)
-	tmp := filepath.Join(parent, ".localbase-diagnostics-"+hex.EncodeToString(b)+".tmp")
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return 0, errors.New("Secure diagnostics temporary file creation failed.")
-	}
-	defer os.Remove(tmp)
-	_, err = f.Write(buf.Bytes())
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return 0, errors.New("Secure diagnostics archive write failed.")
-	}
-	if err := os.Link(tmp, filepath.Join(parent, filepath.Base(path))); err != nil {
-		return 0, errors.New("Secure diagnostics archive publication; output already exists failed.")
-	}
-	if d, err := os.Open(parent); err == nil {
-		d.Sync()
-		d.Close()
+	if err := safefile.PublishNew(parent, filepath.Base(path), ".localbase-diagnostics-", buf.Bytes()); err != nil {
+		var pe *safefile.PublishError
+		errors.As(err, &pe)
+		switch pe.Step {
+		case "create":
+			return 0, errors.New("Secure diagnostics temporary file creation failed.")
+		case "write":
+			return 0, errors.New("Secure diagnostics archive write failed.")
+		default:
+			return 0, errors.New("Secure diagnostics archive publication; output already exists failed.")
+		}
 	}
 	return buf.Len(), nil
 }
 
-// secureParent checks that every component of an absolute directory is a
-// real directory, not a symlink (macOS's /var, /tmp and /etc are read as
-// their /private targets).
+// secureParent is safefile.RealDir in the diagnostics command's words.
 func secureParent(dir string) (string, error) {
-	if !filepath.IsAbs(dir) {
+	got, err := safefile.RealDir(dir)
+	if errors.Is(err, safefile.ErrNotAbsolute) {
 		return "", errors.New("Secure output parent is invalid.")
 	}
-	if goruntime.GOOS == "darwin" {
-		for _, alias := range []string{"/var", "/tmp", "/etc"} {
-			if dir == alias || strings.HasPrefix(dir, alias+"/") {
-				dir = "/private" + dir
-				break
-			}
-		}
+	if err != nil {
+		return "", errors.New("Secure diagnostics directory open failed.")
 	}
-	cur := "/"
-	for _, part := range strings.Split(dir, "/") {
-		if part == "" {
-			continue
-		}
-		cur = filepath.Join(cur, part)
-		st, err := os.Lstat(cur)
-		if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("Secure diagnostics directory open failed.")
-		}
-	}
-	return cur, nil
+	return got, nil
 }
