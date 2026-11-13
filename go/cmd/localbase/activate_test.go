@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -177,14 +178,14 @@ func TestAnOnDemandInstallUsesTheTokenSavedSinceStartup(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if got := currentHFToken(ctx, e); got != saved.HFToken {
+	if got := install.CurrentHFToken(ctx, e.Store, e.Config); got != saved.HFToken {
 		t.Error("the install would use the token from startup")
 	}
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
 	e.Config = &store.Config{HFToken: "from-startup"}
-	if got := currentHFToken(ctx, e); got != "from-startup" {
+	if got := install.CurrentHFToken(ctx, e.Store, e.Config); got != "from-startup" {
 		t.Error("with the store unreadable, it should fall back to what it started with")
 	}
 }

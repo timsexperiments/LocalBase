@@ -498,29 +498,16 @@ func modelsList() *cli.Command {
 		}}
 }
 
-// currentHFToken is the saved token now, not when this process started: serve installs on demand
-// long after it read its configuration. If the read fails, what it started with is the best left.
-func currentHFToken(ctx context.Context, e *env) string {
-	if saved, err := e.Store.LoadConfig(ctx); err == nil {
-		return saved.HFToken
-	}
-	return e.Config.HFToken
-}
-
-// installModel checks eligibility and installs one catalog model.
+// installModel checks eligibility (conf.Ineligible, with this configuration's opt-in) and installs
+// one catalog model (install.ByID). A failed install carries its reason, for --json.
 func installModel(ctx context.Context, e *env, id string, report func(install.Event)) (string, error) {
-	s := e.Catalog.ByID(id)
-	if s == nil {
-		return "", fmt.Errorf("Unknown model id: %s", id)
+	path, err := install.ByID(ctx, install.ByIDDeps{Catalog: e.Catalog, Root: e.Root, Store: e.Store, Started: e.Config,
+		Ineligible: func(s *catalog.Spec) string { return conf.Ineligible(s, e.Config.AllowExperimental) }}, id, report)
+	var failed *install.InstallFailed
+	if errors.As(err, &failed) {
+		return "", &cli.ReasonedError{Err: failed.Err, Reason: install.Reason(failed.Err)}
 	}
-	if reason := conf.Ineligible(s, e.Config.AllowExperimental); reason != "" {
-		return "", fmt.Errorf("%s: %s", id, reason)
-	}
-	path, err := install.Model(ctx, s, e.Root.ModelsDir(s.Kind), install.Options{HFToken: currentHFToken(ctx, e), AllowPrivate: e.Store.PrivateImportsAllowed(ctx), Report: report})
-	if err != nil {
-		return "", &cli.ReasonedError{Err: err, Reason: install.Reason(err)}
-	}
-	return path, nil
+	return path, err
 }
 
 // progressReporter prints download progress on a terminal, as TS does.
