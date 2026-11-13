@@ -490,7 +490,7 @@ func serve(c *cli.Ctx) (any, error) {
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
-	feedDone := startFeedScheduler(r.Dir, cat, log, stopPoll)
+	feedDone := catalog.StartFeedScheduler(r.Dir, cat, log, stopPoll)
 	monitor := runtime.NewPressureMonitor(mem, recovery, log)
 	if videoJobs != nil {
 		monitor.FailVideo = func() { videoJobs.FailActiveForMemoryPressure() }
@@ -637,57 +637,6 @@ func voiceStamp(st *store.Store) string {
 		b.WriteString(v.ID + ":" + v.SHA256 + ";")
 	}
 	return b.String()
-}
-
-// startFeedScheduler keeps the remote catalog feed current (TS
-// feed-scheduler): one check at start, then every hour; each check downloads
-// only when the cached copy is older than a day. An update reloads the
-// catalog in place. The returned channel closes once stopped.
-func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, stop <-chan struct{}) <-chan struct{} {
-	done := make(chan struct{})
-	lastError := ""
-	check := func() {
-		res := catalog.RefreshFeed(context.Background(), rootDir, catalog.RefreshOptions{})
-		short := func(s string) string { return obs.BoundedText(s, 512) }
-		switch res.Outcome {
-		case "updated":
-			lastError = ""
-			next, err := catalog.LoadRoot(rootDir, nil)
-			if err != nil {
-				log.Warn("The updated catalog could not be loaded; the previous one stays in use.", "event", "catalog_feed.reload_failed",
-					"category", "gateway", "component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "error", short(err.Error())))
-				return
-			}
-			cat.Replace(next)
-			log.Info("Loaded a new remote catalog feed.", "event", "catalog_feed.updated", "category", "gateway",
-				"component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL))))
-		case "failed":
-			if res.Error == lastError {
-				return
-			}
-			lastError = res.Error
-			log.Warn("The remote catalog feed could not be refreshed; the last good copy stays in use.", "event", "catalog_feed.refresh_failed",
-				"category", "gateway", "component", "catalog-feed", "runtime", "gateway",
-				slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL)), "error", short(res.Error)))
-		default:
-			lastError = ""
-		}
-	}
-	go func() {
-		defer close(done)
-		check()
-		t := time.NewTicker(catalog.FeedCheckInterval)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				check()
-			}
-		}
-	}()
-	return done
 }
 
 // startTelemetry starts OTLP export when OTEL_* or the saved settings

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -407,7 +406,7 @@ func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *cat
 	status := catalog.Status(dir, cat, os.Getenv, time.Now())
 	feed := jsjson.FromGo(status).(*jsjson.Object)
 	if status.URL != nil {
-		feed.Set("url", feedURLForDiagnostics(*status.URL))
+		feed.Set("url", catalog.FeedURLForDiagnostics(*status.URL))
 	}
 	for _, k := range []string{"problem", "lastError"} {
 		if s, ok := feed.Get(k); ok && s != nil {
@@ -415,19 +414,6 @@ func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *cat
 		}
 	}
 	return object("models", list, "catalogIssues", issues, "catalogFeed", feed)
-}
-
-// feedURLForDiagnostics drops credentials, query and fragment.
-func feedURLForDiagnostics(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return "<invalid>"
-	}
-	u.User, u.RawQuery, u.Fragment, u.ForceQuery = nil, "", "", false
-	if u.Path == "" {
-		u.Path = "/"
-	}
-	return u.String()
 }
 
 func printDiagnosticModels(c *cli.Ctx, data *jsjson.Object) {
