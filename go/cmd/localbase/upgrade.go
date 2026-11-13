@@ -5,13 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -99,24 +97,6 @@ func upgradeBinaryPath() (string, error) {
 	return filepath.EvalSymlinks(exe)
 }
 
-// checkInstalled refuses what cannot be replaced by this command.
-func checkInstalled(binary string) error {
-	if strings.Contains(binary, "/Cellar/") {
-		return errors.New("This was installed by Homebrew. Update it with: brew upgrade local-base")
-	}
-	dir := filepath.Dir(binary)
-	probe, err := os.CreateTemp(dir, ".local-base-upgrade-probe-")
-	if err != nil {
-		return fmt.Errorf("Cannot write in %s, so this cannot replace the binary there. Nothing was changed.", dir)
-	}
-	probe.Close()
-	os.Remove(probe.Name())
-	if upgrade.AssetArchive(goruntime.GOOS, goruntime.GOARCH) == "" {
-		return fmt.Errorf("There are no releases for %s/%s.", goruntime.GOOS, goruntime.GOARCH)
-	}
-	return nil
-}
-
 // idleWaitBase is where the running gateway answers, proven to be this root's. The wait sends it
 // a temporary key, so an owner record that names something else (a reused PID, another listener on
 // the port) gets nothing. It is checked again here, though gatherGatewayFacts already proved it:
@@ -137,15 +117,12 @@ func idleWaitBase(e *env) (string, error) {
 // Before, every poll made and deleted a key, up to 600 keys and 1,200 audit lines for one --wait.
 func waitGatewayIdle(c *cli.Ctx, e *env, base string, limit time.Duration, sleep func(time.Duration)) error {
 	ctx := context.Background()
-	k, raw, err := e.Store.CreateAPIKeyExpiring(ctx, "local-base upgrade (temporary)", []string{"models:read"}, 1)
+	k, raw, end, err := e.audit.TemporaryKey(ctx, e.Store, "local-base upgrade (temporary)", []string{"models:read"}, "upgrade")
 	if err != nil {
 		return fmt.Errorf("Could not ask the gateway how busy it is: %w. Nothing was changed. --force goes ahead anyway.", err)
 	}
-	e.audit.KeyChange("create", k, "purpose", "upgrade")
 	defer func() {
-		if derr := e.Store.DeleteAPIKey(ctx, k.ID); derr == nil {
-			e.audit.KeyChange("delete", k, "purpose", "upgrade")
-		} else {
+		if derr := end(); derr != nil {
 			c.Error("Could not delete the temporary key %s: %v. It can only list models and it expires in a day. To remove it now: local-base keys revoke %s", k.ID, derr, k.ID)
 		}
 	}()
@@ -167,54 +144,6 @@ func gatewayActivity(base, raw string) (busy bool, detail string, err error) {
 	return upgrade.ParseActivity(resp.StatusCode, resp.Body)
 }
 
-// backendPorts are where this root's backends listen, as configured. A flag can move the media
-// ones, and those are read from how the service is started. Only a kind this root uses counts:
-// another root's backend on a default port is not one this gateway started, and could not be
-// told apart from a survivor.
-func backendPorts(e *env, arguments []string) []int {
-	// serve's flags as given: "--x value" or "--x=value".
-	flag := func(name string) (int, bool) {
-		for i, a := range arguments {
-			if v, ok := strings.CutPrefix(a, "--"+name+"="); ok {
-				n, err := strconv.Atoi(v)
-				return n, err == nil
-			}
-			if a == "--"+name && i+1 < len(arguments) {
-				n, err := strconv.Atoi(arguments[i+1])
-				return n, err == nil
-			}
-		}
-		return 0, false
-	}
-	// The same resolution as serve's: an explicit port, else --runtime-port-base's block, else the
-	// configured or default port.
-	base, _ := flag("runtime-port-base")
-	defaults := map[string]int{"llm": e.Config.Port, "stt": e.Config.SttPort}
-	for kind, p := range runtime.MediaDefaultPorts {
-		defaults[kind] = p
-	}
-	out := make([]int, 0, len(runtime.PortOrder))
-	for _, kind := range runtime.PortOrder {
-		p, explicit := flag(kind + "-port")
-		if !explicit {
-			p = runtime.PortInBlock(base, kind, defaults[kind])
-		}
-		if p > 0 && (len(e.Config.Selected[kind]) > 0 || e.Config.Active[kind] != "") {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-func portListening(port int) bool {
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 500*time.Millisecond)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
-}
-
 // managedOps stop and restart through the service manager. Stopping is confirmed, because the
 // sweep of §29 cannot cover this: a backend from before that version has no record for it.
 func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.Ops {
@@ -226,29 +155,7 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 			if err != nil {
 				return err
 			}
-			for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(200 * time.Millisecond) {
-				// A live process at the recorded PID counts as still running, proven or not: this sends
-				// it nothing, and a gateway that is stopping stops answering for its identity before it
-				// exits, so asking for proof would take a gateway still shutting down for one gone.
-				state, _, _ := e.Root.OwnerState()
-				var survivors []string
-				if state != "active" {
-					for _, p := range backendPorts(e, arguments) {
-						if portListening(p) {
-							survivors = append(survivors, strconv.Itoa(p))
-						}
-					}
-				}
-				if state != "active" && len(survivors) == 0 {
-					return nil
-				}
-				if time.Now().After(deadline) {
-					if state == "active" {
-						return errors.New("the gateway did not stop")
-					}
-					return errors.New("something still listens on backend port " + strings.Join(survivors, ", "))
-				}
-			}
+			return service.WaitStopped(e.Root, runtime.BackendPorts(e.Config, arguments), runtime.PortListening, 15*time.Second)
 		},
 		Start: func() error {
 			c.Info("Restarting through the service manager...")
@@ -318,7 +225,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkInstalled(binary); err != nil {
+	if err := upgrade.CheckReplaceable(binary); err != nil {
 		return nil, err
 	}
 	facts, arguments := gatherGatewayFacts(e, binary)
