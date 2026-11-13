@@ -3,15 +3,17 @@ package main
 import (
 	"context"
 	"net"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/connect"
+	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
-	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
@@ -240,14 +242,32 @@ func connectDefaultModel(e *env, models []string) string {
 	return ""
 }
 
-// connectContext is the context the model runs with here, or 0 when it cannot be worked out.
+// connectContext is the context the model runs with here, or 0 when it cannot be worked out: the
+// running gateway's figure when one runs (it counts --ctx-size and its placements), else a plan made
+// now through the library, the same plan the page uses, imported models included.
 func connectContext(e *env, model string) int {
 	if model == "" {
 		return 0
 	}
-	spec := e.Catalog.ByID(model)
-	plan, err := runtime.PlanLLM(runtime.PlanInput{Config: e.Config, Spec: spec, ModelID: model, ModelsDir: e.Root.ModelsDir("llm"),
-		MemoryGB: float64(e.memoryGB()), ReadHeader: true})
+	if gw, _, _ := instance.Dial(e.Root); gw != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if a, err := gw.Get(ctx, "/_localbase/model-context?model="+url.QueryEscape(model), nil); err == nil && a.Status == 200 {
+			var v struct {
+				ContextLength int `json:"contextLength"`
+			}
+			if a.Decode(&v) == nil && v.ContextLength > 0 {
+				return v.ContextLength
+			}
+		}
+	}
+	lib, err := openLibrary(e)
+	if err != nil {
+		return 0
+	}
+	llm, _, _ := placementLLM(e, lib)
+	defer llm.Close()
+	plan, err := llm.Plan(model)
 	if err != nil || plan == nil {
 		return 0
 	}
