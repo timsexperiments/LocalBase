@@ -106,9 +106,6 @@ linters:
       - path: ^cmd/localbase/placement\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"
-      - path: ^cmd/localbase/run\.go$
-        linters: [errcheck]
-        text: "httpServer\\.Shutdown|sink\\.Close|videoJobs\\.FailActiveForMemoryPressure|videoJobs\\.Shutdown"
       - path: ^cmd/localbase/smoke\.go$
         linters: [errcheck]
         text: "e\\.Store\\.DeleteAPIKey|json\\.Unmarshal"
@@ -160,6 +157,9 @@ linters:
       - path: ^internal/gateway/infer/videos\.go$
         linters: [errcheck]
         text: "io\\.Copy"
+      - path: ^internal/gatewayrun/run\.go$
+        linters: [errcheck]
+        text: "httpServer\\.Shutdown|sink\\.Close|videoJobs\\.FailActiveForMemoryPressure|videoJobs\\.Shutdown"
       - path: ^internal/hub/client\.go$
         linters: [errcheck]
         text: "json\\.Unmarshal"

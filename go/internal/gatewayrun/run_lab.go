@@ -1,6 +1,6 @@
 //go:build localbase_lab
 
-package main
+package gatewayrun
 
 import "os"
 
