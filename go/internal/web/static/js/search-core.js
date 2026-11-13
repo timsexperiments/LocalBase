@@ -97,6 +97,21 @@ export function rank(query, vectors, k = LIMITS.most) {
     .slice(0, k);
 }
 
+// closest ranks what readFrom read (state.entries) against the query, and gives each passage once, by
+// its closest part: a passage that was halved to be read has more than one vector. Closest first.
+export function closest(query, entries, k = LIMITS.most) {
+  const seen = new Set();
+  const out = [];
+  for (const { index, score } of rank(query, entries.map((e) => e.vector), entries.length)) {
+    const passage = entries[index].passage;
+    if (seen.has(passage)) continue;
+    seen.add(passage);
+    out.push({ passage, score });
+    if (out.length === k) break;
+  }
+  return out;
+}
+
 // marks places each result between the closest and the least close of this one search, as rel from 0
 // to 1, with a word for screen readers. A cosine means nothing across searches or models, so it is
 // never shown as a number (§35.5).

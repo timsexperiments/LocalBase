@@ -3,7 +3,7 @@
 //
 //   bun test go/tools/jstest
 import { describe, expect, test } from "bun:test";
-import { LIMITS, batches, capPassages, cosine, marks, rank, readFrom, splitText, type EmbedError } from "../../internal/web/static/js/search-core.js";
+import { LIMITS, batches, capPassages, closest, cosine, marks, rank, readFrom, splitText, type EmbedError } from "../../internal/web/static/js/search-core.js";
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean);
 
@@ -86,6 +86,22 @@ describe("cosine and rank", () => {
 
   test("rank keeps the closest k, and ties keep the source's order", () => {
     expect(rank([1], [[1], [2], [3]], 2).map((x) => x.index)).toEqual([0, 1]);
+  });
+
+  test("closest gives each passage once, by its best part, and keeps the closest k", () => {
+    // Passage 0 was read in two parts (it was halved); its second part is the best match of all.
+    const entries = [
+      { passage: 0, vector: [0, 1] },
+      { passage: 0, vector: [1, 0.1] },
+      { passage: 1, vector: [1, 1] },
+      { passage: 2, vector: [1, 0.5] },
+      { passage: 3, vector: [-1, 0] },
+    ];
+    const r = closest([1, 0], entries, 3);
+    expect(r.map((x) => x.passage)).toEqual([0, 2, 1]);
+    expect(r[0].score).toBeCloseTo(1 / Math.sqrt(1.01), 12);
+    expect(closest([1, 0], entries).map((x) => x.passage)).toEqual([0, 2, 1, 3]);
+    expect(closest([1, 0], [])).toEqual([]);
   });
 
   test("marks are relative to the best of this search, named Closer or Less close, and never a percentage", () => {
