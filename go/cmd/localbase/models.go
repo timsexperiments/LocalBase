@@ -147,16 +147,6 @@ func cliVoices(e *env, s *catalog.Spec) ([]store.Voice, error) {
 	return voices, nil
 }
 
-func tier(s *catalog.Spec) string {
-	if s.Tier != "" {
-		return s.Tier
-	}
-	if s.Trust == "qualified" {
-		return "built-in"
-	}
-	return "user"
-}
-
 func modelsCommand() *cli.Command {
 	return &cli.Command{Name: "models", Summary: "Browse and install models", Sub: []*cli.Command{
 		modelsCatalog(), modelsRecommend(), modelsList(), modelsInstall(), modelsShow(), modelsAdd(), modelsSearch(), modelsRemoveEntry(),
@@ -336,7 +326,7 @@ func modelsCatalog() *cli.Command {
 					line += " qualification=experimental (unqualified)"
 				}
 				if s.Trust != "qualified" {
-					line += " trust=" + s.Trust + " source=" + tier(s)
+					line += " trust=" + s.Trust + " source=" + meta.Tier(s)
 				}
 				c.Info("%s", line)
 				for _, u := range s.UnsupportedCapabilities {
@@ -351,7 +341,7 @@ func modelsCatalog() *cli.Command {
 				}
 				c.Info("      catch: %s", s.Catch)
 				extra := memoryJSON(f)
-				extra["trust"], extra["catalogTier"] = s.Trust, tier(s)
+				extra["trust"], extra["catalogTier"] = s.Trust, meta.Tier(s)
 				out = append(out, specJSON(s, extra))
 			}
 			if len(out) == 0 && len(listed) > 0 {
