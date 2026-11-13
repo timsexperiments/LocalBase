@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -65,9 +64,7 @@ func cat(parts ...[]string) []string {
 // traceCommit commits s with its steps and directory syncs traced.
 func traceCommit(t *testing.T, s *Staged, tr *traced) error {
 	t.Helper()
-	wasStep, wasSync := stepHook, dirSync
-	stepHook, dirSync = tr.step, tr.sync
-	defer func() { stepHook, dirSync = wasStep, wasSync }()
+	s.opts = options{step: tr.step, dirSync: tr.sync}
 	_, err := s.Commit()
 	return err
 }
@@ -75,22 +72,17 @@ func traceCommit(t *testing.T, s *Staged, tr *traced) error {
 // tracePlace places archive at out with its directory syncs traced, and with links or without.
 func tracePlace(t *testing.T, archive, out string, links bool, tr *traced) error {
 	t.Helper()
-	wasLink, wasSync := linkFile, dirSync
+	h := options{dirSync: tr.sync}
 	if !links {
-		linkFile = func(from, to string) error { return &os.LinkError{Op: "link", Old: from, New: to, Err: syscall.EXDEV} }
+		h.link = noLinks().link
 	}
-	dirSync = tr.sync
-	defer func() { linkFile, dirSync = wasLink, wasSync }()
-	return placeFile(archive, out)
+	return placeFile(archive, out, h)
 }
 
 // traceStage stages file over target with the stage's checks of the target traced.
 func traceStage(t *testing.T, file, target string, replace bool, tr *traced) (*Staged, error) {
 	t.Helper()
-	wasSettle, wasRead := settleJournal, targetReadHook
-	settleJournal, targetReadHook = tr.settle, tr.targetRead
-	defer func() { settleJournal, targetReadHook = wasSettle, wasRead }()
-	return Stage(context.Background(), file, target, replace)
+	return stage(context.Background(), file, target, replace, nil, options{settle: tr.settle, targetRead: tr.targetRead})
 }
 
 // What a restore does, and in what order: each step, each directory synced, and the checks a stage makes

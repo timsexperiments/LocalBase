@@ -113,7 +113,7 @@ func readRootFacts(ctx context.Context, dbPath, rootDir string) (*liveFacts, err
 // replay a -wal that isn't its own.
 func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func(), err error) {
 	release = func() {}
-	if err := stepHook("hold"); err != nil {
+	if err := s.opts.atStep("hold"); err != nil {
 		return release, err
 	}
 	if s.live == nil {
@@ -169,7 +169,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if err != nil {
 		return stop(refuse("This root's database can't be read now, so what the report said can't be checked. Nothing was changed: %v", err))
 	}
-	if err := stepHook("compared"); err != nil {
+	if err := s.opts.atStep("compared"); err != nil {
 		return stop(err)
 	}
 	if changed := s.live.changedFrom(now); len(changed) > 0 {
@@ -190,7 +190,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	if mode != "delete" {
 		return stop(refuse("%s", someoneElseHoldsIt))
 	}
-	if err := stepHook("switched"); err != nil {
+	if err := s.opts.atStep("switched"); err != nil {
 		return stop(err)
 	}
 	if err := take(); err != nil {

@@ -28,22 +28,17 @@ func placeFixture(t *testing.T) (archive, out string) {
 }
 
 // noLinks is a file system that can't link, so placeFile takes its copying path.
-func noLinks(t *testing.T) {
-	t.Helper()
-	old := linkFile
-	t.Cleanup(func() { linkFile = old })
-	linkFile = func(from, to string) error { return &os.LinkError{Op: "link", Old: from, New: to, Err: syscall.EXDEV} }
+func noLinks() options {
+	return options{link: func(from, to string) error { return &os.LinkError{Op: "link", Old: from, New: to, Err: syscall.EXDEV} }}
 }
 
 // Where links can't be made, a chmod that fails is a backup that wasn't written: it says so, and
 // leaves no empty file at the name.
 func TestAPlacedBackupIsNeverAnEmptyFile(t *testing.T) {
 	archive, out := placeFixture(t)
-	noLinks(t)
-	old := chmodFile
-	t.Cleanup(func() { chmodFile = old })
-	chmodFile = func(*os.File, os.FileMode) error { return errors.New("planted chmod failure") }
-	if err := placeFile(archive, out); err == nil || !strings.Contains(err.Error(), "planted chmod failure") {
+	h := noLinks()
+	h.chmod = func(*os.File, os.FileMode) error { return errors.New("planted chmod failure") }
+	if err := placeFile(archive, out, h); err == nil || !strings.Contains(err.Error(), "planted chmod failure") {
 		t.Fatalf("got %v, want the chmod failure", err)
 	}
 	if _, err := os.Lstat(out); !errors.Is(err, fs.ErrNotExist) {
@@ -54,8 +49,7 @@ func TestAPlacedBackupIsNeverAnEmptyFile(t *testing.T) {
 // The copying path still writes the whole archive, private.
 func TestAPlacedBackupIsCopiedWhereLinksCantBeMade(t *testing.T) {
 	archive, out := placeFixture(t)
-	noLinks(t)
-	if err := placeFile(archive, out); err != nil {
+	if err := placeFile(archive, out, noLinks()); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(out); string(b) != "the archive's bytes" {
@@ -71,15 +65,13 @@ func TestAPlacedBackupIsCopiedWhereLinksCantBeMade(t *testing.T) {
 func TestAPlacedBackupsNameIsSynced(t *testing.T) {
 	for _, links := range []bool{true, false} {
 		archive, out := placeFixture(t)
+		h := options{}
 		if !links {
-			noLinks(t)
+			h = noLinks()
 		}
 		var synced []string
-		old := dirSync
-		dirSync = func(d *os.File) error { synced = append(synced, d.Name()); return d.Sync() }
-		err := placeFile(archive, out)
-		dirSync = old
-		if err != nil {
+		h.dirSync = func(d *os.File) error { synced = append(synced, d.Name()); return d.Sync() }
+		if err := placeFile(archive, out, h); err != nil {
 			t.Fatal(err)
 		}
 		found := false

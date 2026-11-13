@@ -228,16 +228,13 @@ func TestAWriteFromAnotherProcessIsNeverReportedAndLost(t *testing.T) {
 	shortBusyWaits(t, 200*time.Millisecond)
 	other := idleStore(t, r.DB())
 	said := ""
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "before" {
 			said = other.write(t, "key", written)
 		}
 		return nil
-	}
+	}}
 	done, err := s.Commit()
-	stepHook = was
 	if err != nil {
 		if err.Error() != someoneElseHoldsIt {
 			t.Fatalf("commit: %v", err)
@@ -325,16 +322,14 @@ func TestARawReadDuringTheHoldKeepsTheLock(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
 	got, reached := "", false
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "before" {
 			reached = true
 			store.InWAL(r.DB())
 			got = triesForTheLock(t, r.DB())
 		}
 		return nil
-	}
+	}}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}

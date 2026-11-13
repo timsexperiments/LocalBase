@@ -140,10 +140,6 @@ func modeAfterSettling(mode string) error {
 	return errors.New("its journal mode didn't change")
 }
 
-// settleJournal is settleJournalMode, as a variable so that a test can see a restore refuse when it can't be
-// done, which no real file has been found to cause.
-var settleJournal = settleJournalMode
-
 // usageTable piles up, and a restore never reads it into memory, so only its values are limited.
 const usageTable = "usage_hourly"
 

@@ -260,10 +260,7 @@ func TestRestoreThatTurnsBusyPartWayRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	shortBusyWaits(t, 100*time.Millisecond)
-	was := targetReadHook
-	targetReadHook = func() { holdLock(t, r.DB()) }
-	defer func() { targetReadHook = was }()
-	_, err := Stage(context.Background(), res.Output, r.Dir, true)
+	_, err := stage(context.Background(), res.Output, r.Dir, true, nil, options{targetRead: func() { holdLock(t, r.DB()) }})
 	var refused *Refused
 	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "is busy") {
 		t.Fatalf("stage: %v", err)
