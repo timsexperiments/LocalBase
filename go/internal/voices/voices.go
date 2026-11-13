@@ -168,11 +168,12 @@ func jsLower(s string) string {
 // Store is the voice store of one root.
 type Store struct {
 	db   *sql.DB
+	st   *store.Store
 	root string
 	mu   sync.Mutex // serializes the name and limit checks with their insert
 }
 
-func New(st *store.Store, rootDir string) *Store { return &Store{db: st.DB, root: rootDir} }
+func New(st *store.Store, rootDir string) *Store { return &Store{db: st.DB, st: st, root: rootDir} }
 
 // Dir is the private directory of reference clips; never served directly.
 func Dir(rootDir string) string { return filepath.Join(rootDir, "voices") }
@@ -325,8 +326,8 @@ func (s *Store) Create(ctx context.Context, name string, consent bool, audio []b
 	if err := s.nameAvailable(ctx, name, ""); err != nil {
 		return nil, err
 	}
-	var total int
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM tts_custom_voices`).Scan(&total); err != nil {
+	total, err := s.st.CountVoices(ctx)
+	if err != nil {
 		return nil, err
 	}
 	if total >= Limit {

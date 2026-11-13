@@ -29,3 +29,10 @@ func (s *Store) Voices(ctx context.Context) ([]Voice, error) {
 	}
 	return out, rows.Err()
 }
+
+// CountVoices is how many custom voices are stored.
+func (s *Store) CountVoices(ctx context.Context) (int, error) {
+	var n int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM tts_custom_voices`).Scan(&n)
+	return n, err
+}

@@ -250,8 +250,7 @@ func runDiagnostics(c *cli.Ctx) (any, error) {
 
 	voices := unavailable("voices_unavailable")
 	if st != nil {
-		var n int
-		if err := st.DB.QueryRowContext(ctx, `SELECT count(*) FROM tts_custom_voices`).Scan(&n); err == nil {
+		if n, err := st.CountVoices(ctx); err == nil {
 			voices = available(object("customVoices", float64(n)))
 		}
 	}
