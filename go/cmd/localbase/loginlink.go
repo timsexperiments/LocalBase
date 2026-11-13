@@ -12,9 +12,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 )
 
-// firstRunShownKey records that the first-run link was shown on this root.
-const firstRunShownKey = "access.first-run-link-shown"
-
 // gatewayListen is the running gateway's address, else the configured one.
 func gatewayListen(e *env) (addr string, running bool) {
 	if state, owner, _ := service.VerifiedOwnerState(e.Root); state == "active" && owner != nil && owner.Port > 0 {
@@ -32,24 +29,14 @@ func issueLoginLink(e *env, addr string, forced bool) (string, error) {
 	return link, nil
 }
 
-// firstRunLinkAllowed: a service-managed gateway never prints one, since its
-// captured stderr must never hold a link.
-func firstRunLinkAllowed(noAuth, browserEnabled bool, serviceToken string) bool {
-	return !noAuth && !browserEnabled && serviceToken == ""
-}
-
 // firstRunLoginLink issues the link shown once on a root where browser access is
-// not configured; "" when it was already shown or none can be used here.
+// not configured (auth.FirstRunLink); "" when it was already shown or none can be used here.
 func firstRunLoginLink(e *env, addr string) string {
-	ctx := context.Background()
-	if _, shown, err := e.Store.Setting(ctx, firstRunShownKey); err != nil || shown {
-		return ""
+	link, id, err := auth.FirstRunLink(context.Background(), e.Store, addr)
+	if id != "" {
+		e.audit.LocalLinkIssued(id, false)
 	}
-	link, err := issueLoginLink(e, addr, false)
 	if err != nil {
-		return ""
-	}
-	if err := e.Store.SetSetting(ctx, firstRunShownKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
 		return ""
 	}
 	return link

@@ -21,7 +21,7 @@ var serveFields = struct{ before, after []string }{
 
 func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "serve.go", nil, 0)
+	f, err := parser.ParseFile(fset, "run.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestServeSetsTheGatewayFieldsItDid(t *testing.T) {
 		return true
 	})
 	if gw == "" || !newAt.IsValid() {
-		t.Fatal("serve.go no longer builds a gateway.Config and calls gateway.New: update this test with it")
+		t.Fatal("run.go no longer builds a gateway.Config and calls gateway.New: update this test with it")
 	}
 	slices.Sort(before)
 	slices.Sort(after)
@@ -84,7 +84,7 @@ func isPkg(e ast.Expr, name string) bool {
 // serve closes the gateway after its ordered stop, as Close's doc asks: the runs and management are
 // stopped first, each in its own way, and Close comes after both.
 func TestServeClosesTheGatewayLast(t *testing.T) {
-	f, err := parser.ParseFile(token.NewFileSet(), "serve.go", nil, 0)
+	f, err := parser.ParseFile(token.NewFileSet(), "run.go", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

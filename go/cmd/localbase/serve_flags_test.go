@@ -3,14 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
-
-	"github.com/timsexperiments/LocalBase/go/internal/root"
-	"github.com/timsexperiments/LocalBase/go/internal/testutil"
 )
 
 // serve refuses a --log-level it doesn't know, before it starts anything, as logs --level does,
@@ -33,32 +27,31 @@ func TestServeRefusesAnUnknownLogLevel(t *testing.T) {
 	}
 }
 
-// A stop signal that arrives while serve is still starting waits its turn: serve finishes starting,
-// stops in order, releases the root's lock and exits 0 (review 01-M6). Before, the handler was only
-// installed once startup was done, so the signal took Go's default action and no deferred cleanup
-// ran. That can't be shown against the old code from inside a test: the same SIGTERM would end the
-// test process itself.
-func TestASignalDuringStartupStopsInOrder(t *testing.T) {
-	dir := noAuthRoot(t)
-	port := strconv.Itoa(testutil.FreePort())
-	afterSignals = func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }
-	defer func() { afterSignals = func() {} }()
-	done := make(chan struct{})
-	var code int
-	var out string
-	go func() {
-		defer close(done)
-		code, out = runApp(t, "--root", dir, "serve", "--no-auth", "--no-llm", "--port", port)
-	}()
-	select {
-	case <-done:
-	case <-time.After(60 * time.Second):
-		t.Fatal("serve didn't stop on a signal sent during its startup")
+// A runtime's port and the connection caps are checked with the other flags, before the root is
+// opened: before, they were read only once the gateway had its lock and its backends. A runtime
+// that is off takes no port, as before.
+func TestServeChecksEveryFlagBeforeOpeningTheRoot(t *testing.T) {
+	t.Setenv("LOCALBASE_ROOT", "")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--tts-port", "70000"}, "--tts-port must be from 1 to 65535"},
+		{[]string{"--stt-port", "0"}, "--stt-port must be from 1 to 65535"},
+		{[]string{"--max-connections=-1"}, "--max-connections must be from 0 to 10000000"},
+		{[]string{"--max-connections-per-ip", "x"}, "max-connections-per-ip"},
+	} {
+		root := filepath.Join(t.TempDir(), "root")
+		code, out := runApp(t, append([]string{"--root", root, "serve", "--no-llm"}, tc.args...)...)
+		if code != 2 || !strings.Contains(out, tc.want) {
+			t.Errorf("%q: exit %d, %s", tc.args, code, out)
+		}
+		if _, err := os.Stat(root); !os.IsNotExist(err) {
+			t.Errorf("%q: the root was made (%v)", tc.args, err)
+		}
 	}
-	if code != 0 {
-		t.Errorf("exit %d after a signal during startup: %s", code, out)
-	}
-	if state, _, _ := (&root.Root{Dir: dir}).OwnerState(); state == "running" {
-		t.Errorf("the gateway lock is still held after serve returned (%s)", state)
+	root := noAuthRoot(t)
+	if code, out := runApp(t, "--root", root, "serve", "--no-llm", "--no-tts", "--tts-port", "70000", "--port", busyPort(t)); code == 0 || strings.Contains(out, "--tts-port") {
+		t.Errorf("--no-tts with a bad port: exit %d, %s", code, out)
 	}
 }

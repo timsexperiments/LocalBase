@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -616,26 +615,6 @@ func activateInstalled(c *cli.Ctx, e *env, ids ...string) error {
 		return nil
 	}
 	return nil
-}
-
-// installer is serve's --install-missing hook: nil without consent, so the
-// LLM manager answers 409 model_install_consent_required.
-func installer(e *env, allowed bool, log *slog.Logger) func(context.Context, string) error {
-	if !allowed {
-		return nil
-	}
-	return func(ctx context.Context, id string) error {
-		log.Info("Installing selected model "+id+".", "event", "models.install-started", "model_id", id)
-		_, err := installModel(ctx, e, id, func(ev install.Event) {
-			if ev.Kind == "completed" {
-				log.Info("Selected model "+id+" installation completed.", "event", "models.install-completed", "model_id", id)
-			}
-		})
-		if err != nil {
-			log.Error("Selected model "+id+" installation failed.", "event", "models.install-failed", "model_id", id, "error", err.Error())
-		}
-		return err
-	}
 }
 
 func modelsShow() *cli.Command {

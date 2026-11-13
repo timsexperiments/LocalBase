@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -32,6 +33,27 @@ func NameBindingIssuers(ctx context.Context, st *store.Store, access *BrowserAcc
 				"event", "auth.bindings-unbound", "kind", group.kind, "count", group.count)
 		}
 	}
+}
+
+// firstRunShownKey records that the first-run link was shown on this root.
+const firstRunShownKey = "access.first-run-link-shown"
+
+// FirstRunLink issues the sign-in link shown once on a root where browser access is not
+// configured, and records that it was shown: "" when it was shown before. linkID is the issued
+// link's id, for the caller's audit line, whenever one was issued, even when recording that it
+// was shown then failed (err says so, and url is "").
+func FirstRunLink(ctx context.Context, st *store.Store, addr string) (url, linkID string, err error) {
+	if _, shown, err := st.Setting(ctx, firstRunShownKey); err != nil || shown {
+		return "", "", err
+	}
+	link, id, err := LocalLinkURL(ctx, st, addr)
+	if err != nil {
+		return "", "", err
+	}
+	if err := st.SetSetting(ctx, firstRunShownKey, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return "", id, err
+	}
+	return link, id, nil
 }
 
 // LocalLinkURL issues a one-time local sign-in link and returns where it is redeemed, from the
