@@ -14,17 +14,18 @@ func GiBText(v int64) string {
 }
 
 // BytesText is the size of a file or a download as people read it: GiB, MiB or KiB to one decimal,
-// else "N bytes". SizeText is for a limit.
+// else "N bytes". The unit is picked after rounding, so a size that rounds to 1024.0 of one unit
+// says 1.0 of the next. SizeText is for a limit.
 func BytesText(n int64) string {
-	switch {
-	case n >= 1<<30:
-		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	if n < 1<<10 {
+		return fmt.Sprintf("%d bytes", n)
 	}
-	return fmt.Sprintf("%d bytes", n)
+	units := [...]string{"KiB", "MiB", "GiB"}
+	v, u := float64(n)/(1<<10), 0
+	for u < len(units)-1 && (v >= 1<<10 || fmt.Sprintf("%.1f", v) == "1024.0") {
+		v, u = v/(1<<10), u+1
+	}
+	return fmt.Sprintf("%.1f %s", v, units[u])
 }
 
 // SizeText says a limit in MiB when it is whole MiB, else in bytes.
