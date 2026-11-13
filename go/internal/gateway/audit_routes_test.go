@@ -51,7 +51,7 @@ var routeAuditClasses = map[string]string{
 	"/v1/videos/{job_id}/cancel":  "deliberately not: a person's own work, not administration",
 
 	"/health": "read", "/health/ready": "read", "/openapi.json": "read",
-	"/_localbase/instance": "read", "/_localbase/host": "read", "/_localbase/default-model": "read",
+	"/_localbase/instance": "read", "/_localbase/host": "read", "/_localbase/default-model": "read", "/_localbase/model-context": "read",
 	"/_localbase/placement-state": "read", "/_localbase/backends": "read", "/_localbase/auth-profiles": "read",
 	"/_localbase/models": "read", "/v1/models": "read", "/v1/models/{model...}": "read",
 

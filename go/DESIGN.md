@@ -5349,7 +5349,7 @@ reference, a key command with the right scopes, and knowing that a client wants
 - **Covers:** `/v1`, `/_localbase`, `/health`, `/health/ready` and itself.
 - **Leaves out, by name and with a reason in the test:** the browser's pages and sign-in
   (`/app/*`, callbacks), and the routes only this machine's CLI can call, behind the
-  instance token (`/_localbase/instance`, `/default-model`, `/placement-state`).
+  instance token (`/_localbase/instance`, `/default-model`, `/placement-state`, `/model-context`).
 - **Extensions on each operation:**
   - `x-localbase-permission`: the permission the route needs. It is absent on a public route,
     and `"any"` means any authenticated caller. A method's own permission is on that method's
