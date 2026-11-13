@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -48,7 +49,7 @@ func newSpeechGateway(t *testing.T, logs io.Writer, configure ...func(*Config)) 
 	}
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Active: map[string]string{"tts": speechModel}, Selected: map[string][]string{"tts": {speechModel}}}
-	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != speechModel {

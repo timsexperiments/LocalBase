@@ -17,6 +17,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -60,7 +61,7 @@ func newAuthSTTGateway(t *testing.T) (*httptest.Server, *runtime.Service, string
 		t.Fatal(err)
 	}
 	cfg := &store.Config{Active: map[string]string{"stt": sttModel}, Selected: map[string][]string{"stt": {sttModel}}}
-	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != sttModel {

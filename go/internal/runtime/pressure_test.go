@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 )
 
 type pressureStep struct {
@@ -145,7 +146,7 @@ func TestMemoryPressureGolden(t *testing.T) {
 // samples, after which requests start the runtimes again.
 func TestPressureStopsRuntimes(t *testing.T) {
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	llm := newTestLLMWith(t, mem)
 	stt, _ := newTestServiceWith(t, mem)
 	recovery := &IdleRecovery{Memory: mem}

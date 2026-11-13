@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
@@ -74,7 +75,7 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	if testVideoHost != nil {
 		machine = testVideoHost
 	}
-	mem := memory.NewController(unsampled{machine}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: machine}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	sd := reg.Get("stable-diffusion.cpp-metal")
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {

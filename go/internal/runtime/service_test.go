@@ -13,13 +13,14 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
 func newTestService(t *testing.T) (*Service, *[]string) {
 	t.Helper()
-	mem := memory.NewController(unsampled{&bigHost{avail: 50 * memory.GiB}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: &bigHost{avail: 50 * memory.GiB}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	return newTestServiceWith(t, mem)
 }
 

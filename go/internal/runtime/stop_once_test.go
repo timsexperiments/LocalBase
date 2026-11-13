@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 )
 
 // gatedHost holds the next Snapshot after arm until open, so a test can stop a
@@ -38,7 +39,7 @@ func (h *gatedHost) Snapshot(ctx context.Context) memory.Snapshot {
 // HTTP recovery covers and takes the whole gateway down.
 func TestSwitchAndEmergencyStopSameBackend(t *testing.T) {
 	host := &gatedHost{stepHost: newStepHost(50 * memory.GiB), reached: make(chan struct{}), open: make(chan struct{})}
-	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))

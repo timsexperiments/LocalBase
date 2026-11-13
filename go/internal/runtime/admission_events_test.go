@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 )
 
 type loggedEvent struct {
@@ -70,7 +71,7 @@ func checkRejected(t *testing.T, e loggedEvent, reason string, context map[strin
 // activation updates the configuration as the gateway's does.
 func newLoggedService(t *testing.T, host *stepHost, logs *syncBuffer) *Service {
 	t.Helper()
-	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	s, _ := newTestServiceWith(t, mem)
 	s.d.Log = slog.New(slog.NewJSONHandler(logs, nil))
 	s.d.Activate = func(kind, id string) { s.d.Config().Active[kind] = id }
@@ -182,7 +183,7 @@ func TestLLMSwitchRejectedEvents(t *testing.T) {
 	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
 	postStopSettle, postStopInterval = 300*time.Millisecond, 20*time.Millisecond
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))
