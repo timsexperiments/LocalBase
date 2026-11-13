@@ -2,6 +2,8 @@
 // Run by test/browser/person-check.sh, which builds everything and passes: <cdp> <work dir> <first port>.
 // Stops if the person isn't really signed in, and fails a row that nothing exercised, so a pass means
 // something. Exits 1 when a check fails.
+import { openPage } from "../cdp/cdp.ts";
+
 const [CDP, WORK, FIRST] = process.argv.slice(2);
 const O = WORK, LAB = WORK, R = `${WORK}/root`;
 const PORT = Number(FIRST), IDP_PORT = PORT, PROXY_PORT = PORT + 1, GATEWAY_PORT = PORT + 2, LLM_PORT = PORT + 3;
@@ -50,11 +52,11 @@ const gateway = Bun.spawn(["perl", "-MPOSIX", "-e", "POSIX::setsid(); exec @ARGV
 await Bun.write(`${O}/gateway.group`, String(gateway.pid));
 for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(sig, () => process.exit(143));
 for (let i = 0; i < 40; i++) { try { if ((await fetch(`${GATEWAY}/health`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 250)); }
-const t = await (await fetch(`${CDP}/json/new?about:blank`, { method: "PUT" })).json();
-const ws = new WebSocket(t.webSocketDebuggerUrl); await new Promise((r) => ws.addEventListener("open", r, { once: true }));
-let id = 0; const wait = new Map();
-ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.id) { wait.get(m.id)?.(m.result ?? {}); wait.delete(m.id); } });
-const send = (method: string, params: any = {}) => new Promise<any>((r) => { const i = ++id; wait.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+// With its browser gone nothing here can finish: the client stops the run, and a Chrome that never
+// answers stops it too. A command still gives its result, or {} for none or a failure, as it always has.
+const page = await openPage(CDP);
+const { ws, onEvent } = page;
+const send = (method: string, params: any = {}) => page.send(method, params).then((r) => r ?? {}, () => ({}));
 const ev = async (expression: string) => (await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true })).result?.value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 await send("Page.enable"); await send("Network.enable");
@@ -72,7 +74,7 @@ const storage = () => ev(`(() => { const dump = (s) => Object.keys(s).filter((k)
 // Paint isn't measured: script can't see a frame drawn before pageshow.
 const returns: any[] = [], notUsed: string[] = [];
 await send("Runtime.enable");
-ws.addEventListener("message", (e) => { const m = JSON.parse(String(e.data)); if (m.method === "Runtime.consoleAPICalled" && m.params.args?.[0]?.value === "LB-BACK") returns.push(JSON.parse(m.params.args[1].value)); if (m.method === "Page.backForwardCacheNotUsed") notUsed.push(...(m.params.notRestoredExplanations ?? []).map((x: any) => x.reason)); });
+onEvent((m: any) => { if (m.method === "Runtime.consoleAPICalled" && m.params.args?.[0]?.value === "LB-BACK") returns.push(JSON.parse(m.params.args[1].value)); if (m.method === "Page.backForwardCacheNotUsed") notUsed.push(...(m.params.notRestoredExplanations ?? []).map((x: any) => x.reason)); });
 await send("Page.addScriptToEvaluateOnNewDocument", { source: `addEventListener("pageshow", (e) => { window.__persisted = e.persisted; setTimeout(() => { const root = document.documentElement, body = document.body; const hid = (el) => !el || el.hidden || getComputedStyle(el).visibility === "hidden" || getComputedStyle(el).display === "none"; console.debug("LB-BACK", JSON.stringify({ persisted: e.persisted, where: location.pathname, words: (body?.textContent ?? "").includes("lake-from-alice"), hidden: hid(root) || hid(body) })); }, 0); });` });
 const backTo = async (match: RegExp) => { const h = await send("Page.getNavigationHistory"); const here = h.currentIndex; for (let i = here - 1; i >= 0; i--) { if (match.test(h.entries[i].url)) { await send("Page.navigateToHistoryEntry", { entryId: h.entries[i].id }); await sleep(1500); return h.entries[i].url; } } return null; };
 const showing = () => ev(`({ where: location.pathname + location.search, title: document.title, persisted: window.__persisted ?? null, nav: performance.getEntriesByType("navigation")[0]?.type, text: document.body.innerText.replace(/\\s+/g, " ").slice(0, 90) })`);
