@@ -57,8 +57,8 @@ func runAs(uid int) string {
 
 // ownedByOther explains a path another user owns. Running as root is usually sudo out
 // of habit, and would leave files the owner cannot read, so that gets its own answer.
-func ownedByOther(path string, owner int, isDir bool) *UnsafeRootError {
-	if currentUID() == 0 {
+func ownedByOther(path string, owner int, isDir bool, o options) *UnsafeRootError {
+	if o.currentUID() == 0 {
 		who := runAs(owner)
 		return &UnsafeRootError{path, runningAsRoot, "Run local-base without sudo, as the user who owns it: sudo -u " + who + " local-base ..."}
 	}
@@ -74,18 +74,6 @@ func writableByOthers(path string) *UnsafeRootError {
 	return &UnsafeRootError{path, othersCanWrite, "If you trust it, run: chmod go-w " + shellQuote(path) + ". If you did not put it there, remove it."}
 }
 
-var (
-	currentUID = os.Getuid
-	// statOwnerHook lets a test give one file another owner.
-	statOwnerHook = func(_ string, uid int) int { return uid }
-	// chmodDirectory lets a test see what a volume that refuses or ignores a chmod does.
-	chmodDirectory = os.Chmod
-	// Where the local accounts are listed (tests point these elsewhere).
-	etcPasswd   = "/etc/passwd"
-	etcGroup    = "/etc/group"
-	etcNSSwitch = "/etc/nsswitch.conf"
-)
-
 // WritableByOthers reports whether anyone but the owner could change a file or
 // directory, going by its mode. Others always count. A group counts unless it is provably
 // the owner's alone, because a group usually means other people: on macOS a file's group
@@ -93,7 +81,9 @@ var (
 // is a Linux user-private group under umask 002, where a hand-edited file comes out 0664
 // and nobody else is in the group. Pass an Lstat result: a symbolic link's own mode means
 // nothing, and opening some files tightens them first.
-func WritableByOthers(info fs.FileInfo) bool {
+func WritableByOthers(info fs.FileInfo) bool { return writableByOthersWith(info, options{}) }
+
+func writableByOthersWith(info fs.FileInfo, o options) bool {
 	perm := info.Mode().Perm()
 	switch {
 	case perm&0o002 != 0:
@@ -102,7 +92,7 @@ func WritableByOthers(info fs.FileInfo) bool {
 		return false
 	}
 	st, ok := info.Sys().(*syscall.Stat_t)
-	return !ok || !groupIsPrivate(int(st.Gid))
+	return !ok || !groupIsPrivate(int(st.Gid), o)
 }
 
 // groupIsPrivate reports whether a group is provably this user's alone: it is their
@@ -111,13 +101,13 @@ func WritableByOthers(info fs.FileInfo) bool {
 // group's members, and accounts from a directory service don't appear in these files, so
 // anything that can't be established this way is a no. That includes macOS, whose
 // accounts aren't in these files.
-func groupIsPrivate(gid int) bool {
-	if !accountsAreLocal() {
+func groupIsPrivate(gid int, o options) bool {
+	if !accountsAreLocal(o) {
 		return false
 	}
 	want := strconv.Itoa(gid)
-	me, uid := "", strconv.Itoa(currentUID())
-	ok := readAccounts(etcPasswd, func(f []string) bool { // name:password:uid:gid:...
+	me, uid := "", strconv.Itoa(o.currentUID())
+	ok := readAccounts(o.etc(o.passwd, "/etc/passwd"), func(f []string) bool { // name:password:uid:gid:...
 		if len(f) < 4 {
 			return false
 		}
@@ -134,7 +124,7 @@ func groupIsPrivate(gid int) bool {
 		return false
 	}
 	found := false
-	ok = readAccounts(etcGroup, func(f []string) bool { // name:password:gid:members
+	ok = readAccounts(o.etc(o.group, "/etc/group"), func(f []string) bool { // name:password:gid:members
 		if len(f) < 4 {
 			return false
 		}
@@ -180,8 +170,8 @@ func readAccounts(path string, fn func(fields []string) bool) bool {
 
 // accountsAreLocal reports whether users and groups come only from local files. Without
 // a configuration file they do (musl has no name service switch).
-func accountsAreLocal() bool {
-	b, err := os.ReadFile(etcNSSwitch)
+func accountsAreLocal(o options) bool {
+	b, err := os.ReadFile(o.etc(o.nsswitch, "/etc/nsswitch.conf"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return true
 	}
@@ -226,7 +216,7 @@ func ownerOf(info fs.FileInfo) (int, bool) {
 	return int(st.Uid), true
 }
 
-func checkEntry(path string, writableIsFine bool) error {
+func checkEntry(path string, writableIsFine bool, o options) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -238,11 +228,11 @@ func checkEntry(path string, writableIsFine bool) error {
 	if !ok {
 		uid = -1
 	}
-	if uid = statOwnerHook(path, uid); uid != currentUID() {
-		return ownedByOther(path, uid, info.IsDir())
+	if uid = o.ownerOf(path, uid); uid != o.currentUID() {
+		return ownedByOther(path, uid, info.IsDir(), o)
 	}
 	// A symbolic link's own mode means nothing; its owner is what was checked.
-	if !writableIsFine && info.Mode()&fs.ModeSymlink == 0 && WritableByOthers(info) {
+	if !writableIsFine && info.Mode()&fs.ModeSymlink == 0 && writableByOthersWith(info, o) {
 		return writableByOthers(path)
 	}
 	return nil
@@ -250,13 +240,13 @@ func checkEntry(path string, writableIsFine bool) error {
 
 // checkOwner refuses a directory this user does not own. It changes nothing, so it can
 // run before anything says this is a root at all.
-func checkOwner(dir string, info fs.FileInfo) error {
+func checkOwner(dir string, info fs.FileInfo, o options) error {
 	uid, ok := ownerOf(info)
 	if !ok {
 		uid = -1
 	}
-	if uid = statOwnerHook(dir, uid); uid != currentUID() {
-		return ownedByOther(dir, uid, true)
+	if uid = o.ownerOf(dir, uid); uid != o.currentUID() {
+		return ownedByOther(dir, uid, true, o)
 	}
 	return nil
 }
@@ -265,24 +255,24 @@ func checkOwner(dir string, info fs.FileInfo) error {
 // What decides is the mode it has afterwards, since some volumes accept a chmod and ignore
 // it. A directory others can still change stops the root, unless the volume is read-only,
 // where nobody can. One they can only read does not: the files in it have their own modes.
-func closeDirectory(dir string) error {
+func closeDirectory(dir string, o options) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return err
 	}
-	if err := checkOwner(dir, info); err != nil {
+	if err := checkOwner(dir, info, o); err != nil {
 		return err
 	}
 	if info.Mode().Perm()&0o077 == 0 {
 		return nil
 	}
-	if err := chmodDirectory(dir, 0o700); errors.Is(err, syscall.EROFS) {
+	if err := o.chmodDirectory(dir, 0o700); errors.Is(err, syscall.EROFS) {
 		return nil
 	}
 	if info, err = os.Stat(dir); err != nil {
 		return err
 	}
-	if WritableByOthers(info) {
+	if writableByOthersWith(info, o) {
 		return writableByOthers(dir)
 	}
 	return nil
@@ -291,34 +281,34 @@ func closeDirectory(dir string) error {
 // checkBeforeReading gives a root someone else owns its own answer, which an unreadable
 // marker would otherwise hide behind "permission denied". A path that can't be examined
 // is left for the read that follows to report.
-func checkBeforeReading(dir string) error {
+func checkBeforeReading(dir string, o options) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil
 	}
-	if err := checkOwner(dir, info); err != nil {
+	if err := checkOwner(dir, info, o); err != nil {
 		return err
 	}
-	return checkEntry(filepath.Join(dir, markerName), false)
+	return checkEntry(filepath.Join(dir, markerName), false, o)
 }
 
 // secure checks an existing root before anything in it is used.
-func secure(dir string) error {
-	if err := closeDirectory(dir); err != nil {
+func secure(dir string, o options) error {
+	if err := closeDirectory(dir, o); err != nil {
 		return err
 	}
 	for _, name := range trustedFiles {
-		if err := checkEntry(filepath.Join(dir, name), false); err != nil {
+		if err := checkEntry(filepath.Join(dir, name), false, o); err != nil {
 			return err
 		}
 	}
 	for _, name := range databaseFiles {
-		if err := checkEntry(filepath.Join(dir, name), true); err != nil {
+		if err := checkEntry(filepath.Join(dir, name), true, o); err != nil {
 			return err
 		}
 	}
 	for _, name := range trustedDirs {
-		if err := checkEntry(filepath.Join(dir, name), false); err != nil {
+		if err := checkEntry(filepath.Join(dir, name), false, o); err != nil {
 			return err
 		}
 	}
@@ -328,7 +318,7 @@ func secure(dir string) error {
 			continue // a missing or unreadable listing is reported where it is read
 		}
 		for _, e := range entries {
-			if err := checkEntry(filepath.Join(dir, name, e.Name()), false); err != nil {
+			if err := checkEntry(filepath.Join(dir, name, e.Name()), false, o); err != nil {
 				return err
 			}
 		}

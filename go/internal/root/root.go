@@ -116,8 +116,10 @@ func resolveExistingAncestor(p string) (string, error) {
 }
 
 // Open validates an existing root's marker.
-func Open(dir string) (*Root, error) {
-	r, err := OpenForUndo(dir)
+func Open(dir string) (*Root, error) { return openRoot(dir, options{}) }
+
+func openRoot(dir string, o options) (*Root, error) {
+	r, err := openForUndo(dir, o)
 	if err != nil {
 		return nil, err
 	}
@@ -129,12 +131,14 @@ func Open(dir string) (*Root, error) {
 
 // OpenForUndo is Open for the one command that finishes an interrupted restore. Every
 // other check still applies.
-func OpenForUndo(dir string) (*Root, error) {
+func OpenForUndo(dir string) (*Root, error) { return openForUndo(dir, options{}) }
+
+func openForUndo(dir string, o options) (*Root, error) {
 	dir, err := canonical(dir)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkBeforeReading(dir); err != nil {
+	if err := checkBeforeReading(dir, o); err != nil {
 		return nil, err
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, markerName))
@@ -153,7 +157,7 @@ func OpenForUndo(dir string) (*Root, error) {
 	if m.Version != 1 || m.Root != dir || m.RootHash != Hash(dir) {
 		return nil, fmt.Errorf("root marker in %s belongs to %q; refusing to use a copied or moved root", dir, m.Root)
 	}
-	if err := secure(dir); err != nil {
+	if err := secure(dir, o); err != nil {
 		return nil, err
 	}
 	return &Root{Dir: dir}, nil
@@ -169,7 +173,7 @@ func onlyLicenses(entries []os.DirEntry) bool {
 // A nonempty directory without a marker, / and the home directory are rejected.
 func Init(dir string) (*Root, error) { return initRoot(dir, options{}) }
 
-// initRoot is Init, with a test's options for writing the marker.
+// initRoot is Init, with a test's options.
 func initRoot(dir string, o options) (*Root, error) {
 	dir, err := canonical(dir)
 	if err != nil {
@@ -178,7 +182,7 @@ func initRoot(dir string, o options) (*Root, error) {
 	if home, _ := os.UserHomeDir(); dir == "/" || (home != "" && dir == mustCanonical(home)) {
 		return nil, fmt.Errorf("Refusing LocalBase operation for protected directory: %s.", dir)
 	}
-	r, err := Open(dir)
+	r, err := openRoot(dir, o)
 	if err == nil {
 		return r, nil
 	}
@@ -193,7 +197,7 @@ func initRoot(dir string, o options) (*Root, error) {
 		return nil, err
 	}
 	// The directory may have been there already, and open to others.
-	if err := closeDirectory(dir); err != nil {
+	if err := closeDirectory(dir, o); err != nil {
 		return nil, err
 	}
 	m := marker{Version: 1, Root: dir, RootHash: Hash(dir), Identity: uuid()}
