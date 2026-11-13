@@ -42,6 +42,9 @@ type Library struct {
 	jobs  jobs
 	mu    sync.Mutex
 	stamp string
+	// hooks (tests) change how an import takes the root and mark the steps of publishing; the
+	// zero value is how the package runs.
+	hooks hooks
 }
 
 // InstallState reports a backend's install state from the managed runtime
