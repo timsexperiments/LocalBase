@@ -76,7 +76,8 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 			return nil, cli.Inputf("model: %q is not an installed chat model. Expected one of: %s", model, strings.Join(models, ", "))
 		}
 	}
-	target := connect.Target{BaseURL: baseURL, Model: model, Context: connectContext(e, model)}
+	contextTokens, planned := connectContext(e, model)
+	target := connect.Target{BaseURL: baseURL, Model: model, Context: contextTokens}
 
 	var key map[string]any
 	if c.Has("create-key") {
@@ -115,6 +116,13 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 	}
 	data := map[string]any{"baseUrls": bases, "baseUrl": baseURL, "model": model, "models": models,
 		"gateway": map[string]any{"running": running}, "clients": clients, "unusable": connect.Unusable}
+	if contextTokens > 0 {
+		source := "gateway"
+		if planned {
+			source = "planned"
+		}
+		data["context"] = map[string]any{"tokens": contextTokens, "source": source}
+	}
 	if key != nil {
 		data["key"], data["secret"] = key, target.Key
 	}
@@ -123,9 +131,12 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 	}
 	if client != "" {
 		printClient(c, clients[0], target.Key != "")
+		if contextTokens > 0 && planned && clients[0].UsesContext {
+			c.Error("\nContext in these snippets: %d tokens, as planned without a running gateway.", contextTokens)
+		}
 		return data, nil
 	}
-	printOverview(c, bases, baseURL, model, running, target.Key)
+	printOverview(c, bases, baseURL, model, running, target.Key, contextTokens, planned)
 	return data, nil
 }
 
@@ -161,7 +172,7 @@ func printClient(c *cli.Ctx, client connect.Client, hasKey bool) {
 	c.Error("\nIts documentation: %s", termsafe.PrintableASCII(client.Docs))
 }
 
-func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, running bool, key string) {
+func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, running bool, key string, contextTokens int, planned bool) {
 	if running {
 		c.Info("LocalBase is running.")
 	} else {
@@ -179,6 +190,12 @@ func printOverview(c *cli.Ctx, bases []connect.Base, baseURL, model string, runn
 	}
 	if model != "" {
 		c.Info("Model: %s", model)
+		switch {
+		case contextTokens > 0 && planned:
+			c.Info("Context: %d tokens, as planned without a running gateway", contextTokens)
+		case contextTokens > 0:
+			c.Info("Context: %d tokens", contextTokens)
+		}
 	} else {
 		c.Info("Model: none installed yet. Run: local-base models catalog")
 	}
@@ -242,12 +259,14 @@ func connectDefaultModel(e *env, models []string) string {
 	return ""
 }
 
-// connectContext is the context the model runs with here, or 0 when it cannot be worked out: the
-// running gateway's figure when one runs (it counts --ctx-size and its placements), else a plan made
-// now through the library, the same plan the page uses, imported models included.
-func connectContext(e *env, model string) int {
+// connectContext is the context the model runs with here, or 0 when it cannot be worked out, and
+// whether it is a plan made here rather than the running gateway's. With a gateway running it is the
+// gateway's figure, which counts its --ctx-size and placements. Without one it is as planned without a
+// running gateway: a plan made now through the library, the same plan the page uses, imported models
+// included, which a gateway started with other flags could change.
+func connectContext(e *env, model string) (tokens int, planned bool) {
 	if model == "" {
-		return 0
+		return 0, false
 	}
 	if gw, _, _ := instance.Dial(e.Root); gw != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -257,19 +276,19 @@ func connectContext(e *env, model string) int {
 				ContextLength int `json:"contextLength"`
 			}
 			if a.Decode(&v) == nil && v.ContextLength > 0 {
-				return v.ContextLength
+				return v.ContextLength, false
 			}
 		}
 	}
 	lib, err := openLibrary(e)
 	if err != nil {
-		return 0
+		return 0, false
 	}
 	llm, _, _ := placementLLM(e, lib)
 	defer llm.Close()
 	plan, err := llm.Plan(model)
 	if err != nil || plan == nil {
-		return 0
+		return 0, false
 	}
-	return plan.Budget.EffectiveContext
+	return plan.Budget.EffectiveContext, true
 }
