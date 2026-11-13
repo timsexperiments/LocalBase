@@ -574,9 +574,11 @@ func writeDiagnosticsArchive(path string, entries []zipEntry) (int, error) {
 			return 0, errors.New("Secure diagnostics temporary file creation failed.")
 		case "write":
 			return 0, errors.New("Secure diagnostics archive write failed.")
-		default:
+		case "link":
 			return 0, errors.New("Secure diagnostics archive publication; output already exists failed.")
 		}
+		// "sync": the archive is published, and the bundle is for sharing now, so it goes ahead as it
+		// always did; only whether its name would survive a crash is unknown.
 	}
 	return buf.Len(), nil
 }

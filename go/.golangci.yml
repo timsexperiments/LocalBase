@@ -196,9 +196,6 @@ linters:
       - path: ^internal/runtime/service\.go$
         linters: [errcheck]
         text: "is not checked"
-      - path: ^internal/safefile/publish\.go$
-        linters: [errcheck]
-        text: "d\\.Sync"
       - path: ^internal/service/service_control\.go$
         linters: [errcheck]
         text: "\\(\\*encoding/json\\.Decoder\\)\\.Decode|r\\.ClearStale|st\\.Close"

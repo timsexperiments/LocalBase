@@ -46,7 +46,8 @@ func RealDir(dir string) (string, error) {
 }
 
 // PublishError is where PublishNew failed: Step is "create" (the temporary file), "write" (writing
-// or syncing it) or "link" (publishing it, most often because name is there already).
+// or syncing it), "link" (publishing it, most often because name is there already) or "sync" (the
+// directory: the file is published, but whether its name would survive a crash isn't known).
 type PublishError struct {
 	Step string
 	Err  error
@@ -81,9 +82,15 @@ func PublishNew(dir, name, tmpPrefix string, data []byte) error {
 	if err := os.Link(tmp, filepath.Join(dir, name)); err != nil {
 		return &PublishError{"link", err}
 	}
-	if d, err := os.Open(dir); err == nil {
-		d.Sync()
-		d.Close()
+	d, err := os.Open(dir)
+	if err == nil {
+		err = d.Sync()
+		if cerr := d.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		return &PublishError{"sync", err}
 	}
 	return nil
 }
