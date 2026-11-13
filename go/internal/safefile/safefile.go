@@ -30,15 +30,31 @@ func (e *UnsafeFileError) Error() string {
 
 const hardLinkProblem = "it has another hard link"
 
-var (
-	currentUID = os.Getuid
-	// These run around the open (tests: a swap in the window the checks cannot see).
-	beforeSecureOpen = func() {}
-	afterSecureOpen  = func() {}
-)
+// options are the points in this package a test reaches into. Its zero value is how the package
+// runs, and the exported functions pass that, so nothing here can be set from outside.
+type options struct {
+	uid        func() int           // (tests) whose files count as ours; nil is os.Getuid
+	beforeOpen func()               // (tests) runs between the checks and the open: a swap the checks can't see
+	afterOpen  func()               // (tests) runs between the open and the re-checks: a swap after the open
+	sync       func(*os.File) error // (tests) nil is (*os.File).Sync, which on macOS is F_FULLFSYNC
+}
+
+func (o options) currentUID() int {
+	if o.uid != nil {
+		return o.uid()
+	}
+	return os.Getuid()
+}
+
+func (o options) fsync(f *os.File) error {
+	if o.sync != nil {
+		return o.sync(f)
+	}
+	return f.Sync()
+}
 
 // checkOwnedRegular is TS's ownedRegularFile.
-func checkOwnedRegular(path string, info fs.FileInfo) error {
+func checkOwnedRegular(path string, info fs.FileInfo, o options) error {
 	switch {
 	case info.Mode()&fs.ModeSymlink != 0:
 		return &UnsafeFileError{path, "it is a symbolic link"}
@@ -49,7 +65,7 @@ func checkOwnedRegular(path string, info fs.FileInfo) error {
 	if !ok {
 		return &UnsafeFileError{path, "its owner cannot be read"}
 	}
-	if int(st.Uid) != currentUID() {
+	if int(st.Uid) != o.currentUID() {
 		return &UnsafeFileError{path, "another user owns it"}
 	}
 	if st.Nlink > 1 {
@@ -67,7 +83,7 @@ func CheckOwnedRegular(path string) error {
 	if err != nil {
 		return err
 	}
-	return checkOwnedRegular(path, info)
+	return checkOwnedRegular(path, info, options{})
 }
 
 // OpenOwnedRegular opens this user's own plain file without following a link, and
@@ -75,10 +91,15 @@ func CheckOwnedRegular(path string) error {
 // up 0600. A missing file is fs.ErrNotExist unless flags create it. Keep using the
 // returned handle rather than the path.
 func OpenOwnedRegular(path string, flags int) (*os.File, error) {
+	return openOwnedRegular(path, flags, options{})
+}
+
+// openOwnedRegular is OpenOwnedRegular, with the points a test reaches into.
+func openOwnedRegular(path string, flags int, o options) (*os.File, error) {
 	before, err := os.Lstat(path)
 	switch {
 	case err == nil:
-		if err := checkOwnedRegular(path, before); err != nil {
+		if err := checkOwnedRegular(path, before, o); err != nil {
 			return nil, err
 		}
 	case !errors.Is(err, fs.ErrNotExist) || flags&os.O_CREATE == 0:
@@ -86,7 +107,9 @@ func OpenOwnedRegular(path string, flags int) (*os.File, error) {
 	default:
 		before = nil
 	}
-	beforeSecureOpen()
+	if o.beforeOpen != nil {
+		o.beforeOpen()
+	}
 	// O_NOFOLLOW covers a link planted after the check above, which could otherwise
 	// truncate its target before any later check runs. O_NONBLOCK: a FIFO swapped in
 	// after the check must not hang the open.
@@ -97,7 +120,9 @@ func OpenOwnedRegular(path string, flags int) (*os.File, error) {
 		}
 		return nil, err
 	}
-	afterSecureOpen()
+	if o.afterOpen != nil {
+		o.afterOpen()
+	}
 	fail := func(err error) (*os.File, error) {
 		f.Close()
 		return nil, err
@@ -106,14 +131,14 @@ func OpenOwnedRegular(path string, flags int) (*os.File, error) {
 	if err != nil {
 		return fail(err)
 	}
-	if err := checkOwnedRegular(path, opened); err != nil {
+	if err := checkOwnedRegular(path, opened, o); err != nil {
 		return fail(err)
 	}
 	after, err := os.Lstat(path)
 	if err != nil {
 		return fail(err)
 	}
-	if err := checkOwnedRegular(path, after); err != nil {
+	if err := checkOwnedRegular(path, after, o); err != nil {
 		return fail(err)
 	}
 	if !os.SameFile(opened, after) || (before != nil && !os.SameFile(before, after)) {
@@ -135,13 +160,15 @@ func ReadOwnedRegular(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-// syncFile is (*os.File).Sync, which on macOS is F_FULLFSYNC. A test can see it run, and fail it.
-var syncFile = (*os.File).Sync
-
 // WritePrivateAtomic replaces path with a new private file. The temporary name is
 // fresh and exclusive, so nothing planted can redirect the write, and the rename
 // replaces a link at path rather than following it.
 func WritePrivateAtomic(path string, data []byte) error {
+	return writePrivateAtomic(path, data, options{})
+}
+
+// writePrivateAtomic is WritePrivateAtomic, with the sync a test can see run, and fail.
+func writePrivateAtomic(path string, data []byte, o options) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
@@ -153,7 +180,7 @@ func WritePrivateAtomic(path string, data []byte) error {
 	}
 	// The data reaches the disk before the name does. Otherwise a crash can keep the rename and lose
 	// the data, and a restore journal or a settings file is then there and empty.
-	if err := syncFile(tmp); err != nil {
+	if err := o.fsync(tmp); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -171,7 +198,7 @@ func WritePrivateChecked(path string, data []byte) error {
 	info, err := os.Lstat(path)
 	switch {
 	case err == nil:
-		if err := checkOwnedRegular(path, info); err != nil {
+		if err := checkOwnedRegular(path, info, options{}); err != nil {
 			return err
 		}
 	case !errors.Is(err, fs.ErrNotExist):
