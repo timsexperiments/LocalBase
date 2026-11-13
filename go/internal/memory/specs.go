@@ -34,8 +34,8 @@ type NvidiaGPU struct {
 	MemoryMiB int    `json:"memoryMiB"`
 }
 
-// nvidiaSMI runs nvidia-smi (tests replace it).
-var nvidiaSMI = func() ([]byte, error) {
+// nvidiaSMI runs nvidia-smi.
+func nvidiaSMI() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits").Output()
@@ -166,8 +166,8 @@ type GPUMemory struct {
 	TotalBytes int64  `json:"totalBytes"`
 }
 
-// nvidiaMemorySMI queries free and total memory per GPU (tests replace it).
-var nvidiaMemorySMI = func() ([]byte, error) {
+// nvidiaMemorySMI queries free and total memory per GPU.
+func nvidiaMemorySMI() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	return exec.CommandContext(ctx, "nvidia-smi", "--query-gpu=index,name,memory.free,memory.total", "--format=csv,noheader,nounits").Output()
@@ -194,25 +194,12 @@ func parseGPUMemory(out []byte) []GPUMemory {
 
 // GPUMemoryNow samples every NVIDIA GPU's free memory (nil without one).
 func GPUMemoryNow() []GPUMemory {
-	if goruntime.GOOS != "linux" && nvidiaOverride == nil {
+	if goruntime.GOOS != "linux" {
 		return nil
-	}
-	if nvidiaOverride != nil {
-		return nvidiaOverride()
 	}
 	out, err := nvidiaMemorySMI()
 	if err != nil {
 		return nil
 	}
 	return parseGPUMemory(out)
-}
-
-// nvidiaOverride replaces GPUMemoryNow (tests).
-var nvidiaOverride func() []GPUMemory
-
-// OverrideGPUMemory makes GPUMemoryNow report gpus until restore (tests).
-func OverrideGPUMemory(f func() []GPUMemory) (restore func()) {
-	prev := nvidiaOverride
-	nvidiaOverride = f
-	return func() { nvidiaOverride = prev }
 }
