@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -183,11 +184,17 @@ func makePrivate(path string) {
 }
 
 // OpenReadOnly opens an existing database without migrating or writing it.
-func OpenReadOnly(path string) (*Store, error) {
+func OpenReadOnly(path string) (*Store, error) { return openReadOnly(path, readNotice) }
+
+// OpenReadOnlyQuiet is OpenReadOnly without the note that it read a copy: for a read only incidental
+// to what a command does, where the note would mean nothing (models search's saved token).
+func OpenReadOnlyQuiet(path string) (*Store, error) { return openReadOnly(path, io.Discard) }
+
+func openReadOnly(path string, notice io.Writer) (*Store, error) {
 	if err := checkWALBelongs(path); err != nil {
 		return nil, err
 	}
-	stage, read, err := readablePath(path)
+	stage, read, err := readablePath(path, notice)
 	if err != nil {
 		return nil, err
 	}

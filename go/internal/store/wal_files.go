@@ -250,14 +250,14 @@ func readOnlyRoot(err error) bool {
 // with no process attached makes a -shm and a -wal, which stay, and fails where they can't be made. So
 // then this reads a private copy of the database and its -wal. With a -shm there, a process is attached
 // or left it, and the file can be read as it is. stage is what to remove afterwards.
-func readablePath(path string) (stage, read string, err error) {
+func readablePath(path string, notice io.Writer) (stage, read string, err error) {
 	if !inWAL(path) {
 		return "", path, nil
 	}
 	if _, err := os.Stat(path + "-shm"); err == nil {
 		return "", path, nil
 	}
-	return privateCopy(path)
+	return privateCopy(path, notice)
 }
 
 // ReadablePath is the file a read of this database should open, by the same rule as OpenReadOnly, for a
@@ -266,7 +266,7 @@ func ReadablePath(path string) (read string, done func(), err error) {
 	if err := checkWALBelongs(path); err != nil {
 		return "", func() {}, err
 	}
-	stage, read, err := readablePath(path)
+	stage, read, err := readablePath(path, readNotice)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -276,14 +276,14 @@ func ReadablePath(path string) (read string, done func(), err error) {
 // PrivateCopy is a copy of this database and its -wal to read, for when the file itself can't be read,
 // as with a -shm that can't be used. done removes it.
 func PrivateCopy(path string) (read string, done func(), err error) {
-	stage, read, err := privateCopy(path)
+	stage, read, err := privateCopy(path, readNotice)
 	if err != nil {
 		return "", func() {}, err
 	}
 	return read, func() { removeStage(stage) }, nil
 }
 
-func privateCopy(path string) (stage, read string, err error) {
+func privateCopy(path string, notice io.Writer) (stage, read string, err error) {
 	// A copy of files someone is writing can be torn, so it's taken only with nobody holding the root.
 	if root.InUse(filepath.Dir(path)) {
 		return "", "", ErrInUse
@@ -306,7 +306,7 @@ func privateCopy(path string) (stage, read string, err error) {
 		removeStage(stage)
 		return "", "", err
 	}
-	fmt.Fprintln(readNotice, "Read a copy of this root's database, as it stood just now.")
+	fmt.Fprintln(notice, "Read a copy of this root's database, as it stood just now.")
 	return stage, read, nil
 }
 

@@ -77,8 +77,10 @@ func modelsSearch() *cli.Command {
 			}
 			var cfg *store.Config
 			if _, err := os.Stat(filepath.Join(dir, "local-base.db")); err == nil {
-				// Only for a saved token, so a search goes on without one, and says so.
-				st, err := store.Open(filepath.Join(dir, "local-base.db"))
+				// Only for a saved token, so a search goes on without one, and says so. Read-only:
+				// a search writes nothing, and a read-write open would migrate the database. Quiet:
+				// whether it read a copy means nothing to someone searching the Hub.
+				st, err := store.OpenReadOnlyQuiet(filepath.Join(dir, "local-base.db"))
 				if err == nil {
 					cfg, err = st.LoadConfig(context.Background())
 					st.Close()
