@@ -121,3 +121,23 @@ func TestProviderActionsGolden(t *testing.T) {
 		{"disable", `{"action":"disable"}`},
 	})
 }
+
+// Every email delivery action, as the gateway answers it and what it leaves on disk. (Sending a
+// test email to a real server isn't here: the golden records only what needs no network.)
+func TestEmailActionsGolden(t *testing.T) {
+	email := func(host string) string {
+		return `{"action":"configure-email-delivery","config":{"host":"` + host + `","port":587,"security":"starttls","authentication":{"kind":"password","username":"user","password":"PLANTED-smtp-password"},"from":"sender@example.test"}}`
+	}
+	runAccessGolden(t, "access_email.golden", []accessOp{
+		{"a test email with none configured", `{"action":"test-email-delivery","to":"friend@example.test"}`},
+		{"disable with none configured", `{"action":"disable-email-delivery"}`},
+		{"configure", email("smtp.example.test")},
+		{"the same again", email("smtp.example.test")},
+		{"another host", email("mail.example.test")},
+		{"a magic link that needs it", `{"action":"upsert-magic-link","registration":{"kind":"magic-link","id":"email","name":"Email"},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}`},
+		{"disable while the magic link needs it", `{"action":"disable-email-delivery"}`},
+		{"remove the magic link", `{"action":"remove-registration","registrationId":"email"}`},
+		{"disable", `{"action":"disable-email-delivery"}`},
+		{"disable again", `{"action":"disable-email-delivery"}`},
+	})
+}

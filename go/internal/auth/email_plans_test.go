@@ -86,3 +86,11 @@ func TestRequireEmail(t *testing.T) {
 		t.Errorf("a configured one: %+v, %v", got, err)
 	}
 }
+
+// The test email says what both callers wrote out by hand before it existed: the "was" side is
+// that text, copied from cmd/localbase/access_email.go and admin/keys/keys.go.
+func TestTheTestEmailSaysWhatItSaid(t *testing.T) {
+	if subject, body := testEmail(); subject != "LocalBase email delivery test" || body != "LocalBase successfully sent this test email." {
+		t.Errorf("testEmail = %q, %q", subject, body)
+	}
+}

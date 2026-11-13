@@ -104,7 +104,7 @@ func accessEmailCommands() []*cli.Command {
 				if cfg == nil {
 					return nil, cli.Inputf("Configure email delivery before testing it.")
 				}
-				if err := auth.SendEmail(cfg, to, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
+				if err := auth.SendTestEmail(cfg, to); err != nil {
 					return nil, err
 				}
 				c.Info("Sent a test email to %s.", to)

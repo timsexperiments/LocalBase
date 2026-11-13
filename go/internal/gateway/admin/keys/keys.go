@@ -529,7 +529,7 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		if err := auth.SendEmail(email, in.To, "LocalBase email delivery test", "LocalBase successfully sent this test email."); err != nil {
+		if err := auth.SendTestEmail(email, in.To); err != nil {
 			httpx.ManagementError(w, 502, "email_delivery_failed")
 			return
 		}
@@ -637,13 +637,9 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.NoStore(w, 200, map[string]any{"emailDelivery": in.Config.Summary(), "restartRequired": false})
 	case "disable-email-delivery":
-		if current != nil && current.Provider.Kind == "direct" {
-			for _, reg := range current.Provider.Registrations {
-				if reg.Kind == "magic-link" {
-					httpx.ManagementError(w, 409, "email_delivery_in_use")
-					return
-				}
-			}
+		if auth.CheckDisableEmail(current) != nil { // a magic link needs it
+			httpx.ManagementError(w, 409, "email_delivery_in_use")
+			return
 		}
 		disabled, err := auth.DisableEmail(root)
 		if err != nil {
