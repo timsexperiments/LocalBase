@@ -67,9 +67,32 @@ type goManifest struct {
 	} `json:"targets"`
 }
 
-func goPinned(family string) (manifestArtifact, []SupportFile, bool) {
+// installOptions say how a runtime is installed. The zero value is how the package runs.
+type installOptions struct {
+	// manifest replaces the Go build's pins (tests); nil is goManifestJSON.
+	manifest []byte
+	// fetchURL maps a pinned URL to where it is fetched from (tests serve the pinned bytes
+	// locally; the checksums still apply); nil fetches the pinned URL.
+	fetchURL func(string) string
+}
+
+func (o installOptions) goManifest() []byte {
+	if o.manifest != nil {
+		return o.manifest
+	}
+	return goManifestJSON
+}
+
+func (o installOptions) source(url string) string {
+	if o.fetchURL != nil {
+		return o.fetchURL(url)
+	}
+	return url
+}
+
+func goPinned(family string, o installOptions) (manifestArtifact, []SupportFile, bool) {
 	var m goManifest
-	if json.Unmarshal(goManifestJSON, &m) != nil {
+	if json.Unmarshal(o.goManifest(), &m) != nil {
 		return manifestArtifact{}, nil, false
 	}
 	arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[goruntime.GOARCH]
@@ -84,12 +107,12 @@ func goPinned(family string) (manifestArtifact, []SupportFile, bool) {
 }
 
 // release returns the pinned release of an executable's family.
-func release(name string) (family string, a manifestArtifact, support []SupportFile, ok bool) {
+func release(name string, o installOptions) (family string, a manifestArtifact, support []SupportFile, ok bool) {
 	family = executableFamily[name]
 	if a, ok := pinnedRuntime(family); ok {
 		return family, a, nil, true
 	}
-	if a, s, ok := goPinned(family); ok {
+	if a, s, ok := goPinned(family, o); ok {
 		return family, a, s, true
 	}
 	return family, manifestArtifact{}, nil, false
@@ -113,7 +136,11 @@ func lockInstall(ctx context.Context, family string) (unlock func(), err error) 
 // EnsureBinary returns a managed executable, installing its pinned release
 // the first time.
 func EnsureBinary(ctx context.Context, runtimesDir, name string) (string, error) {
-	family, rel, support, ok := release(name)
+	return ensureBinary(ctx, runtimesDir, name, installOptions{})
+}
+
+func ensureBinary(ctx context.Context, runtimesDir, name string, o installOptions) (string, error) {
+	family, rel, support, ok := release(name, o)
 	if !ok {
 		return ResolveBinary(runtimesDir, name)
 	}
@@ -139,7 +166,7 @@ func EnsureBinary(ctx context.Context, runtimesDir, name string) (string, error)
 	}
 	defer os.RemoveAll(work)
 	archive := filepath.Join(work, rel.AssetName)
-	if err := fetchVerified(ctx, rel.URL, archive, rel.ExpectedSizeBytes, rel.SHA256); err != nil {
+	if err := fetchVerified(ctx, rel.URL, archive, rel.ExpectedSizeBytes, rel.SHA256, o); err != nil {
 		return "", fmt.Errorf("installing %s %s: %w", name, rel.Tag, err)
 	}
 	staging := filepath.Join(work, "package")
@@ -163,7 +190,7 @@ func EnsureBinary(ctx context.Context, runtimesDir, name string) (string, error)
 		return "", fmt.Errorf("%s was not found after extracting %s", name, rel.AssetName)
 	}
 	for _, f := range support {
-		if err := buildSupport(ctx, work, staging, f); err != nil {
+		if err := buildSupport(ctx, work, staging, f, o); err != nil {
 			return "", err
 		}
 	}
@@ -201,7 +228,11 @@ func supportComplete(dir string, files []SupportFile) bool {
 // SupportPath is where a pinned support file of an executable lives once
 // installed ("" when the family has none).
 func SupportPath(runtimesDir, name, filename string) string {
-	family, rel, support, ok := release(name)
+	return supportPath(runtimesDir, name, filename, installOptions{})
+}
+
+func supportPath(runtimesDir, name, filename string, o installOptions) string {
+	family, rel, support, ok := release(name, o)
 	if !ok {
 		return ""
 	}
@@ -213,14 +244,10 @@ func SupportPath(runtimesDir, name, filename string) string {
 	return ""
 }
 
-// fetchURL maps a pinned URL to where it is fetched from (tests serve the
-// pinned bytes locally; the checksums still apply).
-var fetchURL = func(u string) string { return u }
-
-func fetchVerified(ctx context.Context, url, dest string, size int64, want string) error {
+func fetchVerified(ctx context.Context, url, dest string, size int64, want string, o installOptions) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL(url), nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, o.source(url), nil)
 	resp, err := idle.Do(http.DefaultClient, req, idle.Timeout())
 	if err != nil {
 		return err
@@ -433,11 +460,11 @@ func fileIdentityOf(p string) map[string]any {
 }
 
 // buildSupport downloads a support file's pinned sources and derives it.
-func buildSupport(ctx context.Context, work, staging string, f SupportFile) error {
+func buildSupport(ctx context.Context, work, staging string, f SupportFile, o installOptions) error {
 	var inputs []string
 	for i, s := range f.Sources {
 		p := filepath.Join(work, fmt.Sprintf("support-%d", i))
-		if err := fetchVerified(ctx, s.URL, p, s.ExpectedSizeBytes, s.SHA256); err != nil {
+		if err := fetchVerified(ctx, s.URL, p, s.ExpectedSizeBytes, s.SHA256, o); err != nil {
 			return fmt.Errorf("support file %s: %w", f.Filename, err)
 		}
 		inputs = append(inputs, p)

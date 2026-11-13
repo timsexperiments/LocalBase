@@ -82,7 +82,7 @@ func (m *LLM) doSwitch(ctx context.Context, modelID, key string, parent *otlp.Sp
 		// Memory must settle before the new model starts; if it never does,
 		// the previous model is restored (TS rollBackRejectedSwitch).
 		if prev.modelID != modelID && ctx.Err() == nil {
-			if err := settleAfterStop(ctx, m.d.Memory, demand); err != nil {
+			if err := settleAfterStop(ctx, m.d.Memory, demand, m.d.hooks); err != nil {
 				if ctx.Err() != nil {
 					return demand, context.Cause(ctx) // ended on purpose: nothing is restored
 				}

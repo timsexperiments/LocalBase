@@ -244,10 +244,7 @@ func TestAMediaPeakIsRecordedForItsBackend(t *testing.T) {
 	if goruntime.GOOS != "darwin" {
 		t.Skip("footprints are sampled on macOS")
 	}
-	before := sampleFootprint
-	sampleFootprint = func(context.Context, int) (int64, bool) { return 7 * memory.GiB, true }
-	t.Cleanup(func() { sampleFootprint = before })
-	s, spec := startService(t)
+	s, spec := startService(t, hooks{sample: func(context.Context, int) (int64, bool) { return 7 * memory.GiB, true }})
 	target, err := s.d.Gate(context.Background(), spec.ModelID, false)
 	if err != nil {
 		t.Fatal(err)

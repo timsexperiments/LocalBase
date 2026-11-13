@@ -120,11 +120,10 @@ func TestSwitchPreflightRejectedEvent(t *testing.T) {
 // model.switch-rolled-back, the previous model active again and reloaded
 // once memory admits it.
 func TestPostStopRollback(t *testing.T) {
-	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
-	postStopSettle, postStopInterval = 300*time.Millisecond, 20*time.Millisecond
 	host := newStepHost(30 * memory.GiB)
 	var logs syncBuffer
 	s := newLoggedService(t, host, &logs)
+	s.d.hooks = hooks{settle: 300 * time.Millisecond, settleStep: 20 * time.Millisecond}
 	ctx := context.Background()
 	l, err := s.Acquire(ctx, "a")
 	if err != nil {
@@ -180,11 +179,10 @@ func TestStartRejectedEvent(t *testing.T) {
 // TestLLMSwitchRejectedEvents: the LLM logs the same switch-preflight and
 // post-stop refusals as the media runtimes.
 func TestLLMSwitchRejectedEvents(t *testing.T) {
-	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
-	postStopSettle, postStopInterval = 300*time.Millisecond, 20*time.Millisecond
 	host := newStepHost(50 * memory.GiB)
 	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
+	m.d.hooks = hooks{settle: 300 * time.Millisecond, settleStep: 20 * time.Millisecond}
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))
 	ctx := context.Background()

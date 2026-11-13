@@ -90,6 +90,9 @@ type ServiceDeps struct {
 	// Recovery stops idle runtimes of other modalities when a model is
 	// refused for memory (nil: no recovery).
 	Recovery *IdleRecovery
+	// hooks (tests) shorten the sampling and the settle, or hold a sample; the zero value is how
+	// the package runs.
+	hooks hooks
 }
 
 type svcBackend struct {
@@ -316,7 +319,7 @@ func (s *Service) doSwitch(ctx context.Context, modelID, key string, parent *otl
 	if prev != nil {
 		s.stop(prev, StopSwitch)
 		if preflight && switching && previous != "" && ctx.Err() == nil {
-			if err := settleAfterStop(ctx, s.d.Memory, demand); err != nil {
+			if err := settleAfterStop(ctx, s.d.Memory, demand, s.d.hooks); err != nil {
 				if ctx.Err() != nil {
 					return demand, context.Cause(ctx) // ended on purpose: nothing is rolled back
 				}
@@ -405,7 +408,7 @@ func (s *Service) reloadRestored(ctx context.Context, modelID string) {
 		failed(err)
 		return
 	}
-	if err := settleAfterStop(ctx, s.d.Memory, s.demand(t)); err != nil {
+	if err := settleAfterStop(ctx, s.d.Memory, s.demand(t), s.d.hooks); err != nil {
 		if ctx.Err() == nil { // Close ended it: nothing to report
 			failed(err)
 		}
@@ -568,7 +571,7 @@ func (s *Service) watch(b *svcBackend) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(b.sampling, 4*time.Second)
-		bytes, ok := sampleFootprint(ctx, b.proc.PID())
+		bytes, ok := s.d.hooks.footprint(ctx, b.proc.PID())
 		cancel()
 		// Stopped meanwhile: leave the store alone. A write already begun finishes.
 		if ok && bytes > peak && b.sampling.Err() == nil {
@@ -582,7 +585,7 @@ func (s *Service) watch(b *svcBackend) {
 		}
 	}
 	sample()
-	tick := time.NewTicker(samplePeriod)
+	tick := time.NewTicker(s.d.hooks.period())
 	defer tick.Stop()
 wait:
 	for {

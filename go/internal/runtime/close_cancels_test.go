@@ -16,11 +16,10 @@ import (
 // start the previous model again after it (review 04-M2). Before, Close waited the whole settle and
 // then a restore that was abandoned at once.
 func TestCloseDoesNotWaitOutAnLLMSettle(t *testing.T) {
-	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
-	postStopSettle, postStopInterval = 5*time.Second, 20*time.Millisecond
 	host := newStepHost(50 * memory.GiB)
 	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
+	m.d.hooks = hooks{settle: 5 * time.Second, settleStep: 20 * time.Millisecond}
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))
 	ctx := context.Background()
@@ -57,11 +56,10 @@ func TestCloseDoesNotWaitOutAnLLMSettle(t *testing.T) {
 // A media runtime's rolled-back model is reloaded in the background; Close stops that too, so
 // nothing of it runs or logs after Close returns (review 04-M4).
 func TestCloseEndsARestoredModelsReload(t *testing.T) {
-	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
-	postStopSettle, postStopInterval = 400*time.Millisecond, 20*time.Millisecond
 	host := newStepHost(30 * memory.GiB)
 	var logs syncBuffer
 	s := newLoggedService(t, host, &logs)
+	s.d.hooks = hooks{settle: 400 * time.Millisecond, settleStep: 20 * time.Millisecond}
 	ctx := context.Background()
 	l, err := s.Acquire(ctx, "a")
 	if err != nil {
@@ -74,7 +72,7 @@ func TestCloseEndsARestoredModelsReload(t *testing.T) {
 	}
 	s.Close() // the reload of "a" is now waiting for memory
 	closedAt := len(logs.String())
-	time.Sleep(3 * postStopSettle)
+	time.Sleep(3 * s.d.hooks.settleLimit())
 	if after := logs.String()[closedAt:]; strings.TrimSpace(after) != "" {
 		t.Errorf("logged after Close returned:\n%s", after)
 	}

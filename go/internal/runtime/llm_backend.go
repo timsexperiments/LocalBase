@@ -167,12 +167,12 @@ func (m *LLM) stopBackend(b *backend, reason string) {
 
 // watch samples the observed peak and handles an unexpected exit: the slot
 // is cleared and the next request starts the model again.
-// samplePeriod is how often a running model's memory is sampled. A variable so a test can shorten it.
-var samplePeriod = 5 * time.Second
+// samplePeriod is how often a running model's memory is sampled. hooks shortens it for a test.
+const samplePeriod = 5 * time.Second
 
 func (m *LLM) watch(b *backend) {
 	defer b.stopSampling()
-	tick := time.NewTicker(samplePeriod)
+	tick := time.NewTicker(m.d.hooks.period())
 	defer tick.Stop()
 	var peak int64
 	record := b.spec != nil && b.spec.Primary().SHA256 != "" && goruntime.GOOS == "darwin"
@@ -181,7 +181,7 @@ func (m *LLM) watch(b *backend) {
 			return
 		}
 		ctx, cancel := context.WithTimeout(b.sampling, 4*time.Second)
-		bytes, ok := sampleFootprint(ctx, b.proc.PID())
+		bytes, ok := m.d.hooks.footprint(ctx, b.proc.PID())
 		cancel()
 		// Stopped meanwhile: leave the store alone. A write already begun finishes.
 		if ok && bytes > peak && b.sampling.Err() == nil {

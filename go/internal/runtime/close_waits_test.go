@@ -22,14 +22,14 @@ import (
 // holdSample makes the next memory sample wait, and says when one has reached
 // that point. A sample that honors cancel ends with its context, as the real one
 // does (it kills the tool it runs); one that ignores it ends only on release.
-func holdSample(t *testing.T, honorCancel bool) (reached, release chan struct{}) {
+func holdSample(t *testing.T, honorCancel bool) (h hooks, reached, release chan struct{}) {
 	t.Helper()
 	if goruntime.GOOS != "darwin" {
 		t.Skip("memory samples are macOS only")
 	}
 	reached, release = make(chan struct{}), make(chan struct{})
 	var once sync.Once
-	sampleFootprint = func(ctx context.Context, _ int) (int64, bool) {
+	h.sample = func(ctx context.Context, _ int) (int64, bool) {
 		once.Do(func() { close(reached) })
 		if honorCancel {
 			select {
@@ -42,8 +42,7 @@ func holdSample(t *testing.T, honorCancel bool) (reached, release chan struct{})
 		}
 		return memory.GiB, true
 	}
-	t.Cleanup(func() { sampleFootprint = memory.Footprint })
-	return reached, release
+	return h, reached, release
 }
 
 // closeWaits: Close does not return while a sample is out, even one that ignores
@@ -89,9 +88,10 @@ func closeIsPrompt(t *testing.T, reached chan struct{}, closeFn func()) {
 	}
 }
 
-func startLLM(t *testing.T) *LLM {
+func startLLM(t *testing.T, h hooks) *LLM {
 	t.Helper()
 	m := newTestLLM(t, &bigHost{avail: 50 * memory.GiB})
+	m.d.hooks = h
 	l, err := m.Acquire(context.Background(), modelA)
 	if err != nil {
 		t.Fatal(err)
@@ -100,9 +100,10 @@ func startLLM(t *testing.T) *LLM {
 	return m
 }
 
-func startService(t *testing.T) (*Service, *catalog.Spec) {
+func startService(t *testing.T, h hooks) (*Service, *catalog.Spec) {
 	t.Helper()
 	s, _ := newTestService(t)
+	s.d.hooks = h
 	var spec *catalog.Spec
 	for _, c := range s.d.Catalog.All() {
 		if c.Kind == "stt" && c.Primary().SHA256 != "" {
@@ -131,13 +132,13 @@ func startService(t *testing.T) (*Service, *catalog.Spec) {
 }
 
 func TestLLMCloseWaitsForMemorySample(t *testing.T) {
-	reached, release := holdSample(t, false)
-	closeWaits(t, reached, release, startLLM(t).Close)
+	h, reached, release := holdSample(t, false)
+	closeWaits(t, reached, release, startLLM(t, h).Close)
 }
 
 func TestServiceCloseWaitsForMemorySample(t *testing.T) {
-	reached, release := holdSample(t, false)
-	s, spec := startService(t)
+	h, reached, release := holdSample(t, false)
+	s, spec := startService(t, h)
 	closeWaits(t, reached, release, s.Close)
 	// The sample came back after the stop: nothing is written.
 	if rows, err := s.d.Store.ObservedPeaks(context.Background(), spec.ModelID, spec.Primary().SHA256); err != nil || len(rows) != 0 {
@@ -146,13 +147,13 @@ func TestServiceCloseWaitsForMemorySample(t *testing.T) {
 }
 
 func TestLLMClosePromptDuringMemorySample(t *testing.T) {
-	reached, _ := holdSample(t, true)
-	closeIsPrompt(t, reached, startLLM(t).Close)
+	h, reached, _ := holdSample(t, true)
+	closeIsPrompt(t, reached, startLLM(t, h).Close)
 }
 
 func TestServiceClosePromptDuringMemorySample(t *testing.T) {
-	reached, _ := holdSample(t, true)
-	s, _ := startService(t)
+	h, reached, _ := holdSample(t, true)
+	s, _ := startService(t, h)
 	closeIsPrompt(t, reached, s.Close)
 }
 
@@ -180,12 +181,8 @@ func TestAPeakThatCannotBeWrittenComesRoundAgain(t *testing.T) {
 	}
 	var bytes atomic.Int64
 	bytes.Store(memory.GiB)
-	sampleFootprint = func(context.Context, int) (int64, bool) { return bytes.Load(), true }
-	t.Cleanup(func() { sampleFootprint = memory.Footprint })
-	previous := samplePeriod
-	samplePeriod = 20 * time.Millisecond
-	t.Cleanup(func() { samplePeriod = previous })
-	s, spec := startService(t)
+	s, spec := startService(t, hooks{sample: func(context.Context, int) (int64, bool) { return bytes.Load(), true },
+		samplePeriod: 20 * time.Millisecond})
 	st := s.d.Store
 	ctx := context.Background()
 	highest := func() int64 {

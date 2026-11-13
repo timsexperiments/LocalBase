@@ -40,18 +40,53 @@ func logAdmissionRejected(log *slog.Logger, modality, component string, err erro
 		slog.Group("attributes", attrs...))
 }
 
-// The post-stop settle (TS settleAdmissionAfterEviction); tests shorten it.
-var (
-	postStopSettle   = memorySettleTimeout
-	postStopInterval = memorySettleInterval
-)
+// hooks are what a runtime's tests change: how it reads a backend's memory, how often, and the
+// post-stop settle (TS settleAdmissionAfterEviction). The zero value is how the package runs.
+type hooks struct {
+	// sample reads a backend's memory (tests: one that holds, or fixed figures); nil is
+	// memory.Footprint.
+	sample func(ctx context.Context, pid int) (int64, bool)
+	// samplePeriod is how often a running model's memory is sampled; 0 is samplePeriod.
+	samplePeriod time.Duration
+	// settle and settleStep are the post-stop settle's limit and step; 0 is memorySettleTimeout
+	// and memorySettleInterval.
+	settle, settleStep time.Duration
+}
+
+func (h hooks) footprint(ctx context.Context, pid int) (int64, bool) {
+	if h.sample != nil {
+		return h.sample(ctx, pid)
+	}
+	return memory.Footprint(ctx, pid)
+}
+
+func (h hooks) period() time.Duration {
+	if h.samplePeriod > 0 {
+		return h.samplePeriod
+	}
+	return samplePeriod
+}
+
+func (h hooks) settleLimit() time.Duration {
+	if h.settle > 0 {
+		return h.settle
+	}
+	return memorySettleTimeout
+}
+
+func (h hooks) settleInterval() time.Duration {
+	if h.settleStep > 0 {
+		return h.settleStep
+	}
+	return memorySettleInterval
+}
 
 // settleAfterStop waits for memory to admit demand after the previous model
 // stopped: the OS can return reclaimed pages more slowly than the switch
 // preflight assumed. It samples every 100 ms for up to 10 s; a permanent
 // shortfall answers at once. Only memory refusals are returned.
-func settleAfterStop(ctx context.Context, mem *memory.Controller, demand memory.Demand) error {
-	deadline := time.Now().Add(postStopSettle)
+func settleAfterStop(ctx context.Context, mem *memory.Controller, demand memory.Demand, h hooks) error {
+	deadline := time.Now().Add(h.settleLimit())
 	for {
 		if ctx.Err() != nil { // the switch was ended (Close, an emergency stop): stop waiting
 			return context.Cause(ctx)
@@ -66,7 +101,7 @@ func settleAfterStop(ctx context.Context, mem *memory.Controller, demand memory.
 		}
 		select {
 		case <-ctx.Done():
-		case <-time.After(min(postStopInterval, time.Until(deadline)+time.Millisecond)):
+		case <-time.After(min(h.settleInterval(), time.Until(deadline)+time.Millisecond)):
 		}
 	}
 }

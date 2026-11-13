@@ -25,7 +25,7 @@ func TestRuntimeDownloadStallEnds(t *testing.T) {
 	defer close(release)
 	done := make(chan error, 1)
 	go func() {
-		done <- fetchVerified(context.Background(), srv.URL, filepath.Join(t.TempDir(), "a"), 1<<20, "")
+		done <- fetchVerified(context.Background(), srv.URL, filepath.Join(t.TempDir(), "a"), 1<<20, "", installOptions{})
 	}()
 	select {
 	case err := <-done:
