@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -62,7 +63,7 @@ func TestActivationsAtOnceAllLand(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- recordActive(r.Dir, st, running, kind, id)
+			errs <- conf.RecordActive(r.Dir, st, running, kind, id)
 		}()
 	}
 	wg.Wait()
@@ -98,7 +99,7 @@ func TestAnActivationKeepsAFreshlySavedToken(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := st.LoadConfig(ctx)
@@ -121,7 +122,7 @@ func TestAnActivationDoesNotSaveTheRunningOverrides(t *testing.T) {
 	over := running.Config().Clone()
 	over.Host = "override.example"
 	running.SetConfig(over)
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := st.LoadConfig(ctx)
@@ -140,7 +141,7 @@ func TestAnActivationDoesNotSaveTheRunningOverrides(t *testing.T) {
 func TestActivatingTheActiveModelWritesNothing(t *testing.T) {
 	r, st, running := activationRoot(t)
 	ctx := context.Background()
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := st.LoadConfig(ctx)
@@ -151,7 +152,7 @@ func TestActivatingTheActiveModelWritesNothing(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := st.LoadConfig(ctx)

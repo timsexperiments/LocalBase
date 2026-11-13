@@ -315,7 +315,7 @@ func serve(c *cli.Ctx) (any, error) {
 	placementSource := &runtime.HostPlacement{Store: st, DeviceID: lib.DeviceID, Memory: mem, Log: log}
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
-		if err := recordActive(r.Dir, st, llm, kind, modelID); err != nil {
+		if err := conf.RecordActive(r.Dir, st, llm, kind, modelID); err != nil {
 			log.Warn("Could not record the active "+kind+" model.", "event", "config.save-failed", "error", err.Error())
 		}
 	}
