@@ -102,3 +102,23 @@ func TestLocalLinkURL(t *testing.T) {
 		t.Error("a non-loopback listener issued a link")
 	}
 }
+
+// The first-run link is issued once per root: the second ask gets nothing and issues nothing.
+func TestFirstRunLinkIsShownOnce(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	url, id, err := FirstRunLink(ctx, st, "127.0.0.1:2273")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, ok := strings.CutPrefix(url, "http://127.0.0.1:2273"+LocalOncePath+"#")
+	if !ok || token == "" || id != LocalLinkID(token) {
+		t.Errorf("first: url %q, id %q", url, id)
+	}
+	if _, shown, err := st.Setting(ctx, firstRunShownKey); err != nil || !shown {
+		t.Errorf("not recorded as shown (%v)", err)
+	}
+	if url, id, err := FirstRunLink(ctx, st, "127.0.0.1:2273"); url != "" || id != "" || err != nil {
+		t.Errorf("second: url %q, id %q, err %v", url, id, err)
+	}
+}
