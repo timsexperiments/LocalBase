@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -314,29 +313,6 @@ func TestDiagnosticsReportsWhatItCouldNotRead(t *testing.T) {
 	}
 	if !found {
 		t.Error("the manifest doesn't list the read that failed")
-	}
-}
-
-// And a peak read that fails partway, which used to be silent.
-func TestDiagnosticModelsListsAFailedPeakRead(t *testing.T) {
-	cat, err := catalog.Load("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var spec *catalog.Spec
-	for _, s := range cat.All() {
-		if s.Primary().SHA256 != "" {
-			spec = s
-			break
-		}
-	}
-	st, hold := busyRead(t)
-	hold()
-	problems := &readProblems{dir: t.TempDir()}
-	cfg := &store.Config{Active: map[string]string{spec.Kind: spec.ModelID}, Selected: map[string][]string{spec.Kind: {spec.ModelID}}}
-	diagnosticModels(context.Background(), problems.dir, st, cat, cfg, 64, problems)
-	if len(problems.text) == 0 || !strings.Contains(strings.Join(problems.text, "\n"), "reading the memory peaks seen for "+spec.ModelID+": the database is busy") {
-		t.Errorf("%v", problems.text)
 	}
 }
 

@@ -26,6 +26,7 @@ var errorCodeShape = regexp.MustCompile(`^[a-z][a-z0-9]*(_[a-z0-9]+)*$`)
 // unless someone says otherwise here.
 var notErrorCodePackages = map[string]string{
 	"cli":           "Its codes describe a command's result",
+	"diagnostics":   "Its codes mark the parts of a bundle the command couldn't fill",
 	"web":           "It reads codes, for what its pages say",
 	"third_party":   "Vendored",
 	"fakebackend":   "A stand-in for a backend, for tests",
