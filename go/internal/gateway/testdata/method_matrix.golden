@@ -328,6 +328,13 @@ POST	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
 PUT	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
 DELETE	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
 PATCH	/app/api/_localbase/hf-token	401	-	authentication_error	ui_access_denied
+GET	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
+HEAD	/app/api/_localbase/model-context	401	-	-	-
+OPTIONS	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
+POST	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
+PUT	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
+DELETE	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
+PATCH	/app/api/_localbase/model-context	401	-	authentication_error	ui_access_denied
 GET	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied
 HEAD	/app/api/_localbase/model-imports	401	-	-	-
 OPTIONS	/app/api/_localbase/model-imports	401	-	authentication_error	ui_access_denied

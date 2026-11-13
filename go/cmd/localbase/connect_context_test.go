@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -54,7 +57,29 @@ func TestConnectGivesAnImportedModelsContext(t *testing.T) {
 	if err != nil || plan == nil || plan.Budget.EffectiveContext <= 0 {
 		t.Fatalf("the library's plan: %+v, %v", plan, err)
 	}
-	if got := connectContext(e, "ctx-import"); got != plan.Budget.EffectiveContext {
-		t.Errorf("connect's context %d, the plan's %d", got, plan.Budget.EffectiveContext)
+	if got, planned := connectContext(e, "ctx-import"); got != plan.Budget.EffectiveContext || !planned {
+		t.Errorf("connect's context %d (planned %v), the plan's %d", got, planned, plan.Budget.EffectiveContext)
+	}
+	// And connect says the figure is a plan, not the running value: in its overview, beside a client's
+	// snippets, and in its JSON.
+	want := fmt.Sprintf("%d tokens, as planned without a running gateway", plan.Budget.EffectiveContext)
+	if code, out := runApp(t, "--root", dir, "connect", "--model", "ctx-import"); code != 0 || !strings.Contains(out, "Context: "+want+"\n") {
+		t.Errorf("overview: %d\n%s", code, out)
+	}
+	if code, out := runApp(t, "--root", dir, "connect", "opencode", "--model", "ctx-import"); code != 0 || !strings.Contains(out, "Context in these snippets: "+want+".") {
+		t.Errorf("a client: %d\n%s", code, out)
+	}
+	code, out := runApp(t, "--root", dir, "--json", "connect", "--model", "ctx-import")
+	var env struct {
+		Data struct {
+			Context struct {
+				Tokens int    `json:"tokens"`
+				Source string `json:"source"`
+			} `json:"context"`
+		} `json:"data"`
+	}
+	if code != 0 || json.NewDecoder(strings.NewReader(out[strings.Index(out, "{"):])).Decode(&env) != nil ||
+		env.Data.Context.Tokens != plan.Budget.EffectiveContext || env.Data.Context.Source != "planned" {
+		t.Errorf("--json: %d %+v\n%s", code, env.Data.Context, out)
 	}
 }

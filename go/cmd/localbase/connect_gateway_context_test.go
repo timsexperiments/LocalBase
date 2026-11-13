@@ -59,8 +59,8 @@ func TestConnectAsksTheRunningGatewayForTheContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: newHostProvider()}
-	if got := connectContext(e, lab.ChatSmall); got != m.ContextLength {
-		t.Errorf("connect's context %d, the gateway's %d", got, m.ContextLength)
+	if got, planned := connectContext(e, lab.ChatSmall); got != m.ContextLength || planned {
+		t.Errorf("connect's context %d (planned %v), the gateway's %d", got, planned, m.ContextLength)
 	}
 	// And that is the gateway's answer, not one the command line would come to alone.
 	lib, err := openLibrary(e)

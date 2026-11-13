@@ -71,7 +71,7 @@ var matrixExtraPaths = map[string][]string{
 	"/_localbase/runs/{rest...}":       {"v1/chat/completions", "v1/audio/transcriptions", "v1/audio/translations", "run_x", "run_x/events", "run_x/cancel", "run_x/result"},
 	"/v1/models/{model...}":            {"no-such-model"},
 	"/_localbase/voices/":              {"voice-000000000000", "voice-000000000000/audio", "not-a-voice"},
-	"/app/api/": {"_localbase/api-keys", "_localbase/access-management", "_localbase/hf-token", "_localbase/model-imports",
+	"/app/api/": {"_localbase/api-keys", "_localbase/access-management", "_localbase/hf-token", "_localbase/model-imports", "_localbase/model-context",
 		"_localbase/runs", "_localbase/runs/run_x/events", "_localbase/models/" + gatewaytest.ChatModel + "/unload", "v1/chat/completions", "v1/audio/transcriptions",
 		"v1/audio/translations", "v1/videos"},
 }
