@@ -69,6 +69,10 @@ func TestConnectGivesAnImportedModelsContext(t *testing.T) {
 	if code, out := runApp(t, "--root", dir, "connect", "opencode", "--model", "ctx-import"); code != 0 || !strings.Contains(out, "Context in these snippets: "+want+".") {
 		t.Errorf("a client: %d\n%s", code, out)
 	}
+	// Only beside snippets that hold the figure: curl's don't.
+	if code, out := runApp(t, "--root", dir, "connect", "curl", "--model", "ctx-import"); code != 0 || strings.Contains(out, "Context in these snippets") {
+		t.Errorf("a client without the figure: %d\n%s", code, out)
+	}
 	code, out := runApp(t, "--root", dir, "--json", "connect", "--model", "ctx-import")
 	var env struct {
 		Data struct {

@@ -131,9 +131,7 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 	}
 	if client != "" {
 		printClient(c, clients[0], target.Key != "")
-		if contextTokens > 0 && planned && slices.ContainsFunc(clients[0].Snippets, func(s connect.Snippet) bool {
-			return strings.Contains(s.Text, strconv.Itoa(contextTokens))
-		}) {
+		if contextTokens > 0 && planned && clients[0].UsesContext {
 			c.Error("\nContext in these snippets: %d tokens, as planned without a running gateway.", contextTokens)
 		}
 		return data, nil

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -66,6 +67,9 @@ type Client struct {
 	// follows the client's documentation, and says so wherever it is shown.
 	Run      bool      `json:"run"`
 	Snippets []Snippet `json:"snippets"`
+	// UsesContext: a snippet holds the model's context (its template has @CONTEXT@), so a page or
+	// command showing it can say where that figure came from. Set by render.
+	UsesContext bool `json:"-"`
 }
 
 // The groups, in the order they are shown.
@@ -193,6 +197,9 @@ func render(c Client, t Target) Client {
 	}
 	out.Snippets = make([]Snippet, 0, len(c.Snippets))
 	for _, s := range c.Snippets {
+		if strings.Contains(s.Text, "@CONTEXT@") || slices.ContainsFunc(s.Fields, func(f Field) bool { return strings.Contains(f.Value, "@CONTEXT@") }) {
+			out.UsesContext = true
+		}
 		r := s
 		r.Path = fill("text", s.Path, t)
 		if !c.Run {
