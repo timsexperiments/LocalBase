@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
@@ -44,16 +45,6 @@ func hfToken(e *env) string {
 	return os.Getenv("HF_TOKEN")
 }
 
-func humanBytes(n int64) string {
-	switch {
-	case n >= 1<<30:
-		return fmt.Sprintf("%.2f GiB", float64(n)/float64(1<<30))
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/float64(1<<20))
-	}
-	return fmt.Sprintf("%d bytes", n)
-}
-
 // printSelection explains which backend runs a model, with every option.
 func printSelection(c *cli.Ctx, s backends.Selection, reg *backends.Registry) {
 	switch {
@@ -70,7 +61,7 @@ func printSelection(c *cli.Ctx, s backends.Selection, reg *backends.Registry) {
 			c.Info("  ! %s", w.Message)
 		}
 		if s.DownloadBytes > 0 {
-			c.Info("  ! downloading them needs %s", humanBytes(s.DownloadBytes))
+			c.Info("  ! downloading them needs %s", memory.BytesText(s.DownloadBytes))
 		}
 	}
 	if s.Mode == backends.ModeManual && s.Recommendation.BackendID != "" && s.Recommendation.BackendID != s.BackendID {
@@ -144,7 +135,7 @@ func modelsImportCommand() *cli.Command {
 			for _, f := range plan.Files {
 				size := "size unknown"
 				if f.SizeBytes > 0 {
-					size = humanBytes(f.SizeBytes)
+					size = memory.BytesText(f.SizeBytes)
 				}
 				trust := "checksum computed after download (identity only)"
 				switch f.HashTrust {
@@ -156,7 +147,7 @@ func modelsImportCommand() *cli.Command {
 				c.Info("  %s (%s, %s, %s)", f.Filename, f.Role, size, trust)
 			}
 			if plan.SizeKnown {
-				c.Info("Total: %s", humanBytes(plan.TotalBytes))
+				c.Info("Total: %s", memory.BytesText(plan.TotalBytes))
 			}
 			preview := l.Preview(plan)
 			switch {
