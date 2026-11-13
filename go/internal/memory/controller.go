@@ -43,6 +43,9 @@ type AdmissionError struct {
 	// Diagnostics are the figures behind the refusal (nil when the error was
 	// not made by admission).
 	Diagnostics *AdmissionDiagnostics
+	// NVIDIAPresent is whether the refusing host has an NVIDIA GPU, for the refusal's log line
+	// (GPU memory is admitted in gpu:0 there). It is never shown to a client.
+	NVIDIAPresent bool `json:"-"`
 }
 
 // AdmissionDiagnostics are TS's RuntimeMemoryAdmissionError diagnostics.
@@ -115,6 +118,8 @@ type Controller struct {
 	system  Reserve
 	bypass  bool
 	sampler func(ctx context.Context, pid int) (int64, bool)
+	// nvidia says whether the host has an NVIDIA GPU (NVIDIAReporter, else NVIDIAPresent).
+	nvidia func() bool
 
 	viewMu   sync.Mutex
 	lastView *view
@@ -132,14 +137,24 @@ type FootprintSampler interface {
 	Footprint(ctx context.Context, pid int) (int64, bool)
 }
 
-// NewController is the controller of host's memory. Its sampler is fixed here, from host, so it
-// can't change while admission reads it.
+// NVIDIAReporter is a HostProvider that says itself whether it has an NVIDIA GPU (tests: one that
+// does). A Controller asks NVIDIAPresent about a host without it.
+type NVIDIAReporter interface {
+	NVIDIAPresent() bool
+}
+
+// NewController is the controller of host's memory. Its sampler and its NVIDIA answer are fixed
+// here, from host, so they can't change while admission reads them.
 func NewController(host HostProvider, system Reserve, bypass bool) *Controller {
 	sampler := Footprint
 	if s, ok := host.(FootprintSampler); ok {
 		sampler = s.Footprint
 	}
-	return &Controller{host: host, system: system, bypass: bypass, sampler: sampler,
+	nvidia := NVIDIAPresent
+	if n, ok := host.(NVIDIAReporter); ok {
+		nvidia = n.NVIDIAPresent
+	}
+	return &Controller{host: host, system: system, bypass: bypass, sampler: sampler, nvidia: nvidia,
 		reservations: map[string]*reservation{}, state: "healthy"}
 }
 
@@ -283,7 +298,8 @@ func (c *Controller) evaluate(d Demand, snap Snapshot, releasing map[string]bool
 	topo := c.host.Topology()
 	req := c.projected(d)
 	reserve := c.system.Bytes(topo.SystemCapacity)
-	base := &AdmissionError{PoolID: "system", RequestedBytes: req, ReserveBytes: reserve, Confidence: d.Confidence}
+	base := &AdmissionError{PoolID: "system", RequestedBytes: req, ReserveBytes: reserve, Confidence: d.Confidence,
+		NVIDIAPresent: c.nvidia()}
 
 	pending, freed, resident := c.ledger(releasing, measured, seen)
 	// reject attaches the figures behind the refusal (TS reject).

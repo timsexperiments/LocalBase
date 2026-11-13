@@ -83,9 +83,8 @@ func TestStopEvents(t *testing.T) {
 // On a host with an NVIDIA GPU, an admission rejection names the pool it
 // used (system memory) and that GPU memory is admitted in gpu:0.
 func TestAdmissionRejectionNamesPoolWithNVIDIA(t *testing.T) {
-	defer memory.OverrideNVIDIA([]memory.NvidiaGPU{{Name: "NVIDIA GeForce RTX 3060", MemoryMiB: 12288}})()
 	host := newStepHost(memory.GiB)
-	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
+	mem := memory.NewController(withNVIDIA{memorytest.Unsampled{HostProvider: host}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))
@@ -111,3 +110,8 @@ func TestAdmissionRejectionNamesPoolWithNVIDIA(t *testing.T) {
 		t.Fatalf("no rejection event in:\n%s", logs.String())
 	}
 }
+
+// withNVIDIA is a host that has an NVIDIA GPU (memory.NVIDIAReporter).
+type withNVIDIA struct{ memorytest.Unsampled }
+
+func (withNVIDIA) NVIDIAPresent() bool { return true }

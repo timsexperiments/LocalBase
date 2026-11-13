@@ -73,13 +73,6 @@ var nvidiaOnce = sync.OnceValue(DetectNVIDIA)
 // NVIDIAPresent reports, once per process, whether an NVIDIA GPU is present.
 func NVIDIAPresent() bool { return len(nvidiaOnce()) > 0 }
 
-// OverrideNVIDIA makes NVIDIAPresent report gpus until restore (tests).
-func OverrideNVIDIA(gpus []NvidiaGPU) (restore func()) {
-	prev := nvidiaOnce
-	nvidiaOnce = func() []NvidiaGPU { return gpus }
-	return func() { nvidiaOnce = prev }
-}
-
 var appleChipRe = regexp.MustCompile(`(?i)\bApple\s+M\d+(?:\s+(?:Pro|Max|Ultra))?\b`)
 
 func sysctlString(name string) string {

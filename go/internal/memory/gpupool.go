@@ -27,7 +27,8 @@ func (p *GPUPool) Admit(id string, bytes int64) (*GPUReservation, error) {
 		sample = GPUMemoryNow
 	}
 	gpus := sample()
-	base := AdmissionError{PoolID: "gpu:0", RequestedBytes: bytes, ReserveBytes: p.Reserve, Confidence: "derived"}
+	base := AdmissionError{PoolID: "gpu:0", RequestedBytes: bytes, ReserveBytes: p.Reserve, Confidence: "derived",
+		NVIDIAPresent: NVIDIAPresent()}
 	if len(gpus) == 0 {
 		e := base
 		e.Reason = "measurement-unavailable"
