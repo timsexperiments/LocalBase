@@ -40,6 +40,20 @@ const states: [string, string, string][] = [
   ["decisions", "/app/studio/decisions", ""],
   ["decisions-answer", "/app/studio/decisions", `(async () => { document.querySelector("[data-open-sheet=decide-template]").click(); await new Promise((r) => setTimeout(r, 50)); document.querySelector("[data-template=route]").click(); document.querySelector("#decide button[type=submit]").click(); await new Promise((r) => setTimeout(r, 1500)); })()`],
   ["decisions-code", "/app/studio/decisions", `document.querySelector("[data-code]").click()`],
+  // Search needs an embedding model; without one these are its "No search model yet" page.
+  ["search", "/app/studio/search", ""],
+  ["search-text", "/app/studio/search", `document.querySelector("[data-text-chip]")?.closest("button").click()`],
+  ["search-results", "/app/studio/search", `(async () => {
+    const chip = document.querySelector("[data-text-chip]");
+    if (!chip) return;
+    chip.closest("button").click();
+    document.querySelector("[data-text-box]").value = "Tides come in twice a day.\\n\\nGulls follow the boats home.\\n\\nThe lighthouse still works.";
+    document.querySelector("#search-text [data-close-sheet]").click();
+    await new Promise((r) => setTimeout(r, 1500));
+    document.querySelector("#lab-prompt").value = "lighthouse";
+    document.querySelector("[data-search-form]").requestSubmit();
+    await new Promise((r) => setTimeout(r, 1500));
+  })()`],
   ["settings", "/app/settings", ""],
   ["library", "/app/models", ""],
   ["get", "/app/models/get", ""],
