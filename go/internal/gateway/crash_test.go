@@ -110,8 +110,7 @@ func newTranscriptionGatewayQueue(t *testing.T, queueTimeout time.Duration) *htt
 	}
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Active: map[string]string{"stt": sttModel}, Selected: map[string][]string{"stt": {sttModel}}}
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != sttModel {

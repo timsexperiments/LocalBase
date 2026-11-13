@@ -52,8 +52,7 @@ func bytesOf(t *testing.T, m map[string]any, key string) float64 {
 
 // Every resident runtime counts, each labelled, and other is what remains.
 func TestHostMemorySplit(t *testing.T) {
-	ts, _, mem := newTestGateway(t, fixedHost{64 * memory.GiB, 40 * memory.GiB})
-	mem.SetSampler(func(context.Context, int) (int64, bool) { return 3 * memory.GiB, true })
+	ts, _, mem := newTestGateway(t, measured{fixedHost{64 * memory.GiB, 40 * memory.GiB}, func(context.Context, int) (int64, bool) { return 3 * memory.GiB, true }})
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d %s", r.status, r.body)
 	}
@@ -144,8 +143,7 @@ func (h countingHost) Snapshot(ctx context.Context) memory.Snapshot {
 // Many pages polling share one sample a second: no process per call.
 func TestHostReadsAreCached(t *testing.T) {
 	var reads, samples atomic.Int64
-	ts, _, mem := newTestGateway(t, countingHost{fixedHost{64 * memory.GiB, 50 * memory.GiB}, &reads})
-	mem.SetSampler(func(context.Context, int) (int64, bool) { samples.Add(1); return memory.GiB, true })
+	ts, _, _ := newTestGateway(t, measured{countingHost{fixedHost{64 * memory.GiB, 50 * memory.GiB}, &reads}, func(context.Context, int) (int64, bool) { samples.Add(1); return memory.GiB, true }})
 	if r := post(t, ts, "/v1/chat/completions", gatewaytest.ChatBody("hi")); r.status != 200 {
 		t.Fatalf("chat: %d", r.status)
 	}

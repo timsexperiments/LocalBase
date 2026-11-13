@@ -48,8 +48,7 @@ func newSpeechGateway(t *testing.T, logs io.Writer, configure ...func(*Config)) 
 	}
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Active: map[string]string{"tts": speechModel}, Selected: map[string][]string{"tts": {speechModel}}}
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != speechModel {

@@ -19,8 +19,7 @@ import (
 
 func newTestService(t *testing.T) (*Service, *[]string) {
 	t.Helper()
-	mem := memory.NewController(&bigHost{avail: 50 * memory.GiB}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{&bigHost{avail: 50 * memory.GiB}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	return newTestServiceWith(t, mem)
 }
 

@@ -85,8 +85,7 @@ func openAPIGateway(t *testing.T, configure ...func(*Config)) *httptest.Server {
 		Active:   map[string]string{"llm": gatewaytest.ChatModel},
 		Selected: map[string][]string{"llm": {gatewaytest.ChatModel, embeddingModel, decisionModel}}}
 	cfg.Root, cfg.GatewayHost, cfg.SttHost = r.Dir, "127.0.0.1", "127.0.0.1"
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	if gatewaytest.Log != nil {
 		log = slog.New(slog.NewJSONHandler(gatewaytest.Log, nil))

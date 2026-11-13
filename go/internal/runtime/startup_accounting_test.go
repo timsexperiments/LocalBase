@@ -14,8 +14,7 @@ import (
 // memory and both be admitted.
 func TestStartingBackendStillCountsAsPending(t *testing.T) {
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	t.Setenv("FAKE_STARTUP_MS", "1500")
 	done := make(chan error, 1)

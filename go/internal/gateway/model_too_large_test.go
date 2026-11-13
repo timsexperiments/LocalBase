@@ -60,8 +60,7 @@ func mediaGateway(t *testing.T, modality, modelID, backendID, binary string) (*h
 	}
 	t.Cleanup(func() { st.Close() })
 	cfg := &store.Config{Active: map[string]string{modality: modelID}, Selected: map[string][]string{modality: {modelID}}}
-	mem := memory.NewController(tinyHost{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{tinyHost{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {
 		if id != modelID {

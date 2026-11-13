@@ -18,8 +18,7 @@ func TestCloseDoesNotWaitOutAnLLMSettle(t *testing.T) {
 	defer func(d, i time.Duration) { postStopSettle, postStopInterval = d, i }(postStopSettle, postStopInterval)
 	postStopSettle, postStopInterval = 5*time.Second, 20*time.Millisecond
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	var logs syncBuffer
 	m.d.Log = slog.New(slog.NewJSONHandler(&logs, nil))

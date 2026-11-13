@@ -27,8 +27,7 @@ func (h cpuHost) Snapshot(context.Context) memory.Snapshot {
 
 func cpuLLM(t *testing.T, avail int64) *LLM {
 	t.Helper()
-	mem := memory.NewController(cpuHost{avail}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{cpuHost{avail}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	spec := m.d.Catalog.ByID(modelB)
 	placementtest.WriteMoEGGUF(t, filepath.Join(m.d.ModelsDir, spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)
@@ -96,8 +95,7 @@ func TestNextLoadBytesIsAdmissionsFigure(t *testing.T) {
 
 // A small computer: the refusal is the permanent kind, whatever is free right now.
 func TestCPUPlanOnASmallComputerIsTooLarge(t *testing.T) {
-	mem := memory.NewController(smallHost{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{smallHost{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	spec := m.d.Catalog.ByID(modelB)
 	placementtest.WriteMoEGGUF(t, filepath.Join(m.d.ModelsDir, spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)

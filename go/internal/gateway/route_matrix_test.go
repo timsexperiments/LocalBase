@@ -266,8 +266,7 @@ func newMatrixGateway(t *testing.T, access *auth.BrowserAccess, configure ...fun
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.NewController(host{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	llm := runtime.NewLLM(runtime.LLMDeps{Root: r.Dir, ModelsDir: models, Store: st, Catalog: cat, Memory: mem,
 		Log: log, MemoryGB: 64, Binary: fakeBinary, QueueCapacity: 4, QueueTimeout: 5 * time.Second}, cfg)

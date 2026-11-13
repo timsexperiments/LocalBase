@@ -55,8 +55,7 @@ const (
 
 func newTestLLM(t *testing.T, host *bigHost) *LLM {
 	t.Helper()
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	return newTestLLMWith(t, mem)
 }
 

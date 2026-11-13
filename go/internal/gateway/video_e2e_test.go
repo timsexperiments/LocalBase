@@ -74,8 +74,7 @@ func newVideoGateway(t *testing.T) *videoGateway {
 	if testVideoHost != nil {
 		machine = testVideoHost
 	}
-	mem := memory.NewController(machine, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{machine}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := models.FromSpec(spec)
 	sd := reg.Get("stable-diffusion.cpp-metal")
 	gate := func(_ context.Context, id string, _ bool) (*runtime.Target, error) {

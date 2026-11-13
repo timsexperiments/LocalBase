@@ -63,8 +63,7 @@ func TestAMemoryRefusalKeepsItsCodeStatusAndRetryAfter(t *testing.T) {
 func TestARefusalCountsWhatIsReserved(t *testing.T) {
 	h := &steppedHost{}
 	h.avail.Store(50 * memory.GiB)
-	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{h}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	res, err := mem.Reserve(t.Context(), "llm", memory.Demand{UnifiedBytes: 12 * memory.GiB, HostBytes: 12 * memory.GiB, AcceleratorBytes: memory.GiB})
 	if err != nil {
 		t.Fatal(err)

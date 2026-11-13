@@ -27,8 +27,7 @@ type defaultFixture struct {
 func newDefaultFixture(t *testing.T, defaults []string) *defaultFixture {
 	t.Helper()
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	f := &defaultFixture{m: m, host: host, now: time.Unix(1_000_000, 0), logs: &syncBuffer{}}
 	m.d.Log = slog.New(slog.NewJSONHandler(f.logs, nil))
@@ -196,8 +195,7 @@ func TestSingleDefaultIsTheActiveModel(t *testing.T) {
 func TestDecisionRequestDoesNotBecomeDefault(t *testing.T) {
 	const decision = "clef-flash-q4_k_m"
 	host := newStepHost(50 * memory.GiB)
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	installSparse(t, m.d.ModelsDir, m.d.Catalog.ByID(decision))
 	cfg := m.Config().Clone()

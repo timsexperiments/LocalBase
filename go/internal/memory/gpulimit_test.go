@@ -126,8 +126,7 @@ func TestGPULimitReachesAdmission(t *testing.T) {
 	ctx := context.Background()
 	d := macProvider(false)
 	host := &probedHost{d}
-	c := NewController(host, Reserve{Percent: 15, MinimumGB: 8}, false)
-	c.SetSampler(nil)
+	c := NewController(unsampled{host}, Reserve{Percent: 15, MinimumGB: 8}, false)
 	model := Demand{UnifiedBytes: 50 * GiB, AcceleratorBytes: 50 * GiB, Confidence: "derived"}
 	var ae *AdmissionError
 	if err := c.CheckAdmission(ctx, model, nil); !errors.As(err, &ae) || !ae.Permanent || ae.PoolID != "gpu-working-set" {

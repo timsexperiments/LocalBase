@@ -73,8 +73,7 @@ func TestAdmissionDiagnosticsGolden(t *testing.T) {
 	for name, sc := range golden.Scenarios {
 		t.Run(name, func(t *testing.T) {
 			h := &fakeHost{topo: Topology{Unified: true, SystemCapacity: 64 * GiB, GPUWorkingSetBytes: 48 * GiB}}
-			c := NewController(h, Reserve{Percent: 15, MinimumGB: 8}, false)
-			c.SetSampler(nil)
+			c := NewController(unsampled{h}, Reserve{Percent: 15, MinimumGB: 8}, false)
 			reservations := map[string]*Reservation{}
 			var got []map[string]any
 			result := func(err error) {

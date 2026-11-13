@@ -31,8 +31,7 @@ func (roomy) Snapshot(context.Context) memory.Snapshot {
 func TestAPreviewSizesMissingFilesAsTheyWillBe(t *testing.T) {
 	l, asked := missingVariant(t)
 	ctx := context.Background()
-	mem := memory.NewController(roomy{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampled{roomy{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	cfg := &store.Config{Active: map[string]string{}, Selected: map[string][]string{"tts": {otherModel}}}
 	svc := runtime.NewService(runtime.ServiceDeps{Modality: "tts", Kind: "tts", Catalog: l.Catalog, Memory: mem,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Config: func() *store.Config { return cfg },

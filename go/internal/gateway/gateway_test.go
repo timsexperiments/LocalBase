@@ -142,8 +142,7 @@ func newConfiguredGateway(t *testing.T, h memory.HostProvider, configure func(*C
 	if err := st.SaveConfig(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.NewController(h, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(unsampledUnlessMeasured(h), memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	if gatewaytest.Log != nil {
 		log = slog.New(slog.NewJSONHandler(gatewaytest.Log, nil))

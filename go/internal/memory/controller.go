@@ -126,13 +126,22 @@ type Controller struct {
 	normalRun    int
 }
 
-func NewController(host HostProvider, system Reserve, bypass bool) *Controller {
-	return &Controller{host: host, system: system, bypass: bypass, sampler: Footprint,
-		reservations: map[string]*reservation{}, state: "healthy"}
+// FootprintSampler is a HostProvider that measures its processes' footprints itself (tests: fixed
+// figures, or none). A Controller measures a host without it with Footprint.
+type FootprintSampler interface {
+	Footprint(ctx context.Context, pid int) (int64, bool)
 }
 
-// SetSampler replaces the footprint sampler (tests).
-func (c *Controller) SetSampler(f func(ctx context.Context, pid int) (int64, bool)) { c.sampler = f }
+// NewController is the controller of host's memory. Its sampler is fixed here, from host, so it
+// can't change while admission reads it.
+func NewController(host HostProvider, system Reserve, bypass bool) *Controller {
+	sampler := Footprint
+	if s, ok := host.(FootprintSampler); ok {
+		sampler = s.Footprint
+	}
+	return &Controller{host: host, system: system, bypass: bypass, sampler: sampler,
+		reservations: map[string]*reservation{}, state: "healthy"}
+}
 
 func (c *Controller) Topology() Topology { return c.host.Topology() }
 
