@@ -12,17 +12,8 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/gatewaytest"
-	"github.com/timsexperiments/LocalBase/go/internal/gateway/runs"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 )
-
-// setFor sets a package limit for one test.
-func setFor[T any](t *testing.T, v *T, to T) {
-	t.Helper()
-	before := *v
-	*v = to
-	t.Cleanup(func() { *v = before })
-}
 
 // streamChat posts a streamed chat and reads all of what comes back, or fails once the client has
 // waited 30 s.
@@ -89,17 +80,14 @@ func TestAStreamMayTakeItsTimeToStart(t *testing.T) {
 
 // Review 02, M9: an in-app call holds no more than a run's media result.
 func TestAnInAppCallOverTheLimitIsRefused(t *testing.T) {
-	ts := newTestServer(t)
-	s := runServer(ts)
+	s := runServer(newTestServerConfigured(t, func(c *Config) { c.callBodyLimit = 64 }))
 	p := &auth.Principal{Kind: "browser-session", ID: "no-auth", Permissions: auth.Permissions}
-	setFor(t, &callBodyLimit, 64)
 	got := s.Call(context.Background(), p, "GET", "/v1/models", "", nil)
 	if got.Status != 502 || !strings.Contains(string(got.Body), `"code":"upstream_error"`) ||
 		!strings.Contains(string(got.Body), "The response is larger than 64 bytes, more than an in-app call can hold.") {
 		t.Errorf("a response over the limit: %d %s", got.Status, got.Body)
 	}
-	callBodyLimit = runs.MaxResult
-	if got := s.Call(context.Background(), p, "GET", "/v1/models", "", nil); got.Status != 200 {
+	if got := runServer(newTestServer(t)).Call(context.Background(), p, "GET", "/v1/models", "", nil); got.Status != 200 {
 		t.Errorf("a response under it: %d %s", got.Status, got.Body)
 	}
 }

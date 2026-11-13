@@ -85,6 +85,8 @@ type Config struct {
 	// relayBodyLimit and streamIdleLimit are the relay's limits; 0 is the default (tests).
 	relayBodyLimit  int
 	streamIdleLimit time.Duration
+	// callBodyLimit is the most of a response an in-process call holds; 0 is runs.MaxResult (tests).
+	callBodyLimit int
 }
 
 // runtimes is the runtime set the gateway was given, for the handlers that take one.

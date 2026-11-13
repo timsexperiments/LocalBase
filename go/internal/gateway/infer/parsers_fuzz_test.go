@@ -80,6 +80,6 @@ func FuzzRelayStream(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		w := httptest.NewRecorder()
-		relaySSE(context.Background(), w, bytes.NewReader(data), "m", &inference{}, func() bool { return false })
+		relaySSE(context.Background(), w, bytes.NewReader(data), "m", &inference{}, func() bool { return false }, sseEventLimit)
 	})
 }

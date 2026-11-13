@@ -486,7 +486,7 @@ func (h *Handler) relay(w http.ResponseWriter, r *http.Request, url string, body
 		}
 		w.WriteHeader(resp.StatusCode)
 		stream := &idleReader{r: resp.Body, limit: h.idleLimit(), cancel: cancelUp}
-		outcome, source := relaySSE(r.Context(), w, stream, modelID, t, o.interrupted)
+		outcome, source := relaySSE(r.Context(), w, stream, modelID, t, o.interrupted, sseEventLimit)
 		stream.stop()
 		t.finish(outcome, resp.StatusCode, source)
 		return
@@ -795,7 +795,7 @@ func upstreamErrorEvent(message string) string {
 
 // sseEventLimit is the most one line or event of an upstream stream may hold in memory. Nothing else
 // in a stream is kept, so this is all a streaming client's request can cost, however long it runs.
-var sseEventLimit = 16 << 20
+const sseEventLimit = 16 << 20
 
 var errSSEEventTooLong = errors.New("line over the limit")
 
@@ -818,7 +818,7 @@ func readSSELine(rd *bufio.Reader, limit int) (string, error) {
 // events get the public model id and `reasoning` normalization; an error
 // event ends the stream; unparseable data ends it with upstream_error.
 // Returns the inference outcome and terminal source.
-func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelID string, t *inference, interrupted func() bool) (string, string) {
+func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelID string, t *inference, interrupted func() bool, eventLimit int) (string, string) {
 	flusher, _ := w.(http.Flusher)
 	rd := bufio.NewReaderSize(body, 64<<10)
 	var event []string
@@ -886,10 +886,10 @@ func relaySSE(ctx context.Context, w http.ResponseWriter, body io.Reader, modelI
 	}
 	eventBytes := 0
 	for {
-		line, err := readSSELine(rd, sseEventLimit)
+		line, err := readSSELine(rd, eventLimit)
 		eventBytes += len(line)
-		if errors.Is(err, errSSEEventTooLong) || eventBytes > sseEventLimit {
-			write(upstreamErrorEvent(fmt.Sprintf("The upstream sent an event over the %d MiB limit.", sseEventLimit>>20)))
+		if errors.Is(err, errSSEEventTooLong) || eventBytes > eventLimit {
+			write(upstreamErrorEvent(fmt.Sprintf("The upstream sent an event over the %d MiB limit.", eventLimit>>20)))
 			return "error", "response_event_limit"
 		}
 		if len(line) > 0 {
