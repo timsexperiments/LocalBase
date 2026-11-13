@@ -85,12 +85,9 @@ echo started`
 // The limit is on silence, not on how long the log takes: a slow log still gets the last
 // lines, which are the ones that may say why. Here reading takes far longer than the limit.
 func TestProcessOutputWaitsWhileItArrives(t *testing.T) {
-	limit := outputDrainLimit
-	outputDrainLimit = 300 * time.Millisecond
-	defer func() { outputDrainLimit = limit }()
 	const lines = 20000 // about 110 KB: more than the reader's buffer and the pipe together hold at once
 	var n atomic.Int64
-	p, err := StartProcess("child", "/bin/sh", []string{"-c", "seq 1 " + strconv.Itoa(lines)}, nil, slog.New(countLines{&n, 100 * time.Microsecond}))
+	p, err := startProcess("child", "/bin/sh", "", []string{"-c", "seq 1 " + strconv.Itoa(lines)}, nil, slog.New(countLines{&n, 100 * time.Microsecond}), processOptions{drainLimit: 300 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,14 +102,11 @@ func TestProcessOutputWaitsWhileItArrives(t *testing.T) {
 
 // A descendant that keeps writing keeps the output "arriving", so the cap ends the wait.
 func TestProcessEndsWhileADescendantKeepsWriting(t *testing.T) {
-	limit, most := outputDrainLimit, outputDrainCap
-	outputDrainCap = 3 * time.Second
-	defer func() { outputDrainLimit, outputDrainCap = limit, most }()
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	script := `perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", $ARGV[0]) or die; print F $$; close F; $|=1; while (1) { print "1\n"; select(undef, undef, undef, 0.05) }' "$1" &
 while [ ! -s "$1" ]; do :; done`
 	var n atomic.Int64
-	p, err := StartProcess("child", "/bin/sh", []string{"-c", script, "sh", pidFile}, nil, slog.New(countLines{&n, 0}))
+	p, err := startProcess("child", "/bin/sh", "", []string{"-c", script, "sh", pidFile}, nil, slog.New(countLines{&n, 0}), processOptions{drainCap: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,11 +130,8 @@ while [ ! -s "$1" ]; do :; done`
 // With nothing holding its output, a process does not wait for the limit: stopping a backend
 // costs nothing extra.
 func TestProcessEndWaitsOnlyForItsOutput(t *testing.T) {
-	limit := outputDrainLimit
-	outputDrainLimit = time.Minute
-	defer func() { outputDrainLimit = limit }()
 	var n atomic.Int64
-	p, err := StartProcess("child", "/bin/sh", []string{"-c", "echo 1"}, nil, slog.New(countLines{&n, 0}))
+	p, err := startProcess("child", "/bin/sh", "", []string{"-c", "echo 1"}, nil, slog.New(countLines{&n, 0}), processOptions{drainLimit: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}

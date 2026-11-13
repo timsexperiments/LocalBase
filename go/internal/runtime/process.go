@@ -64,11 +64,31 @@ const outputLineBuffer = 64 * 1024
 // End-of-file normally comes at once, however slow the log, as long as lines are still
 // arriving the wait goes on: the last ones may say why the process crashed. The limits are
 // for a descendant outside the group that holds the pipes open: outputDrainLimit if it is
-// silent, outputDrainCap if it keeps writing. Variables for their tests.
-var (
+// silent, outputDrainCap if it keeps writing. processOptions shortens them for their tests.
+const (
 	outputDrainLimit = 2 * time.Second
 	outputDrainCap   = 20 * time.Second
 )
+
+// processOptions say how a backend's process is supervised. The zero value is how the package runs.
+type processOptions struct {
+	// drainLimit and drainCap replace outputDrainLimit and outputDrainCap (tests); 0 is the const.
+	drainLimit, drainCap time.Duration
+}
+
+func (o processOptions) quietLimit() time.Duration {
+	if o.drainLimit > 0 {
+		return o.drainLimit
+	}
+	return outputDrainLimit
+}
+
+func (o processOptions) capLimit() time.Duration {
+	if o.drainCap > 0 {
+		return o.drainCap
+	}
+	return outputDrainCap
+}
 
 // StartProcess launches bin with args. Output lines are logged at debug
 // level, bounded per line, under the runtime's name.
@@ -78,6 +98,10 @@ func StartProcess(name, bin string, args []string, env []string, log *slog.Logge
 
 // StartProcessIn is StartProcess with a working directory ("" = inherit).
 func StartProcessIn(name, bin, dir string, args []string, env []string, log *slog.Logger) (*Process, error) {
+	return startProcess(name, bin, dir, args, env, log, processOptions{})
+}
+
+func startProcess(name, bin, dir string, args []string, env []string, log *slog.Logger, o processOptions) (*Process, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -122,7 +146,7 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 			p.endGuard()
 		}
 		p.endGroup(log)
-		awaitOutput(drained, &lines)
+		awaitOutput(drained, &lines, o)
 		stdout.Close()
 		stderr.Close()
 		liveProcesses.remove(p)
@@ -133,8 +157,8 @@ func StartProcessIn(name, bin, dir string, args []string, env []string, log *slo
 
 // awaitOutput returns when the output has ended, or when it has stopped arriving, or at the
 // cap, so Done always comes.
-func awaitOutput(drained <-chan struct{}, lines *atomic.Int64) {
-	limit := time.After(outputDrainCap)
+func awaitOutput(drained <-chan struct{}, lines *atomic.Int64, o processOptions) {
+	limit := time.After(o.capLimit())
 	seen := lines.Load()
 	for {
 		select {
@@ -142,7 +166,7 @@ func awaitOutput(drained <-chan struct{}, lines *atomic.Int64) {
 			return
 		case <-limit:
 			return
-		case <-time.After(outputDrainLimit):
+		case <-time.After(o.quietLimit()):
 			now := lines.Load()
 			if now == seen {
 				return
