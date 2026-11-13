@@ -88,9 +88,6 @@ linters:
       - path: ^cmd/localbase/config\.go$
         linters: [errcheck]
         text: "is not checked|st\\.Close"
-      - path: ^cmd/localbase/diagnostics\.go$
-        linters: [errcheck]
-        text: "st\\.Close"
       - path: ^cmd/localbase/env\.go$
         linters: [errcheck]
         text: "e\\.Store\\.Close"
