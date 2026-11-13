@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,21 +105,6 @@ func intOpt(c *cli.Ctx, name string, lo, hi int) (int, error) {
 // that point.
 var afterSignals = func() {}
 
-// mediaDefaultPorts are the speech, image and video backends' ports with no flag and no base. upgrade's
-// survivor check reads them too.
-var mediaDefaultPorts = map[string]int{"tts": 8092, "image": 8090, "video": 8091}
-
-// runtimePortOrder is the order of --runtime-port-base's block.
-var runtimePortOrder = []string{"llm", "stt", "tts", "image", "video"}
-
-// runtimePort is a runtime's port in the block from base, or configured with no base.
-func runtimePort(base int, runtime string, configured int) int {
-	if base <= 0 {
-		return configured
-	}
-	return base + slices.Index(runtimePortOrder, runtime)
-}
-
 // effectiveUID is a variable so a test can be root without being root.
 var effectiveUID = os.Geteuid
 
@@ -144,12 +128,12 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	portBase, err := intOpt(c, "runtime-port-base", 1, 65535-(len(runtimePortOrder)-1))
+	portBase, err := intOpt(c, "runtime-port-base", 1, 65535-(len(runtime.PortOrder)-1))
 	if err != nil {
 		return nil, err
 	}
 	if !c.Has("llm-port") {
-		llmPort = runtimePort(portBase, "llm", llmPort)
+		llmPort = runtime.PortInBlock(portBase, "llm", llmPort)
 	}
 	ctxSize, err := intOpt(c, "ctx-size", 2048, 2_147_483_647)
 	if err != nil {
@@ -339,7 +323,7 @@ func serve(c *cli.Ctx) (any, error) {
 			}
 			return host, p, nil
 		}
-		return host, runtimePort(portBase, name, port), nil
+		return host, runtime.PortInBlock(portBase, name, port), nil
 	}
 	binaries := map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER"), "tts-server": os.Getenv("LOCALBASE_TTS_SERVER"),
 		"crispasr": os.Getenv("LOCALBASE_CRISPASR"), "sd-server": os.Getenv("LOCALBASE_SD_SERVER")}
@@ -368,15 +352,15 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	tts, err := service("tts", "speech", "127.0.0.1", mediaDefaultPorts["tts"])
+	tts, err := service("tts", "speech", "127.0.0.1", runtime.MediaDefaultPorts["tts"])
 	if err != nil {
 		return nil, err
 	}
-	image, err := service("image", "image", "127.0.0.1", mediaDefaultPorts["image"])
+	image, err := service("image", "image", "127.0.0.1", runtime.MediaDefaultPorts["image"])
 	if err != nil {
 		return nil, err
 	}
-	videoService, err := service("video", "video", "127.0.0.1", mediaDefaultPorts["video"])
+	videoService, err := service("video", "video", "127.0.0.1", runtime.MediaDefaultPorts["video"])
 	if err != nil {
 		return nil, err
 	}

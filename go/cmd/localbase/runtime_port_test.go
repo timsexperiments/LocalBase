@@ -14,17 +14,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/tools/lab"
 )
 
-func TestRuntimePort(t *testing.T) {
-	if got := runtimePort(0, "stt", 8081); got != 8081 {
-		t.Errorf("no base: %d", got)
-	}
-	for i, name := range []string{"llm", "stt", "tts", "image", "video"} {
-		if got := runtimePort(30000, name, 8081); got != 30000+i {
-			t.Errorf("%s: %d", name, got)
-		}
-	}
-}
-
 // freeRun finds n free ports in a row, in this test process's part of the test block. They are
 // bound only when each runtime starts: a run from another process's part lost its LLM port to that
 // process's backends now and then, and the chat got a 503.

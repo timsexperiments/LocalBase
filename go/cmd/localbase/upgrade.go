@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -194,14 +195,14 @@ func backendPorts(e *env, arguments []string) []int {
 	// configured or default port.
 	base, _ := flag("runtime-port-base")
 	defaults := map[string]int{"llm": e.Config.Port, "stt": e.Config.SttPort}
-	for kind, p := range mediaDefaultPorts {
+	for kind, p := range runtime.MediaDefaultPorts {
 		defaults[kind] = p
 	}
-	out := make([]int, 0, len(runtimePortOrder))
-	for _, kind := range runtimePortOrder {
+	out := make([]int, 0, len(runtime.PortOrder))
+	for _, kind := range runtime.PortOrder {
 		p, explicit := flag(kind + "-port")
 		if !explicit {
-			p = runtimePort(base, kind, defaults[kind])
+			p = runtime.PortInBlock(base, kind, defaults[kind])
 		}
 		if p > 0 && (len(e.Config.Selected[kind]) > 0 || e.Config.Active[kind] != "") {
 			out = append(out, p)
