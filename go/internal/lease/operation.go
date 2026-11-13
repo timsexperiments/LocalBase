@@ -95,6 +95,15 @@ func readJSON(path string, v any) bool {
 // runs, and the code passes that, so nothing here can be set from outside.
 type options struct {
 	sync func(*os.File) error // (tests) nil is (*os.File).Sync, which on macOS is F_FULLFSYNC
+	wait time.Duration        // (tests) how long a lease waits for another operation; 0 is operationWaitLimit
+}
+
+// waitLimit is operationWaitLimit, or the shorter wait a test set.
+func (o options) waitLimit() time.Duration {
+	if o.wait > 0 {
+		return o.wait
+	}
+	return operationWaitLimit
 }
 
 func (o options) fsync(f *os.File) error {
@@ -241,8 +250,8 @@ type Lease struct {
 	retry  time.Duration
 }
 
-// operationWait is how long a lease waits for another operation (tests shorten it).
-var operationWait = 10 * time.Second
+// operationWaitLimit is how long a lease waits for another operation.
+const operationWaitLimit = 10 * time.Second
 
 // ErrOperationBusy is why a lease was not granted when something else holds the root:
 // waiting longer may work.
@@ -256,18 +265,23 @@ func (e *busyError) Is(target error) bool { return target == ErrOperationBusy }
 // AcquireOperation takes the operation lease of a canonical root, waiting up
 // to 10 s for another operation to finish.
 func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
+	return acquireOperation(canonicalRoot, operation, options{})
+}
+
+// acquireOperation is AcquireOperation, with a test's options.
+func acquireOperation(canonicalRoot, operation string, opts options) (*Lease, error) {
 	p := operationPaths(canonicalRoot)
 	if err := ensurePrivateDir(p.dir); err != nil {
 		return nil, err
 	}
-	deadline := time.Now().Add(operationWait)
+	deadline := time.Now().Add(opts.waitLimit())
 	var invalidSince time.Time
 	for time.Now().Before(deadline) {
 		err := os.Mkdir(p.lock, 0o700)
 		if err == nil {
 			owner := operationOwner{Version: 1, OperationID: uuid(), Operation: operation, Root: canonicalRoot,
 				RootHash: Hash(canonicalRoot), PID: os.Getpid(), StartedAt: nowISO()}
-			if err := writeJSONAtomic(p.owner, owner, options{}); err != nil {
+			if err := writeJSONAtomic(p.owner, owner, opts); err != nil {
 				os.RemoveAll(p.lock)
 				return nil, err
 			}

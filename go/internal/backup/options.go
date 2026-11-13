@@ -17,6 +17,15 @@ type options struct {
 	targetRead func()                               // (tests) runs just after the comparison's first read of the target: a writer arriving then
 	link       func(oldname, newname string) error  // (tests) nil is os.Link: a file system without links takes placeFile's copying path
 	chmod      func(*os.File, os.FileMode) error    // (tests) nil is (*os.File).Chmod
+	leaveWAL   string                               // (tests) "" is leaveWALPragma: a test can see SQLite answer with another mode, which nothing found so far makes it do
+}
+
+// leaveWALStatement is leaveWALPragma, or the statement a test set.
+func (o options) leaveWALStatement() string {
+	if o.leaveWAL != "" {
+		return o.leaveWAL
+	}
+	return leaveWALPragma
 }
 
 func (o options) atStep(name string) error {

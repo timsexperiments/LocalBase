@@ -179,7 +179,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 		return stop(refuse("This root's database can't be read now, so what the report said can't be checked. Nothing was changed: %v", err))
 	}
 	// The lock stays: that's what locking_mode=EXCLUSIVE means, so nothing gets in between these.
-	if err := db.QueryRowContext(ctx, leaveWAL).Scan(&mode); err != nil {
+	if err := db.QueryRowContext(ctx, s.opts.leaveWALStatement()).Scan(&mode); err != nil {
 		if isBusy(err) {
 			return stop(refuse("%s", someoneElseHoldsIt))
 		}
@@ -199,9 +199,8 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	return held, nil
 }
 
-// leaveWAL takes a database out of write-ahead logging. A variable so that a test can see SQLite answer
-// with another mode, which nothing found so far makes it do here.
-var leaveWAL = `PRAGMA journal_mode=DELETE`
+// leaveWALPragma takes a database out of write-ahead logging.
+const leaveWALPragma = `PRAGMA journal_mode=DELETE`
 
 // someoneElseHoldsIt is what a restore says when another process has the database open, or is using it.
 const someoneElseHoldsIt = "Something else is using this root's database, so nothing was changed. Stop it or wait, then run this again."

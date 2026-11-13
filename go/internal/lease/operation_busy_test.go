@@ -17,15 +17,12 @@ func TestLeaseSaysWhenItIsBusy(t *testing.T) {
 	// A lease names a root by its path and doesn't touch the directory, so this needs no root.Init, which
 	// this package can't import: root imports lease.
 	rootDir := filepath.Join(dir, "root")
-	old := operationWait
-	operationWait = 100 * time.Millisecond
-	t.Cleanup(func() { operationWait = old })
 	held, err := AcquireOperation(rootDir, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Release()
-	_, err = AcquireOperation(rootDir, "second")
+	_, err = acquireOperation(rootDir, "second", options{wait: 100 * time.Millisecond})
 	if !errors.Is(err, ErrOperationBusy) {
 		t.Fatalf("%v", err)
 	}
@@ -35,10 +32,13 @@ func TestLeaseSaysWhenItIsBusy(t *testing.T) {
 	}
 }
 
-// A lease waits 10 s for another operation before it says the root is busy.
+// A lease waits 10 s for another operation before it says the root is busy, unless a test set a shorter wait.
 func TestTheOperationWaitIsTenSeconds(t *testing.T) {
-	if operationWait != 10*time.Second {
-		t.Fatalf("a lease waits %v, want 10s", operationWait)
+	if got := (options{}).waitLimit(); got != 10*time.Second {
+		t.Fatalf("a lease waits %v, want 10s", got)
+	}
+	if got := (options{wait: time.Second}).waitLimit(); got != time.Second {
+		t.Fatalf("with a test's wait of 1s, a lease waits %v", got)
 	}
 }
 
@@ -52,16 +52,13 @@ func TestABusyLeaseIsRefusedAtItsWait(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", dir)
 	rootDir := filepath.Join(dir, "root")
 	const wait = 100 * time.Millisecond
-	old := operationWait
-	operationWait = wait
-	t.Cleanup(func() { operationWait = old })
 	held, err := AcquireOperation(rootDir, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer held.Release()
 	start := time.Now()
-	_, err = AcquireOperation(rootDir, "second")
+	_, err = acquireOperation(rootDir, "second", options{wait: wait})
 	took := time.Since(start)
 	if !errors.Is(err, ErrOperationBusy) {
 		t.Fatalf("%v", err)
