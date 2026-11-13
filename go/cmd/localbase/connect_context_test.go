@@ -46,7 +46,7 @@ func TestConnectGivesAnImportedModelsContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: newHostProvider()}
+	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: testHost(t)}
 	lib, err := openLibrary(e)
 	if err != nil {
 		t.Fatal(err)

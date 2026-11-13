@@ -134,9 +134,8 @@ func TestPersistedConfigOfABusyDatabaseIsAnError(t *testing.T) {
 // The same, seen by the command: doctor must not go on to report the defaults.
 func TestReadEnvStopsWhenTheDatabaseTurnsBusy(t *testing.T) {
 	dir := attachedRoot(t)
-	afterReadOpen = func() { recoveringElsewhere(t, filepath.Join(dir, "local-base.db")) }
-	defer func() { afterReadOpen = func() {} }()
-	e, err := readEnv(&cli.Ctx{Global: cli.Global{Root: dir}}, true)
+	arrive := func() { recoveringElsewhere(t, filepath.Join(dir, "local-base.db")) }
+	e, err := withoutProblems(readEnvKeepingProblems(&cli.Ctx{Global: cli.Global{Root: dir}}, readOptions{persisted: true, afterOpen: arrive}))
 	if !store.IsBusy(err) {
 		t.Errorf("readEnv: %v, %v", e, err)
 	}
