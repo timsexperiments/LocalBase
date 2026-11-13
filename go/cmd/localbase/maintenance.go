@@ -36,7 +36,7 @@ func maintenanceCommands() []*cli.Command {
 				defer lease.Release()
 				if service.HasEvidence(r) {
 					sayIfInstalled(c, r.Dir, "This stops the installed LocalBase service.")
-					_, err := service.StopWithin(r)
+					_, err := service.NewManager().StopWithin(r)
 					audit.New(r, c.Stderr).Service("audit.service-stopped", err, "purpose", "reset", "disabled", err == nil)
 					if err != nil {
 						return nil, err
@@ -91,7 +91,7 @@ func maintenanceCommands() []*cli.Command {
 				audited.Change("root", "uninstall", "root", "", "root", r.Dir, "service_evidence", service.HasEvidence(r))
 				c.Error("Uninstalling LocalBase at %s. Its audit log goes with it.", r.Dir)
 				if service.HasEvidence(r) {
-					in, err := service.Remove(r)
+					in, err := service.NewManager().Remove(r)
 					if err != nil {
 						return nil, err
 					}

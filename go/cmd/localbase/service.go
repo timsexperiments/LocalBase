@@ -72,7 +72,7 @@ func serviceCommands() []*cli.Command {
 				action, verb, event = "restart", "Restarted", "audit.service-restarted"
 				sayIfInstalled(c, e.Root.Dir, "This restarts the installed LocalBase service.")
 			}
-			in, err := service.Start(e.Root, restart, c.Bool("install-missing"))
+			in, err := service.NewManager().Start(e.Root, restart, c.Bool("install-missing"))
 			e.audit.Service(event, err)
 			if err != nil {
 				return nil, err
@@ -114,7 +114,7 @@ func serviceCommands() []*cli.Command {
 			}
 			defer e.Close()
 			sayIfInstalled(c, e.Root.Dir, "This stops the installed LocalBase service.")
-			in, err := service.Stop(e.Root)
+			in, err := service.NewManager().Stop(e.Root)
 			e.audit.Service("audit.service-stopped", err, "disabled", err == nil)
 			if err != nil {
 				return nil, err
@@ -131,7 +131,7 @@ func serviceCommands() []*cli.Command {
 			defer e.Close()
 			var in service.Inspection
 			if err := lease.WithOperation(e.Root.Dir, "status", func() (err error) {
-				in, err = service.Inspect(e.Root, false)
+				in, err = service.NewManager().Inspect(e.Root, false)
 				return err
 			}); err != nil {
 				return nil, err
