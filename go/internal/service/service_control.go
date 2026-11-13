@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -248,6 +249,34 @@ func Stop(r *root.Root) (in Inspection, err error) {
 		return err
 	})
 	return in, err
+}
+
+// WaitStopped waits up to limit for the gateway to stop: its owner gone from the root, and nothing
+// listening (listening) on its backends' ports. It says which is left when it gives up.
+func WaitStopped(r *root.Root, ports []int, listening func(int) bool, limit time.Duration) error {
+	for deadline := time.Now().Add(limit); ; time.Sleep(200 * time.Millisecond) {
+		// A live process at the recorded PID counts as still running, proven or not: this sends
+		// it nothing, and a gateway that is stopping stops answering for its identity before it
+		// exits, so asking for proof would take a gateway still shutting down for one gone.
+		state, _, _ := r.OwnerState()
+		var survivors []string
+		if state != "active" {
+			for _, p := range ports {
+				if listening(p) {
+					survivors = append(survivors, strconv.Itoa(p))
+				}
+			}
+		}
+		if state != "active" && len(survivors) == 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if state == "active" {
+				return errors.New("the gateway did not stop")
+			}
+			return errors.New("something still listens on backend port " + strings.Join(survivors, ", "))
+		}
+	}
 }
 
 // StopWithin is Stop for a caller that holds the operation lease.

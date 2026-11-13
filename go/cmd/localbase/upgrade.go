@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -159,29 +158,7 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 			if err != nil {
 				return err
 			}
-			for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(200 * time.Millisecond) {
-				// A live process at the recorded PID counts as still running, proven or not: this sends
-				// it nothing, and a gateway that is stopping stops answering for its identity before it
-				// exits, so asking for proof would take a gateway still shutting down for one gone.
-				state, _, _ := e.Root.OwnerState()
-				var survivors []string
-				if state != "active" {
-					for _, p := range runtime.BackendPorts(e.Config, arguments) {
-						if runtime.PortListening(p) {
-							survivors = append(survivors, strconv.Itoa(p))
-						}
-					}
-				}
-				if state != "active" && len(survivors) == 0 {
-					return nil
-				}
-				if time.Now().After(deadline) {
-					if state == "active" {
-						return errors.New("the gateway did not stop")
-					}
-					return errors.New("something still listens on backend port " + strings.Join(survivors, ", "))
-				}
-			}
+			return service.WaitStopped(e.Root, runtime.BackendPorts(e.Config, arguments), runtime.PortListening, 15*time.Second)
 		},
 		Start: func() error {
 			c.Info("Restarting through the service manager...")
