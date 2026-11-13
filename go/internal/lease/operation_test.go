@@ -57,7 +57,7 @@ func TestOperationLease(t *testing.T) {
 	cmd.Run()
 	os.Mkdir(p.lock, 0o700)
 	writeJSONAtomic(p.owner, operationOwner{Version: 1, OperationID: uuid(), Operation: "dead", Root: rootDir,
-		RootHash: Hash(rootDir), PID: cmd.Process.Pid, StartedAt: nowISO()})
+		RootHash: Hash(rootDir), PID: cmd.Process.Pid, StartedAt: nowISO()}, options{})
 	l, err = AcquireOperation(rootDir, "after-crash")
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestReleaseWithoutMutationLock(t *testing.T) {
 	if err := os.Mkdir(p.mutation, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeJSONAtomic(filepath.Join(p.mutation, "owner.json"), mutationOwner{1, "held", os.Getpid()}); err != nil {
+	if err := writeJSONAtomic(filepath.Join(p.mutation, "owner.json"), mutationOwner{1, "held", os.Getpid()}, options{}); err != nil {
 		t.Fatal(err)
 	}
 	l.paths.mutationWait = 50 * time.Millisecond
@@ -147,7 +147,7 @@ func TestReleaseWithoutMutationLockKeepsAnotherLease(t *testing.T) {
 	if err := os.Mkdir(p.mutation, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeJSONAtomic(filepath.Join(p.mutation, "owner.json"), mutationOwner{1, "held", os.Getpid()}); err != nil {
+	if err := writeJSONAtomic(filepath.Join(p.mutation, "owner.json"), mutationOwner{1, "held", os.Getpid()}, options{}); err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(p.mutation)

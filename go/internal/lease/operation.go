@@ -91,19 +91,29 @@ func readJSON(path string, v any) bool {
 	return err == nil && json.Unmarshal(b, v) == nil
 }
 
-// syncFile is (*os.File).Sync, which on macOS is F_FULLFSYNC. A test can see it run, and fail it.
-var syncFile = (*os.File).Sync
+// options are the points in this package a test reaches into. Its zero value is how the package
+// runs, and the code passes that, so nothing here can be set from outside.
+type options struct {
+	sync func(*os.File) error // (tests) nil is (*os.File).Sync, which on macOS is F_FULLFSYNC
+}
+
+func (o options) fsync(f *os.File) error {
+	if o.sync != nil {
+		return o.sync(f)
+	}
+	return f.Sync()
+}
 
 // writeSynced is os.WriteFile with 0600, and the data synced before it returns, so a rename that
 // follows can't give a name to a file a crash then empties.
-func writeSynced(path string, data []byte) error {
+func writeSynced(path string, data []byte, o options) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	_, err = f.Write(data)
 	if err == nil {
-		err = syncFile(f)
+		err = o.fsync(f)
 	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
@@ -111,11 +121,11 @@ func writeSynced(path string, data []byte) error {
 	return err
 }
 
-func writeJSONAtomic(path string, v any) error {
+func writeJSONAtomic(path string, v any, o options) error {
 	tmp := path + "." + uuid() + ".tmp"
 	defer os.Remove(tmp)
 	b, _ := json.Marshal(v)
-	if err := writeSynced(tmp, b); err != nil {
+	if err := writeSynced(tmp, b, o); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -157,7 +167,7 @@ func withMutation(p opPaths, fn func() error) error {
 		if err := os.Mkdir(candidate, 0o700); err != nil {
 			return err
 		}
-		if err := writeJSONAtomic(filepath.Join(candidate, "owner.json"), mutationOwner{1, token, os.Getpid()}); err != nil {
+		if err := writeJSONAtomic(filepath.Join(candidate, "owner.json"), mutationOwner{1, token, os.Getpid()}, options{}); err != nil {
 			os.RemoveAll(candidate)
 			return err
 		}
@@ -257,7 +267,7 @@ func AcquireOperation(canonicalRoot, operation string) (*Lease, error) {
 		if err == nil {
 			owner := operationOwner{Version: 1, OperationID: uuid(), Operation: operation, Root: canonicalRoot,
 				RootHash: Hash(canonicalRoot), PID: os.Getpid(), StartedAt: nowISO()}
-			if err := writeJSONAtomic(p.owner, owner); err != nil {
+			if err := writeJSONAtomic(p.owner, owner, options{}); err != nil {
 				os.RemoveAll(p.lock)
 				return nil, err
 			}
@@ -319,7 +329,7 @@ func (l *Lease) Handoff(serviceToken string) error {
 		o.Operation = "service-start-handoff"
 		o.HandoffToken = serviceToken
 		o.HandoffExpiresAt = time.Now().Add(handoffTTL).UTC().Format("2006-01-02T15:04:05.000Z")
-		if err := writeJSONAtomic(l.paths.owner, o); err != nil {
+		if err := writeJSONAtomic(l.paths.owner, o, options{}); err != nil {
 			return err
 		}
 		l.handedOff = true
@@ -425,7 +435,7 @@ func claimHandoff(p opPaths, canonicalRoot, serviceToken string) (state string, 
 		}
 		claimed := operationOwner{Version: 1, OperationID: uuid(), Operation: "serve-initialize", Root: canonicalRoot,
 			RootHash: Hash(canonicalRoot), PID: os.Getpid(), StartedAt: nowISO()}
-		if err := writeJSONAtomic(p.owner, claimed); err != nil {
+		if err := writeJSONAtomic(p.owner, claimed, options{}); err != nil {
 			return err
 		}
 		state, lease = "claimed", &Lease{id: claimed.OperationID, paths: p, claimed: true, remove: os.RemoveAll, retry: time.Second}

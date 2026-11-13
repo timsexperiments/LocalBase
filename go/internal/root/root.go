@@ -167,7 +167,10 @@ func onlyLicenses(entries []os.DirEntry) bool {
 
 // Init creates the directory and marker if absent and returns the root.
 // A nonempty directory without a marker, / and the home directory are rejected.
-func Init(dir string) (*Root, error) {
+func Init(dir string) (*Root, error) { return initRoot(dir, options{}) }
+
+// initRoot is Init, with a test's options for writing the marker.
+func initRoot(dir string, o options) (*Root, error) {
 	dir, err := canonical(dir)
 	if err != nil {
 		return nil, err
@@ -196,7 +199,7 @@ func Init(dir string) (*Root, error) {
 	m := marker{Version: 1, Root: dir, RootHash: Hash(dir), Identity: uuid()}
 	raw, _ := json.Marshal(m)
 	tmp := filepath.Join(dir, markerName+".tmp")
-	if err := writeSynced(tmp, raw); err != nil {
+	if err := writeSynced(tmp, raw, o); err != nil {
 		os.Remove(tmp)
 		return nil, err
 	}
