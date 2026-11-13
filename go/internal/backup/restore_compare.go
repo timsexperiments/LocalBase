@@ -235,7 +235,7 @@ func readComparedUsers(ctx context.Context, db *sql.DB) (map[string]comparedUser
 // not revive a key someone revoked or rotated because it leaked, and a file mustn't add one to a root
 // that has its own. Keys named in bringBack take the backup's version, and the report names them. It
 // says whether every key could be compared.
-func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liveErr error, rep *Report, bringBack []string) (compared bool, err error) {
+func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liveErr error, rep *Report, bringBack []string, o options) (compared bool, err error) {
 	// hasTable reads an error as "no such table", which here would say that nothing is revoked. A
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
 	err = liveErr
@@ -252,7 +252,7 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liv
 		rep.Cautions = append(rep.Cautions, fmt.Sprintf("The database on this root can't be read (%v), so nothing could be compared with it. Any key revoked or rotated since this backup was made works again here, and anyone removed comes back. Check them afterwards: local-base keys list", err))
 		return false, nil
 	}
-	targetReadHook()
+	o.targetReadDone()
 	cur, err := openReadOnly(targetDB)
 	if err != nil {
 		return false, err

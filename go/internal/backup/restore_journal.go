@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
@@ -32,31 +31,9 @@ type journal struct {
 	NewRoot bool     `json:"newRoot"`
 }
 
-var (
-	beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
-	// stepHook is for tests: an error is a failure, and a panic is a crash.
-	stepHook = func(string) error { return nil }
-	// targetReadHook is for tests: a writer that arrives just after the first read.
-	targetReadHook = func() {}
-	// dirSync is for tests: a failing disk can't be arranged any other way.
-	dirSync = func(d *os.File) error { return d.Sync() }
-)
+var beforeRe = regexp.MustCompile(`^\.before-restore-[0-9]{8}-[0-9]{6}(-[0-9]+)?$`)
 
 func journalPath(dir string) string { return filepath.Join(dir, root.RestoreJournalName) }
-
-// syncDir makes the renames in a directory last through a power cut. A file system that can't do
-// that for a directory says so with EINVAL or ENOTSUP, and there is nothing more to wait for there.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	if err := dirSync(d); err != nil && !errors.Is(err, syscall.EINVAL) && !errors.Is(err, syscall.ENOTSUP) {
-		return err
-	}
-	return nil
-}
 
 func exists(p string) bool {
 	_, err := os.Lstat(p)
@@ -122,7 +99,7 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := safefile.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, err
 	}
-	if err := syncDir(r.Dir); err != nil {
+	if err := s.opts.syncDir(r.Dir); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 
@@ -145,7 +122,7 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := safefile.WritePrivateAtomic(journalPath(r.Dir), raw); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
-	if err := syncDir(r.Dir); err != nil {
+	if err := s.opts.syncDir(r.Dir); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 
@@ -155,13 +132,13 @@ func (s *Staged) Commit() (*Done, error) {
 	if err := verify(r.Dir); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
-	if err := stepHook("finish"); err != nil {
+	if err := s.opts.atStep("finish"); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	// Closing it deletes whatever journal is at its path, even with its own database moved away, so that
 	// happens while this restore's journal still keeps every command out.
 	release()
-	if err := stepHook("released"); err != nil {
+	if err := s.opts.atStep("released"); err != nil {
 		return nil, s.failed(r.Dir, j, err)
 	}
 	if err := os.Remove(journalPath(r.Dir)); err != nil {
@@ -169,7 +146,7 @@ func (s *Staged) Commit() (*Done, error) {
 	}
 	// It has finished. If this removal is lost in a power cut the journal comes back, the root
 	// refuses to open, and the person is told to run the undo. Nothing is damaged.
-	_ = syncDir(r.Dir)
+	_ = s.opts.syncDir(r.Dir)
 	done := &Done{}
 	before := filepath.Join(r.Dir, j.Before)
 	if os.Remove(before) != nil { // it holds the old files, or removing an empty one failed
@@ -189,12 +166,12 @@ func (s *Staged) stopped(dir string, j *journal, cause error) error {
 	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%v And its journal couldn't be removed (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
 	}
-	_ = syncDir(dir) // If this removal is lost in a power cut the journal returns, and the undo is safe.
+	_ = s.opts.syncDir(dir) // If this removal is lost in a power cut the journal returns, and the undo is safe.
 	return cause
 }
 
 func (s *Staged) failed(dir string, j *journal, cause error) error {
-	if err := undo(dir, j, s.release); err != nil {
+	if err := undo(dir, j, s.release, s.opts); err != nil {
 		return fmt.Errorf("the restore failed (%v), and so did putting things back (%w). Run: local-base --root '%s' restore --undo", cause, err, dir)
 	}
 	return fmt.Errorf("the restore failed, and everything was put back: %w", cause)
@@ -202,7 +179,7 @@ func (s *Staged) failed(dir string, j *journal, cause error) error {
 
 func (s *Staged) apply(dir string, j *journal) error {
 	before := filepath.Join(dir, j.Before)
-	if err := stepHook("before"); err != nil {
+	if err := s.opts.atStep("before"); err != nil {
 		return err
 	}
 	if err := os.Mkdir(before, 0o700); err != nil {
@@ -212,7 +189,7 @@ func (s *Staged) apply(dir string, j *journal) error {
 		return err
 	}
 	for _, name := range j.Had {
-		if err := stepHook("aside " + name); err != nil {
+		if err := s.opts.atStep("aside " + name); err != nil {
 			return err
 		}
 		if err := os.Rename(filepath.Join(dir, name), filepath.Join(before, name)); err != nil {
@@ -226,14 +203,14 @@ func (s *Staged) apply(dir string, j *journal) error {
 		if !exists(from) {
 			continue
 		}
-		if err := stepHook("in " + name); err != nil {
+		if err := s.opts.atStep("in " + name); err != nil {
 			return err
 		}
 		if err := os.Rename(from, filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}
-	return syncDir(dir)
+	return s.opts.syncDir(dir)
 }
 
 // verify gives the restored root the checks a gateway gets.
@@ -264,7 +241,7 @@ func verify(dir string) error {
 
 // undo puts a root back. It only ever moves names on the constant list, and is safe to run again.
 // release lets go of the root's database, for a restore that still holds it.
-func undo(dir string, j *journal, release func()) error {
+func undo(dir string, j *journal, release func(), o options) error {
 	before := filepath.Join(dir, j.Before)
 	// Nothing new goes in until everything old is aside, so before that, whatever is at a name the journal
 	// doesn't list isn't this restore's. It may be another process's working files, with writes in them,
@@ -279,7 +256,7 @@ func undo(dir string, j *journal, release func()) error {
 			if contains(j.Had, name) {
 				continue
 			}
-			if err := stepHook("undo remove " + name); err != nil {
+			if err := o.atStep("undo remove " + name); err != nil {
 				return err
 			}
 			// It was never there, so anything at its name now is new.
@@ -295,7 +272,7 @@ func undo(dir string, j *journal, release func()) error {
 		if !exists(old) {
 			continue // It hasn't moved, or it's already back.
 		}
-		if err := stepHook("undo back " + name); err != nil {
+		if err := o.atStep("undo back " + name); err != nil {
 			return err
 		}
 		// It was moved aside, so anything at its name now is new.
@@ -313,12 +290,12 @@ func undo(dir string, j *journal, release func()) error {
 		os.RemoveAll(filepath.Join(filepath.Dir(dir), j.Staging))
 	}
 	// The moves reach the disk while the journal still exists, so a failure here can be run again.
-	if err := syncDir(dir); err != nil {
+	if err := o.syncDir(dir); err != nil {
 		return err
 	}
 	// As in Commit: closing it deletes whatever journal is at its path, so that comes before anyone can start.
 	release()
-	if err := stepHook("undo released"); err != nil {
+	if err := o.atStep("undo released"); err != nil {
 		return err
 	}
 	if err := os.Remove(journalPath(dir)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -326,7 +303,7 @@ func undo(dir string, j *journal, release func()) error {
 	}
 	// Everything is back. If this removal is lost in a power cut the journal returns, and running
 	// the undo again is safe.
-	_ = syncDir(dir)
+	_ = o.syncDir(dir)
 	if j.NewRoot {
 		// This made the root, so it goes too, if that leaves nothing. It is never removed
 		// with its contents: a journal must not be able to delete a root.
@@ -414,5 +391,5 @@ func Undo(targetDir string) error {
 	default:
 		return refuse("The gateway lock on %s can't be read: %s", r.Dir, detail)
 	}
-	return undo(r.Dir, j, func() {})
+	return undo(r.Dir, j, func() {}, options{})
 }

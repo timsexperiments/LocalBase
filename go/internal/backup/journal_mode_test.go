@@ -187,17 +187,15 @@ func TestARestoreThatCantSettleTheModeRefuses(t *testing.T) {
 		{"the change failed", errors.New("disk I/O error"), "The database can't be used: disk I/O error"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			k := withKey(t) // made first: making a backup checks that it would restore
+			k := withKey(t)
 			parent := dir(t)
 			before := tree(t, k.r.Dir)
-			was := settleJournal
-			defer func() { settleJournal = was }()
-			settleJournal = func(context.Context, *sql.DB) error { return c.err }
+			h := options{settle: func(context.Context, *sql.DB) error { return c.err }}
 			for _, target := range []struct {
 				dir     string
 				replace bool
 			}{{filepath.Join(parent, "target"), false}, {k.r.Dir, true}} {
-				_, err := Stage(context.Background(), k.file, target.dir, target.replace)
+				_, err := stage(context.Background(), k.file, target.dir, target.replace, nil, h)
 				var refused *Refused
 				if !errors.As(err, &refused) || err.Error() != c.says {
 					t.Fatalf("stage over %s: %v", target.dir, err)

@@ -1958,13 +1958,11 @@ func TestRestoreDryRunWritesNothing(t *testing.T) {
 func steps(t *testing.T, file, target string, replace bool) []string {
 	t.Helper()
 	var out []string
-	was := stepHook
-	stepHook = func(s string) error { out = append(out, s); return nil }
-	defer func() { stepHook = was }()
 	s, err := Stage(context.Background(), file, target, replace)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.opts = options{step: func(s string) error { out = append(out, s); return nil }}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -1986,8 +1984,7 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 				r, _ := newRoot(t, parent)
 				backup := create(t, r, false)
 				before := rootAsItIs(t, r.Dir, "runtime", ".before-restore")
-				was := stepHook
-				stepHook = func(s string) error {
+				hook := func(s string) error {
 					if s != name {
 						return nil
 					}
@@ -1996,11 +1993,11 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 					}
 					return fmt.Errorf("injected at %s", s)
 				}
-				defer func() { stepHook = was }()
 				s, err := Stage(context.Background(), backup.Output, r.Dir, true)
 				if err != nil {
 					t.Fatal(err)
 				}
+				s.opts = options{step: hook}
 				if crash {
 					func() {
 						defer func() {
@@ -2010,7 +2007,6 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 						}()
 						s.Commit()
 					}()
-					stepHook = was
 					if _, err := root.Open(r.Dir); err == nil || !strings.Contains(err.Error(), "a restore did not finish") || !strings.Contains(err.Error(), "restore --undo") {
 						t.Fatalf("after a crash, Open says: %v", err)
 					}
@@ -2030,13 +2026,11 @@ func TestRestoreFailureAndCrash(t *testing.T) {
 	}
 }
 
-// failSyncs replaces the directory sync. A restore that finishes syncs three times: after the
+// failSyncs replaces s's directory sync. A restore that finishes syncs three times: after the
 // journal, after the moves, and after the journal is removed.
-func failSyncs(t *testing.T, fail func(call int) error) {
-	t.Helper()
-	was, call := dirSync, 0
-	dirSync = func(*os.File) error { call++; return fail(call) }
-	t.Cleanup(func() { dirSync = was })
+func failSyncs(s *Staged, fail func(call int) error) {
+	call := 0
+	s.opts = options{dirSync: func(*os.File) error { call++; return fail(call) }}
 }
 
 func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
@@ -2051,7 +2045,7 @@ func TestRestoreThatCannotReachTheDiskGoesBack(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			failSyncs(t, func(call int) error {
+			failSyncs(s, func(call int) error {
 				if call == failing {
 					return syscall.EIO
 				}
@@ -2079,7 +2073,7 @@ func TestUndoThatCannotReachTheDiskCanRunAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	failing := true
-	failSyncs(t, func(call int) error {
+	failSyncs(s, func(call int) error {
 		// From the sync after the files moved in, so that there's something to put back.
 		if failing && call >= 3 {
 			return syscall.EIO
@@ -2110,7 +2104,7 @@ func TestRestoreWorksWhereDirectoriesCannotSync(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		failSyncs(t, func(int) error { return unsupported })
+		failSyncs(s, func(int) error { return unsupported })
 		if _, err := s.Commit(); err != nil {
 			t.Fatalf("%v: %v", unsupported, err)
 		}
@@ -2126,7 +2120,7 @@ func TestRestoreThatFinishedStaysFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	failed := false
-	failSyncs(t, func(int) error {
+	failSyncs(s, func(int) error {
 		if !exists(journalPath(r.Dir)) {
 			failed = true
 			return syscall.EIO
@@ -2150,8 +2144,7 @@ func TestRestoreVerifiesBeforeFinishing(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
 	before := rootAsItIs(t, r.Dir, "runtime")
-	was := stepHook
-	stepHook = func(step string) error {
+	hook := func(step string) error {
 		if step == "in local-base.db" {
 			// What is already moved in stops being trustworthy, just before the check.
 			if err := os.Chmod(filepath.Join(r.Dir, "ui-access.json"), 0o666); err != nil {
@@ -2160,11 +2153,11 @@ func TestRestoreVerifiesBeforeFinishing(t *testing.T) {
 		}
 		return nil
 	}
-	defer func() { stepHook = was }()
 	s, err := Stage(context.Background(), res.Output, r.Dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.opts = options{step: hook}
 	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "put back") || !strings.Contains(err.Error(), "other users can change") {
 		t.Fatalf("commit: %v", err)
 	}
@@ -2176,23 +2169,21 @@ func TestRestoreCrashOnANewRoot(t *testing.T) {
 	res := create(t, r, false)
 	parent := dir(t)
 	target := filepath.Join(parent, "new")
-	was := stepHook
-	stepHook = func(s string) error {
+	hook := func(s string) error {
 		if s == "in local-base.db" {
 			panic("crash")
 		}
 		return nil
 	}
-	defer func() { stepHook = was }()
 	s, err := Stage(context.Background(), res.Output, target, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.opts = options{step: hook}
 	func() {
 		defer func() { recover() }()
 		s.Commit()
 	}()
-	stepHook = was
 	if err := Undo(target); err != nil {
 		t.Fatal(err)
 	}

@@ -654,7 +654,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if o.DryRun {
 		return res, nil
 	}
-	if err := placeFile(archive, out); err != nil {
+	if err := placeFile(archive, out, options{}); err != nil {
 		return nil, err
 	}
 	return res, nil
@@ -764,19 +764,12 @@ func writeArchive(ctx context.Context, archive, content string, m *Manifest) err
 	return out.Sync()
 }
 
-// linkFile and chmodFile are os.Link and (*os.File).Chmod, so a test can take placeFile's copying
-// path and fail its chmod.
-var (
-	linkFile  = os.Link
-	chmodFile = (*os.File).Chmod
-)
-
 // placeFile puts a finished backup at its name, and never over another file. A link fails if the
 // name is taken; a filesystem without links gets an exclusive copy instead.
-func placeFile(archive, out string) error {
-	err := linkFile(archive, out)
+func placeFile(archive, out string, o options) error {
+	err := o.linkFile(archive, out)
 	if err == nil {
-		return syncPlaced(out)
+		return syncPlaced(out, o)
 	}
 	if errors.Is(err, fs.ErrExist) {
 		return fmt.Errorf("%s already exists, and a backup never overwrites a file", out)
@@ -792,7 +785,7 @@ func placeFile(archive, out string) error {
 	}
 	// The chmod is what makes it 0600 under a umask that takes away the owner's write bit. If it
 	// fails, nothing was copied, and an empty file mustn't be left to look like a backup.
-	err = chmodFile(f, 0o600)
+	err = o.chmodFile(f, 0o600)
 	if err == nil {
 		if _, err = io.Copy(f, in); err == nil {
 			err = f.Sync()
@@ -806,13 +799,13 @@ func placeFile(archive, out string) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return syncPlaced(out)
+	return syncPlaced(out, o)
 }
 
 // syncPlaced makes a placed backup's name last through a power cut before the command says it was
 // written. If that fails, it isn't reported as written, so it isn't left at the name either.
-func syncPlaced(out string) error {
-	if err := syncDir(filepath.Dir(out)); err != nil {
+func syncPlaced(out string, o options) error {
+	if err := o.syncDir(filepath.Dir(out)); err != nil {
 		os.Remove(out)
 		return err
 	}

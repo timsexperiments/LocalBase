@@ -157,7 +157,7 @@ func TestAnUndoBeforeAnythingWentInLeavesTheRestAlone(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := undo(r.Dir, j, func() {}); err != nil {
+			if err := undo(r.Dir, j, func() {}, options{}); err != nil {
 				t.Fatal(err)
 			}
 			for name, body := range made {
@@ -180,9 +180,7 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 	func() {
 		r, _ := newRoot(t, dir(t))
 		s := stageOver(t, r)
-		was := stepHook
-		defer func() { stepHook = was }()
-		stepHook = func(step string) error {
+		s.opts = options{step: func(step string) error {
 			if strings.HasPrefix(step, "undo ") {
 				steps = append(steps, step)
 			}
@@ -190,7 +188,7 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 				return errors.New("injected")
 			}
 			return nil
-		}
+		}}
 		if _, err := s.Commit(); err == nil {
 			t.Fatal("no failure")
 		}
@@ -204,10 +202,8 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 			r, _ := newRoot(t, dir(t))
 			s := stageOver(t, r)
 			before := rootAsItIs(t, r.Dir, "runtime")
-			was := stepHook
-			defer func() { stepHook = was }()
 			// Commit fails after it has moved everything, and its undo crashes at this step.
-			stepHook = func(at string) error {
+			s.opts = options{step: func(at string) error {
 				switch at {
 				case "finish":
 					return errors.New("injected")
@@ -215,7 +211,7 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 					panic("crash")
 				}
 				return nil
-			}
+			}}
 			func() {
 				defer func() {
 					if recover() == nil {
@@ -224,7 +220,6 @@ func TestAnUndoStoppedPartwayCanBeRunAgain(t *testing.T) {
 				}()
 				_, _ = s.Commit()
 			}()
-			stepHook = was
 			if _, err := root.Open(r.Dir); err == nil {
 				t.Error("the root opened with a restore half undone")
 			}
@@ -251,9 +246,7 @@ func TestAnUndoOnANewRootLeavesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "finish" {
 			for _, suffix := range []string{"-wal", "-shm", "-journal"} {
 				if err := os.WriteFile(filepath.Join(target, "local-base.db"+suffix), []byte("the restored database's"), 0o600); err != nil {
@@ -263,7 +256,7 @@ func TestAnUndoOnANewRootLeavesNothing(t *testing.T) {
 			panic("crash")
 		}
 		return nil
-	}
+	}}
 	func() {
 		defer func() {
 			if recover() == nil {
@@ -272,7 +265,6 @@ func TestAnUndoOnANewRootLeavesNothing(t *testing.T) {
 		}()
 		_, _ = s.Commit()
 	}()
-	stepHook = was
 	if err := Undo(target); err != nil {
 		t.Fatal(err)
 	}
@@ -333,18 +325,16 @@ func TestAPartlyUnreadableRootThatDidntChangeIsRestored(t *testing.T) {
 func TestTheSecondJournalReachesTheDiskBeforeAnythingMoves(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	was := dirSync
-	defer func() { dirSync = was }()
 	calls, movedBy := 0, map[int]bool{}
-	dirSync = func(d *os.File) error {
+	s.opts = options{dirSync: func(d *os.File) error {
 		calls++
 		aside, err := filepath.Glob(filepath.Join(r.Dir, beforePrefix+"*"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		movedBy[calls] = len(aside) > 0
-		return was(d)
-	}
+		return d.Sync()
+	}}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -456,10 +446,8 @@ func TestAWriteDuringTheMoveFailsAndIsNotLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrote := make(chan error, 1)
-	was := stepHook
-	defer func() { stepHook = was }()
 	started := false
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "before" && !started {
 			started = true
 			go func() {
@@ -468,7 +456,7 @@ func TestAWriteDuringTheMoveFailsAndIsNotLost(t *testing.T) {
 			}()
 		}
 		return nil
-	}
+	}}
 	done, err := s.Commit()
 	if err != nil {
 		t.Fatal(err)
@@ -503,15 +491,13 @@ func TestACommandStartedDuringARestoreIsRefused(t *testing.T) {
 	s := stageOver(t, r)
 	var said string
 	var ran error
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "before" {
 			out, err := exec.Command(bin, "--root", r.Dir, "keys", "list").CombinedOutput()
 			said, ran = string(out), err
 		}
 		return nil
-	}
+	}}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -543,15 +529,13 @@ func TestACommandRefusedDuringARestoreOnTheDefaultRootSaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 	var said string
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "before" {
 			out, _ := exec.Command(bin, "--root", target, "keys", "list").CombinedOutput()
 			said = string(out)
 		}
 		return nil
-	}
+	}}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +552,7 @@ func TestHelperKilledCommit(t *testing.T) {
 	if step == "" {
 		t.Skip("only TestAKilledRestoreIsPutBack runs this")
 	}
-	stepHook = func(at string) error {
+	hook := func(at string) error {
 		if at == step {
 			_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
 			select {}
@@ -579,6 +563,7 @@ func TestHelperKilledCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.opts = options{step: hook}
 	if _, err := s.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -665,9 +650,7 @@ func TestAWriteWhileARestoreHoldsTheDatabaseFails(t *testing.T) {
 	s := stageOver(t, r)
 	var attempt error
 	tried := false
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step != "before" {
 			return nil
 		}
@@ -679,7 +662,7 @@ func TestAWriteWhileARestoreHoldsTheDatabaseFails(t *testing.T) {
 		defer late.Close()
 		_, attempt = late.Exec(`UPDATE api_keys SET name = 'written during the move'`)
 		return nil
-	}
+	}}
 	done, err := s.Commit()
 	if err != nil {
 		t.Fatal(err)
@@ -737,9 +720,7 @@ func TestNothingWritesBetweenTheComparisonAndTheMove(t *testing.T) {
 	s := stageOver(t, r)
 	var attempt error
 	reached := false
-	was := stepHook
-	defer func() { stepHook = was }()
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step != "switched" {
 			return nil
 		}
@@ -751,7 +732,7 @@ func TestNothingWritesBetweenTheComparisonAndTheMove(t *testing.T) {
 		defer late.Close()
 		_, attempt = late.Exec(`UPDATE api_keys SET name = ?`, written)
 		return nil
-	}
+	}}
 	done, err := s.Commit()
 	if !reached {
 		t.Fatalf("it never reached the step, so this tested nothing: %v", err)

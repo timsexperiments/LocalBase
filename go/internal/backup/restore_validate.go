@@ -180,7 +180,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	compared := false
 	if !state.newRoot && state.hasData {
-		if compared, err = compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep, bringBack); err != nil {
+		if compared, err = compareWithTarget(ctx, st.DB, state.liveDB, state.liveErr, rep, bringBack, state.opts); err != nil {
 			return nil, err
 		}
 	} else {
@@ -214,7 +214,7 @@ func validate(ctx context.Context, dir, target string, m *Manifest, state *targe
 	}
 	// This is the staged copy. Nothing has touched the root yet, whichever command is asking: a restore that's
 	// still staging, or a backup checking that it would restore.
-	if err := settleJournal(ctx, st.DB); err != nil {
+	if err := state.opts.settleJournal(ctx, st.DB); err != nil {
 		var stayed *modeStayedError
 		if errors.As(err, &stayed) {
 			return nil, refuse("This backup's database can't be used: its journal mode stayed %s, so nothing was changed.", stayed.mode)

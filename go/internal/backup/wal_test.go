@@ -310,15 +310,13 @@ func TestAnUndoneRestorePutsEverySidecarBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := rootAsItIs(t, r.Dir, "runtime")
-	was := stepHook
 	// After the checks, which open the restored database and so write its owner file.
-	stepHook = func(step string) error {
+	s.opts = options{step: func(step string) error {
 		if step == "finish" {
 			return errors.New("injected")
 		}
 		return nil
-	}
-	defer func() { stepHook = was }()
+	}}
 	if _, err := s.Commit(); err == nil || !strings.Contains(err.Error(), "put back") {
 		t.Fatalf("commit: %v", err)
 	}
@@ -524,10 +522,8 @@ func TestTheHeldDatabaseClosesWhileCommandsAreStillKeptOut(t *testing.T) {
 			r, _ := newRoot(t, dir(t))
 			s := stageOver(t, r)
 			journal := r.DB() + "-journal"
-			was := stepHook
-			defer func() { stepHook = was }()
 			closed, keptOut := false, false
-			stepHook = func(at string) error {
+			s.opts = options{step: func(at string) error {
 				switch at {
 				case "finish":
 					if err := os.WriteFile(journal, []byte("a command's"), 0o600); err != nil {
@@ -540,7 +536,7 @@ func TestTheHeldDatabaseClosesWhileCommandsAreStillKeptOut(t *testing.T) {
 					closed, keptOut = !exists(journal), exists(journalPath(r.Dir))
 				}
 				return nil
-			}
+			}}
 			if _, err := s.Commit(); (err != nil) != fails {
 				t.Fatalf("commit: %v", err)
 			}

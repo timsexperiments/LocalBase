@@ -255,9 +255,7 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 	var all []string
 	func() {
 		_, s, _, _ := setup(t)
-		was := stepHook
-		stepHook = func(step string) error { all = append(all, step); return nil }
-		defer func() { stepHook = was }()
+		s.opts = options{step: func(step string) error { all = append(all, step); return nil }}
 		if _, err := s.Commit(); err != nil {
 			t.Fatal(err)
 		}
@@ -269,8 +267,7 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 		for _, crash := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s crash=%v", name, crash), func(t *testing.T) {
 				r, s, dbPath, keys := setup(t)
-				was := stepHook
-				stepHook = func(step string) error {
+				s.opts = options{step: func(step string) error {
 					if step != name {
 						return nil
 					}
@@ -278,8 +275,7 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 						panic("crash")
 					}
 					return fmt.Errorf("injected at %s", step)
-				}
-				defer func() { stepHook = was }()
+				}}
 				if crash {
 					func() {
 						defer func() {
@@ -289,7 +285,6 @@ func TestRestoreFailureAndCrashBringBackDatabaseAndJournal(t *testing.T) {
 						}()
 						_, _ = s.Commit()
 					}()
-					stepHook = was
 					if err := Undo(r.Dir); err != nil {
 						t.Fatal(err)
 					}

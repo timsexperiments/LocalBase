@@ -25,6 +25,7 @@ var replaceable = func() []string {
 // targetState is what a restore found at its target.
 type targetState struct {
 	newRoot, hasData bool
+	opts             options // (tests) for the checks a stage makes
 	// liveDB is the file to read the root's database through, for a root being replaced. With liveErr,
 	// it couldn't be read at all, which a root is often replaced because of, so this doesn't refuse.
 	liveDB  string

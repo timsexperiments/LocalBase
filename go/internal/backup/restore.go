@@ -144,6 +144,7 @@ type Staged struct {
 	hadData bool
 	// release lets go of the root's database, once Commit holds it.
 	release func()
+	opts    options // (tests) for Commit and its undo
 }
 
 // Discard removes the staging directory. Commit does too.
@@ -154,7 +155,12 @@ func (s *Staged) Discard() { os.RemoveAll(s.dir) }
 //
 // bringBack names keys to take the backup's version of, where the root being replaced has its own.
 func Stage(ctx context.Context, file, targetDir string, replace bool, bringBack ...string) (*Staged, error) {
-	staged, err := stageRestore(ctx, file, targetDir, replace, bringBack)
+	return stage(ctx, file, targetDir, replace, bringBack, options{})
+}
+
+// stage is Stage, with a test's options for the checks it makes of the target.
+func stage(ctx context.Context, file, targetDir string, replace bool, bringBack []string, o options) (*Staged, error) {
+	staged, err := stageRestore(ctx, file, targetDir, replace, bringBack, o)
 	if isBusy(err) {
 		retry := "local-base --root " + quote(targetDir) + " restore"
 		if replace {
@@ -165,7 +171,7 @@ func Stage(ctx context.Context, file, targetDir string, replace bool, bringBack 
 	return staged, err
 }
 
-func stageRestore(ctx context.Context, file, targetDir string, replace bool, bringBack []string) (*Staged, error) {
+func stageRestore(ctx context.Context, file, targetDir string, replace bool, bringBack []string, o options) (*Staged, error) {
 	if os.Getuid() == 0 {
 		return nil, refuse("Refusing to restore as root: the files would belong to root, and the owner could not read them. Run this as the user who will own the root.")
 	}
@@ -177,6 +183,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	if err != nil {
 		return nil, err
 	}
+	state.opts = o
 	if !state.newRoot && state.hasData {
 		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"))
 		if errors.Is(err, store.ErrInUse) {
