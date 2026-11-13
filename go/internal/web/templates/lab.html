@@ -6,7 +6,7 @@
     <h1 id="lab-title" class="page-title">{{.ToolName}}</h1>
   </div>
 
-  {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else}}
+  {{if eq .Tab "decisions"}}{{template "decisions" .}}{{else if eq .Tab "search"}}{{template "search" .}}{{else}}
   <section aria-labelledby="results-title" class="lab-results mt-4">
     {{if eq .Tab "image"}}<h2 id="results-title" class="sr-only">Pictures</h2>
     {{else if eq .Tab "video"}}<h2 id="results-title" class="sr-only">Videos</h2>
@@ -219,6 +219,7 @@
 {{if eq .Tab "speech"}}<script src="{{asset "js/speech.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "transcribe"}}<script src="{{asset "js/transcribe.js"}}" type="module"></script>{{end}}
 {{if eq .Tab "decisions"}}<script src="{{asset "js/decisions.js"}}" type="module"></script>{{end}}
+{{if eq .Tab "search"}}<script src="{{asset "js/search.js"}}" type="module"></script>{{end}}
 {{end}}
 
 {{/* Decisions (DESIGN §22.17): decisions.js draws the options, the answer and
@@ -308,6 +309,66 @@
       </div>
     </div>
   </dialog>
+  {{end}}
+</div>
+{{end}}
+
+{{/* Search (DESIGN §35): search.js reads the text into passages, sends them to be turned into
+     vectors and ranks them, all in this page. Nothing is kept: not on the server, not in this
+     browser. */}}
+{{define "search"}}
+<div data-search hx-history="false" class="lab-results mt-4 lg:flex lg:flex-1 lg:flex-col">
+  {{if not .CanSearch}}{{template "lab-denied" "search"}}{{else if not .Models}}{{template "lab-none" (dict "Word" "search" "Filter" "embeddings" "CanGet" .CanManage)}}{{else}}
+  <section aria-labelledby="results-title" class="lg:flex-1">
+    <h2 id="results-title" class="sr-only">Passages</h2>
+    <p id="search-said" class="sr-only" role="status"></p>
+    <div class="lab-hello" data-search-empty>
+      <p class="lab-hello-title">What would you like to search?</p>
+      {{/* In the page, not the dock as on Transcribe: less room, so tighter buttons keep "Choose a file" on one line at 360. */}}
+      <div class="transcribe-start px-0">
+        <button type="button" class="btn btn-quiet gap-1 px-3" data-open-sheet="search-text" data-paste>{{template "icon-edit"}}Paste text</button>
+        <button type="button" class="btn btn-quiet gap-1 px-3" data-pick-text>{{template "icon-file"}}Choose a file</button>
+      </div>
+      <p class="mt-3 text-muted">Up to 2,000 passages. Your text is sent only to your LocalBase to be searched, and nothing is saved. Leaving the page forgets it.</p>
+      <p class="mt-3 text-sm text-muted">Search and chat share a place on this computer, so the next chat message may take a moment to start.</p>
+    </div>
+    <div class="mt-5 grid max-w-xl gap-2" data-reading hidden>
+      <p class="font-semibold" data-reading-count></p>
+      <span class="transcribe-meter" aria-hidden="true"><i data-reading-level></i></span>
+      <p class="text-sm text-muted" data-reading-note hidden></p>
+      <div><button type="button" class="btn btn-quiet" data-cancel>Cancel</button></div>
+    </div>
+    <div class="mt-3 grid max-w-xl gap-1 text-sm text-muted" data-search-notes hidden></div>
+    <div class="notice notice-error mt-3 flex max-w-xl flex-wrap items-center gap-3" role="alert" data-search-error hidden><p class="min-w-0 flex-1" data-error-text></p><button type="button" class="btn btn-quiet shrink-0" data-try-again hidden>Try again</button>{{if .CanManage}}<a class="btn btn-quiet shrink-0" href="/app/models/get?filter=embeddings" data-get-model hidden>Get it</a>{{end}}</div>
+    <div class="mt-5 grid gap-2" data-results hidden>
+      <h3 class="text-lg font-bold wrap-anywhere" data-question></h3>
+      <p class="text-sm text-muted">Closest in meaning</p>
+      <ol class="mt-1 grid gap-3" data-result-list></ol>
+      <button type="button" class="btn btn-quiet justify-self-start" data-more hidden>Show more</button>
+    </div>
+  </section>
+  <div class="lab-dock-spacer" aria-hidden="true"></div>
+  <form class="lab-dock" data-docked hx-boost="false" data-search-form>
+    <div class="composer-box lab-box">
+      <div class="lab-chips">
+        <button type="button" class="chip lab-chip" data-open-sheet="search-text" aria-haspopup="dialog"><span data-text-chip>Text</span></button>
+        {{if gt (len .Models) 1}}{{template "lab-chip" (dict "Sheet" "lab-model" "Name" "model" "Label" "Model" "Value" (index .Models 0).Name)}}{{end}}
+      </div>
+      {{template "lab-field" (dict "Name" "question" "Label" "Question" "Max" 2000 "Placeholder" "Ask about your text" "Action" "Search" "Scripted" true)}}
+    </div>
+    {{if gt (len .Models) 1}}{{template "lab-model-sheet" .Models}}{{else}}<input type="hidden" name="model" value="{{(index .Models 0).ID}}">{{end}}
+  </form>
+  <dialog id="search-text" class="sheet lg:mb-auto lg:rounded-3xl lg:border-b" aria-labelledby="search-text-title">
+    {{template "sheet-head" (dict "ID" "search-text-title" "Title" "Your text")}}
+    <div class="grid gap-2 px-4 pb-3">
+      <textarea id="search-text-box" class="input min-h-48 text-base" rows="8" autocomplete="off" aria-labelledby="search-text-title" data-text-box></textarea>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-quiet" data-pick-text>{{template "icon-file"}}Choose a file</button>
+        <button type="button" class="btn btn-quiet" data-clear-text>Clear text</button>
+      </div>
+    </div>
+  </dialog>
+  <input class="sr-only text-base" type="file" accept=".txt,.md,text/plain,text/markdown" aria-label="Choose a file" tabindex="-1" data-text-file>
   {{end}}
 </div>
 {{end}}

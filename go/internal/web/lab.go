@@ -300,7 +300,7 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 	allowed, hasModel, _ := u.toolAvailable(r, tab)
 	data := map[string]any{"Tab": tab, "ToolName": studioNames[tab], "Ready": allowed && hasModel, "Sizes": []string{"512x512", "768x512", "512x768", "256x256", "1024x1024"},
 		"CanImage": p.Can("inference:image"), "CanSpeech": p.Can("inference:speech"),
-		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video"), "CanDecide": p.Can("inference:decision")}
+		"CanTranscribe": p.Can("inference:transcription"), "CanManage": p.Can("models:manage"), "CanVideo": p.Can("inference:video"), "CanDecide": p.Can("inference:decision"), "CanSearch": p.Can("inference:embeddings")}
 	kept, lost := splitLost(u.labRuns(r))
 	var items []labItemView
 	for _, it := range kept {
@@ -349,6 +349,8 @@ func (u *UI) lab(w http.ResponseWriter, r *http.Request, tab string) {
 		data["Languages"] = transcriptLanguages
 	case "decisions":
 		data["Models"] = u.installedOnly(u.decisionModels())
+	case "search":
+		data["Models"] = u.searchModels(r)
 	}
 	u.render(w, r, "lab", data)
 }
