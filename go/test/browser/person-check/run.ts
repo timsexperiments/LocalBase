@@ -45,6 +45,9 @@ Bun.serve({ port: PROXY_PORT, tls, async fetch(req) {
 // The gateway reads the provider as it starts, so it starts now the provider is up.
 // In its own process group, watched: it goes when this driver goes, even by kill -9.
 const gateway = Bun.spawn(["perl", "-MPOSIX", "-e", "POSIX::setsid(); exec @ARGV", "sh", new URL("./supervise.sh", import.meta.url).pathname, String(process.pid), `${O}/local-base`, "--root", R, "--non-interactive", "serve", "--host", "127.0.0.1", "--port", String(GATEWAY_PORT), "--llm", "--llm-port", String(LLM_PORT), "--no-stt", "--no-tts", "--no-image", "--no-video"], { cwd: LAB, env: { ...process.env, LOCALBASE_LLAMA_SERVER: `${WORK}/llama-server`, LOCALBASE_COMPUTER_NAME: "Mac Studio" }, stdout: Bun.file(`${O}/serve.log`), stderr: Bun.file(`${O}/serve.log`), stdin: "ignore" });
+// setsid then exec keeps the pid, so this is supervise.sh's, the leader of the gateway's group.
+// kill-check.sh reads it to watch, and if need be end, that group and nothing else.
+await Bun.write(`${O}/gateway.group`, String(gateway.pid));
 for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(sig, () => process.exit(143));
 for (let i = 0; i < 40; i++) { try { if ((await fetch(`${GATEWAY}/health`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 250)); }
 const t = await (await fetch(`${CDP}/json/new?about:blank`, { method: "PUT" })).json();
