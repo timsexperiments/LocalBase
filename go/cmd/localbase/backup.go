@@ -20,6 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -77,7 +78,7 @@ func runBackup(c *cli.Ctx) (any, error) {
 	if res.DryRun {
 		c.Info("Dry run: nothing was written. It would go to %s.", res.Output)
 	} else {
-		c.Info("Wrote %s (%s), private to you.", res.Output, sizeText(res.Bytes))
+		c.Info("Wrote %s (%s), private to you.", res.Output, memory.BytesText(res.Bytes))
 	}
 	printManifest(c, res.Manifest)
 	if !res.DryRun {
@@ -87,22 +88,10 @@ func runBackup(c *cli.Ctx) (any, error) {
 	return res, nil
 }
 
-func sizeText(n int64) string {
-	switch {
-	case n >= 1<<30:
-		return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
-	}
-	return fmt.Sprintf("%d bytes", n)
-}
-
 func printManifest(c *cli.Ctx, m *backup.Manifest) {
 	c.Info("Holds:")
 	for _, f := range m.Files {
-		c.Info("  %s (%s)", f.Path, sizeText(f.Size))
+		c.Info("  %s (%s)", f.Path, memory.BytesText(f.Size))
 	}
 	if len(m.SecretsRemoved) > 0 {
 		c.Info("Secrets left out, and the command that puts each back:")
@@ -117,7 +106,7 @@ func printManifest(c *cli.Ctx, m *backup.Manifest) {
 			if n.Unknown {
 				why = "unknown. " + why
 			}
-			c.Info("  %s (%s): %s", n.What, sizeText(n.Bytes), why)
+			c.Info("  %s (%s): %s", n.What, memory.BytesText(n.Bytes), why)
 		}
 	}
 	if len(m.RowsLeftOut) > 0 {
