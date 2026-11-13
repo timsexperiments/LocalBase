@@ -246,6 +246,23 @@ func (l *Library) SaveImport(ctx context.Context, res *acquire.Result, backendID
 	return l.Selection(ctx, e)
 }
 
+// AddDefinition stores a model definition exported elsewhere as an import here: only the definition,
+// with its origin "import", so its files are downloaded separately and its backend is chosen
+// automatically on this device.
+func (l *Library) AddDefinition(ctx context.Context, m *models.Model) error {
+	m.Origin = "import"
+	def, _ := json.Marshal(m)
+	return l.Store.SaveImportedModel(ctx, m.ID, def)
+}
+
+// DeleteImported removes an imported model's definition, every device's choice for it, and its files.
+func (l *Library) DeleteImported(ctx context.Context, e *Entry) error {
+	if _, err := l.Store.DeleteImportedModel(ctx, e.Model.ID); err != nil {
+		return err
+	}
+	return os.RemoveAll(e.Dir)
+}
+
 var llmTasks = []string{"chat", "embeddings", "decision"}
 
 // Gate resolves a model for the LLM runtime through the selection.

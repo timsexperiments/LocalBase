@@ -1,0 +1,200 @@
+$ --json models list
+exit 0
+{"data":{"models":["llm:alpha-loose.safetensors","llm:zeta-loose.gguf","stt:voice.bin"]},"ok":true}
+llm:alpha-loose.safetensors
+llm:zeta-loose.gguf
+stt:voice.bin
+
+$ models list --kind llm
+exit 0
+alpha-loose.safetensors
+zeta-loose.gguf
+
+$ models list --kind tts
+exit 0
+No installed TTS models found.
+
+$ --json models recommend --vram 8
+exit 0
+picks {"kind":"llm","vramGb":8,"models":[{"modelId":"qwen3.5-4b-q4_k_m","minVramGb":5,"memorySource":"measured","fitVerdict":"tight"}]}
+Recommended LLM models for <= 8GB VRAM:
+- qwen3.5-4b-q4_k_m (3.01 GB, planning min 5 GB measured, features=text-generation/tool-calling)
+
+$ --json models recommend --vram 64
+exit 0
+picks {"kind":"llm","vramGb":64,"models":[{"modelId":"qwen3.6-35b-a3b-iq4_nl_xl","minVramGb":24,"memorySource":"estimate","fitVerdict":"fits"},{"modelId":"qwen3.8-27b-q4_k_m","minVramGb":21,"memorySource":"estimate","fitVerdict":"fits"},{"modelId":"qwen3.5-4b-q4_k_m","minVramGb":5,"memorySource":"measured","fitVerdict":"fits"}]}
+Recommended LLM models for <= 64GB VRAM:
+- qwen3.6-35b-a3b-iq4_nl_xl (20.40 GB, planning min 24 GB estimate, features=reasoning/tool-calling/long-context/mixture-of-experts)
+- qwen3.8-27b-q4_k_m (17.77 GB, planning min 21 GB estimate, features=reasoning/tool-calling/long-context)
+- qwen3.5-4b-q4_k_m (3.01 GB, planning min 5 GB measured, features=text-generation/tool-calling)
+
+$ --json models recommend --kind stt --vram 8
+exit 0
+picks {"kind":"stt","vramGb":8,"models":[{"modelId":"whisper-base-q8_0","minVramGb":1,"memorySource":"estimate","fitVerdict":"fits"},{"modelId":"whisper-large-v3-turbo","minVramGb":3,"memorySource":"measured","fitVerdict":"fits"}]}
+Recommended STT models for <= 8GB VRAM:
+- whisper-base-q8_0 (0.08 GB, planning min 1 GB estimate, features=speech-to-text/multilingual)
+- whisper-large-v3-turbo (1.62 GB, planning min 3 GB measured, features=speech-to-text/multilingual/translation)
+
+$ --json models recommend --kind tts --vram 8
+exit 0
+picks {"kind":"tts","vramGb":8,"models":[{"modelId":"kokoro-82m-v1.0-q8","minVramGb":1,"memorySource":"measured","fitVerdict":"fits"},{"modelId":"qwen3-tts-1.7b-base-q4_k_m","minVramGb":5,"memorySource":"measured","fitVerdict":"tight"}]}
+Recommended TTS models for <= 8GB VRAM:
+- kokoro-82m-v1.0-q8 (0.09 GB, planning min 1 GB measured, features=text-to-speech/wav-output/cold-per-request/bundled-native-voices)
+- qwen3-tts-1.7b-base-q4_k_m (1.48 GB, planning min 5 GB measured, features=text-to-speech/wav-output/cold-per-request/catalog-reference-voices)
+
+$ --json models recommend --kind image --vram 24
+exit 0
+picks {"kind":"image","vramGb":24,"models":[{"modelId":"dreamshaper-8-lcm","minVramGb":5,"memorySource":"measured","fitVerdict":"fits"},{"modelId":"flux2-klein-4b-q4_0","minVramGb":13,"memorySource":"measured","fitVerdict":"fits"},{"modelId":"z-image-turbo-q4_0","minVramGb":15,"memorySource":"measured","fitVerdict":"fits"},{"modelId":"juggernaut-xl-v9","minVramGb":16,"memorySource":"measured","fitVerdict":"fits"}]}
+Recommended IMAGE models for <= 24GB VRAM:
+- dreamshaper-8-lcm (2.13 GB, planning min 5 GB measured, features=text-to-image)
+- flux2-klein-4b-q4_0 (5.29 GB, planning min 13 GB measured, features=text-to-image)
+- z-image-turbo-q4_0 (6.52 GB, planning min 15 GB measured, features=text-to-image)
+- juggernaut-xl-v9 (7.11 GB, planning min 16 GB measured, features=text-to-image/image-to-image)
+
+$ --json models recommend --kind video --vram 64
+exit 0
+picks {"kind":"video","vramGb":64,"models":[]}
+Recommended VIDEO models for <= 64GB VRAM:
+
+$ models recommend --kind stt --vram 4
+exit 0
+Recommended STT models for <= 4GB VRAM:
+- whisper-base-q8_0 (0.08 GB, planning min 1 GB estimate, features=speech-to-text/multilingual)
+- whisper-large-v3-turbo (1.62 GB, planning min 3 GB measured, features=speech-to-text/multilingual/translation)
+
+$ models delete qwen3.5-4b-q4_k_m --yes
+exit 2
+Error: "qwen3.5-4b-q4_k_m" is not an imported model (catalog models are removed with their files from the models directory)
+Delete an imported model and its files
+
+USAGE local-base models delete [OPTIONS] <modelId>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+          -y, --yes    Confirm
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models delete golden-import
+exit 2
+Error: this deletes <tmp>/root/models/imported/golden-import; re-run with --yes
+Delete an imported model and its files
+
+USAGE local-base models delete [OPTIONS] <modelId>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+          -y, --yes    Confirm
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models delete golden-import --yes
+exit 0
+Deleted golden-import.
+
+$ models delete golden-import --yes
+exit 2
+Error: "golden-import" is not an imported model (catalog models are removed with their files from the models directory)
+Delete an imported model and its files
+
+USAGE local-base models delete [OPTIONS] <modelId>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+          -y, --yes    Confirm
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models add-definition <tmp>/missing.json
+exit 2
+Error: unable to read <tmp>/missing.json
+Add a model definition exported by models export
+
+USAGE local-base models add-definition [OPTIONS] <file.json>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models add-definition <tmp>/not.json
+exit 2
+Error: not a model definition: invalid character 'n' looking for beginning of object key string
+Add a model definition exported by models export
+
+USAGE local-base models add-definition [OPTIONS] <file.json>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models add-definition <tmp>/bad.json
+exit 2
+Error: invalid model definition: model id "Not An Id" must be lowercase letters, digits, '.', '_' or '-'
+Add a model definition exported by models export
+
+USAGE local-base models add-definition [OPTIONS] <file.json>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ --json models add-definition <tmp>/wrapped-data.json
+exit 0
+{"data":{"model":{"capabilities":[],"createdAt":"<time>","id":"golden-import","name":"Golden","origin":"import","sourceUrl":"<tmp>/golden-weights-q4_k_m.gguf","tasks":["chat"],"variants":[{"architecture":{"source":"inspected","value":"gpt-oss"},"artifacts":[{"filename":"golden-weights-q4_k_m.gguf","hashTrust":"observed","required":true,"role":"weights","sha256":"5eb32af0e0657d572be3ea3dabfb78b22a793944e42731f60254bbc7bcdc8ce9","sizeBytes":1048576,"source":{"kind":"local","path":"<tmp>/golden-weights-q4_k_m.gguf"}}],"contextLength":{"source":"inspected","value":131072},"dimensions":{"source":"inspected","value":2880},"format":{"source":"inspected","value":"gguf"},"id":"default","precision":{"source":"","value":""}}]},"selection":"\u003cmasked\u003e"},"ok":true}
+Added golden-import. Its files are not downloaded; backend selection on this device is automatic.
+<selection masked>
+
+$ models add-definition <tmp>/bare.json
+exit 2
+Error: a model with id golden-import already exists here
+Add a model definition exported by models export
+
+USAGE local-base models add-definition [OPTIONS] <file.json>
+
+OPTIONS
+
+      --root=<path>    LocalBase data directory
+  --non-interactive    Never open interactive prompts
+             --json    Emit machine-readable JSON
+
+License: AGPL-3.0-or-later · Source: https://github.com/timsexperiments/LocalBase
+
+$ models delete golden-import --yes
+exit 0
+Deleted golden-import.
+
+$ models add-definition <tmp>/wrapped.json
+exit 0
+Added golden-import. Its files are not downloaded; backend selection on this device is automatic.
+<selection masked>
+
+$ models delete golden-import --yes
+exit 0
+Deleted golden-import.
+
+$ models add-definition <tmp>/bare2.json
+exit 0
+Added golden-import. Its files are not downloaded; backend selection on this device is automatic.
+<selection masked>
+

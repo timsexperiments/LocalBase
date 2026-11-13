@@ -8,9 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +19,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/instance"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
@@ -377,29 +376,7 @@ func modelsRecommend() *cli.Command {
 				}
 				vram = v
 			}
-			var picks []*catalog.Spec
-			for _, s := range e.Catalog.All() {
-				if s.Kind != kind || kind == "video" || runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB > vram {
-					continue
-				}
-				if kind == "llm" && s.LLMRuntime != nil {
-					continue
-				}
-				picks = append(picks, s)
-			}
-			minGB := func(s *catalog.Spec) int {
-				return runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB
-			}
-			sort.SliceStable(picks, func(i, j int) bool {
-				a, b := picks[i], picks[j]
-				if kind == "llm" {
-					return minGB(a) > minGB(b)
-				}
-				return a.StorageGB < b.StorageGB
-			})
-			if len(picks) > 6 {
-				picks = picks[:6]
-			}
+			picks := meta.Recommend(e.Catalog, kind, vram)
 			c.Info("Recommended %s models for <= %dGB VRAM:", strings.ToUpper(kind), vram)
 			out := []map[string]any{}
 			for _, s := range picks {
@@ -415,48 +392,6 @@ func modelsRecommend() *cli.Command {
 		}}
 }
 
-// installedModels lists complete catalog installs plus loose model files
-// (`kind:name` without --kind), sorted.
-func installedModels(e *env, kind string) []string {
-	found := []string{}
-	for _, k := range kinds {
-		if kind != "" && k != kind {
-			continue
-		}
-		dir := e.Root.ModelsDir(k)
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		known := map[string]bool{}
-		var names []string
-		for _, s := range e.Catalog.All() {
-			if s.Kind != k {
-				continue
-			}
-			for _, a := range s.Artifacts {
-				known[a.Filename] = true
-			}
-			if complete, _ := s.Installation(dir); complete {
-				names = append(names, s.ModelID)
-			}
-		}
-		for _, en := range entries {
-			if looseModelFile(dir, en.Name()) && !known[en.Name()] {
-				names = append(names, en.Name())
-			}
-		}
-		for _, n := range names {
-			if kind == "" {
-				n = k + ":" + n
-			}
-			found = append(found, n)
-		}
-	}
-	sort.Strings(found)
-	return found
-}
-
 func modelsList() *cli.Command {
 	return &cli.Command{Name: "list", Summary: "List installed models", Options: []cli.Option{kindOption()},
 		Run: func(c *cli.Ctx) (any, error) {
@@ -469,7 +404,7 @@ func modelsList() *cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			found := installedModels(e, kind)
+			found := library.Installed(e.Root, e.Catalog, kinds, kind)
 			if len(found) == 0 {
 				if kind != "" {
 					c.Info("No installed %s models found.", strings.ToUpper(kind))
@@ -587,7 +522,7 @@ func modelsInstall() *cli.Command {
 // activateInstalled makes the first of these chat models that can run the
 // default when the current default cannot (conf.ActivateFirstInstall).
 func activateInstalled(c *cli.Ctx, e *env, ids ...string) error {
-	present := installedModels(e, "llm")
+	present := library.Installed(e.Root, e.Catalog, kinds, "llm")
 	isInstalled := func(s *catalog.Spec) bool { return slices.Contains(present, s.ModelID) }
 	for _, id := range ids {
 		s := e.Catalog.ByID(id)
@@ -651,20 +586,4 @@ func modelsShow() *cli.Command {
 			return map[string]any{"model": m, "status": map[string]bool{"installed": m.Device.Installed,
 				"enabled": m.Device.Selected, "default": isDefault}}, nil
 		}}
-}
-
-// looseModelFile reports whether a models directory entry is a model file
-// someone placed there: a regular file (or a link to one) with a model
-// extension. Dot-prefixed entries are staging (benchmark parts, partial
-// downloads, checksum caches) and directories are never models, even when
-// their name ends in .gguf.
-func looseModelFile(dir, name string) bool {
-	if strings.HasPrefix(name, ".") {
-		return false
-	}
-	if !slices.Contains([]string{".gguf", ".bin", ".onnx", ".safetensors", ".pth"}, filepath.Ext(name)) {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(dir, name))
-	return err == nil && info.Mode().IsRegular()
 }
