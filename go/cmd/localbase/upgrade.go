@@ -98,24 +98,6 @@ func upgradeBinaryPath() (string, error) {
 	return filepath.EvalSymlinks(exe)
 }
 
-// checkInstalled refuses what cannot be replaced by this command.
-func checkInstalled(binary string) error {
-	if strings.Contains(binary, "/Cellar/") {
-		return errors.New("This was installed by Homebrew. Update it with: brew upgrade local-base")
-	}
-	dir := filepath.Dir(binary)
-	probe, err := os.CreateTemp(dir, ".local-base-upgrade-probe-")
-	if err != nil {
-		return fmt.Errorf("Cannot write in %s, so this cannot replace the binary there. Nothing was changed.", dir)
-	}
-	probe.Close()
-	os.Remove(probe.Name())
-	if upgrade.AssetArchive(goruntime.GOOS, goruntime.GOARCH) == "" {
-		return fmt.Errorf("There are no releases for %s/%s.", goruntime.GOOS, goruntime.GOARCH)
-	}
-	return nil
-}
-
 // idleWaitBase is where the running gateway answers, proven to be this root's. The wait sends it
 // a temporary key, so an owner record that names something else (a reused PID, another listener on
 // the port) gets nothing. It is checked again here, though gatherGatewayFacts already proved it:
@@ -269,7 +251,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := checkInstalled(binary); err != nil {
+	if err := upgrade.CheckReplaceable(binary); err != nil {
 		return nil, err
 	}
 	facts, arguments := gatherGatewayFacts(e, binary)

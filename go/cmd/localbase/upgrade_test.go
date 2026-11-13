@@ -98,26 +98,6 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 	}
 }
 
-func TestCheckInstalled(t *testing.T) {
-	if err := checkInstalled("/opt/homebrew/Cellar/local-base/1/bin/local-base"); err == nil || !strings.Contains(err.Error(), "brew upgrade") {
-		t.Errorf("Homebrew: %v", err)
-	}
-	dir := t.TempDir()
-	if err := checkInstalled(filepath.Join(dir, "local-base")); err != nil {
-		t.Errorf("a writable directory: %v", err)
-	}
-	if left, _ := os.ReadDir(dir); len(left) != 0 {
-		t.Errorf("left behind: %v", left)
-	}
-	locked := filepath.Join(dir, "locked")
-	if err := os.Mkdir(locked, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	if err := checkInstalled(filepath.Join(locked, "local-base")); err == nil || !strings.Contains(err.Error(), "Cannot write") {
-		t.Errorf("a read-only directory: %v", err)
-	}
-}
-
 // The release build never compiles the test key in (DESIGN §33.5). Every file is read: one that
 // moved fails this test rather than leaving it to check nothing.
 func TestReleaseBuildSetsNoTestKey(t *testing.T) {
