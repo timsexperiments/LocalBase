@@ -123,7 +123,7 @@ func (h *Handler) placementState(w http.ResponseWriter, r *http.Request, id stri
 	if plan, ok := h.opts.Runtimes.LLM.LoadedPlacement(id); ok && plan.Placement != nil {
 		out["loaded"] = true
 		out["resolved"] = placementJSON(plan)
-		out["pendingNextLoad"] = !sameRequest(plan.PlacementRequest, req) || plan.Budget.ConfiguredCeiling != cfg.CtxSize
+		out["pendingNextLoad"] = pendingNextLoad(plan, req, cfg)
 	}
 	if next, err := h.opts.Runtimes.LLM.PreviewPlacement(id, req); err == nil && next.Placement != nil {
 		pj := placementJSON(next)
@@ -148,6 +148,13 @@ func placementJSON(plan *runtime.LLMPlan) map[string]any {
 	return m
 }
 
+// pendingNextLoad: the loaded model's next load would differ from how it was loaded, by another
+// placement or another configured context ceiling. The browser's placement page and the CLI (through
+// placement-state) both get this one answer.
+func pendingNextLoad(plan *runtime.LLMPlan, req placement.Request, cfg *store.Config) bool {
+	return !sameRequest(plan.PlacementRequest, req) || plan.Budget.ConfiguredCeiling != cfg.CtxSize
+}
+
 func sameRequest(a, b placement.Request) bool {
 	eq := func(x, y *int) bool { return (x == nil) == (y == nil) && (x == nil || *x == *y) }
 	ma, mb := a.Mode, b.Mode
@@ -161,7 +168,8 @@ func sameRequest(a, b placement.Request) bool {
 }
 
 // placementRuntimeState tells the local CLI, behind the instance token,
-// whether a model is loading and the split it was loaded with.
+// whether a model is loading, the split it was loaded with, and whether its
+// next load would differ (pendingNextLoad, the rule the placement page uses).
 func (h *Handler) PlacementRuntimeState(w http.ResponseWriter, r *http.Request) {
 	if !httpx.InstanceTokenMatches(h.opts.Root.Instance(), r) || h.opts.Runtimes.LLM == nil {
 		w.WriteHeader(404)
@@ -176,6 +184,7 @@ func (h *Handler) PlacementRuntimeState(w http.ResponseWriter, r *http.Request) 
 			req.Mode = placement.Auto
 		}
 		out["loadedRequest"] = req
+		out["pendingNextLoad"] = pendingNextLoad(plan, h.opts.Placement.Request(id), h.opts.Runtimes.LLM.Config())
 	}
 	httpx.JSON(w, 200, out)
 }

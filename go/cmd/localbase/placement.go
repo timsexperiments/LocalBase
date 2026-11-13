@@ -165,7 +165,7 @@ func placementStatus(e *env, llm *runtime.LLM, src *runtime.HostPlacement, id st
 		"contextSize": e.Config.CtxSize, "contextMode": e.Config.CtxMode, "contextScope": "all models"}}
 	if live != nil && live.Loaded {
 		st.Loaded, st.Resolved = true, live.Resolved
-		st.PendingNextLoad = live.LoadedRequest.Mode != req.Mode || !sameInt(live.LoadedRequest.CPUMoELayers, req.CPUMoELayers) || !sameInt(live.LoadedRequest.GPULayers, req.GPULayers)
+		st.PendingNextLoad = live.PendingNextLoad // the gateway's rule, which counts the context ceiling too
 	}
 	plan, err := llm.PreviewPlacement(id, req)
 	var pe *placement.Error
@@ -180,13 +180,14 @@ func placementStatus(e *env, llm *runtime.LLM, src *runtime.HostPlacement, id st
 	return st
 }
 
-func sameInt(a, b *int) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
-
 type livePlacement struct {
 	Loading       bool              `json:"loading"`
 	Loaded        bool              `json:"loaded"`
 	Resolved      map[string]any    `json:"resolved"`
 	LoadedRequest placement.Request `json:"loadedRequest"`
+	// PendingNextLoad is the gateway's answer: its next load would differ by placement or context
+	// ceiling.
+	PendingNextLoad bool `json:"pendingNextLoad"`
 }
 
 // gatewayPlacement asks a running gateway, with its instance token.
