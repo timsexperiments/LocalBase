@@ -70,6 +70,14 @@ func theKit(t *testing.T) *upgradeKit {
 	return kit
 }
 
+// removeUpgradeKit removes the kit's directory and the binaries built in it (about 100 MB),
+// which every run of this package otherwise left in $TMPDIR. TestMain calls it.
+func removeUpgradeKit() {
+	if kit != nil {
+		_ = fsguard.RemoveAll(kit.dir)
+	}
+}
+
 // build compiles a stamped binary once per version and kind.
 func (k *upgradeKit) build(t *testing.T, ver string, withKey bool) string {
 	t.Helper()

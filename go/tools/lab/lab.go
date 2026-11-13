@@ -66,11 +66,13 @@ func NewWorkspace(parent string) (*Workspace, error) {
 	if parent == "" {
 		parent = os.TempDir()
 	}
-	dir, err := os.MkdirTemp(parent, "lblab-")
+	made, err := os.MkdirTemp(parent, "lblab-")
 	if err != nil {
 		return nil, err
 	}
-	if dir, err = filepath.EvalSymlinks(dir); err != nil {
+	dir, err := filepath.EvalSymlinks(made)
+	if err != nil {
+		os.RemoveAll(made)
 		return nil, err
 	}
 	if err := refuseLive(dir); err != nil {
@@ -83,7 +85,11 @@ func NewWorkspace(parent string) (*Workspace, error) {
 		return nil, err
 	}
 	w := &Workspace{Dir: dir, Bin: filepath.Join(dir, "bin"), moduleDir: module, ports: newPortBlock()}
-	return w, os.MkdirAll(w.Bin, 0o700)
+	if err := os.MkdirAll(w.Bin, 0o700); err != nil {
+		os.RemoveAll(dir) // a caller that gets an error has no workspace to Close
+		return nil, err
+	}
+	return w, nil
 }
 
 // refuseLive stops a path inside the installed root or the installed binaries.

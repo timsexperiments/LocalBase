@@ -26,10 +26,15 @@ import (
 var fakeBinary string
 
 func TestMain(m *testing.M) {
-	dir, _ := os.MkdirTemp("", "lbgo-fake-")
+	dir, err := os.MkdirTemp("", "lbgo-fake-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	fakeBinary = filepath.Join(dir, "llama-server")
 	if out, err := exec.Command("go", "build", "-o", fakeBinary, "./fakebackend").CombinedOutput(); err != nil {
 		fmt.Fprintln(os.Stderr, string(out))
+		os.RemoveAll(dir) // os.Exit runs no cleanup, so the build directory goes first
 		os.Exit(1)
 	}
 	code := m.Run()

@@ -340,6 +340,14 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A launch that fails at any step removes its scratch directory, as Stop does
+	// (LOCALBASE_CONTRACT_KEEP keeps it); a gateway that came up is the caller's to Stop.
+	scratch, launched := dir, false
+	defer func() {
+		if !launched && os.Getenv("LOCALBASE_CONTRACT_KEEP") == "" {
+			_ = fsguard.RemoveAll(scratch)
+		}
+	}()
 	dir, _ = filepath.EvalSymlinks(dir)
 	rootDir := filepath.Join(dir, "root")
 	port, llmPort := testutil.FreePort(), testutil.FreePort()
@@ -421,6 +429,7 @@ func Launch(impl string, opts ...Option) (*Target, error) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+	launched = true
 	return &Target{Name: impl, BaseURL: base, Key: key, ChatOnly: chatOnly, Admin: admin, RealModel: real, Root: rootDir, stop: stop, halt: halt}, nil
 }
 

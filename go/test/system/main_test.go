@@ -17,10 +17,12 @@ import (
 )
 
 // TestMain runs the package's tests through the harness, which launches the shared targets
-// when a test first asks and stops them at the end, then removes the CLI builds.
+// when a test first asks and stops them at the end, then removes the CLI builds and the upgrade
+// kit's binaries.
 func TestMain(m *testing.M) {
 	code := harness.Main(m)
 	removeGoCLI()
+	removeUpgradeKit()
 	os.Exit(code)
 }
 
