@@ -539,3 +539,33 @@ func rankOfFit(verdict string) int {
 	}
 	return unknownFitRank
 }
+
+// Recommend is `models recommend`'s picks: at most six of kind's catalog models whose planning minimum
+// fits in vramGB. LLMs come largest first and leave out those with their own runtime; other kinds come
+// smallest on disk first. Video has none.
+func Recommend(cat *catalog.Catalog, kind string, vramGB int) []*catalog.Spec {
+	var picks []*catalog.Spec
+	for _, s := range cat.All() {
+		if s.Kind != kind || kind == "video" || runtime.FitFor(s, 0, nil, nil, cat.PlannableFeedPeaks(s)).MinVramGB > vramGB {
+			continue
+		}
+		if kind == "llm" && s.LLMRuntime != nil {
+			continue
+		}
+		picks = append(picks, s)
+	}
+	minGB := func(s *catalog.Spec) int {
+		return runtime.FitFor(s, 0, nil, nil, cat.PlannableFeedPeaks(s)).MinVramGB
+	}
+	sort.SliceStable(picks, func(i, j int) bool {
+		a, b := picks[i], picks[j]
+		if kind == "llm" {
+			return minGB(a) > minGB(b)
+		}
+		return a.StorageGB < b.StorageGB
+	})
+	if len(picks) > 6 {
+		picks = picks[:6]
+	}
+	return picks
+}

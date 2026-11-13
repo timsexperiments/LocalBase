@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -377,29 +376,7 @@ func modelsRecommend() *cli.Command {
 				}
 				vram = v
 			}
-			var picks []*catalog.Spec
-			for _, s := range e.Catalog.All() {
-				if s.Kind != kind || kind == "video" || runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB > vram {
-					continue
-				}
-				if kind == "llm" && s.LLMRuntime != nil {
-					continue
-				}
-				picks = append(picks, s)
-			}
-			minGB := func(s *catalog.Spec) int {
-				return runtime.FitFor(s, 0, nil, nil, e.Catalog.PlannableFeedPeaks(s)).MinVramGB
-			}
-			sort.SliceStable(picks, func(i, j int) bool {
-				a, b := picks[i], picks[j]
-				if kind == "llm" {
-					return minGB(a) > minGB(b)
-				}
-				return a.StorageGB < b.StorageGB
-			})
-			if len(picks) > 6 {
-				picks = picks[:6]
-			}
+			picks := meta.Recommend(e.Catalog, kind, vram)
 			c.Info("Recommended %s models for <= %dGB VRAM:", strings.ToUpper(kind), vram)
 			out := []map[string]any{}
 			for _, s := range picks {
