@@ -113,25 +113,48 @@ func TestRemovingAServiceWithNothingLeftIsFine(t *testing.T) {
 	}
 }
 
-// Every command a removal runs goes through the Manager it was asked of: the inspections, the stop
-// and the disable, and the reload after. A path that made its own Manager would run the real
-// launchctl or systemctl, and its commands would be missing here.
+// Every command a removal runs goes through the Manager it was asked of, in this order, for the
+// stopped manager's answers: stopManaged's inspection, stopManager's own, the disable (no bootout or
+// stop: nothing is loaded or active), one poll that finds it stopped, systemd's reload after the
+// files go, and the final Inspect. A path that made its own Manager would run the real launchctl
+// or systemctl, and its commands would be missing here, even where the real one answers as the fake
+// does (launchctl print of a scratch label: 113, not found).
 func TestRemoveRunsEveryCommandThroughItsManager(t *testing.T) {
 	r, m, _ := installed(t)
 	g, calls := stoppedManager()
 	if _, err := g.Remove(r); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
-	inspected, disabled := false, false
-	for _, c := range *calls {
-		if c[0] != executable(m) {
-			t.Errorf("a command for another manager: %q", c)
-		}
-		joined := strings.Join(c[1:], " ")
-		inspected = inspected || strings.HasPrefix(joined, "print") || strings.Contains(joined, "--user show ")
-		disabled = disabled || strings.Contains(joined, "disable")
+	var inspect, want [][]string
+	if m.Manager == "launchd" {
+		inspect = [][]string{{"print", domain()}, {"print", target(m)}, {"print-disabled", domain()}}
+	} else {
+		inspect = [][]string{{"--user", "show", m.UnitName,
+			"--property=LoadState,ActiveState,SubState,MainPID,ExecMainCode,ExecMainStatus,NRestarts", "--no-pager"},
+			{"--user", "is-enabled", m.UnitName}}
 	}
-	if !inspected || !disabled {
-		t.Errorf("the removal's inspection or disable didn't go through its Manager: %q", *calls)
+	want = append(want, inspect...) // stopManaged
+	want = append(want, inspect...) // stopManager, before
+	if m.Manager == "launchd" {
+		want = append(want, []string{"disable", target(m)})
+	} else {
+		want = append(want, []string{"--user", "disable", m.UnitName})
+	}
+	want = append(want, inspect...) // the poll: stopped
+	if m.Manager != "launchd" {
+		want = append(want, []string{"--user", "daemon-reload"})
+	}
+	want = append(want, inspect...) // the final Inspect
+	for i := range want {
+		want[i] = append([]string{executable(m)}, want[i]...)
+	}
+	got := *calls
+	if len(got) != len(want) {
+		t.Fatalf("%d commands, want %d:\n got  %q\n want %q", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if strings.Join(got[i], " ") != strings.Join(want[i], " ") {
+			t.Errorf("command %d: %q, want %q", i, got[i], want[i])
+		}
 	}
 }

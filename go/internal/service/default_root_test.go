@@ -22,7 +22,12 @@ func TestATestIsRefusedTheDefaultRoot(t *testing.T) {
 	for _, op := range []struct {
 		name string
 		do   func(*root.Root) (Inspection, error)
-	}{{"StopWithin", g.StopWithin}, {"Remove", g.Remove}} {
+	}{
+		{"StopWithin", g.StopWithin},
+		{"Remove", g.Remove},
+		// Start takes the root's lease before it refuses: under the scratch HOME, that is scratch too.
+		{"Start", func(r *root.Root) (Inspection, error) { return g.Start(r, false, false) }},
+	} {
 		_, err := op.do(&root.Root{Dir: root.Default()})
 		if err == nil || !strings.Contains(err.Error(), "A test tried to manage the service on the default root") {
 			t.Errorf("%s on the default root: %v", op.name, err)
