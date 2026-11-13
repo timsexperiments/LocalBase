@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/timsexperiments/LocalBase/go/internal/conf"
+	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -62,7 +64,7 @@ func TestActivationsAtOnceAllLand(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- recordActive(r.Dir, st, running, kind, id)
+			errs <- conf.RecordActive(r.Dir, st, running, kind, id)
 		}()
 	}
 	wg.Wait()
@@ -98,7 +100,7 @@ func TestAnActivationKeepsAFreshlySavedToken(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := st.LoadConfig(ctx)
@@ -121,7 +123,7 @@ func TestAnActivationDoesNotSaveTheRunningOverrides(t *testing.T) {
 	over := running.Config().Clone()
 	over.Host = "override.example"
 	running.SetConfig(over)
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := st.LoadConfig(ctx)
@@ -140,7 +142,7 @@ func TestAnActivationDoesNotSaveTheRunningOverrides(t *testing.T) {
 func TestActivatingTheActiveModelWritesNothing(t *testing.T) {
 	r, st, running := activationRoot(t)
 	ctx := context.Background()
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := st.LoadConfig(ctx)
@@ -151,7 +153,7 @@ func TestActivatingTheActiveModelWritesNothing(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
+	if err := conf.RecordActive(r.Dir, st, running, "stt", "model-b"); err != nil {
 		t.Fatal(err)
 	}
 	after, err := st.LoadConfig(ctx)
@@ -176,14 +178,14 @@ func TestAnOnDemandInstallUsesTheTokenSavedSinceStartup(t *testing.T) {
 	if err := st.SaveConfig(ctx, saved); err != nil {
 		t.Fatal(err)
 	}
-	if got := currentHFToken(ctx, e); got != saved.HFToken {
+	if got := install.CurrentHFToken(ctx, e.Store, e.Config); got != saved.HFToken {
 		t.Error("the install would use the token from startup")
 	}
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
 	e.Config = &store.Config{HFToken: "from-startup"}
-	if got := currentHFToken(ctx, e); got != "from-startup" {
+	if got := install.CurrentHFToken(ctx, e.Store, e.Config); got != "from-startup" {
 		t.Error("with the store unreadable, it should fall back to what it started with")
 	}
 }

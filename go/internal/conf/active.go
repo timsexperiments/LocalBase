@@ -1,4 +1,4 @@
-package main
+package conf
 
 import (
 	"context"
@@ -8,18 +8,18 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// runningConfig is the configuration a running gateway uses. It can differ from the saved one, by
+// RunningConfig is the configuration a running gateway uses. It can differ from the saved one, by
 // the environment and the serve flags.
-type runningConfig interface {
+type RunningConfig interface {
 	Config() *store.Config
 	SetConfig(*store.Config)
 }
 
-// recordActive makes a model the active one of its kind. The saved configuration is read under the
+// RecordActive makes a model the active one of its kind. The saved configuration is read under the
 // root's lease, so that activations don't overwrite each other, or a token or setting saved since
 // the gateway started. Only the one value changes: the running configuration's overrides are not
 // saved, and the saved one's other values are not replaced by what this process remembers.
-func recordActive(rootDir string, st *store.Store, running runningConfig, kind, modelID string) error {
+func RecordActive(rootDir string, st *store.Store, running RunningConfig, kind, modelID string) error {
 	if running.Config().Active[kind] == modelID {
 		return nil
 	}

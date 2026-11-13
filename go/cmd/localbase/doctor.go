@@ -34,8 +34,8 @@ func doctorCommand() *cli.Command {
 				return nil, err
 			}
 			defer e.Close()
-			if err := applyEnvOverrides(e.Config); err != nil {
-				return nil, err
+			if err := conf.ApplyEnv(e.Config); err != nil {
+				return nil, inputError(err)
 			}
 			problem := ""
 			if e.DatabaseProblem != nil {

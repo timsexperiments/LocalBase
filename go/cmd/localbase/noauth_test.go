@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -12,63 +10,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
-
-func TestHostIsLoopback(t *testing.T) {
-	names := map[string][]net.IP{
-		"only-loopback.test": {net.IPv4(127, 0, 0, 1), net.IPv6loopback},
-		"mixed.test":         {net.IPv4(127, 0, 0, 1), net.IPv4(192, 168, 1, 9)},
-		"lan.test":           {net.IPv4(192, 168, 1, 9)},
-		"nothing.test":       {},
-	}
-	old := lookupHost
-	lookupHost = func(_ context.Context, host string) ([]net.IP, error) {
-		if ips, ok := names[host]; ok {
-			return ips, nil
-		}
-		return nil, errors.New("no such host")
-	}
-	t.Cleanup(func() { lookupHost = old })
-	for host, want := range map[string]bool{
-		"127.0.0.1":          true,
-		"127.1.2.3":          true,
-		"::1":                true,
-		"[::1]":              true,
-		"localhost":          true,
-		"LOCALHOST.":         true,
-		"only-loopback.test": true,
-		"":                   false, // binds every interface
-		" ":                  false,
-		"0.0.0.0":            false,
-		"::":                 false,
-		"[::]":               false,
-		"192.168.1.9":        false,
-		"10.0.0.1":           false,
-		"fe80::1":            false,
-		"mixed.test":         false, // one reachable address is enough
-		"lan.test":           false,
-		"nothing.test":       false,
-		"unresolvable.test":  false,
-	} {
-		if got := hostIsLoopback(host); got != want {
-			t.Errorf("hostIsLoopback(%q) = %v, want %v", host, got, want)
-		}
-	}
-}
-
-func TestNoAuthListenerError(t *testing.T) {
-	for addr, ok := range map[string]bool{"127.0.0.1:1": true, "[::1]:1": true, "0.0.0.0:1": false, "[::]:1": false, "192.168.1.9:1": false} {
-		a, err := net.ResolveTCPAddr("tcp", addr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := noAuthListenerError(a) == nil; got != ok {
-			t.Errorf("%s: allowed = %v, want %v", addr, got, ok)
-		}
-	}
-	if noAuthListenerError(&net.UnixAddr{Name: "/tmp/x"}) == nil {
-		t.Error("a non-TCP listener was allowed")
-	}
-}
 
 // noAuthRoot is an initialized root.
 func noAuthRoot(t *testing.T) string {
@@ -83,7 +24,7 @@ func noAuthRoot(t *testing.T) string {
 
 func refused(t *testing.T, code int, out, host string) {
 	t.Helper()
-	if code == 0 || !strings.Contains(out, "Refusing --no-auth") || !strings.Contains(out, host) || !strings.Contains(out, "--host 127.0.0.1") {
+	if code != 2 || !strings.Contains(out, "Refusing --no-auth") || !strings.Contains(out, host) || !strings.Contains(out, "--host 127.0.0.1") {
 		t.Errorf("%s: code %d, output:\n%s", host, code, out)
 	}
 }

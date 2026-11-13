@@ -22,6 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
@@ -41,32 +42,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/voices"
 	"github.com/timsexperiments/LocalBase/go/internal/web"
 )
-
-// nameBindingIssuers gives older email bindings and invitations their sign-in provider
-// when only one could be meant (DESIGN §13.6, item 5b), and says what is left. It never
-// stops a start: what names no provider grants nothing, and the host commands still work.
-func nameBindingIssuers(st *store.Store, access *auth.BrowserAccess, log *slog.Logger) {
-	ctx := context.Background()
-	adopted, err := auth.AdoptBindingIssuers(ctx, st, access)
-	if err != nil {
-		log.Error("Naming the sign-in provider on older bindings failed; they grant nothing until it is done.", "event", "auth.issuers-adopt-failed", "error", err.Error())
-	} else if adopted > 0 {
-		log.Info("Email bindings and invitations now name their sign-in provider.", "event", "auth.issuers-adopted", "count", adopted)
-	}
-	left, err := auth.CountUnbound(ctx, st.DB)
-	if err != nil || len(access.Issuers()) == 0 {
-		return // with no provider, nobody can sign in and there is nothing to choose
-	}
-	for _, group := range []struct {
-		kind, what string
-		count      int
-	}{{"email", "email bindings", left.Emails}, {"email-domain", "domain bindings", left.Domains}, {"invitation", "invitations", left.Invitations}} {
-		if group.count > 0 {
-			log.Warn(fmt.Sprintf("%d %s are not bound to a sign-in provider, so they grant nothing. Run: local-base access bindings adopt --issuer <issuer>", group.count, group.what),
-				"event", "auth.bindings-unbound", "kind", group.kind, "count", group.count)
-		}
-	}
-}
 
 // stopStuck does nothing outside a localbase_lab build, where it can stand for a stop that never
 // returns, to test what happens then.
@@ -225,8 +200,8 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	defer e.Close()
 	r, st, cfg, cat := e.Root, e.Store, e.Config, e.Catalog
-	if err := applyEnvOverrides(cfg); err != nil {
-		return nil, err
+	if err := conf.ApplyEnv(cfg); err != nil {
+		return nil, inputError(err)
 	}
 
 	// Before anything writes to them: a planted link must not redirect a log (TS).
@@ -340,7 +315,7 @@ func serve(c *cli.Ctx) (any, error) {
 	placementSource := &runtime.HostPlacement{Store: st, DeviceID: lib.DeviceID, Memory: mem, Log: log}
 	// A switch to another configured model makes it the active one, as in TS.
 	activate := func(kind, modelID string) {
-		if err := recordActive(r.Dir, st, llm, kind, modelID); err != nil {
+		if err := conf.RecordActive(r.Dir, st, llm, kind, modelID); err != nil {
 			log.Warn("Could not record the active "+kind+" model.", "event", "config.save-failed", "error", err.Error())
 		}
 	}
@@ -421,7 +396,7 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	if !noAuth {
 		// Without sign-in, nothing yet depends on who vouches for an address.
-		nameBindingIssuers(st, access, log)
+		auth.NameBindingIssuers(context.Background(), st, access, log)
 	}
 	browser := auth.NewBrowser(st, r.Dir, access, log)
 	if browser.HasMagicLink() == nil {
@@ -762,7 +737,7 @@ func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (
 // then, so an error here means it can't have changed; it is logged, and leaves that value saved.
 func runningOverrides(llmHost string, log *slog.Logger) func(*store.Config) {
 	return func(cfg *store.Config) {
-		if err := applyEnvOverrides(cfg); err != nil {
+		if err := conf.ApplyEnv(cfg); err != nil {
 			log.Warn("Could not apply the environment to the running configuration.", "event", "config.override-failed", "error", err.Error())
 		}
 		if llmHost != "" {
