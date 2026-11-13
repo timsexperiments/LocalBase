@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/instance"
+	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -59,11 +60,7 @@ func runModelsPlacement(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	mem := memory.NewController(e.Host, memory.Reserve{Percent: e.Config.SystemReserve.Percent, MinimumGB: e.Config.SystemReserve.MinimumGB}, false)
-	src := &runtime.HostPlacement{Store: e.Store, DeviceID: lib.DeviceID, Memory: mem}
-	llm := runtime.NewLLM(runtime.LLMDeps{Root: e.Root.Dir, ModelsDir: e.Root.ModelsDir("llm"), RuntimesDir: e.Root.RuntimesDir(),
-		Store: e.Store, Catalog: e.Catalog, Memory: mem, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		MemoryGB: float64(e.memoryGB()), Gate: lib.Gate(), Placement: src}, e.Config)
+	llm, _, src := placementLLM(e, lib)
 	defer llm.Close()
 	live := gatewayPlacement(e, id)
 	changing := c.Has("mode") || c.Has("cpu-moe-layers") || c.Has("gpu-layers") || c.Has("context-size") || c.Bool("reset")
@@ -285,11 +282,7 @@ func showPlacementLines(e *env, id string) []string {
 	if err != nil {
 		return nil
 	}
-	mem := memory.NewController(e.Host, memory.Reserve{Percent: e.Config.SystemReserve.Percent, MinimumGB: e.Config.SystemReserve.MinimumGB}, false)
-	src := &runtime.HostPlacement{Store: e.Store, DeviceID: lib.DeviceID, Memory: mem}
-	llm := runtime.NewLLM(runtime.LLMDeps{Root: e.Root.Dir, ModelsDir: e.Root.ModelsDir("llm"), RuntimesDir: e.Root.RuntimesDir(),
-		Store: e.Store, Catalog: e.Catalog, Memory: mem, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		MemoryGB: float64(e.memoryGB()), Gate: lib.Gate(), Placement: src}, e.Config)
+	llm, _, src := placementLLM(e, lib)
 	defer llm.Close()
 	return append([]string{""}, placementTextLines(placementStatus(e, llm, src, id, gatewayPlacement(e, id)))...)
 }
@@ -313,11 +306,7 @@ func machineFitLine(e *env, id string) (string, bool) {
 	if complete, _ := spec.Installation(e.Root.ModelsDir("llm")); !complete {
 		return "", false
 	}
-	mem := memory.NewController(e.Host, memory.Reserve{Percent: e.Config.SystemReserve.Percent, MinimumGB: e.Config.SystemReserve.MinimumGB}, false)
-	src := &runtime.HostPlacement{Store: e.Store, DeviceID: lib.DeviceID, Memory: mem}
-	llm := runtime.NewLLM(runtime.LLMDeps{Root: e.Root.Dir, ModelsDir: e.Root.ModelsDir("llm"), RuntimesDir: e.Root.RuntimesDir(),
-		Store: e.Store, Catalog: e.Catalog, Memory: mem, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		MemoryGB: float64(e.memoryGB()), Gate: lib.Gate(), Placement: src}, e.Config)
+	llm, mem, _ := placementLLM(e, lib)
 	defer llm.Close()
 	need, ok := llm.NextLoadBytes(id)
 	if !ok {
@@ -335,4 +324,15 @@ func fitLine(need, capacity, reserve int64) string {
 	}
 	return fmt.Sprintf("  This machine:   Fits, %s to spare of %s after keeping %s for your computer",
 		meta.FormatGB(left), meta.FormatGB(capacity), meta.FormatGB(reserve))
+}
+
+// placementLLM is an LLM manager over this root that loads nothing, for the placement commands to plan
+// with: this computer's memory less what the configuration keeps for it, and the device's placements.
+func placementLLM(e *env, lib *library.Library) (*runtime.LLM, *memory.Controller, *runtime.HostPlacement) {
+	mem := memory.NewController(e.Host, memory.Reserve{Percent: e.Config.SystemReserve.Percent, MinimumGB: e.Config.SystemReserve.MinimumGB}, false)
+	src := &runtime.HostPlacement{Store: e.Store, DeviceID: lib.DeviceID, Memory: mem}
+	llm := runtime.NewLLM(runtime.LLMDeps{Root: e.Root.Dir, ModelsDir: e.Root.ModelsDir("llm"), RuntimesDir: e.Root.RuntimesDir(),
+		Store: e.Store, Catalog: e.Catalog, Memory: mem, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		MemoryGB: float64(e.memoryGB()), Gate: lib.Gate(), Placement: src}, e.Config)
+	return llm, mem, src
 }
