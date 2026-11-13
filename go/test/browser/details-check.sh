@@ -1,4 +1,5 @@
 #!/bin/sh
+. "$(dirname "$0")/../../tools/test-ports.sh"
 # Where each <details> really lands, in one browser, for comparing browsers (DESIGN §27.5). Browsers
 # box a <details> differently, so a layout can pass in one and be wrong in another. Run it once per
 # browser, then compare. See test/browser/details-check/README.md.
@@ -10,10 +11,7 @@ base=${1:?usage: details-check.sh <base-url> <out.json>}
 out=${2:?usage: details-check.sh <base-url> <out.json>}
 chrome=${LBGO_CHROME:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}
 profile="$here/.cache/browser-profile-details-check"
-ports=${LOCALBASE_TEST_PORTS:-24000-29999}
-low=${ports%-*}
-high=${ports#*-}
-port=$((low + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % (high - low + 1)))
+port=$(test_port_pick)
 . "$here/test/browser/browser-run.sh"
 browser_guard details-check
 (cd "$here" && rm -rf .cache/browser-profile-details-check)
