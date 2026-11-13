@@ -76,7 +76,6 @@ var (
 	// sizeRe is TS sizeOf with its trailing lookahead consumed.
 	sizeRe      = regexp.MustCompile(`(?i)(?:^|[-_.])(\d+(?:\.\d+)?)([BM])(?:[-_.]|$)`)
 	whisperSize = regexp.MustCompile(`(?i)(tiny|base|small|medium|large(?:-v\d)?(?:-turbo)?)`)
-	modelIDRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	ggufSuffix  = regexp.MustCompile(`(?i)[-_]?GGUF$`)
 	coderRe     = regexp.MustCompile(`(?i)coder|code`)
 	englishRe   = regexp.MustCompile(`(?i)(^|[-_.])en($|[-_.])`)

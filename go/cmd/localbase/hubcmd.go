@@ -14,6 +14,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/hub"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/meta"
+	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -197,7 +198,7 @@ func modelsAdd() *cli.Command {
 		},
 		Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
 			id := c.String("id")
-			if c.Has("id") && !modelIDOK(id) {
+			if c.Has("id") && !models.ValidID(id) {
 				return nil, cli.Inputf("id: use lowercase letters, digits, '.', '_' and '-'")
 			}
 			ref, err := hub.ParseReference(c.Args[0])
@@ -305,21 +306,6 @@ func modelsAdd() *cli.Command {
 				"declaredCapabilities": declared, "detectedCapabilities": entry.Detected, "contextWindowTokens": ctxLen,
 				"replaced": replaced, "installedPath": installed}, nil
 		})}
-}
-
-func modelIDOK(id string) bool {
-	if id == "" {
-		return false
-	}
-	for i, r := range id {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-		case i > 0 && (r == '.' || r == '_' || r == '-'):
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func modelsRemoveEntry() *cli.Command {
