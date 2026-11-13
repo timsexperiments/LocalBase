@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -52,12 +53,12 @@ func runAccessGolden(t *testing.T, file string, steps []accessOp, state ...func(
 		out.WriteString("== " + s.name + "\n")
 		out.WriteString("request: " + s.body + "\n")
 		out.WriteString("status: " + itoa(status) + "\n")
-		out.WriteString("answer: " + answer.String() + "\n")
+		out.WriteString("answer: " + masked(answer.String()) + "\n")
 		out.WriteString("audit: " + strings.Join(audit, ", ") + "\n")
 		out.WriteString("ui-access.json: " + saved("ui-access.json") + "\n")
 		out.WriteString("email-delivery.json: " + saved("email-delivery.json") + "\n")
 		for _, s := range state { // what lives in the database, for the policy and users goldens
-			out.WriteString(s(f) + "\n")
+			out.WriteString(masked(s(f)) + "\n")
 		}
 		out.WriteString("\n")
 	}
@@ -219,4 +220,53 @@ func TestPolicyActionsGolden(t *testing.T) {
 		{"clear", `{"action":"clear-policy","expectedPolicyRevision":{{rev}}}`},
 		{"clear again", `{"action":"clear-policy","expectedPolicyRevision":null}`},
 	}, storedPolicy)
+}
+
+// storedUsers is the people, from the access GET, with what differs every run (ids, times)
+// masked, for a golden.
+func storedUsers(f *auditFixture) string {
+	_, out := f.send(f.key, "GET", "/_localbase/access-management", "", nil)
+	var v struct {
+		Users json.RawMessage `json:"users"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return "users: (unreadable answer) " + string(out)
+	}
+	return "users: " + string(v.Users)
+}
+
+// masked hides what differs every run: a record's uuid and a time. A registration's own id
+// ("a", "email") isn't a uuid, and stays.
+func masked(s string) string {
+	s = uuidValue.ReplaceAllString(s, "<uuid>")
+	return timeValue.ReplaceAllString(s, "<time>")
+}
+
+var (
+	uuidValue = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	timeValue = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z`)
+)
+
+// Every user action, as the gateway answers it and who it leaves.
+func TestUserActionsGolden(t *testing.T) {
+	const roles = `{"name":"chat","description":"","permissions":["inference:chat"]},{"name":"admin","description":"","permissions":["access:read","access:manage"]}`
+	runAccessGolden(t, "access_users.golden", []accessOp{
+		{"invite with no provider", `{"action":"invite-user","email":"friend@example.test","roles":["chat"]}`},
+		{"a provider", `{"action":"upsert-oidc","registration":{"kind":"oidc","id":"a","name":"P","issuer":"https://a.example.test","clientId":"x","clientAuthentication":{"kind":"none"}},"origin":"https://lb.example.test","permissions":["inference:chat","access:manage","access:read"]}`},
+		{"invite with no policy", `{"action":"invite-user","email":"friend@example.test","roles":["chat"]}`},
+		{"a policy", `{"action":"apply-policy","expectedPolicyRevision":null,"policy":{"roles":[` + roles + `],"bindings":[{"kind":"email","role":"admin","email":"owner@example.test"}],"defaultRole":null}}`},
+		{"invite", `{"action":"invite-user","email":"Friend@Example.test","roles":["chat"]}`},
+		{"invite them again", `{"action":"invite-user","email":"friend@example.test","roles":["chat"]}`},
+		{"invite to a role that isn't there", `{"action":"invite-user","email":"other@example.test","roles":["missing"]}`},
+		{"invite and send, with no email delivery", `{"action":"invite-user","email":"other@example.test","roles":["chat"],"sendEmail":true}`},
+		{"their roles changed", `{"action":"replace-user-roles","email":"friend@example.test","roles":["chat","admin"]}`},
+		{"the same roles, reordered", `{"action":"replace-user-roles","email":"friend@example.test","roles":["admin","chat"]}`},
+		{"enabled, as they are not yet", `{"action":"enable-user","email":"friend@example.test"}`},
+		{"enabled again", `{"action":"enable-user","email":"friend@example.test"}`},
+		{"disabled", `{"action":"disable-user","email":"friend@example.test"}`},
+		{"disabled again", `{"action":"disable-user","email":"friend@example.test"}`},
+		{"someone who isn't there", `{"action":"enable-user","email":"nobody@example.test"}`},
+		{"removed", `{"action":"remove-user","email":"friend@example.test"}`},
+		{"removed again", `{"action":"remove-user","email":"friend@example.test"}`},
+	}, storedUsers)
 }

@@ -545,12 +545,8 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		signIn := current.Origin + "/app/login"
-		delivered := false
-		if email != nil {
-			delivered = auth.SendEmail(email, user.Email, "You were invited to LocalBase",
-				"You were invited to LocalBase. Sign in here:\n\n"+signIn) == nil
-		}
+		signIn := auth.InvitationSignIn(current)
+		delivered := email != nil && auth.SendInvitation(email, user.Email, signIn) == nil
 		httpx.NoStore(w, 201, map[string]any{"user": user, "signInUrl": signIn, "emailDelivered": delivered})
 	case "configure-cloudflare":
 		cfg, changed, err := auth.PlanCloudflare(current, in.Provider.TeamDomain, in.Provider.Audience, in.Origin, in.Permissions)
