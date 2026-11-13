@@ -67,3 +67,38 @@ func TestNameBindingIssuersSaysWhatItDid(t *testing.T) {
 		}
 	})
 }
+
+func TestLocalLinkBase(t *testing.T) {
+	for addr, want := range map[string]string{
+		"127.0.0.1:2273": "http://127.0.0.1:2273",
+		"0.0.0.0:2273":   "http://127.0.0.1:2273",
+		"[::]:2273":      "http://127.0.0.1:2273",
+		"localhost:2273": "http://localhost:2273",
+		"[::1]:2273":     "http://[::1]:2273",
+	} {
+		if got, err := localLinkBase(addr); err != nil || got != want {
+			t.Errorf("%s: %q %v", addr, got, err)
+		}
+	}
+	if _, err := localLinkBase("192.168.1.5:2273"); err == nil {
+		t.Error("a gateway with no loopback listener cannot redeem a link")
+	}
+}
+
+// A link is the base, the redeem path and the token, and its id is the token's.
+func TestLocalLinkURL(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	url, id, err := LocalLinkURL(ctx, st, "0.0.0.0:2273")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "http://127.0.0.1:2273" + LocalOncePath + "#"
+	token, ok := strings.CutPrefix(url, prefix)
+	if !ok || token == "" || id != LocalLinkID(token) {
+		t.Errorf("url %q, id %q", url, id)
+	}
+	if _, _, err := LocalLinkURL(ctx, st, "192.168.1.5:2273"); err == nil {
+		t.Error("a non-loopback listener issued a link")
+	}
+}

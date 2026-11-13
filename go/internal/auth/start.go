@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -31,4 +32,35 @@ func NameBindingIssuers(ctx context.Context, st *store.Store, access *BrowserAcc
 				"event", "auth.bindings-unbound", "kind", group.kind, "count", group.count)
 		}
 	}
+}
+
+// LocalLinkURL issues a one-time local sign-in link and returns where it is redeemed, from the
+// gateway's listen address addr, with the link's id for the caller's audit line (never the token).
+func LocalLinkURL(ctx context.Context, st *store.Store, addr string) (url, linkID string, err error) {
+	base, err := localLinkBase(addr)
+	if err != nil {
+		return "", "", err
+	}
+	token, err := IssueLocalLink(ctx, st)
+	if err != nil {
+		return "", "", err
+	}
+	return base + LocalOncePath + "#" + token, LocalLinkID(token), nil
+}
+
+// localLinkBase is where a link can be redeemed: the listen address, with a
+// wildcard read as 127.0.0.1. A gateway with no loopback listener cannot redeem one.
+func localLinkBase(hostport string) (string, error) {
+	host, port, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return "", err
+	}
+	ip := net.ParseIP(host)
+	switch {
+	case host == "" || (ip != nil && ip.IsUnspecified()):
+		host = "127.0.0.1"
+	case !LoopbackHost(host):
+		return "", fmt.Errorf("the gateway listens on %s, not on this computer's loopback address, so a sign-in link could not be used. Set up an identity provider instead: local-base access --help", host)
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
 }

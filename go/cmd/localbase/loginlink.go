@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"net"
 	"strconv"
@@ -16,23 +15,6 @@ import (
 // firstRunShownKey records that the first-run link was shown on this root.
 const firstRunShownKey = "access.first-run-link-shown"
 
-// loginLinkBase is where a link can be redeemed: the listen address, with a
-// wildcard read as 127.0.0.1. A gateway with no loopback listener cannot redeem one.
-func loginLinkBase(hostport string) (string, error) {
-	host, port, err := net.SplitHostPort(hostport)
-	if err != nil {
-		return "", err
-	}
-	ip := net.ParseIP(host)
-	switch {
-	case host == "" || (ip != nil && ip.IsUnspecified()):
-		host = "127.0.0.1"
-	case !auth.LoopbackHost(host):
-		return "", fmt.Errorf("the gateway listens on %s, not on this computer's loopback address, so a sign-in link could not be used. Set up an identity provider instead: local-base access --help", host)
-	}
-	return "http://" + net.JoinHostPort(host, port), nil
-}
-
 // gatewayListen is the running gateway's address, else the configured one.
 func gatewayListen(e *env) (addr string, running bool) {
 	if state, owner, _ := service.VerifiedOwnerState(e.Root); state == "active" && owner != nil && owner.Port > 0 {
@@ -42,16 +24,12 @@ func gatewayListen(e *env) (addr string, running bool) {
 }
 
 func issueLoginLink(e *env, addr string, forced bool) (string, error) {
-	base, err := loginLinkBase(addr)
+	link, id, err := auth.LocalLinkURL(context.Background(), e.Store, addr)
 	if err != nil {
 		return "", err
 	}
-	token, err := auth.IssueLocalLink(context.Background(), e.Store)
-	if err != nil {
-		return "", err
-	}
-	e.audit.LocalLinkIssued(auth.LocalLinkID(token), forced)
-	return base + auth.LocalOncePath + "#" + token, nil
+	e.audit.LocalLinkIssued(id, forced)
+	return link, nil
 }
 
 // firstRunLinkAllowed: a service-managed gateway never prints one, since its
