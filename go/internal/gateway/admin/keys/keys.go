@@ -439,7 +439,7 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
-		if err := prepareAccessChange(g, caller.Holds, p.Identity, in); err != nil {
+		if err := prepareAccessChange(g, current, caller.Holds, p.Identity, in); err != nil {
 			h.domainError(w, err)
 			return
 		}
@@ -506,24 +506,16 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 	}
 	switch in.Action {
 	case "test-policy":
-		if current == nil {
+		d, configured, err := auth.TestPolicy(ctx, h.opts.Store, current, *in.Identity)
+		switch {
+		case errors.Is(err, auth.ErrProviderNotConfigured):
 			httpx.ManagementError(w, 409, "provider_not_configured")
 			return
-		}
-		policy, err := auth.LoadPolicy(ctx, h.opts.Store.DB)
-		if err != nil {
+		case err != nil:
 			httpx.ServiceUnavailable(w, r, "Access management")
 			return
 		}
-		d, err := auth.ResolvePolicy(ctx, h.opts.Store, *in.Identity, false)
-		if err != nil {
-			httpx.ServiceUnavailable(w, r, "Access management")
-			return
-		}
-		if d == nil {
-			d = &auth.Decision{MatchedRoles: []string{}, Permissions: current.Permissions}
-		}
-		httpx.NoStore(w, 200, map[string]any{"policyConfigured": policy != nil, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
+		httpx.NoStore(w, 200, map[string]any{"policyConfigured": configured, "matchedRoles": d.MatchedRoles, "permissions": d.Permissions})
 	case "test-email-delivery":
 		email, ok := requireEmail()
 		if !ok {
@@ -755,7 +747,7 @@ func (h *Handler) AccessManagement(w http.ResponseWriter, r *http.Request) {
 
 // prepareAccessChange names the provider on what needs one (DESIGN §13.6, item 5b), and
 // refuses a change that reaches past what the caller holds (item 5a).
-func prepareAccessChange(g *auth.Guard, holds []string, identity *auth.Identity, in *accessRequest) error {
+func prepareAccessChange(g *auth.Guard, current *auth.BrowserAccess, holds []string, identity *auth.Identity, in *accessRequest) error {
 	switch in.Action {
 	case "configure-cloudflare", "upsert-oidc", "upsert-github", "upsert-magic-link":
 		return g.CheckSignInChange(holds, in.Permissions)
@@ -776,12 +768,11 @@ func prepareAccessChange(g *auth.Guard, holds []string, identity *auth.Identity,
 	case "enable-user", "disable-user", "remove-user":
 		return g.CheckUser(holds, in.Email)
 	case "apply-policy":
-		if err := in.Policy.BindIssuers(g.Issuers, identity); err != nil {
-			return err
-		}
-		// With no provider at all, the answer is that one is needed first.
-		if len(g.Issuers) > 0 {
-			if err := g.CheckBindingIssuers(in.Policy); err != nil {
+		// The issuers and their checks, as the command line's apply does them. With no provider
+		// at all there is nothing to bind, and the answer, after the caller's own check below,
+		// is that one is needed first (409 provider_not_configured, in the action).
+		if current != nil {
+			if err := auth.PreparePolicy(in.Policy, current, g.Policy, identity); err != nil {
 				return err
 			}
 		}
