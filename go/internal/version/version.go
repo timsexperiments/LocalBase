@@ -73,3 +73,9 @@ func (b Build) String() string {
 	}
 	return b.Version + " (commit " + commit + ", " + b.Date + ", " + b.GoVersion + ")"
 }
+
+// ReleaseBuild: a release stamps its commit. A plain go build does not, and neither does a build
+// from a checkout with uncommitted changes.
+func ReleaseBuild() bool {
+	return Commit != "" && !Get().Modified
+}

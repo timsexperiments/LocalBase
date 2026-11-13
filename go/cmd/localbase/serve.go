@@ -10,10 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -24,7 +21,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -108,21 +104,6 @@ func intOpt(c *cli.Ctx, name string, lo, hi int) (int, error) {
 // that point.
 var afterSignals = func() {}
 
-// mediaDefaultPorts are the speech, image and video backends' ports with no flag and no base. upgrade's
-// survivor check reads them too.
-var mediaDefaultPorts = map[string]int{"tts": 8092, "image": 8090, "video": 8091}
-
-// runtimePortOrder is the order of --runtime-port-base's block.
-var runtimePortOrder = []string{"llm", "stt", "tts", "image", "video"}
-
-// runtimePort is a runtime's port in the block from base, or configured with no base.
-func runtimePort(base int, runtime string, configured int) int {
-	if base <= 0 {
-		return configured
-	}
-	return base + slices.Index(runtimePortOrder, runtime)
-}
-
 // effectiveUID is a variable so a test can be root without being root.
 var effectiveUID = os.Geteuid
 
@@ -146,12 +127,12 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	portBase, err := intOpt(c, "runtime-port-base", 1, 65535-(len(runtimePortOrder)-1))
+	portBase, err := intOpt(c, "runtime-port-base", 1, 65535-(len(runtime.PortOrder)-1))
 	if err != nil {
 		return nil, err
 	}
 	if !c.Has("llm-port") {
-		llmPort = runtimePort(portBase, "llm", llmPort)
+		llmPort = runtime.PortInBlock(portBase, "llm", llmPort)
 	}
 	ctxSize, err := intOpt(c, "ctx-size", 2048, 2_147_483_647)
 	if err != nil {
@@ -272,7 +253,7 @@ func serve(c *cli.Ctx) (any, error) {
 	// serving anyone: it goes before this one starts backends on the same ports.
 	runtime.SweepBackends(r.Dir, log)
 	defer release()
-	tel, err := startTelemetry(cfg, handler, log)
+	tel, err := otlp.Start(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, handler, log)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +322,7 @@ func serve(c *cli.Ctx) (any, error) {
 			}
 			return host, p, nil
 		}
-		return host, runtimePort(portBase, name, port), nil
+		return host, runtime.PortInBlock(portBase, name, port), nil
 	}
 	binaries := map[string]string{"whisper-server": os.Getenv("LOCALBASE_WHISPER_SERVER"), "tts-server": os.Getenv("LOCALBASE_TTS_SERVER"),
 		"crispasr": os.Getenv("LOCALBASE_CRISPASR"), "sd-server": os.Getenv("LOCALBASE_SD_SERVER")}
@@ -361,7 +342,7 @@ func serve(c *cli.Ctx) (any, error) {
 		if modality == "tts" {
 			// A changed voice set or marking setting restarts the speech server.
 			d.ExtraKey = func() string {
-				return voiceStamp(st) + "|marking=" + strconv.FormatBool(runtime.SpeechMarking(context.Background(), st))
+				return voices.Stamp(context.Background(), st) + "|marking=" + strconv.FormatBool(runtime.SpeechMarking(context.Background(), st))
 			}
 		}
 		return runtime.NewService(d), nil
@@ -370,15 +351,15 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	tts, err := service("tts", "speech", "127.0.0.1", mediaDefaultPorts["tts"])
+	tts, err := service("tts", "speech", "127.0.0.1", runtime.MediaDefaultPorts["tts"])
 	if err != nil {
 		return nil, err
 	}
-	image, err := service("image", "image", "127.0.0.1", mediaDefaultPorts["image"])
+	image, err := service("image", "image", "127.0.0.1", runtime.MediaDefaultPorts["image"])
 	if err != nil {
 		return nil, err
 	}
-	videoService, err := service("video", "video", "127.0.0.1", mediaDefaultPorts["video"])
+	videoService, err := service("video", "video", "127.0.0.1", runtime.MediaDefaultPorts["video"])
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +433,7 @@ func serve(c *cli.Ctx) (any, error) {
 		}
 	}()
 	// The daily check is off by default, and this makes no request unless it is on.
-	gw.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, releaseBuild(), log)
+	gw.Updates = upgrade.NewChecker(st, upgrade.DefaultSource(), version.Version, version.ReleaseBuild(), log)
 	stopUpdates := gw.Updates.Start()
 	defer stopUpdates()
 	// A managed gateway that is ready acknowledges the static settings it
@@ -490,7 +471,7 @@ func serve(c *cli.Ctx) (any, error) {
 
 	// Memory pressure: constrained stops idle runtimes; critical stops them all.
 	stopPoll := make(chan struct{})
-	feedDone := startFeedScheduler(r.Dir, cat, log, stopPoll)
+	feedDone := catalog.StartFeedScheduler(r.Dir, cat, log, stopPoll)
 	monitor := runtime.NewPressureMonitor(mem, recovery, log)
 	if videoJobs != nil {
 		monitor.FailVideo = func() { videoJobs.FailActiveForMemoryPressure() }
@@ -623,113 +604,6 @@ func savedConnLimit(st *store.Store, key string, fallback int) int {
 		}
 	}
 	return fallback
-}
-
-// voiceStamp identifies the stored custom voice set; the warm speech server
-// restarts when it changes, since it loads voices at launch.
-func voiceStamp(st *store.Store) string {
-	voices, err := st.Voices(context.Background())
-	if err != nil {
-		return "error"
-	}
-	var b strings.Builder
-	for _, v := range voices {
-		b.WriteString(v.ID + ":" + v.SHA256 + ";")
-	}
-	return b.String()
-}
-
-// startFeedScheduler keeps the remote catalog feed current (TS
-// feed-scheduler): one check at start, then every hour; each check downloads
-// only when the cached copy is older than a day. An update reloads the
-// catalog in place. The returned channel closes once stopped.
-func startFeedScheduler(rootDir string, cat *catalog.Catalog, log *slog.Logger, stop <-chan struct{}) <-chan struct{} {
-	done := make(chan struct{})
-	lastError := ""
-	check := func() {
-		res := catalog.RefreshFeed(context.Background(), rootDir, catalog.RefreshOptions{})
-		short := func(s string) string { return obs.BoundedText(s, 512) }
-		switch res.Outcome {
-		case "updated":
-			lastError = ""
-			next, err := catalog.LoadRoot(rootDir, nil)
-			if err != nil {
-				log.Warn("The updated catalog could not be loaded; the previous one stays in use.", "event", "catalog_feed.reload_failed",
-					"category", "gateway", "component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "error", short(err.Error())))
-				return
-			}
-			cat.Replace(next)
-			log.Info("Loaded a new remote catalog feed.", "event", "catalog_feed.updated", "category", "gateway",
-				"component", "catalog-feed", "runtime", "gateway", slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL))))
-		case "failed":
-			if res.Error == lastError {
-				return
-			}
-			lastError = res.Error
-			log.Warn("The remote catalog feed could not be refreshed; the last good copy stays in use.", "event", "catalog_feed.refresh_failed",
-				"category", "gateway", "component", "catalog-feed", "runtime", "gateway",
-				slog.Group("attributes", "url", short(feedURLForDiagnostics(res.URL)), "error", short(res.Error)))
-		default:
-			lastError = ""
-		}
-	}
-	go func() {
-		defer close(done)
-		check()
-		t := time.NewTicker(catalog.FeedCheckInterval)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				check()
-			}
-		}
-	}()
-	return done
-}
-
-// startTelemetry starts OTLP export when OTEL_* or the saved settings
-// enable it (TS activateContextOtel): every event the gateway logs is
-// exported with its span correlation, except the exporter's own
-// diagnostics, which stay in the local log.
-func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (*otlp.Runtime, error) {
-	oc, err := obs.ResolveOtel(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, os.Getenv)
-	if err != nil {
-		return nil, err
-	}
-	tel := otlp.New(oc, version.Version, func(severity, message string, attrs map[string]any) {
-		event, level := "observability.export-failed", slog.LevelWarn
-		switch severity {
-		case "info":
-			event, level = "observability.export-recovered", slog.LevelInfo
-		case "error":
-			level = slog.LevelError
-		}
-		args := []any{"event", event, "category", "logging", "component", "otel", obs.LocalOnly, true}
-		keys := make([]string, 0, len(attrs))
-		for k := range attrs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			args = append(args, k, attrs[k])
-		}
-		log.Log(context.Background(), level, message, args...)
-	})
-	if tel.Enabled() {
-		hooks := handler.Hooks()
-		hooks.Correlate = otlp.Correlation
-		hooks.Export = func(line []byte) {
-			if v, err := jsjson.Parse(line); err == nil {
-				if o, ok := v.(*jsjson.Object); ok {
-					tel.Emit(o)
-				}
-			}
-		}
-	}
-	return tel, nil
 }
 
 // runningOverrides puts back what only this process has when a saved configuration is published:

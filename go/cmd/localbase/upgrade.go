@@ -18,6 +18,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/install"
 	"github.com/timsexperiments/LocalBase/go/internal/localhttp"
+	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/service"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -65,14 +66,9 @@ func runUpgrade(c *cli.Ctx) (any, error) {
 	return runUpgradeInstall(c, e)
 }
 
-// releaseBuild: a release stamps its commit. A plain go build does not.
-func releaseBuild() bool {
-	return version.Commit != "" && !version.Get().Modified
-}
-
 func runUpgradeCheck(c *cli.Ctx) (any, error) {
-	data := map[string]any{"current": version.Version, "release": releaseBuild()}
-	if !releaseBuild() {
+	data := map[string]any{"current": version.Version, "release": version.ReleaseBuild()}
+	if !version.ReleaseBuild() {
 		c.Info("This is a development build (%s), not a release, so there is nothing to compare.", version.Version)
 		return data, nil
 	}
@@ -194,14 +190,14 @@ func backendPorts(e *env, arguments []string) []int {
 	// configured or default port.
 	base, _ := flag("runtime-port-base")
 	defaults := map[string]int{"llm": e.Config.Port, "stt": e.Config.SttPort}
-	for kind, p := range mediaDefaultPorts {
+	for kind, p := range runtime.MediaDefaultPorts {
 		defaults[kind] = p
 	}
-	out := make([]int, 0, len(runtimePortOrder))
-	for _, kind := range runtimePortOrder {
+	out := make([]int, 0, len(runtime.PortOrder))
+	for _, kind := range runtime.PortOrder {
 		p, explicit := flag(kind + "-port")
 		if !explicit {
-			p = runtimePort(base, kind, defaults[kind])
+			p = runtime.PortInBlock(base, kind, defaults[kind])
 		}
 		if p > 0 && (len(e.Config.Selected[kind]) > 0 || e.Config.Active[kind] != "") {
 			out = append(out, p)
@@ -315,7 +311,7 @@ func runUpgradeInstall(c *cli.Ctx, e *env) (any, error) {
 	if waitGiven && c.Bool("force") {
 		return nil, cli.Inputf("give --wait or --force, not both")
 	}
-	if !releaseBuild() {
+	if !version.ReleaseBuild() {
 		return nil, fmt.Errorf("This is a development build (%s), not a release, so there is nothing to upgrade from. Nothing was changed.", version.Version)
 	}
 	binary, err := upgradeBinaryPath()
@@ -440,7 +436,7 @@ func runCheckUpdates(c *cli.Ctx, e *env) (any, error) {
 		return nil, cli.Inputf("check-updates: expected on or off")
 	}
 	out, err := writeThroughGateway(e, "/_localbase/update", map[string]any{"action": "set-check", "enabled": on}, func() (map[string]any, error) {
-		checker := upgrade.NewChecker(e.Store, upgrade.DefaultSource(), version.Version, releaseBuild(), nil)
+		checker := upgrade.NewChecker(e.Store, upgrade.DefaultSource(), version.Version, version.ReleaseBuild(), nil)
 		if err := checker.SetEnabled(context.Background(), on); err != nil {
 			return nil, err
 		}
