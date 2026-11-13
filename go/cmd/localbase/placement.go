@@ -15,6 +15,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/instance"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
@@ -228,7 +229,7 @@ func placementTextLines(st placementState) []string {
 			row += fmt.Sprintf("; experts of layers 0–%d (%d tensors) in system memory", n-1, num(p["hostTensors"]))
 		}
 		if host := num(p["hostBytes"]); host > 0 {
-			row += fmt.Sprintf("; %s of system memory", gbText(int64(host)))
+			row += fmt.Sprintf("; %s of system memory", meta.FormatGB(int64(host)))
 		}
 		lines = append(lines, row)
 		if p["platform"] == placement.Discrete {
@@ -236,7 +237,7 @@ func placementTextLines(st placementState) []string {
 			if s, ok := p["plannedAt"].(string); ok && s != "" {
 				at = " at " + s
 			}
-			lines = append(lines, fmt.Sprintf("                  planned%s against %s of free GPU memory (%s kept free)", at, gbText(int64(num(p["freeVramBytes"]))), gbText(placement.ReserveBytes)))
+			lines = append(lines, fmt.Sprintf("                  planned%s against %s of free GPU memory (%s kept free)", at, meta.FormatGB(int64(num(p["freeVramBytes"]))), meta.FormatGB(placement.ReserveBytes)))
 		}
 	}
 	if st.Loaded && st.Resolved != nil {
@@ -273,8 +274,6 @@ func num(v any) int {
 	}
 	return int(f)
 }
-
-func gbText(b int64) string { return strconv.FormatFloat(float64(b)/(1<<30), 'f', 1, 64) + " GB" }
 
 // showPlacementLines is the Placement block of `models show` ("" on any
 // problem: the block is informational).
@@ -332,8 +331,8 @@ func fitLine(need, capacity, reserve int64) string {
 	left := capacity - reserve - need
 	if left < 0 {
 		return fmt.Sprintf("  This machine:   Does not fit: needs %s, %s of %s after keeping %s for your computer",
-			gbText(need), gbText(max(0, capacity-reserve)), gbText(capacity), gbText(reserve))
+			meta.FormatGB(need), meta.FormatGB(max(0, capacity-reserve)), meta.FormatGB(capacity), meta.FormatGB(reserve))
 	}
 	return fmt.Sprintf("  This machine:   Fits, %s to spare of %s after keeping %s for your computer",
-		gbText(left), gbText(capacity), gbText(reserve))
+		meta.FormatGB(left), meta.FormatGB(capacity), meta.FormatGB(reserve))
 }

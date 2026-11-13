@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backup"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
@@ -13,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -62,26 +63,7 @@ func doctorCommand() *cli.Command {
 			} else {
 				c.Info("OpenTelemetry: disabled")
 			}
-			switch {
-			case s.IsAppleSilicon && s.RAMGB >= 64:
-				c.Info("Status: ✅ Excellent fit for large developer-grade models (up to 32B/70B) using unified memory.")
-			case s.IsAppleSilicon && s.RAMGB >= 32:
-				c.Info("Status: ✅ Good fit for medium coding models (up to 14B/32B) using unified memory.")
-			case s.IsAppleSilicon && s.RAMGB >= 16:
-				c.Info("Status: ⚠️ Good for entry coding models (1.5B/7B), but larger models may slow down.")
-			case s.IsAppleSilicon:
-				c.Info("Status: ❌ Low memory. Limit to small models (1.5B) and small contexts.")
-			case len(s.NVIDIA) > 0:
-				c.Info("Status: ✅ Discrete NVIDIA GPU with %d GB of system memory: models are placed against the GPU's free memory, and what does not fit stays in system memory.", s.RAMGB)
-			case s.GPUVramGB >= 16:
-				c.Info("Status: ✅ Excellent fit for multi-model coding setup (7B/14B models + local STT).")
-			case s.GPUVramGB >= 12:
-				c.Info("Status: ✅ Good fit for 7B models with plenty of context headroom.")
-			case s.GPUVramGB >= 8:
-				c.Info("Status: ⚠️ Tight fit for 7B models (warning: context growth may slow down), or perfect for 3B/1.5B models.")
-			default:
-				c.Info("Status: ❌ Low VRAM. Focus on 1.5B/3B models or CPU offloading.")
-			}
+			c.Info("Status: %s", memory.HardwareStatus(s))
 			data := map[string]any{"hardware": s}
 			if problem == "" {
 				data["configuration"] = conf.Public(e.Config, eff)
@@ -141,7 +123,7 @@ func doctorCommand() *cli.Command {
 				}
 				data["leftoverReadCopies"] = left
 			}
-			if n := unendedSessions(e.Root.Dir); n > 0 {
+			if n := audit.UnendedSessions(e.Root.Dir); n > 0 {
 				c.Info("%d sessions could not be ended; run `local-base access sessions revoke --all`.", n)
 				data["unendedSessions"] = n
 			}
@@ -178,57 +160,24 @@ func openSignIn(e *env) string {
 	return auth.OpenSignIn(cfg, policy)
 }
 
-// unendedSessions counts sign-outs whose delete failed since everything was last ended:
-// each left a session valid until it expires. It reads the event log, because the failure
-// was a database write, and counts what the log still holds.
-func unendedSessions(rootDir string) int {
-	events, err := obs.Snapshot(rootDir, obs.Filters{}, 5000)
-	if err != nil {
-		return 0
-	}
-	last := ""
-	for _, ev := range events {
-		var head struct {
-			EventName string `json:"eventName"`
-		}
-		if json.Unmarshal(ev.Raw, &head) == nil && head.EventName == "audit.sessions-revoked" && ev.Timestamp > last {
-			last = ev.Timestamp
-		}
-	}
-	n := 0
-	for _, ev := range events {
-		var head struct {
-			EventName string `json:"eventName"`
-		}
-		if json.Unmarshal(ev.Raw, &head) != nil || ev.Timestamp < last {
-			continue
-		}
-		if head.EventName == "auth.session-delete-failed" || head.EventName == "local-session.delete-failed" {
-			n++
-		}
-	}
-	return n
-}
-
 // gpuLines are doctor's GPU lines, with where CPU/GPU placement applies
 // (DESIGN §20): planned against an NVIDIA GPU's free memory, not applicable
 // on unified memory.
 func gpuLines(s memory.Specs, gpus []memory.GPUMemory) []string {
-	gb := func(b int64) string { return strconv.FormatFloat(float64(b)/(1<<30), 'f', 1, 64) + " GB" }
 	lines := []string{"GPU: " + s.GPUName}
 	switch {
 	case len(s.NVIDIA) > 0:
 		for i, g := range s.NVIDIA {
-			line := fmt.Sprintf("NVIDIA GPU %d: %s, %s", i, g.Name, gb(int64(g.MemoryMiB)<<20))
+			line := fmt.Sprintf("NVIDIA GPU %d: %s, %s", i, g.Name, meta.FormatGB(int64(g.MemoryMiB)<<20))
 			if i < len(gpus) {
-				line = fmt.Sprintf("NVIDIA GPU %d: %s, %s free of %s", gpus[i].Index, gpus[i].Name, gb(gpus[i].FreeBytes), gb(gpus[i].TotalBytes))
+				line = fmt.Sprintf("NVIDIA GPU %d: %s, %s free of %s", gpus[i].Index, gpus[i].Name, meta.FormatGB(gpus[i].FreeBytes), meta.FormatGB(gpus[i].TotalBytes))
 			}
 			lines = append(lines, line)
 		}
 		if len(s.NVIDIA) > 1 {
 			lines = append(lines, fmt.Sprintf("Placement: %d NVIDIA GPUs; LocalBase places a model on one. Set CUDA_VISIBLE_DEVICES to a single GPU (for example CUDA_VISIBLE_DEVICES=0).", len(s.NVIDIA)))
 		} else {
-			lines = append(lines, "Placement: discrete NVIDIA GPU; models are planned against its free memory ("+gb(placement.ReserveBytes)+" kept free), and what does not fit stays in system memory.")
+			lines = append(lines, "Placement: discrete NVIDIA GPU; models are planned against its free memory ("+meta.FormatGB(placement.ReserveBytes)+" kept free), and what does not fit stays in system memory.")
 		}
 	case s.IsAppleSilicon:
 		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB),
