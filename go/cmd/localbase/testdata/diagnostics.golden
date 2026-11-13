@@ -1,0 +1,220 @@
+entries: manifest.json, logs/events.jsonl
+log lines: 1
+--- manifest.json
+{
+  "configuration": {
+    "available": true,
+    "data": {
+      "activeModels": {
+        "image": "dreamshaper-8-lcm",
+        "llm": "qwen3.5-4b-q4_k_m",
+        "stt": "whisper-base-q8_0",
+        "tts": "",
+        "video": ""
+      },
+      "contextMode": "auto",
+      "contextSize": 131072,
+      "parallel": "auto",
+      "selectedModels": {
+        "image": [
+          "dreamshaper-8-lcm"
+        ],
+        "llm": [
+          "qwen3.5-4b-q4_k_m"
+        ],
+        "stt": [
+          "whisper-base-q8_0"
+        ],
+        "tts": [],
+        "video": []
+      }
+    }
+  },
+  "generatedAt": "\u003cmasked\u003e",
+  "hardware": "\u003cmasked\u003e",
+  "logs": {
+    "available": true,
+    "data": {
+      "bytes": "\u003cmasked\u003e",
+      "includedEvents": 1,
+      "window": "\u003cmasked\u003e"
+    }
+  },
+  "models": {
+    "available": true,
+    "data": {
+      "catalogFeed": {
+        "added": [],
+        "annotations": 0,
+        "annotationsSkipped": 0,
+        "builtIn": 0,
+        "checkedAt": null,
+        "enabled": true,
+        "entries": 0,
+        "fetchedAt": null,
+        "lastError": null,
+        "problem": null,
+        "revision": null,
+        "schemaVersion": null,
+        "skipped": 0,
+        "source": "default",
+        "stale": true,
+        "url": "https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json"
+      },
+      "catalogIssues": [
+        {
+          "file": "broken.json",
+          "message": "Skipped: invalid JSON (invalid character 'n' looking for beginning of object key string).",
+          "tier": "user"
+        }
+      ],
+      "models": [
+        {
+          "active": true,
+          "capabilities": [
+            {
+              "id": "text-generation",
+              "source": "declared"
+            },
+            {
+              "id": "tool-calling",
+              "source": "declared"
+            }
+          ],
+          "capabilityEvidence": [],
+          "capabilityMismatches": [],
+          "catalogTier": "built-in",
+          "complete": false,
+          "id": "qwen3.5-4b-q4_k_m",
+          "inputModalities": {
+            "source": "detected",
+            "values": [
+              "text"
+            ]
+          },
+          "kind": "llm",
+          "memory": {
+            "launchShape": "ctx=8192;slots=1;kv=q8_0/q8_0",
+            "minimumGb": 4,
+            "observedPeakBytes": 3221225472,
+            "source": "observed",
+            "systemMemoryGb": "\u003cmasked\u003e",
+            "verdict": "\u003cmasked\u003e"
+          },
+          "patchedFields": [],
+          "runtimeBuild": null,
+          "selected": true,
+          "size": "4B",
+          "storageGb": 3.01,
+          "trust": "qualified",
+          "unsupportedCapabilities": []
+        },
+        {
+          "active": true,
+          "capabilities": [
+            {
+              "id": "speech-to-text",
+              "source": "declared"
+            },
+            {
+              "id": "multilingual",
+              "source": "declared"
+            }
+          ],
+          "capabilityEvidence": [],
+          "capabilityMismatches": [],
+          "catalogTier": "built-in",
+          "complete": false,
+          "id": "whisper-base-q8_0",
+          "inputModalities": {
+            "source": "declared",
+            "values": [
+              "audio"
+            ]
+          },
+          "kind": "stt",
+          "memory": {
+            "launchShape": "default",
+            "minimumGb": 1,
+            "observedPeakBytes": null,
+            "source": "estimate",
+            "systemMemoryGb": "\u003cmasked\u003e",
+            "verdict": "\u003cmasked\u003e"
+          },
+          "patchedFields": [],
+          "runtimeBuild": null,
+          "selected": true,
+          "size": "base",
+          "storageGb": 0.08,
+          "trust": "qualified",
+          "unsupportedCapabilities": []
+        },
+        {
+          "active": true,
+          "capabilities": [
+            {
+              "id": "text-to-image",
+              "source": "detected"
+            }
+          ],
+          "capabilityEvidence": [
+            "image profile checkpoint: text-to-image only"
+          ],
+          "capabilityMismatches": [],
+          "catalogTier": "built-in",
+          "complete": false,
+          "id": "dreamshaper-8-lcm",
+          "inputModalities": {
+            "source": "declared",
+            "values": [
+              "text"
+            ]
+          },
+          "kind": "image",
+          "memory": {
+            "launchShape": "default",
+            "minimumGb": 5,
+            "observedPeakBytes": null,
+            "source": "measured",
+            "systemMemoryGb": "\u003cmasked\u003e",
+            "verdict": "\u003cmasked\u003e"
+          },
+          "patchedFields": [],
+          "runtimeBuild": null,
+          "selected": true,
+          "size": "2.0GB",
+          "storageGb": 2.13,
+          "trust": "qualified",
+          "unsupportedCapabilities": []
+        }
+      ]
+    }
+  },
+  "observability": {
+    "available": true,
+    "data": {
+      "enabled": false,
+      "endpoint": "",
+      "sampleRatio": 1,
+      "source": "disabled"
+    }
+  },
+  "platform": "\u003cmasked\u003e",
+  "schemaVersion": 1,
+  "service": "\u003cmasked\u003e",
+  "version": "\u003cmasked\u003e",
+  "voices": {
+    "available": true,
+    "data": {
+      "customVoices": 1
+    }
+  }
+}
+--- stdout
+Created diagnostics bundle: <bundle>
+Catalog feed: https://raw.githubusercontent.com/timsexperiments/LocalBase/main/catalog/feed-v2.json (0 community model(s), never downloaded, stale)
+Catalog file skipped (user): broken.json: Skipped: invalid JSON (invalid character 'n' looking for beginning of object key string).
+Memory for qwen3.5-4b-q4_k_m: 4 GB (observed), <masked>
+Memory for whisper-base-q8_0: 1 GB (estimate), <masked>
+Memory for dreamshaper-8-lcm: 5 GB (measured), <masked>
+--- stderr
