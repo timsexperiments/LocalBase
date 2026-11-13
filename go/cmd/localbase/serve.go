@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -343,7 +342,7 @@ func serve(c *cli.Ctx) (any, error) {
 		if modality == "tts" {
 			// A changed voice set or marking setting restarts the speech server.
 			d.ExtraKey = func() string {
-				return voiceStamp(st) + "|marking=" + strconv.FormatBool(runtime.SpeechMarking(context.Background(), st))
+				return voices.Stamp(context.Background(), st) + "|marking=" + strconv.FormatBool(runtime.SpeechMarking(context.Background(), st))
 			}
 		}
 		return runtime.NewService(d), nil
@@ -605,20 +604,6 @@ func savedConnLimit(st *store.Store, key string, fallback int) int {
 		}
 	}
 	return fallback
-}
-
-// voiceStamp identifies the stored custom voice set; the warm speech server
-// restarts when it changes, since it loads voices at launch.
-func voiceStamp(st *store.Store) string {
-	voices, err := st.Voices(context.Background())
-	if err != nil {
-		return "error"
-	}
-	var b strings.Builder
-	for _, v := range voices {
-		b.WriteString(v.ID + ":" + v.SHA256 + ";")
-	}
-	return b.String()
 }
 
 // runningOverrides puts back what only this process has when a saved configuration is published:
