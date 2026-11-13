@@ -21,8 +21,14 @@ type CallResult struct {
 	Body   []byte
 }
 
-// callBodyLimit is the most of a response an in-process call holds, as a run's media result.
-var callBodyLimit = runs.MaxResult
+// callLimit is the most of a response an in-process call holds: as a run's media result, unless a
+// test set a smaller one.
+func (s *Server) callLimit() int {
+	if s.cfg.callBodyLimit > 0 {
+		return s.cfg.callBodyLimit
+	}
+	return runs.MaxResult
+}
 
 // errCallTooLarge tells a handler its in-process caller stopped reading.
 var errCallTooLarge = errors.New("the response is over what an in-app call holds")
@@ -66,11 +72,12 @@ func (s *Server) Call(ctx context.Context, p *auth.Principal, method, path, cont
 		r.Header.Set("Content-Type", contentType)
 	}
 	r.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	w := &bufferWriter{header: http.Header{}, limit: callBodyLimit}
+	limit := s.callLimit()
+	w := &bufferWriter{header: http.Header{}, limit: limit}
 	s.ServeHTTP(w, r)
 	if w.over {
 		over := &bufferWriter{header: http.Header{}}
-		httpx.UpstreamFailure(over, r, fmt.Sprintf("The response is larger than %s, more than an in-app call can hold.", memory.SizeText(callBodyLimit)))
+		httpx.UpstreamFailure(over, r, fmt.Sprintf("The response is larger than %s, more than an in-app call can hold.", memory.SizeText(limit)))
 		return CallResult{Status: over.status, Header: over.header, Body: over.body.Bytes()}
 	}
 	if w.status == 0 {

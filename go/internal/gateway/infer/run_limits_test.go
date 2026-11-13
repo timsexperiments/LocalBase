@@ -25,25 +25,18 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func relayFor(t *testing.T, body io.Reader) (string, string, string) {
+func relayFor(t *testing.T, body io.Reader, eventLimit int) (string, string, string) {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	outcome, source := relaySSE(context.Background(), rec, body, "m", &inference{}, nil)
+	outcome, source := relaySSE(context.Background(), rec, body, "m", &inference{}, nil, eventLimit)
 	return outcome, source, rec.Body.String()
-}
-
-func smallEventLimit(t *testing.T, limit int) {
-	t.Helper()
-	before := sseEventLimit
-	sseEventLimit = limit
-	t.Cleanup(func() { sseEventLimit = before })
 }
 
 // A line that never ends costs the limit and no more, and the client is told.
 func TestAnEndlessUpstreamLineStopsAtTheLimit(t *testing.T) {
-	smallEventLimit(t, 1<<20)
+	limit := 1 << 20
 	body := &countingReader{}
-	outcome, source, out := relayFor(t, body)
+	outcome, source, out := relayFor(t, body, limit)
 	if outcome != "error" || source != "response_event_limit" || !strings.Contains(out, "over the 1 MiB limit") {
 		t.Errorf("%s %s %.200s", outcome, source, out)
 	}
@@ -54,9 +47,9 @@ func TestAnEndlessUpstreamLineStopsAtTheLimit(t *testing.T) {
 
 // The same limit covers an event of many short lines.
 func TestAnEventOfManyLinesStopsAtTheLimit(t *testing.T) {
-	smallEventLimit(t, 1000)
+	limit := 1000
 	lines := strings.Repeat(": comment\n", 200)
-	outcome, source, _ := relayFor(t, strings.NewReader(lines))
+	outcome, source, _ := relayFor(t, strings.NewReader(lines), limit)
 	if outcome != "error" || source != "response_event_limit" {
 		t.Errorf("%s %s", outcome, source)
 	}
@@ -64,13 +57,13 @@ func TestAnEventOfManyLinesStopsAtTheLimit(t *testing.T) {
 
 // A streaming client's request keeps nothing else: a stream many times the limit goes through.
 func TestAStreamLongerThanTheLimitIsFine(t *testing.T) {
-	smallEventLimit(t, 1000)
+	limit := 1000
 	event := `data: {"choices":[{"delta":{"content":"hello"}}]}` + "\n\n"
 	body := strings.Repeat(event, 500) + "data: [DONE]\n\n"
 	if len(body) < 10*1000 {
 		t.Fatal("not longer than the limit")
 	}
-	outcome, source, out := relayFor(t, strings.NewReader(body))
+	outcome, source, out := relayFor(t, strings.NewReader(body), limit)
 	if outcome != "completed" || source != "" || strings.Count(out, "hello") != 500 {
 		t.Errorf("%s %s, %d events", outcome, source, strings.Count(out, "hello"))
 	}
@@ -78,12 +71,12 @@ func TestAStreamLongerThanTheLimitIsFine(t *testing.T) {
 
 // Exactly at the limit is allowed.
 func TestALineAtTheLimitPasses(t *testing.T) {
-	smallEventLimit(t, 128<<10)
+	limit := 128 << 10
 	head := `data: {"choices":[{"delta":{"content":"`
 	tail := `"}}]}` + "\n"
 	line := head + strings.Repeat("x", 128<<10-len(head)-len(tail)-1) + tail
 	body := line + "\n" + "data: [DONE]\n\n"
-	outcome, source, _ := relayFor(t, strings.NewReader(body))
+	outcome, source, _ := relayFor(t, strings.NewReader(body), limit)
 	if outcome != "completed" {
 		t.Errorf("%s %s", outcome, source)
 	}
@@ -153,7 +146,7 @@ func TestAStreamingRequestsHeapDoesNotGrowWithTheStream(t *testing.T) {
 	var base goruntime.MemStats
 	goruntime.ReadMemStats(&base)
 	w := &discardWriter{header: http.Header{}}
-	outcome, source := relaySSE(context.Background(), w, &eventReader{event: event, left: n}, "m", &inference{}, nil)
+	outcome, source := relaySSE(context.Background(), w, &eventReader{event: event, left: n}, "m", &inference{}, nil, sseEventLimit)
 	if outcome != "completed" {
 		t.Fatalf("%s %s", outcome, source)
 	}
