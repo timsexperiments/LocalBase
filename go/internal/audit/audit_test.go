@@ -31,19 +31,18 @@ func TestAuditFailureClass(t *testing.T) {
 
 // Whatever an error's text holds, it isn't repeated: not in the warning, and not in the result. The
 // class alone, from the short list, is. (Was cmd/localbase's TestAnAuditWarningNeverRepeatsTheError,
-// which ran keys create with this seam set; the seam is this package's now.)
+// which ran keys create with this seam set; the seam is the Log's openSink now.)
 func TestARecordThatCannotBeWrittenNeverRepeatsTheError(t *testing.T) {
 	r, err := root.Init(filepath.Join(t.TempDir(), "root"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	const planted = "PLANTED_secret_in_an_error_7d1e0c"
-	defer func(open func(string) (*obs.Sink, error)) { openSink = open }(openSink)
-	openSink = func(string) (*obs.Sink, error) {
-		return nil, &fs.PathError{Op: "open", Path: "/" + planted, Err: fs.ErrPermission}
-	}
 	var warnings bytes.Buffer
 	l := New(r, &warnings)
+	l.openSink = func(string) (*obs.Sink, error) {
+		return nil, &fs.PathError{Op: "open", Path: "/" + planted, Err: fs.ErrPermission}
+	}
 	l.Change("api-key", "create", "api-key", "key_1")
 	if !strings.Contains(warnings.String(), "could not be written: permission-denied") {
 		t.Errorf("no class in the warning: %q", warnings.String())
