@@ -62,26 +62,7 @@ func doctorCommand() *cli.Command {
 			} else {
 				c.Info("OpenTelemetry: disabled")
 			}
-			switch {
-			case s.IsAppleSilicon && s.RAMGB >= 64:
-				c.Info("Status: ✅ Excellent fit for large developer-grade models (up to 32B/70B) using unified memory.")
-			case s.IsAppleSilicon && s.RAMGB >= 32:
-				c.Info("Status: ✅ Good fit for medium coding models (up to 14B/32B) using unified memory.")
-			case s.IsAppleSilicon && s.RAMGB >= 16:
-				c.Info("Status: ⚠️ Good for entry coding models (1.5B/7B), but larger models may slow down.")
-			case s.IsAppleSilicon:
-				c.Info("Status: ❌ Low memory. Limit to small models (1.5B) and small contexts.")
-			case len(s.NVIDIA) > 0:
-				c.Info("Status: ✅ Discrete NVIDIA GPU with %d GB of system memory: models are placed against the GPU's free memory, and what does not fit stays in system memory.", s.RAMGB)
-			case s.GPUVramGB >= 16:
-				c.Info("Status: ✅ Excellent fit for multi-model coding setup (7B/14B models + local STT).")
-			case s.GPUVramGB >= 12:
-				c.Info("Status: ✅ Good fit for 7B models with plenty of context headroom.")
-			case s.GPUVramGB >= 8:
-				c.Info("Status: ⚠️ Tight fit for 7B models (warning: context growth may slow down), or perfect for 3B/1.5B models.")
-			default:
-				c.Info("Status: ❌ Low VRAM. Focus on 1.5B/3B models or CPU offloading.")
-			}
+			c.Info("Status: %s", memory.HardwareStatus(s))
 			data := map[string]any{"hardware": s}
 			if problem == "" {
 				data["configuration"] = conf.Public(e.Config, eff)
