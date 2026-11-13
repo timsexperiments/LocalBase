@@ -570,10 +570,8 @@ func TestReadingACopySaysSo(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	var said strings.Builder
-	defer func(w io.Writer) { readNotice = w }(readNotice)
-	readNotice = &said
 	_, path := aRoot(t, "wal")
-	st, err := OpenReadOnly(path)
+	st, err := openReadOnly(path, &said)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,7 +581,7 @@ func TestReadingACopySaysSo(t *testing.T) {
 	}
 	said.Reset()
 	_, rollback := aRoot(t, "delete")
-	st, err = OpenReadOnly(rollback)
+	st, err = openReadOnly(rollback, &said)
 	if err != nil {
 		t.Fatal(err)
 	}

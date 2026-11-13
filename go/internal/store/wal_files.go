@@ -266,7 +266,7 @@ func ReadablePath(path string) (read string, done func(), err error) {
 	if err := checkWALBelongs(path); err != nil {
 		return "", func() {}, err
 	}
-	stage, read, err := readablePath(path, readNotice)
+	stage, read, err := readablePath(path, os.Stderr)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -276,7 +276,7 @@ func ReadablePath(path string) (read string, done func(), err error) {
 // PrivateCopy is a copy of this database and its -wal to read, for when the file itself can't be read,
 // as with a -shm that can't be used. done removes it.
 func PrivateCopy(path string) (read string, done func(), err error) {
-	stage, read, err := privateCopy(path, readNotice)
+	stage, read, err := privateCopy(path, os.Stderr)
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -309,9 +309,6 @@ func privateCopy(path string, notice io.Writer) (stage, read string, err error) 
 	fmt.Fprintln(notice, "Read a copy of this root's database, as it stood just now.")
 	return stage, read, nil
 }
-
-// readNotice is where a read of a copy says so. A variable so a test can read it.
-var readNotice io.Writer = os.Stderr
 
 const (
 	stagePrefix = "localbase-read-"

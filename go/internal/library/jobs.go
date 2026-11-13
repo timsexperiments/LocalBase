@@ -54,27 +54,50 @@ var (
 	ErrImportRunning = errors.New("This model is already being imported.")
 )
 
-// How an import takes the root, and how long it waits between tries (tests change them).
-var (
-	withLease       = lease.WithOperation
-	leaseRetryEvery = time.Second
-	// publishHook marks the steps of publishing, for a test to end the process there.
-	publishHook = func(string) {}
-)
+// hooks are what a library's tests change: how an import takes the root, how long it waits
+// between tries, and the steps of publishing. The zero value is how the package runs.
+type hooks struct {
+	// withLease takes the root (tests: one that is busy, or watched); nil is lease.WithOperation.
+	withLease func(dir, op string, fn func() error) error
+	// retryEvery is how long an import waits for a busy root between tries; 0 is a second.
+	retryEvery time.Duration
+	// publish marks the steps of publishing, for a test to end the process there; nil marks none.
+	publish func(step string)
+}
+
+func (h hooks) lease(dir, op string, fn func() error) error {
+	if h.withLease != nil {
+		return h.withLease(dir, op, fn)
+	}
+	return lease.WithOperation(dir, op, fn)
+}
+
+func (h hooks) retry() time.Duration {
+	if h.retryEvery > 0 {
+		return h.retryEvery
+	}
+	return time.Second
+}
+
+func (h hooks) mark(step string) {
+	if h.publish != nil {
+		h.publish(step)
+	}
+}
 
 // underLease runs fn holding the root, for as long as ctx allows. By this point a
 // download may have taken hours, and something else holding the root for a while is no
 // reason to fail it.
 func (l *Library) underLease(ctx context.Context, fn func() error) error {
 	for {
-		err := withLease(l.Root.Dir, "install model", fn)
+		err := l.hooks.lease(l.Root.Dir, "install model", fn)
 		if !errors.Is(err, lease.ErrOperationBusy) {
 			return err
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(leaseRetryEvery):
+		case <-time.After(l.hooks.retry()):
 		}
 	}
 }
@@ -118,17 +141,17 @@ func (l *Library) PublishImport(ctx context.Context, fetched *acquire.Fetched, p
 		if err := l.reclaim(ctx, plan.ID); err != nil {
 			return err
 		}
-		publishHook("before-publish")
+		l.hooks.mark("before-publish")
 		var err error
 		if res, err = fetched.Publish(); err != nil {
 			return err
 		}
-		publishHook("after-publish")
+		l.hooks.mark("after-publish")
 		// Once the files are in place, finish: a cancel from here on would leave them.
 		if sel, err = l.SaveImport(context.WithoutCancel(ctx), res, backend); err != nil {
 			return err
 		}
-		publishHook("after-record")
+		l.hooks.mark("after-record")
 		return nil
 	})
 	return res, sel, err

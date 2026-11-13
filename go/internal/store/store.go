@@ -183,13 +183,15 @@ func makePrivate(path string) {
 	}
 }
 
-// OpenReadOnly opens an existing database without migrating or writing it.
-func OpenReadOnly(path string) (*Store, error) { return openReadOnly(path, readNotice) }
+// OpenReadOnly opens an existing database without migrating or writing it. When it reads a copy, it
+// says so on stderr.
+func OpenReadOnly(path string) (*Store, error) { return openReadOnly(path, os.Stderr) }
 
 // OpenReadOnlyQuiet is OpenReadOnly without the note that it read a copy: for a read only incidental
 // to what a command does, where the note would mean nothing (models search's saved token).
 func OpenReadOnlyQuiet(path string) (*Store, error) { return openReadOnly(path, io.Discard) }
 
+// openReadOnly is OpenReadOnly saying that it read a copy to notice (tests: their own writer).
 func openReadOnly(path string, notice io.Writer) (*Store, error) {
 	if err := checkWALBelongs(path); err != nil {
 		return nil, err

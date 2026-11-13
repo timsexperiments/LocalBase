@@ -146,19 +146,17 @@ func TestTwoDownloadsAndAConfigureInterleave(t *testing.T) {
 // be behind it. A person can still stop it while it waits.
 func TestPublishWaitsForABusyRoot(t *testing.T) {
 	busy := fmt.Errorf("held: %w", lease.ErrOperationBusy)
-	realLease := withLease
-	t.Cleanup(func() { withLease = realLease; leaseRetryEvery = time.Second })
-	leaseRetryEvery = 5 * time.Millisecond
+	realLease := lease.WithOperation
 
 	t.Run("it waits", func(t *testing.T) {
 		l := newTestLibrary(t)
 		var tries atomic.Int32
-		withLease = func(dir, op string, fn func() error) error {
+		l.hooks = hooks{retryEvery: 5 * time.Millisecond, withLease: func(dir, op string, fn func() error) error {
 			if tries.Add(1) <= 3 {
 				return busy
 			}
 			return realLease(dir, op, fn)
-		}
+		}}
 		gate := make(chan struct{})
 		close(gate)
 		id, err := l.StartImport(planFor(t, l, gatedSource(t, gate).URL, "patient"), "", nil)
@@ -175,10 +173,10 @@ func TestPublishWaitsForABusyRoot(t *testing.T) {
 	t.Run("a cancel still works", func(t *testing.T) {
 		l := newTestLibrary(t)
 		var held atomic.Bool
-		withLease = func(dir, op string, fn func() error) error {
+		l.hooks = hooks{retryEvery: 5 * time.Millisecond, withLease: func(dir, op string, fn func() error) error {
 			held.Store(true)
 			return busy
-		}
+		}}
 		gate := make(chan struct{})
 		close(gate)
 		id, err := l.StartImport(planFor(t, l, gatedSource(t, gate).URL, "stopped"), "", nil)
@@ -201,10 +199,10 @@ func TestPublishWaitsForABusyRoot(t *testing.T) {
 	t.Run("any other failure is not retried", func(t *testing.T) {
 		l := newTestLibrary(t)
 		var tries atomic.Int32
-		withLease = func(dir, op string, fn func() error) error {
+		l.hooks = hooks{retryEvery: 5 * time.Millisecond, withLease: func(dir, op string, fn func() error) error {
 			tries.Add(1)
 			return errors.New("the disk is on fire")
-		}
+		}}
 		gate := make(chan struct{})
 		close(gate)
 		id, err := l.StartImport(planFor(t, l, gatedSource(t, gate).URL, "broken"), "", nil)
@@ -226,13 +224,13 @@ func TestPublishKillHelper(t *testing.T) {
 	if stage == "" {
 		t.Skip("run by TestKilledWhilePublishing")
 	}
-	publishHook = func(at string) {
+	l := openLibrary(t, os.Getenv("LB_PUBLISH_ROOT"))
+	l.hooks.publish = func(at string) {
 		if at == stage {
 			syscall.Kill(os.Getpid(), syscall.SIGKILL)
 			time.Sleep(time.Minute)
 		}
 	}
-	l := openLibrary(t, os.Getenv("LB_PUBLISH_ROOT"))
 	id, err := l.StartImport(planFor(t, l, os.Getenv("LB_PUBLISH_SOURCE"), "killed"), "", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -324,11 +322,9 @@ func TestKilledWhilePublishing(t *testing.T) {
 // after the move doesn't stop the record: that would leave the files with nothing listing them.
 func TestPublishIsOneStepUnderTheRoot(t *testing.T) {
 	l := newTestLibrary(t)
-	realLease, realHook := withLease, publishHook
-	t.Cleanup(func() { withLease, publishHook = realLease, realHook })
 	var inside atomic.Bool
-	withLease = func(dir, op string, fn func() error) error {
-		return realLease(dir, op, func() error {
+	l.hooks.withLease = func(dir, op string, fn func() error) error {
+		return lease.WithOperation(dir, op, func() error {
 			inside.Store(true)
 			defer inside.Store(false)
 			return fn()
@@ -336,7 +332,7 @@ func TestPublishIsOneStepUnderTheRoot(t *testing.T) {
 	}
 	var job atomic.Value
 	var steps atomic.Int32
-	publishHook = func(step string) {
+	l.hooks.publish = func(step string) {
 		if !inside.Load() {
 			t.Errorf("%s: outside the root's lease", step)
 		}
@@ -509,15 +505,13 @@ func TestPrepareTakesTheRootBeforeClearing(t *testing.T) {
 	if err := os.MkdirAll(dest, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	realLease := withLease
-	t.Cleanup(func() { withLease = realLease })
 	var inside atomic.Int32
-	withLease = func(dir, op string, fn func() error) error {
+	l.hooks.withLease = func(dir, op string, fn func() error) error {
 		inside.Add(1)
 		if _, err := os.Stat(dest); err != nil {
 			t.Errorf("cleared before taking the root: %v", err)
 		}
-		return realLease(dir, op, fn)
+		return lease.WithOperation(dir, op, fn)
 	}
 	if err := l.PrepareImport(ctx, &acquire.Plan{ID: "left"}); err != nil {
 		t.Fatal(err)
