@@ -69,7 +69,9 @@ func TestModelsSearchReadsTheTokenWithoutWriting(t *testing.T) {
 	}
 	before := sum()
 	code, out := runApp(t, "--root", root, "models", "search", "qwen")
-	if code != 0 || strings.Contains(out, "Could not read this root's saved Hugging Face token") {
+	// Nor does it say it read a copy: the read is incidental to a search (operator, #874), and the
+	// Hub golden (TestCLIHubGolden, TS parity) has no such line.
+	if code != 0 || strings.Contains(out, "Could not read this root's saved Hugging Face token") || strings.Contains(out, "Read a copy") {
 		t.Errorf("search: %d\n%s", code, out)
 	}
 	mu.Lock()
