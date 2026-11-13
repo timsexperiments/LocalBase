@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/gatewayrun"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -61,15 +62,15 @@ func serve(c *cli.Ctx) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	open := func() (Deps, func(), error) {
+	open := func() (gatewayrun.Deps, func(), error) {
 		e, err := openEnv(c)
 		if err != nil {
-			return Deps{}, nil, err
+			return gatewayrun.Deps{}, nil, err
 		}
-		return Deps{Root: e.Root, Store: e.Store, Config: e.Config, Catalog: e.Catalog, Host: e.Host, Audit: e.audit}, e.Close, nil
+		return gatewayrun.Deps{Root: e.Root, Store: e.Store, Config: e.Config, Catalog: e.Catalog, Host: e.Host, Audit: e.audit}, e.Close, nil
 	}
-	err = Run(opts, open, serveReporter{c})
-	var bad *BadInput
+	err = gatewayrun.Run(opts, open, serveReporter{c})
+	var bad *gatewayrun.BadInput
 	if errors.As(err, &bad) {
 		return nil, cli.Inputf("%s", bad.Message)
 	}
@@ -77,47 +78,47 @@ func serve(c *cli.Ctx) (any, error) {
 }
 
 // serveOptions checks serve's flags, before anything starts.
-func serveOptions(c *cli.Ctx) (Options, error) {
-	opts := Options{AllowRoot: c.Bool("allow-root"), Host: c.String("host"), LLMHost: c.String("llm-host"),
+func serveOptions(c *cli.Ctx) (gatewayrun.Options, error) {
+	opts := gatewayrun.Options{AllowRoot: c.Bool("allow-root"), Host: c.String("host"), LLMHost: c.String("llm-host"),
 		LLMModelFile: c.String("llm-model-file"), InstallMissing: c.Bool("install-missing"),
 		BypassMemoryCheck: c.Bool("bypass-memory-check"), EventsToStderr: !c.Global.JSON}
 	// What slog reads is accepted as before (any case); the rest would quietly have been info.
 	if v := c.String("log-level"); v != "" {
 		if err := opts.LogLevel.UnmarshalText([]byte(v)); err != nil {
-			return Options{}, cli.Inputf(`log-level: Invalid option: expected one of "debug"|"info"|"warn"|"error"`)
+			return gatewayrun.Options{}, cli.Inputf(`log-level: Invalid option: expected one of "debug"|"info"|"warn"|"error"`)
 		}
 	}
 	var err error
 	if opts.Port, err = intOpt(c, "port", 1, 65535); err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	if opts.LLMPort, err = intOpt(c, "llm-port", 1, 65535); err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	if opts.PortBase, err = intOpt(c, "runtime-port-base", 1, 65535-(len(runtime.PortOrder)-1)); err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	if !c.Has("llm-port") {
 		opts.LLMPort = runtime.PortInBlock(opts.PortBase, "llm", opts.LLMPort)
 	}
 	if opts.CtxSize, err = intOpt(c, "ctx-size", 2048, 2_147_483_647); err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	if opts.QueueCapacity, err = intOpt(c, "inference-queue-capacity", 1, 10_000); err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	queueTimeout, err := intOpt(c, "inference-queue-timeout-ms", 1, 3_600_000)
 	if err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	opts.QueueTimeout = time.Duration(queueTimeout) * time.Millisecond
 	runMemory, err := intOpt(c, "run-memory-limit-mib", 1, 1<<20)
 	if err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	runsMemory, err := intOpt(c, "runs-memory-limit-mib", 1, 1<<20)
 	if err != nil {
-		return Options{}, err
+		return gatewayrun.Options{}, err
 	}
 	opts.RunMemoryLimit, opts.RunsMemoryLimit = int64(runMemory)<<20, int64(runsMemory)<<20
 	opts.AuthMode = c.String("auth-mode")
@@ -125,19 +126,19 @@ func serveOptions(c *cli.Ctx) (Options, error) {
 		opts.AuthMode = "either"
 	}
 	if !contains([]string{"bearer", "x-api-key", "either"}, opts.AuthMode) {
-		return Options{}, cli.Inputf("Invalid --auth-mode value: %s. Expected bearer|x-api-key|either", opts.AuthMode)
+		return gatewayrun.Options{}, cli.Inputf("Invalid --auth-mode value: %s. Expected bearer|x-api-key|either", opts.AuthMode)
 	}
 	authOn, authGiven := c.OptBool("auth")
 	opts.NoAuth = authGiven && !authOn
 	// A media runtime that is off takes no host or port, as before.
-	opts.Media = map[string]MediaOptions{}
+	opts.Media = map[string]gatewayrun.MediaOptions{}
 	for _, name := range []string{"stt", "tts", "image", "video"} {
-		m := MediaOptions{Host: c.String(name + "-host")}
+		m := gatewayrun.MediaOptions{Host: c.String(name + "-host")}
 		if enabled, set := c.OptBool(name); set && !enabled {
-			m = MediaOptions{Off: true}
+			m = gatewayrun.MediaOptions{Off: true}
 		} else if c.Has(name + "-port") {
 			if m.Port, err = intOpt(c, name+"-port", 1, 65535); err != nil {
-				return Options{}, err
+				return gatewayrun.Options{}, err
 			}
 		}
 		opts.Media[name] = m
@@ -149,7 +150,7 @@ func serveOptions(c *cli.Ctx) (Options, error) {
 		if c.Has(limit.flag) {
 			n, err := intOpt(c, limit.flag, 0, 10_000_000)
 			if err != nil {
-				return Options{}, err
+				return gatewayrun.Options{}, err
 			}
 			*limit.to = &n
 		}
