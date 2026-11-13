@@ -11,9 +11,9 @@ import (
 // shows the person's latest results.
 
 // studioTools are the tools with a page, in landing order.
-var studioTools = []string{"image", "video", "speech", "transcribe", "decisions"}
+var studioTools = []string{"image", "video", "speech", "transcribe", "decisions", "search"}
 
-var studioNames = map[string]string{"image": "Image", "video": "Video", "speech": "Speech", "transcribe": "Transcribe", "decisions": "Decisions"}
+var studioNames = map[string]string{"image": "Image", "video": "Video", "speech": "Speech", "transcribe": "Transcribe", "decisions": "Decisions", "search": "Search"}
 
 // studioRecentMax is how many results the landing's strip holds: enough to find
 // your place, and the strip scrolls within itself.
@@ -55,6 +55,8 @@ func (u *UI) toolAvailable(r *http.Request, tool string) (allowed, hasModel bool
 		return p.Can("inference:transcription"), len(u.installedOnly(u.labModels("stt"))) > 0, "transcription"
 	case "decisions":
 		return p.Can("inference:decision"), len(u.installedOnly(u.decisionModels())) > 0, "decisions"
+	case "search":
+		return p.Can("inference:embeddings"), len(u.searchModels(r)) > 0, "embeddings"
 	}
 	return false, false, ""
 }
@@ -67,6 +69,7 @@ func (u *UI) studio(w http.ResponseWriter, r *http.Request) {
 		"speech":     "A script, read in a voice.",
 		"transcribe": "A recording, turned into words.",
 		"decisions":  "A question, with odds you can read.",
+		"search":     "Your own text, searched by meaning.",
 	}
 	canGet := u.caller(r).Can("models:manage")
 	var cards []studioCard

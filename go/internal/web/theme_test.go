@@ -174,7 +174,7 @@ func TestSizeBudgets(t *testing.T) {
 	cfg := &store.Config{Selected: map[string][]string{"llm": {"qwen3.5-4b-q4_k_m", "clef-flash-q4_k_m"}, "image": {"dreamshaper-8-lcm"}}}
 	llm := runtime.NewLLM(runtime.LLMDeps{Catalog: cat, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}, cfg)
 	u := New(Deps{NoAuth: true, Catalog: cat, LLM: llm})
-	for _, path := range []string{"/app/studio", "/app/studio/image", "/app/studio/video", "/app/studio/speech", "/app/studio/transcribe", "/app/studio/decisions", "/app/chat"} {
+	for _, path := range []string{"/app/studio", "/app/studio/image", "/app/studio/video", "/app/studio/speech", "/app/studio/transcribe", "/app/studio/decisions", "/app/studio/search", "/app/chat"} {
 		w := httptest.NewRecorder()
 		u.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		html := w.Body.String()

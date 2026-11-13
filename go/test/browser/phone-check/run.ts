@@ -19,7 +19,7 @@ const open = async (path: string) => {
 };
 
 const pages = ["/app/chat", "/app/models", "/app/models/get", "/app/models/running", "/app/studio", "/app/studio/image", "/app/studio/video",
-  "/app/studio/speech", "/app/studio/transcribe", "/app/studio/decisions", "/app/voices", "/app/settings", "/app/admin?section=keys", "/app/admin?section=access"];
+  "/app/studio/speech", "/app/studio/transcribe", "/app/studio/decisions", "/app/studio/search", "/app/voices", "/app/settings", "/app/admin?section=keys", "/app/admin?section=access"];
 
 // Controls under 44x44 CSS px. Inline links in running text are exempt
 // (WCAG 2.5.8's inline exception), as are hidden and disabled-looking ones.
