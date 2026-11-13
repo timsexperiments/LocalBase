@@ -13,6 +13,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/meta"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
@@ -195,21 +196,20 @@ func unendedSessions(rootDir string) int {
 // (DESIGN §20): planned against an NVIDIA GPU's free memory, not applicable
 // on unified memory.
 func gpuLines(s memory.Specs, gpus []memory.GPUMemory) []string {
-	gb := func(b int64) string { return strconv.FormatFloat(float64(b)/(1<<30), 'f', 1, 64) + " GB" }
 	lines := []string{"GPU: " + s.GPUName}
 	switch {
 	case len(s.NVIDIA) > 0:
 		for i, g := range s.NVIDIA {
-			line := fmt.Sprintf("NVIDIA GPU %d: %s, %s", i, g.Name, gb(int64(g.MemoryMiB)<<20))
+			line := fmt.Sprintf("NVIDIA GPU %d: %s, %s", i, g.Name, meta.FormatGB(int64(g.MemoryMiB)<<20))
 			if i < len(gpus) {
-				line = fmt.Sprintf("NVIDIA GPU %d: %s, %s free of %s", gpus[i].Index, gpus[i].Name, gb(gpus[i].FreeBytes), gb(gpus[i].TotalBytes))
+				line = fmt.Sprintf("NVIDIA GPU %d: %s, %s free of %s", gpus[i].Index, gpus[i].Name, meta.FormatGB(gpus[i].FreeBytes), meta.FormatGB(gpus[i].TotalBytes))
 			}
 			lines = append(lines, line)
 		}
 		if len(s.NVIDIA) > 1 {
 			lines = append(lines, fmt.Sprintf("Placement: %d NVIDIA GPUs; LocalBase places a model on one. Set CUDA_VISIBLE_DEVICES to a single GPU (for example CUDA_VISIBLE_DEVICES=0).", len(s.NVIDIA)))
 		} else {
-			lines = append(lines, "Placement: discrete NVIDIA GPU; models are planned against its free memory ("+gb(placement.ReserveBytes)+" kept free), and what does not fit stays in system memory.")
+			lines = append(lines, "Placement: discrete NVIDIA GPU; models are planned against its free memory ("+meta.FormatGB(placement.ReserveBytes)+" kept free), and what does not fit stays in system memory.")
 		}
 	case s.IsAppleSilicon:
 		lines = append(lines, fmt.Sprintf("GPU VRAM: %d GB (Unified Memory)", s.GPUVramGB),
