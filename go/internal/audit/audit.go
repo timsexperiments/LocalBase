@@ -25,9 +25,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/termsafe"
 )
 
-// openSink is a variable so that a test can make it fail.
-var openSink = obs.OpenSink
-
 // Log is where a command's audit records go: the log of one root. It remembers whether a record
 // couldn't be written, for the command's result.
 //
@@ -39,6 +36,8 @@ type Log struct {
 	warnings io.Writer
 	// failure is why an audit record of this command wasn't written, as failureClass says it.
 	failure string
+	// openSink opens the root's log (tests: one that fails); nil is obs.OpenSink.
+	openSink func(dir string) (*obs.Sink, error)
 }
 
 // New is the audit log of r, reporting a record it couldn't write to warnings.
@@ -58,7 +57,11 @@ func (a *Log) Record(msg string, attrs ...any) {
 		}
 		fmt.Fprintf(w, "Warning: this change was made, but its audit record could not be written: %s (%s)\n", a.failure, termsafe.Printable(a.root.LogsDir()))
 	}
-	sink, err := openSink(a.root.LogsDir())
+	open := a.openSink
+	if open == nil {
+		open = obs.OpenSink
+	}
+	sink, err := open(a.root.LogsDir())
 	if err != nil {
 		fail(err)
 		return
