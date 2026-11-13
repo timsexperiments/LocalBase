@@ -61,7 +61,7 @@ func pinnedRuntime(family string) (manifestArtifact, bool) {
 // binary installs. On CLI-only platforms a user-managed executable on PATH
 // (outside <root>/bin) is used instead. Downloading arrives in milestone 2.
 func ResolveBinary(runtimesDir, name string) (string, error) {
-	if family, pin, _, ok := release(name); ok {
+	if family, pin, _, ok := release(name, installOptions{}); ok {
 		path := filepath.Join(runtimesDir, family, strings.ToLower(pin.SHA256), name)
 		if fileExists(path) {
 			return path, nil
@@ -81,7 +81,7 @@ func ResolveBinary(runtimesDir, name string) (string, error) {
 // HasPinnedRuntime reports a managed package for an executable on this
 // platform.
 func HasPinnedRuntime(name string) bool {
-	_, _, _, ok := release(name)
+	_, _, _, ok := release(name, installOptions{})
 	return ok
 }
 

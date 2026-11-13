@@ -62,9 +62,7 @@ func TestEnsureBinaryInstallsPinnedRelease(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	oldURL, oldManifest := fetchURL, goManifestJSON
-	defer func() { fetchURL, goManifestJSON = oldURL, oldManifest }()
-	fetchURL = func(u string) string { return srv.URL + u[strings.LastIndex(u, "/"):] }
+	o := installOptions{fetchURL: func(u string) string { return srv.URL + u[strings.LastIndex(u, "/"):] }}
 	manifest := func(archiveSHA string) []byte {
 		arch := map[string]string{"amd64": "x64", "arm64": "arm64"}[goruntime.GOARCH]
 		b, _ := json.Marshal(map[string]any{"targets": []any{map[string]any{"platform": goruntime.GOOS, "architecture": arch,
@@ -80,17 +78,17 @@ func TestEnsureBinaryInstallsPinnedRelease(t *testing.T) {
 	}
 
 	// A wrong archive checksum installs nothing.
-	goManifestJSON = manifest(strings.Repeat("0", 64))
+	o.manifest = manifest(strings.Repeat("0", 64))
 	runtimes := filepath.Join(t.TempDir(), "runtimes")
-	if _, err := EnsureBinary(context.Background(), runtimes, "crispasr"); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+	if _, err := ensureBinary(context.Background(), runtimes, "crispasr", o); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("bad checksum: %v", err)
 	}
 	if entries, _ := os.ReadDir(filepath.Join(runtimes, "crispasr")); len(entries) != 0 {
 		t.Fatalf("left files behind: %v", entries)
 	}
 
-	goManifestJSON = manifest(hexSum(archive))
-	bin, err := EnsureBinary(context.Background(), runtimes, "crispasr")
+	o.manifest = manifest(hexSum(archive))
+	bin, err := ensureBinary(context.Background(), runtimes, "crispasr", o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +99,7 @@ func TestEnsureBinaryInstallsPinnedRelease(t *testing.T) {
 	if !fileExists(filepath.Join(pkg, "libextra.dylib")) || fileExists(filepath.Join(runtimes, "crispasr", "escape")) {
 		t.Fatal("archive extraction: missing library or escaped entry")
 	}
-	if got, _ := os.ReadFile(SupportPath(runtimes, "crispasr", misakiDict)); !bytes.Equal(got, merged) {
+	if got, _ := os.ReadFile(supportPath(runtimes, "crispasr", misakiDict, o)); !bytes.Equal(got, merged) {
 		t.Fatalf("dictionary %q", got)
 	}
 	var receipt map[string]any
@@ -112,12 +110,12 @@ func TestEnsureBinaryInstallsPinnedRelease(t *testing.T) {
 
 	// Installed: no network.
 	n := hits.Load()
-	if _, err := EnsureBinary(context.Background(), runtimes, "crispasr"); err != nil || hits.Load() != n {
+	if _, err := ensureBinary(context.Background(), runtimes, "crispasr", o); err != nil || hits.Load() != n {
 		t.Fatalf("reinstalled an installed runtime: %v, %d requests", err, hits.Load()-n)
 	}
 	// A damaged dictionary is rebuilt, not run.
 	os.WriteFile(filepath.Join(pkg, misakiDict), []byte("{}"), 0o600)
-	if _, err := EnsureBinary(context.Background(), runtimes, "crispasr"); err != nil || hits.Load() == n {
+	if _, err := ensureBinary(context.Background(), runtimes, "crispasr", o); err != nil || hits.Load() == n {
 		t.Fatalf("damaged dictionary: %v", err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(pkg, misakiDict)); !bytes.Equal(got, merged) {
