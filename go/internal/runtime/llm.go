@@ -86,6 +86,9 @@ type LLMDeps struct {
 	// GPUPool admits a discrete placement's GPU bytes on gpu:0 (DESIGN
 	// §20.4; nil: no GPU pool).
 	GPUPool *memory.GPUPool
+	// hooks (tests) shorten the sampling and the settle, or hold a sample; the zero value is how
+	// the package runs.
+	hooks hooks
 }
 
 // PlacementSource is where a load's placement inputs come from.

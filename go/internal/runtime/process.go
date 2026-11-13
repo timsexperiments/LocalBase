@@ -21,7 +21,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
 	"github.com/timsexperiments/LocalBase/go/internal/childenv"
-	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/obs"
 	"github.com/timsexperiments/LocalBase/go/internal/otlp"
 )
@@ -239,9 +238,6 @@ func KillAllBackends() int {
 	}
 	return len(liveProcesses.all)
 }
-
-// sampleFootprint reads a backend's memory. A variable so a test can hold a sample.
-var sampleFootprint = memory.Footprint
 
 func (p *Process) PID() int { return p.cmd.Process.Pid }
 
