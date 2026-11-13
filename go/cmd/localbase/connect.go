@@ -105,7 +105,7 @@ func runConnect(c *cli.Ctx, e *env) (any, error) {
 		}
 		e.audit.KeyChange("create", k) // the line keys create writes: with actor_id and the key's scopes
 		target.Key = raw
-		key = publicKey(k)
+		key = auth.PublicKey(k)
 		// The secret goes out once: in the snippets, or in the envelope.
 		c.Error("Created key %s (%s). The secret below is not shown again.", k.ID, k.Name)
 	}

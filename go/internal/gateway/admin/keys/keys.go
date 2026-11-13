@@ -106,31 +106,6 @@ func (h *Handler) domainError(w http.ResponseWriter, err error) bool {
 
 // --- api keys -----------------------------------------------------------------------
 
-func publicKey(k *store.APIKey) map[string]any {
-	scopes := k.Scopes
-	if scopes == nil {
-		scopes = []string{}
-	}
-	m := map[string]any{"id": k.ID, "name": k.Name, "prefix": k.Prefix, "scopes": scopes, "createdAt": k.CreatedAt,
-		"lastRotatedAt": k.LastRotatedAt}
-	if k.ExpiresAt != nil {
-		m["expiresAt"] = *k.ExpiresAt
-	}
-	if k.RevokedAt != nil {
-		m["revokedAt"] = *k.RevokedAt
-	}
-	return m
-}
-
-func validScopes(scopes []string) ([]string, bool) {
-	for _, sc := range scopes {
-		if !slices.Contains(auth.Permissions, sc) {
-			return nil, false
-		}
-	}
-	return auth.Canonical(scopes), true
-}
-
 func (h *Handler) APIKeys(w http.ResponseWriter, r *http.Request) {
 	p := h.opts.Caller(r)
 	if !p.Authenticated() {
@@ -153,7 +128,7 @@ func (h *Handler) APIKeys(w http.ResponseWriter, r *http.Request) {
 		}
 		out := []map[string]any{}
 		for i := range keys {
-			out = append(out, publicKey(&keys[i]))
+			out = append(out, auth.PublicKey(&keys[i]))
 		}
 		httpx.NoStore(w, 200, map[string]any{"keys": out})
 		return
@@ -202,7 +177,7 @@ func (h *Handler) APIKeys(w http.ResponseWriter, r *http.Request) {
 		"revoke": {"keyId"}, "set-scopes": {"keyId", "scopes"}}[in.Action]...)
 	var scopes []string
 	if valid && in.Scopes != nil {
-		scopes, valid = validScopes(*in.Scopes)
+		scopes, valid = auth.ValidScopes(*in.Scopes)
 	}
 	if !valid {
 		httpx.ManagementError(w, 400, "validation_failed")
@@ -279,28 +254,28 @@ func (h *Handler) APIKeys(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		httpx.NoStore(w, 201, map[string]any{"key": publicKey(k), "secret": raw})
+		httpx.NoStore(w, 201, map[string]any{"key": auth.PublicKey(k), "secret": raw})
 	case "rotate":
 		k, raw, err := h.opts.Store.RotateAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		httpx.NoStore(w, 200, map[string]any{"key": publicKey(k), "secret": raw})
+		httpx.NoStore(w, 200, map[string]any{"key": auth.PublicKey(k), "secret": raw})
 	case "revoke":
 		k, err := h.opts.Store.RevokeAPIKey(ctx, keyID)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		httpx.NoStore(w, 200, map[string]any{"key": publicKey(k)})
+		httpx.NoStore(w, 200, map[string]any{"key": auth.PublicKey(k)})
 	case "set-scopes":
 		k, err := h.opts.Store.SetAPIKeyScopes(ctx, keyID, scopes)
 		if err != nil {
 			httpx.ServiceUnavailable(w, r, "Key management")
 			return
 		}
-		httpx.NoStore(w, 200, map[string]any{"key": publicKey(k)})
+		httpx.NoStore(w, 200, map[string]any{"key": auth.PublicKey(k)})
 	}
 }
 
@@ -847,7 +822,7 @@ func parseAccessRequest(b []byte) (*accessRequest, bool) {
 		if !auth.ValidOrigin(in.Origin) || !has("permissions") {
 			return nil, false
 		}
-		if _, ok := validScopes(in.Permissions); !ok {
+		if _, ok := auth.ValidScopes(in.Permissions); !ok {
 			return nil, false
 		}
 		kind := map[string]string{"upsert-oidc": "oidc", "upsert-github": "github-oauth", "upsert-magic-link": "magic-link"}[in.Action]

@@ -200,7 +200,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			c.Info("secret=%s", raw)
 			c.Info("Store this secret now. It is not shown again.")
 		}
-		created := publicKey(k)
+		created := auth.PublicKey(k)
 		created["secret"] = raw
 		data["createdKey"] = created
 	}
