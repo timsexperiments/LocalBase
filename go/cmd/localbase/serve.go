@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,7 +23,6 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
 	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
-	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
 	"github.com/timsexperiments/LocalBase/go/internal/library"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
@@ -272,7 +270,7 @@ func serve(c *cli.Ctx) (any, error) {
 	// serving anyone: it goes before this one starts backends on the same ports.
 	runtime.SweepBackends(r.Dir, log)
 	defer release()
-	tel, err := startTelemetry(cfg, handler, log)
+	tel, err := otlp.Start(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, handler, log)
 	if err != nil {
 		return nil, err
 	}
@@ -637,48 +635,6 @@ func voiceStamp(st *store.Store) string {
 		b.WriteString(v.ID + ":" + v.SHA256 + ";")
 	}
 	return b.String()
-}
-
-// startTelemetry starts OTLP export when OTEL_* or the saved settings
-// enable it (TS activateContextOtel): every event the gateway logs is
-// exported with its span correlation, except the exporter's own
-// diagnostics, which stay in the local log.
-func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (*otlp.Runtime, error) {
-	oc, err := obs.ResolveOtel(cfg.OtelEndpoint, cfg.OtelHeaders, cfg.OtelSampleRatio, os.Getenv)
-	if err != nil {
-		return nil, err
-	}
-	tel := otlp.New(oc, version.Version, func(severity, message string, attrs map[string]any) {
-		event, level := "observability.export-failed", slog.LevelWarn
-		switch severity {
-		case "info":
-			event, level = "observability.export-recovered", slog.LevelInfo
-		case "error":
-			level = slog.LevelError
-		}
-		args := []any{"event", event, "category", "logging", "component", "otel", obs.LocalOnly, true}
-		keys := make([]string, 0, len(attrs))
-		for k := range attrs {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			args = append(args, k, attrs[k])
-		}
-		log.Log(context.Background(), level, message, args...)
-	})
-	if tel.Enabled() {
-		hooks := handler.Hooks()
-		hooks.Correlate = otlp.Correlation
-		hooks.Export = func(line []byte) {
-			if v, err := jsjson.Parse(line); err == nil {
-				if o, ok := v.(*jsjson.Object); ok {
-					tel.Emit(o)
-				}
-			}
-		}
-	}
-	return tel, nil
 }
 
 // runningOverrides puts back what only this process has when a saved configuration is published:
