@@ -331,14 +331,10 @@ func diagnosticModels(ctx context.Context, dir string, st *store.Store, cat *cat
 		if !selected[s.ModelID] && !complete {
 			continue
 		}
-		var observed []store.ObservedPeak
-		if sha := s.Primary().SHA256; st != nil && sha != "" {
-			var err error
-			if observed, err = st.ObservedPeaks(ctx, s.ModelID, sha); err != nil {
-				problems.add("reading the memory peaks seen for "+s.ModelID, err)
-			}
+		fit, err := runtime.ObservedFit(ctx, st, cat, s, systemGB)
+		if err != nil {
+			problems.add("reading the memory peaks seen for "+s.ModelID, err)
 		}
-		fit := runtime.FitFor(s, systemGB, nil, observed, cat.PlannableFeedPeaks(s))
 		report := runtime.CapabilitiesFor(ctx, st, cat, s, modelDir)
 		caps := []any{}
 		for _, cp := range report.Capabilities {

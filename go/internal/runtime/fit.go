@@ -133,3 +133,15 @@ func ModelFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, spec *
 	}
 	return FitFor(spec, systemGB, geo, peaks, feed), nil
 }
+
+// ObservedFit is FitFor with the memory peaks this machine has seen for the model's primary file,
+// from st (none without a store or a file hash). When the peaks can't be read, the fit is made with
+// what came back, and the error is returned beside it for the caller to report.
+func ObservedFit(ctx context.Context, st *store.Store, cat *catalog.Catalog, s *catalog.Spec, systemGB int) (*Fit, error) {
+	var observed []store.ObservedPeak
+	var err error
+	if sha := s.Primary().SHA256; st != nil && sha != "" {
+		observed, err = st.ObservedPeaks(ctx, s.ModelID, sha)
+	}
+	return FitFor(s, systemGB, nil, observed, cat.PlannableFeedPeaks(s)), err
+}

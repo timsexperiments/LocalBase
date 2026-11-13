@@ -125,14 +125,11 @@ func specJSON(s *catalog.Spec, extra map[string]any) map[string]any {
 }
 
 func cliFit(e *env, s *catalog.Spec, memoryGB int) (*runtime.Fit, error) {
-	var peaks []store.ObservedPeak
-	if sha := s.Primary().SHA256; sha != "" && e.Store != nil {
-		var err error
-		if peaks, err = e.Store.ObservedPeaks(context.Background(), s.ModelID, sha); err != nil {
-			return nil, &failedRead{Step: "reading the memory peaks seen for " + s.ModelID, Err: err}
-		}
+	fit, err := runtime.ObservedFit(context.Background(), e.Store, e.Catalog, s, memoryGB)
+	if err != nil {
+		return nil, &failedRead{Step: "reading the memory peaks seen for " + s.ModelID, Err: err}
 	}
-	return runtime.FitFor(s, memoryGB, nil, peaks, e.Catalog.PlannableFeedPeaks(s)), nil
+	return fit, nil
 }
 
 // cliVoices is the custom voices a speech model's page lists.
@@ -145,16 +142,6 @@ func cliVoices(e *env, s *catalog.Spec) ([]store.Voice, error) {
 		return nil, &failedRead{Step: "reading the custom voices", Err: err}
 	}
 	return voices, nil
-}
-
-func tier(s *catalog.Spec) string {
-	if s.Tier != "" {
-		return s.Tier
-	}
-	if s.Trust == "qualified" {
-		return "built-in"
-	}
-	return "user"
 }
 
 func modelsCommand() *cli.Command {
@@ -336,7 +323,7 @@ func modelsCatalog() *cli.Command {
 					line += " qualification=experimental (unqualified)"
 				}
 				if s.Trust != "qualified" {
-					line += " trust=" + s.Trust + " source=" + tier(s)
+					line += " trust=" + s.Trust + " source=" + meta.Tier(s)
 				}
 				c.Info("%s", line)
 				for _, u := range s.UnsupportedCapabilities {
@@ -351,7 +338,7 @@ func modelsCatalog() *cli.Command {
 				}
 				c.Info("      catch: %s", s.Catch)
 				extra := memoryJSON(f)
-				extra["trust"], extra["catalogTier"] = s.Trust, tier(s)
+				extra["trust"], extra["catalogTier"] = s.Trust, meta.Tier(s)
 				out = append(out, specJSON(s, extra))
 			}
 			if len(out) == 0 && len(listed) > 0 {

@@ -29,23 +29,6 @@ func initCommand() *cli.Command {
 	}}
 }
 
-// publicKey is the key metadata commands print (never the hash).
-func publicKey(k *store.APIKey) map[string]any {
-	scopes := k.Scopes
-	if scopes == nil {
-		scopes = []string{}
-	}
-	m := map[string]any{"id": k.ID, "name": k.Name, "prefix": k.Prefix, "scopes": scopes,
-		"createdAt": k.CreatedAt, "lastRotatedAt": k.LastRotatedAt}
-	if k.ExpiresAt != nil {
-		m["expiresAt"] = *k.ExpiresAt
-	}
-	if k.RevokedAt != nil {
-		m["revokedAt"] = *k.RevokedAt
-	}
-	return m
-}
-
 // parseScopes reads a comma-separated permission list; empty grants none.
 // The result is in canonical order.
 func parseScopes(v string) ([]string, error) {
@@ -54,13 +37,13 @@ func parseScopes(v string) ([]string, error) {
 		return list, nil
 	}
 	for _, s := range strings.Split(v, ",") {
-		s = strings.TrimSpace(s)
-		if !contains(auth.Permissions, s) {
-			return nil, cli.Inputf("scopes: Invalid option: expected one of %s", `"`+strings.Join(auth.Permissions, `"|"`)+`"`)
-		}
-		list = append(list, s)
+		list = append(list, strings.TrimSpace(s))
 	}
-	return auth.Canonical(list), nil
+	scopes, ok := auth.ValidScopes(list)
+	if !ok {
+		return nil, cli.Inputf("scopes: Invalid option: expected one of %s", `"`+strings.Join(auth.Permissions, `"|"`)+`"`)
+	}
+	return scopes, nil
 }
 
 func keyNotFound(err error) error {
@@ -110,7 +93,7 @@ func keysCommand() *cli.Command {
 					line += " | revoked=" + *k.RevokedAt
 				}
 				c.Info("%s", line)
-				out = append(out, publicKey(k))
+				out = append(out, auth.PublicKey(k))
 			}
 			return map[string]any{"keys": out}, nil
 		})},
@@ -146,7 +129,7 @@ func keysCommand() *cli.Command {
 				c.Info("secret=%s", raw)
 				c.Info("Store this secret now. It is not shown again.")
 			}
-			return map[string]any{"key": publicKey(k), "secret": raw}, nil
+			return map[string]any{"key": auth.PublicKey(k), "secret": raw}, nil
 		})},
 		{Name: "revoke", Summary: "Revoke an API key", Usage: "<keyId>", MinArgs: 1, MaxArgs: 1,
 			Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
@@ -158,7 +141,7 @@ func keysCommand() *cli.Command {
 				e.audit.KeyChange("revoke", k)
 				c.Info("Revoked key %s (%s)", k.ID, k.Name)
 				warn()
-				return map[string]any{"key": publicKey(k)}, nil
+				return map[string]any{"key": auth.PublicKey(k)}, nil
 			})},
 		{Name: "rotate", Summary: "Rotate an API key", Usage: "<keyId>", MinArgs: 1, MaxArgs: 1,
 			Run: withEnv(func(c *cli.Ctx, e *env) (any, error) {
@@ -172,7 +155,7 @@ func keysCommand() *cli.Command {
 					c.Info("new_secret=%s", raw)
 					c.Info("Store this secret now. It is not shown again.")
 				}
-				return map[string]any{"key": publicKey(k), "secret": raw}, nil
+				return map[string]any{"key": auth.PublicKey(k), "secret": raw}, nil
 			})},
 		{Name: "scopes", Summary: "Replace an API key's scopes", Usage: "<keyId>", MinArgs: 1, MaxArgs: 1, Options: []cli.Option{
 			{Name: "scopes", Value: "<permission,...>", Help: "Complete comma-separated permission set; empty grants none"},
@@ -190,7 +173,7 @@ func keysCommand() *cli.Command {
 			}
 			e.audit.KeyChange("set-scopes", k)
 			c.Info("Updated scopes for key %s: %s", k.ID, strings.Join(k.Scopes, ","))
-			return map[string]any{"key": publicKey(k)}, nil
+			return map[string]any{"key": auth.PublicKey(k)}, nil
 		})},
 	}}
 }

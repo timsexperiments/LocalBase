@@ -210,8 +210,8 @@ func kindCapabilities(s *catalog.Spec, voices []store.Voice) any {
 	return nil
 }
 
-// tierOf is the highest catalog tier that contributed to the entry.
-func tierOf(s *catalog.Spec) string {
+// Tier is the highest catalog tier that contributed to the entry.
+func Tier(s *catalog.Spec) string {
 	if s.Tier != "" {
 		return s.Tier
 	}
@@ -298,7 +298,7 @@ func Project(ctx context.Context, in Input, spec *catalog.Spec) (Model, []*store
 	c := &m.Catalog
 	c.Name, c.DisplayName, c.Provider, c.Source = spec.Family, spec.Name(), spec.Provider, spec.Source
 	c.Revision, c.Kind, c.QualificationState = spec.RepositoryRevision, spec.Kind, spec.QualificationState
-	c.Trust, c.CatalogTier, c.CatalogFeed = spec.Trust, tierOf(spec), feedOf(spec)
+	c.Trust, c.CatalogTier, c.CatalogFeed = spec.Trust, Tier(spec), feedOf(spec)
 	c.CommercialStatus, c.Summary, c.Notes, c.Quantization = spec.CommercialStatus, spec.Catch, spec.Notes, spec.Quant
 	c.Features = Features(spec)
 	for _, a := range spec.Artifacts {
