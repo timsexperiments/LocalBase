@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -20,6 +21,9 @@ func runApp(t *testing.T, args ...string) (int, string) {
 	var out, errb bytes.Buffer
 	a := app()
 	a.Stdout, a.Stderr = &out, &errb
+	if h, ok := roomy.Load(t); ok {
+		a.Context = context.WithValue(context.Background(), testHostKey{}, h)
+	}
 	code := a.Run(args)
 	return code, out.String() + errb.String()
 }
@@ -201,11 +205,22 @@ func TestModelsPlacementCLI(t *testing.T) {
 // roomyHost gives the commands a computer with 64 GiB and 48 GiB of it free, shaped like this one
 // (unified or not), instead of what this machine has free right now. setup runs the other packages'
 // tests beside these, and a CPU placement was refused on a 16 GB runner for want of 0.2 GB.
+// runApp gives the commands that host in the App's Context.
 func roomyHost(t *testing.T) {
 	t.Helper()
-	old := newHostProvider
-	newHostProvider = func() memory.HostProvider { return fixedHost{real: old()} }
-	t.Cleanup(func() { newHostProvider = old })
+	roomy.Store(t, memory.HostProvider(fixedHost{real: memory.NewHostProvider()}))
+	t.Cleanup(func() { roomy.Delete(t) })
+}
+
+// roomy holds the tests that called roomyHost, and the host each gets.
+var roomy sync.Map
+
+// testHost is the host a test's own env gets: roomyHost's when it called it, else this computer's.
+func testHost(t *testing.T) memory.HostProvider {
+	if h, ok := roomy.Load(t); ok {
+		return h.(memory.HostProvider)
+	}
+	return memory.NewHostProvider()
 }
 
 type fixedHost struct{ real memory.HostProvider }

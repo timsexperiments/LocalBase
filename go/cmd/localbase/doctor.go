@@ -30,7 +30,7 @@ func doctorCommand() *cli.Command {
 			return 0
 		},
 		Run: func(c *cli.Ctx) (any, error) {
-			e, err := readEnvKeepingProblems(c, true)
+			e, err := readEnvKeepingProblems(c, readOptions{persisted: true})
 			if err != nil {
 				return nil, err
 			}

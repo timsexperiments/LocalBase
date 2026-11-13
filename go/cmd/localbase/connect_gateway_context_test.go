@@ -58,7 +58,7 @@ func TestConnectAsksTheRunningGatewayForTheContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: newHostProvider()}
+	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: testHost(t)}
 	if got, planned := connectContext(e, lab.ChatSmall); got != m.ContextLength || planned {
 		t.Errorf("connect's context %d (planned %v), the gateway's %d", got, planned, m.ContextLength)
 	}

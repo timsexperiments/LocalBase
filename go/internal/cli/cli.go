@@ -9,6 +9,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +70,15 @@ type Ctx struct {
 	Stdout      io.Writer
 	Stderr      io.Writer
 	streamingOK bool
+	ctx         context.Context
+}
+
+// Context is the App's Context, or context.Background() for a Ctx made without one.
+func (c *Ctx) Context() context.Context {
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
 }
 
 // String returns the last value of an option, or its default.
@@ -202,6 +212,8 @@ type App struct {
 	Default string
 	Stdout  io.Writer
 	Stderr  io.Writer
+	// Context is what commands run under (Ctx.Context); nil is context.Background().
+	Context context.Context
 }
 
 func (a *App) writeEnvelope(v any) {
@@ -281,7 +293,7 @@ func (a *App) Run(args []string) int {
 			return a.fail(g.JSON, "invalid_input", errors.New("Unknown command: "+rest[0]), 2, cmd, path)
 		}
 	}
-	ctx := &Ctx{Global: g, Stdout: a.Stdout, Stderr: a.Stderr, path: path}
+	ctx := &Ctx{Global: g, Stdout: a.Stdout, Stderr: a.Stderr, path: path, ctx: a.Context}
 	if err := parseOptions(ctx, cmd, rest); err != nil {
 		return a.fail(g.JSON, "invalid_input", err, cmd.inputExit(), cmd, path)
 	}

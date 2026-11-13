@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -15,9 +16,18 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
-// newHostProvider reads this computer's memory. It exists only so tests can swap the host for a
-// fixed one, so what they check doesn't depend on what else the machine is running.
-var newHostProvider = memory.NewHostProvider
+// testHostKey (tests) is the App Context key for a memory.HostProvider that stands in for this
+// computer's memory, so what a test checks doesn't depend on what else the machine is running.
+// main sets no Context.
+type testHostKey struct{}
+
+// hostFor is this computer's memory, or the host a test put in the App's Context.
+func hostFor(c *cli.Ctx) memory.HostProvider {
+	if h, ok := c.Context().Value(testHostKey{}).(memory.HostProvider); ok {
+		return h
+	}
+	return memory.NewHostProvider()
+}
 
 // env is what most commands need: the root, its database, the catalog and
 // the configuration. Like TS, opening a root without a config row
@@ -32,6 +42,9 @@ type env struct {
 	Host            memory.HostProvider
 	// audit is where this command's audit records go.
 	audit *audit.Log
+	// readyWait (tests) is how long a gateway restarted by upgrade gets to answer ready; 0 is
+	// upgradeReadyWait.
+	readyWait time.Duration
 }
 
 func (e *env) Close() {
@@ -57,7 +70,7 @@ func openEnv(c *cli.Ctx) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &env{Root: r, Store: st, Host: newHostProvider(), audit: audit.New(r, c.Stderr)} // the seam exists only so tests can swap the host
+	e := &env{Root: r, Store: st, Host: hostFor(c), audit: audit.New(r, c.Stderr)}
 	if e.Catalog, err = catalog.LoadRoot(r.Dir, nil); err != nil {
 		e.Close()
 		return nil, err

@@ -64,9 +64,6 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	was := upgradeReadyWait
-	upgradeReadyWait = 300 * time.Millisecond
-	t.Cleanup(func() { upgradeReadyWait = was })
 	c := &cli.Ctx{Stdout: io.Discard, Stderr: io.Discard}
 	script := func(body string) string {
 		p := filepath.Join(t.TempDir(), "local-base")
@@ -75,7 +72,7 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 		}
 		return p
 	}
-	e := &env{Root: r, Config: &store.Config{}}
+	e := &env{Root: r, Config: &store.Config{}, readyWait: 300 * time.Millisecond}
 
 	// The manager accepted it, and nothing ever answers: that is a failed start, so it rolls back.
 	start := time.Now()
@@ -83,7 +80,7 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "did not become ready") {
 		t.Errorf("no gateway came up: %v", err)
 	}
-	if time.Since(start) < upgradeReadyWait {
+	if time.Since(start) < e.readyWait {
 		t.Errorf("it did not wait: %v", time.Since(start))
 	}
 
@@ -93,7 +90,7 @@ func TestManagedStartWaitsForReadiness(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "broken") || strings.Contains(err.Error(), "did not become ready") {
 		t.Errorf("a failed restart: %v", err)
 	}
-	if time.Since(start) >= upgradeReadyWait {
+	if time.Since(start) >= e.readyWait {
 		t.Errorf("it waited after a failed restart: %v", time.Since(start))
 	}
 }

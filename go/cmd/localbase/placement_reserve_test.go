@@ -38,7 +38,7 @@ func TestPlacementLLMKeepsTheConfiguredReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.SystemReserve.Percent, cfg.SystemReserve.MinimumGB = 30, 3
-	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: newHostProvider()}
+	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: testHost(t)}
 	lib, err := openLibrary(e)
 	if err != nil {
 		t.Fatal(err)

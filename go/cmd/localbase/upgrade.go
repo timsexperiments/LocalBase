@@ -31,7 +31,15 @@ const (
 )
 
 // upgradeReadyWait is how long a restarted gateway gets to answer ready.
-var upgradeReadyWait = 90 * time.Second
+const upgradeReadyWait = 90 * time.Second
+
+// readyWaitLimit is upgradeReadyWait, or the shorter wait a test set.
+func (e *env) readyWaitLimit() time.Duration {
+	if e.readyWait > 0 {
+		return e.readyWait
+	}
+	return upgradeReadyWait
+}
 
 func upgradeCommand() *cli.Command {
 	return &cli.Command{Name: "upgrade", Summary: "Update this binary to a newer release",
@@ -165,7 +173,7 @@ func managedOps(c *cli.Ctx, e *env, binary string, arguments []string) upgrade.O
 			// restart returns once the manager has taken it, which can be before the
 			// gateway listens. Smoke would then fail on a release that is fine, and a
 			// gateway that never comes up has to roll back.
-			if err := service.WaitReady(e.Root, upgradeReadyWait); err != nil {
+			if err := service.WaitReady(e.Root, e.readyWaitLimit()); err != nil {
 				return fmt.Errorf("the gateway did not become ready: %w", err)
 			}
 			return nil

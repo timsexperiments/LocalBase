@@ -24,9 +24,6 @@ func explainError(err error) error {
 // failedRead is store.ReadError, under the name this package uses.
 type failedRead = store.ReadError
 
-// afterReadOpen is for tests: a writer that arrives just after the database opened.
-var afterReadOpen = func() {}
-
 // persistedConfig reads the stored settings for a listing command. A database with none yet leaves
 // the defaults to stand in. Any other failure means there are settings it couldn't read, and defaults
 // reported as if they were those would be wrong, and exit 0.

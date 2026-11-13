@@ -30,7 +30,11 @@ import (
 // readEnv is the environment of listing commands: it never creates the root
 // or the database. Without a database the defaults stand in, as TS does.
 func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
-	e, err := readEnvKeepingProblems(c, persisted)
+	return withoutProblems(readEnvKeepingProblems(c, readOptions{persisted: persisted}))
+}
+
+// withoutProblems turns an env whose database could not be read into that failure.
+func withoutProblems(e *env, err error) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -40,14 +44,22 @@ func readEnv(c *cli.Ctx, persisted bool) (*env, error) {
 	return e, nil
 }
 
+// readOptions say how readEnvKeepingProblems reads the root.
+type readOptions struct {
+	// persisted reads the stored settings, not the defaults.
+	persisted bool
+	// afterOpen (tests) runs just after the database opened, so a writer can arrive then.
+	afterOpen func()
+}
+
 // readEnvKeepingProblems is readEnv for doctor, which still has things to say about a database it
 // can't read: the problem is in DatabaseProblem, with no Store and default settings.
-func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
+func readEnvKeepingProblems(c *cli.Ctx, o readOptions) (*env, error) {
 	if err := checkOtelEnvironment(); err != nil {
 		return nil, err
 	}
 	dir := root.Resolve(c.Global.Root)
-	e := &env{Root: &root.Root{Dir: dir}, Host: newHostProvider()} // the seam exists only so tests can swap the host
+	e := &env{Root: &root.Root{Dir: dir}, Host: hostFor(c)}
 	if r, err := root.Open(dir); err == nil {
 		e.Root = r
 	} else if canon, cerr := root.Canonical(dir); cerr == nil {
@@ -71,8 +83,10 @@ func readEnvKeepingProblems(c *cli.Ctx, persisted bool) (*env, error) {
 			e.DatabaseProblem = &unreadableSettings{Root: e.Root.Dir, Err: &failedRead{Step: "opening the database", Err: err}}
 		} else {
 			e.Store = st
-			if persisted {
-				afterReadOpen()
+			if o.persisted {
+				if o.afterOpen != nil {
+					o.afterOpen()
+				}
 				if e.Config, err = persistedConfig(st); err != nil {
 					_ = st.Close() // Read-only.
 					e.Store, e.Config, e.DatabaseProblem = nil, nil, &unreadableSettings{Root: e.Root.Dir, Err: err}
