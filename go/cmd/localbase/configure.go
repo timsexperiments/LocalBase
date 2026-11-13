@@ -77,13 +77,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			if !c.Has(k + "-models") {
 				continue
 			}
-			var invalid []string
-			for _, id := range cli.SplitList(c.String(k + "-models")) {
-				if s := builtIn.ByID(id); s == nil || s.Kind != k {
-					invalid = append(invalid, id)
-				}
-			}
-			if len(invalid) > 0 {
+			if invalid := conf.NotBuiltIn(builtIn, k, cli.SplitList(c.String(k+"-models"))); len(invalid) > 0 {
 				return nil, cli.Inputf("Invalid %s model ids: %s", k, strings.Join(invalid, ", "))
 			}
 		}
@@ -145,7 +139,7 @@ func runConfigure(c *cli.Ctx) (any, error) {
 			if err != nil {
 				return err
 			}
-			if (was == "on") != (s.value == "on") {
+			if conf.ToggleChanged(was, s.value) {
 				changed = append(changed, s)
 			}
 		}

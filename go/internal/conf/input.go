@@ -221,3 +221,20 @@ func secretOptionWarnings(in Input) []string {
 	}
 	return out
 }
+
+// NotBuiltIn is the ids among ids that the built-in catalog has no kind model for, in order. The
+// command line's ids are checked against the built-in catalog only, before a root's own catalog
+// loads (TS assertCatalogModels).
+func NotBuiltIn(builtIn *catalog.Catalog, kind string, ids []string) []string {
+	var invalid []string
+	for _, id := range ids {
+		if s := builtIn.ByID(id); s == nil || s.Kind != kind {
+			invalid = append(invalid, id)
+		}
+	}
+	return invalid
+}
+
+// ToggleChanged reports whether setting an on/off setting now at was to value changes it. Unset counts
+// as off.
+func ToggleChanged(was, value string) bool { return (was == "on") != (value == "on") }
