@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"strconv"
 
 	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
@@ -117,38 +116,6 @@ func (e *env) saveAs(cfg *store.Config, marking bool, settings ...store.SettingV
 	}
 	e.Config = cfg
 	return nil
-}
-
-// applyEnvOverrides applies LOCALBASE_HOST, LOCALBASE_PORT, LOCALBASE_STT_HOST,
-// LOCALBASE_STT_PORT and LOCALBASE_CTX_SIZE to the in-memory config, as TS
-// does for every command. They are never saved.
-func applyEnvOverrides(cfg *store.Config) error {
-	str := func(name string, dst *string) {
-		if v := os.Getenv(name); v != "" {
-			*dst = v
-		}
-	}
-	num := func(name string, dst *int, lo, hi int) error {
-		v := os.Getenv(name)
-		if v == "" {
-			return nil
-		}
-		n, err := strconv.Atoi(v)
-		if err != nil || n < lo || n > hi {
-			return cli.Inputf("%s: must be an integer from %d to %d", name, lo, hi)
-		}
-		*dst = n
-		return nil
-	}
-	str("LOCALBASE_HOST", &cfg.Host)
-	str("LOCALBASE_STT_HOST", &cfg.SttHost)
-	if err := num("LOCALBASE_PORT", &cfg.Port, 1, 65535); err != nil {
-		return err
-	}
-	if err := num("LOCALBASE_STT_PORT", &cfg.SttPort, 1, 65535); err != nil {
-		return err
-	}
-	return num("LOCALBASE_CTX_SIZE", &cfg.CtxSize, 2048, 2_147_483_647)
 }
 
 // checkOtelEnvironment rejects invalid OTEL_* variables before a command

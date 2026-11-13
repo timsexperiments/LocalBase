@@ -22,6 +22,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/cli"
+	"github.com/timsexperiments/LocalBase/go/internal/conf"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
@@ -199,8 +200,8 @@ func serve(c *cli.Ctx) (any, error) {
 	}
 	defer e.Close()
 	r, st, cfg, cat := e.Root, e.Store, e.Config, e.Catalog
-	if err := applyEnvOverrides(cfg); err != nil {
-		return nil, err
+	if err := conf.ApplyEnv(cfg); err != nil {
+		return nil, inputError(err)
 	}
 
 	// Before anything writes to them: a planted link must not redirect a log (TS).
@@ -736,7 +737,7 @@ func startTelemetry(cfg *store.Config, handler *obs.Handler, log *slog.Logger) (
 // then, so an error here means it can't have changed; it is logged, and leaves that value saved.
 func runningOverrides(llmHost string, log *slog.Logger) func(*store.Config) {
 	return func(cfg *store.Config) {
-		if err := applyEnvOverrides(cfg); err != nil {
+		if err := conf.ApplyEnv(cfg); err != nil {
 			log.Warn("Could not apply the environment to the running configuration.", "event", "config.override-failed", "error", err.Error())
 		}
 		if llmHost != "" {
