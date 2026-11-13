@@ -1,2 +1,2 @@
-models: zero-chat, tiny-chat, imp-ready
+models: tiny-chat, imp-ready
 default: tiny-chat

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,8 +118,14 @@ func TestChatCandidatesGolden(t *testing.T) {
 	u := New(Deps{NoAuth: true, Library: lib, Catalog: cat, Store: st, RootDir: r.Dir, LLM: llm})
 	req := httptest.NewRequest("GET", "/app/chat", nil)
 	var b strings.Builder
+	picker := u.chatModels(req)
+	// The one behaviour change 5-7f makes here: an import with a catalog model's id is listed once.
+	if n := slices.IndexFunc(picker, func(m chatModel) bool { return m.ID == "tiny-chat" }); n < 0 ||
+		slices.ContainsFunc(picker[n+1:], func(m chatModel) bool { return m.ID == "tiny-chat" }) {
+		t.Errorf("tiny-chat isn't listed exactly once: %+v", picker)
+	}
 	b.WriteString("chat picker:\n")
-	for _, m := range u.chatModels(req) {
+	for _, m := range picker {
 		b.WriteString("  " + m.ID)
 		if m.Ready {
 			b.WriteString(" ready")

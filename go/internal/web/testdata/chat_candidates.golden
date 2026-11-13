@@ -1,11 +1,9 @@
 chat picker:
   tiny-chat ready default
   imp-ready ready
-  tiny-chat ready
   zero-chat
   qwen3.5-4b-q4_k_m
   imp-missing
 connect page:
   tiny-chat
   imp-ready
-  tiny-chat

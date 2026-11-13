@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -92,6 +93,11 @@ func TestConnectCandidatesGolden(t *testing.T) {
 	}
 	if err := json.NewDecoder(strings.NewReader(out[strings.Index(out, "{"):])).Decode(&env); err != nil {
 		t.Fatalf("%v: %s", err, out)
+	}
+	// The one behaviour change 5-7f makes here: a model whose files are all 0 bytes, with no expected
+	// size, isn't installed (web's rule, which the command line now shares).
+	if slices.Contains(env.Data.Models, "zero-chat") {
+		t.Errorf("a model whose files are 0 bytes is listed as installed: %q", env.Data.Models)
 	}
 	got := "models: " + strings.Join(env.Data.Models, ", ") + "\ndefault: " + env.Data.Model + "\n"
 	golden := filepath.Join("testdata", "connect_candidates.golden")
