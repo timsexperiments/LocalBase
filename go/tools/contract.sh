@@ -18,6 +18,17 @@ log="$dir/contract-$(date -u +%Y%m%dT%H%M%SZ)-$$.jsonl"
 # and two at once could load real models side by side on a small runner.
 go test -json -p 1 ./test/contract ./test/system -count=1 "$@" > "$log"
 code=$?
+# On CI nothing else shares the temp directory, so the run must leave none of the suites' own
+# scratch directories in it: the harness's gateways, the CLI builds and the upgrade kit's binaries.
+# Left on a shared machine, they filled its disk (33 GB by 2026-11-13); here a leak fails the run.
+if [ -n "${CI:-}" ]; then
+  left=$(find "${TMPDIR:-/tmp}" -maxdepth 1 \( -name 'lbgo-contract-*' -o -name 'lbgo-cli-bin-*' -o -name 'lbgo-cli-lab-bin-*' -o -name 'lbgo-upgrade-*' \) 2>/dev/null)
+  if [ -n "$left" ]; then
+    echo "contract run left its scratch directories in ${TMPDIR:-/tmp}:" >&2
+    echo "$left" >&2
+    [ "$code" -eq 0 ] && code=1
+  fi
+fi
 # Show the run as go test would (package results and failures).
 if command -v jq >/dev/null; then
   jq -r 'select(.Action=="output") | .Output' "$log" | grep -E '^(--- |FAIL|ok |PASS|panic|\s+\S+_test\.go:)' || true
