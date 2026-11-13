@@ -16,6 +16,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
@@ -94,8 +95,7 @@ func TestMediaAdmissionGolden(t *testing.T) {
 			t.Fatalf("golden host %d/%d", g.CapacityBytes, g.GPUWorkingSetBytes)
 		}
 		host := newStepHost(60 * memory.GiB)
-		c := memory.NewController(host, reserve, false)
-		c.SetSampler(nil)
+		c := memory.NewController(memorytest.Unsampled{HostProvider: host}, reserve, false)
 		pid := 100
 		for id, d := range g.Residents {
 			r, err := c.Reserve(context.Background(), id, d)
@@ -160,8 +160,7 @@ func newMissingImageService(t *testing.T, host *stepHost, recovery *IdleRecovery
 	t.Cleanup(func() { st.Close() })
 	modelsDir := filepath.Join(dir, "models", "image")
 	os.MkdirAll(modelsDir, 0o700)
-	mem := memory.NewController(host, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: host}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	if recovery != nil {
 		recovery.Memory = mem
 	}

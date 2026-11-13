@@ -10,8 +10,7 @@ import (
 func admissionRoutes(t *testing.T, total, avail, model int64) (reserve, check, preview error) {
 	t.Helper()
 	fresh := func() *Controller {
-		c := NewController(&tableHost{total: total, avail: avail}, Reserve{Percent: 15, MinimumGB: 8}, false)
-		c.SetSampler(nil)
+		c := NewController(unsampled{&tableHost{total: total, avail: avail}}, Reserve{Percent: 15, MinimumGB: 8}, false)
 		return c
 	}
 	d := Demand{UnifiedBytes: model, AcceleratorBytes: model, Confidence: "measured"}

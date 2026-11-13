@@ -19,6 +19,19 @@ func (f *fakeHost) Snapshot(context.Context) Snapshot {
 	return Snapshot{Available: f.avail, Pressure: "normal"}
 }
 
+// measuredHost is a fakeHost whose footprints are what measure says; nil measures nothing.
+type measuredHost struct {
+	*fakeHost
+	measure func(ctx context.Context, pid int) (int64, bool)
+}
+
+func (h *measuredHost) Footprint(ctx context.Context, pid int) (int64, bool) {
+	if h.measure == nil {
+		return 0, false
+	}
+	return h.measure(ctx, pid)
+}
+
 func demand(gb float64) Demand {
 	b := int64(gb * float64(GiB))
 	return Demand{UnifiedBytes: b, HostBytes: b, AcceleratorBytes: b, Confidence: "measured"}
@@ -74,7 +87,9 @@ func TestGPUWorkingSetSum(t *testing.T) {
 
 // #355: a releasing runtime is credited min(projection, footprint).
 func TestSwitchPreflightCreditCappedAtFootprint(t *testing.T) {
-	c, h := newTestController(30)
+	_, h := newTestController(30)
+	mh := &measuredHost{fakeHost: h}
+	c := NewController(mh, Reserve{Percent: 15, MinimumGB: 8}, false)
 	r, err := c.Reserve(context.Background(), "llm", demand(10))
 	if err != nil {
 		t.Fatal(err)
@@ -84,27 +99,27 @@ func TestSwitchPreflightCreditCappedAtFootprint(t *testing.T) {
 	next := demand(20.5)               // needs 20.5 + 9.6 reserve = 30.1 GiB
 
 	// Projection credit (10) would admit: 20 + 10 = 30 ... just short; use 20.0 to show the gap.
-	c.SetSampler(nil)
+	mh.measure = nil
 	if err := c.CheckAdmission(context.Background(), demand(19.9), []string{"llm"}); err != nil {
 		t.Fatalf("projection credit should admit: %v", err)
 	}
 	// Footprint 7 GiB caps the credit: 20 + 7 - 19.9 < 9.6.
-	c.SetSampler(func(_ context.Context, pid int) (int64, bool) {
+	mh.measure = func(_ context.Context, pid int) (int64, bool) {
 		if pid != 4242 {
 			t.Fatalf("sampled pid %d", pid)
 		}
 		return 7 * GiB, true
-	})
+	}
 	if r := reason(c.CheckAdmission(context.Background(), demand(19.9), []string{"llm"})); r != "system-memory" {
 		t.Fatalf("capped credit should reject, got %q", r)
 	}
 	// Credit never exceeds the projection even if the footprint is larger.
-	c.SetSampler(func(context.Context, int) (int64, bool) { return 40 * GiB, true })
+	mh.measure = func(context.Context, int) (int64, bool) { return 40 * GiB, true }
 	if r := reason(c.CheckAdmission(context.Background(), next, []string{"llm"})); r != "system-memory" {
 		t.Fatalf("credit above projection: got %q", r)
 	}
 	// Sampler failure falls back to the projection.
-	c.SetSampler(func(context.Context, int) (int64, bool) { return 0, false })
+	mh.measure = func(context.Context, int) (int64, bool) { return 0, false }
 	if err := c.CheckAdmission(context.Background(), demand(19.9), []string{"llm"}); err != nil {
 		t.Fatalf("fallback should admit: %v", err)
 	}
@@ -167,8 +182,7 @@ func (h *holdHost) Snapshot(ctx context.Context) Snapshot {
 func TestResidentCountsOnlyInLaterSamples(t *testing.T) {
 	inner, _ := newTestController(30)
 	h := &holdHost{HostProvider: inner.host}
-	c := NewController(h, inner.system, false)
-	c.SetSampler(nil)
+	c := NewController(unsampled{h}, inner.system, false)
 	r, err := c.Reserve(context.Background(), "a", demand(10))
 	if err != nil {
 		t.Fatal(err)

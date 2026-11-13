@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/placement"
 	"github.com/timsexperiments/LocalBase/go/internal/placement/placementtest"
 )
@@ -27,8 +28,7 @@ func (h cpuHost) Snapshot(context.Context) memory.Snapshot {
 
 func cpuLLM(t *testing.T, avail int64) *LLM {
 	t.Helper()
-	mem := memory.NewController(cpuHost{avail}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: cpuHost{avail}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	spec := m.d.Catalog.ByID(modelB)
 	placementtest.WriteMoEGGUF(t, filepath.Join(m.d.ModelsDir, spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)
@@ -96,8 +96,7 @@ func TestNextLoadBytesIsAdmissionsFigure(t *testing.T) {
 
 // A small computer: the refusal is the permanent kind, whatever is free right now.
 func TestCPUPlanOnASmallComputerIsTooLarge(t *testing.T) {
-	mem := memory.NewController(smallHost{}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: smallHost{}}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	m := newTestLLMWith(t, mem)
 	spec := m.d.Catalog.ByID(modelB)
 	placementtest.WriteMoEGGUF(t, filepath.Join(m.d.ModelsDir, spec.Primary().Filename), spec.Primary().ExpectedSizeBytes)

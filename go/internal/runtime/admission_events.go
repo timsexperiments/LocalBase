@@ -30,7 +30,7 @@ func logAdmissionRejected(log *slog.Logger, modality, component string, err erro
 		message = "Insufficient GPU working set to start the requested runtime alongside the runtimes already loaded."
 	}
 	attrs := append(ae.Attributes(), context...)
-	if memory.NVIDIAPresent() {
+	if ae.NVIDIAPresent {
 		// On an NVIDIA host, GPU memory is admitted in the separate gpu:0
 		// pool for discrete placements (DESIGN §20.4).
 		attrs = append(attrs, "nvidia_gpu_present", true, "vram_admission", "gpu:0")

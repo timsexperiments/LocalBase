@@ -258,7 +258,7 @@ excluded (the FE thread owns it).
 
 | Target | Evidence | Plan |
 |---|---|---|
-| Dead code | `deadcode`: 12 functions. `IsUIAccessPath`, `jsonUnmarshal` ×2, `sortedKeys`, `schemaRejection.Error`, `OverrideGPUMemory`, `obs.Redact`, `buf.int64`, `buf.boolean`, `placement.LastLines`, `toml.Quote`, `toml.Value`, `cli.SortedKeys`. Plus `archiveRe` (U1000) | Delete, one PR |
+| Dead code | `deadcode`: 12 functions. `IsUIAccessPath`, `jsonUnmarshal` ×2, `sortedKeys`, `schemaRejection.Error`, `OverrideGPUMemory` (deleted in step 6-7a), `obs.Redact`, `buf.int64`, `buf.boolean`, `placement.LastLines`, `toml.Quote`, `toml.Value`, `cli.SortedKeys`. Plus `archiveRe` (U1000) | Delete, one PR |
 | Staticcheck findings | SA4010 `auth/policy.go:227` (result unused: **check, may be a bug**), SA4006 `video_contract.go:316` (now `gateway/infer`), SA4015 `plan.go:397`, SA4004 `runtime/service.go:285`, SA1019 `auth/jwt.go:78-79` (deprecated `ecdsa` fields, 5 sites) | Review each. ST1005 (165, capitalized errors) excluded: they are product messages |
 | Oversized functions | `access` command 517 lines, `manage.go:294` (now `gateway/admin/keys/keys.go`) 322, `serve` 297, `configure` 239, `imageEdit` 204, `hub/entry.go:500` 197, `gguf.go:444` 188, `schema.go:207` 186, `transcription` 184, `resolve.go:242` 176 | Split along real steps, each after its tests |
 | Oversized files | `gateway/runs.go` 1082 (now the `gateway/runs` package), `service/service.go` 1007, `gateway/manage.go` 943 (now `gateway/admin/keys/keys.go`), `hub/entry.go` 886, `runtime/llm.go` 843 | Split by responsibility |

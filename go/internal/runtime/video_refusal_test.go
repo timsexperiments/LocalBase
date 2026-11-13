@@ -8,6 +8,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/memory"
+	"github.com/timsexperiments/LocalBase/go/internal/memory/memorytest"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 )
 
@@ -18,8 +19,7 @@ func TestVideoEligibleRefusesWithWhatTheTargetsSay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mem := memory.NewController(newStepHost(50*memory.GiB), memory.Reserve{Percent: 15, MinimumGB: 8}, false)
-	mem.SetSampler(nil)
+	mem := memory.NewController(memorytest.Unsampled{HostProvider: newStepHost(50 * memory.GiB)}, memory.Reserve{Percent: 15, MinimumGB: 8}, false)
 	s := &Service{d: ServiceDeps{Memory: mem, Config: func() *store.Config { return &store.Config{AllowExperimental: true} }}}
 	onAMac := goruntime.GOOS == "darwin" && goruntime.GOARCH == "arm64"
 	seen := 0

@@ -68,8 +68,7 @@ func TestReserveTables(t *testing.T) {
 			warn := int64(math.Ceil(float64(reserve) * warningReserveMultiplier))
 			largest := max(0, min(total-reserve, appleWorkingSetHeuristic(total)))
 			host := &tableHost{total: total}
-			c := NewController(host, reserveAsPolicy(reserve), false)
-			c.SetSampler(nil)
+			c := NewController(unsampled{host}, reserveAsPolicy(reserve), false)
 			check := func(model, avail int64) error {
 				host.avail = avail
 				return c.CheckAdmission(ctx, Demand{UnifiedBytes: model, AcceleratorBytes: model, Confidence: "derived"}, nil)
@@ -132,8 +131,7 @@ func TestReserveUserCase(t *testing.T) {
 	ctx := context.Background()
 	total, model, avail := 64*GiB, 24*GiB, 31*GiB
 	run := func(reserve int64) error {
-		c := NewController(&tableHost{total: total, avail: avail}, reserveAsPolicy(reserve), false)
-		c.SetSampler(nil)
+		c := NewController(unsampled{&tableHost{total: total, avail: avail}}, reserveAsPolicy(reserve), false)
 		return c.CheckAdmission(ctx, Demand{UnifiedBytes: model, AcceleratorBytes: model, Confidence: "derived"}, nil)
 	}
 	if err := run(Reserve{Percent: 15, MinimumGB: 8}.Bytes(total)); err == nil {
