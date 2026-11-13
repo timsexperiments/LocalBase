@@ -350,12 +350,7 @@ func modelsDeleteCommand() *cli.Command {
 			if !c.Bool("yes") {
 				return nil, cli.Inputf("this deletes %s; re-run with --yes", en.Dir)
 			}
-			err = lease.WithOperation(e.Root.Dir, "uninstall model", func() error {
-				if _, err := e.Store.DeleteImportedModel(context.Background(), id); err != nil {
-					return err
-				}
-				return os.RemoveAll(en.Dir)
-			})
+			err = lease.WithOperation(e.Root.Dir, "uninstall model", func() error { return l.DeleteImported(context.Background(), en) })
 			if err != nil {
 				return nil, err
 			}
@@ -530,18 +525,8 @@ func modelsAddDefinitionCommand() *cli.Command {
 			if err != nil {
 				return nil, cli.Inputf("unable to read %s", c.Args[0])
 			}
-			var wrapped struct {
-				Model *models.Model `json:"model"`
-				Data  *struct {
-					Model *models.Model `json:"model"`
-				} `json:"data"`
-			}
-			m := &models.Model{}
-			if json.Unmarshal(b, &wrapped) == nil && wrapped.Data != nil && wrapped.Data.Model != nil {
-				m = wrapped.Data.Model
-			} else if wrapped.Model != nil {
-				m = wrapped.Model
-			} else if err := json.Unmarshal(b, m); err != nil {
+			m, err := models.ParseDefinition(b)
+			if err != nil {
 				return nil, cli.Inputf("not a model definition: %v", err)
 			}
 			if err := m.Validate(); err != nil {
@@ -550,9 +535,7 @@ func modelsAddDefinitionCommand() *cli.Command {
 			if _, err := l.Get(context.Background(), m.ID); err == nil {
 				return nil, cli.Inputf("a model with id %s already exists here", m.ID)
 			}
-			m.Origin = "import"
-			def, _ := json.Marshal(m)
-			if err := e.Store.SaveImportedModel(context.Background(), m.ID, def); err != nil {
+			if err := l.AddDefinition(context.Background(), m); err != nil {
 				return nil, err
 			}
 			en, err := l.Get(context.Background(), m.ID)

@@ -220,3 +220,23 @@ func (v *Variant) TotalBytes() (total int64, unknown bool) {
 func (m *Model) Export() ([]byte, error) {
 	return json.MarshalIndent(m, "", "  ")
 }
+
+// ParseDefinition reads a model definition as `models export` writes it: the model on its own, or
+// wrapped in {"model": …} or in the command line's {"data": {"model": …}}. The error is the JSON's.
+func ParseDefinition(b []byte) (*Model, error) {
+	var wrapped struct {
+		Model *Model `json:"model"`
+		Data  *struct {
+			Model *Model `json:"model"`
+		} `json:"data"`
+	}
+	m := &Model{}
+	if json.Unmarshal(b, &wrapped) == nil && wrapped.Data != nil && wrapped.Data.Model != nil {
+		m = wrapped.Data.Model
+	} else if wrapped.Model != nil {
+		m = wrapped.Model
+	} else if err := json.Unmarshal(b, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
