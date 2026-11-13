@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,6 +233,16 @@ func TestHubGolden(t *testing.T) {
 	check(t, "explicit id", got, err, g.ExplicitID)
 	_, err = GenerateEntry(cat, whisper, Reference{Repo: "ggerganov/whisper.cpp"}, "Bad ID")
 	check(t, "bad id", nil, err, g.BadID)
+	// The one model id rule (models.ValidID): at most 128 characters, which the hub's own pattern
+	// didn't cap.
+	if _, err := GenerateEntry(cat, whisper, Reference{Repo: "ggerganov/whisper.cpp", Selector: "ggml-base.en-q8_0.bin"}, strings.Repeat("a", 128)); err != nil {
+		t.Errorf("a 128-character id: %v", err)
+	}
+	var idErr *Error
+	if _, err := GenerateEntry(cat, whisper, Reference{Repo: "ggerganov/whisper.cpp", Selector: "ggml-base.en-q8_0.bin"}, strings.Repeat("a", 129)); !errors.As(err, &idErr) ||
+		!strings.Contains(idErr.Message, "is not a usable model id; choose one with --id") {
+		t.Errorf("a 129-character id: %v", err)
+	}
 
 	for _, s := range g.Searches {
 		hits, cached, err := c.Search(ctx, s.Kind, s.Query, s.Limit)

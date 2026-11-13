@@ -10,6 +10,7 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/jsjson"
+	"github.com/timsexperiments/LocalBase/go/internal/models"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
 )
 
@@ -95,7 +96,7 @@ func GenerateEntry(cat *catalog.Catalog, info *ModelInfo, ref Reference, modelID
 			modelID = ModelIDFor(first.Path, kind)
 		}
 	}
-	if !modelIDRe.MatchString(modelID) {
+	if !models.ValidID(modelID) {
 		return nil, &Error{Message: fmt.Sprintf("%q is not a usable model id; choose one with --id (lowercase letters, digits, \".\", \"_\" and \"-\").", modelID)}
 	}
 	taken := takenFilenames(cat, modelID)
