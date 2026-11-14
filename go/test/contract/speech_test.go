@@ -14,9 +14,9 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialSpeechRejections sends invalid speech requests and requires an error envelope for
+// TestSpeechRejections sends invalid speech requests and requires an error envelope for
 // each; none of them reaches a backend. (Until step 7 TS and Go had to answer each the same.)
-func TestDifferentialSpeechRejections(t *testing.T) {
+func TestSpeechRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	long := strings.Repeat("a", 257)
 	cases := []struct{ name, body string }{

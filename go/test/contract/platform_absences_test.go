@@ -22,7 +22,7 @@ var platformAbsences = map[string]struct{ absentOn, why, ranBy string }{
 		why:      "the pinned tests' goldens are per platform: it changes the catalog's targets, doctor's placement and the service manager (go/test/harness/golden.go)",
 		ranBy:    "go.yml contract (ubuntu-latest, linux/amd64) on every PR, and go.yml macos-contract (macos-15, Apple Silicon)",
 	},
-	"TestDifferentialRetrySemanticsFake": {
+	"TestRetrySemanticsFake": {
 		absentOn: "Linux, Intel Macs",
 		why:      "whisper's backends need Metal or Vulkan, so the request stops at backend_not_selected and never reaches the start under test",
 		ranBy:    "go.yml macos-contract (macos-15, Apple Silicon)",

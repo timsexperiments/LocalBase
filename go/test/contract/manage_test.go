@@ -189,10 +189,10 @@ func runManageScript(t *testing.T, tg *harness.Target) []manageResult {
 	return out
 }
 
-// TestDifferentialManagement runs the management script on each target: every answer is uncached
+// TestManagementScript runs the management script on each target: every answer is uncached
 // (runManageScript), and clearing a policy that isn't there changes nothing. (Until step 7 every
 // step was compared with TS's.)
-func TestDifferentialManagement(t *testing.T) {
+func TestManagementScript(t *testing.T) {
 	tgs := pinnedGateways(t)
 	for _, tg := range tgs {
 		if tg.Admin == "" {

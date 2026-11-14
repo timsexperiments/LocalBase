@@ -10,13 +10,13 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness"
 )
 
-// TestDifferentialVideoRejections sends video requests that never start a
+// TestVideoRejections sends video requests that never start a
 // job (the harness selects wan2.1-t2v-1.3b-q8_0 and
 // fastwan2.2-ti2v-5b-q6_k without their files): validation, profile
 // mismatches, unknown models, install consent, the multipart form, and the
 // job routes for jobs that do not exist. Status, error type, code, param,
 // message and Allow must match.
-func TestDifferentialVideoRejections(t *testing.T) {
+func TestVideoRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	send := func(method, path, ctype, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
@@ -115,10 +115,10 @@ func TestDifferentialVideoRejections(t *testing.T) {
 	}
 }
 
-// TestDifferentialVideoJobFailure starts a job. The harness's wan2.1 files are sparse placeholders
+// TestVideoJobFailure starts a job. The harness's wan2.1 files are sparse placeholders
 // at the catalog sizes, so the gateway accepts the job (202) and must end it failed once the
 // runtime refuses the weights.
-func TestDifferentialVideoJobFailure(t *testing.T) {
+func TestVideoJobFailure(t *testing.T) {
 	tgs := pinnedGateways(t)
 	body := `{"model":"wan2.1-t2v-1.3b-q8_0","prompt":"a lighthouse at dusk","width":320,"height":320,"frames":33,"fps":16,"input":{"kind":"text"}}`
 	final := map[string]map[string]any{}

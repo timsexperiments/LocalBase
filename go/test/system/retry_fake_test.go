@@ -16,14 +16,14 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialRetrySemanticsFake is TestDifferentialRetrySemantics without a real backend, so that
+// TestRetrySemanticsFake is TestRetrySemantics without a real backend, so that
 // it runs in CI: a fake whisper-server that refuses to start while a file exists, and then starts. It
 // is transcription, not images, because a CI runner has too little free memory to admit an image
 // model's estimate even with no reserve, and transcription goes through the same failed-start path. A failed
 // start is transient: 503 with Retry-After on each repeat (TS gave the same envelope until step 7).
 // Once the fault is gone, the next request works, because the gateway retries the start. The reserve is
 // off, so that this reaches the start on a small CI runner too, and a refusal for memory fails the test.
-func TestDifferentialRetrySemanticsFake(t *testing.T) {
+func TestRetrySemanticsFake(t *testing.T) {
 	if flag.Lookup("url").Value.String() != "" {
 		t.Skip("launches its own gateways")
 	}

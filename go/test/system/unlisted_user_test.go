@@ -20,7 +20,7 @@ import (
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
-// TestDifferentialUnlistedUser holds a deliberate difference from TS (DESIGN §13.6 item 11): a
+// TestUnlistedUserRefused holds a deliberate difference from TS (DESIGN §13.6 item 11): a
 // browser session the policy grants nothing is refused everywhere. TS applied the permission only
 // on routes that checked again themselves, so its models and inference answered it. Fake backends
 // only: no real model, no network.
@@ -29,7 +29,7 @@ import (
 // provider here. Sign-in doesn't consult the policy: TestOIDCUnauthorizedEmail holds that.
 const unlistedModel = "contract-unlisted-llm"
 
-func TestDifferentialUnlistedUser(t *testing.T) {
+func TestUnlistedUserRefused(t *testing.T) {
 	harness.LogFreeMemoryOnFailure(t)
 	const (
 		issuer = "https://accounts.google.com"

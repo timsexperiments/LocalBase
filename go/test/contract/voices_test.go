@@ -49,9 +49,9 @@ func wantError(t *testing.T, label string, rs map[string]*harness.Resp) {
 	}
 }
 
-// TestDifferentialVoices runs the custom voice lifecycle: an upload stores a normalized recording,
+// TestVoiceLifecycle runs the custom voice lifecycle: an upload stores a normalized recording,
 // and every rejection answers with an error envelope. (Until step 7 TS and Go had to agree.)
-func TestDifferentialVoices(t *testing.T) {
+func TestVoiceLifecycle(t *testing.T) {
 	tgs := pinnedGateways(t)
 	const base = "/_localbase/voices"
 	type call struct {

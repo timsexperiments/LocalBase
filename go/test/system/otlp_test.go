@@ -258,10 +258,10 @@ func otlpPlain(v any) any {
 	return v
 }
 
-// TestDifferentialOTLP: the gateway exports span trees and request log records, correlated to
+// TestOTLPExport: the gateway exports span trees and request log records, correlated to
 // their spans, for each request; exporter headers are sent and never logged. The trees and records
 // are pinned (they were compared with TS's until step 7).
-func TestDifferentialOTLP(t *testing.T) {
+func TestOTLPExport(t *testing.T) {
 	run := runOTLP(t, 0, pinnedFixture(t)...)
 	records := run.checkRecords(t)
 	run.col.mu.Lock()
@@ -306,9 +306,9 @@ func TestDifferentialOTLP(t *testing.T) {
 	}
 }
 
-// TestDifferentialOTLPFailures: a failing collector is reported once in the local log, and never
+// TestOTLPExportFailures: a failing collector is reported once in the local log, and never
 // exported. The reports are pinned (they were compared with TS's until step 7).
-func TestDifferentialOTLPFailures(t *testing.T) {
+func TestOTLPExportFailures(t *testing.T) {
 	run := runOTLP(t, 500, pinnedFixture(t)...)
 	var got []map[string]any
 	for _, e := range localEvents(t, run.root) {

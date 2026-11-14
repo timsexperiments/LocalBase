@@ -34,9 +34,9 @@ func multipartBody(fields [][2]string) (string, string) {
 	return b.String(), w.FormDataContentType()
 }
 
-// TestDifferentialTranscriptionRejections sends invalid transcription requests and requires an
+// TestTranscriptionRejections sends invalid transcription requests and requires an
 // error envelope for each. (Until step 7 TS and Go had to answer each the same.)
-func TestDifferentialTranscriptionRejections(t *testing.T) {
+func TestTranscriptionRejections(t *testing.T) {
 	tgs := pinnedGateways(t)
 	cases := []formCase{
 		{name: "no file", fields: [][2]string{{"model", "whisper-base-en-q8_0"}}},

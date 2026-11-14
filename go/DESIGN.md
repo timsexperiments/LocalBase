@@ -1095,10 +1095,10 @@ attestation and is deferred; Qwen TTS stays on tts-server.
 | Step | State | Evidence |
 | --- | --- | --- |
 | 1 | Done | `runtime.TestService*` (queue, admission, switch, crash recovery, close) |
-| 2 | Done | `TestDifferentialTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
-| 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestDifferentialSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
-| 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestDifferentialVoices` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
-| 5 | Done | `TestDifferentialImageRejections` (generation and edit validation, permissions, content checks); `TestImageReal` (DreamShaper 8 through sd-server: generation and edit are byte-identical on TS and Go); validator and tuning-block unit tests |
+| 2 | Done | `TestTranscriptionRejections`; `TestTranscriptionReal` (whisper tiny.en, identical text on TS and Go in every format) |
+| 3 | Done for Kokoro via CrispASR and the tts-server adapter | `TestSpeechRejections` (same status, code, param and message as TS); `TestSpeechKokoroCrispASR` (automatic `crispasr-metal`, WAV/PCM/SSE, whisper hears the input); `runtime.TestEnsureBinaryInstallsPinnedRelease` (offline: checksums, extraction, dictionary rebuild); `backends.TestCrispASRWithoutPin` |
+| 4 | Done | `voices.TestNormalizeAudioGolden` (15 recordings and every rejection reproduce the TS normalizer byte for byte: `tools/golden/voices.ts`); `voices.TestNameRulesGolden` (NFC, NFKC key, JS whitespace and lowercase); `TestVoiceLifecycle` (same stored sha256 on both gateways, every rejection, permission and method error); `TestCLIVoices` |
+| 5 | Done | `TestImageRejections` (generation and edit validation, permissions, content checks); `TestImageReal` (DreamShaper 8 through sd-server: generation and edit are byte-identical on TS and Go); validator and tuning-block unit tests |
 | 6 | Done | `/app/lab` (image, speech, transcription) and `/app/voices` (record or upload, consent, preview, rename, delete), exercised in a browser against real models at 320 and 1280 px; `web` handler tests (API errors shown escaped, results bound to their owner, cross-site posts refused) |
 | 7 | Done | Every M4 route has differential TS/Go cases (transcription, translation, speech, voices, image generation and edits, readiness, retry semantics). Real runs on scratch roots: whisper tiny.en (identical transcripts on both), Kokoro through CrispASR (heard back by whisper; marking on and off), Qwen3-TTS through tts-server with a reference and a cloned custom voice on both (heard back by whisper), DreamShaper 8 generation and edit (byte-identical on both). Step 7 also found and fixed: health/readiness now report the speech and image services (TS lists every configured modality as admitting; video waits for M6), media queues use the TS defaults (16 waiting, 60 s) and the serve flags, the Qwen TTS projector role was lost in the legacy variant, and routing preferred CrispASR for Qwen3-TTS, which its adapter does not run yet (tts-server is now preferred; Kokoro still routes to CrispASR). |
 
@@ -1207,7 +1207,7 @@ Live clients (a device-worker client, an editor client) retry on 503 with
 `Retry-After`. The contract: **transient failures keep 503 (or 429) with
 `Retry-After`**, as TS answers them; **failures that need someone to act
 answer their real 4xx without it**. `gateway.TestRuntimeErrorRetrySemantics`
-pins the mapping and `TestDifferentialRetrySemantics` checks it on both
+pins the mapping and `TestRetrySemantics` checks it on both
 gateways with a real sd-server.
 
 | Class | Status, code | Retry-After | TS |
@@ -1411,7 +1411,7 @@ Deliberate status changes to verify against the live clients at cutover:
    persists any switched-to LLM as `activeLlmModel`, a decision or embedding
    model included. Go persists only chat models (§18). After a decision
    request, the model-management state therefore shows a different active
-   model on each gateway. `TestDifferentialModelManagement` first activates
+   model on each gateway. `TestModelManagement` first activates
    the same chat model on both.
 10. **A backend that crashes under a request** (operator decision, from the
     chaos tests, go/docs/reliability.md). TS answers 502 `upstream_error`
@@ -1463,7 +1463,7 @@ Deliberate status changes to verify against the live clients at cutover:
     original path `/app/api/…` before forwarding, which maps to `notFound` and requires
     only being signed in. Admin routes pass because they check again themselves. API
     keys on `/v1` are not affected. This is from reading the code; TS is not changed.
-    `TestDifferentialUnlistedUser` pins it, with fake backends. **Rolling back to TS
+    `TestUnlistedUserRefused` pins it, with fake backends. **Rolling back to TS
     reopens the gap** (`docs/merge-readiness.md` §4).
 13. **A chat content part that names an address** (operator decision). A content
    part carries its content. `image_url.url` must be a `data:` URL, and
@@ -1572,12 +1572,12 @@ messages it needs (resource, scope, spans, log records, attributes) directly.
 
 | Step | State | Evidence |
 | --- | --- | --- |
-| 1 | Done | `TestDifferentialModelManagement`: full state and every response on both gateways, an offline install polled to completion |
+| 1 | Done | `TestModelManagement`: full state and every response on both gateways, an offline install polled to completion |
 | 2 | Done | `catalog` goldens from `tools/golden/feed.ts` (the published `catalog/feed-v2.json` and v1 feed, crafted documents, tolerant annotation parsing, URL rules, all 76 built-in models' summaries, peaks and marks); `jsjson` goldens (JSON.stringify of parsed JSON); `TestCLIFeed` (status, use, refresh with ETag and failures, `models show` text and JSON, catalog fit and capability filters with feed peaks and marks applied); `TestFeedSchedulerReloadsCatalog` |
-| 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestDifferentialModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
+| 3 | Done | `hub` goldens from `tools/golden/hub.ts`: 37 recorded Hub responses replayed offline (14 repositories: GGUF with quants, a projector and shards, a decision model, whisper.cpp, SDXL, FLUX.1, an SDXL LoRA, LCM and v-prediction checkpoints, gated and missing repositories; searches); kind detection, file choices, every generated entry, searches, previews with fit and feed notes, and discovery match TS. `TestCLIHubGolden` (the TS command handlers' output lines, JSON, catalog files and errors, byte for byte), `TestModelDiscoveryRejections`, `TestModelDiscoveryEndToEnd` |
 | 4 | Done | `TestCLIConfigDeclarative` (twin roots: 40 invalid documents with the JSON envelope and the raw message before redaction compared, plans, `--detailed-exit-code`, apply with `--restart never`, `--wait` refused without a gateway, apply creating a fresh root, stdin, human output, and each CLI reading the other's pending restart), `TestCLIConfigForegroundGateway` (automatic restart refused next to a foreground gateway; unchanged apply with `--wait`), `TestDeclarativeGolden` (`tools/golden/config.ts`: 54 documents, their messages before redaction, normalized configurations, plans against saved, pending and absent configurations, and renderings; runs in CI), `TestStaticFingerprintMatchesTypeScript`, `TestPendingRestartLifecycle`, `TestDocumentKeyOrder` |
 | 5 | Done | `TestCLIDiagnostics` (twin roots with planted secrets in log messages, errors, attributes and identifiers, a launch-shaped catalog patch, an invalid catalog file, a credentialed feed URL, OTLP environment headers and captured service stderr: the manifests match field for field, `logs/events.jsonl` byte for byte, the human output line for line, no secret reaches either archive; an uninitialized root; the output rules, with an existing file never replaced), `TestEventsGolden` (`tools/golden/logs.ts`: 50 lines, which ones the reader keeps and their redacted diagnostics form; runs in CI) |
-| 6 | Done | `TestDifferentialOTLP` (each gateway exports to a local collector; for the same requests, an authenticated list, an unmatched route, missing and invalid credentials, and a real chat under a remote traceparent, the span trees match: names, kinds, flags, status, parentage and attributes, including the inference, backend client and backend start and load spans; every exported log record is a local event with the TS attribute mapping and its span correlation; request and inference records match; exporter headers are sent and never logged), `TestDifferentialOTLPFailures` (a failing collector is reported in the local log with the same events on both, never exported), `TestCLIOtelEnvironment` (doctor and configure report the effective OTEL_* settings; invalid variables fail both before anything is saved), `otlp` goldens from `tools/golden/otel.ts` (ratio sampler decisions, Retry-After handling, the outage reporter over a scripted outage) and collector tests in CI |
+| 6 | Done | `TestOTLPExport` (each gateway exports to a local collector; for the same requests, an authenticated list, an unmatched route, missing and invalid credentials, and a real chat under a remote traceparent, the span trees match: names, kinds, flags, status, parentage and attributes, including the inference, backend client and backend start and load spans; every exported log record is a local event with the TS attribute mapping and its span correlation; request and inference records match; exporter headers are sent and never logged), `TestOTLPExportFailures` (a failing collector is reported in the local log with the same events on both, never exported), `TestCLIOtelEnvironment` (doctor and configure report the effective OTEL_* settings; invalid variables fail both before anything is saved), `otlp` goldens from `tools/golden/otel.ts` (ratio sampler decisions, Retry-After handling, the outage reporter over a scripted outage) and collector tests in CI |
 | 7 | Done | Full suite on both implementations with real models (qwen2.5-coder-1.5b chat through both exporters, whisper, Kokoro, Qwen3-TTS, DreamShaper) and Go-only in CI. The sweep added `TestResolveOtelGolden` (`tools/golden/otelconfig.ts`: 69 saved-setting and OTEL_* combinations, resolved or rejected with the TS CLI message; it found that WHATWG URLs drop default ports), `TestApplyDecision` (the TS apply cases as restart decisions; CI now runs the `cmd` tests), and a bounded shutdown against a hung collector. It also made the M3.5 AC5 acceptance step retry a transient `insufficient_memory` 503, as clients honouring Retry-After do: the 7 GB macOS runner's free memory moves with everything else on it, and admission stays on. Not covered by any test: `config apply` restarting a real launchd service (it would install one); the restart path is the service package's, already covered on a scratch label in M2. |
 
 The feed brings three Go structures with it. `internal/jsjson` reproduces
@@ -1886,11 +1886,11 @@ Step 1:
   runtime. It had no such event; the comparison run found it when a sparse
   wan2.1 failed its checksum silently.
 - **Tests.**
-  - `TestDifferentialVideoRejections` compares 44 requests that never
+  - `TestVideoRejections` compares 44 requests that never
     start a job: validation, profile mismatches, unknown and non-video
     models, install consent, the multipart form, and the job routes for
     missing and malformed ids.
-  - `TestDifferentialVideoJobFailure` starts the same job on both gateways
+  - `TestVideoJobFailure` starts the same job on both gateways
     (sparse wan2.1 weights); both accept it and end it failed with
     `video_generation_failed`.
   - `TestVideoJobLifecycle` (Go only, fake sd-server and converter) covers
@@ -2528,8 +2528,8 @@ builds were deleted. No throwaway label or plist remains.
 
 **The two contract tests that passed only on rerun** (operator request:
 five isolated runs each, before cutover):
-- `TestDifferentialModelManagement`: 5 of 5.
-- `TestDifferentialVideoJobFailure`: 3 of 5 at first. A test bug, not a
+- `TestModelManagement`: 5 of 5.
+- `TestVideoJobFailure`: 3 of 5 at first. A test bug, not a
   gateway one. Both gateways refused the job for memory with the same code,
   demand (13.7 GiB) and wording. The message names the usable memory
   sampled when each job starts, the two jobs run one after the other, and
@@ -2689,7 +2689,7 @@ its `type` and `code` only, never its message. They become:
 This works for every error writer, whether gateway-made or relayed from a
 backend. TS has no equivalent, so the OTLP differential test skips these
 keys and asserts them on Go. Tests: `TestHTTPRequestLogsErrorKind`, which
-also checks that no message text is logged, and `TestDifferentialOTLP`.
+also checks that no message text is logged, and `TestOTLPExport`.
 
 ### 19.3 NVIDIA GPUs on Linux: reported, not admitted
 
@@ -4514,7 +4514,7 @@ them: `TestRemoveScratch`.
 
 **Contract tests:** image admission tests need free memory and should not
 run alongside other model loads (`harness_test.go`).
-`TestDifferentialImageRejections` logs the free-memory reading when it fails.
+`TestImageRejections` logs the free-memory reading when it fails.
 Its one failure (2026-11-01) came during a 7 GB model load in another session.
 
 ## 26. The host block and the admission preview (2026-11-02)
