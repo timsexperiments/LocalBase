@@ -15,7 +15,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/internal/catalog/` | Built-in catalog, user entries and the remote feed |
 | `go/internal/hub/`, `acquire/`, `install/` | Hugging Face discovery and downloads |
 | `go/internal/auth/` | API keys, browser sessions, OIDC, Cloudflare Access, policy |
-| `go/internal/store/` | SQLite, migrations (the drizzle-format SQL both versions read) and typed queries |
+| `go/internal/store/` | SQLite, migrations (drizzle-format SQL, pinned as 0.1.0's set) and typed queries |
 | `go/internal/root/` | Data directory, marker and the gateway lock |
 | `go/internal/service/` | launchd and systemd user units |
 | `go/internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
@@ -23,7 +23,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/tools/` | Check scripts and test tools |
 | `docs/` | User documentation |
 | `scripts/release/`, `packaging/` | Go release build, installer test, Homebrew template |
-| `src/`, most of `scripts/` | Legacy TypeScript version and what it needs. See below |
+| `scripts/runtimes/`, `runtimes/kokoro/` | Runtime release scripts and the Kokoro runtime, on Bun. See below |
 
 ## Life of a request
 
@@ -57,9 +57,13 @@ sequenceDiagram
 - **Secrets and content stay out of logs.** The log handler redacts attributes whose names contain words like `input`, `output`, `prompt` and `content`. Test new log events through `obs.NewHandler`.
 - **Detached runs** are the one place model output reaches disk (`<root>/runs/`), and that's deliberate and short-lived.
 
-## The legacy TypeScript tree
+## After the TypeScript version
 
-`src/` is the version Go replaced. It stays as a rollback path, and the golden test data was recorded from it. The catalog's source is `go/internal/catalog/data`; `cd go && go run ./tools/catalog-feed` writes `catalog/feed.json` and `catalog/feed-v2.json` from it. The managed runtime manifest's home is `go/internal/runtime/managed-runtime-manifest.json`; the sync workflows also write the identical copy in `src/manager/`, which the runtime release helpers read until they move, and a test fails if the two differ. See the retirement plan in `docs/typescript-retirement.md`.
+The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is the rollback, so data directories stay compatible with it: the migrations are pinned as 0.1.0's set (`TestMigrationsAreTheV010Set`), and a new migration needs a release that drops that rollback, with a changelog line. The golden test data was recorded from the TypeScript code and is now Go's own.
+
+- **The catalog's source** is `go/internal/catalog/data`. `cd go && go run ./tools/catalog-feed` writes `catalog/feed.json` and `catalog/feed-v2.json` from it.
+- **The managed runtime manifest** is `go/internal/runtime/managed-runtime-manifest.json`. The binary embeds it, and the runtime sync workflows update it.
+- **Bun remains** for the runtime release scripts in `scripts/runtimes/`, the Kokoro runtime in `runtimes/kokoro/` and the page-script tests in `go/tools/jstest/`. go.yml's `bun-scripts` and `jstest` jobs run their tests.
 
 ## CI
 
@@ -71,4 +75,3 @@ sequenceDiagram
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |
 | `soak.yml` | One soak cycle nightly on Linux and macOS, and the 30-minute soak plus a race-detector cycle weekly |
 | `release-go.yml` | Release build, installer test on four platforms. Publishes a draft on tags only |
-| `go-dual.yml` | Differential tests against TypeScript: nightly, by hand, or with the `dual` label |
