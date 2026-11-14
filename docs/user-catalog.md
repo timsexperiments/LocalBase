@@ -8,7 +8,7 @@ models, or adjust built-in ones, without rebuilding LocalBase.
 User entries live in `<root>/catalog.d/`, one JSON file per model. The default
 root is `~/.local/share/local-base`, or whatever `--root` or `LOCALBASE_ROOT`
 names. Each file uses the same schema as the built-in entries in
-`src/catalog/models/`.
+`go/internal/catalog/data/`.
 
 Files are read in name order whenever LocalBase starts or a command runs.
 Reading the catalog never touches the network; the remote feed below is
@@ -192,7 +192,7 @@ it is a user entry like one added from Hugging Face:
   ids it wrote in `catalog.d/.former-built-ins` and never writes one again,
   so `local-base models remove-entry <id>` sticks.
 
-The specs ship in the binary under `src/catalog/former/`.
+The specs ship in the binary from `go/internal/catalog/data/former/`.
 
 ## Adding a model from Hugging Face
 

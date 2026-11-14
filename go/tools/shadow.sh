@@ -8,13 +8,12 @@
 # scratch range, and removed by `cleanup`.
 #
 #   tools/shadow.sh copy <source-root>      # make the copy (idle preflight first for the live root)
-#   tools/shadow.sh serve go|ts             # start a gateway on the copy (background)
+#   tools/shadow.sh serve go                # start a gateway on the copy (background)
 #   tools/shadow.sh stop                    # stop it
 #   tools/shadow.sh schema <label>          # snapshot the journal and schema
 #   tools/shadow.sh cleanup                 # stop and delete the copy
 #
 # LBGO_SHADOW (default /private/tmp/lbgo-shadow) is the work directory.
-# LBGO_TS_SRC is a TS source tree for `serve ts` (the live build's commit).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 work=${LBGO_SHADOW:-/private/tmp/lbgo-shadow}
@@ -93,24 +92,18 @@ serve)
   # LBGO_NO_AUTH=1: the --no-auth UI check (loopback only; never a real cookie).
   args=(--root "$root" serve ${LBGO_NO_AUTH:+--no-auth} --host 127.0.0.1 --port "$port"
     --llm-host 127.0.0.1 --stt-host 127.0.0.1 --tts-host 127.0.0.1 --image-host 127.0.0.1 --video-host 127.0.0.1)
-  # Five free ports in a row for Go; TS has no block flag, so it gets one flag each.
+  # Five free ports in a row, for --runtime-port-base.
   pick_run() { while :; do p=$(pick); free=1; for i in 1 2 3 4; do q=$((p+i))
       { ! test_port_ok "$q" || lsof -nP -iTCP:$q -sTCP:LISTEN >/dev/null 2>&1; } && free=0; done
     [ $free = 1 ] && { echo $p; return; }; done; }
-  case "$impl" in
-  go) args+=(--runtime-port-base "$(pick_run)") ;;
-  *) args+=(--llm-port "$(pick)" --stt-port "$(pick)" --tts-port "$(pick)" --image-port "$(pick)" --video-port "$(pick)") ;;
-  esac
+  [ "$impl" = go ] || die "usage: serve go"
+  args+=(--runtime-port-base "$(pick_run)")
   case "$impl" in
   go)
     go build -o "$work/local-base-go" ./cmd/localbase || die "build"
     (cd "$work" && nohup "$work/local-base-go" "${args[@]}" > "$work/serve-go.log" 2>&1 & echo $! > "$work/gateway.pid")
     ;;
-  ts)
-    [ -d "${LBGO_TS_SRC:-}" ] || die "set LBGO_TS_SRC to the TS source tree"
-    (cd "$LBGO_TS_SRC" && nohup bun run src/cli.ts "${args[@]}" > "$work/serve-ts.log" 2>&1 & echo $! > "$work/gateway.pid")
-    ;;
-  *) die "usage: serve go|ts" ;;
+  *) die "usage: serve go" ;;
   esac
   echo "$port" > "$work/gateway.port"
   for i in $(seq 1 90); do
