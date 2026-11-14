@@ -48,8 +48,10 @@ func launchersWithoutMockKeychain(fsys fs.FS) (missing []string, read int, err e
 var launcherTrees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "test", Dir: "../.."}, {Label: "scripts", Dir: "../../../scripts"}}
 
 // minLaunchersRead is the fewest files the check reads across both trees. Fewer means a tree moved
-// out of its reach, so the check fails rather than pass on less.
-const minLaunchersRead = 112
+// out of its reach, so the check fails rather than pass on less. Lowered from 112 by step 7's R3b,
+// which deleted four of the files it read (tests aside): tools/integration's audit.go, behind.go,
+// main.go and rerere-env.sh.
+const minLaunchersRead = 109
 
 // Every script under go/tools, go/test and go/scripts that starts Chrome keeps it away from the
 // Keychain: see tools/README.md for what happens otherwise.

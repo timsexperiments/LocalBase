@@ -100,14 +100,14 @@ The built-in catalog is deliberately small: models tested on real hardware, with
 To see pages with fixture data, run from `go/`:
 
 ```sh
-LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI -args -impl=go
+LOCALBASE_CONTRACT_SERVE_UI=26401 go test ./test/system -run TestServeForUI
 ```
 
 ### Write a test
 
 - **Unit tests** live beside the code. Prefer real behaviour over mocks; fakes exist only at real boundaries, such as `internal/runtime/fakebackend`.
 - **Contract tests** in `go/test/contract/` drive a real gateway over HTTP on a scratch root. All writes go through `go/test/harness/fsguard`, and `TestNoUnguardedWrites` enforces that.
-- **Differential tests** compare the Go and TypeScript gateways with `-impl=both`. They need Bun and `LOCALBASE_CONTRACT_MODELS`.
+- **Pinned tests** compared the Go and TypeScript gateways until TypeScript was retired; they now check Go's answers against goldens in `testdata/golden/<platform>/` (darwin-arm64 and linux-amd64), on the lab build with a fixed host. Record them again with `LOCALBASE_UPDATE_GOLDEN=1` when a change is intended, and say why in the PR.
 - **Real inference** is opt-in through `LOCALBASE_CONTRACT_*` variables and is never required for a PR.
 - **A test that sends more than a few thousand requests** goes through `testutil.Flood`, which keeps its connections and stops itself if it can't. Closed connections hold local ports that everything on the machine shares, so a flood that opens one per request can make other programs' connections fail.
 - **Goldens** in `testdata/` were recorded from the TypeScript code and are now Go's own. A change to one is a behaviour change: say why in the PR, and reviewers read the diff.
