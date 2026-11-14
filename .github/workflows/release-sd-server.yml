@@ -10,8 +10,9 @@ on:
       - scripts/runtimes/sd-release/**
       - scripts/runtimes/sd-patches/**
       - .github/workflows/sync-sd-server-manifest.yml
-      - src/domains/runtime/launcher.ts
-      - scripts/sd-video-launch-contract.ts
+      - go/internal/runtime/video.go
+      - go/internal/runtime/video_args_test.go
+      - .github/actions/go-setup/**
       - scripts/runtimes/sd-gpu-pci-contract.ts
   workflow_dispatch:
     inputs:
@@ -76,10 +77,20 @@ jobs:
           grep -q 'libvulkan.so.1' <<<"$ldd_output"
           ! grep -Eq 'libwebp|libwebm|libggml' <<<"$ldd_output"
           build-sd-server/sd-server --help >/dev/null
-          bun scripts/sd-video-launch-contract.ts \
-            --binary build-sd-server/sd-server
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
           strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: It accepts the gateway's video launch arguments
+        # The Go launcher's own arguments (internal/runtime sdVideoArgs), run against this binary with
+        # --help. It must pass, not skip: a skip would mean the binary went unchecked.
+        working-directory: go
+        env:
+          LOCALBASE_SD_SERVER_BINARY: ${{ github.workspace }}/build-sd-server/sd-server
+        run: |
+          set -o pipefail
+          go test -count=1 -run '^TestSDServerAcceptsVideoArgs$' -v ./internal/runtime | tee "$RUNNER_TEMP/sd-video-args.log"
+          grep -q '^--- PASS: TestSDServerAcceptsVideoArgs ' "$RUNNER_TEMP/sd-video-args.log" || { echo "TestSDServerAcceptsVideoArgs did not pass (skipped or not found)"; exit 1; }
       - name: Package and qualify canonical archive
         run: |
           cp build-sd-server/SOURCE.sd-server.json SOURCE.sd-server.json
@@ -132,6 +143,18 @@ jobs:
           build-sd-server/sd-server --help >/dev/null
           strings build-sd-server/sd-server | grep -Fxq 'inline_wav_audio'
           strings build-sd-server/sd-server | grep -Fxq 'WAV must contain PCM16 or IEEE float32 samples'
+      - name: Set up Go
+        uses: ./.github/actions/go-setup
+      - name: It accepts the gateway's video launch arguments
+        # The Go launcher's own arguments (internal/runtime sdVideoArgs), run against this binary with
+        # --help. It must pass, not skip: a skip would mean the binary went unchecked.
+        working-directory: go
+        env:
+          LOCALBASE_SD_SERVER_BINARY: ${{ github.workspace }}/build-sd-server/sd-server
+        run: |
+          set -o pipefail
+          go test -count=1 -run '^TestSDServerAcceptsVideoArgs$' -v ./internal/runtime | tee "$RUNNER_TEMP/sd-video-args.log"
+          grep -q '^--- PASS: TestSDServerAcceptsVideoArgs ' "$RUNNER_TEMP/sd-video-args.log" || { echo "TestSDServerAcceptsVideoArgs did not pass (skipped or not found)"; exit 1; }
       - name: Package canonical archive
         run: |
           cd build-sd-server
