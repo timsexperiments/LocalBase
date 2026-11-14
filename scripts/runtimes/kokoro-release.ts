@@ -379,7 +379,7 @@ export async function verifyDependencies(
 // The prebuilt Bun is the same build that LocalBase compiles with, so reuse the
 // release notices for its statically linked native and Rust components.
 async function copyBunNotices(destination: string): Promise<void> {
-  const notices = resolve(import.meta.dir, "../release-notices");
+  const notices = resolve(import.meta.dir, "release-notices");
   const versioned = join(notices, `bun-${sources.bunVersion}.txt`);
   if (!(await lstat(versioned).catch(() => undefined))?.isFile())
     throw new Error(

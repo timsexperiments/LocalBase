@@ -130,7 +130,7 @@ const directory = await mkdtemp(join(tmpdir(), "bun-rust-crate-notices-"));
 try {
   const bunLockUrl = `https://raw.githubusercontent.com/oven-sh/bun/${bunCommit}/Cargo.lock`;
   await Bun.write(
-    "scripts/release-notices/native/rust-crates-closure.txt",
+    "scripts/runtimes/release-notices/native/rust-crates-closure.txt",
     `Generated from the crates.io packages pinned by ${bunLockUrl}. Each crate's license files are reproduced from its checksum-verified .crate archive.\n${await crateNotices(bunLockUrl, crates, directory)}`,
   );
   const stdLockUrl = `${rustRaw}/library/Cargo.lock`;
@@ -143,7 +143,7 @@ try {
   ])
     std += `\n--- ${rustRaw}/${path} ---\n${await fetchText(`${rustRaw}/${path}`)}`;
   std += `\n\nRegistry crates linked through std, from ${stdLockUrl}:\n${await crateNotices(stdLockUrl, stdCrates, directory)}`;
-  await Bun.write("scripts/release-notices/native/rust-std.txt", std);
+  await Bun.write("scripts/runtimes/release-notices/native/rust-std.txt", std);
 } finally {
   await rm(directory, { recursive: true, force: true });
 }

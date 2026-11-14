@@ -90,7 +90,7 @@ test("packaged Bun notices come from the release notices for the pinned Bun", as
   await expect(verifyBunNotices(root)).rejects.toThrow(
     "rust-crates-closure.txt",
   );
-  const repository = join(import.meta.dir, "../release-notices");
+  const repository = join(import.meta.dir, "release-notices");
   expect(
     await Bun.file(join(repository, `bun-${sources.bunVersion}.txt`)).exists(),
   ).toBe(true);
