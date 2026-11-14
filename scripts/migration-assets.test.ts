@@ -14,8 +14,8 @@ test("renders deterministic ordered static migration imports", () => {
       )
       .map((line) => line.trim()),
   ).toEqual([
-    'import migration0Path from "../../drizzle/0000_base.sql" with { type: "file" };',
-    'import migration1Path from "../../drizzle/0001_next.sql" with { type: "file" };',
+    'import migration0Path from "../../go/internal/store/migrations/0000_base.sql" with { type: "file" };',
+    'import migration1Path from "../../go/internal/store/migrations/0001_next.sql" with { type: "file" };',
     "migration0Path,",
     "migration1Path,",
   ]);

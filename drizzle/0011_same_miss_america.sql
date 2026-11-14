@@ -1,1 +1,0 @@
-ALTER TABLE `config` ADD `ctx_mode` text DEFAULT 'auto' NOT NULL;

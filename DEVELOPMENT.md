@@ -15,7 +15,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/internal/catalog/` | Built-in catalog, user entries and the remote feed |
 | `go/internal/hub/`, `acquire/`, `install/` | Hugging Face discovery and downloads |
 | `go/internal/auth/` | API keys, browser sessions, OIDC, Cloudflare Access, policy |
-| `go/internal/store/` | SQLite, migrations and typed queries |
+| `go/internal/store/` | SQLite, migrations (the drizzle-format SQL both versions read) and typed queries |
 | `go/internal/root/` | Data directory, marker and the gateway lock |
 | `go/internal/service/` | launchd and systemd user units |
 | `go/internal/obs/`, `otlp/` | Logs, redaction and OTLP export |
@@ -23,7 +23,7 @@ LocalBase is one Go binary: the OpenAI-compatible API, the admin API, the server
 | `go/tools/` | Check scripts and golden generators |
 | `docs/` | User documentation |
 | `scripts/release/`, `packaging/` | Go release build, installer test, Homebrew template |
-| `src/`, `drizzle/`, most of `scripts/` | Legacy TypeScript version and what it needs. See below |
+| `src/`, most of `scripts/` | Legacy TypeScript version and what it needs. See below |
 
 ## Life of a request
 

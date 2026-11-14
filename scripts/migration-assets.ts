@@ -1,5 +1,6 @@
 export const migrationAssetsPath = "src/db/migration-assets.ts";
-const migrationsDir = "drizzle";
+// The SQL and journal live in the Go store (docs/typescript-retirement.md step 1).
+const migrationsDir = "go/internal/store/migrations";
 const journalPath = `${migrationsDir}/meta/_journal.json`;
 const migrationFilePattern = /^(\d+_.+)\.sql$/;
 const migrationGlob = new Bun.Glob("*.sql");
@@ -62,10 +63,10 @@ export async function validateMigrationAuthority(): Promise<string[]> {
 
 export function renderMigrationAssetSource(journal: string[]): string {
   const imports = [
-    'import journalPath from "../../drizzle/meta/_journal.json" with { type: "file" };',
+    'import journalPath from "../../go/internal/store/migrations/meta/_journal.json" with { type: "file" };',
     ...journal.map(
       (tag, index) =>
-        `import migration${index}Path from "../../drizzle/${tag}.sql" with { type: "file" };`,
+        `import migration${index}Path from "../../go/internal/store/migrations/${tag}.sql" with { type: "file" };`,
     ),
   ];
   const paths = journal.map((_, index) => `  migration${index}Path,`);
