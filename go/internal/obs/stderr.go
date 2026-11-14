@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/timsexperiments/LocalBase/go/internal/safefile"
+	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
 // The managed macOS gateway's stderr goes to one private, size-bounded file
@@ -37,7 +38,7 @@ func BoundServiceStderr(rootDir string) error {
 	if _, err := f.ReadAt(tail, st.Size()-maxServiceStderr); err != nil {
 		return err
 	}
-	tmp := filepath.Join(filepath.Dir(active), ".service-stderr."+uuid()+".tmp")
+	tmp := filepath.Join(filepath.Dir(active), ".service-stderr."+uuidv4.New()+".tmp")
 	if err := os.WriteFile(tmp, tail, 0o600); err != nil {
 		return err
 	}
