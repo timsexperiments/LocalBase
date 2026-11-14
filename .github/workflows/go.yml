@@ -257,6 +257,8 @@ jobs:
         run: bun test scripts
       - name: Typecheck
         run: bun run typecheck
+      - name: Format
+        run: bunx prettier --check scripts
 
   # macOS costs the most: it runs after merge, or on a pull request labelled "macos". It has fewer
   # jobs than Linux, since only five macOS jobs run at once.
