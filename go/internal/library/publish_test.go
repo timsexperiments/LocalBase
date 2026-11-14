@@ -470,9 +470,7 @@ func TestImportLimitsFromSettings(t *testing.T) {
 func TestStartedImportUsesTheRootsLimits(t *testing.T) {
 	l := newTestLibrary(t)
 	ctx := context.Background()
-	old := acquire.ImportDeadline
-	acquire.ImportDeadline = 50 * time.Millisecond
-	t.Cleanup(func() { acquire.ImportDeadline = old })
+	l.hooks.deadline = 50 * time.Millisecond // the root's hour must win over this
 	if err := l.Store.SetSetting(ctx, store.ImportDeadlineKey, "1"); err != nil {
 		t.Fatal(err)
 	}
