@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
+	"github.com/timsexperiments/LocalBase/go/internal/memory"
 	"github.com/timsexperiments/LocalBase/go/internal/root"
 	"github.com/timsexperiments/LocalBase/go/internal/store"
 	"github.com/timsexperiments/LocalBase/go/test/lab"
@@ -16,6 +17,11 @@ import (
 
 // With a gateway running, connect asks it for the model's context: the figure /v1/models gives,
 // which counts the gateway's --ctx-size, where a plan made by the command line alone wouldn't.
+//
+// Both sides plan on the same computer, the lab's default host (64 GiB, unified), so the only
+// difference between them is --ctx-size, on every machine. The command line's plan used to read
+// this computer's memory: on a 7 GB macOS runner it came to 4096 as well, and the test couldn't
+// tell the two apart.
 func TestConnectAsksTheRunningGatewayForTheContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -58,7 +64,7 @@ func TestConnectAsksTheRunningGatewayForTheContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: testHost(t)}
+	e := &env{Root: r, Store: st, Catalog: cat, Config: cfg, Host: labShapedHost(lab.DefaultHost())}
 	if got, planned := connectContext(e, lab.ChatSmall); got != m.ContextLength || planned {
 		t.Errorf("connect's context %d (planned %v), the gateway's %d", got, planned, m.ContextLength)
 	}
@@ -72,4 +78,17 @@ func TestConnectAsksTheRunningGatewayForTheContext(t *testing.T) {
 	if alone, err := llm.Plan(lab.ChatSmall); err == nil && alone != nil && alone.Budget.EffectiveContext == m.ContextLength {
 		t.Errorf("the command line alone also says %d: this doesn't show the gateway was asked", m.ContextLength)
 	}
+}
+
+// labShapedHost is the computer a lab gateway is told it runs on, as a host provider for the
+// command line's own plan.
+type labShapedHost lab.HostSpec
+
+func (h labShapedHost) Topology() memory.Topology {
+	return memory.Topology{Unified: h.Unified, SystemCapacity: int64(h.CapacityGiB * float64(memory.GiB)),
+		GPUWorkingSetBytes: int64(h.GPUWorkingSetGiB * float64(memory.GiB))}
+}
+
+func (h labShapedHost) Snapshot(context.Context) memory.Snapshot {
+	return memory.Snapshot{Available: int64(h.AvailableGiB * float64(memory.GiB)), Pressure: "normal"}
 }
