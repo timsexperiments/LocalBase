@@ -8,16 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // On the host, the opt-in to private sources works per import and as a setting, and
 // it can be turned off again. Local paths need no opt-in here.
 func TestImportOptInFromTheCLI(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("Go-only feature")
-	}
 	weights := ggufFile(t, "qwen3", nil, 2048)
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.ServeContent(w, r, "m.gguf", time.Time{}, strings.NewReader(string(weights)))

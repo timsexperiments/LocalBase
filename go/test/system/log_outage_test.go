@@ -10,16 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // A real gateway whose log can't rotate: doctor and status say so, in words and in JSON, and the
 // file stays where it was.
 func TestDoctorAndStatusReportALogThatCannotRotate(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory modes")
 	}

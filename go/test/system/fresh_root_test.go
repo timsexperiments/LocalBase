@@ -62,9 +62,6 @@ func freshRootInit(t *testing.T, e *e2e, tmp string) {
 // default model could not be installed because it was selected, nor disabled
 // because it was the default. Deliberately Go only (DESIGN 13.6 item 10).
 func TestFreshRootFirstInstall(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
 	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
@@ -204,9 +201,6 @@ func TestFreshRootFirstInstall(t *testing.T) {
 // The same first step from the command line: `models install` on a fresh root
 // leaves a working default for the next serve.
 func TestFreshRootCLIInstall(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
 	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {

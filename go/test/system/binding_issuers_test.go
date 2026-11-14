@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -17,9 +16,6 @@ import (
 // in. With several, the gateway still starts: nobody guesses, those rows grant nothing until
 // someone chooses, and the log, doctor and status say how. The host commands keep working.
 func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	must := func(args ...string) cliResult {
@@ -192,9 +188,6 @@ func TestServeNamesTheProviderOnOlderBindings(t *testing.T) {
 // Whatever it prints, the address never reaches a log. And a default role, kept on
 // purpose, comes with a plain warning.
 func TestPolicyStarterCommand(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	must := func(args ...string) cliResult {

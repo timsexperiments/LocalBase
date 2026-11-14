@@ -4,7 +4,7 @@
 # printed) when the run fails, and removed when it passes. A failure without
 # output then still leaves its events behind.
 #
-#   scripts/contract.sh [go test flags...] [-args -impl=both]
+#   scripts/contract.sh [go test flags...] [-args -url=... -key=...]
 #
 # LOCALBASE_CONTRACT_LOGS chooses the directory (default: $TMPDIR/localbase-contract-runs).
 set -uo pipefail
@@ -14,8 +14,8 @@ disk_guard contract
 dir=${LOCALBASE_CONTRACT_LOGS:-${TMPDIR:-/tmp}/localbase-contract-runs}
 mkdir -p "$dir"
 log="$dir/contract-$(date -u +%Y%m%dT%H%M%SZ)-$$.jsonl"
-# -p 1: one package at a time. Each launches its own shared targets (Go, and TS under -impl=both),
-# and two at once could load real models side by side on a small runner.
+# -p 1: one package at a time. Each launches its own shared gateway, and two at once could load
+# real models side by side on a small runner.
 go test -json -p 1 ./test/contract ./test/system -count=1 "$@" > "$log"
 code=$?
 # On CI nothing else shares the temp directory, so the run must leave none of the suites' own

@@ -75,8 +75,9 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
-// arrive.
-const minRead = 207
+// arrive. Lowered from 207 by step 7's R3b, which deleted six of the files it read: tools/integration's
+// audit.go, behind.go, main.go, main_test.go and rerere-env.sh, and test/system/dual_differences_test.go.
+const minRead = 202
 
 // known are what already does this, with how many lines each has. A file may not gain one, and no
 // other file may join. Lower a number, or remove a line, as they are fixed.

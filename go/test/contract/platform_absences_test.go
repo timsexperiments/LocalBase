@@ -18,14 +18,14 @@ import (
 // because a test that quietly stops running looks just like one that passes.
 var platformAbsences = map[string]struct{ absentOn, why, ranBy string }{
 	"Pins": {
-		absentOn: "Linux, Intel Macs, under -impl=go (under -impl=both the tests compare with TS without the goldens)",
-		why:      "the pinned tests' goldens are darwin/arm64's, where go-dual ran them: the platform changes the catalog's targets and doctor's placement (go/test/harness/golden.go)",
-		ranBy:    "go.yml macos-contract (macos-15, Apple Silicon) under -impl=go, and go-dual.yml under -impl=both",
+		absentOn: "every platform but darwin/arm64 and linux/amd64 (Intel Macs, Linux on arm64, Windows)",
+		why:      "the pinned tests' goldens are per platform: it changes the catalog's targets, doctor's placement and the service manager (go/test/harness/golden.go)",
+		ranBy:    "go.yml contract (ubuntu-latest, linux/amd64) on every PR, and go.yml macos-contract (macos-15, Apple Silicon)",
 	},
 	"TestDifferentialRetrySemanticsFake": {
 		absentOn: "Linux, Intel Macs",
 		why:      "whisper's backends need Metal or Vulkan, so the request stops at backend_not_selected and never reaches the start under test",
-		ranBy:    "go.yml test (macos-14, Apple Silicon), and go-dual.yml for the comparison with TS",
+		ranBy:    "go.yml macos-contract (macos-15, Apple Silicon)",
 	},
 }
 

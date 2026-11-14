@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -16,9 +15,6 @@ import (
 // log is something people share. So the log names the feed's address and not the query, whether
 // the refresh worked or failed. The name here isn't one the log's redaction knows.
 func TestAFeedURLsQueryStaysOutOfTheLog(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	const planted = "planted-feed-query-value"
 	for _, c := range []struct {
 		name, event string

@@ -7,7 +7,7 @@
 - [ ] The maintainer signs off #403, and it's squash-merged. See `go/docs/merge-readiness.md`.
 - [ ] The stack on top is merged: #404, #413-#417 and this PR, and the backend fixes #405, #406, #409 and #411.
 - [ ] Transcription default decided: English, or auto-detect on multilingual models.
-- [ ] `go-dual` green. It needs #411.
+- [ ] The pinned goldens green: go.yml's contract (linux/amd64) and macos-contract jobs. (Until step 7 this was `go-dual`.)
 - [ ] Set the date on the `0.2.0` entry in `CHANGELOG.md`, and regenerate notices if dependencies moved: `scripts/release/generate-notices.sh`.
 
 ## Decisions needed from the owner

@@ -1,4 +1,15 @@
 {
+  "fresh root files": [
+    ".localbase-root.json",
+    "local-base.db",
+    "local-base.db-wal-owner",
+    "models",
+    "models/image",
+    "models/llm",
+    "models/stt",
+    "models/tts",
+    "models/video"
+  ],
   "validation message: activetts.toml": "models.activeTtsModel: must name a catalog tts model with compatible modalities; models.activeTtsModel: must also be present in its selected model list",
   "validation message: allowexp.toml": "models.allowExperimental: Invalid input: expected boolean, received string",
   "validation message: allownum.toml": "models.allowExperimental: Invalid input: expected boolean, received number",

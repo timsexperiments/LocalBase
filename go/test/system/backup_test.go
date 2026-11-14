@@ -108,9 +108,6 @@ func backupRoot(t *testing.T, tmp, name string) *e2e {
 
 func backupGoOnly(t *testing.T) {
 	t.Helper()
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("Go-only feature")
-	}
 }
 
 // The operator's test: a backup from a scratch root restores into a fresh root, which passes

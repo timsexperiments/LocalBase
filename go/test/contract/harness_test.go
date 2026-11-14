@@ -1,18 +1,15 @@
-// Package contract is a black-box HTTP contract suite that runs against the
-// TypeScript and the Go gateway alike.
+// Package contract is a black-box HTTP contract suite for the gateway. It ran against the
+// TypeScript gateway too until step 7 retired it; the tests that compared the two pin Go's
+// answers instead (golden_test.go).
 //
-//	go test ./test/contract -args -impl=go          # build and launch the Go gateway
-//	go test ./test/contract -args -impl=ts          # launch `bun run src/cli.ts serve`
-//	go test ./test/contract -args -impl=both        # both, plus differential checks
+//	go test ./test/contract                         # build and launch the Go gateway
 //	go test ./test/contract -args -url=http://127.0.0.1:P -key=lb_... -keyless-key=lb_...
 //	                                                # an already running gateway
 //
 // Launched gateways get a fresh scratch root in a temp dir and ports from
 // LOCALBASE_TEST_PORTS (default 25000-25499). LOCALBASE_CONTRACT_MODELS names a models/llm directory (read
-// only) holding qwen2.5-coder-1.5b-instruct-q4_k_m; the TS gateway needs it
-// because it refuses to start without the active model's files. Adding
-// LOCALBASE_CONTRACT_RUNTIMES (a bin/runtimes directory, copied) runs the
-// real-inference cases.
+// only) holding qwen2.5-coder-1.5b-instruct-q4_k_m. Adding LOCALBASE_CONTRACT_RUNTIMES (a
+// bin/runtimes directory, copied) runs the real-inference cases.
 //
 // Image admission tests need free memory: do not run them alongside other
 // model loads, or memory refusals can change which error a gateway reaches.

@@ -9,16 +9,12 @@ import (
 	"testing"
 
 	"github.com/timsexperiments/LocalBase/go/internal/store"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
 // What one import may cost is the owner's to set, and --help says so, including what a
 // larger model needs.
 func TestConfigureImportLimits(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {
@@ -67,9 +63,6 @@ func TestConfigureImportLimits(t *testing.T) {
 // A crash can leave files under a model's directory that nothing records. Importing that
 // model again through the CLI clears them, and a model that is recorded stays refused.
 func TestCLIImportAfterACrash(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go CLI")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--json", "init"); r.code != 0 {

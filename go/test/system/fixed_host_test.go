@@ -6,7 +6,6 @@ import (
 	goruntime "runtime"
 	"testing"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -38,9 +37,6 @@ func onFixedHost(t *testing.T, e *e2e, capacityGiB, availableMiB int64) {
 // The fixed host is what the gateway sees: if the lab build or the file were left out, it would
 // report this machine's memory instead.
 func TestAFixedHostIsWhatTheGatewaySees(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp, noAuth: true}
 	onFixedHost(t, e, 16, 12345)

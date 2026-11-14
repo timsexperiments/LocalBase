@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -22,9 +21,6 @@ var localLinkRe = regexp.MustCompile(`http://127\.0\.0\.1:\d+/app/login/once#[A-
 // the page, the session, the app, and the refusal once a provider exists. Go only:
 // TS has no local sign-in (DESIGN §28).
 func TestFirstRunLocalSignIn(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	e := &e2e{t: t, root: filepath.Join(tmp, "root"), outDir: tmp}
 	if r := e.cli(nil, "--non-interactive", "init"); r.code != 0 {

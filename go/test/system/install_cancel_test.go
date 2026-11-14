@@ -20,9 +20,6 @@ import (
 // again at once, the partial stays, and installing again resumes it. Go only: TS has
 // no cancel, and answers this action 400.
 func TestInstallCancel(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	fake := filepath.Join(tmp, "fakebackend")
 	if out, err := exec.Command("go", "build", "-o", fake, "github.com/timsexperiments/LocalBase/go/internal/runtime/fakebackend").CombinedOutput(); err != nil {
@@ -144,9 +141,6 @@ func TestInstallCancel(t *testing.T) {
 // The command, on a real binary, against a real gateway with auth on: the same result as the route,
 // and it needs nothing but being on this machine with the instance token.
 func TestInstallCancelCommand(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	tmp := fsguard.ScratchDir(t)
 	big := ggufFile(t, "qwen3", nil, 64*1024)
 	half := len(big) / 2

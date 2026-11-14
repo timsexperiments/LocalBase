@@ -112,8 +112,9 @@ var trees = []treewalk.Tree{{Label: "tools", Dir: "../../../tools"}, {Label: "te
 
 // minRead is how many files the trees held when it was last raised. A tree that stops being read,
 // or files moved somewhere neither tree reaches, read fewer, and the guard fails. Raise it as files
-// arrive.
-const minRead = 112
+// arrive. Lowered from 112 by step 7's R3b, which deleted four of the files it read (tests aside):
+// tools/integration's audit.go, behind.go, main.go and rerere-env.sh.
+const minRead = 109
 
 // scanTrees reads every tree, or only LOCALBASE_RM_GUARD_TREE when it is set (laid out as go/tools
 // is), and checks the floor only for the trees.

@@ -104,8 +104,6 @@ type e2e struct {
 	// kill ends the gateway with SIGKILL (no shutdown at all).
 	kill   func()
 	outDir string
-	// impl is "go" (default) or "ts".
-	impl string
 	// lab runs the localbase_lab build of the Go CLI (onFixedHost).
 	lab bool
 }
@@ -121,11 +119,6 @@ func (e *e2e) scan(label, text string) {
 }
 
 func (e *e2e) command(args ...string) *exec.Cmd {
-	if e.impl == "ts" {
-		cmd := exec.Command("bun", append([]string{"run", "src/cli.ts"}, args...)...)
-		cmd.Dir = testutil.RepoRoot(e.t)
-		return cmd
-	}
 	if len(args) < 2 || args[0] != "--root" {
 		e.t.Fatalf("a contract test must name its root: %v", args)
 	}
@@ -309,9 +302,6 @@ func warningCodes(f map[string]any) []string {
 }
 
 func TestModelImportAcceptance(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("Go-only feature")
-	}
 	tmp := fsguard.ScratchDir(t)
 	tmp, _ = filepath.EvalSymlinks(tmp)
 	fake := filepath.Join(tmp, "fakebackend")
@@ -942,14 +932,6 @@ func TestModelImportAcceptance(t *testing.T) {
 		e.scan("local-base.db", string(db))
 	})
 
-	step("rollback: TS opens the database Go wrote", func(t *testing.T) {
-		if _, err := exec.LookPath("bun"); err != nil || harness.Impl() != "both" {
-			t.Skip("needs bun and -impl=both")
-		}
-		if r := runCLI(t, "ts", e.root, "--json", "keys", "list"); r.code != 0 {
-			t.Fatalf("TS could not open the database: %s%s", r.stdout, r.stderr)
-		}
-	})
 }
 
 func (s *seen) count() int {

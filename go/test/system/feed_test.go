@@ -14,7 +14,6 @@ import (
 
 	"github.com/timsexperiments/LocalBase/go/internal/catalog"
 	"github.com/timsexperiments/LocalBase/go/internal/runtime"
-	"github.com/timsexperiments/LocalBase/go/test/harness"
 	"github.com/timsexperiments/LocalBase/go/test/harness/fsguard"
 )
 
@@ -66,7 +65,7 @@ func testFeed(t *testing.T) []byte {
 	return out
 }
 
-// TestCLIFeed compares `models feed` on twin roots against one local feed.
+// TestCLIFeed pins `models feed` against one local feed.
 func TestCLIFeed(t *testing.T) {
 	pinned(t)
 	feed := testFeed(t)
@@ -87,33 +86,13 @@ func TestCLIFeed(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}), false)
-	ts, gr := twinRoots(t)
-	roots := [2]string{ts, gr}
-	for i, impl := range []string{"ts", "go"} {
-		if r := runCLI(t, impl, roots[i], "--json", "init"); r.code != 0 {
-			t.Fatalf("%s init: %s %s", impl, r.stdout, r.stderr)
-		}
-	}
+	gr := cliRoot(t)
+	initRoot(t, gr)
 	// The feed variable unset, so the root's settings decide.
 	env := []string{"LOCALBASE_CATALOG_FEED_URL="}
 	compare := func(args ...string) {
 		t.Helper()
-		var outs [2]cliResult
-		for i, impl := range []string{"ts", "go"} {
-			outs[i] = runCLIEnv(t, impl, roots[i], env, args...)
-		}
-		label := strings.Join(args, " ")
-		if outs[0].code != outs[1].code {
-			t.Errorf("%s: exit ts=%d go=%d\nts: %s%s\ngo: %s%s", label, outs[0].code, outs[1].code, outs[0].stdout, outs[0].stderr, outs[1].stdout, outs[1].stderr)
-			return
-		}
-		a, b := normalize(t, outs[0].stdout, roots[0]), normalize(t, outs[1].stdout, roots[1])
-		if d := harness.DiffJSON("", a, b, func(p string) bool { return p == ".error.message" }); len(d) > 0 {
-			if len(d) > 20 {
-				d = d[:20]
-			}
-			t.Errorf("%s differs:\n  %s", label, strings.Join(d, "\n  "))
-		}
+		runCLIEnv(t, "go", gr, env, args...)
 	}
 	feedURL := srv.URL + "/feed.json"
 	compare("--json", "models", "feed", "status")
@@ -132,13 +111,7 @@ func TestCLIFeed(t *testing.T) {
 	compare("--json", "models", "catalog", "--capability", "tool-calling")
 	compare("--json", "models", "recommend", "--vram", "16")
 	for _, id := range []string{"whisper-small-q8_0", "qwen2.5-coder-3b-instruct-q4_k_m", "community-tiny-stt"} {
-		var text [2]string
-		for i, impl := range []string{"ts", "go"} {
-			text[i] = strings.ReplaceAll(runCLIEnv(t, impl, roots[i], env, "models", "show", id).stdout, roots[i], "<root>")
-		}
-		if text[0] != text[1] {
-			t.Errorf("models show %s text differs:\n--- ts\n%s\n--- go\n%s", id, text[0], text[1])
-		}
+		compare("models", "show", id)
 	}
 	compare("--json", "models", "feed", "use", srv.URL+"/broken.json")
 	compare("--json", "models", "feed", "refresh")
@@ -154,9 +127,6 @@ func TestCLIFeed(t *testing.T) {
 // TestFeedSchedulerReloadsCatalog: a gateway downloads its feed at start and
 // serves the community model without a restart (Go; TS does the same).
 func TestFeedSchedulerReloadsCatalog(t *testing.T) {
-	if harness.Impl() != "go" && harness.Impl() != "both" {
-		t.Skip("runs the Go gateway")
-	}
 	feed := testFeed(t)
 	srv := rangeServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(feed) }), false)
 	tmp := fsguard.ScratchDir(t)
