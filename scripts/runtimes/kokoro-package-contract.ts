@@ -1,7 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { sha256Schema } from "../../src/utils/checksum";
+import { sha256Schema } from "./lib/checksum";
 import { verifyInventory } from "../../runtimes/kokoro/inventory";
 
 export const kokoroTagSchema = z

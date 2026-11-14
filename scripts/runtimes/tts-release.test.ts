@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { gzipSync, zipSync } from "fflate";
 import { pack as createTarPack } from "tar-stream";
-import rawManifest from "../../src/manager/managed-runtime-manifest.json";
+import { repositoryManifestPath } from "./lib/paths";
 import { registerTtsServerTool } from "./build-tts-server";
 import {
   validateTtsArchiveEntries,
@@ -15,6 +15,8 @@ import {
 } from "./tts-release/contracts";
 import { ttsManifestMatches, updateTtsManifest } from "./tts-release/manifest";
 import { verifyPublishedTtsRelease } from "./tts-release/published-release";
+
+const rawManifest = await Bun.file(repositoryManifestPath).json();
 
 const licenses = [
   "LICENSE.cpp-httplib.txt",

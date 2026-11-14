@@ -24,8 +24,8 @@ import {
 } from "../../runtimes/kokoro/inventory";
 import sources from "../../runtimes/kokoro/sources.json";
 import { readSdArchiveEntries } from "./sd-release/archive-reader";
-import { parseChecksumFile } from "../../src/utils/checksum";
-import { parseManagedRuntimeManifest } from "../../src/manager/managed-runtime-manifest";
+import { parseChecksumFile } from "./lib/checksum";
+import { parseManagedRuntimeManifest } from "./lib/manifest";
 import {
   expectedDownloadUrl,
   repositorySchema,

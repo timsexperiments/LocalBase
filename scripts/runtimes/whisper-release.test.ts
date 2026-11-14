@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { pack } from "tar-stream";
-import rawManifest from "../../src/manager/managed-runtime-manifest.json";
+import { repositoryManifestPath } from "./lib/paths";
 import {
   qualifyWhisperArchive,
   runWhisperReleaseCli,
@@ -15,6 +15,8 @@ import {
   type Fetcher,
 } from "./whisper-release";
 import { whisperLicenseFilename } from "./whisper-release/contracts";
+
+const rawManifest = await Bun.file(repositoryManifestPath).json();
 
 // Captured from /usr/bin/codesign --display --verbose=4 /Applications/ChatGPT.app.
 const codeDirectoryFixture =
