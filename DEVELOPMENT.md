@@ -65,11 +65,10 @@ sequenceDiagram
 
 | Workflow | Runs |
 | --- | --- |
-| `go.yml` | Format, vet, race tests (internal/backup in shards), CSS check and the contract and system suites, as parallel jobs on Linux and macOS; `go-checks` passes only when all of them do |
+| `go.yml` | Format, vet, race tests (internal/backup in shards), CSS check, the contract and system suites, and the page-script and Bun script tests, as parallel jobs on Linux and macOS; `go-checks` passes only when all of them do |
 | `repo-guards.yml` | Binaries, large files, action pins, permissions and secrets scan |
 | `go-lint.yml` | golangci-lint with `go/.golangci.yml` |
 | `contributor-setup.yml` | `make bootstrap`, `check`, `ui`, `lint` and `build` from a fresh Linux checkout, when the setup changes |
 | `soak.yml` | One soak cycle nightly on Linux and macOS, and the 30-minute soak plus a race-detector cycle weekly |
 | `release-go.yml` | Release build, installer test on four platforms. Publishes a draft on tags only |
 | `go-dual.yml` | Differential tests against TypeScript: nightly, by hand, or with the `dual` label |
-| `ci.yml` | TypeScript checks, on PRs into main |

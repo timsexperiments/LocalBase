@@ -6,7 +6,6 @@ src/ui/assets.generated.ts
 # Build output. CI rejects these if they are ever committed.
 dist/
 /release/
-/release-artifacts/
 go/dist/
 go/fakebackend
 go/localbase
