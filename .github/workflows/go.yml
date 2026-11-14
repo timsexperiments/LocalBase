@@ -86,12 +86,14 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Vet
         run: go vet ./...
-      - name: Build and vet with the test-key tag
+      - name: Build, vet and test with the test-key tag
         # DESIGN §33.5: upgrade's test key exists only under localbase_testkey, so both sides of the
-        # tag build and vet. The tag goes to these two commands only, never job-wide.
+        # tag build and vet, and upgrade's tagged test runs (testkey_on_test.go). The tag goes to
+        # these commands only, never job-wide.
         run: |
           go build -tags localbase_testkey ./...
           go vet -tags localbase_testkey ./...
+          go test -tags localbase_testkey ./internal/upgrade
       - name: Unit tests
         # Every package with tests runs here, so a new one is covered by default. Left out, and run
         # in their own jobs or workflows: internal/backup (backup-race, backup-files), contract and

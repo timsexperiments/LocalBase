@@ -251,8 +251,6 @@ func readReleaseBuild(version string) (releaseBuild, error) {
 	return rb, nil
 }
 
-// goArgs is the go build command line for pkg: the release's flags, with extra added to its
-// -ldflags.
 // goArgs is the release's go build, with tags (none, or the test key's tag) and extra -ldflags.
 func (rb releaseBuild) goArgs(tags, extra, out, pkg string) []string {
 	args := append([]string{"build"}, rb.goflags...)
