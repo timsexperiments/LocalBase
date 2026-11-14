@@ -50,6 +50,10 @@ type Browser struct {
 	Config *BrowserAccess // nil: browser access off
 	Log    *slog.Logger
 	Client *http.Client
+	// Stylesheet is the app's style sheet, with its version, for the sign-in pages this renders, so
+	// they look like the rest of the app (web.StylesheetURL). Empty is the unversioned
+	// /app/assets/app.css.
+	Stylesheet string
 
 	cfJWKS *JWKS
 	oidc   map[string]*oidcRuntime

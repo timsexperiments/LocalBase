@@ -6,27 +6,31 @@ import (
 	"net/http"
 )
 
-// Stylesheet is the app's style sheet, with its version. The web UI sets it, so these pages
-// look like the rest of the app.
-var Stylesheet = "/app/assets/app.css"
+// defaultStylesheet is what a sign-in page links when its Browser has no Stylesheet.
+const defaultStylesheet = "/app/assets/app.css"
 
-// pageOpen is the head of a sign-in page: the same page as the app's other sign-in pages.
-func pageOpen() string {
-	return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><link rel="stylesheet" href="` + html.EscapeString(Stylesheet) + `"><main class="welcome signin"><span aria-hidden="true" class="welcome-mark"><svg viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg></span>`
+// pageOpen is the head of a sign-in page: the same page as the app's other sign-in pages, linking
+// the Browser's style sheet.
+func (b *Browser) pageOpen() string {
+	css := defaultStylesheet
+	if b != nil && b.Stylesheet != "" {
+		css = b.Stylesheet
+	}
+	return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in to LocalBase</title><link rel="stylesheet" href="` + html.EscapeString(css) + `"><main class="welcome signin"><span aria-hidden="true" class="welcome-mark"><svg viewBox="0 0 24 24" class="mark"><path fill="currentColor" d="M3 22V11a9 9 0 0 1 18 0v11Z"/><path class="mark-light" d="M6.6 22V11a5.4 5.4 0 0 1 10.8 0v11Z"/></svg></span>`
 }
 
-func page(w http.ResponseWriter, body, csp, referrer string) {
-	pageAt(w, http.StatusOK, body, csp, referrer)
+func (b *Browser) page(w http.ResponseWriter, body, csp, referrer string) {
+	b.pageAt(w, http.StatusOK, body, csp, referrer)
 }
 
-func pageAt(w http.ResponseWriter, status int, body, csp, referrer string) {
+func (b *Browser) pageAt(w http.ResponseWriter, status int, body, csp, referrer string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", csp)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", referrer)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	fmt.Fprint(w, pageOpen()+body+"</main></html>")
+	fmt.Fprint(w, b.pageOpen()+body+"</main></html>")
 }
 
 const formCSP = "default-src 'none'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"

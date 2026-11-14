@@ -36,7 +36,7 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 		for _, reg := range regs {
 			fmt.Fprintf(&links, `<a class="btn btn-quiet w-full" href="/app/login?provider=%s%s">Continue with %s</a>`, url.QueryEscape(reg.ID), carry, html.EscapeString(reg.Name))
 		}
-		page(w, `<h1 class="welcome-title">Sign in to LocalBase</h1><nav class="mt-5 grid gap-2">`+links.String()+"</nav>",
+		b.page(w, `<h1 class="welcome-title">Sign in to LocalBase</h1><nav class="mt-5 grid gap-2">`+links.String()+"</nav>",
 			"default-src 'none'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", "no-referrer")
 		return
 	}
@@ -49,7 +49,7 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if reg == nil {
 		if strings.Contains(r.Header.Get("Accept"), "text/html") {
-			pageAt(w, http.StatusNotFound, `<h1 class="welcome-title">That way of signing in isn’t here</h1><p class="mt-3 text-muted">The link may be old.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in</a>`, formCSP, "same-origin")
+			b.pageAt(w, http.StatusNotFound, `<h1 class="welcome-title">That way of signing in isn’t here</h1><p class="mt-3 text-muted">The link may be old.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Sign in</a>`, formCSP, "same-origin")
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -57,7 +57,7 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if reg.Kind == "magic-link" {
-		page(w, fmt.Sprintf(`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Enter your invited email address, and we’ll send you a sign-in link.</p><form method="post" action="%s?provider=%s" class="mt-5 grid gap-3"><label class="grid gap-1 font-semibold">Email<input class="input font-normal" name="email" type="email" autocomplete="email" maxlength="320" required></label><button class="btn btn-primary w-full" type="submit">Email me a link</button></form>`,
+		b.page(w, fmt.Sprintf(`<h1 class="welcome-title">Sign in to LocalBase</h1><p class="mt-3 text-muted">Enter your invited email address, and we’ll send you a sign-in link.</p><form method="post" action="%s?provider=%s" class="mt-5 grid gap-3"><label class="grid gap-1 font-semibold">Email<input class="input font-normal" name="email" type="email" autocomplete="email" maxlength="320" required></label><button class="btn btn-primary w-full" type="submit">Email me a link</button></form>`,
 			MagicRequestPath, url.QueryEscape(reg.ID)), formCSP, "same-origin")
 		return
 	}
@@ -66,7 +66,7 @@ func (b *Browser) StartLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// A person opening the page gets words; anything else gets the usual answer.
 		if strings.Contains(r.Header.Get("Accept"), "text/html") {
-			pageAt(w, http.StatusServiceUnavailable, `<h1 class="welcome-title">Sign-in isn’t answering</h1><p class="mt-3 text-muted">LocalBase couldn’t reach the sign-in service. Try again in a moment.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Try again</a>`, formCSP, "same-origin")
+			b.pageAt(w, http.StatusServiceUnavailable, `<h1 class="welcome-title">Sign-in isn’t answering</h1><p class="mt-3 text-muted">LocalBase couldn’t reach the sign-in service. Try again in a moment.</p><a class="btn btn-primary mt-5 w-full" href="/app/login">Try again</a>`, formCSP, "same-origin")
 			return
 		}
 		Deny(w, 503)
@@ -153,7 +153,7 @@ func (b *Browser) establish(w http.ResponseWriter, r *http.Request, id Identity,
 		if len(b.Config.Issuers()) > 1 {
 			issuer = id.Issuer
 		}
-		pageAt(w, http.StatusForbidden, noAccessPage(id.VerifiedEmail, issuer, err != nil || policy != nil), formCSP, "no-referrer")
+		b.pageAt(w, http.StatusForbidden, noAccessPage(id.VerifiedEmail, issuer, err != nil || policy != nil), formCSP, "no-referrer")
 		return
 	}
 	token, err := CreateSession(r.Context(), b.Store, owner, id)
