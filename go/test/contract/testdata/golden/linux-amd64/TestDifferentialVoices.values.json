@@ -1,0 +1,335 @@
+{
+  "created voice": {
+    "consent": {
+      "statement": "voice-consent-v1"
+    },
+    "durationMs": 4000,
+    "name": "Narrator Voice",
+    "sha256": "89b6007b995634ff78c5a0ea8efe09bfd599edc92f46d94ecbf4d563584acfb7",
+    "sizeBytes": 192044
+  },
+  "error: POST audio": {
+    "allow": "GET",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: POST voice": {
+    "allow": "GET, PATCH, DELETE",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: PUT collection": {
+    "allow": "GET, POST",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: audio as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: create as json": {
+    "allow": "",
+    "code": "unsupported_media_type",
+    "message": "Send multipart/form-data with name, consent and audio fields.",
+    "param": null,
+    "status": 415,
+    "type": "invalid_request_error"
+  },
+  "error: create as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: create audio as text": {
+    "allow": "",
+    "code": "unsupported_audio_format",
+    "message": "Attach the reference recording as the audio field.",
+    "param": "audio",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create consent not true": {
+    "allow": "",
+    "code": "consent_required",
+    "message": "Confirm that you have permission to use this voice.",
+    "param": "consent",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create id-shaped name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Voice name cannot look like a voice id.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create long name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Voice name must be at most 48 characters.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create missing name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Voice name is required.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create name as file": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Voice name is required.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create no consent": {
+    "allow": "",
+    "code": "consent_required",
+    "message": "Confirm that you have permission to use this voice.",
+    "param": "consent",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create not wav": {
+    "allow": "",
+    "code": "unsupported_audio_format",
+    "message": "Upload a WAV file (RIFF/WAVE).",
+    "param": "audio",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create reserved name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "That name belongs to a built-in voice.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create too short": {
+    "allow": "",
+    "code": "unsupported_audio_format",
+    "message": "The WAV file is truncated or has an invalid chunk size.",
+    "param": "audio",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: delete as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: delete unknown voice": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "Voice not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: duplicate name": {
+    "allow": "",
+    "code": "voice_name_taken",
+    "message": "Another voice already uses that name.",
+    "param": "name",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: extra segment": {
+    "allow": "",
+    "code": "route_disabled",
+    "message": "This endpoint is not exposed by this gateway.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: get deleted": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "Voice not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: list as chat-only": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: list without credentials": {
+    "allow": "",
+    "code": "invalid_api_key",
+    "message": "Unauthorized: Invalid or missing API key.",
+    "param": null,
+    "status": 401,
+    "type": "invalid_request_error"
+  },
+  "error: malformed id": {
+    "allow": "",
+    "code": "route_disabled",
+    "message": "This endpoint is not exposed by this gateway.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: rename array": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Invalid input: expected object, received array",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename as reader": {
+    "allow": "",
+    "code": "insufficient_permissions",
+    "message": "Forbidden: The credential lacks the required permission.",
+    "param": null,
+    "status": 403,
+    "type": "invalid_request_error"
+  },
+  "error: rename blank": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Voice name is required.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename extra key": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Unrecognized key: \"z\"",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename extra keys": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Unrecognized keys: \"b\", \"a\"",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename missing name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Invalid input: expected string, received undefined",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename not json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Send a JSON body with a name.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename null": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Invalid input: expected object, received null",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename number name": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "Invalid input: expected string, received number",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename reserved": {
+    "allow": "",
+    "code": "invalid_voice_name",
+    "message": "That name belongs to a built-in voice.",
+    "param": "name",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: rename too large": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Voice update body exceeds the 1024 byte limit.",
+    "param": null,
+    "status": 413,
+    "type": "invalid_request_error"
+  },
+  "error: rename unknown": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "Voice not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: speech with a deleted voice": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "The requested custom voice does not exist. It may have been deleted; list voices at /_localbase/voices.",
+    "param": "voice",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: unknown voice": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "Voice not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: unknown voice audio": {
+    "allow": "",
+    "code": "voice_not_found",
+    "message": "Voice not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "reader list": {
+    "canManage": false,
+    "consentStatement": "I have the right to use this voice: it is my own, or its speaker has given permission for it to be cloned here.",
+    "data": [],
+    "limits": {
+      "maxSeconds": 30,
+      "maxUploadBytes": 12582912,
+      "maxVoices": 32,
+      "minSeconds": 3
+    },
+    "object": "list"
+  }
+}

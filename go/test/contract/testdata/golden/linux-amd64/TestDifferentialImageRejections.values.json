@@ -1,0 +1,554 @@
+{
+  "error: edit as json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Expected multipart/form-data.",
+    "param": "content-type",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit bad mask": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit blank prompt": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "prompt is required and must not exceed 16384 characters.",
+    "param": "prompt",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit chat model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'qwen2.5-coder-1.5b-instruct-q4_k_m' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit default model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model 'dreamshaper-8-lcm' does not support image-to-image edits.",
+    "param": "model",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit empty filename": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit empty mask": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit files missing": {
+    "allow": "",
+    "code": "backend_not_selected",
+    "message": "No backend is selected for sdxl-turbo on this device. Select a backend to run this model.",
+    "param": "model",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: edit five images": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit gif": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit gif named png": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit huge png": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit image as text": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit interlaced-size png": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit long prompt": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "prompt is required and must not exceed 16384 characters.",
+    "param": "prompt",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit lora on no-lora": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit mask as text": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit n empty": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit n fraction": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit n text": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit n zero": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit negative marker": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit no boundary": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid multipart image edit request.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit no image-to-image": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model 'dreamshaper-8-lcm' does not support image-to-image edits.",
+    "param": "model",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit no images": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit no prompt": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "prompt is required and must not exceed 16384 characters.",
+    "param": "prompt",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit output_format": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit prompt marker": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "prompt must not contain sd_cpp_extra_args.",
+    "param": "prompt",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: edit response_format": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit seed fraction": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit seed text": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit size": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit steps 0": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit strength 2": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit truncated png": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit type mismatch": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: edit untyped broken jpeg": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'dreamshaper-v8' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: generation array": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received array",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation blank model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: model must not be empty",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation cfg 31": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: cfg_scale: Too big: expected number to be \u003c=30",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation files missing": {
+    "allow": "",
+    "code": "backend_not_selected",
+    "message": "No backend is selected for realvis-xl-v5.0 on this device. Select a backend to run this model.",
+    "param": "model",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: generation lora 3": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: lora_strength: Too big: expected number to be \u003c=2",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation lora on chat model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'qwen2.5-coder-1.5b-instruct-q4_k_m' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: generation lora on default model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Model 'dreamshaper-8-lcm' has no LoRA; lora_strength applies only to image models added with one.",
+    "param": "lora_strength",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation many issues": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: seed: Too small: expected number to be \u003e=0, steps: Too small: expected number to be \u003e=1, prompt: Invalid input: expected string, received undefined, model: model must not be empty, n: Too big: expected number to be \u003c=10, size: Invalid option: expected one of \"256x256\"|\"512x512\"|\"1024x1024\"|\"512x768\"|\"768x512\"|\"768x1024\"|\"1024x768\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation model number": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: Invalid input: expected string, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation n 11": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: n: Too big: expected number to be \u003c=10",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation n string": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: n: Invalid input: expected number, received string",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation negative long": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: negative_prompt: Too big: expected string to have \u003c=16384 characters",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation negative long + marker": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: negative_prompt: Too big: expected string to have \u003c=16384 characters, negative_prompt: negative_prompt must not contain sd_cpp_extra_args.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation negative marker": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: negative_prompt: negative_prompt must not contain sd_cpp_extra_args.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation no prompt": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: prompt: Invalid input: expected string, received undefined",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation prompt marker": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: prompt: prompt must not contain sd_cpp_extra_args.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation prompt number": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: prompt: Invalid input: expected string, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation quality": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: quality: Invalid option: expected one of \"standard\"|\"hd\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation response_format": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: response_format: Invalid option: expected one of \"url\"|\"b64_json\"",
+    "param": "response_format",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation seed fraction": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: seed: Invalid input: expected int, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation seed negative fraction": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: seed: Invalid input: expected int, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation seed string": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: seed: Invalid input: expected number, received string",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation seed too big": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: seed: Too big: expected number to be \u003c=2147483647",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation size": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: size: Invalid option: expected one of \"256x256\"|\"512x512\"|\"1024x1024\"|\"512x768\"|\"768x512\"|\"768x1024\"|\"1024x768\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation steps 0": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: steps: Too small: expected number to be \u003e=1",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation steps 151": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: steps: Too big: expected number to be \u003c=150",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation strength ignored n 0": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: n: Too small: expected number to be \u003e=1",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation style": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: style: Invalid option: expected one of \"vivid\"|\"natural\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: generation unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: generation unknown model lora": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-model' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: generation user": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: user: Invalid input: expected string, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  }
+}

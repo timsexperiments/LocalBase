@@ -1,0 +1,354 @@
+{
+  "error: DELETE /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab": {
+    "allow": "",
+    "code": "video_job_not_found",
+    "message": "Video job not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: GET /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab": {
+    "allow": "",
+    "code": "video_job_not_found",
+    "message": "Video job not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: GET /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab/cancel": {
+    "allow": "POST",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: GET /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab/content": {
+    "allow": "",
+    "code": "video_job_not_found",
+    "message": "Video job not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: GET /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab/frames": {
+    "allow": "",
+    "code": "route_disabled",
+    "message": "This endpoint is not exposed by this gateway.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: GET /v1/videos/not-a-job": {
+    "allow": "",
+    "code": "route_disabled",
+    "message": "This endpoint is not exposed by this gateway.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: POST /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab/cancel": {
+    "allow": "",
+    "code": "video_job_not_found",
+    "message": "Video job not found.",
+    "param": null,
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: POST /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab/content": {
+    "allow": "GET",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: PUT /v1/videos/6f1c2c3e-8a7b-4c1d-9e2f-0123456789ab": {
+    "allow": "GET, DELETE",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: create GET": {
+    "allow": "POST",
+    "code": "method_not_allowed",
+    "message": "Method not allowed.",
+    "param": null,
+    "status": 405,
+    "type": "invalid_request_error"
+  },
+  "error: create array": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received array",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create chat model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'qwen2.5-coder-1.5b-instruct-q4_k_m' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: create empty": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: Invalid input: expected string, received undefined, prompt: Invalid input: expected string, received undefined, width: Invalid input: expected number, received undefined, height: Invalid input: expected number, received undefined, frames: Invalid input: expected number, received undefined, fps: Invalid input: expected number, received undefined, input: Invalid input: expected object, received undefined",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create empty model": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: model: Too small: expected string to have \u003e=1 characters",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create extra key": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Unrecognized key: \"seconds\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create fractional height": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: height: Invalid input: expected int, received number",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create image format": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input.image.format: Invalid input: expected \"png\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create input extra": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: Unrecognized key: \"x\"",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create invalid json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid JSON payload.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create long prompt": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: prompt: Too big: expected string to have \u003c=16384 characters",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create no input": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input: Invalid input: expected object, received undefined",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create reference with image": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input_reference: input_reference can only be combined with input.kind=text.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create string": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: : Invalid input: expected object, received string",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create string width": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: width: Invalid input: expected number, received string",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create t2v with reference": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 320x320 (width x height), 33 frames at 16 fps; got image 480x832, 33 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create ti2v data url reference": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 480x832 (width x height), 81 frames at 16 fps; got image 16x24, 81 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create ti2v files missing": {
+    "allow": "",
+    "code": "model_install_consent_required",
+    "message": "Model \"fastwan2.2-ti2v-5b-q6_k\" is not installed. Install it with \"local-base models install fastwan2.2-ti2v-5b-q6_k\" or restart serve with --install-missing.",
+    "param": "model",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: create ti2v small reference": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 480x832 (width x height), 81 frames at 16 fps; got image 16x24, 81 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create ti2v wrong size": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 480x832 (width x height), 81 frames at 16 fps; got 496x832, 81 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create unknown input": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: input.kind: Invalid discriminator value. Expected 'text' | 'speech' | 'image'",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create unknown model": {
+    "allow": "",
+    "code": "model_not_found",
+    "message": "The model 'no-such-video' does not exist.",
+    "param": "model",
+    "status": 404,
+    "type": "invalid_request_error"
+  },
+  "error: create wrong fps": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 320x320 (width x height), 33 frames at 16 fps; got 320x320, 33 frames at 24 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create wrong frames": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 320x320 (width x height), 33 frames at 16 fps; got 320x320, 32 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create wrong size": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 320x320 (width x height), 33 frames at 16 fps; got 336x320, 33 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: create zero frames": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Validation failed: frames: Too small: expected number to be \u003e0",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart files missing": {
+    "allow": "",
+    "code": "model_install_consent_required",
+    "message": "Model \"fastwan2.2-ti2v-5b-q6_k\" is not installed. Install it with \"local-base models install fastwan2.2-ti2v-5b-q6_k\" or restart serve with --install-missing.",
+    "param": "model",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: multipart input image": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid video request.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart input json": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "input must be valid JSON.",
+    "param": "input",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart jpeg reference": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "input_reference must be a PNG file no larger than 4 MiB.",
+    "param": "input_reference",
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart no boundary": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid multipart video request.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart no width": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid video request.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart t2v reference": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "This local video model accepts exactly 320x320 (width x height), 33 frames at 16 fps; got image 480x832, 33 frames at 16 fps.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  },
+  "error: multipart ti2v png reference": {
+    "allow": "",
+    "code": "model_install_consent_required",
+    "message": "Model \"fastwan2.2-ti2v-5b-q6_k\" is not installed. Install it with \"local-base models install fastwan2.2-ti2v-5b-q6_k\" or restart serve with --install-missing.",
+    "param": "model",
+    "status": 409,
+    "type": "invalid_request_error"
+  },
+  "error: multipart width text": {
+    "allow": "",
+    "code": "validation_failed",
+    "message": "Invalid video request.",
+    "param": null,
+    "status": 400,
+    "type": "invalid_request_error"
+  }
+}

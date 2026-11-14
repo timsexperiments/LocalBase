@@ -1,0 +1,8 @@
+{
+  "failed job": {
+    "error": {
+      "code": "video_generation_failed"
+    },
+    "status": "failed"
+  }
+}
