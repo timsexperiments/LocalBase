@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/timsexperiments/LocalBase/go/internal/acquire"
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/backends"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
@@ -241,8 +242,8 @@ func (h *Handler) ModelImportsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Backend != "" && in.Backend != "auto" {
 		kind, actor := h.opts.AuditActor(r)
-		h.opts.Log.Info("Administration change.", "event", "audit.model-backend-changed", "action", "import", "actor_kind", kind, "actor_id", actor,
-			"target_kind", "model", "target_id", plan.ID, "backend_id", in.Backend)
+		e := audit.BackendChangedEvent(audit.Actor{Kind: kind, ID: actor}, "import", plan.ID, in.Backend)
+		h.opts.Log.Info(e.Message, e.Attrs...)
 	}
 	httpx.NoStore(w, 202, map[string]any{"job": id, "plan": plan})
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
@@ -74,16 +75,18 @@ func (s *Server) audited(area string, next http.HandlerFunc) http.HandlerFunc {
 			s.auditRefused(area, in.Action, actorKind, actorID, kind, id, rec.Status, rec.body.Bytes())
 			return
 		}
-		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}
-		if scopes, ok := auditScopes(rec.body.Bytes()); ok {
-			attrs = append(attrs, "scopes", scopes)
-		}
 		if area == "model-backend" {
 			backend := ""
 			if in.Action == "set" { // the handler has checked it is registered
 				backend = in.BackendID
 			}
-			attrs = append(attrs, "backend_id", backend)
+			e := audit.BackendChangedEvent(audit.Actor{Kind: actorKind, ID: actorID}, in.Action, in.Model, backend)
+			s.cfg.Log.Info(e.Message, e.Attrs...)
+			return
+		}
+		attrs := []any{"event", "audit." + area + "-changed", "action", in.Action, "actor_kind", actorKind, "actor_id", actorID, "target_kind", kind, "target_id", id}
+		if scopes, ok := auditScopes(rec.body.Bytes()); ok {
+			attrs = append(attrs, "scopes", scopes)
 		}
 		s.cfg.Log.Info("Administration change.", attrs...)
 	}

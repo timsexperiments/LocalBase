@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/audit"
 	"github.com/timsexperiments/LocalBase/go/internal/auth"
 	"github.com/timsexperiments/LocalBase/go/internal/gateway/httpx"
 )
@@ -290,8 +291,8 @@ func (a *Access) LocalSessionsAPI(w http.ResponseWriter, r *http.Request) {
 			httpx.ServiceUnavailable(w, r, "Local sessions")
 			return
 		}
-		a.opts.Log.Info("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", p.Kind, "actor_id", p.ID,
-			"session_id", in.ID, "count", revoked)
+		e := audit.LocalSessionsRevokedEvent(audit.Actor{Kind: p.Kind, ID: p.ID}, in.ID, revoked)
+		a.opts.Log.Info(e.Message, e.Attrs...)
 		httpx.JSON(w, 200, map[string]any{"revoked": revoked})
 	default:
 		// Checked here, not by the route table's gate: the caller is authenticated first, and the 405 carries Cache-Control.

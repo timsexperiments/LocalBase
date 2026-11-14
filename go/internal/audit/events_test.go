@@ -60,12 +60,12 @@ func TestEachEventWritesTheLineItsCallWrote(t *testing.T) {
 			func(l *Log) { l.LocalLinkIssued("a1b2c3d4", true) }},
 		{"LocalSessionsRevoked",
 			func(l *Log) {
-				l.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "count", 3)
+				l.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "actor_id", "", "count", 3)
 			},
 			func(l *Log) { l.LocalSessionsRevoked(3) }},
 		{"LocalSessionRevoked",
 			func(l *Log) {
-				l.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "session_id", "sess_1", "count", 1)
+				l.Record("Local sessions revoked.", "event", "audit.local-sessions-revoked", "actor_kind", "cli", "actor_id", "", "session_id", "sess_1", "count", 1)
 			},
 			func(l *Log) { l.LocalSessionRevoked("sess_1") }},
 		{"SessionsRevoked",
@@ -75,12 +75,12 @@ func TestEachEventWritesTheLineItsCallWrote(t *testing.T) {
 			func(l *Log) { l.SessionsRevoked(5) }},
 		{"BackendChanged",
 			func(l *Log) {
-				l.Record("Administration change.", "event", "audit.model-backend-changed", "action", "set", "actor_kind", "cli", "target_kind", "model", "target_id", "m.1", "backend_id", "b.1")
+				l.Record("Administration change.", "event", "audit.model-backend-changed", "action", "set", "actor_kind", "cli", "actor_id", "", "target_kind", "model", "target_id", "m.1", "backend_id", "b.1")
 			},
 			func(l *Log) { l.BackendChanged("set", "m.1", "b.1") }},
 		{"BackendChanged reset",
 			func(l *Log) {
-				l.Record("Administration change.", "event", "audit.model-backend-changed", "action", "reset", "actor_kind", "cli", "target_kind", "model", "target_id", "m.1", "backend_id", "")
+				l.Record("Administration change.", "event", "audit.model-backend-changed", "action", "reset", "actor_kind", "cli", "actor_id", "", "target_kind", "model", "target_id", "m.1", "backend_id", "")
 			},
 			func(l *Log) { l.BackendChanged("reset", "m.1", "") }},
 		{"BackendRegistered",
