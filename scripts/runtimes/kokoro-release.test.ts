@@ -17,9 +17,9 @@ import {
   verifyPublished,
   verifyRegistryPackage,
 } from "./kokoro-release";
-import repositoryManifest from "../../src/manager/managed-runtime-manifest.json";
+import { repositoryManifestPath } from "./lib/paths";
 import sources from "../../runtimes/kokoro/sources.json";
-import { validateSpeechWav } from "../../src/domains/runtime/speech-supervisor";
+import { validateSpeechWav } from "./lib/speech-wav";
 import { parseArguments } from "../../runtimes/kokoro/cli";
 import {
   digestFile,
@@ -40,6 +40,8 @@ import {
   verifyDependencyLicenses,
   verifyKokoroLicenses,
 } from "./kokoro-package-contract";
+
+const repositoryManifest = await Bun.file(repositoryManifestPath).json();
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -88,7 +90,7 @@ test("packaged Bun notices come from the release notices for the pinned Bun", as
   await expect(verifyBunNotices(root)).rejects.toThrow(
     "rust-crates-closure.txt",
   );
-  const repository = join(import.meta.dir, "../release-notices");
+  const repository = join(import.meta.dir, "release-notices");
   expect(
     await Bun.file(join(repository, `bun-${sources.bunVersion}.txt`)).exists(),
   ).toBe(true);

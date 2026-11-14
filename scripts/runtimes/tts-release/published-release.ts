@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseChecksumFile } from "../../../src/utils/checksum";
+import { parseChecksumFile } from "../lib/checksum";
 import { readSdArchiveEntries } from "../sd-release/archive-reader";
 import {
   archiveSpecification,

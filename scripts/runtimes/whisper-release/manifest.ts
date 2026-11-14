@@ -1,7 +1,7 @@
 import {
   managedRuntimeManifestSchema,
   parseManagedRuntimeManifest,
-} from "../../../src/manager/managed-runtime-manifest";
+} from "../lib/manifest";
 import {
   filePathSchema,
   parseJson,

@@ -89,7 +89,7 @@ try {
           `No license file or known MIT license for ${name}@${version}.`,
         );
       const mitTerms = await readFile(
-        "scripts/release-notices/native/Bun-MIT.txt",
+        "scripts/runtimes/release-notices/native/Bun-MIT.txt",
         "utf8",
       );
       text += `\nNpm package metadata declares MIT; its verified tarball has no LICENSE/NOTICE file. Standard MIT terms follow. No unavailable copyright holder is inferred.\n\n${mitTerms}\n`;
@@ -97,7 +97,7 @@ try {
     sections.push(text);
   }
   await Bun.write(
-    "scripts/release-notices/native/polyfill-fallback-closure.txt",
+    "scripts/runtimes/release-notices/native/polyfill-fallback-closure.txt",
     `Generated from ${lockUrl}. Build-only esbuild and react-refresh packages are excluded.\n${sections.join("")}`,
   );
 } finally {

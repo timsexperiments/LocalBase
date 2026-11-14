@@ -6,7 +6,7 @@ on:
       - .github/workflows/release-kokoro.yml
       - runtimes/kokoro/**
       - scripts/runtimes/kokoro*
-      - scripts/release-notices/**
+      - scripts/runtimes/release-notices/**
       - .github/workflows/sync-kokoro-manifest.yml
   workflow_dispatch:
     inputs:

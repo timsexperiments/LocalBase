@@ -36,6 +36,6 @@ const notices = [...blocks]
   .sort()
   .join("\n\n");
 await Bun.write(
-  "scripts/release-notices/native/libarchive-compiled-headers.txt",
+  "scripts/runtimes/release-notices/native/libarchive-compiled-headers.txt",
   `${header}\n${notices}\n`,
 );

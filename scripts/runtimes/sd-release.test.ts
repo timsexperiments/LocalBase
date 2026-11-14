@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { gzipSync, zipSync } from "fflate";
 import { pack as createTarPack } from "tar-stream";
-import rawManifest from "../../src/manager/managed-runtime-manifest.json";
+import { repositoryManifestPath } from "./lib/paths";
 import {
   validateSdArchiveEntries,
   validateSdBinaryArchitecture,
@@ -14,6 +14,8 @@ import {
 } from "./sd-release/contracts";
 import { sdManifestMatches, updateSdManifest } from "./sd-release/manifest";
 import { verifyPublishedSdRelease } from "./sd-release/published-release";
+
+const rawManifest = await Bun.file(repositoryManifestPath).json();
 
 const licenses = [
   "LICENSE.darts-clone.txt",

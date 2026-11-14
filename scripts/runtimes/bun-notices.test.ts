@@ -1,4 +1,4 @@
-// The helpers that regenerate the Bun notices the Kokoro runtime packages (scripts/release-notices:
+// The helpers that regenerate the Bun notices the Kokoro runtime packages (scripts/runtimes/release-notices:
 // bun-<version>.txt and native/), with the generate-*-notices.ts scripts. These cases came from
 // release-notices.test.ts, which went with the TypeScript release.
 import { expect, test } from "bun:test";
