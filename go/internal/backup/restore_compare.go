@@ -240,7 +240,7 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liv
 	// root is often replaced because its database is broken, so this can't refuse, but it says so.
 	err = liveErr
 	if err == nil {
-		err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB) })
+		err = retryBusy(ctx, func() error { return readableDatabase(ctx, targetDB, o) }, o)
 	}
 	if isBusy(err) {
 		return false, fmt.Errorf("reading this root's database: %w", err)
@@ -253,7 +253,7 @@ func compareWithTarget(ctx context.Context, staged *sql.DB, targetDB string, liv
 		return false, nil
 	}
 	o.targetReadDone()
-	cur, err := openReadOnly(targetDB)
+	cur, err := openReadOnly(targetDB, o)
 	if err != nil {
 		return false, err
 	}

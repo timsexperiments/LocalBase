@@ -6,11 +6,15 @@ import (
 	"errors"
 	"os"
 	"syscall"
+	"time"
 )
 
 // options are the points in this package a test reaches into. Its zero value is how the package
 // runs, and the exported functions pass that, so nothing here can be set from outside.
 type options struct {
+	busyWait       time.Duration // (tests) how long a step keeps trying a busy database; 0 is busyWaitLimit
+	readBusyMillis int           // (tests) how long one read waits on SQLite, in ms; 0 is readBusyMillisLimit
+
 	step       func(string) error                   // (tests) runs at each named step of a commit and its undo: an error is a failure, a panic a crash
 	dirSync    func(*os.File) error                 // (tests) nil is (*os.File).Sync on a directory: a failing disk can't be arranged any other way
 	settle     func(context.Context, *sql.DB) error // (tests) nil is settleJournalMode, which no real file has been found to fail
@@ -26,6 +30,22 @@ func (o options) leaveWALStatement() string {
 		return o.leaveWAL
 	}
 	return leaveWALPragma
+}
+
+// busyWaitFor is busyWaitLimit, or the shorter wait a test set.
+func (o options) busyWaitFor() time.Duration {
+	if o.busyWait > 0 {
+		return o.busyWait
+	}
+	return busyWaitLimit
+}
+
+// readBusyMillisFor is readBusyMillisLimit, or the shorter wait a test set.
+func (o options) readBusyMillisFor() int {
+	if o.readBusyMillis > 0 {
+		return o.readBusyMillis
+	}
+	return readBusyMillisLimit
 }
 
 func (o options) atStep(name string) error {

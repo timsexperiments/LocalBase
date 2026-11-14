@@ -146,9 +146,9 @@ func bindingsOf(ctx context.Context, db *sql.DB, access *auth.BrowserAccess) ([]
 }
 
 // describeBindings is bindingsOf for what a backup is about to hold, for its manifest.
-func describeBindings(ctx context.Context, content string) ([]IssuerLine, auth.UnboundCount, error) {
+func describeBindings(ctx context.Context, content string, o options) ([]IssuerLine, auth.UnboundCount, error) {
 	var none auth.UnboundCount
-	db, err := openReadOnly(filepath.Join(content, "local-base.db"))
+	db, err := openReadOnly(filepath.Join(content, "local-base.db"), o)
 	if err != nil {
 		return nil, none, err
 	}

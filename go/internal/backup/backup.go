@@ -154,6 +154,7 @@ type Options struct {
 	DryRun         bool
 	Version        string
 	Now            time.Time
+	opts           options // (tests) the waits a busy database gets
 }
 
 // Result says what happened. Warning always goes to the person.
@@ -524,13 +525,13 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if _, err := os.Lstat(o.Root.DB()); err != nil {
 		return nil, fmt.Errorf("%s has no database to back up: %w", o.Root.Dir, err)
 	}
-	dbPath, removeCopy, err := readRoot(ctx, o.Root.DB())
+	dbPath, removeCopy, err := readRoot(ctx, o.Root.DB(), o.opts)
 	if err != nil {
 		return nil, err
 	}
 	defer removeCopy()
 	// Any other failure here shows at the step that needs the data, with that step's name.
-	if err := retryBusy(ctx, func() error { return readableDatabase(ctx, dbPath) }); isUnfinishedWrite(err) {
+	if err := retryBusy(ctx, func() error { return readableDatabase(ctx, dbPath, o.opts) }, o.opts); isUnfinishedWrite(err) {
 		return nil, errors.New(unfinishedWriteMessage(o.Root.Dir))
 	}
 	files, left, err := survey(o.Root.Dir)
@@ -544,18 +545,18 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	)
 	err = retryBusy(ctx, func() error {
 		var err error
-		if secrets, err = readSecrets(ctx, o.Root.Dir, dbPath, o.ExcludeSecrets); err != nil {
+		if secrets, err = readSecrets(ctx, o.Root.Dir, dbPath, o.ExcludeSecrets, o.opts); err != nil {
 			return err
 		}
-		if migrations, err = appliedMigrations(ctx, dbPath); err != nil {
+		if migrations, err = appliedMigrations(ctx, dbPath, o.opts); err != nil {
 			return err
 		}
-		if rowsPresent, err = presentRows(ctx, dbPath); err != nil {
+		if rowsPresent, err = presentRows(ctx, dbPath, o.opts); err != nil {
 			return err
 		}
-		models, err = selectedModels(ctx, dbPath)
+		models, err = selectedModels(ctx, dbPath, o.opts)
 		return err
-	})
+	}, o.opts)
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +606,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 			return nil, err
 		}
 		if rel == "local-base.db" {
-			if err := copyDatabase(ctx, dbPath, to, stage, o.ExcludeSecrets); err != nil {
+			if err := copyDatabase(ctx, dbPath, to, stage, o.ExcludeSecrets, o.opts); err != nil {
 				return nil, err
 			}
 		} else {
@@ -634,7 +635,7 @@ func createBackup(ctx context.Context, o Options) (*Result, error) {
 	if len(m.Files) > maxEntries {
 		return nil, fmt.Errorf("the backup would hold %d files, more than a restore accepts", len(m.Files))
 	}
-	if m.Issuers, m.Unbound, err = describeBindings(ctx, content); err != nil {
+	if m.Issuers, m.Unbound, err = describeBindings(ctx, content, o.opts); err != nil {
 		return nil, err
 	}
 	archive := filepath.Join(stage, "archive")

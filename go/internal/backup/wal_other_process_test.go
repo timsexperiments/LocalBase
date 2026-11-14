@@ -199,7 +199,7 @@ func TestAnIdleProcessWithTheDatabaseOpenStopsARestore(t *testing.T) {
 	const written = "written after it stopped"
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	shortBusyWaits(t, 200*time.Millisecond)
+	s.opts = shortBusyWaits(200 * time.Millisecond)
 	other := idleStore(t, r.DB())
 	_, err := s.Commit()
 	var refused *Refused
@@ -225,15 +225,15 @@ func TestAWriteFromAnotherProcessIsNeverReportedAndLost(t *testing.T) {
 	const written = "written during the move"
 	r, _ := newRoot(t, dir(t))
 	s := stageOver(t, r)
-	shortBusyWaits(t, 200*time.Millisecond)
+	s.opts = shortBusyWaits(200 * time.Millisecond)
 	other := idleStore(t, r.DB())
 	said := ""
-	s.opts = options{step: func(step string) error {
+	s.opts.step = func(step string) error {
 		if step == "before" {
 			said = other.write(t, "key", written)
 		}
 		return nil
-	}}
+	}
 	done, err := s.Commit()
 	if err != nil {
 		if err.Error() != someoneElseHoldsIt {
@@ -266,7 +266,7 @@ func TestAStopBesideAnAttachedProcessLeavesItsWrites(t *testing.T) {
 		t.Run(ends, func(t *testing.T) {
 			r, _ := newRoot(t, dir(t))
 			s := stageOver(t, r)
-			shortBusyWaits(t, 200*time.Millisecond)
+			s.opts = shortBusyWaits(200 * time.Millisecond)
 			other := idleStore(t, r.DB())
 			if said := other.write(t, "key", "changed by the other process"); said != "wrote: <nil>" {
 				t.Fatalf("its first write: %s", said)

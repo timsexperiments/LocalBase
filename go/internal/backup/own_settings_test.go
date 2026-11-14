@@ -52,7 +52,7 @@ func rootWithSettings(t *testing.T, statements ...string) (rootDir, file string)
 // settingsIn reads every stored setting of a database, by opening a copy of it.
 func settingsIn(t *testing.T, path string) map[string]string {
 	t.Helper()
-	db, err := openReadOnly(path)
+	db, err := openReadOnly(path, options{})
 	if err != nil {
 		t.Fatal(err)
 	}

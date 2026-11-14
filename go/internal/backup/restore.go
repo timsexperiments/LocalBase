@@ -185,7 +185,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	}
 	state.opts = o
 	if !state.newRoot && state.hasData {
-		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"))
+		liveDB, removeCopy, err := readRoot(ctx, filepath.Join(target, "local-base.db"), o)
 		if errors.Is(err, store.ErrInUse) {
 			return nil, err
 		}
@@ -193,8 +193,8 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 		state.liveDB, state.liveErr = liveDB, err
 		if err == nil {
 			// A database that is only busy is left for the comparison, which refuses it.
-			read := func() error { return readableDatabase(ctx, liveDB) }
-			if err := retryBusy(ctx, read); isUnfinishedWrite(err) {
+			read := func() error { return readableDatabase(ctx, liveDB, o) }
+			if err := retryBusy(ctx, read, o); isUnfinishedWrite(err) {
 				return nil, refuse("%s", unfinishedWriteMessage(target))
 			}
 		}
@@ -231,7 +231,7 @@ func stageRestore(ctx context.Context, file, targetDir string, replace bool, bri
 	}
 	// Before the report, so that a change made while it's written is seen as one, and never missed.
 	if !state.newRoot && state.hasData && state.liveErr == nil {
-		s.live, err = readRootFacts(ctx, state.liveDB, target)
+		s.live, err = readRootFacts(ctx, state.liveDB, target, o)
 		if isBusy(err) {
 			return nil, fmt.Errorf("reading this root's database: %w", err)
 		}

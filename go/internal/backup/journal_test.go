@@ -124,7 +124,7 @@ func TestCrashMidWriteIsARealCrash(t *testing.T) {
 	if !exists(dbPath + "-journal") {
 		t.Fatal("no journal")
 	}
-	err := readableDatabase(context.Background(), dbPath)
+	err := readableDatabase(context.Background(), dbPath, options{})
 	if !isUnfinishedWrite(err) {
 		t.Fatalf("a read-only open: %v", err)
 	}

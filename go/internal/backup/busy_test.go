@@ -15,13 +15,14 @@ import (
 	"time"
 )
 
-// shortBusyWaits makes a busy database cost milliseconds in these tests. Each read waits a little,
-// and a whole step keeps trying for wait.
-func shortBusyWaits(t *testing.T, wait time.Duration) {
-	t.Helper()
-	wasWait, wasRead := busyWait, readBusyMillis
-	busyWait, readBusyMillis = wait, 20
-	t.Cleanup(func() { busyWait, readBusyMillis = wasWait, wasRead })
+// shortBusyWaits are the options that make a busy database cost milliseconds in these tests. Each read
+// waits a little, and a whole step keeps trying for wait. A wait of 0 is one try: a zero field would be the
+// 60 s a step waits for itself.
+func shortBusyWaits(wait time.Duration) options {
+	if wait == 0 {
+		wait = time.Nanosecond
+	}
+	return options{busyWait: wait, readBusyMillis: 20}
 }
 
 // holdLock stops every reader of a database. In write-ahead logging a writer doesn't stop a reader,
@@ -30,7 +31,7 @@ func shortBusyWaits(t *testing.T, wait time.Duration) {
 // with none goes to a private copy instead.
 func holdLock(t *testing.T, dbPath string) (release func()) {
 	t.Helper()
-	if err := readableDatabase(context.Background(), dbPath); err != nil {
+	if err := readableDatabase(context.Background(), dbPath, options{}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", "file:"+dbPath)
@@ -62,20 +63,20 @@ func holdLock(t *testing.T, dbPath string) (release func()) {
 func TestABusyDatabaseIsNeverReadAsEmpty(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	holdLock(t, r.DB())
-	shortBusyWaits(t, 0)
+	o := shortBusyWaits(0)
 	ctx := context.Background()
 	for name, read := range map[string]func() error{
-		"reading the settings":   func() error { _, _, err := configSecrets(ctx, r.DB()); return err },
-		"reading the migrations": func() error { _, err := appliedMigrations(ctx, r.DB()); return err },
-		"reading the tables":     func() error { _, err := presentRows(ctx, r.DB()); return err },
-		"reading the models":     func() error { _, err := selectedModels(ctx, r.DB()); return err },
+		"reading the settings":   func() error { _, _, err := configSecrets(ctx, r.DB(), o); return err },
+		"reading the migrations": func() error { _, err := appliedMigrations(ctx, r.DB(), o); return err },
+		"reading the tables":     func() error { _, err := presentRows(ctx, r.DB(), o); return err },
+		"reading the models":     func() error { _, err := selectedModels(ctx, r.DB(), o); return err },
 	} {
 		err := read()
 		if !isBusy(err) || !strings.HasPrefix(err.Error(), name+":") {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	target, err := openReadOnly(r.DB())
+	target, err := openReadOnly(r.DB(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +93,9 @@ func TestBackupWaitsOutABusyDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	want := create(t, r, false).Manifest
 	release := holdLock(t, r.DB())
-	shortBusyWaits(t, 30*time.Second)
+	o := shortBusyWaits(30 * time.Second)
 	time.AfterFunc(300*time.Millisecond, release)
-	res := create(t, r, false)
+	res := createWith(t, r, false, o)
 	copyIsWhole(t, res.Output)
 	got := res.Manifest
 	if got.Migrations != want.Migrations || strings.Join(got.Models, ",") != strings.Join(want.Models, ",") ||
@@ -108,10 +109,10 @@ func TestBackupOfADatabaseThatStaysBusySaysSo(t *testing.T) {
 	r, _ := newRoot(t, parent)
 	holdLock(t, r.DB())
 	before := tree(t, r.Dir, "runtime")
-	shortBusyWaits(t, 100*time.Millisecond)
+	o := shortBusyWaits(100 * time.Millisecond)
 	for _, dry := range []bool{true, false} {
 		output := filepath.Join(dir(t), "x"+Extension)
-		_, err := Create(context.Background(), Options{Root: r, Output: output, DryRun: dry, ExcludeSecrets: true})
+		_, err := Create(context.Background(), Options{Root: r, Output: output, DryRun: dry, ExcludeSecrets: true, opts: o})
 		if err == nil {
 			t.Fatal("no error")
 		}
@@ -153,8 +154,8 @@ func TestRestoreOverABusyDatabaseRefuses(t *testing.T) {
 	res := create(t, r, false)
 	holdLock(t, r.DB())
 	before := tree(t, r.Dir, "runtime")
-	shortBusyWaits(t, 100*time.Millisecond)
-	_, err := Stage(context.Background(), res.Output, r.Dir, true)
+	o := shortBusyWaits(100 * time.Millisecond)
+	_, err := stage(context.Background(), res.Output, r.Dir, true, nil, o)
 	var refused *Refused
 	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "is busy") || !strings.Contains(err.Error(), "Try again") {
 		t.Fatalf("stage: %v", err)
@@ -174,9 +175,9 @@ func TestRestoreWaitsOutABusyDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
 	release := holdLock(t, r.DB())
-	shortBusyWaits(t, 30*time.Second)
+	o := shortBusyWaits(30 * time.Second)
 	time.AfterFunc(300*time.Millisecond, release)
-	s, err := Stage(context.Background(), res.Output, r.Dir, true)
+	s, err := stage(context.Background(), res.Output, r.Dir, true, nil, o)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
@@ -207,7 +208,7 @@ func copyIsWhole(t *testing.T, archive string) {
 
 func wholeDatabase(t *testing.T, path string) {
 	t.Helper()
-	db, err := openReadOnly(path)
+	db, err := openReadOnly(path, options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,10 +228,10 @@ func wholeDatabase(t *testing.T, path string) {
 func TestCopyWaitsOutABusyDatabase(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	release := holdLock(t, r.DB())
-	shortBusyWaits(t, 30*time.Second)
+	o := shortBusyWaits(30 * time.Second)
 	time.AfterFunc(300*time.Millisecond, release)
 	stage, to := dir(t), filepath.Join(dir(t), "copy.db")
-	if err := copyDatabase(context.Background(), r.DB(), to, stage, false); err != nil {
+	if err := copyDatabase(context.Background(), r.DB(), to, stage, false, o); err != nil {
 		t.Fatal(err)
 	}
 	wholeDatabase(t, to)
@@ -239,9 +240,9 @@ func TestCopyWaitsOutABusyDatabase(t *testing.T) {
 func TestCopyOfADatabaseThatStaysBusySaysWhere(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	holdLock(t, r.DB())
-	shortBusyWaits(t, 100*time.Millisecond)
+	o := shortBusyWaits(100 * time.Millisecond)
 	stage, to := dir(t), filepath.Join(dir(t), "copy.db")
-	err := copyDatabase(context.Background(), r.DB(), to, stage, false)
+	err := copyDatabase(context.Background(), r.DB(), to, stage, false, o)
 	if !isBusy(err) || !strings.HasPrefix(err.Error(), "copying the database:") {
 		t.Fatalf("copy: %v", err)
 	}
@@ -256,11 +257,12 @@ func TestRestoreThatTurnsBusyPartWayRefuses(t *testing.T) {
 	r, _ := newRoot(t, dir(t))
 	res := create(t, r, false)
 	// A -shm is there, so this reads the root's own file. A private copy can't turn busy.
-	if err := readableDatabase(context.Background(), r.DB()); err != nil {
+	if err := readableDatabase(context.Background(), r.DB(), options{}); err != nil {
 		t.Fatal(err)
 	}
-	shortBusyWaits(t, 100*time.Millisecond)
-	_, err := stage(context.Background(), res.Output, r.Dir, true, nil, options{targetRead: func() { holdLock(t, r.DB()) }})
+	o := shortBusyWaits(100 * time.Millisecond)
+	o.targetRead = func() { holdLock(t, r.DB()) }
+	_, err := stage(context.Background(), res.Output, r.Dir, true, nil, o)
 	var refused *Refused
 	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "is busy") {
 		t.Fatalf("stage: %v", err)
@@ -278,7 +280,7 @@ func TestSelectedModelsOfAnOlderDatabaseAreNone(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE unrelated (x)`); err != nil {
 		t.Fatal(err)
 	}
-	models, err := selectedModels(context.Background(), path)
+	models, err := selectedModels(context.Background(), path, options{})
 	if err != nil || len(models) != 0 {
 		t.Errorf("models %v, err %v", models, err)
 	}
@@ -288,8 +290,8 @@ func TestSelectedModelsOfAnOlderDatabaseAreNone(t *testing.T) {
 func TestRetryCommandSurvivesAQuoteInThePath(t *testing.T) {
 	r, _ := newRoot(t, filepath.Join(dir(t), "it's"))
 	holdLock(t, r.DB())
-	shortBusyWaits(t, 100*time.Millisecond)
-	_, err := Create(context.Background(), Options{Root: r, DryRun: true})
+	o := shortBusyWaits(100 * time.Millisecond)
+	_, err := Create(context.Background(), Options{Root: r, DryRun: true, opts: o})
 	if err == nil || !strings.Contains(err.Error(), `it'\''s`) {
 		t.Errorf("says: %v", err)
 	}

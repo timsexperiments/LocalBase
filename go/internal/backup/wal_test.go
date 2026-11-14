@@ -124,7 +124,7 @@ func databaseIn(t *testing.T, archive string) *sql.DB {
 		if err := os.WriteFile(copied, e.body, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		db, err := openReadOnly(copied)
+		db, err := openReadOnly(copied, options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,7 @@ func TestACrashLeavesItsWriteOnlyInTheWAL(t *testing.T) {
 	if err := os.WriteFile(alone, body, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	main, err := openReadOnly(alone)
+	main, err := openReadOnly(alone, options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,10 +158,10 @@ func TestACrashLeavesItsWriteOnlyInTheWAL(t *testing.T) {
 		t.Errorf("the write reached the main file, so it isn't only in the -wal: %d revoked", n)
 	}
 
-	if err := readableDatabase(context.Background(), r.DB()); err != nil {
+	if err := readableDatabase(context.Background(), r.DB(), options{}); err != nil {
 		t.Errorf("a read-only open of a crashed root in write-ahead logging: %v", err)
 	}
-	withWAL, err := openReadOnly(r.DB())
+	withWAL, err := openReadOnly(r.DB(), options{})
 	if err != nil {
 		t.Fatal(err)
 	}

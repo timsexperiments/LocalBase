@@ -15,8 +15,8 @@ import (
 // checkDatabase judges the file before anything runs against it: read-only, with the schema's
 // functions untrusted, and before any migration. integrity_check alone would pass a trigger that
 // adds a role binding after every policy change, and no report would show it.
-func checkDatabase(ctx context.Context, dbPath string) error {
-	db, err := openReadOnly(dbPath)
+func checkDatabase(ctx context.Context, dbPath string, o options) error {
+	db, err := openReadOnly(dbPath, o)
 	if err != nil {
 		return refuse("The database can't be opened: %v", err)
 	}

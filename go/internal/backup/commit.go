@@ -81,17 +81,17 @@ func (f *liveFacts) changedFrom(now *liveFacts) []string {
 
 // readRootFacts reads the root being replaced, for a report. A database that's only busy says so, and a
 // failure of any other kind comes back as it is, for the caller: such a root has nothing to hold it to.
-func readRootFacts(ctx context.Context, dbPath, rootDir string) (*liveFacts, error) {
+func readRootFacts(ctx context.Context, dbPath, rootDir string, o options) (*liveFacts, error) {
 	var facts *liveFacts
 	err := retryBusy(ctx, func() error {
-		db, err := openReadOnly(dbPath)
+		db, err := openReadOnly(dbPath, o)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = db.Close() }() // Read-only.
 		facts, err = readLiveFacts(ctx, db, rootDir)
 		return err
-	})
+	}, o)
 	return facts, err
 }
 
@@ -131,13 +131,13 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 	// What was left mid-write while it waited. A read-write open would undo that here, and the report
 	// didn't say so. Write-ahead logging has no such state, and reading this way would leave files.
 	if !store.InWAL(dbPath) {
-		if err := readableDatabase(ctx, dbPath); isUnfinishedWrite(err) {
+		if err := readableDatabase(ctx, dbPath, s.opts); isUnfinishedWrite(err) {
 			letGo()
 			return release, refuse("%s", unfinishedWriteMessage(dir))
 		}
 	}
 	// mode=rw, so that a database deleted while it waited isn't created empty here.
-	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("mode=rw&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", readBusyMillis)))
+	db, err := sql.Open("sqlite", sqliteDSN(dbPath, fmt.Sprintf("mode=rw&_pragma=busy_timeout(%d)&_pragma=trusted_schema(OFF)", s.opts.readBusyMillisFor())))
 	if err != nil {
 		letGo()
 		return release, refuse("This root's database can't be opened: %v", err)
@@ -160,7 +160,7 @@ func (s *Staged) holdRoot(ctx context.Context, dir, dbPath string) (release func
 		_, err := db.ExecContext(ctx, `BEGIN EXCLUSIVE`)
 		return err
 	}
-	if err := retryBusy(ctx, take); isBusy(err) {
+	if err := retryBusy(ctx, take, s.opts); isBusy(err) {
 		return stop(refuse("%s", someoneElseHoldsIt))
 	} else if err != nil {
 		return stop(refuse("This root's database can't be read now, so what the report said can't be checked. Nothing was changed: %v", err))
