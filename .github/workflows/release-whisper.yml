@@ -4,11 +4,11 @@ on:
   pull_request:
     paths:
       - .github/workflows/release-whisper.yml
-      - scripts/build-whisper.ts
-      - scripts/test-whisper-gpu.ts
-      - scripts/whisper-patches/**
-      - scripts/whisper-release.ts
-      - scripts/whisper-release/**
+      - scripts/runtimes/build-whisper.ts
+      - scripts/runtimes/test-whisper-gpu.ts
+      - scripts/runtimes/whisper-patches/**
+      - scripts/runtimes/whisper-release.ts
+      - scripts/runtimes/whisper-release/**
   workflow_dispatch:
     inputs:
       runtime_tag:
@@ -45,13 +45,13 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Validate runtime tag syntax
         if: github.event_name == 'workflow_dispatch'
-        run: bun run scripts/whisper-release.ts validate-tag --tag "$RUNTIME_TAG"
+        run: bun run scripts/runtimes/whisper-release.ts validate-tag --tag "$RUNTIME_TAG"
       - name: Confirm runtime tag is unpublished
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          bun run scripts/whisper-release.ts assert-release-available
+          bun run scripts/runtimes/whisper-release.ts assert-release-available
           --repository "$GITHUB_REPOSITORY" --tag "$RUNTIME_TAG"
 
   build-linux-x64:
@@ -78,7 +78,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libvulkan-dev glslc spirv-headers
       - name: Build pinned verified Whisper source
-        run: bun run scripts/build-whisper.ts
+        run: bun run scripts/runtimes/build-whisper.ts
       - name: Verify Linux build configuration and runtime dependencies
         run: |
           set -euo pipefail
@@ -94,7 +94,7 @@ jobs:
           test "$(tar -tzf whisper-server-linux-x64.tar.gz)" = "$(printf '%s\n' whisper-server LICENSE.whisper.cpp.txt)"
       - name: Qualify Linux archive
         run: >-
-          bun run scripts/whisper-release.ts qualify-archive
+          bun run scripts/runtimes/whisper-release.ts qualify-archive
           --target linux-x64 --archive whisper-server-linux-x64.tar.gz
           --work-directory "$RUNNER_TEMP/whisper-linux-x64"
       - name: Upload Linux runtime archive
@@ -125,7 +125,7 @@ jobs:
       - name: Build pinned verified Whisper source
         env:
           MACOSX_DEPLOYMENT_TARGET: "14.0"
-        run: bun run scripts/build-whisper.ts
+        run: bun run scripts/runtimes/build-whisper.ts
       - name: Runs on macOS 14 and later
         run: |
           minos="$(vtool -show-build build-whisper/whisper-server | awk '/minos/ {print $2}')"
@@ -227,7 +227,7 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: >-
-          bun run scripts/whisper-release.ts qualify-archive
+          bun run scripts/runtimes/whisper-release.ts qualify-archive
           --target macos-arm64 --archive whisper-server-macos-arm64.zip
           --work-directory "$RUNNER_TEMP/whisper-macos-arm64" --team-id "$TEAM_ID"
       - name: Keep the qualified archive

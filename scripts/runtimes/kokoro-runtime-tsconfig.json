@@ -1,25 +1,25 @@
 {
-  "extends": "../tsconfig.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "..",
+    "rootDir": "../..",
     "paths": {
       "kokoro-js": [
-        "../dist/kokoro/package/node_modules/kokoro-js/types/kokoro.d.ts"
+        "../../dist/kokoro/package/node_modules/kokoro-js/types/kokoro.d.ts"
       ],
       "@huggingface/transformers": [
-        "../dist/kokoro/package/node_modules/@huggingface/transformers"
+        "../../dist/kokoro/package/node_modules/@huggingface/transformers"
       ],
       "onnxruntime-node": [
-        "../dist/kokoro/package/node_modules/onnxruntime-node"
+        "../../dist/kokoro/package/node_modules/onnxruntime-node"
       ],
       "phonemizer": [
-        "../dist/kokoro/package/node_modules/phonemizer/types/phonemizer.d.ts"
+        "../../dist/kokoro/package/node_modules/phonemizer/types/phonemizer.d.ts"
       ]
     }
   },
   "include": [
-    "../scripts/kokoro*.ts",
-    "../runtimes/kokoro/*.ts",
-    "../src/file-assets.d.ts"
+    "../../scripts/runtimes/kokoro*.ts",
+    "../../runtimes/kokoro/*.ts",
+    "../../src/file-assets.d.ts"
   ]
 }

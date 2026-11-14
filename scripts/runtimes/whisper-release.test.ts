@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { zipSync } from "fflate";
 import { pack } from "tar-stream";
-import rawManifest from "../src/manager/managed-runtime-manifest.json";
+import rawManifest from "../../src/manager/managed-runtime-manifest.json";
 import {
   qualifyWhisperArchive,
   runWhisperReleaseCli,

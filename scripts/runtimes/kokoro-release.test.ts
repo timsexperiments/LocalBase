@@ -17,17 +17,17 @@ import {
   verifyPublished,
   verifyRegistryPackage,
 } from "./kokoro-release";
-import repositoryManifest from "../src/manager/managed-runtime-manifest.json";
-import sources from "../runtimes/kokoro/sources.json";
-import { validateSpeechWav } from "../src/domains/runtime/speech-supervisor";
-import { parseArguments } from "../runtimes/kokoro/cli";
+import repositoryManifest from "../../src/manager/managed-runtime-manifest.json";
+import sources from "../../runtimes/kokoro/sources.json";
+import { validateSpeechWav } from "../../src/domains/runtime/speech-supervisor";
+import { parseArguments } from "../../runtimes/kokoro/cli";
 import {
   digestFile,
   packageFiles,
   parseInventory,
   verifyInventory,
-} from "../runtimes/kokoro/inventory";
-import { MAX_SAMPLES, pcm16Wav } from "../runtimes/kokoro/wav";
+} from "../../runtimes/kokoro/inventory";
+import { MAX_SAMPLES, pcm16Wav } from "../../runtimes/kokoro/wav";
 import {
   archiveName,
   kokoroArtifactSchema,
@@ -88,7 +88,7 @@ test("packaged Bun notices come from the release notices for the pinned Bun", as
   await expect(verifyBunNotices(root)).rejects.toThrow(
     "rust-crates-closure.txt",
   );
-  const repository = join(import.meta.dir, "release-notices");
+  const repository = join(import.meta.dir, "../release-notices");
   expect(
     await Bun.file(join(repository, `bun-${sources.bunVersion}.txt`)).exists(),
   ).toBe(true);

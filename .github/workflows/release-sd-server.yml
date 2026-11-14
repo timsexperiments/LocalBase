@@ -4,15 +4,15 @@ on:
   pull_request:
     paths:
       - .github/workflows/release-sd-server.yml
-      - scripts/build-sd-server.ts
-      - scripts/sd-release.ts
-      - scripts/sd-release.test.ts
-      - scripts/sd-release/**
-      - scripts/sd-patches/**
+      - scripts/runtimes/build-sd-server.ts
+      - scripts/runtimes/sd-release.ts
+      - scripts/runtimes/sd-release.test.ts
+      - scripts/runtimes/sd-release/**
+      - scripts/runtimes/sd-patches/**
       - .github/workflows/sync-sd-server-manifest.yml
       - src/domains/runtime/launcher.ts
       - scripts/sd-video-launch-contract.ts
-      - scripts/sd-gpu-pci-contract.ts
+      - scripts/runtimes/sd-gpu-pci-contract.ts
   workflow_dispatch:
     inputs:
       runtime_tag:
@@ -38,14 +38,14 @@ jobs:
         with:
           bun-version-file: package.json
       - run: bun install --frozen-lockfile
-      - run: bun test scripts/sd-release.test.ts
+      - run: bun test scripts/runtimes/sd-release.test.ts
       - name: Validate unpublished release tag
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bun run scripts/sd-release.ts validate-tag --tag "$RUNTIME_TAG"
-          bun run scripts/sd-release.ts assert-release-available \
+          bun run scripts/runtimes/sd-release.ts validate-tag --tag "$RUNTIME_TAG"
+          bun run scripts/runtimes/sd-release.ts assert-release-available \
             --repository "$GITHUB_REPOSITORY" --tag "$RUNTIME_TAG"
 
   linux-x64:
@@ -65,7 +65,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential cmake libvulkan-dev glslc spirv-headers
       - name: Build verified patched source
-        run: bun run scripts/build-sd-server.ts
+        run: bun run scripts/runtimes/build-sd-server.ts
       - name: Verify Vulkan configuration and runtime linkage
         run: |
           grep -Fxq 'GGML_NATIVE:BOOL=OFF' build-sd-server/build/CMakeCache.txt
@@ -89,7 +89,7 @@ jobs:
             LICENSE.libwebp.txt LICENSE.nlohmann-json.txt LICENSE.oniguruma.txt \
             LICENSE.stable-diffusion.cpp.txt LICENSE.utf8proc.txt
           mkdir -p "$RUNNER_TEMP/sd-linux-x64"
-          bun run scripts/sd-release.ts qualify-archive \
+          bun run scripts/runtimes/sd-release.ts qualify-archive \
             --target linux-x64 --archive sd-server-linux-x64.tar.gz \
             --work-directory "$RUNNER_TEMP/sd-linux-x64"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -114,7 +114,7 @@ jobs:
       - name: Build verified patched source
         env:
           MACOSX_DEPLOYMENT_TARGET: "14.0"
-        run: bun run scripts/build-sd-server.ts
+        run: bun run scripts/runtimes/build-sd-server.ts
       - name: Runs on macOS 14 and later
         run: |
           minos="$(vtool -show-build build-sd-server/sd-server | awk '/minos/ {print $2}')"
@@ -144,7 +144,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         run: |
           mkdir -p "$RUNNER_TEMP/sd-macos-arm64"
-          bun run scripts/sd-release.ts qualify-archive \
+          bun run scripts/runtimes/sd-release.ts qualify-archive \
             --target macos-arm64 --archive sd-server-macos-arm64.zip \
             --work-directory "$RUNNER_TEMP/sd-macos-arm64"
       - name: Keep the unsigned archive for signing
@@ -232,7 +232,7 @@ jobs:
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: >-
-          bun run scripts/sd-release.ts qualify-archive
+          bun run scripts/runtimes/sd-release.ts qualify-archive
           --target macos-arm64 --archive sd-server-macos-arm64.zip
           --work-directory "$RUNNER_TEMP/sd-macos-arm64" --team-id "$TEAM_ID"
       - name: Keep the qualified archive

@@ -21,11 +21,11 @@ import {
   packageFiles,
   packagePath,
   verifyInventory,
-} from "../runtimes/kokoro/inventory";
-import sources from "../runtimes/kokoro/sources.json";
+} from "../../runtimes/kokoro/inventory";
+import sources from "../../runtimes/kokoro/sources.json";
 import { readSdArchiveEntries } from "./sd-release/archive-reader";
-import { parseChecksumFile } from "../src/utils/checksum";
-import { parseManagedRuntimeManifest } from "../src/manager/managed-runtime-manifest";
+import { parseChecksumFile } from "../../src/utils/checksum";
+import { parseManagedRuntimeManifest } from "../../src/manager/managed-runtime-manifest";
 import {
   expectedDownloadUrl,
   repositorySchema,
@@ -44,7 +44,7 @@ import {
   type KokoroTarget,
 } from "./kokoro-package-contract";
 
-const runtimeSource = resolve(import.meta.dir, "../runtimes/kokoro");
+const runtimeSource = resolve(import.meta.dir, "../../runtimes/kokoro");
 const lockSchema = z
   .object({
     packages: z.record(
@@ -379,7 +379,7 @@ export async function verifyDependencies(
 // The prebuilt Bun is the same build that LocalBase compiles with, so reuse the
 // release notices for its statically linked native and Rust components.
 async function copyBunNotices(destination: string): Promise<void> {
-  const notices = resolve(import.meta.dir, "release-notices");
+  const notices = resolve(import.meta.dir, "../release-notices");
   const versioned = join(notices, `bun-${sources.bunVersion}.txt`);
   if (!(await lstat(versioned).catch(() => undefined))?.isFile())
     throw new Error(

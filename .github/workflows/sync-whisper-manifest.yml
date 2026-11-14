@@ -47,13 +47,13 @@ jobs:
         env:
           RUNTIME_TAG: ${{ inputs.runtime_tag }}
         run: >-
-          bun run scripts/whisper-release.ts validate-tag --tag "$RUNTIME_TAG"
+          bun run scripts/runtimes/whisper-release.ts validate-tag --tag "$RUNTIME_TAG"
           --github-output "$GITHUB_OUTPUT"
       - name: Verify published runtime release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: >-
-          bun run scripts/whisper-release.ts verify-published-release
+          bun run scripts/runtimes/whisper-release.ts verify-published-release
           --repository "$GITHUB_REPOSITORY" --tag "${{ steps.runtime.outputs.tag }}"
           --output "$RUNNER_TEMP/whisper-release-receipt.json"
       - name: Read default branch manifest
@@ -65,7 +65,7 @@ jobs:
       - name: Check default branch manifest
         id: default-manifest
         run: >-
-          bun run scripts/whisper-release.ts manifest-status
+          bun run scripts/runtimes/whisper-release.ts manifest-status
           --manifest "$RUNNER_TEMP/default-managed-runtime-manifest.json"
           --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
           --github-output "$GITHUB_OUTPUT"
@@ -94,13 +94,13 @@ jobs:
       - name: Update managed runtime manifest
         if: steps.default-manifest.outputs.synchronized == 'false'
         run: >-
-          bun run scripts/whisper-release.ts update-manifest
+          bun run scripts/runtimes/whisper-release.ts update-manifest
           --manifest src/manager/managed-runtime-manifest.json
           --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
       - name: Verify managed runtime manifest
         if: steps.default-manifest.outputs.synchronized == 'false'
         run: >-
-          bun run scripts/whisper-release.ts verify-manifest
+          bun run scripts/runtimes/whisper-release.ts verify-manifest
           --manifest src/manager/managed-runtime-manifest.json
           --receipt "$RUNNER_TEMP/whisper-release-receipt.json"
       - name: Commit manifest update

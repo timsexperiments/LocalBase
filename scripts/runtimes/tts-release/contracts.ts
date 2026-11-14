@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { safeFilenameSchema, sha256Schema } from "../../src/utils/checksum";
+import { safeFilenameSchema, sha256Schema } from "../../../src/utils/checksum";
 
 export const ttsReleaseTagSchema = z
   .string()
@@ -19,7 +19,7 @@ export const LLAMA_CPP_SHA256 =
 const localSourceSchema = (name: string) =>
   z.object({ name: z.literal(name), sha256: sha256Schema }).strict();
 
-/** SOURCE.tts-server.json, written by scripts/build-tts-server.ts. */
+/** SOURCE.tts-server.json, written by scripts/runtimes/build-tts-server.ts. */
 export const ttsSourceProvenanceSchema = z
   .object({
     version: z.literal(1),

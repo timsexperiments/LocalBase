@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { safeFilenameSchema, sha256Schema } from "../../src/utils/checksum";
+import { safeFilenameSchema, sha256Schema } from "../../../src/utils/checksum";
 
 export const sdReleaseTagSchema = z
   .string()
