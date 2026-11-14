@@ -2,6 +2,7 @@
  {
   "kind": "llm",
   "modelId": "qwen3.5-0.8b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -10,11 +11,14 @@
   },
   "backendAcceleratorBytes": 1140850688,
   "hostBufferBytes": 221249536,
-  "peakRssBytes": 827424768
+  "peakRssBytes": 827424768,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "qwen3.5-2b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -23,11 +27,14 @@
   },
   "backendAcceleratorBytes": 1910505472,
   "hostBufferBytes": 434110464,
-  "peakRssBytes": 1593032704
+  "peakRssBytes": 1593032704,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "qwen3.5-4b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -36,11 +43,14 @@
   },
   "backendAcceleratorBytes": 3587178496,
   "hostBufferBytes": 540016640,
-  "peakRssBytes": 3320250368
+  "peakRssBytes": 3320250368,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "qwen3.5-9b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -49,11 +59,14 @@
   },
   "backendAcceleratorBytes": 6619660288,
   "hostBufferBytes": 596639744,
-  "peakRssBytes": 6390480896
+  "peakRssBytes": 6390480896,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "clef-flash-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -62,11 +75,14 @@
   },
   "backendAcceleratorBytes": 8719958016,
   "hostBufferBytes": 1270874112,
-  "peakRssBytes": 8551874560
+  "peakRssBytes": 8551874560,
+  "date": "2026-10-15",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "qwen3.5-27b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -75,11 +91,14 @@
   },
   "backendAcceleratorBytes": 18501074944,
   "hostBufferBytes": 744488960,
-  "peakRssBytes": 19027968000
+  "peakRssBytes": 19027968000,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "ministral-3-14b-instruct-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -88,11 +107,14 @@
   },
   "backendAcceleratorBytes": 9222225920,
   "hostBufferBytes": 406847488,
-  "peakRssBytes": 7823081472
+  "peakRssBytes": 7823081472,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "mistral-nemo-12b-instruct-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -101,11 +123,14 @@
   },
   "backendAcceleratorBytes": 8500805632,
   "hostBufferBytes": 406847488,
-  "peakRssBytes": 8069824512
+  "peakRssBytes": 8069824512,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "llm",
   "modelId": "gpt-oss-20b-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 8192,
    "slots": 1,
@@ -114,47 +139,62 @@
   },
   "backendAcceleratorBytes": 12200181760,
   "hostBufferBytes": 418381824,
-  "peakRssBytes": 10298408960
+  "peakRssBytes": 10298408960,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "stt",
   "modelId": "whisper-tiny-en-q8_0",
+  "variant": "Q8_0",
   "shape": {},
   "backendAcceleratorBytes": 208900000,
   "hostBufferBytes": 0,
-  "peakRssBytes": 169902080
+  "peakRssBytes": 169902080,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "stt",
   "modelId": "whisper-large-v3-turbo",
+  "variant": "F16",
   "shape": {},
   "backendAcceleratorBytes": 1941800000,
   "hostBufferBytes": 0,
-  "peakRssBytes": 1900625920
+  "peakRssBytes": 1900625920,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "tts",
   "modelId": "qwen3-tts-1.7b-base-q4_k_m",
+  "variant": "Q4_K_M",
   "shape": {
    "ctxTokens": 2048
   },
   "backendAcceleratorBytes": 3878682624,
   "hostBufferBytes": 0,
-  "peakRssBytes": 4160536576
+  "peakRssBytes": 4160536576,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "tts",
   "modelId": "kokoro-82m-v1.0-q8",
+  "variant": "model_quantized (q8)",
   "shape": {
    "ctxTokens": 512
   },
   "backendAcceleratorBytes": 0,
   "hostBufferBytes": 0,
-  "peakRssBytes": 1027719168
+  "peakRssBytes": 1027719168,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "dreamshaper-v8",
+  "variant": "safetensors F16",
   "shape": {
    "width": 512,
    "height": 512,
@@ -163,11 +203,14 @@
   },
   "backendAcceleratorBytes": 3878745539,
   "hostBufferBytes": 0,
-  "peakRssBytes": 2988212224
+  "peakRssBytes": 2988212224,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "flux2-klein-4b-q4_0",
+  "variant": "Q4_0",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -176,11 +219,14 @@
   },
   "backendAcceleratorBytes": 12101353472,
   "hostBufferBytes": 0,
-  "peakRssBytes": 5983240192
+  "peakRssBytes": 5983240192,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "dreamshaper-8-lcm",
+  "variant": "safetensors F16 (LCM)",
   "shape": {
    "width": 512,
    "height": 512,
@@ -189,11 +235,14 @@
   },
   "backendAcceleratorBytes": 3878745539,
   "hostBufferBytes": 0,
-  "peakRssBytes": 3006021632
+  "peakRssBytes": 3006021632,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "stable-diffusion-v1-5",
+  "variant": "safetensors F16",
   "shape": {
    "width": 512,
    "height": 512,
@@ -202,11 +251,14 @@
   },
   "backendAcceleratorBytes": 4664600822,
   "hostBufferBytes": 0,
-  "peakRssBytes": 4996431872
+  "peakRssBytes": 4996431872,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "z-image-turbo-q4_0",
+  "variant": "Q4_0 + Qwen3-4B-Instruct Q4_K_M",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -215,11 +267,14 @@
   },
   "backendAcceleratorBytes": 13322808197,
   "hostBufferBytes": 0,
-  "peakRssBytes": 7087439872
+  "peakRssBytes": 7087439872,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "flux1-schnell-q4_0",
+  "variant": "Q4_0 + CLIP-L + T5-XXL F16",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -229,11 +284,14 @@
   "backendAcceleratorBytes": 14032694149,
   "hostBufferBytes": 9844555776,
   "peakRssBytes": 18007343104,
-  "systemDeltaBytes": 25991561216
+  "systemDeltaBytes": 25991561216,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "flux2-klein-4b-q8_0",
+  "variant": "Q8_0 + Qwen3-4B Q4_K_M",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -242,11 +300,14 @@
   },
   "backendAcceleratorBytes": 13941604352,
   "hostBufferBytes": 0,
-  "peakRssBytes": 8412053504
+  "peakRssBytes": 8412053504,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "realvis-xl-v5.0",
+  "variant": "safetensors F16",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -255,11 +316,14 @@
   },
   "backendAcceleratorBytes": 14999208591,
   "hostBufferBytes": 0,
-  "peakRssBytes": 7805108224
+  "peakRssBytes": 7805108224,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "sdxl-turbo",
+  "variant": "safetensors F16",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -268,11 +332,14 @@
   },
   "backendAcceleratorBytes": 14999208591,
   "hostBufferBytes": 0,
-  "peakRssBytes": 8064352256
+  "peakRssBytes": 8064352256,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "image",
   "modelId": "juggernaut-xl-v9",
+  "variant": "safetensors F16",
   "shape": {
    "width": 1024,
    "height": 1024,
@@ -281,11 +348,14 @@
   },
   "backendAcceleratorBytes": 14999208591,
   "hostBufferBytes": 0,
-  "peakRssBytes": 7788806144
+  "peakRssBytes": 7788806144,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "video",
   "modelId": "fastwan2.2-ti2v-5b-q6_k",
+  "variant": "Q6_K + umt5-xxl Q8_0 + TAEHV",
   "shape": {
    "width": 480,
    "height": 832,
@@ -296,11 +366,14 @@
   "backendAcceleratorBytes": 6348131533,
   "hostBufferBytes": 10271808553,
   "peakRssBytes": 13746454528,
-  "systemDeltaBytes": 15058550784
+  "systemDeltaBytes": 15058550784,
+  "date": "2026-10-13",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  },
  {
   "kind": "video",
   "modelId": "wan2.1-t2v-1.3b-q8_0",
+  "variant": "Q8_0 + umt5-xxl Q8_0 + Wan2.1 VAE",
   "shape": {
    "width": 320,
    "height": 320,
@@ -311,6 +384,8 @@
   "backendAcceleratorBytes": 6348131533,
   "hostBufferBytes": 7826078433,
   "peakRssBytes": 12147949568,
-  "systemDeltaBytes": 8220786688
+  "systemDeltaBytes": 8220786688,
+  "date": "2026-10-14",
+  "hardware": "Apple M-series 64 GiB, macOS 26"
  }
 ]
