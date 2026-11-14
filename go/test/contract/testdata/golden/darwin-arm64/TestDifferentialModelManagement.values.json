@@ -435,9 +435,7 @@
         "operation": null
       }
     ],
-    "storage": {
-      "totalBytes": 994662584320
-    }
+    "storage": {}
   },
   "state: after install": {
     "canManage": true,
@@ -713,9 +711,7 @@
         "operation": null
       }
     ],
-    "storage": {
-      "totalBytes": 994662584320
-    }
+    "storage": {}
   },
   "state: after uninstall": {
     "canManage": true,
@@ -991,9 +987,7 @@
         "operation": null
       }
     ],
-    "storage": {
-      "totalBytes": 994662584320
-    }
+    "storage": {}
   },
   "state: initial": {
     "canManage": true,
@@ -1263,8 +1257,6 @@
         "operation": null
       }
     ],
-    "storage": {
-      "totalBytes": 994662584320
-    }
+    "storage": {}
   }
 }

@@ -35,11 +35,22 @@ func TestDifferentialModelManagement(t *testing.T) {
 		return r.JSON(t)
 	}
 	// The catalog state at a step loads uncached (state's own check) and is pinned as Go answers it,
-	// without the free space, which moves between reads.
+	// without the disk's size and free space.
 	pinState := func(label string) {
 		t.Helper()
 		for _, tg := range tgs {
-			pinAnswer(t, "state: "+label, harness.PruneJSON(state(tg), "", func(p string) bool { return strings.HasSuffix(p, ".availableBytes") }))
+			s := state(tg)
+			// The disk's size and free space are the machine's (and the free space moves between
+			// reads): each must be there, and neither is pinned.
+			storage, _ := s["storage"].(map[string]any)
+			for _, k := range []string{"totalBytes", "availableBytes"} {
+				if v, ok := storage[k].(float64); !ok || v <= 0 {
+					t.Errorf("state %s: storage.%s = %v", label, k, storage[k])
+				}
+			}
+			pinAnswer(t, "state: "+label, harness.PruneJSON(s, "", func(p string) bool {
+				return strings.HasSuffix(p, ".availableBytes") || p == ".storage.totalBytes"
+			}))
 		}
 	}
 	wantStatus := func(label string, rs map[string]*harness.Resp, status int) {
