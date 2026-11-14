@@ -78,8 +78,8 @@ Existing data directories must keep working, and a rollback must stay a binary s
 
 The built-in catalog is deliberately small: models tested on real hardware, with one chat model per memory band and one model per job. Please [request a model](.github/ISSUE_TEMPLATE/model_request.yml) before doing the work, because a maintainer has to approve catalog changes. Anyone can already use other models through imports or [their own catalog entries](docs/user-catalog.md).
 
-1. Add a JSON file under `src/catalog/models/<kind>/` and import it in `src/catalog/models/index.ts`. The catalog source still lives there until the TypeScript version is removed.
-2. Run `go generate ./internal/catalog` from `go/`. It copies the catalog into `go/internal/catalog/data`.
+1. Add a JSON file under `go/internal/catalog/data/<kind>/` and list it in `go/internal/catalog/data/order.txt`. The order breaks recommendation ties. Until the TypeScript tree is removed, add the same file under `src/catalog/models/<kind>/` and import it in `src/catalog/models/index.ts` too: a TS test checks that its render of the feeds matches the committed ones.
+2. Run `go run ./tools/catalog-feed` from `go/`. It regenerates the published feeds, `catalog/feed.json` and `catalog/feed-v2.json`.
 3. Use facts only: license, revision, sizes, hashes, context window and tasks. No quality claims or benchmark rankings. Memory figures must state whether they're measured or estimated.
 4. Run `make test`.
 
