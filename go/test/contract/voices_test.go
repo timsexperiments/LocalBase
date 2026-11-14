@@ -40,14 +40,19 @@ func sameError(t *testing.T, label string, rs map[string]*harness.Resp) {
 	t.Helper()
 	var first *harness.Resp
 	var firstName string
-	for _, tg := range harness.Targets(t) {
-		r := rs[tg.Name]
+	// TS first, as the shared targets were ordered.
+	for _, name := range []string{"ts", "go", "external"} {
+		r, ok := rs[name]
+		if !ok {
+			continue
+		}
 		if r.Status < 400 {
-			t.Errorf("%s: %s answered %d %s", label, tg.Name, r.Status, r.Body)
+			t.Errorf("%s: %s answered %d %s", label, name, r.Status, r.Body)
 			return
 		}
+		pinError(t, label, name, r)
 		if first == nil {
-			first, firstName = r, tg.Name
+			first, firstName = r, name
 			continue
 		}
 		ea, _ := first.JSON(t)["error"].(map[string]any)
@@ -59,7 +64,7 @@ func sameError(t *testing.T, label string, rs map[string]*harness.Resp) {
 		}
 		for _, k := range []string{"type", "code", "param", "message"} {
 			if ea[k] != eb[k] || first.Status != r.Status {
-				t.Errorf("%s:\n %s %d %s\n %s %d %s", label, firstName, first.Status, first.Body, tg.Name, r.Status, r.Body)
+				t.Errorf("%s:\n %s %d %s\n %s %d %s", label, firstName, first.Status, first.Body, name, r.Status, r.Body)
 				return
 			}
 		}
@@ -83,13 +88,14 @@ func modelTooLargeFacts(message any) any {
 // the same upload must store the same normalized recording, and every
 // rejection must match.
 func TestDifferentialVoices(t *testing.T) {
+	tgs := pinnedGateways(t)
 	const base = "/_localbase/voices"
 	type call struct {
 		method, path, key, ctype, body string
 	}
 	run := func(c func(tg *harness.Target) call) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			x := c(tg)
 			h := map[string]string{}
 			if x.key != "" {
@@ -114,11 +120,12 @@ func TestDifferentialVoices(t *testing.T) {
 	// The list, as a reader: limits and the consent statement, no voices.
 	list := run(func(tg *harness.Target) call { return call{"GET", base, tg.Key, "", ""} })
 	var firstList string
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		r := list[tg.Name]
 		if r.Status != 200 || r.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s list: %d %s", tg.Name, r.Status, r.Body)
 		}
+		pinAnswer(t, "reader list", tg.Name, r.JSON(t))
 		if firstList == "" {
 			firstList = string(r.Body)
 		} else if d := harness.DiffJSON("", mustJSON(t, firstList), r.JSON(t), nil); len(d) > 0 {
@@ -172,7 +179,7 @@ func TestDifferentialVoices(t *testing.T) {
 	created := create(voicePart{name: "name", value: "  Narrator\t Voice "}, voicePart{name: "consent", value: "true"}, voicePart{name: "audio", file: clip})
 	ids := map[string]string{}
 	var want map[string]any
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		r := created[tg.Name]
 		if r.Status != 201 {
 			t.Fatalf("%s create: %d %s", tg.Name, r.Status, r.Body)
@@ -182,6 +189,9 @@ func TestDifferentialVoices(t *testing.T) {
 		if !strings.HasPrefix(v["createdBy"].(string), "api-key:") {
 			t.Errorf("%s createdBy %v", tg.Name, v["createdBy"])
 		}
+		pinAnswer(t, "created voice", tg.Name, harness.PruneJSON(v, "", func(p string) bool {
+			return p == ".id" || p == ".createdAt" || p == ".consent.attestedAt" || p == ".createdBy"
+		}))
 		if want == nil {
 			want = v
 			continue
@@ -225,11 +235,11 @@ func TestDifferentialVoices(t *testing.T) {
 	}
 
 	// Rename.
-	for label, b := range map[string]string{
+	for label, b := range sortedCases(map[string]string{
 		"not json": `{`, "array": `[]`, "null": `null`, "missing name": `{}`, "number name": `{"name":5}`,
 		"extra keys": `{"name":"Ok","b":1,"a":2}`, "extra key": `{"name":"Ok","z":1}`, "reserved": `{"name":"Willow"}`,
 		"blank": `{"name":"   "}`, "too large": `{"name":"` + strings.Repeat("x", 1100) + `"}`,
-	} {
+	}) {
 		sameError(t, "rename "+label, on("PATCH", at(""), asAdmin, "application/json", b))
 	}
 	sameError(t, "rename as reader", on("PATCH", at(""), asReader, "application/json", `{"name":"Other"}`))

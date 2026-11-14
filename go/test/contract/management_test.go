@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -13,10 +14,11 @@ import (
 // both gateways: the catalog state, every rejection, enable/activate/disable,
 // uninstall, and an install polled to completion.
 func TestDifferentialModelManagement(t *testing.T) {
+	tgs := pinnedGateways(t)
 	const path = "/_localbase/model-management"
 	post := func(key func(*harness.Target) string, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(key(tg))
 			h["Content-Type"] = "application/json"
 			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
@@ -35,8 +37,11 @@ func TestDifferentialModelManagement(t *testing.T) {
 	same := func(label string) {
 		t.Helper()
 		var first map[string]any
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			s := state(tg)
+			// Go's state as it is, before the differences from TS are evened out below; only the free
+			// space, which moves between reads, is left out.
+			pinAnswer(t, "state: "+label, tg.Name, harness.PruneJSON(s, "", func(p string) bool { return strings.HasSuffix(p, ".availableBytes") }))
 			// Deliberate difference (DESIGN 13.6 item 10): Go can install a
 			// configured model with files missing; TS refuses. Only that.
 			for _, m := range s["models"].([]any) {
@@ -79,6 +84,11 @@ func TestDifferentialModelManagement(t *testing.T) {
 				t.Errorf("%s %s: %d %s", label, name, r.Status, r.Body)
 			}
 			body := strings.TrimSpace(string(r.Body))
+			var parsed any
+			if json.Unmarshal(r.Body, &parsed) != nil {
+				parsed = body
+			}
+			pinAnswer(t, "ok: "+label, name, map[string]any{"status": r.Status, "body": parsed})
 			if first == "" {
 				first = body
 			} else if body != first {
@@ -86,29 +96,25 @@ func TestDifferentialModelManagement(t *testing.T) {
 			}
 		}
 	}
-	// Start from the same active LLM on both. An earlier decision request
-	// makes the decision model active on TS but not on Go, which activates
-	// chat models only (DESIGN §13.6 item 9).
-	if len(harness.Targets(t)) > 1 {
-		sameOK("activate the chat model", post(admin, `{"modelId":"`+harness.ChatModel+`","action":"activate"}`), 200)
-	}
+	// Both start from the fixture's chat model: the test's own gateways have taken no earlier
+	// decision request, which would make the decision model active on TS (DESIGN §13.6 item 9).
 	same("initial")
 	// The active LLM, whichever earlier tests left as the default.
 	activeLLM := harness.ChatModel
-	for _, m := range state(harness.Targets(t)[0])["models"].([]any) {
+	for _, m := range state(tgs[0])["models"].([]any) {
 		e := m.(map[string]any)
 		if id, _ := e["id"].(string); e["active"] == true && slices.Contains([]string{harness.ChatModel, harness.DecisionModel, harness.EmbeddingModel}, id) {
 			activeLLM = id
 		}
 	}
-	for label, body := range map[string]string{
+	for label, body := range sortedCases(map[string]string{
 		"not json": `{`, "array": `[]`, "extra key": `{"modelId":"x","action":"enable","x":1}`, "empty id": `{"modelId":"","action":"enable"}`,
 		"bad action": `{"modelId":"x","action":"delete"}`, "long id": `{"modelId":"` + strings.Repeat("m", 201) + `","action":"enable"}`,
 		"too large": `{"modelId":"` + strings.Repeat("m", 1100) + `","action":"enable"}`, "unknown model": `{"modelId":"no-such","action":"enable"}`,
 		"enable missing files": `{"modelId":"flux1-schnell-q4_0","action":"activate"}`,
 		"uninstall selected":   `{"modelId":"whisper-base-en-q8_0","action":"uninstall"}`,
 		"experimental":         `{"modelId":"no-such","action":"install"}`,
-	} {
+	}) {
 		sameError(t, "management "+label, post(admin, body))
 	}
 	// Deliberate difference (DESIGN 13.6 item 10): Go's refusal names a way out.
@@ -120,7 +126,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	sameError(t, "management as reader", post(reader, `{"modelId":"`+harness.TinyModel+`","action":"enable"}`))
 	sameError(t, "management PUT", func() map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			out[tg.Name] = harness.Do(t, "PUT", tg.BaseURL+path, harness.Bearer(tg.Admin), "")
 		}
 		return out
@@ -128,7 +134,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 
 	// Install (already present: verified, then complete), polled to the end.
 	sameOK("install", post(admin, `{"modelId":"`+harness.TinyModel+`","action":"install"}`), 202)
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		deadline := time.Now().Add(30 * time.Second)
 		for {
 			op := harness.EntryOf(t, state(tg), harness.TinyModel)["operation"].(map[string]any)
@@ -155,7 +161,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	// the model and refuses the uninstall (409 conflict). Go switches on the
 	// next request, holds nothing, and uninstalls.
 	tsEager := false
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		if tg.Name == "ts" {
 			mods := harness.Do(t, "GET", tg.BaseURL+"/health", nil, "").JSON(t)["modalities"].(map[string]any)
 			state := mods["stt"].(map[string]any)["state"]
@@ -169,7 +175,7 @@ func TestDifferentialModelManagement(t *testing.T) {
 	} else if r := uninstall["ts"]; r.Status != 409 || r.ErrorCode(t) != "conflict" {
 		t.Errorf("ts uninstall with a running STT runtime: %d %s", r.Status, r.Body)
 	}
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		if tg.Name == "ts" && tsEager {
 			continue
 		}

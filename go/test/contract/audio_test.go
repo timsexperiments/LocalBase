@@ -39,6 +39,7 @@ func multipartBody(fields [][2]string) (string, string) {
 // requests to both gateways and requires the same status, type, code and
 // param.
 func TestDifferentialTranscriptionRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	cases := []formCase{
 		{name: "no file", fields: [][2]string{{"model", "whisper-base-en-q8_0"}}},
 		{name: "file as text", fields: [][2]string{{"file", "not a file"}}},
@@ -54,7 +55,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 		for _, c := range cases {
 			var first *harness.Resp
 			var firstName string
-			for _, tg := range harness.Targets(t) {
+			for _, tg := range tgs {
 				h := harness.Bearer(tg.Key)
 				var body string
 				if c.raw != "" {
@@ -71,6 +72,7 @@ func TestDifferentialTranscriptionRejections(t *testing.T) {
 					continue
 				}
 				r.ErrorCode(t)
+				pinError(t, path+" "+c.name, tg.Name, r)
 				if first == nil {
 					first, firstName = r, tg.Name
 					continue

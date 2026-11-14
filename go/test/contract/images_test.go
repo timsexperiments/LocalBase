@@ -72,10 +72,11 @@ func imageForm(parts ...imgPart) (string, string) {
 // TestDifferentialImageRejections sends invalid image generation and edit
 // requests to both gateways; none reaches a backend.
 func TestDifferentialImageRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	harness.LogFreeMemoryOnFailure(t)
 	post := func(path, ctype, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = ctype
 			out[tg.Name] = harness.Do(t, "POST", tg.BaseURL+path, h, body)
@@ -86,7 +87,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		return post("/v1/images/generations", "application/json", body)
 	}
 	long := strings.Repeat("x", 16_385)
-	for label, body := range map[string]string{
+	for label, body := range sortedCases(map[string]string{
 		"array":                  `[]`,
 		"no prompt":              `{}`,
 		"prompt number":          `{"prompt":5}`,
@@ -118,7 +119,7 @@ func TestDifferentialImageRejections(t *testing.T) {
 		"unknown model":          `{"prompt":"a","model":"no-such-model"}`,
 		"unknown model lora":     `{"prompt":"a","model":"no-such-model","lora_strength":1}`,
 		"files missing":          `{"prompt":"a","model":"realvis-xl-v5.0","size":"512x512","unknown_field":true}`,
-	} {
+	}) {
 		sameError(t, "generation "+label, gen(body))
 	}
 

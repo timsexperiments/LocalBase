@@ -19,9 +19,10 @@ import (
 // job routes for jobs that do not exist. Status, error type, code, param,
 // message and Allow must match.
 func TestDifferentialVideoRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	send := func(method, path, ctype, body string) map[string]*harness.Resp {
 		out := map[string]*harness.Resp{}
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(tg.Key)
 			if ctype != "" {
 				h["Content-Type"] = ctype
@@ -121,9 +122,10 @@ func TestDifferentialVideoRejections(t *testing.T) {
 // both accept the job (202) and both must end it failed with the same
 // public error once the runtime refuses the weights.
 func TestDifferentialVideoJobFailure(t *testing.T) {
+	tgs := pinnedGateways(t)
 	body := `{"model":"wan2.1-t2v-1.3b-q8_0","prompt":"a lighthouse at dusk","width":320,"height":320,"frames":33,"fps":16,"input":{"kind":"text"}}`
 	final := map[string]map[string]any{}
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		h := harness.Bearer(tg.Key)
 		h["Content-Type"] = "application/json"
 		r := harness.Do(t, "POST", tg.BaseURL+"/v1/videos", h, body)
@@ -153,6 +155,7 @@ func TestDifferentialVideoJobFailure(t *testing.T) {
 	}
 	var first map[string]any
 	for name, s := range final {
+		pinAnswer(t, "failed job", name, map[string]any{"status": s["status"], "error": s["error"]})
 		t.Logf("%s: %v", name, s["error"])
 		if s["status"] != "failed" {
 			t.Errorf("%s: %v", name, s)

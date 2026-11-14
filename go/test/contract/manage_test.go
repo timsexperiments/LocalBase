@@ -190,17 +190,25 @@ func runManageScript(t *testing.T, tg *harness.Target) []manageResult {
 }
 
 func TestDifferentialManagement(t *testing.T) {
+	tgs := pinnedGateways(t)
 	results := map[string][]manageResult{}
-	for _, tg := range harness.Targets(t) {
+	for _, tg := range tgs {
 		if tg.Admin == "" {
 			t.Skip("needs launched gateways")
 		}
 		results[tg.Name] = runManageScript(t, tg)
 	}
-	if len(harness.Targets(t)) < 2 {
+	if r, ok := results["go"]; ok {
+		steps := make([]any, len(r))
+		for i, x := range r {
+			steps[i] = map[string]any{"status": x.status, "body": x.body}
+		}
+		pinAnswer(t, "script", "go", steps)
+	}
+	if len(tgs) < 2 {
 		return
 	}
-	a, b := results[harness.Targets(t)[0].Name], results[harness.Targets(t)[1].Name]
+	a, b := results[tgs[0].Name], results[tgs[1].Name]
 	for i, s := range manageScript {
 		ra, rb := a[i], b[i]
 		if s.body == goClearsNothing {
@@ -213,7 +221,7 @@ func TestDifferentialManagement(t *testing.T) {
 		diffs := harness.DiffJSON("", ra.body, rb.body, nil)
 		if ra.status != rb.status || len(diffs) > 0 {
 			t.Errorf("step %d %s %s %s\n  %s %d %s\n  %s %d %s\n  %v", i, s.method, s.path, s.body,
-				harness.Targets(t)[0].Name, ra.status, ra.raw, harness.Targets(t)[1].Name, rb.status, rb.raw, diffs)
+				tgs[0].Name, ra.status, ra.raw, tgs[1].Name, rb.status, rb.raw, diffs)
 		}
 	}
 }

@@ -18,6 +18,7 @@ import (
 // gateways and requires the same status, type, code, param and message.
 // None of them reaches a backend.
 func TestDifferentialSpeechRejections(t *testing.T) {
+	tgs := pinnedGateways(t)
 	long := strings.Repeat("a", 257)
 	cases := []struct{ name, body string }{
 		{"not json", `{`},
@@ -43,7 +44,7 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 	for _, c := range cases {
 		var first *harness.Resp
 		var firstName string
-		for _, tg := range harness.Targets(t) {
+		for _, tg := range tgs {
 			h := harness.Bearer(tg.Key)
 			h["Content-Type"] = "application/json"
 			r := harness.Do(t, "POST", tg.BaseURL+"/v1/audio/speech", h, c.body)
@@ -52,6 +53,7 @@ func TestDifferentialSpeechRejections(t *testing.T) {
 				continue
 			}
 			r.ErrorCode(t)
+			pinError(t, c.name, tg.Name, r)
 			if first == nil {
 				first, firstName = r, tg.Name
 				continue
