@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## After the TypeScript version
 
-The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is the rollback, so data directories stay compatible with it: the migrations are pinned as 0.1.0's set (`TestMigrationsAreTheV010Set`), and a new migration needs a release that drops that rollback, with a changelog line. The golden test data was recorded from the TypeScript code and is now Go's own.
+The TypeScript gateway is retired. Its 0.1.0 binary, on the v0.1.0 release, is the rollback, so data directories stay compatible with it: the migrations are pinned as 0.1.0's set (`TestMigrationsAreTheV010Set`), and a new migration needs a release that drops that rollback, with a changelog line. The golden test data was recorded from the TypeScript code and is now Go's own. [The retirement plan](docs/typescript-retirement.md) records how it was done and the rollback rule.
 
 - **The catalog's source** is `go/internal/catalog/data`. `cd go && go run ./tools/catalog-feed` writes `catalog/feed.json` and `catalog/feed-v2.json` from it.
 - **The managed runtime manifest** is `go/internal/runtime/managed-runtime-manifest.json`. The binary embeds it, and the runtime sync workflows update it.
