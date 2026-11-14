@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/timsexperiments/LocalBase/go/internal/syncfile"
 	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
@@ -107,35 +108,11 @@ func (o options) waitLimit() time.Duration {
 	return operationWaitLimit
 }
 
-func (o options) fsync(f *os.File) error {
-	if o.sync != nil {
-		return o.sync(f)
-	}
-	return f.Sync()
-}
-
-// writeSynced is os.WriteFile with 0600, and the data synced before it returns, so a rename that
-// follows can't give a name to a file a crash then empties.
-func writeSynced(path string, data []byte, o options) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if err == nil {
-		err = o.fsync(f)
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	return err
-}
-
 func writeJSONAtomic(path string, v any, o options) error {
 	tmp := path + "." + uuidv4.New() + ".tmp"
 	defer os.Remove(tmp)
 	b, _ := json.Marshal(v)
-	if err := writeSynced(tmp, b, o); err != nil {
+	if err := syncfile.Write(tmp, b, o.sync); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

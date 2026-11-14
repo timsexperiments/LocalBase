@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// syncedBeforeRename is a copy of root's (internal/root/synced_write_test.go). Its options record each file synced,
-// and check that its final name doesn't hold the new data yet when it is.
+// syncedBeforeRename is a copy of root's (internal/root/synced_write_test.go): a test helper can't cross
+// packages, and testutil imports root, so a root test can't import it. Its options record each file
+// synced, and check that its final name doesn't hold the new data yet when it is.
 func syncedBeforeRename(t *testing.T, final string, want string) (options, *[]string) {
 	t.Helper()
 	var synced []string

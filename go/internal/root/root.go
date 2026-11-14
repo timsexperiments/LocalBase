@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/timsexperiments/LocalBase/go/internal/lease"
+	"github.com/timsexperiments/LocalBase/go/internal/syncfile"
 	"github.com/timsexperiments/LocalBase/go/internal/uuidv4"
 )
 
@@ -204,7 +205,7 @@ func initRoot(dir string, o options) (*Root, error) {
 	m := marker{Version: 1, Root: dir, RootHash: Hash(dir), Identity: uuidv4.New()}
 	raw, _ := json.Marshal(m)
 	tmp := filepath.Join(dir, markerName+".tmp")
-	if err := writeSynced(tmp, raw, o); err != nil {
+	if err := syncfile.Write(tmp, raw, o.sync); err != nil {
 		os.Remove(tmp)
 		return nil, err
 	}
