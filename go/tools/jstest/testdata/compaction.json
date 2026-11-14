@@ -1,0 +1,503 @@
+{
+ "_frozen": {
+  "from": "7282aac5d6dc",
+  "by": "go/tools/golden/jstest-parity.ts",
+  "note": "The TS UI's outputs for compaction.test.ts's inputs, run once before the TypeScript UI was retired. Reviewed by hand from here on: a change here is a change to what the Go page does."
+ },
+ "estimateTextTokens": [
+  0,
+  2,
+  5,
+  8,
+  172
+ ],
+ "estimateTokens": 1071,
+ "overflowContext": [
+  8192,
+  null,
+  null,
+  4096
+ ],
+ "promptBudget": [
+  6144,
+  2048,
+  24576,
+  50
+ ],
+ "contextWindow": {
+  "fresh": [
+   32768,
+   4096,
+   8192
+  ],
+  "learnFirst": true,
+  "learnAgain": false,
+  "learnedStorage": [
+   [
+    "localbase.playground.context.v1",
+    "{\"a\":16384}"
+   ]
+  ],
+  "afterLearn": 16384,
+  "damaged": [
+   9000,
+   9000,
+   3
+  ],
+  "notJSON": 8192
+ },
+ "planCompaction": {
+  "fits": null,
+  "over budget": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u1",
+     "role": "user",
+     "text": "Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a1",
+     "role": "assistant",
+     "text": "Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    },
+    {
+     "id": "u3",
+     "role": "user",
+     "text": "Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a3",
+     "role": "assistant",
+     "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u4",
+     "role": "user",
+     "text": "Question 4: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a4",
+     "role": "assistant",
+     "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a4",
+    "role": "assistant",
+    "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+   }
+  },
+  "over budget, tool overhead": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u1",
+     "role": "user",
+     "text": "Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a1",
+     "role": "assistant",
+     "text": "Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    },
+    {
+     "id": "u3",
+     "role": "user",
+     "text": "Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a3",
+     "role": "assistant",
+     "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u4",
+     "role": "user",
+     "text": "Question 4: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a4",
+     "role": "assistant",
+     "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a4",
+    "role": "assistant",
+    "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+   }
+  },
+  "keep one turn": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u1",
+     "role": "user",
+     "text": "Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a1",
+     "role": "assistant",
+     "text": "Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    }
+   ],
+   "through": {
+    "id": "a2",
+    "role": "assistant",
+    "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+    "interrupted": true
+   }
+  },
+  "single turn never compacts": null,
+  "forced": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a0",
+    "role": "assistant",
+    "text": "Answer 0: ünï ünï ünï ünï ünï "
+   }
+  },
+  "with summary": {
+   "covered": [
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    },
+    {
+     "id": "u3",
+     "role": "user",
+     "text": "Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a3",
+     "role": "assistant",
+     "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u4",
+     "role": "user",
+     "text": "Question 4: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a4",
+     "role": "assistant",
+     "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a4",
+    "role": "assistant",
+    "text": "Answer 4: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+   }
+  },
+  "summary fits": null,
+  "keepTurns 3": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u1",
+     "role": "user",
+     "text": "Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a1",
+     "role": "assistant",
+     "text": "Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    },
+    {
+     "id": "u3",
+     "role": "user",
+     "text": "Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a3",
+     "role": "assistant",
+     "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a3",
+    "role": "assistant",
+    "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+   }
+  }
+ },
+ "transcript": [
+  "User: See these\n[attached: cat.png]\n\nAssistant: [generated: Image]\n\nUser: [attachments not available]\n\nAssistant: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words word\n[… 17645 characters omitted …]\nds words words words words words words words words words words words words words words words words words words words words words words words words words words words\n[Interrupted by the user]",
+  "User: See these\n[attached: cat.png]\n\nAssistant: [generated: Image]\n\nUser: [attachments not available]\n\nAssistant: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words \n[… 17545 characters omitted …]\nords words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n[Interrupted by the user]",
+  "User: See these\n[attached: cat.png]\n\nAssistant: [generated: Image]\n\nUser: [attachments not available]\n\nAssistant: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words \n[… 5545 characters omitted …]\nords words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n[Interrupted by the user]"
+ ],
+ "compact": {
+  "plan": {
+   "covered": [
+    {
+     "id": "u0",
+     "role": "user",
+     "text": "Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a0",
+     "role": "assistant",
+     "text": "Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u1",
+     "role": "user",
+     "text": "Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a1",
+     "role": "assistant",
+     "text": "Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    },
+    {
+     "id": "u2",
+     "role": "user",
+     "text": "Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a2",
+     "role": "assistant",
+     "text": "Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ",
+     "interrupted": true
+    },
+    {
+     "id": "u3",
+     "role": "user",
+     "text": "Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words "
+    },
+    {
+     "id": "a3",
+     "role": "assistant",
+     "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+    }
+   ],
+   "through": {
+    "id": "a3",
+    "role": "assistant",
+    "text": "Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï "
+   }
+  },
+  "cases": {
+   "summary": {
+    "result": {
+     "compaction": {
+      "through": "a3",
+      "summary": "- point",
+      "method": "summary",
+      "count": 8
+     }
+    },
+    "body": {
+     "model": "m",
+     "stream": true,
+     "temperature": 0.2,
+     "max_tokens": 2048,
+     "chat_template_kwargs": {
+      "enable_thinking": false
+     },
+     "messages": [
+      {
+       "role": "system",
+       "content": "You compress chat history. Write a concise summary of the conversation below as short bullet points. Preserve facts, decisions, names, numbers, file names, code identifiers, user preferences, and open questions. Do not add commentary, do not answer the conversation, and do not mention that you are summarizing."
+      },
+      {
+       "role": "user",
+       "content": "Conversation:\nUser: Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n[Interrupted by the user]\n\nUser: Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï"
+      }
+     ]
+    }
+   },
+   "with previous summary": {
+    "result": {
+     "compaction": {
+      "through": "a3",
+      "summary": "- more",
+      "method": "summary",
+      "count": 10
+     }
+    },
+    "body": {
+     "model": "m",
+     "stream": true,
+     "temperature": 0.2,
+     "max_tokens": 2048,
+     "chat_template_kwargs": {
+      "enable_thinking": false
+     },
+     "messages": [
+      {
+       "role": "system",
+       "content": "You compress chat history. Write a concise summary of the conversation below as short bullet points. Preserve facts, decisions, names, numbers, file names, code identifiers, user preferences, and open questions. Do not add commentary, do not answer the conversation, and do not mention that you are summarizing."
+      },
+      {
+       "role": "user",
+       "content": "Earlier summary:\nEarlier bit.\n\nConversation:\nUser: Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n[Interrupted by the user]\n\nUser: Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï"
+      }
+     ]
+    }
+   },
+   "empty summary drops": {
+    "result": {
+     "compaction": {
+      "through": "a3",
+      "summary": "Earlier bit.",
+      "method": "dropped",
+      "count": 10
+     },
+     "error": "The model returned an empty summary."
+    },
+    "body": {
+     "model": "m",
+     "stream": true,
+     "temperature": 0.2,
+     "max_tokens": 2048,
+     "chat_template_kwargs": {
+      "enable_thinking": false
+     },
+     "messages": [
+      {
+       "role": "system",
+       "content": "You compress chat history. Write a concise summary of the conversation below as short bullet points. Preserve facts, decisions, names, numbers, file names, code identifiers, user preferences, and open questions. Do not add commentary, do not answer the conversation, and do not mention that you are summarizing."
+      },
+      {
+       "role": "user",
+       "content": "Earlier summary:\nEarlier bit.\n\nConversation:\nUser: Question 0: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 0: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 1: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 1: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n\nUser: Question 2: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 2: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï\n[Interrupted by the user]\n\nUser: Question 3: words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words words\n\nAssistant: Answer 3: ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï ünï"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "phaseLabel": [
+  "Waiting for the model…",
+  "Thinking… 1s",
+  "Compacting earlier messages… 12s"
+ ],
+ "interruptReply": [
+  {
+   "id": "r",
+   "role": "assistant",
+   "text": "part",
+   "artifacts": [
+    {
+     "id": "1",
+     "label": "Image",
+     "state": "error",
+     "detail": "Interrupted"
+    },
+    {
+     "id": "2",
+     "label": "Audio",
+     "state": "complete"
+    }
+   ],
+   "interrupted": true
+  },
+  {
+   "id": "r",
+   "role": "assistant",
+   "text": "",
+   "interrupted": true
+  }
+ ]
+}

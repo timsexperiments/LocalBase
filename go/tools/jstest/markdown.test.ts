@@ -1,20 +1,12 @@
-// The Go UI's markdown subset against react-markdown with GFM, the parser
-// the TS UI renders replies with, plus the safety rules.
+// The Go UI's markdown subset against react-markdown with GFM, the parser the TS UI rendered replies
+// with, frozen as fixtures (parity/frozen.ts; testdata/markdown.json), plus the safety rules.
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import Markdown from "react-markdown";
-import { gfmFromMarkdown } from "mdast-util-gfm";
-import { gfm } from "micromark-extension-gfm";
 import { parse } from "../../internal/web/static/js/markdown.js";
+import { corpus, norm } from "./parity/markdown.cases.ts";
+import { fixture } from "./parity/frozen.ts";
 
-// react-markdown with GFM, as message-markdown.tsx configures it.
-function remarkGfm(this: any) {
-  const data = this.data();
-  (data.micromarkExtensions ??= []).push(gfm());
-  (data.fromMarkdownExtensions ??= []).push(gfmFromMarkdown());
-}
-const reference = (md: string) => renderToStaticMarkup(createElement(Markdown, { remarkPlugins: [remarkGfm] }, md));
+// react-markdown's HTML for each of the corpus, through norm.
+const reference = fixture("markdown").html as Record<string, string>;
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 function inlineHTML(list: any[]): string {
@@ -53,35 +45,13 @@ function html(list: any[], tight = false): string {
     return "";
   }).join("");
 }
-const norm = (s: string) => s.replace(/>\s+</g, "><").replace(/\n/g, "\\n").trim();
-
-const fixtures = [
-  "Hello **world** and *you* and `code` and ~~gone~~.",
-  "# Title\n\nSome text.\n\n## Second\n\n### Third",
-  "```go\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n```",
-  "```\nplain\n```",
-  "- one\n- two\n- three",
-  "1. first\n2. second\n3. third",
-  "3. starts at three\n4. four",
-  "- parent\n  - child\n  - child two\n- next",
-  "> quoted\n> lines",
-  "| a | b |\n|---|:-:|\n| 1 | 2 |\n| 3 | 4 |",
-  "| left | right |\n|:--|--:|\n| x | y |",
-  "A [link](https://example.com) and <https://example.org>.",
-  "See https://example.com/path?q=1.",
-  "Line one  \nLine two\\\nLine three",
-  "---",
-  "Escaped \\*not em\\* and \\`not code\\`.",
-  "snake_case_name stays and __strong__ works",
-  "Paragraph one\nstill one.\n\nParagraph two.",
-  "Text then\n```js\ncode()\n```\nafter",
-  "**bold *nested em* bold**",
-  "1. item\n\n   continued paragraph\n2. next",
-];
 
 describe("matches react-markdown with GFM", () => {
-  for (const md of fixtures)
-    test(JSON.stringify(md).slice(0, 70), () => expect(norm(html(parse(md)))).toBe(norm(reference(md))));
+  for (const md of corpus)
+    test(JSON.stringify(md).slice(0, 70), () => {
+      expect(reference[md]).toBeString();
+      expect(norm(html(parse(md)))).toBe(reference[md]);
+    });
 });
 
 describe("safety", () => {
