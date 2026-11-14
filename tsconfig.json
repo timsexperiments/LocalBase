@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
@@ -9,8 +8,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "types": ["bun"],
+    "types": [
+      "bun"
+    ],
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/runtimes/*-contract.ts", "scripts/runtimes/lib/*.ts"]
+  "include": [
+    "scripts/runtimes/*-contract.ts",
+    "scripts/runtimes/lib/*.ts"
+  ]
 }
