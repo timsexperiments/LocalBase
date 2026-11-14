@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -70,7 +71,14 @@ func TestDifferentialUnlistedUser(t *testing.T) {
 		// Small reserves, so the model fits a small CI runner and the chat reaches the fake: this
 		// test is about permissions, and a 422 for memory would say nothing about them.
 		small := filepath.Join(tmp, "small.toml")
-		fsguard.WriteFile(small, []byte("ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"), 0o600)
+		doc := "ctxSize = 2048\nctxMode = \"explicit\"\nparallel = 1\n"
+		// The fixture selects video models, which run only on Apple silicon: elsewhere configure
+		// rightly refuses them, so the selection is cleared there. It doesn't touch permissions.
+		if goruntime.GOOS != "darwin" || goruntime.GOARCH != "arm64" {
+			doc += "selectedVideoModels = []\nactiveVideoModel = \"\"\n"
+		}
+		doc += "\n[memory.systemReserve]\npercent = 1\nminimumGb = 0\n\n[memory.acceleratorReserve]\npercent = 1\nminimumGb = 0\n"
+		fsguard.WriteFile(small, []byte(doc), 0o600)
 		if r := runCLI(t, impl, rootDir, "--non-interactive", "configure", "--config", small); r.code != 0 {
 			t.Fatalf("%s configure: %s%s", impl, r.stdout, r.stderr)
 		}
