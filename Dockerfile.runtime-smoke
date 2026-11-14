@@ -6,7 +6,7 @@ ARG ARTIFACT_TARGET=linux-arm64
 WORKDIR /workspace
 
 COPY package.json bun.lock drizzle.config.ts tsconfig.json ./
-COPY drizzle ./drizzle
+COPY go/internal/store/migrations ./go/internal/store/migrations
 COPY scripts ./scripts
 COPY src ./src
 COPY ${ARTIFACT_DIR}/local-base-${ARTIFACT_TARGET} /opt/localbase/local-base

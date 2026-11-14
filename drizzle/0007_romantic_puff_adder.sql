@@ -1,1 +1,0 @@
-DROP INDEX `auth_identities_user_id_unique`;

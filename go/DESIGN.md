@@ -289,7 +289,7 @@ reproduces them byte for byte and the table tests are ported from TS:
 
 ### Database
 
-The Go binary embeds the same `drizzle/*.sql` files and `meta/_journal.json`.
+The Go binary embeds the same drizzle-format `*.sql` files and `meta/_journal.json` (in `internal/store/migrations` since the TS retirement moved them there; `TestMigrationsAreTheV010Set` pins their bytes).
 Drizzle's journal row is `(hash = sha256(file bytes), created_at = journal
 "when")`. The Go migrator applies missing migrations in order, splits on
 `--> statement-breakpoint`, writes byte-identical journal rows, and refuses
